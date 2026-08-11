@@ -8,7 +8,7 @@
 // renderer cell-for-cell: one flat `Vec<CellBg>` indexed by
 // `row * cols + col`, plus per-row `Vec<CellText>` slots (slot 0 =
 // block-cursor cells, 1..=rows = content rows, last = non-block
-// cursor) so the row-rebuild path in `frontends/rioterm/src/grid_emit`
+// cursor) so the row-rebuild path in `apps/automexia-terminal/src/grid_emit`
 // stays backend-agnostic.
 //
 // The atlases live in RAM. `CpuGridAtlas` packs glyph bitmaps into a

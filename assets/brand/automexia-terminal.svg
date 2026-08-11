@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- NON-RELEASE PLACEHOLDER. Not derived from Rio artwork. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Automexia Terminal placeholder mark">
+  <rect width="1024" height="1024" rx="216" fill="#111a17"/>
+  <path d="M250 302 458 512 250 722" fill="none" stroke="#a4ffd0" stroke-width="86" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M500 722h280" fill="none" stroke="#b58cff" stroke-width="86" stroke-linecap="round"/>
+</svg>

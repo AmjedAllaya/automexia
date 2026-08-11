@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Automexia Terminal
+Comment=Hardware-accelerated terminal for modern development workflows
+Exec=automexia
+Icon=automexia-terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+StartupNotify=true
+StartupWMClass=AutomexiaTerminal
+MimeType=x-scheme-handler/automexia;
+Actions=NewWindow;
+
+[Desktop Action NewWindow]
+Name=New Window
+Exec=automexia

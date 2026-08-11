@@ -1,0 +1,26 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+categories:
+  - title: Added
+    labels: [feature, enhancement]
+  - title: Fixed
+    labels: [bug, regression]
+  - title: Security
+    labels: [security]
+  - title: Maintenance
+    labels: [maintenance, dependencies]
+change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
+version-resolver:
+  major:
+    labels: [major]
+  minor:
+    labels: [minor, feature]
+  patch:
+    labels: [patch, bug]
+  default: patch
+template: |
+  ## Changes
+
+  $CHANGES
+
+  Checksums, SBOMs, and provenance attestations are attached to the published release.

@@ -1,0 +1,51 @@
+[package]
+name = "automexia-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+automexia-terminal = { path = "../apps/automexia-terminal" }
+rio-vt = { path = "../rio-vt", default-features = false }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "vt_parser"
+path = "fuzz_targets/vt_parser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "osc_metadata"
+path = "fuzz_targets/osc_metadata.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "config_migration"
+path = "fuzz_targets/config_migration.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "semantic_classification"
+path = "fuzz_targets/semantic_classification.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "label_sanitization"
+path = "fuzz_targets/label_sanitization.rs"
+test = false
+doc = false
+bench = false

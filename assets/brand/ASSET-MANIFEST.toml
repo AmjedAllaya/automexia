@@ -1,0 +1,46 @@
+[release]
+ready = false
+placeholder = true
+rights_verified = false
+approved_by = ""
+approved_at = ""
+
+[[asset]]
+kind = "editable-logo-svg"
+path = "assets/brand/automexia-terminal.svg"
+status = "placeholder"
+
+[[asset]]
+kind = "standalone-app-mark-svg"
+path = "assets/brand/automexia-mark.svg"
+status = "missing"
+
+[[asset]]
+kind = "light-dark-monochrome-variants"
+path = "assets/brand/variants"
+status = "missing"
+
+[[asset]]
+kind = "master-png-1024"
+path = "assets/brand/automexia-terminal-1024.png"
+status = "missing"
+
+[[asset]]
+kind = "windows-ico-16-through-256"
+path = "assets/brand/automexia-terminal.ico"
+status = "missing"
+
+[[asset]]
+kind = "macos-icns-16-through-1024"
+path = "assets/brand/automexia-terminal.icns"
+status = "missing"
+
+[[asset]]
+kind = "linux-png-16-32-48-64-128-256-512"
+path = "assets/brand/png"
+status = "missing"
+
+[[asset]]
+kind = "redistribution-rights-proof"
+path = "assets/brand/REDISTRIBUTION-RIGHTS.md"
+status = "missing"

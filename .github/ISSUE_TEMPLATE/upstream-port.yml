@@ -1,0 +1,16 @@
+name: Upstream port proposal
+description: Propose selectively porting an audited Rio change.
+title: 'chore(upstream): '
+labels: [upstream-port]
+body:
+  - type: input
+    attributes:
+      label: Upstream commit or PR
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Rationale and affected boundaries
+      description: Explain value, conflicts, dependency/security impact, and focused regression tests.
+    validations:
+      required: true

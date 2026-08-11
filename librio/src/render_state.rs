@@ -30,7 +30,7 @@ pub struct ViewportSelection {
 
 /// Virtual placements have no z of their own; kitty draws them under
 /// text unless the application says otherwise, and rio's renderer pins
-/// them there (see `frontends/rioterm/src/renderer/mod.rs`).
+/// them there (see `apps/automexia-terminal/src/renderer/mod.rs`).
 const VIRTUAL_Z_INDEX: i32 = -1;
 
 /// One drawable kitty item: a direct overlay placement, or one row-run

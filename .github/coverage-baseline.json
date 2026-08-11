@@ -1,0 +1,7 @@
+{
+  "line_percent": 43.52,
+  "instrumented_lines": 74160,
+  "hit_lines": 32275,
+  "platform": "windows-x86_64-msvc",
+  "status": "Measured v0.4.0 workspace baseline; CI rejects regressions and enforces 80% changed Automexia-owned lines"
+}

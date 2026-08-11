@@ -1,5 +1,6 @@
 [package]
 name = "sugarloaf"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -41,7 +42,7 @@ targets = [
 # `wgpu` feature. Default-off on macOS + Linux (the native Metal /
 # Vulkan backends are preferred and skip the wgpu translation
 # layer). Windows + WASM enable it via target-specific deps in the
-# downstream crate (`frontends/rioterm/Cargo.toml`).
+# downstream crate (`apps/automexia-terminal/Cargo.toml`).
 wgpu = { workspace = true, optional = true }
 bytemuck = { workspace = true }
 tracing = { workspace = true }

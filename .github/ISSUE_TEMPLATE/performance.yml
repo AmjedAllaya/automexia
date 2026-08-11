@@ -1,0 +1,15 @@
+name: Performance regression
+description: Report startup, latency, throughput, or memory degradation.
+title: 'perf: '
+labels: [performance, regression]
+body:
+  - type: textarea
+    attributes:
+      label: Baseline and regression
+      description: Versions, repeatable measurements, hardware, workload, and variance.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Profiling evidence
+      description: Flamegraph, trace, benchmark output, or memory sample.
