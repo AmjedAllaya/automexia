@@ -1,0 +1,63 @@
+AUTOMEXIA TERMINAL — RUSTFMT-NORMALIZED RELEASE AUDIT v0.3.13
+
+Package: automexia-terminal-v0.3.13-rustfmt-normalized
+Pinned Rio engine: 7d595af583f6ef1ea6036a66b367ba1e5a84d4a2
+DevOps extension version: 0.3.13
+
+AUDIT SCOPE
+This revision was re-reviewed across architecture documentation, patch/install transactions,
+repeated-bootstrap recovery, Automexia source boundaries, DevOps worker/cache lifecycle,
+semantic-prompt geometry, shell integration, WSL behavior, warning cleanup and release gates.
+
+DEFECTS FOUND AND CORRECTED DURING THIS AUDIT
+- Real Windows release evidence showed `cargo fmt --check` failed after all semantic/source gates passed.
+  The patcher output was valid but not rustfmt-normalized. Added FORMAT-WINDOWS.ps1 and made bootstrap/direct apply
+  normalize generated Rust with the checkout-pinned toolchain before non-mutating BUILD/CHECK/DEV format gates.
+- CHECK-WINDOWS.ps1 now throws on failures instead of calling `exit`, avoiding accidental termination of a dot-sourced host.
+- Added the missing parse_shell_title implementation used by the live prompt renderer.
+- Fixed capacity-1 DevOps worker Busy handling so a pane retries instead of becoming stale.
+- Added stale in-flight timeout recovery and per-session completion/revision checks.
+- Repeated prompt freeze now updates an existing history snapshot instead of silently keeping stale data.
+- Live prompt geometry prefers the actual OSC-133 Prompt/PromptContinuation pair each frame;
+  cursor geometry is only the initial-paint fallback, and resize/reflow key movement is not treated as a new command.
+- Added Rust regression cases for reflow key changes and coalesced next-prompt transitions.
+- Removed all runtime WSL UNC-provider enumeration/access from DevOps discovery; WSL identity comes from
+  shell metadata and /mnt/<drive> projects map directly to the host filesystem.
+- Fixed Bash PROMPT_COMMAND composition: Automexia appends idempotently, normalizes a trailing semicolon,
+  and preserves the status visible to existing prompt hooks.
+- Kept UTF-8-safe lambda generation and UTF-8/base64 Windows-to-WSL installation.
+- Hardened PowerShell normalization for explicit command/file/encoded invocations and duplicate -NoExit.
+- Added automexia/shell.rs and automexia/theme.rs to bootstrap's managed-path set so a valid repeat/resume
+  cannot reject Automexia's own files as unrelated dirty changes.
+- Direct APPLY-AUTOMEXIA.ps1 now post-verifies the applied checkout instead of returning after the patch write.
+- CHECK-SHELL-INTEGRATION-WINDOWS.ps1 now fails on stale/missing integration rather than only printing red text.
+- Bootstrap/direct apply now own rustfmt normalization; release/check/dev scripts use non-mutating fmt checks. Release gates keep Cargo metadata, all-target check, Clippy -D warnings
+  for Automexia-touched crates, terminal-critical tests, release build and binary smoke test.
+
+VERIFICATION EXECUTED IN THIS PACKAGING ENVIRONMENT
+PASS verify_patcher.py — 14 patchers are idempotent and 27 reported warning sites are transformed.
+PASS verify_regressions.py — mixed/partial upgrades, v0.2/v0.3 migration, applied source-quality gates,
+     repeated installer application, external backups and transactional rollback.
+PASS verify_architecture.py — application/engine/extension/render boundaries and exact Rio pin.
+PASS verify_devops_extension.py — bounded asynchronous discovery, semantic decoration, no CLI/process/network execution.
+PASS verify_visual_system.py — unified palette, vector icons, live/reflow-safe prompt model and shell integration contracts.
+PASS verify_source_quality.py — Python AST, Rust lexical structure, PowerShell structure, prompt/retry/WSL/release invariants.
+PASS verify_shell_behavior.py — executed Bash prompt lifecycle, exit-status preservation, UTF-8 lambda,
+     PROMPT_COMMAND idempotency/order and Unix installer idempotency.
+PASS bash -n for install-shell-integration.sh and shell-integration/bash/automexia.bash.
+PASS Python bytecode compilation for package verification/apply scripts.
+
+FINAL-ARCHIVE GATE
+Before delivery, MANIFEST.sha256 is regenerated from the final file set. The exact ZIP is then extracted to a
+new directory and the package manifest plus all package-level verifiers/regressions and Bash syntax/behavior
+checks are rerun from that extracted copy.
+
+WINDOWS/RUST EXECUTION BOUNDARY
+This packaging runtime is Linux and does not provide rustc/cargo, PowerShell, Windows ConPTY or a Windows GPU
+runtime. The complete Rio checkout is also not present here; this package is the audited integration package.
+Therefore this environment cannot truthfully execute the Windows Cargo compilation, launch AutomexiaTerminal.exe,
+or visually smoke-test ConPTY/GPU behavior. No such success is claimed.
+
+On the user's Windows source checkout, BUILD-WINDOWS.ps1 is the authoritative release gate and will not copy
+AutomexiaTerminal.exe unless package/source verification, cargo metadata, pinned-rustfmt normalization verification, cargo check --all-targets,
+Clippy -D warnings, terminal-critical tests, the release build and rio.exe --version smoke test all succeed.
