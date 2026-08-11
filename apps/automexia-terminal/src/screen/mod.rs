@@ -62,6 +62,30 @@ const MAX_SEARCH_WHILE_TYPING: Option<usize> = Some(1000);
 /// Maximum number of search terms stored in the history.
 const MAX_SEARCH_HISTORY_SIZE: usize = 255;
 
+/// Reusable buffers for the hottest row-emission path. Keeping these on the
+/// screen avoids allocating foreground/background vectors after every command,
+/// shortcut, cursor animation, or split redraw. Their capacity grows to the
+/// widest observed panel and is then reused for the lifetime of the window.
+#[derive(Default)]
+struct RowRenderScratch {
+    backgrounds: Vec<rio_backend::sugarloaf::grid::CellBg>,
+    foregrounds: Vec<rio_backend::sugarloaf::grid::CellText>,
+    hints: Vec<crate::grid_emit::RowHint>,
+}
+
+impl RowRenderScratch {
+    fn reserve_columns(&mut self, columns: usize) {
+        if self.backgrounds.capacity() < columns {
+            self.backgrounds
+                .reserve(columns.saturating_sub(self.backgrounds.len()));
+        }
+        if self.foregrounds.capacity() < columns {
+            self.foregrounds
+                .reserve(columns.saturating_sub(self.foregrounds.len()));
+        }
+    }
+}
+
 pub struct Screen<'screen> {
     bindings: crate::bindings::KeyBindings,
     mouse_bindings: Vec<MouseBinding>,
@@ -84,6 +108,7 @@ pub struct Screen<'screen> {
     last_close_press: Option<(std::time::Instant, f32)>,
     pub grids: rustc_hash::FxHashMap<usize, rio_backend::sugarloaf::grid::GridRenderer>,
     pub grid_rasterizer: crate::grid_emit::GridGlyphRasterizer,
+    row_render_scratch: RowRenderScratch,
 }
 
 pub struct ChromePress {
@@ -325,6 +350,7 @@ impl Screen<'_> {
             last_close_press: None,
             grids: rustc_hash::FxHashMap::default(),
             grid_rasterizer: crate::grid_emit::GridGlyphRasterizer::new(),
+            row_render_scratch: RowRenderScratch::default(),
         })
     }
 
@@ -4176,6 +4202,7 @@ impl Screen<'_> {
             )> = Vec::with_capacity(panels.len());
 
             let rasterizer = &mut self.grid_rasterizer;
+            let row_scratch = &mut self.row_render_scratch;
             let renderer_ref = &self.renderer;
             for (route_id, grid) in self.grids.iter_mut() {
                 let Some(p) = panels.iter_mut().find(|p| p.route_id == *route_id) else {
@@ -4218,11 +4245,7 @@ impl Screen<'_> {
                 };
 
                 let cols = p.cols as usize;
-                let mut bg_scratch: Vec<rio_backend::sugarloaf::grid::CellBg> =
-                    Vec::with_capacity(cols);
-                let mut fg_scratch: Vec<rio_backend::sugarloaf::grid::CellText> =
-                    Vec::with_capacity(cols);
-                let mut hint_scratch: Vec<crate::grid_emit::RowHint> = Vec::new();
+                row_scratch.reserve_columns(cols);
 
                 // Small helper: rebuild one row into the grid's
                 // buffers. Closure-style to avoid duplicating the
@@ -4256,7 +4279,7 @@ impl Screen<'_> {
                             y,
                             cols,
                             p.display_offset,
-                            &mut hint_scratch,
+                            &mut row_scratch.hints,
                         );
                         let label_row;
                         let row = match (p.hint_labels.as_deref(), p.label_style_base) {
@@ -4267,7 +4290,7 @@ impl Screen<'_> {
                                     y,
                                     p.display_offset,
                                     style_base,
-                                    &mut hint_scratch,
+                                    &mut row_scratch.hints,
                                 ) {
                                     Some(overlaid) => {
                                         label_row = overlaid;
@@ -4285,9 +4308,9 @@ impl Screen<'_> {
                             renderer_ref,
                             &p.term_colors,
                             row_sel,
-                            &hint_scratch,
+                            &row_scratch.hints,
                             rasterizer,
-                            &mut bg_scratch,
+                            &mut row_scratch.backgrounds,
                         );
                         let cursor_col_for_row = if p.cursor_visible
                             && (y as u16) == p.cursor_row
@@ -4311,13 +4334,17 @@ impl Screen<'_> {
                             p.cell_w,
                             p.cell_h,
                             row_sel,
-                            &hint_scratch,
+                            &row_scratch.hints,
                             &font_library,
                             p.route_id,
                             cursor_col_for_row,
-                            &mut fg_scratch,
+                            &mut row_scratch.foregrounds,
                         );
-                        grid.write_row(y as u32, &bg_scratch, &fg_scratch);
+                        grid.write_row(
+                            y as u32,
+                            &row_scratch.backgrounds,
+                            &row_scratch.foregrounds,
+                        );
                     };
 
                 match rows_to_rebuild {
@@ -5063,6 +5090,23 @@ fn post_process_hyperlink_uri(uri: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn row_render_scratch_reuses_widest_panel_capacity() {
+        let mut scratch = RowRenderScratch::default();
+        scratch.reserve_columns(256);
+        let background_ptr = scratch.backgrounds.as_ptr();
+        let foreground_ptr = scratch.foregrounds.as_ptr();
+        let background_capacity = scratch.backgrounds.capacity();
+        let foreground_capacity = scratch.foregrounds.capacity();
+
+        scratch.reserve_columns(80);
+
+        assert_eq!(scratch.backgrounds.as_ptr(), background_ptr);
+        assert_eq!(scratch.foregrounds.as_ptr(), foreground_ptr);
+        assert_eq!(scratch.backgrounds.capacity(), background_capacity);
+        assert_eq!(scratch.foregrounds.capacity(), foreground_capacity);
+    }
 
     #[test]
     fn chrome_press_validates_double_click() {

@@ -5,8 +5,11 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 
 use rio_vt::ansi::CursorShape;
+use rio_vt::crosswords::grid::row::Row;
+use rio_vt::crosswords::square::{Extras, Square};
+use rio_vt::crosswords::style::Style;
 use rio_vt::crosswords::{Crosswords, CrosswordsSize};
-use rio_vt::event::{VoidListener, WindowId};
+use rio_vt::event::{TerminalDamage, VoidListener, WindowId};
 use rio_vt::performer::handler::Processor;
 
 const COLS: usize = 120;
@@ -145,6 +148,33 @@ fn bench(c: &mut Criterion) {
         });
     }
     group.finish();
+
+    // Common interactive fast path: local UI actions and cursor motion reuse
+    // the already-materialized terminal snapshot when no grid row changed.
+    let mut crosswords = term();
+    let mut processor = Processor::default();
+    processor.advance(&mut crosswords, &ansi_mixed(64 * 1024));
+    let mut rows: Vec<Row<Square>> = Vec::new();
+    let mut styles: Vec<Style> = Vec::new();
+    let mut extras = rustc_hash::FxHashMap::<u16, Extras>::default();
+    crosswords.snapshot_visible(
+        &TerminalDamage::Full,
+        COLS,
+        &mut rows,
+        &mut styles,
+        &mut extras,
+    );
+    c.bench_function("snapshot_visible_noop", |b| {
+        b.iter(|| {
+            crosswords.snapshot_visible(
+                &TerminalDamage::Noop,
+                COLS,
+                &mut rows,
+                &mut styles,
+                &mut extras,
+            )
+        });
+    });
 }
 
 criterion_group!(benches, bench);

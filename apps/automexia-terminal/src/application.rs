@@ -1974,14 +1974,23 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     .window
                     .screen
                     .process_key_event(&key_event, &mut self.router.clipboard);
-                // `process_key_event` used to call `self.render()` for
-                // local-only keystrokes (VI mode, search input, hint
-                // mode). Now it just marks `pending_update.set_dirty()`
-                // through `mark_dirty`. Request a redraw so the next
-                // vsync fires `RedrawRequested` — PTY-bound keystrokes
-                // also flow through here but their render is idempotent
-                // with the PTY-damage-driven redraw.
-                route.request_redraw();
+                // Local-only actions (VI/search/hints/palette/shortcuts) mark
+                // pending UI damage and need an eager frame. Plain PTY-bound
+                // keystrokes do not: the PTY worker wakes the window as soon
+                // as real terminal damage arrives. Avoiding the speculative
+                // pre-PTY frame removes one full renderer traversal from the
+                // common typing path without delaying visible output.
+                if route
+                    .window
+                    .screen
+                    .ctx()
+                    .current()
+                    .renderable_content
+                    .pending_update
+                    .is_dirty()
+                {
+                    route.request_redraw();
+                }
 
                 if key_event.state == ElementState::Released
                     && self.config.hide_cursor_when_typing

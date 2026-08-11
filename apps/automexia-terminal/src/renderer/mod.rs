@@ -181,6 +181,21 @@ fn prompt_visual_anchor(rows: &[Row<Square>], semantic_index: usize) -> Option<u
     Some(semantic_index)
 }
 
+/// Synchronize a small optional terminal-metadata string without allocating
+/// when its value is unchanged. This sits on the PTY-damage path, where the
+/// title and shell facts are usually stable across thousands of frames.
+#[inline]
+fn sync_optional_metadata(target: &mut Option<String>, source: Option<&String>) {
+    let source = source.filter(|value| !value.trim().is_empty());
+    match (target.as_mut(), source) {
+        (Some(current), Some(source)) if current == source => {}
+        (Some(current), Some(source)) => current.clone_from(source),
+        (None, Some(source)) => *target = Some(source.clone()),
+        (Some(_), None) => *target = None,
+        (None, None) => {}
+    }
+}
+
 pub struct Renderer {
     is_vi_mode_enabled: bool,
     is_game_mode_enabled: bool,
@@ -536,24 +551,32 @@ impl Renderer {
                     &mut context.renderable_content.extras,
                 );
                 context.renderable_content.term_colors = terminal.colors;
-                context.renderable_content.current_directory =
-                    terminal.current_directory.clone();
-                context.renderable_content.terminal_title = terminal.title.to_string();
-                context.renderable_content.shell_distro = terminal
-                    .user_vars
-                    .get("automexia_distro")
-                    .filter(|value| !value.trim().is_empty())
-                    .cloned();
-                context.renderable_content.shell_os_version = terminal
-                    .user_vars
-                    .get("automexia_os_version")
-                    .filter(|value| !value.trim().is_empty())
-                    .cloned();
-                context.renderable_content.shell_name = terminal
-                    .user_vars
-                    .get("automexia_shell_name")
-                    .filter(|value| !value.trim().is_empty())
-                    .cloned();
+                if context.renderable_content.current_directory.as_ref()
+                    != terminal.current_directory.as_ref()
+                {
+                    context
+                        .renderable_content
+                        .current_directory
+                        .clone_from(&terminal.current_directory);
+                }
+                if context.renderable_content.terminal_title != terminal.title {
+                    context
+                        .renderable_content
+                        .terminal_title
+                        .clone_from(&terminal.title);
+                }
+                sync_optional_metadata(
+                    &mut context.renderable_content.shell_distro,
+                    terminal.user_vars.get("automexia_distro"),
+                );
+                sync_optional_metadata(
+                    &mut context.renderable_content.shell_os_version,
+                    terminal.user_vars.get("automexia_os_version"),
+                );
+                sync_optional_metadata(
+                    &mut context.renderable_content.shell_name,
+                    terminal.user_vars.get("automexia_shell_name"),
+                );
                 context.renderable_content.shell_integration = terminal
                     .user_vars
                     .get("automexia_shell")
@@ -1493,5 +1516,20 @@ mod prompt_visual_anchor_tests {
         rows[1][Column(1)].set_c('w');
         rows[2][Column(0)].set_c('λ');
         assert_eq!(synthetic_prompt_visual_anchor(&rows, 2), Some(0));
+    }
+
+    #[test]
+    fn stable_metadata_reuses_its_existing_allocation() {
+        let mut cached = Some(String::with_capacity(64));
+        cached.as_mut().unwrap().push_str("PowerShell");
+        let pointer = cached.as_ref().unwrap().as_ptr();
+        let source = "PowerShell".to_string();
+
+        sync_optional_metadata(&mut cached, Some(&source));
+
+        assert_eq!(cached.as_deref(), Some("PowerShell"));
+        assert_eq!(cached.as_ref().unwrap().as_ptr(), pointer);
+        sync_optional_metadata(&mut cached, Some(&String::new()));
+        assert_eq!(cached, None);
     }
 }

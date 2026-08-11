@@ -31,9 +31,11 @@ const CONTEXT_GAP: f32 = 24.0;
 const CONTEXT_PAD_X: f32 = 20.0;
 const CONTEXT_FONT_SIZE: f32 = 18.0;
 const CONTEXT_ICON_SIZE: f32 = 24.0;
+const DOCKER_CONTEXT_ICON_SIZE: f32 = 30.0;
 const CLOCK_ICON_SIZE: f32 = 23.0;
 const PROMPT_CONTEXT_FONT_SIZE: f32 = 18.0;
 const PROMPT_CONTEXT_ICON_SIZE: f32 = 23.0;
+const DOCKER_PROMPT_ICON_SIZE: f32 = 29.0;
 const PROMPT_CONTEXT_PAD_X: f32 = 4.0;
 const PROMPT_CONTEXT_ICON_GAP: f32 = 8.0;
 const PROMPT_CONTEXT_SEPARATOR_GAP: f32 = 9.0;
@@ -93,6 +95,7 @@ struct ActivePrompt {
     generation: Option<u64>,
     key: u64,
     segments: Vec<Segment>,
+    segments_revision: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -112,6 +115,12 @@ enum SnapshotCandidate {
 #[derive(Default)]
 pub struct DevOpsStatus {
     snapshot: DevOpsSnapshot,
+    /// Materialized segment labels shared by the header and every prompt row.
+    /// Rebuilt only when session facts or the async discovery revision change.
+    live_segments: Vec<Segment>,
+    live_segments_session: Option<SessionFacts>,
+    live_segments_snapshot_revision: u32,
+    live_segments_revision: u32,
     prompt_history: VecDeque<PromptSnapshot>,
     active_prompt: Option<ActivePrompt>,
     last_refresh_request: Option<Instant>,
@@ -138,6 +147,7 @@ impl DevOpsStatus {
     ) -> bool {
         self.request_refresh_if_needed(session, false);
         self.sync_cached_snapshot(session);
+        self.ensure_live_segments(session);
 
         let (window_width, _window_height, scale_factor) = dimensions;
         let logical_width = window_width / scale_factor.max(f32::EPSILON);
@@ -153,13 +163,12 @@ impl DevOpsStatus {
             fill,
             outline,
         );
-        let segments = self.build_live_segments(session);
         self.draw_context_segments(
             sugarloaf,
             colors,
             layout.left_x,
             layout.left_width,
-            &segments,
+            &self.live_segments,
         );
 
         if let Some((right_x, right_width)) = layout.right {
@@ -192,6 +201,7 @@ impl DevOpsStatus {
         historical_anchors: &[PromptAnchor],
         live_anchor: Option<PromptAnchor>,
     ) {
+        self.ensure_live_segments(session);
         let new_prompt = self.sync_active_prompt(
             session,
             prompt_active,
@@ -201,11 +211,12 @@ impl DevOpsStatus {
         if new_prompt {
             self.request_refresh_if_needed(session, true);
             self.sync_cached_snapshot(session);
+            self.ensure_live_segments(session);
         }
 
         if prompt_active {
             if let Some(anchor) = live_anchor {
-                let segments = self.build_live_segments(session);
+                let segments_revision = self.live_segments_revision;
                 match self.active_prompt.as_mut() {
                     Some(active)
                         if active.session_id == session.session_id
@@ -218,14 +229,18 @@ impl DevOpsStatus {
                     {
                         active.generation = anchor.generation;
                         active.key = anchor.key;
-                        active.segments = segments;
+                        if active.segments_revision != segments_revision {
+                            active.segments.clone_from(&self.live_segments);
+                            active.segments_revision = segments_revision;
+                        }
                     }
                     _ => {
                         self.active_prompt = Some(ActivePrompt {
                             session_id: session.session_id,
                             generation: anchor.generation,
                             key: anchor.key,
-                            segments,
+                            segments: self.live_segments.clone(),
+                            segments_revision,
                         });
                     }
                 }
@@ -236,7 +251,6 @@ impl DevOpsStatus {
         // (for example after restoring a route or deep scrollback). Never
         // leave its context strip empty: use the current local snapshot until
         // a prompt-specific snapshot exists.
-        let fallback_segments = self.build_live_segments(session);
         for anchor in historical_anchors {
             if live_anchor.is_some_and(|live| {
                 same_prompt_identity(
@@ -250,7 +264,7 @@ impl DevOpsStatus {
             }
             let segments = self
                 .cached_segments(session.session_id, anchor)
-                .unwrap_or(&fallback_segments);
+                .unwrap_or(&self.live_segments);
             self.draw_prompt_segments(sugarloaf, colors, anchor, segments);
         }
 
@@ -299,7 +313,8 @@ impl DevOpsStatus {
                 session_id: session.session_id,
                 generation: anchor.generation,
                 key: anchor.key,
-                segments: self.build_live_segments(session),
+                segments: self.live_segments.clone(),
+                segments_revision: self.live_segments_revision,
             });
             return true;
         };
@@ -341,7 +356,8 @@ impl DevOpsStatus {
                 session_id: session.session_id,
                 generation: anchor.generation,
                 key: anchor.key,
-                segments: self.build_live_segments(session),
+                segments: self.live_segments.clone(),
+                segments_revision: self.live_segments_revision,
             });
             return true;
         }
@@ -374,7 +390,7 @@ impl DevOpsStatus {
         for (index, segment) in segments.iter().enumerate() {
             let color = segment_color(colors, segment.color);
             let icon_opts = DrawOpts {
-                font_size: PROMPT_CONTEXT_ICON_SIZE,
+                font_size: prompt_icon_size(segment.icon),
                 color: color_to_u8(color),
                 ..DrawOpts::default()
             };
@@ -512,7 +528,7 @@ impl DevOpsStatus {
             let icon = icon_glyph(segment.icon);
             let color = segment_color(colors, segment.color);
             let icon_opts = DrawOpts {
-                font_size: CONTEXT_ICON_SIZE,
+                font_size: context_icon_size(segment.icon),
                 color: color_to_u8(color),
                 ..DrawOpts::default()
             };
@@ -691,6 +707,19 @@ impl DevOpsStatus {
         self.refresh_pending = false;
         self.request_in_flight = false;
         self.snapshot = snapshot;
+    }
+
+    fn ensure_live_segments(&mut self, session: &SessionFacts) {
+        if self.live_segments_session.as_ref() == Some(session)
+            && self.live_segments_snapshot_revision == self.snapshot_revision
+        {
+            return;
+        }
+
+        self.live_segments = self.build_live_segments(session);
+        self.live_segments_session = Some(session.clone());
+        self.live_segments_snapshot_revision = self.snapshot_revision;
+        self.live_segments_revision = self.live_segments_revision.wrapping_add(1);
     }
 
     fn build_live_segments(&self, session: &SessionFacts) -> Vec<Segment> {
@@ -883,6 +912,24 @@ fn icon_glyph(icon: IconKind) -> &'static str {
         // Symbols Nerd Font at common Windows scale factors.
         IconKind::Clock => "\u{f43a}",
         IconKind::Production => "⚠",
+    }
+}
+
+#[inline]
+fn context_icon_size(icon: IconKind) -> f32 {
+    if icon == IconKind::Docker {
+        DOCKER_CONTEXT_ICON_SIZE
+    } else {
+        CONTEXT_ICON_SIZE
+    }
+}
+
+#[inline]
+fn prompt_icon_size(icon: IconKind) -> f32 {
+    if icon == IconKind::Docker {
+        DOCKER_PROMPT_ICON_SIZE
+    } else {
+        PROMPT_CONTEXT_ICON_SIZE
     }
 }
 
@@ -1167,6 +1214,37 @@ mod tests {
     fn default_docker_context_uses_the_product_label() {
         assert_eq!(docker_value("default"), "docker");
         assert_eq!(docker_value("desktop-linux"), "desktop-linux");
+    }
+
+    #[test]
+    fn live_segments_rebuild_only_when_their_inputs_change() {
+        let session = session("amjed@host:/work", Some("Ubuntu"));
+        let mut status = DevOpsStatus::default();
+        status.ensure_live_segments(&session);
+        let initial_revision = status.live_segments_revision;
+
+        status.ensure_live_segments(&session);
+        assert_eq!(status.live_segments_revision, initial_revision);
+
+        status.snapshot.docker = Some("default".to_string());
+        status.snapshot_revision = 1;
+        status.ensure_live_segments(&session);
+        assert_eq!(
+            status.live_segments_revision,
+            initial_revision.wrapping_add(1)
+        );
+        assert!(status
+            .live_segments
+            .iter()
+            .any(|segment| segment.icon == IconKind::Docker));
+    }
+
+    #[test]
+    fn docker_icon_is_emphasized_in_both_context_rows() {
+        assert!(context_icon_size(IconKind::Docker) > CONTEXT_ICON_SIZE);
+        assert!(prompt_icon_size(IconKind::Docker) > PROMPT_CONTEXT_ICON_SIZE);
+        assert_eq!(context_icon_size(IconKind::Git), CONTEXT_ICON_SIZE);
+        assert_eq!(prompt_icon_size(IconKind::Git), PROMPT_CONTEXT_ICON_SIZE);
     }
 
     #[test]
