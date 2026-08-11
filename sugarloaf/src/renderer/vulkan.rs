@@ -13,7 +13,7 @@
 //! plan in `context/vulkan.rs`.
 //!
 //! The bootstrap rect is invisible by default; set
-//! `RIO_VULKAN_BOOTSTRAP=1` in the environment to make it visible (a
+//! `AUTOMEXIA_VULKAN_BOOTSTRAP=1` in the environment to make it visible (a
 //! centered magenta quad). The pipeline is always *constructed* either
 //! way so any SPIR-V / pipeline-state validation errors surface
 //! immediately at sugarloaf startup, not lazily on first frame with the
@@ -181,12 +181,14 @@ impl VulkanRenderer {
             device.destroy_shader_module(frag_module, None);
         }
 
-        let bootstrap_visible = std::env::var_os("RIO_VULKAN_BOOTSTRAP")
+        let bootstrap_visible = std::env::var_os("AUTOMEXIA_VULKAN_BOOTSTRAP")
             .map(|v| v != "0" && !v.is_empty())
             .unwrap_or(false);
 
         if bootstrap_visible {
-            tracing::info!("Vulkan bootstrap rect enabled (RIO_VULKAN_BOOTSTRAP set)");
+            tracing::info!(
+                "Vulkan bootstrap rect enabled (AUTOMEXIA_VULKAN_BOOTSTRAP set)"
+            );
         }
 
         // Quad pipeline construction.
@@ -617,7 +619,7 @@ impl VulkanRenderer {
     }
 
     /// Whether the user opted into the magenta debug rect via
-    /// `RIO_VULKAN_BOOTSTRAP=1`. Read by `Sugarloaf::render_vulkan`
+    /// `AUTOMEXIA_VULKAN_BOOTSTRAP=1`. Read by `Sugarloaf::render_vulkan`
     /// so the rect can be drawn between grid passes and the present
     /// barrier — keeping all draws inside the single render pass that
     /// the Sugarloaf-level orchestrator opens.

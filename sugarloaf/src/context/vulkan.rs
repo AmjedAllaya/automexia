@@ -164,7 +164,7 @@ pub struct VulkanContext {
     surface: vk::SurfaceKHR,
     surface_loader: khr::surface::Instance,
     /// Debug-utils messenger, present only when validation layers
-    /// were requested via `RIO_VULKAN_VALIDATION=1`. Drops before
+    /// were requested via `AUTOMEXIA_VULKAN_VALIDATION=1`. Drops before
     /// `instance` (declaration order) so the messenger handle is
     /// destroyed while the instance is still alive.
     _debug_messenger: Option<DebugMessenger>,
@@ -1150,7 +1150,7 @@ fn create_instance(
             vec![validation_layer_name.as_ptr()]
         } else {
             tracing::warn!(
-                "RIO_VULKAN_VALIDATION set but VK_LAYER_KHRONOS_validation \
+                "AUTOMEXIA_VULKAN_VALIDATION set but VK_LAYER_KHRONOS_validation \
                  not available — install `vulkan-validationlayers` (Debian) \
                  / `vulkan-validation-layers` (Arch) to enable it"
             );
@@ -1169,11 +1169,11 @@ fn create_instance(
         .expect("vkCreateInstance failed — is a Vulkan 1.3 driver installed?")
 }
 
-/// True if the user opted into validation via `RIO_VULKAN_VALIDATION=1`.
+/// True if the user opted into validation via `AUTOMEXIA_VULKAN_VALIDATION=1`.
 /// We always read the env var (debug + release) so users can flip it
 /// on for one run without recompiling.
 fn validation_requested() -> bool {
-    std::env::var_os("RIO_VULKAN_VALIDATION")
+    std::env::var_os("AUTOMEXIA_VULKAN_VALIDATION")
         .map(|v| v != "0" && !v.is_empty())
         .unwrap_or(false)
 }

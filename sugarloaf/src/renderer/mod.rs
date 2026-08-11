@@ -2475,7 +2475,7 @@ impl Renderer {
     /// 4. Non-quad geometry — `polygon()` / `line()` / `triangle()`
     ///    / `arc()` calls (cursor underline shape, hint highlights).
     /// 5. AboveText image overlays.
-    /// 6. Optional bootstrap rect (`RIO_VULKAN_BOOTSTRAP=1`).
+    /// 6. Optional bootstrap rect (`AUTOMEXIA_VULKAN_BOOTSTRAP=1`).
     ///
     /// Glyph atlas sampling through this pipeline isn't ported —
     /// grid text + UI text overlay each own dedicated atlas

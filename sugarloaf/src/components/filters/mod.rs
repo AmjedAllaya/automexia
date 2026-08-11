@@ -41,21 +41,13 @@ impl FiltersBrush {
         for filter in filters {
             let configured_filter = filter.to_lowercase();
             match configured_filter.as_str() {
-                "newpixiecrt" | "fubax_vr" => {
+                "newpixiecrt" => {
                     tracing::debug!("Loading builtin filter {}", configured_filter);
 
-                    let builtin_filter = match configured_filter.as_str() {
-                        "newpixiecrt" => builtin::newpixiecrt,
-                        "fubax_vr" => builtin::fubaxvr,
-                        _ => {
-                            continue;
-                        }
-                    };
-
-                    match builtin_filter() {
-                        Ok(shader_preset) => {
+                    match builtin::newpixiecrt() {
+                        Ok(builtin) => {
                             match crate::components::filters::runtime::FilterChain::load_from_preset(
-                                shader_preset,
+                                builtin.preset,
                                 &ctx.device,
                                 &ctx.queue,
                                 None,
@@ -69,6 +61,9 @@ impl FiltersBrush {
                         },
                     }
                 }
+                "fubax_vr" => tracing::error!(
+                    "builtin filter fubax_vr is unavailable because its former assets were not licensed for unrestricted redistribution"
+                ),
                 _ => {
                     tracing::debug!("Loading filter {}", filter);
 

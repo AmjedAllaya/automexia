@@ -1,7 +1,7 @@
 use librashader_presets::{ParsePresetError, ShaderFeatures, ShaderPreset};
 use std::fs;
 use std::io::Write;
-use std::path::Path;
+use tempfile::TempDir;
 
 macro_rules! resource {
     ($resource:literal) => {
@@ -53,11 +53,18 @@ const NEWPIXIECRT_CRTFRAME: &[u8] = resource!("./newpixiecrt/crtframe.png");
 const NEWPIXIECRT_NEWPIXIECRT: &[u8] = resource!("./newpixiecrt/newpixie-crt.slang");
 const NEWPIXIECRT_NEWPIXIECRTP: &[u8] = resource!("./newpixiecrt/newpixie-crt.slangp");
 
-pub fn newpixiecrt() -> Result<ShaderPreset, LoadError> {
-    let dir_path = Path::new("/tmp/newpixiecrt");
-    if !dir_path.exists() {
-        fs::create_dir_all(dir_path)?;
-    }
+pub(super) struct BuiltinPreset {
+    pub(super) preset: ShaderPreset,
+    // Presets retain file-backed references while the filter chain is built.
+    // Keep the securely-created directory alive through that operation.
+    _directory: TempDir,
+}
+
+pub fn newpixiecrt() -> Result<BuiltinPreset, LoadError> {
+    let directory = tempfile::Builder::new()
+        .prefix("automexia-newpixiecrt-")
+        .tempdir()?;
+    let dir_path = directory.path();
 
     let files = vec![
         ("accumulate.slang", NEWPIXIECRT_ACCUMULATE),
@@ -79,50 +86,24 @@ pub fn newpixiecrt() -> Result<ShaderPreset, LoadError> {
         dir_path.join("newpixie-crt.slangp"),
         ShaderFeatures::NONE,
     ) {
-        Ok(preset) => Ok(preset),
+        Ok(preset) => Ok(BuiltinPreset {
+            preset,
+            _directory: directory,
+        }),
         Err(err) => Err(LoadError::ParseError(err)),
     }
 }
 
-const FUBAXVR_CHROMATIC: &[u8] = resource!("./fubax_vr/Chromatic.slang");
-const FUBAXVR_FILMIC_SHARPEN: &[u8] = resource!("./fubax_vr/FilmicSharpen.slang");
-const FUBAXVR_FUBAXVRP: &[u8] = resource!("./fubax_vr/fubax_vr.slangp");
-const FUBAXVR_FUBAXVR_PARAMS: &[u8] = resource!("./fubax_vr/fubax_vr_params.inc");
-const FUBAXVR_FUBAXVR_SHARED_FUNCS: &[u8] =
-    resource!("./fubax_vr/fubax_vr_shared_funcs.inc");
-const FUBAXVR_NOSE: &[u8] = resource!("./fubax_vr/nose.png");
-const FUBAXVR_STOCK: &[u8] = resource!("./fubax_vr/stock.slang");
-const FUBAXVR_VR: &[u8] = resource!("./fubax_vr/VR.slang");
-const FUBAXVR_VR_NOSE: &[u8] = resource!("./fubax_vr/VR_nose.slang");
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-pub fn fubaxvr() -> Result<ShaderPreset, LoadError> {
-    let dir_path = Path::new("/tmp/fubax_vr");
-    if !dir_path.exists() {
-        fs::create_dir_all(dir_path)?;
-    }
-
-    let files = vec![
-        ("Chromatic.slang", FUBAXVR_CHROMATIC),
-        ("FilmicSharpen.slang", FUBAXVR_FILMIC_SHARPEN),
-        ("fubax_vr.slangp", FUBAXVR_FUBAXVRP),
-        ("fubax_vr_params.inc", FUBAXVR_FUBAXVR_PARAMS),
-        ("fubax_vr_shared_funcs.inc", FUBAXVR_FUBAXVR_SHARED_FUNCS),
-        ("nose.png", FUBAXVR_NOSE),
-        ("stock.slang", FUBAXVR_STOCK),
-        ("VR.slang", FUBAXVR_VR),
-        ("VR_nose.slang", FUBAXVR_VR_NOSE),
-    ];
-
-    // Create files in the directory
-    for (filename, content) in files {
-        let file_path = dir_path.join(filename);
-        let mut file = fs::File::create(file_path)?;
-        file.write_all(content)?;
-    }
-
-    match ShaderPreset::try_parse(dir_path.join("fubax_vr.slangp"), ShaderFeatures::NONE)
-    {
-        Ok(preset) => Ok(preset),
-        Err(err) => Err(LoadError::ParseError(err)),
+    #[test]
+    fn built_in_preset_uses_an_owned_private_directory() {
+        let builtin = newpixiecrt().expect("embedded preset should parse");
+        let directory = builtin._directory.path();
+        assert!(directory.is_dir());
+        assert!(directory.join("newpixie-crt.slangp").is_file());
+        assert!(directory.join("crtframe.png").is_file());
     }
 }

@@ -6,9 +6,9 @@ with per-row dirty tracking. No drawing or windowing code — bring your own
 renderer.
 
 `librio` wraps [`rio-vt`](../rio-vt) as a C ABI for non-Rust consumers (Swift,
-C, and anything that speaks C). It is **not published to crates.io**: it lives
-in the Rio source tree and ships as the `RioKit.xcframework` static library in
-Rio's GitHub releases. If you write Rust, depend on `rio-vt` directly.
+C, and anything that speaks C). It is an inherited, private engine crate: it is
+not published to crates.io and is not part of Automexia v0.4 desktop artifacts.
+If you write Rust inside this workspace, depend on `rio-vt` directly.
 
 The Rust surface it exposes over the C boundary:
 
@@ -29,5 +29,5 @@ state.update();
 ```
 
 The C ABI is compiled by default (`crate-type = ["staticlib"]`); see
-`librio/include` for the curated header and modulemap, and the `Makefile`
-`librio-xcframework` target for packaging.
+`librio/include` for the curated header and modulemap. Public SDK packaging is
+out of scope until the extension/SDK milestone.
