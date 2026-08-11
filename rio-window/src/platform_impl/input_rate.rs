@@ -20,11 +20,12 @@
 //! struct. Single-threaded platforms wrap it in `RefCell`; Windows'
 //! DwmFlush worker wraps it in `Mutex`.
 
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
 pub struct InputRateTracker {
-    timestamps: Vec<Instant>,
+    timestamps: VecDeque<Instant>,
     window: Duration,
     inputs_per_second: u32,
     sustain_until: Instant,
@@ -34,7 +35,7 @@ pub struct InputRateTracker {
 impl Default for InputRateTracker {
     fn default() -> Self {
         Self {
-            timestamps: Vec::new(),
+            timestamps: VecDeque::new(),
             window: Duration::from_millis(100),
             inputs_per_second: 60,
             sustain_until: Instant::now(),
@@ -53,9 +54,12 @@ impl InputRateTracker {
     /// only when input is arriving at ≥ `inputs_per_second` over the
     /// rolling window — a single keystroke / lone mouse move does
     /// not set the sustain.
-    pub(crate) fn record_input(&mut self) {
+    /// Returns `true` only on the transition into high-rate mode so an idle
+    /// frame worker needs just one wake-up for the sustained burst.
+    pub(crate) fn record_input(&mut self) -> bool {
         let now = Instant::now();
-        self.timestamps.push(now);
+        let was_high_rate = now < self.sustain_until;
+        self.timestamps.push_back(now);
         self.prune_old_timestamps(now);
 
         // `min_events` = inputs_per_second × window_ms / 1000. For
@@ -64,6 +68,8 @@ impl InputRateTracker {
         if self.timestamps.len() as u128 >= min_events {
             self.sustain_until = now + self.sustain_duration;
         }
+
+        !was_high_rate && now < self.sustain_until
     }
 
     /// `true` while the sustain window set by a recent high-rate
@@ -76,7 +82,48 @@ impl InputRateTracker {
     }
 
     fn prune_old_timestamps(&mut self, now: Instant) {
-        self.timestamps
-            .retain(|&t| now.duration_since(t) <= self.window);
+        while self
+            .timestamps
+            .front()
+            .is_some_and(|&timestamp| now.duration_since(timestamp) > self.window)
+        {
+            self.timestamps.pop_front();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn isolated_input_does_not_start_the_sustain_window() {
+        let mut tracker = InputRateTracker::new();
+        assert!(!tracker.record_input());
+        assert!(!tracker.is_high_rate());
+    }
+
+    #[test]
+    fn high_rate_input_starts_the_sustain_window() {
+        let mut tracker = InputRateTracker::new();
+        for _ in 0..5 {
+            assert!(!tracker.record_input());
+        }
+        assert!(tracker.record_input());
+        assert!(!tracker.record_input());
+        assert!(tracker.is_high_rate());
+    }
+
+    #[test]
+    fn pruning_removes_only_expired_prefix_entries() {
+        let mut tracker = InputRateTracker::new();
+        let now = Instant::now();
+        tracker
+            .timestamps
+            .push_back(now - tracker.window - Duration::from_millis(1));
+        tracker.timestamps.push_back(now);
+        tracker.prune_old_timestamps(now);
+        assert_eq!(tracker.timestamps.len(), 1);
+        assert_eq!(tracker.timestamps.front(), Some(&now));
     }
 }

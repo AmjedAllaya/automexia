@@ -1,9 +1,10 @@
 //! DwmFlush-driven vsync worker that drives all window repaints.
 //!
 //! Mirrors the macOS CVDisplayLink model: `Window::request_redraw`
-//! sets a per-window `Arc<AtomicBool>` dirty flag, and the worker
-//! is the single source of frame timing. Per composition cycle it
-//! iterates the window registry and, for each window where
+//! sets a per-window `Arc<AtomicBool>` dirty flag and wakes the parked
+//! worker, which is the single source of frame timing. The worker sleeps
+//! completely while idle; per active composition cycle it iterates the
+//! window registry and, for each window where
 //! `dirty || should_present_after_input`, fires
 //! `RedrawWindow(.., RDW_INVALIDATE)`. The app's `WM_PAINT` /
 //! `RedrawRequested` path is unchanged.
@@ -23,7 +24,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -54,6 +55,12 @@ pub(crate) struct VSyncSharedState {
     /// `Mutex` because the worker thread and the window-message
     /// thread both touch this. See `platform_impl::input_rate`.
     input_rate_tracker: Mutex<InputRateTracker>,
+    /// Event-driven idle gate for the vsync worker. A completely idle
+    /// terminal parks the thread instead of calling DwmFlush and rebuilding a
+    /// window snapshot every monitor refresh. Redraw/input requests wake it;
+    /// high-rate input then keeps it running until the sustain window ends.
+    work_pending: Mutex<bool>,
+    work_ready: Condvar,
 }
 
 impl VSyncSharedState {
@@ -61,6 +68,8 @@ impl VSyncSharedState {
         Arc::new(Self {
             windows: RwLock::new(HashMap::new()),
             input_rate_tracker: Mutex::new(InputRateTracker::new()),
+            work_pending: Mutex::new(false),
+            work_ready: Condvar::new(),
         })
     }
 
@@ -87,18 +96,44 @@ impl VSyncSharedState {
 
     #[inline]
     pub(crate) fn mark_input_received(&self) {
-        self.input_rate_tracker.lock().unwrap().record_input();
+        let entered_high_rate = self.input_rate_tracker.lock().unwrap().record_input();
+        if entered_high_rate {
+            self.signal_work();
+        }
     }
 
     #[inline]
     pub(crate) fn should_present_after_input(&self) -> bool {
         self.input_rate_tracker.lock().unwrap().is_high_rate()
     }
+
+    #[inline]
+    pub(crate) fn mark_redraw_requested(&self, flag: &AtomicBool) {
+        flag.store(true, Ordering::Release);
+        self.signal_work();
+    }
+
+    fn signal_work(&self) {
+        let mut pending = self.work_pending.lock().unwrap();
+        *pending = true;
+        self.work_ready.notify_one();
+    }
+
+    /// Park until a redraw/input arrives or shutdown is requested.
+    fn wait_for_work(&self, stop: &AtomicBool) -> bool {
+        let mut pending = self.work_pending.lock().unwrap();
+        while !*pending && !stop.load(Ordering::Acquire) {
+            pending = self.work_ready.wait(pending).unwrap();
+        }
+        *pending = false;
+        !stop.load(Ordering::Acquire)
+    }
 }
 
 /// Owns the worker thread. Drop signals stop and joins.
 pub(super) struct VSyncThread {
     stop: Arc<AtomicBool>,
+    state: Arc<VSyncSharedState>,
     handle: Option<JoinHandle<()>>,
 }
 
@@ -106,35 +141,45 @@ impl VSyncThread {
     pub(super) fn spawn(state: Arc<VSyncSharedState>) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let stop_worker = stop.clone();
+        let worker_state = state.clone();
 
         let handle = std::thread::Builder::new()
             .name("rio-window::vsync".to_owned())
             .spawn(move || {
                 let provider = VSyncProvider::new();
+                let mut snapshot: Vec<(usize, Arc<AtomicBool>)> = Vec::new();
                 while !stop_worker.load(Ordering::Acquire) {
+                    if !worker_state.should_present_after_input()
+                        && !worker_state.wait_for_work(&stop_worker)
+                    {
+                        break;
+                    }
                     provider.wait_for_vsync();
                     if stop_worker.load(Ordering::Acquire) {
                         break;
                     }
 
-                    let present_after_input = state.should_present_after_input();
+                    let present_after_input = worker_state.should_present_after_input();
 
                     // Snapshot HWND + flag pairs so we don't hold
-                    // the registry lock across `RedrawWindow`.
-                    let snapshot: Vec<(usize, Arc<AtomicBool>)> = state
-                        .windows
-                        .read()
-                        .unwrap()
-                        .iter()
-                        .map(|(&hwnd, flag)| (hwnd, flag.clone()))
-                        .collect();
+                    // the registry lock across `RedrawWindow`. Reuse the
+                    // allocation across frames and bursts.
+                    snapshot.clear();
+                    snapshot.extend(
+                        worker_state
+                            .windows
+                            .read()
+                            .unwrap()
+                            .iter()
+                            .map(|(&hwnd, flag)| (hwnd, flag.clone())),
+                    );
 
-                    for (hwnd_bits, flag) in snapshot {
+                    for (hwnd_bits, flag) in &snapshot {
                         let was_dirty = flag.swap(false, Ordering::AcqRel);
                         if !(was_dirty || present_after_input) {
                             continue;
                         }
-                        let hwnd = hwnd_bits as HWND;
+                        let hwnd = *hwnd_bits as HWND;
                         // SAFETY: `IsWindowVisible` and
                         // `RedrawWindow` are documented thread-safe.
                         unsafe {
@@ -154,6 +199,7 @@ impl VSyncThread {
 
         Self {
             stop,
+            state,
             handle: Some(handle),
         }
     }
@@ -162,6 +208,7 @@ impl VSyncThread {
 impl Drop for VSyncThread {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
+        self.state.signal_work();
         if let Some(handle) = self.handle.take() {
             // Worker exits at the start of the next iteration after
             // the current DwmFlush returns (typically <16 ms).
@@ -220,4 +267,20 @@ fn query_dwm_interval() -> Option<Duration> {
 fn ticks_to_duration(counts: u64, ticks_per_second: u64) -> Duration {
     let ticks_per_microsecond = (ticks_per_second / 1_000_000).max(1);
     Duration::from_micros(counts / ticks_per_microsecond)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redraw_request_marks_the_window_and_wakes_the_idle_worker() {
+        let state = VSyncSharedState::new();
+        let window_flag = AtomicBool::new(false);
+
+        state.mark_redraw_requested(&window_flag);
+
+        assert!(window_flag.load(Ordering::Acquire));
+        assert!(*state.work_pending.lock().unwrap());
+    }
 }

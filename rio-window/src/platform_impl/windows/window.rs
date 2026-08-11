@@ -3,7 +3,7 @@
 use std::cell::Cell;
 use std::ffi::c_void;
 use std::mem::{self, MaybeUninit};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::{io, panic, ptr};
@@ -204,7 +204,7 @@ impl Window {
         // `needs_redraw` flag consumed by the CVDisplayLink
         // callback.
         self.window_state.lock().unwrap().redraw_requested = true;
-        self.redraw_pending.store(true, Ordering::Release);
+        self.vsync_state.mark_redraw_requested(&self.redraw_pending);
     }
 
     #[inline]
