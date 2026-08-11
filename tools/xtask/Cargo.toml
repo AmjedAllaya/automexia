@@ -7,4 +7,4 @@ license.workspace = true
 
 [dependencies]
 serde_json = "1.0"
-toml = "0.9.2"
+toml = "1.1.4"
