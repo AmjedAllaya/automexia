@@ -1,9 +1,9 @@
 # librio-wasm
 
 [`librio`](../librio) without its `pty` feature, compiled to
-wasm32-unknown-unknown and exposed through wasm-bindgen. This is the JS
-ABI behind the [`rioterm`](https://github.com/raphamorim/riotermjs) npm
-package, the same way `librio`'s C ABI backs the Swift/C embedders.
+wasm32-unknown-unknown and exposed through wasm-bindgen. This inherited crate
+is retained for engine compatibility; Automexia v0.4 does not publish a web or
+npm SDK.
 
 There is no PTY in a browser, so the host owns the transport: child
 output goes in through `feed`, and bytes the terminal wants delivered to
@@ -19,5 +19,5 @@ wasm-bindgen --target web --out-dir pkg \
   target/wasm32-unknown-unknown/release/librio_wasm.wasm
 ```
 
-The rioterm web repository pins a rio revision and runs this build in CI;
-it is not published to crates.io.
+The crate is not published to crates.io. A public Automexia extension or web
+SDK remains out of scope until the documented SDK milestone.

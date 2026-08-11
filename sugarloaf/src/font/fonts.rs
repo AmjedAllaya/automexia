@@ -108,7 +108,10 @@ impl SugarloafFont {
 
 #[inline]
 pub fn default_font_size() -> f32 {
-    14.
+    // Automexia's information-dense DevOps views remain comfortably readable
+    // on common 100%-150% Windows/WSL displays without requiring first-run
+    // zoom. Users can still override this through `[fonts].size`.
+    20.
 }
 
 #[inline]
