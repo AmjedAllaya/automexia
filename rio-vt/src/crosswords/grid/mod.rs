@@ -84,6 +84,11 @@ pub struct Grid<T> {
     /// placements exist.
     pub track_reflow_remap: bool,
 
+    /// Stable prompt identity whose editable rows must be left for the shell
+    /// line editor to redraw after SIGWINCH. Reflowing the live Readline/ZLE
+    /// buffer and then letting the shell redraw it duplicates wrapped prompt
+    /// fragments; historical rows continue to use normal terminal reflow.
+
     /// Output of the last tracked column reflow; `None` when tracking
     /// was off or the column count did not change.
     pub reflow_remap: Option<ReflowRemap>,

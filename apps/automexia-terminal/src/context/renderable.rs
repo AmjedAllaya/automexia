@@ -95,6 +95,7 @@ pub struct RenderableContent {
     pub shell_distro: Option<String>,
     /// Optional shell-published OS version metadata.
     pub shell_os_version: Option<String>,
+    pub shell_name: Option<String>,
     /// Whether Automexia shell integration announced itself for this session.
     pub shell_integration: bool,
     /// Whether the shell is currently waiting for editable prompt input.
@@ -146,6 +147,7 @@ impl RenderableContent {
             terminal_title: String::new(),
             shell_distro: None,
             shell_os_version: None,
+            shell_name: None,
             shell_integration: false,
             shell_prompt_active: false,
             display_offset: 0,

@@ -12,6 +12,10 @@
 /// inspect terminal-engine row/cell types directly.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PromptAnchor {
+    /// Stable identity published by the shell in `OSC 133;A;aid=<id>`.
+    /// Older integrations may omit it; `key` remains the compatibility
+    /// fallback for those sessions.
+    pub generation: Option<u64>,
     /// Absolute-row key for the current layout snapshot. It is stable while the
     /// row remains in the same reflow layout, but may change after resize/reflow.
     pub key: u64,
@@ -23,6 +27,20 @@ pub struct PromptAnchor {
     pub width: f32,
     /// Logical-pixel row height.
     pub height: f32,
+}
+
+/// Geometry and durable completion metadata for one command row.
+///
+/// The terminal engine owns the lifecycle data; Automexia receives this small
+/// renderer-neutral projection and decides how to present it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CommandResultAnchor {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub exit_code: i32,
+    pub elapsed_ms: u64,
 }
 
 /// Bound historical per-prompt extension UI state. This is intentionally small:

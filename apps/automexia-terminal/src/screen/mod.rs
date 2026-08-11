@@ -27,7 +27,7 @@ use crate::crosswords::{
 use crate::hints::HintState;
 use crate::layout::ContextDimension;
 use crate::mouse::{calculate_mouse_position, Mouse};
-use crate::renderer::island::{self, TabStripLayout, ISLAND_HEIGHT};
+use crate::renderer::island::{self, ChromeAction, TabStripLayout, ISLAND_HEIGHT};
 use crate::renderer::{utils::padding_top_from_config, Renderer};
 use crate::screen::hint::HintMatches;
 use crate::selection::{Selection, SelectionType};
@@ -78,6 +78,8 @@ pub struct Screen<'screen> {
     pub resize_state: Option<crate::layout::ResizeState>,
     #[cfg(target_os = "macos")]
     pub allow_manual_dragging: bool,
+    /// True when Automexia owns the non-client title bar and window controls.
+    pub custom_chrome: bool,
     last_chrome_press: Option<ChromePress>,
     last_close_press: Option<(std::time::Instant, f32)>,
     pub grids: rustc_hash::FxHashMap<usize, rio_backend::sugarloaf::grid::GridRenderer>,
@@ -315,6 +317,10 @@ impl Screen<'_> {
             resize_state: None,
             #[cfg(target_os = "macos")]
             allow_manual_dragging: config.navigation.is_enabled(),
+            custom_chrome: matches!(
+                config.window.decorations,
+                rio_backend::config::window::Decorations::Disabled
+            ),
             last_chrome_press: None,
             last_close_press: None,
             grids: rustc_hash::FxHashMap::default(),
@@ -2737,6 +2743,11 @@ impl Screen<'_> {
         if self.allow_manual_dragging {
             self.start_window_drag(window);
         }
+        #[cfg(not(target_os = "macos"))]
+        if self.custom_chrome {
+            self.mouse.left_button_state = ElementState::Released;
+            let _ = window.drag_window();
+        }
     }
 
     #[inline]
@@ -2785,6 +2796,42 @@ impl Screen<'_> {
         self.apply_close_hover(false)
     }
 
+    pub fn update_chrome_action_hover(&mut self, mouse_x: f64, mouse_y: f64) -> bool {
+        let scale_factor = self.sugarloaf.scale_factor();
+        let window_width = self.sugarloaf.window_size().width;
+        let num_tabs = self.context_manager.len();
+        let action = self.renderer.island.as_ref().and_then(|island| {
+            island.chrome_action_at(
+                window_width,
+                scale_factor,
+                num_tabs,
+                mouse_x as f32 / scale_factor,
+                mouse_y as f32 / scale_factor,
+            )
+        });
+        let changed = self
+            .renderer
+            .island
+            .as_mut()
+            .is_some_and(|island| island.set_chrome_hover(action));
+        if changed {
+            self.mark_dirty();
+        }
+        changed
+    }
+
+    pub fn clear_chrome_action_hover(&mut self) -> bool {
+        let changed = self
+            .renderer
+            .island
+            .as_mut()
+            .is_some_and(|island| island.set_chrome_hover(None));
+        if changed {
+            self.mark_dirty();
+        }
+        changed
+    }
+
     pub fn handle_island_click(
         &mut self,
         window: &rio_window::window::Window,
@@ -2806,6 +2853,33 @@ impl Screen<'_> {
         let window_width = self.sugarloaf.window_size().width;
         let num_tabs = self.context_manager.len();
         let island_visible = self.renderer.navigation.island_visible(num_tabs);
+
+        if !is_right_click {
+            let action = self.renderer.island.as_ref().and_then(|island| {
+                island.chrome_action_at(
+                    window_width,
+                    scale_factor,
+                    num_tabs,
+                    mouse_x as f32 / scale_factor,
+                    mouse_y as f32 / scale_factor,
+                )
+            });
+            if let Some(action) = action {
+                match action {
+                    ChromeAction::NewTab => self.create_tab(clipboard),
+                    ChromeAction::OpenPalette => {
+                        self.renderer.command_palette.set_enabled(true)
+                    }
+                    ChromeAction::Minimize => window.set_minimized(true),
+                    ChromeAction::Maximize => {
+                        window.set_maximized(!window.is_maximized())
+                    }
+                    ChromeAction::CloseWindow => self.context_manager.quit(),
+                }
+                self.mark_dirty();
+                return true;
+            }
+        }
 
         if let Some(ref mut island) = self.renderer.island {
             if island.is_color_picker_open() {
@@ -4212,6 +4286,7 @@ impl Screen<'_> {
                             &p.term_colors,
                             row_sel,
                             &hint_scratch,
+                            rasterizer,
                             &mut bg_scratch,
                         );
                         let cursor_col_for_row = if p.cursor_visible

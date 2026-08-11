@@ -26,9 +26,38 @@ use rio_window::platform::macos::ActiveEventLoopExtMacOS;
 #[cfg(target_os = "macos")]
 use rio_window::platform::macos::WindowExtMacOS;
 use rio_window::window::WindowId;
-use rio_window::window::{CursorIcon, Fullscreen};
+use rio_window::window::{CursorIcon, Fullscreen, ResizeDirection};
 use std::error::Error;
 use std::time::{Duration, Instant};
+
+const CUSTOM_RESIZE_BORDER_PX: f64 = 6.0;
+
+/// Hit-test the resize frame that is normally supplied by native window
+/// decorations. Automexia draws its own Windows/Linux chrome, so the client
+/// area must expose the same eight resize directions explicitly.
+fn custom_resize_direction(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Option<ResizeDirection> {
+    let west = x <= CUSTOM_RESIZE_BORDER_PX;
+    let east = x >= (width - CUSTOM_RESIZE_BORDER_PX).max(0.0);
+    let north = y <= CUSTOM_RESIZE_BORDER_PX;
+    let south = y >= (height - CUSTOM_RESIZE_BORDER_PX).max(0.0);
+
+    match (west, east, north, south) {
+        (true, _, true, _) => Some(ResizeDirection::NorthWest),
+        (_, true, true, _) => Some(ResizeDirection::NorthEast),
+        (true, _, _, true) => Some(ResizeDirection::SouthWest),
+        (_, true, _, true) => Some(ResizeDirection::SouthEast),
+        (true, _, _, _) => Some(ResizeDirection::West),
+        (_, true, _, _) => Some(ResizeDirection::East),
+        (_, _, true, _) => Some(ResizeDirection::North),
+        (_, _, _, true) => Some(ResizeDirection::South),
+        _ => None,
+    }
+}
 
 pub struct Application<'a> {
     config: rio_backend::config::Config,
@@ -1228,6 +1257,25 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     _ => (),
                 }
 
+                if state == ElementState::Pressed
+                    && button == MouseButton::Left
+                    && route.window.screen.custom_chrome
+                    && !route.window.winit_window.is_maximized()
+                {
+                    let size = route.window.screen.sugarloaf.window_size();
+                    if let Some(direction) = custom_resize_direction(
+                        route.window.screen.mouse.x,
+                        route.window.screen.mouse.raw_y,
+                        size.width as f64,
+                        size.height as f64,
+                    ) {
+                        route.window.screen.mouse.left_button_state =
+                            ElementState::Released;
+                        let _ = route.window.winit_window.drag_resize_window(direction);
+                        return;
+                    }
+                }
+
                 match state {
                     ElementState::Pressed => {
                         // Calculate time since the last click to handle double/triple clicks.
@@ -1491,7 +1539,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::CursorLeft { .. } => {
-                if route.window.screen.clear_close_button_hover() {
+                if route.window.screen.clear_close_button_hover()
+                    | route.window.screen.clear_chrome_action_hover()
+                {
                     route.request_redraw();
                 }
             }
@@ -1518,6 +1568,23 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 {
                     route.window.winit_window.set_cursor(CursorIcon::Default);
                     return;
+                }
+
+                if route.window.screen.custom_chrome
+                    && !route.window.winit_window.is_maximized()
+                {
+                    if let Some(direction) = custom_resize_direction(
+                        position.x,
+                        position.y,
+                        layout.width as f64,
+                        layout.height as f64,
+                    ) {
+                        route
+                            .window
+                            .winit_window
+                            .set_cursor(CursorIcon::from(direction));
+                        return;
+                    }
                 }
 
                 // Handle assistant overlay hover
@@ -1619,6 +1686,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
 
                 if route.window.screen.update_close_button_hover(x, y) {
+                    route.request_redraw();
+                }
+                if route.window.screen.update_chrome_action_hover(x, y) {
                     route.request_redraw();
                 }
 
@@ -2302,4 +2372,26 @@ where
     std::thread::sleep(crate::constants::BELL_DURATION);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod custom_chrome_tests {
+    use super::*;
+
+    #[test]
+    fn resize_frame_covers_edges_and_corners() {
+        assert_eq!(
+            custom_resize_direction(0.0, 0.0, 1_280.0, 760.0),
+            Some(ResizeDirection::NorthWest)
+        );
+        assert_eq!(
+            custom_resize_direction(1_279.0, 759.0, 1_280.0, 760.0),
+            Some(ResizeDirection::SouthEast)
+        );
+        assert_eq!(
+            custom_resize_direction(640.0, 759.0, 1_280.0, 760.0),
+            Some(ResizeDirection::South)
+        );
+        assert_eq!(custom_resize_direction(640.0, 380.0, 1_280.0, 760.0), None);
+    }
 }

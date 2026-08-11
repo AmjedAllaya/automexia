@@ -1,6 +1,8 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::fs;
 #[cfg(not(target_arch = "wasm32"))]
+use std::io::Write;
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::{Path, PathBuf};
 
 use super::api::ExtensionManifest;
@@ -85,18 +87,15 @@ fn atomic_write(path: &Path, contents: &str) -> Result<(), String> {
         .ok_or_else(|| format!("invalid extension marker path: {}", path.display()))?;
     fs::create_dir_all(parent)
         .map_err(|error| format!("could not create {}: {error}", parent.display()))?;
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("marker");
-    let temporary = parent.join(format!(".{file_name}.{}.tmp", std::process::id()));
-    fs::write(&temporary, contents)
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)
         .map_err(|error| format!("could not stage {}: {error}", path.display()))?;
-    fs::rename(&temporary, path).map_err(|error| {
-        let _ = fs::remove_file(&temporary);
-        format!("could not activate {}: {error}", path.display())
-    })?;
-    Ok(())
+    temporary
+        .write_all(contents.as_bytes())
+        .and_then(|_| temporary.as_file().sync_all())
+        .map_err(|error| format!("could not stage {}: {error}", path.display()))?;
+    temporary.persist(path).map(|_| ()).map_err(|error| {
+        format!("could not activate {}: {}", path.display(), error.error)
+    })
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -121,14 +120,58 @@ fn install_marker(manifest: &ExtensionManifest) -> Result<(), String> {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn disable_marker(manifest: &ExtensionManifest) -> Result<(), String> {
-    // Remove both current and legacy installed markers first. The explicit
-    // Automexia `disabled` marker then records the user's decision even though
-    // this first-party extension is enabled by default on a fresh install.
+    // Never mutate the Rio source tree. The Automexia `disabled` marker has
+    // higher precedence than both current and legacy installed markers.
     let root = root_dir();
-    remove_if_present(&marker_at(&root, manifest.id, "installed"))?;
-    remove_if_present(&marker_at(&legacy_root_dir(), manifest.id, "installed"))?;
+    write_disabled_marker(&root, manifest)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn write_disabled_marker(
+    root: &Path,
+    manifest: &ExtensionManifest,
+) -> Result<(), String> {
+    remove_if_present(&marker_at(root, manifest.id, "installed"))?;
     atomic_write(
-        &marker_at(&root, manifest.id, "disabled"),
+        &marker_at(root, manifest.id, "disabled"),
         &marker_contents(manifest, false),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::automexia::builtins::devops;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+
+    fn temporary_root(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "automexia-state-{name}-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ))
+    }
+
+    #[test]
+    fn local_disable_marker_does_not_touch_legacy_state() {
+        let root = temporary_root("disable");
+        let legacy = root.join("rio");
+        let current = root.join("automexia");
+        let manifest = super::super::marketplace::descriptor(devops::ID).unwrap();
+        let legacy_installed = marker_at(&legacy, manifest.id, "installed");
+        fs::create_dir_all(legacy_installed.parent().unwrap()).unwrap();
+        fs::write(&legacy_installed, "enabled=true\n").unwrap();
+        let current_installed = marker_at(&current, manifest.id, "installed");
+        fs::create_dir_all(current_installed.parent().unwrap()).unwrap();
+        fs::write(&current_installed, "enabled=true\n").unwrap();
+
+        write_disabled_marker(&current, manifest).unwrap();
+
+        assert!(legacy_installed.is_file());
+        assert!(!current_installed.exists());
+        assert!(marker_at(&current, manifest.id, "disabled").is_file());
+        let _ = fs::remove_dir_all(root);
+    }
 }

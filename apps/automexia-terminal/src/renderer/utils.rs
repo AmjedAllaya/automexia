@@ -13,15 +13,8 @@ pub fn padding_top_from_config(
 ) -> f32 {
     // When navigation is enabled (Tab mode), start content below island
     if navigation.is_enabled() {
-        // On Linux/Windows, if hide_if_single is true and there's only one tab,
-        // the island is hidden so render from 0 + configured margin
-        #[cfg(not(target_os = "macos"))]
-        if navigation.hide_if_single && num_tabs <= 1 {
-            return constants::PADDING_Y + padding_y_top;
-        }
-
-        use crate::renderer::island::ISLAND_HEIGHT;
-        return ISLAND_HEIGHT + padding_y_top;
+        use crate::renderer::island::CHROME_HEIGHT;
+        return CHROME_HEIGHT + padding_y_top;
     }
 
     let default_padding = constants::PADDING_Y + padding_y_top;

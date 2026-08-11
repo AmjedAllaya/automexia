@@ -1,5 +1,5 @@
-# Automexia Bash/WSL shell integration. Prompt metadata + editor colors only.
-# No wrapper commands or aliases are defined.
+# Automexia Bash/WSL shell integration. Prompt metadata, editor colors, and
+# an optional icon-aware directory-listing experience.
 
 # WSLENV itself is inherited into WSL even on systems where an individual
 # variable import is misconfigured. Treat the presence of Automexia's /u entry
@@ -12,8 +12,8 @@ esac
 export COLORTERM=truecolor
 export TERM_PROGRAM=Automexia
 export AUTOMEXIA_SHELL_INTEGRATION=1
-# Keep long project paths readable without allowing the prompt to wrap early.
-PROMPT_DIRTRIM=${PROMPT_DIRTRIM:-3}
+__automexia_prompt_generation=${__automexia_prompt_generation:-0}
+__automexia_prompt_is_active=0
 
 # Publish distro/version once. OSC 1337 SetUserVar is metadata only; the
 # terminal never executes it as a command. Metadata is encoded once at shell
@@ -41,9 +41,55 @@ __automexia_publish_static_metadata() {
   # base64("1") is constant; publish the activation marker without spawning
   # another encoder process on shell startup.
   printf '\e]1337;SetUserVar=automexia_shell=MQ==\a'
+  printf '\e]1337;SetUserVar=automexia_shell_name=YmFzaA==\a'
 }
 __automexia_publish_static_metadata
 unset -f __automexia_publish_static_metadata
+
+# Match the liquid-hacker reference experience without parsing or rewriting
+# terminal output. eza owns the listing and emits Nerd Font codepoints before
+# the bytes reach the PTY, which keeps copy/paste, selection, pipes, and
+# scrollback honest. Long listings gain a labeled, color-separated table only
+# on the interactive path. `command ls` remains an explicit escape hatch, and
+# AUTOMEXIA_PLAIN_LS=1 disables the presentation layer before this file loads.
+if [[ ${AUTOMEXIA_PLAIN_LS:-0} != 1 ]] && command -v eza >/dev/null 2>&1; then
+  # Each metadata column has a stable visual role: cyan read bits, gold write
+  # bits, green execute bits, violet ownership, blue groups, orange sizes and
+  # muted teal dates. DrvFs executable filenames remain neutral because WSL
+  # commonly marks every Windows-hosted file executable. User colors win.
+  if [[ -z ${EZA_COLORS+x} ]]; then
+    export EZA_COLORS='reset:ur=38;5;81:uw=38;5;220:ux=38;5;114:ue=38;5;114:gr=38;5;81:gw=38;5;220:gx=38;5;114:tr=38;5;81:tw=38;5;220:tx=38;5;114:su=1;38;5;203:sf=1;38;5;203:sn=1;38;5;215:sb=38;5;180:uu=1;38;5;141:uR=1;38;5;203:un=38;5;177:gu=38;5;75:gR=38;5;203:gn=38;5;75:lc=38;5;245:lm=38;5;250:da=38;5;109:hd=1;38;5;117:xx=38;5;240:di=1;38;5;39:fi=38;5;252:ex=38;5;252:ln=38;5;45:or=1;38;5;203:pi=38;5;214:so=38;5;171:bd=38;5;214:cd=38;5;214:sp=38;5;214:mp=38;5;39:sc=38;5;252:bu=38;5;252:do=38;5;252:cr=38;5;203:co=38;5;214:tm=38;5;109:cm=38;5;109:im=38;5;171:vi=38;5;171:mu=38;5;171:lo=38;5;171:ga=38;5;114:gm=38;5;220:gd=38;5;203:gv=38;5;81:gt=38;5;215:gi=38;5;245:gc=1;38;5;203:*Dockerfile=38;5;39:*docker-compose*.yml=38;5;39:*docker-compose*.yaml=38;5;39'
+  fi
+
+  # Ubuntu and many user profiles define `ls` aliases before this managed
+  # block. Bash expands an alias while parsing a same-named `ls()` function,
+  # producing invalid syntax, so clear only the shortcuts Automexia replaces.
+  unalias ls l ll la lA tree 2>/dev/null || true
+  __automexia_eza() {
+    local long_view=0 argument
+    for argument in "$@"; do
+      case $argument in
+        --) break ;;
+        --long) long_view=1 ;;
+        --*) ;;
+        -*) [[ ${argument#-} == *l* ]] && long_view=1 ;;
+      esac
+    done
+
+    if (( long_view )); then
+      command eza --icons=auto --color=auto --group-directories-first \
+        --header --group --time-style=long-iso "$@"
+    else
+      command eza --icons=auto --color=auto --group-directories-first "$@"
+    fi
+  }
+  function ls { __automexia_eza "$@"; }
+  function l { __automexia_eza -l "$@"; }
+  function ll { __automexia_eza -lah --git "$@"; }
+  function la { __automexia_eza -la "$@"; }
+  function lA { __automexia_eza -lA "$@"; }
+  function tree { command eza --tree --icons=auto --color=auto "$@"; }
+fi
 
 __automexia_osc7() {
   local p=${PWD// /%20}
@@ -61,9 +107,17 @@ __automexia_pre_prompt() {
   # the real command status first; returning the captured status avoids turning
   # it into 0 just because Automexia emitted metadata.
   local status=$?
-  printf '\e[0m\e]133;D\a'
+  printf '\e[0m\e]133;D;%s\a' "$status"
   __automexia_osc7
   __automexia_title
+  ((__automexia_prompt_generation += 1))
+  __automexia_prompt_is_active=1
+  # Emit stable, non-editable context and complete-path rows before Readline's
+  # short command row. Readline can then redisplay its buffer after SIGWINCH
+  # without competing with terminal reflow of a long path.
+  printf '\e]1337;SetUserVar=automexia_prompt_active=MQ==\a\e]133;A;aid=%s\a \n\e]133;P;k=c;aid=%s\a\e[38;2;72;167;255m%s\e[0m\n\e]133;P;k=c;aid=%s\a' \
+    "$__automexia_prompt_generation" "$__automexia_prompt_generation" "$PWD" \
+    "$__automexia_prompt_generation"
   return "$status"
 }
 
@@ -96,11 +150,8 @@ case "$(declare -p PROMPT_COMMAND 2>/dev/null)" in
   ;;
 esac
 
-# Two semantic rows, matching Automexia's reference UX:
-# 1. an intentionally blank Prompt row that the native renderer decorates with
-#    Docker/Git/K8s/cloud context;
-# 2. a PromptContinuation row containing U+03BB + editable command input.
-# PS0 resets SGR before child output and emits OSC 133 C, so magenta command
-# text cannot bleed into program output.
-PS1='\[\e]1337;SetUserVar=automexia_prompt_active=MQ==\a\]\[\e]133;A\a\]\n\[\e]133;P;k=c\a\]\[\e[38;2;72;167;255m\]\w\[\e[0m\] \[\e[38;2;97;231;255m\]'$'\xCE\xBB''\[\e[0m\] \[\e]133;B\a\]\[\e[38;2;181;140;255m\]'
-PS0='\[\e[0m\]\[\e]1337;SetUserVar=automexia_prompt_active=MA==\a\]\[\e]133;C\a\]'
+# Readline owns only the short lambda/input row. The complete path is emitted
+# immediately above by `__automexia_pre_prompt` and remains losslessly
+# reflowable terminal history.
+PS1='\[\e[38;2;97;231;255m\]'$'\xCE\xBB''\[\e[0m\] \[\e]133;B\a\]\[\e[38;2;238;247;242m\]'
+PS0='\[\e[0;$((__automexia_prompt_is_active=0))m\]\[\e]1337;SetUserVar=automexia_prompt_active=MA==\a\]\[\e]133;C\a\]'

@@ -84,13 +84,12 @@ pub fn config_dir_path() -> PathBuf {
     if let Some(path) = non_empty_env(CONFIG_HOME_ENV) {
         return path;
     }
-    if let Some(path) = non_empty_env(LEGACY_CONFIG_HOME_ENV) {
+    if non_empty_env(LEGACY_CONFIG_HOME_ENV).is_some() {
         LEGACY_CONFIG_WARNING.call_once(|| {
             eprintln!(
-                "warning: {LEGACY_CONFIG_HOME_ENV} is deprecated; use {CONFIG_HOME_ENV} (support ends in v0.5.0)"
+                "warning: {LEGACY_CONFIG_HOME_ENV} is deprecated and is used only as a read-only migration source; use {CONFIG_HOME_ENV} (support ends in v0.5.0)"
             );
         });
-        return path;
     }
     default_config_dir()
 }

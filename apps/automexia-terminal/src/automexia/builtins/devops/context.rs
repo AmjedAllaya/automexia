@@ -4,8 +4,16 @@ use std::path::Path;
 use serde_json::Value;
 #[cfg(not(target_arch = "wasm32"))]
 use std::io::Read;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
+#[cfg(target_os = "windows")]
+use std::process::{Command, Stdio};
+#[cfg(target_os = "windows")]
+use std::thread;
+#[cfg(target_os = "windows")]
+use std::time::{Duration, Instant};
 #[cfg(not(target_arch = "wasm32"))]
 use std::{env, fs};
 
@@ -17,6 +25,12 @@ use crate::automexia::api::SessionFacts;
 const MAX_CONFIG_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_KUBECONFIG_FILES: usize = 16;
 const MAX_LABEL_CHARS: usize = 96;
+#[cfg(target_os = "windows")]
+const WSL_PROBE_TIMEOUT: Duration = Duration::from_millis(4_500);
+#[cfg(target_os = "windows")]
+const MAX_WSL_PROBE_BYTES: u64 = 16 * 1024;
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub fn detect(session: &SessionFacts) -> DevOpsSnapshot {
     #[cfg(target_arch = "wasm32")]
@@ -35,10 +49,26 @@ struct SessionView {
     cwd: Option<PathBuf>,
     home: Option<PathBuf>,
     wsl: Option<WslContext>,
+    /// Linux-side cwd retained for a bounded `wsl.exe --cd` metadata probe.
+    /// This is never interpreted as a host path or interpolated into shell
+    /// source; it is passed as one process argument.
+    #[cfg(target_os = "windows")]
+    wsl_cwd: Option<String>,
     /// The Automexia process environment belongs to the host process. Once a
     /// nested WSL shell is active it is not the Linux child's environment, so
     /// WSL discovery intentionally relies on local config files instead.
     use_process_env: bool,
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Default, PartialEq, Eq)]
+struct WslLiveContexts {
+    kubernetes: Option<KubernetesContext>,
+    docker: Option<String>,
+    clouds: Vec<CloudContext>,
+    terraform: Option<String>,
+    git_branch: Option<String>,
+    user: Option<String>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -50,7 +80,19 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
     let project_context = project_automexia_context(cwd);
     let legacy_context = legacy_automexia_context(home, view.use_process_env);
 
-    let kubernetes = kubernetes_context(home, view.use_process_env)
+    #[cfg(target_os = "windows")]
+    let mut wsl_live = if view.wsl.is_some() {
+        wsl_live_contexts(session, view.wsl_cwd.as_deref())
+    } else {
+        WslLiveContexts::default()
+    };
+
+    #[cfg(target_os = "windows")]
+    let live_kubernetes = wsl_live.kubernetes.take();
+    #[cfg(not(target_os = "windows"))]
+    let live_kubernetes: Option<KubernetesContext> = None;
+    let kubernetes = live_kubernetes
+        .or_else(|| kubernetes_context(home, view.use_process_env))
         .or_else(|| {
             // If WSL has no kubeconfig, host-side configuration is still useful
             // (for example Docker Desktop's kubectl integration).
@@ -71,7 +113,12 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
                 })
         });
 
-    let docker = docker_context(home, view.use_process_env)
+    #[cfg(target_os = "windows")]
+    let live_docker = wsl_live.docker.take();
+    #[cfg(not(target_os = "windows"))]
+    let live_docker: Option<String> = None;
+    let docker = live_docker
+        .or_else(|| docker_context(home, view.use_process_env))
         .or_else(|| {
             if view.wsl.is_some() {
                 docker_context(host_home.as_deref(), true)
@@ -86,12 +133,23 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
         })
         .or_else(|| legacy_context.as_ref().and_then(docker_from_automexia_json));
 
-    let mut clouds = cloud_contexts(
+    #[cfg(target_os = "windows")]
+    let mut clouds = std::mem::take(&mut wsl_live.clouds);
+    #[cfg(not(target_os = "windows"))]
+    let mut clouds = Vec::new();
+    for configured_cloud in cloud_contexts(
         home,
         project_context.as_ref(),
         legacy_context.as_ref(),
         view.use_process_env,
-    );
+    ) {
+        if !clouds
+            .iter()
+            .any(|candidate| candidate.provider == configured_cloud.provider)
+        {
+            clouds.push(configured_cloud);
+        }
+    }
     if view.wsl.is_some() {
         for host_cloud in cloud_contexts(host_home.as_deref(), None, None, true) {
             if !clouds
@@ -103,7 +161,12 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
         }
     }
 
-    let terraform = terraform_workspace(cwd, view.use_process_env)
+    #[cfg(target_os = "windows")]
+    let live_terraform = wsl_live.terraform.take();
+    #[cfg(not(target_os = "windows"))]
+    let live_terraform: Option<String> = None;
+    let terraform = live_terraform
+        .or_else(|| terraform_workspace(cwd, view.use_process_env))
         .or_else(|| {
             project_context
                 .as_ref()
@@ -115,14 +178,21 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
                 .and_then(terraform_from_automexia_json)
         });
 
-    let git_branch = git_branch(cwd)
+    #[cfg(target_os = "windows")]
+    let live_git_branch = wsl_live.git_branch.take();
+    #[cfg(not(target_os = "windows"))]
+    let live_git_branch: Option<String> = None;
+    let git_branch = live_git_branch
+        .or_else(|| git_branch(cwd))
         .or_else(|| project_context.as_ref().and_then(git_from_automexia_json))
         .or_else(|| legacy_context.as_ref().and_then(git_from_automexia_json));
 
-    let user = view
-        .wsl
-        .as_ref()
-        .map(|context| context.user.clone())
+    #[cfg(target_os = "windows")]
+    let live_user = wsl_live.user.take();
+    #[cfg(not(target_os = "windows"))]
+    let live_user: Option<String> = None;
+    let user = live_user
+        .or_else(|| view.wsl.as_ref().map(|context| context.user.clone()))
         .or_else(|| {
             view.use_process_env
                 .then(|| env::var("USERNAME").ok().or_else(|| env::var("USER").ok()))
@@ -192,6 +262,8 @@ fn session_view(session: &SessionFacts, host_home: Option<&Path>) -> SessionView
         cwd: session.cwd.clone(),
         home: host_home.map(Path::to_path_buf),
         wsl: None,
+        #[cfg(target_os = "windows")]
+        wsl_cwd: None,
         use_process_env: true,
     }
 }
@@ -203,23 +275,27 @@ fn session_view(session: &SessionFacts, host_home: Option<&Path>) -> SessionView
 #[cfg(target_os = "windows")]
 fn parse_wsl_title(title: &str) -> Option<(String, String)> {
     let title = title.trim();
-    let (prefix, path) = if let Some(index) = title.find(": /") {
-        (&title[..index], &title[index + 2..])
-    } else if let Some(index) = title.find(":/") {
-        (&title[..index], &title[index + 1..])
-    } else {
-        return None;
-    };
-    let (user, host) = prefix.rsplit_once('@')?;
+    let (user, host_and_path) = title.rsplit_once('@')?;
+    // Split on the host separator, never on a later Windows drive separator.
+    // The previous `find(":/")` implementation interpreted `D:/work` in a
+    // native PowerShell title as a WSL `/work` path.
+    let (host, path) = host_and_path.split_once(':')?;
     let user = user.split_whitespace().last()?.trim();
+    let path = path.trim();
     if user.is_empty() || host.trim().is_empty() || !path.starts_with('/') {
         return None;
     }
-    Some((sanitize_label(user), path.trim().to_string()))
+    Some((sanitize_label(user), path.to_string()))
 }
 
 #[cfg(target_os = "windows")]
 fn windows_wsl_session_view(session: &SessionFacts) -> Option<SessionView> {
+    // `WSL_DISTRO_NAME` is published by the Bash/Zsh integration. Requiring it
+    // avoids treating Git Bash or another POSIX-looking Windows shell as WSL.
+    let distro = session
+        .distro
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())?;
     let (user, linux_cwd) = parse_wsl_title(&session.title)?;
 
     // Do not touch WSL UNC provider paths from discovery. Even a direct UNC
@@ -239,7 +315,7 @@ fn windows_wsl_session_view(session: &SessionFacts) -> Option<SessionView> {
                 .filter(|value| !value.trim().is_empty())
         })
         .cloned()
-        .unwrap_or_else(|| "WSL".to_string());
+        .unwrap_or_else(|| distro.clone());
 
     let cwd = windows_path_from_wsl_mount(&linux_cwd).or_else(|| session.cwd.clone());
 
@@ -250,8 +326,184 @@ fn windows_wsl_session_view(session: &SessionFacts) -> Option<SessionView> {
             distro: distro_label,
             user,
         }),
+        wsl_cwd: Some(linux_cwd),
         use_process_env: false,
     })
+}
+
+#[cfg(target_os = "windows")]
+const WSL_CONTEXT_PROBE_SCRIPT: &str = r#"
+run_quick() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 1 "$@"
+  else
+    "$@"
+  fi
+}
+one_line() { sed -n '1{s/[[:cntrl:]]//g;p;}' | cut -c 1-128; }
+
+if command -v docker >/dev/null 2>&1; then
+  value=$(run_quick docker context show 2>/dev/null | one_line)
+  [ -n "$value" ] || value=docker
+  printf 'docker\t%s\n' "$value"
+fi
+
+if command -v kubectl >/dev/null 2>&1; then
+  context=$(run_quick kubectl config current-context 2>/dev/null | one_line)
+  if [ -n "$context" ]; then
+    namespace=$(run_quick kubectl config view --minify --output 'jsonpath={..namespace}' 2>/dev/null | one_line)
+    [ -n "$namespace" ] || namespace=default
+    printf 'kubernetes\t%s\t%s\n' "$context" "$namespace"
+  fi
+fi
+
+if command -v aws >/dev/null 2>&1; then
+  region=$(run_quick aws configure get region 2>/dev/null | one_line)
+  if [ -n "$region" ] || [ -d "${HOME:-}/.aws" ]; then
+    printf 'cloud\tAWS\t%s\t%s\n' "${AWS_PROFILE:-default}" "$region"
+  fi
+fi
+
+if command -v az >/dev/null 2>&1; then
+  account=$(run_quick az account show --query name --output tsv 2>/dev/null | one_line)
+  region=$(run_quick az configure --list-defaults 2>/dev/null | sed -n 's/^location[[:space:]]*=[[:space:]]*//p' | one_line)
+  [ -n "$account" ] && printf 'cloud\tAzure\t%s\t%s\n' "$account" "$region"
+fi
+
+if command -v gcloud >/dev/null 2>&1; then
+  project=$(run_quick gcloud config get-value project 2>/dev/null | one_line)
+  region=$(run_quick gcloud config get-value compute/region 2>/dev/null | one_line)
+  [ -n "$project" ] && [ "$project" != '(unset)' ] && printf 'cloud\tGCP\t%s\t%s\n' "$project" "$region"
+fi
+
+if [ -r .terraform/environment ]; then
+  value=$(one_line < .terraform/environment)
+  [ -n "$value" ] && printf 'terraform\t%s\n' "$value"
+elif command -v terraform >/dev/null 2>&1 && [ -d .terraform ]; then
+  value=$(run_quick terraform workspace show 2>/dev/null | one_line)
+  [ -n "$value" ] && printf 'terraform\t%s\n' "$value"
+fi
+
+if command -v git >/dev/null 2>&1; then
+  value=$(run_quick git symbolic-ref --quiet --short HEAD 2>/dev/null | one_line)
+  [ -n "$value" ] && printf 'git\t%s\n' "$value"
+fi
+
+[ -n "${USER:-}" ] && printf 'user\t%s\n' "$USER"
+"#;
+
+/// Query the active WSL distribution's local CLI/configuration state. The
+/// script is a compile-time constant and all user-controlled values are passed
+/// as process arguments, never interpolated into shell source. Every optional
+/// CLI is locally scoped and individually time-limited; the host process adds
+/// a hard deadline around the complete probe as a final safety boundary.
+#[cfg(target_os = "windows")]
+fn wsl_live_contexts(session: &SessionFacts, linux_cwd: Option<&str>) -> WslLiveContexts {
+    let Some(distro) = session
+        .distro
+        .as_deref()
+        .map(sanitize_label)
+        .filter(|value| !value.is_empty())
+    else {
+        return WslLiveContexts::default();
+    };
+
+    let mut command = Command::new("wsl.exe");
+    command
+        .creation_flags(CREATE_NO_WINDOW)
+        .arg("--distribution")
+        .arg(distro);
+    if let Some(cwd) = linux_cwd.filter(|value| value.starts_with('/')) {
+        command.arg("--cd").arg(cwd);
+    }
+    command
+        .args(["--exec", "sh", "-c", WSL_CONTEXT_PROBE_SCRIPT])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+
+    bounded_command_stdout(command, WSL_PROBE_TIMEOUT)
+        .map(|output| parse_wsl_probe_output(&output))
+        .unwrap_or_default()
+}
+
+#[cfg(target_os = "windows")]
+fn bounded_command_stdout(mut command: Command, timeout: Duration) -> Option<String> {
+    let mut child = command.spawn().ok()?;
+    let started = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() < timeout => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            Ok(None) | Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    };
+    if !status.success() {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    child
+        .stdout
+        .take()?
+        .take(MAX_WSL_PROBE_BYTES)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    String::from_utf8(bytes).ok()
+}
+
+#[cfg(target_os = "windows")]
+fn parse_wsl_probe_output(output: &str) -> WslLiveContexts {
+    let mut contexts = WslLiveContexts::default();
+    for line in output.lines().take(32) {
+        let mut fields = line.split('\t');
+        let kind = fields.next().unwrap_or_default();
+        let first = sanitize_label(fields.next().unwrap_or_default());
+        let second = sanitize_label(fields.next().unwrap_or_default());
+        let third = sanitize_label(fields.next().unwrap_or_default());
+        match kind {
+            "docker" if !first.is_empty() => contexts.docker = Some(first),
+            "kubernetes" if !first.is_empty() => {
+                contexts.kubernetes = Some(KubernetesContext {
+                    context: first,
+                    namespace: if second.is_empty() {
+                        "default".to_string()
+                    } else {
+                        second
+                    },
+                });
+            }
+            "cloud" if !first.is_empty() => {
+                let provider = match first.to_ascii_lowercase().as_str() {
+                    "aws" => "AWS",
+                    "azure" => "Azure",
+                    "gcp" | "google" | "google cloud" => "GCP",
+                    _ => continue,
+                };
+                if !contexts
+                    .clouds
+                    .iter()
+                    .any(|candidate| candidate.provider == provider)
+                {
+                    contexts.clouds.push(CloudContext {
+                        provider,
+                        profile: second,
+                        region: third,
+                    });
+                }
+            }
+            "terraform" if !first.is_empty() => contexts.terraform = Some(first),
+            "git" if !first.is_empty() => contexts.git_branch = Some(first),
+            "user" if !first.is_empty() => contexts.user = Some(first),
+            _ => {}
+        }
+    }
+    contexts
 }
 
 #[cfg(target_os = "windows")]
@@ -863,6 +1115,63 @@ mod tests {
             Some(("amjed".to_string(), "/home/amjed/project".to_string()))
         );
         assert_eq!(parse_wsl_title("Windows PowerShell"), None);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn native_powershell_drive_title_is_not_wsl() {
+        let title = "lamjed@DESKTOP-2LR87FN: D:/workstation/projects/automexia";
+        assert_eq!(parse_wsl_title(title), None);
+
+        let session = SessionFacts {
+            session_id: 1,
+            cwd: Some(PathBuf::from(r"D:\workstation\projects\automexia")),
+            title: title.to_string(),
+            // A nested WSL process may have left these terminal-scoped user
+            // variables behind. The native drive title must still win.
+            distro: Some("Ubuntu-24.04".to_string()),
+            os_version: Some("24.04".to_string()),
+            shell_name: Some("PowerShell".to_string()),
+            shell_integration: true,
+            shell_pid: 42,
+        };
+        assert!(windows_wsl_session_view(&session).is_none());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn wsl_probe_parser_recovers_all_supported_live_contexts() {
+        let contexts = parse_wsl_probe_output(
+            "docker\tdefault\n\
+             kubernetes\tdev-cluster\tpayments\n\
+             cloud\tAWS\tdev-admin\teu-west-3\n\
+             cloud\tAzure\tEngineering\twesteurope\n\
+             terraform\tstaging\n\
+             git\tfeature/context-refresh\n\
+             user\tamjed\n",
+        );
+        assert_eq!(contexts.docker.as_deref(), Some("default"));
+        let kubernetes = contexts.kubernetes.expect("Kubernetes context");
+        assert_eq!(kubernetes.context, "dev-cluster");
+        assert_eq!(kubernetes.namespace, "payments");
+        assert_eq!(contexts.clouds.len(), 2);
+        assert_eq!(contexts.clouds[0].provider, "AWS");
+        assert_eq!(contexts.clouds[0].region, "eu-west-3");
+        assert_eq!(contexts.terraform.as_deref(), Some("staging"));
+        assert_eq!(
+            contexts.git_branch.as_deref(),
+            Some("feature/context-refresh")
+        );
+        assert_eq!(contexts.user.as_deref(), Some("amjed"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn wsl_probe_parser_rejects_unknown_and_empty_contexts() {
+        let contexts = parse_wsl_probe_output(
+            "docker\t\ncloud\tunknown\taccount\tregion\nkubernetes\t\tdefault\n",
+        );
+        assert_eq!(contexts, WslLiveContexts::default());
     }
 
     #[test]

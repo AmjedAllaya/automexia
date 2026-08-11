@@ -19,51 +19,54 @@ pub fn effective_colors(mut colors: Colors) -> Colors {
         return colors;
     }
 
-    colors.background = (hex_to_color_arr("#04100D"), hex_to_color_wgpu("#04100D"));
-    colors.foreground = color("#EEF7F2");
-    colors.black = color("#071A15");
-    colors.red = color("#FF6F91");
-    colors.green = color("#7CFFB2");
-    colors.yellow = color("#FFD166");
-    colors.blue = color("#48A7FF");
-    colors.magenta = color("#B58CFF");
-    colors.cyan = color("#61E7FF");
-    colors.white = color("#DDEEE7");
+    // Liquid-hacker palette sampled from the product mockup: a neutral
+    // blue-black canvas with bright, role-specific accents. Keeping the base
+    // free of green tint makes cyan, purple, amber and failure red read cleanly.
+    colors.background = (hex_to_color_arr("#020B16"), hex_to_color_wgpu("#020B16"));
+    colors.foreground = color("#D8DEE9");
+    colors.black = color("#07111F");
+    colors.red = color("#FF4757");
+    colors.green = color("#39FF88");
+    colors.yellow = color("#FFD43B");
+    colors.blue = color("#35A7FF");
+    colors.magenta = color("#D27CFF");
+    colors.cyan = color("#16E0FF");
+    colors.white = color("#DDE7F3");
 
-    colors.light_black = color("#5D7A70");
-    colors.light_red = color("#FF9AB1");
-    colors.light_green = color("#A4FFD0");
-    colors.light_yellow = color("#FFE39A");
-    colors.light_blue = color("#82C2FF");
-    colors.light_magenta = color("#D1B5FF");
-    colors.light_cyan = color("#A8F4FF");
+    colors.light_black = color("#607089");
+    colors.light_red = color("#FF7B86");
+    colors.light_green = color("#7AFFAE");
+    colors.light_yellow = color("#FFE47C");
+    colors.light_blue = color("#77C7FF");
+    colors.light_magenta = color("#E4A8FF");
+    colors.light_cyan = color("#75F1FF");
     colors.light_white = color("#FFFFFF");
     colors.light_foreground = Some(color("#FFFFFF"));
 
-    colors.dim_black = Some(color("#04100D"));
-    colors.dim_red = Some(color("#9D4960"));
-    colors.dim_green = Some(color("#4C9D71"));
-    colors.dim_yellow = Some(color("#9F8043"));
-    colors.dim_blue = Some(color("#326D9E"));
-    colors.dim_magenta = Some(color("#775D9F"));
-    colors.dim_cyan = Some(color("#3F94A3"));
-    colors.dim_white = Some(color("#89AFA0"));
-    colors.dim_foreground = Some(color("#90AEBE"));
+    colors.dim_black = Some(color("#020B16"));
+    colors.dim_red = Some(color("#9F3440"));
+    colors.dim_green = Some(color("#249957"));
+    colors.dim_yellow = Some(color("#9D842D"));
+    colors.dim_blue = Some(color("#276E9E"));
+    colors.dim_magenta = Some(color("#82529D"));
+    colors.dim_cyan = Some(color("#168A9A"));
+    colors.dim_white = Some(color("#758297"));
+    colors.dim_foreground = Some(color("#8793A6"));
 
-    colors.cursor = color("#7CFFB2");
-    colors.vi_cursor = color("#B58CFF");
-    colors.selection_background = color("#1C4B3A");
+    colors.cursor = color("#39FF88");
+    colors.vi_cursor = color("#D27CFF");
+    colors.selection_background = color("#103356");
     colors.selection_foreground = color("#FFFFFF");
     colors.search_match_background = color("#5D4B18");
     colors.search_match_foreground = color("#FFF5C2");
     colors.search_focused_match_background = color("#7A4D15");
     colors.search_focused_match_foreground = color("#FFFFFF");
-    colors.hint_background = color("#123D31");
-    colors.hint_foreground = color("#A4FFD0");
-    colors.tabs = color("#89AFA0");
-    colors.tabs_active = color("#61E7FF");
-    colors.split = color("#2B6B59");
-    colors.split_active = color("#61E7FF");
+    colors.hint_background = color("#0D3048");
+    colors.hint_foreground = color("#75F1FF");
+    colors.tabs = color("#8A98AD");
+    colors.tabs_active = color("#DDE7F3");
+    colors.split = color("#173653");
+    colors.split_active = color("#16E0FF");
 
     colors
 }

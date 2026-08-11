@@ -2,9 +2,11 @@ use std::collections::{BTreeSet, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::{self, SyncSender, TrySendError};
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::{Mutex, MutexGuard};
 use std::sync::{OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 #[cfg(not(target_arch = "wasm32"))]
-use std::thread;
+use std::thread::{self, JoinHandle};
 
 use super::api::{SemanticSeverity, SessionFacts};
 use super::builtins::devops::{self, DevOpsSnapshot};
@@ -15,6 +17,8 @@ static ACTIVATION_GENERATION: AtomicU32 = AtomicU32::new(1);
 static DEVOPS_GENERATION: AtomicU32 = AtomicU32::new(1);
 static DEVOPS_COMPLETION_COUNTER: AtomicU32 = AtomicU32::new(1);
 const DEVOPS_CONTEXT_CACHE_LIMIT: usize = 32;
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_SESSION_TITLE_BYTES: usize = 4 * 1024;
 
 #[derive(Debug)]
 struct RuntimeState {
@@ -176,29 +180,37 @@ struct RefreshRequest {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+enum WorkerMessage {
+    Refresh(RefreshRequest),
+    Shutdown,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 struct Worker {
-    sender: SyncSender<RefreshRequest>,
+    sender: SyncSender<WorkerMessage>,
+    handle: JoinHandle<()>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RefreshSubmission {
     Queued,
     Busy,
+    Rejected,
     Unavailable,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn worker() -> Option<&'static Worker> {
-    static WORKER: OnceLock<Option<Worker>> = OnceLock::new();
-    WORKER
-        .get_or_init(|| {
-            // Capacity 1 provides backpressure. Rendering never blocks waiting
-            // for extension discovery; redundant refreshes are coalesced.
-            let (sender, receiver) = mpsc::sync_channel::<RefreshRequest>(1);
-            match thread::Builder::new()
-                .name("automexia-extension-worker".to_owned())
-                .spawn(move || {
-                    while let Ok(request) = receiver.recv() {
+fn spawn_worker() -> Option<Worker> {
+    // Capacity 1 provides backpressure. Rendering never blocks waiting for
+    // extension discovery; redundant refreshes are coalesced.
+    let (sender, receiver) = mpsc::sync_channel::<WorkerMessage>(1);
+    match thread::Builder::new()
+        .name("automexia-extension-worker".to_owned())
+        .spawn(move || {
+            while let Ok(message) = receiver.recv() {
+                match message {
+                    WorkerMessage::Shutdown => break,
+                    WorkerMessage::Refresh(request) => {
                         if !read_runtime().installed.contains(devops::ID) {
                             continue;
                         }
@@ -230,25 +242,65 @@ fn worker() -> Option<&'static Worker> {
                         // Publish only after the cache entry is visible.
                         DEVOPS_GENERATION.fetch_add(1, Ordering::Release);
                     }
-                }) {
-                Ok(_) => Some(Worker { sender }),
-                Err(error) => {
-                    // Extensions are optional application services. Failure to
-                    // start their worker must degrade the HUD, not crash the
-                    // terminal engine or prevent a shell from opening.
-                    tracing::error!(
-                        "failed to start Automexia extension worker: {error}"
-                    );
-                    None
                 }
             }
-        })
+        }) {
+        Ok(handle) => Some(Worker { sender, handle }),
+        Err(error) => {
+            // Extensions are optional application services. Failure to start
+            // their worker must degrade the HUD, not crash the terminal engine
+            // or prevent a shell from opening.
+            tracing::error!("failed to start Automexia extension worker: {error}");
+            None
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn worker_slot() -> &'static Mutex<Option<Worker>> {
+    static WORKER: OnceLock<Mutex<Option<Worker>>> = OnceLock::new();
+    WORKER.get_or_init(|| Mutex::new(None))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn lock_worker() -> MutexGuard<'static, Option<Worker>> {
+    worker_slot()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn ensure_worker(slot: &mut Option<Worker>) -> bool {
+    if slot
         .as_ref()
+        .is_some_and(|worker| worker.handle.is_finished())
+    {
+        if let Some(worker) = slot.take() {
+            let _ = worker.handle.join();
+        }
+    }
+    if slot.is_none() {
+        *slot = spawn_worker();
+    }
+    slot.is_some()
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn ensure_background_services() {
-    let _ = worker();
+    let _ = ensure_worker(&mut lock_worker());
+}
+
+/// Stop and join the optional worker before process teardown. This is called
+/// only after the event loop exits, so waiting here cannot delay rendering.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn shutdown_background_services() {
+    let worker = lock_worker().take();
+    if let Some(worker) = worker {
+        let _ = worker.sender.send(WorkerMessage::Shutdown);
+        if worker.handle.join().is_err() {
+            tracing::warn!("Automexia extension worker panicked during shutdown");
+        }
+    }
 }
 
 /// Request asynchronous context discovery. This function never waits for IO.
@@ -256,18 +308,48 @@ pub fn ensure_background_services() {
 /// interval; this prevents one active window from starving another.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn request_devops_refresh(session: &SessionFacts) -> RefreshSubmission {
-    let Some(worker) = worker() else {
+    if session.title.len() > MAX_SESSION_TITLE_BYTES {
+        tracing::warn!(
+            session_id = session.session_id,
+            title_bytes = session.title.len(),
+            "refusing oversized extension refresh context"
+        );
+        return RefreshSubmission::Rejected;
+    }
+
+    let mut slot = lock_worker();
+    if !ensure_worker(&mut slot) {
         return RefreshSubmission::Unavailable;
-    };
-    let request = RefreshRequest {
+    }
+    let message = WorkerMessage::Refresh(RefreshRequest {
         session: session.clone(),
-    };
-    match worker.sender.try_send(request) {
+    });
+    match slot
+        .as_ref()
+        .expect("worker was ensured")
+        .sender
+        .try_send(message)
+    {
         Ok(()) => RefreshSubmission::Queued,
         Err(TrySendError::Full(_)) => RefreshSubmission::Busy,
-        Err(TrySendError::Disconnected(_)) => {
+        Err(TrySendError::Disconnected(message)) => {
             tracing::warn!("Automexia extension worker disconnected");
-            RefreshSubmission::Unavailable
+            if let Some(worker) = slot.take() {
+                let _ = worker.handle.join();
+            }
+            if !ensure_worker(&mut slot) {
+                return RefreshSubmission::Unavailable;
+            }
+            match slot
+                .as_ref()
+                .expect("replacement worker was ensured")
+                .sender
+                .try_send(message)
+            {
+                Ok(()) => RefreshSubmission::Queued,
+                Err(TrySendError::Full(_)) => RefreshSubmission::Busy,
+                Err(TrySendError::Disconnected(_)) => RefreshSubmission::Unavailable,
+            }
         }
     }
 }
@@ -288,6 +370,7 @@ mod tests {
             title: title.to_owned(),
             distro: None,
             os_version: None,
+            shell_name: None,
             shell_integration: true,
             shell_pid: 0,
         }
@@ -369,5 +452,29 @@ mod tests {
                 .environment,
             Some((DEVOPS_CONTEXT_CACHE_LIMIT + 4).to_string())
         );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn bounded_worker_queue_reports_pressure_and_disconnects() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        sender.send(WorkerMessage::Shutdown).unwrap();
+        assert!(matches!(
+            sender.try_send(WorkerMessage::Shutdown),
+            Err(TrySendError::Full(_))
+        ));
+        drop(receiver);
+        assert!(matches!(
+            sender.try_send(WorkerMessage::Shutdown),
+            Err(TrySendError::Disconnected(_))
+        ));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn oversized_context_is_rejected_before_worker_submission() {
+        let mut facts = session(88, "small");
+        facts.title = "x".repeat(MAX_SESSION_TITLE_BYTES + 1);
+        assert_eq!(request_devops_refresh(&facts), RefreshSubmission::Rejected);
     }
 }

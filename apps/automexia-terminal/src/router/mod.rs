@@ -28,9 +28,9 @@ use std::time::{Duration, Instant};
 // 𜱭𜱭 unicode is not available yet for all OS
 // https://www.unicode.org/charts/PDF/Unicode-16.0/U160-1CC00.pdf
 // #[cfg(any(target_os = "macos", target_os = "windows"))]
-// const RIO_TITLE: &str = "𜱭𜱭";
+// const DEFAULT_TAB_TITLE: &str = "𜱭𜱭";
 // #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const RIO_TITLE: &str = "▲";
+const DEFAULT_TAB_TITLE: &str = "▲";
 
 pub struct Route<'a> {
     pub assistant: assistant::Assistant,
@@ -563,7 +563,7 @@ impl Router<'_> {
             event_proxy,
             config,
             &self.font_library,
-            RIO_TITLE,
+            DEFAULT_TAB_TITLE,
             tab_id.as_deref(),
             open_url,
             app_id,
@@ -599,7 +599,7 @@ impl Router<'_> {
             event_proxy,
             config,
             &self.font_library,
-            RIO_TITLE,
+            DEFAULT_TAB_TITLE,
             None,
             None,
             None,
@@ -632,7 +632,7 @@ impl Router<'_> {
             event_proxy,
             config,
             &self.font_library,
-            RIO_TITLE,
+            DEFAULT_TAB_TITLE,
             tab_id,
             open_url,
             None,

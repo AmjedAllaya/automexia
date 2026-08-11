@@ -57,7 +57,17 @@ impl Default for Decorations {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+#[allow(clippy::derivable_impls)]
+impl Default for Decorations {
+    fn default() -> Decorations {
+        // Automexia renders its liquid-hacker tabs and window controls in one
+        // coherent title surface on Windows.
+        Decorations::Disabled
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[allow(clippy::derivable_impls)]
 impl Default for Decorations {
     fn default() -> Decorations {

@@ -73,7 +73,17 @@ pub fn create_window_builder(
 
     #[cfg(target_os = "windows")]
     {
-        use rio_window::platform::windows::WindowAttributesExtWindows;
+        use rio_window::platform::windows::{IconExtWindows, WindowAttributesExtWindows};
+        use rio_window::window::Icon;
+
+        if let Ok(icon) = Icon::from_resource(1, None) {
+            window_builder = window_builder
+                .with_window_icon(Some(icon.clone()))
+                .with_taskbar_icon(Some(icon));
+        } else {
+            tracing::warn!("embedded Automexia application icon is unavailable");
+        }
+
         if let Some(use_undecorated_shadow) = config.window.windows_use_undecorated_shadow
         {
             window_builder =
@@ -86,6 +96,32 @@ pub fn create_window_builder(
             // This sets WS_EX_NOREDIRECTIONBITMAP.
             window_builder =
                 window_builder.with_no_redirection_bitmap(use_no_redirection_bitmap);
+        }
+    }
+
+    #[cfg(all(not(target_os = "macos"), not(windows)))]
+    {
+        use rio_window::window::Icon;
+
+        let image = image_rs::load_from_memory(include_bytes!(
+            "../../../../assets/brand/png/automexia-terminal-256.png"
+        ));
+        match image {
+            Ok(image) => {
+                let pixels = image.into_rgba8();
+                let (width, height) = pixels.dimensions();
+                match Icon::from_rgba(pixels.into_raw(), width, height) {
+                    Ok(icon) => {
+                        window_builder = window_builder.with_window_icon(Some(icon));
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "Automexia application icon is invalid");
+                    }
+                }
+            }
+            Err(error) => {
+                tracing::warn!(%error, "Automexia application icon could not be decoded");
+            }
         }
     }
 

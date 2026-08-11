@@ -458,6 +458,11 @@ where
     /// Shell state from `OSC 1337 ; SetUserVar` (iTerm2 style).
     pub user_vars: rustc_hash::FxHashMap<String, String>,
 
+    /// Latest prompt identity and in-flight command timer from OSC 133.  The
+    /// identity targets a row after command output has moved the cursor.
+    semantic_prompt_id: Option<u64>,
+    semantic_command_started: Option<(u64, std::time::Instant)>,
+
     /// Whether a `TerminalDamaged` event is already in flight to the renderer.
     /// Set by PTY thread before sending; cleared by renderer after extracting damage.
     pub damage_event_in_flight: bool,
@@ -519,6 +524,8 @@ impl<U: EventListener> Crosswords<U> {
             title_stack: Default::default(),
             current_directory: None,
             user_vars: rustc_hash::FxHashMap::default(),
+            semantic_prompt_id: None,
+            semantic_command_started: None,
             damage_event_in_flight: false,
             modify_other_keys: 0,
             keyboard_mode_stack: Default::default(),
@@ -1077,6 +1084,9 @@ impl<U: EventListener> Crosswords<U> {
             return;
         }
 
+        let prompt_id = self.grid[self.grid.cursor.pos.row].semantic_prompt_id;
+        let continues_prompt = self.grid[self.grid.cursor.pos.row].semantic_prompt
+            != crate::crosswords::grid::row::SemanticPrompt::None;
         self.grid.cursor_cell().set_wrapline(true);
 
         if self.grid.cursor.pos.row + 1 >= self.scroll_region.end {
@@ -1088,6 +1098,13 @@ impl<U: EventListener> Crosswords<U> {
 
         self.grid.cursor.pos.col = Column(0);
         self.grid.cursor.should_wrap = false;
+        if continues_prompt {
+            let row = self.grid.cursor.pos.row;
+            self.grid[row].set_semantic_prompt(
+                crate::crosswords::grid::row::SemanticPrompt::PromptContinuation,
+                prompt_id,
+            );
+        }
         self.damage_cursor();
     }
 
@@ -3131,13 +3148,79 @@ impl<U: EventListener> Handler for Crosswords<U> {
     fn set_semantic_prompt(
         &mut self,
         mark: crate::crosswords::grid::row::SemanticPrompt,
+        prompt_id: Option<u64>,
     ) {
         let row = self.grid.cursor.pos.row;
-        self.grid[row].semantic_prompt = mark;
+        let redraws_live_prompt = mark
+            == crate::crosswords::grid::row::SemanticPrompt::Prompt
+            && prompt_id.is_some()
+            && self.grid[row].semantic_prompt
+                == crate::crosswords::grid::row::SemanticPrompt::PromptContinuation
+            && self.grid[row].semantic_prompt_id == prompt_id;
+        if redraws_live_prompt {
+            // Readline/ZLE defer SIGWINCH redisplay until the next input. The
+            // grid deliberately leaves the active prompt un-reflowed, so its
+            // old visible prefix is still on this row. Re-emitting `A` with
+            // the same stable identity proves this is a redraw (not command
+            // output); clear only that stale prefix before the two-line prompt
+            // is painted again.
+            self.grid[row].reset(&crate::crosswords::square::Square::default());
+            self.grid.cursor.pos.col = Column(0);
+            self.grid.cursor.should_wrap = false;
+            let history = self.grid.history_size() as i32;
+            let screen_lines = self.grid.screen_lines() as i32;
+            for line in -history..screen_lines {
+                let line = Line(line);
+                if line != row && self.grid[line].semantic_prompt_id == prompt_id {
+                    self.grid[line].semantic_prompt =
+                        crate::crosswords::grid::row::SemanticPrompt::None;
+                    self.grid[line].semantic_prompt_id = None;
+                    self.grid[line].dirty = true;
+                }
+            }
+        }
+        self.grid[row].set_semantic_prompt(mark, prompt_id);
+        if mark == crate::crosswords::grid::row::SemanticPrompt::Prompt {
+            self.semantic_prompt_id = prompt_id;
+        }
+        self.damage_cursor_line();
+    }
+
+    fn semantic_command_start(&mut self) {
+        if let Some(prompt_id) = self.semantic_prompt_id {
+            self.semantic_command_started = Some((prompt_id, std::time::Instant::now()));
+        }
+    }
+
+    fn semantic_command_end(&mut self, exit_code: i32) {
+        let Some((prompt_id, started)) = self.semantic_command_started.take() else {
+            return;
+        };
+        let elapsed_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        let history = self.grid.history_size() as i32;
+        let screen_lines = self.grid.screen_lines() as i32;
+        for line in -history..screen_lines {
+            let line = Line(line);
+            if self.grid[line].semantic_prompt_id == Some(prompt_id) {
+                self.grid[line].set_semantic_command_result(
+                    crate::crosswords::grid::row::SemanticCommandResult {
+                        exit_code,
+                        elapsed_ms,
+                    },
+                );
+                if line.0 >= 0 {
+                    self.damage.damage_line(line.0 as usize);
+                }
+                break;
+            }
+        }
     }
 
     fn set_user_var(&mut self, name: String, value: String) {
         self.user_vars.insert(name, value);
+        // User variables feed application overlays even when the OSC itself
+        // changes no terminal cell. Schedule/capture a metadata-only frame.
+        self.damage_cursor_line();
     }
 
     #[inline]
@@ -5422,16 +5505,19 @@ mod tests {
         let mut cw = make_crosswords();
         // Three prompts, each followed by two lines of output. The
         // 4-row screen pushes earlier prompts into scrollback.
-        for _ in 0..3 {
-            cw.set_semantic_prompt(SemanticPrompt::Prompt);
+        for prompt_id in 0..3 {
+            cw.set_semantic_prompt(SemanticPrompt::Prompt, Some(prompt_id));
             cw.linefeed();
             cw.linefeed();
             cw.linefeed();
         }
         assert_eq!(cw.grid.history_size(), 6);
         assert_eq!(cw.grid[Line(-6)].semantic_prompt, SemanticPrompt::Prompt);
+        assert_eq!(cw.grid[Line(-6)].semantic_prompt_id, Some(0));
         assert_eq!(cw.grid[Line(-3)].semantic_prompt, SemanticPrompt::Prompt);
+        assert_eq!(cw.grid[Line(-3)].semantic_prompt_id, Some(1));
         assert_eq!(cw.grid[Line(0)].semantic_prompt, SemanticPrompt::Prompt);
+        assert_eq!(cw.grid[Line(0)].semantic_prompt_id, Some(2));
 
         cw.scroll_to_prompt(false);
         assert_eq!(cw.display_offset(), 3);
@@ -5457,9 +5543,10 @@ mod tests {
         for _ in 0..6 {
             cw.linefeed();
         }
-        // A two-row prompt: continuation directly below the start.
+        // A three-row prompt: path and editable continuations below the start.
         cw.grid[Line(-3)].semantic_prompt = SemanticPrompt::Prompt;
         cw.grid[Line(-2)].semantic_prompt = SemanticPrompt::PromptContinuation;
+        cw.grid[Line(-1)].semantic_prompt = SemanticPrompt::PromptContinuation;
 
         cw.scroll_to_prompt(false);
         assert_eq!(cw.display_offset(), 3);
@@ -5493,8 +5580,59 @@ mod tests {
         processor.advance(&mut cw, bytes);
 
         assert_eq!(cw.grid[Line(0)].semantic_prompt, SemanticPrompt::Prompt);
+        assert_eq!(cw.grid[Line(0)].semantic_prompt_id, Some(1));
+        assert_eq!(
+            cw.grid[Line(0)]
+                .semantic_command_result
+                .map(|result| result.exit_code),
+            Some(0)
+        );
         assert_eq!(cw.grid[Line(1)].semantic_prompt, SemanticPrompt::None);
         assert_eq!(cw.user_vars.get("foo").map(String::as_str), Some("hello"));
+    }
+
+    #[test]
+    fn semantic_prompt_metadata_invalidates_incremental_snapshot() {
+        use crate::crosswords::grid::row::SemanticPrompt;
+        use crate::event::TerminalDamage;
+        use crate::performer::handler::Processor;
+
+        let size = CrosswordsSize::new(40, 5);
+        let window_id = crate::event::WindowId::from(0);
+        let mut cw = Crosswords::new(
+            size,
+            CursorShape::Block,
+            VoidListener {},
+            window_id,
+            0,
+            10_000,
+        );
+        let mut visible = Vec::new();
+        let mut styles = Vec::new();
+        let mut extras = rustc_hash::FxHashMap::default();
+        cw.snapshot_visible(
+            &TerminalDamage::Full,
+            40,
+            &mut visible,
+            &mut styles,
+            &mut extras,
+        );
+        assert_eq!(visible[0].semantic_prompt, SemanticPrompt::None);
+        assert!(!cw.grid[Line(0)].dirty);
+
+        let mut processor = Processor::default();
+        processor.advance(&mut cw, b"\x1b]133;A;aid=7\x07");
+        assert!(cw.grid[Line(0)].dirty);
+
+        cw.snapshot_visible(
+            &TerminalDamage::Noop,
+            40,
+            &mut visible,
+            &mut styles,
+            &mut extras,
+        );
+        assert_eq!(visible[0].semantic_prompt, SemanticPrompt::Prompt);
+        assert_eq!(visible[0].semantic_prompt_id, Some(7));
     }
 
     #[test]

@@ -45,25 +45,55 @@ pub(super) enum PaletteReset {
 /// Parse an OSC 133 semantic prompt sequence into the row mark it
 /// should set, if any. `A` and `P` mark the cursor row as a prompt
 /// (`P;k=c` / `P;k=s` as a continuation); the remaining subcommands
-/// (`B`, `C`, `D`, `I`, `L`, `N`) and all `key=value` options are
-/// accepted and ignored, matching the spec's leniency.
+/// (`B`, `C`, `D`, `I`, `L`, `N`) are accepted and ignored. A numeric
+/// `aid=<id>` is retained as a stable identity across resize/reflow; unknown
+/// or malformed options remain harmless, matching the spec's leniency.
 pub(super) fn parse_semantic_prompt(
     params: &[&[u8]],
-) -> Option<crate::crosswords::grid::row::SemanticPrompt> {
+) -> Option<(crate::crosswords::grid::row::SemanticPrompt, Option<u64>)> {
     use crate::crosswords::grid::row::SemanticPrompt;
 
     let subcommand = *params.get(1)?.first()?;
+    let prompt_id = params[2..].iter().find_map(|option| {
+        let value = option.strip_prefix(b"aid=")?;
+        std::str::from_utf8(value).ok()?.parse().ok()
+    });
     match subcommand {
-        b'A' => Some(SemanticPrompt::Prompt),
+        b'A' => Some((SemanticPrompt::Prompt, prompt_id)),
         b'P' => {
             for option in &params[2..] {
                 if let Some(kind) = option.strip_prefix(b"k=") {
                     if kind == b"c" || kind == b"s" {
-                        return Some(SemanticPrompt::PromptContinuation);
+                        return Some((SemanticPrompt::PromptContinuation, prompt_id));
                     }
                 }
             }
-            Some(SemanticPrompt::Prompt)
+            Some((SemanticPrompt::Prompt, prompt_id))
+        }
+        _ => None,
+    }
+}
+
+/// Non-row-marking parts of the OSC 133 command lifecycle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SemanticCommand {
+    Start,
+    End { exit_code: i32 },
+}
+
+/// Parse OSC 133 `C` (command starts executing) and `D` (command finished).
+/// Unknown options are deliberately ignored.  Missing or malformed exit codes
+/// use `0`, matching shells that emit a bare `D` for success.
+pub(super) fn parse_semantic_command(params: &[&[u8]]) -> Option<SemanticCommand> {
+    match *params.get(1)?.first()? {
+        b'C' => Some(SemanticCommand::Start),
+        b'D' => {
+            let exit_code = params
+                .get(2)
+                .and_then(|value| std::str::from_utf8(value).ok())
+                .and_then(|value| value.parse::<i32>().ok())
+                .unwrap_or(0);
+            Some(SemanticCommand::End { exit_code })
         }
         _ => None,
     }

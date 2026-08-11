@@ -96,7 +96,18 @@ pub trait Handler {
     fn set_current_directory(&mut self, _: std::path::PathBuf) {}
 
     /// OSC 133: mark the cursor row as a semantic prompt row.
-    fn set_semantic_prompt(&mut self, _: crate::crosswords::grid::row::SemanticPrompt) {}
+    fn set_semantic_prompt(
+        &mut self,
+        _: crate::crosswords::grid::row::SemanticPrompt,
+        _: Option<u64>,
+    ) {
+    }
+
+    /// OSC 133 `C`: the command associated with the latest prompt started.
+    fn semantic_command_start(&mut self) {}
+
+    /// OSC 133 `D`: the command associated with the latest prompt completed.
+    fn semantic_command_end(&mut self, _exit_code: i32) {}
 
     /// OSC 1337 SetUserVar: record a shell-provided variable.
     fn set_user_var(&mut self, _name: String, _value: String) {}
@@ -1111,8 +1122,17 @@ impl<U: Handler> Perform for Performer<'_, U> {
 
             // OSC 133 - semantic prompt zones (shell integration).
             b"133" => {
-                if let Some(mark) = osc::parse_semantic_prompt(params) {
-                    self.handler.set_semantic_prompt(mark);
+                if let Some((mark, prompt_id)) = osc::parse_semantic_prompt(params) {
+                    self.handler.set_semantic_prompt(mark, prompt_id);
+                } else if let Some(command) = osc::parse_semantic_command(params) {
+                    match command {
+                        osc::SemanticCommand::Start => {
+                            self.handler.semantic_command_start();
+                        }
+                        osc::SemanticCommand::End { exit_code } => {
+                            self.handler.semantic_command_end(exit_code);
+                        }
+                    }
                 }
             }
 
@@ -2266,20 +2286,35 @@ mod tests {
         use crate::crosswords::grid::row::SemanticPrompt;
         use crate::performer::osc::parse_semantic_prompt as parse;
 
-        assert_eq!(parse(&[b"133", b"A"]), Some(SemanticPrompt::Prompt));
+        assert_eq!(parse(&[b"133", b"A"]), Some((SemanticPrompt::Prompt, None)));
         assert_eq!(
             parse(&[b"133", b"A", b"aid=1"]),
-            Some(SemanticPrompt::Prompt)
+            Some((SemanticPrompt::Prompt, Some(1)))
         );
-        assert_eq!(parse(&[b"133", b"P"]), Some(SemanticPrompt::Prompt));
-        assert_eq!(parse(&[b"133", b"P", b"k=i"]), Some(SemanticPrompt::Prompt));
         assert_eq!(
-            parse(&[b"133", b"P", b"k=s"]),
-            Some(SemanticPrompt::PromptContinuation)
+            parse(&[b"133", b"A", b"aid=invalid"]),
+            Some((SemanticPrompt::Prompt, None))
+        );
+        assert_eq!(
+            parse(&[b"133", b"A", b"aid=18446744073709551615"]),
+            Some((SemanticPrompt::Prompt, Some(u64::MAX)))
+        );
+        assert_eq!(
+            parse(&[b"133", b"A", b"aid=18446744073709551616"]),
+            Some((SemanticPrompt::Prompt, None))
+        );
+        assert_eq!(parse(&[b"133", b"P"]), Some((SemanticPrompt::Prompt, None)));
+        assert_eq!(
+            parse(&[b"133", b"P", b"k=i"]),
+            Some((SemanticPrompt::Prompt, None))
+        );
+        assert_eq!(
+            parse(&[b"133", b"P", b"k=s", b"aid=8"]),
+            Some((SemanticPrompt::PromptContinuation, Some(8)))
         );
         assert_eq!(
             parse(&[b"133", b"P", b"k=c"]),
-            Some(SemanticPrompt::PromptContinuation)
+            Some((SemanticPrompt::PromptContinuation, None))
         );
         // Accepted subcommands that set no row mark.
         assert_eq!(parse(&[b"133", b"B"]), None);
@@ -2287,6 +2322,26 @@ mod tests {
         assert_eq!(parse(&[b"133", b"D", b"0"]), None);
         assert_eq!(parse(&[b"133"]), None);
         assert_eq!(parse(&[b"133", b""]), None);
+    }
+
+    #[test]
+    fn semantic_command_lifecycle_parsing() {
+        use crate::performer::osc::{parse_semantic_command as parse, SemanticCommand};
+
+        assert_eq!(parse(&[b"133", b"C"]), Some(SemanticCommand::Start));
+        assert_eq!(
+            parse(&[b"133", b"D", b"17"]),
+            Some(SemanticCommand::End { exit_code: 17 })
+        );
+        assert_eq!(
+            parse(&[b"133", b"D"]),
+            Some(SemanticCommand::End { exit_code: 0 })
+        );
+        assert_eq!(
+            parse(&[b"133", b"D", b"invalid"]),
+            Some(SemanticCommand::End { exit_code: 0 })
+        );
+        assert_eq!(parse(&[b"133", b"B"]), None);
     }
 
     #[test]
@@ -2301,6 +2356,10 @@ mod tests {
         assert_eq!(parse(&[b"1337", b"SetUserVar=foo"]), None);
         assert_eq!(parse(&[b"1337", b"SetUserVar==aGVsbG8="]), None);
         assert_eq!(parse(&[b"1337", b"SetUserVar=foo=!!!"]), None);
+        assert_eq!(
+            parse(&[b"1337", b"SetUserVar=foo="]),
+            Some(("foo".to_string(), String::new()))
+        );
         assert_eq!(parse(&[b"1337", b"File=inline=1"]), None);
         assert_eq!(parse(&[b"1337"]), None);
     }

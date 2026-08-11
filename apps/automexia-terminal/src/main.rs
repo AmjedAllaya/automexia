@@ -265,6 +265,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let _ = application.run(window_event_loop);
 
+    #[cfg(not(target_arch = "wasm32"))]
+    automexia::runtime::shutdown_background_services();
+
     #[cfg(windows)]
     unsafe {
         FreeConsole();
