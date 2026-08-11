@@ -1,5 +1,40 @@
 # Testing and verification
 
+## Complete local gate
+
+Run the complete contributor gate and produce a smoke-tested debug executable
+with one command:
+
+```text
+cargo ready
+```
+
+Use `cargo dev` to run that same gate and launch Automexia when it passes. Use
+`cargo automexia` for a fast incremental build, version smoke, and launch when
+the full gate has already passed. These commands are Cargo aliases backed by
+`tools/xtask`, so they are identical on Windows, macOS, and Linux.
+The launcher returns after a successful spawn, leaving Cargo available for the
+next command while Automexia continues running.
+
+The local gate validates all checks that can run on the current host. GitHub CI
+keeps separate native and cross-platform jobs for operating-system matrices,
+coverage, CodeQL, dependency review, fuzzing, sanitizers, and controlled
+hardware that one contributor machine cannot reproduce.
+
+Cargo creates a test executable for each applicable library, binary, integration
+target, and documentation target. Therefore, `test result: ok. 0 passed; 0
+failed` is expected for a target that defines no tests; it does not mean the
+workspace test suite was skipped. The command is successful only when every
+target completes and `cargo ready` prints its final `PASS` line.
+`cargo ready` summarizes successful harness output to keep the normal workflow
+readable and prints the complete captured diagnostics automatically on failure.
+Running `cargo test` directly retains Cargo's normal per-target output.
+
+Known incompatible transitive dependency generations are maintained as an
+exact, reasoned baseline in `deny.toml`. They do not print repetitive warnings.
+Any newly introduced duplicate is denied, while advisories, banned crates,
+licenses, and dependency sources continue to be checked independently.
+
 ## Every pull request
 
 Every PR runs policy checks regardless of changed paths:
@@ -28,12 +63,38 @@ combining marks, emoji width, and cursor position. PTY suites cover ConPTY and
 Unix lifecycle, resize, child exit, teardown, and throughput.
 
 Renderer-neutral goldens cover prompt anchors, clipping, segment truncation,
-selection/search precedence, and reflow. Extension tests cover unavailable,
+selection/search precedence, stable OSC prompt identities, metadata-only
+incremental snapshots, repeated command transitions, and shrink/grow reflow.
+Extension tests cover unavailable,
 disconnected, busy, stale, malformed, and oversized inputs plus multi-window
 session isolation. Shell tests cover syntax, idempotency, exit status, history
-handlers, UTF-8 lambda handling, and uninstall behavior.
+handlers, monotonic prompt identities, UTF-8 lambda handling, and uninstall
+behavior.
 
-Run the primary suite with `cargo xtask test conformance`.
+The conformance suite is included in `cargo ready`. For focused diagnosis only,
+run it directly with `cargo xtask test conformance`.
+
+For native liquid-hacker UI and prompt regressions, run:
+
+```text
+cargo test -p rio-vt semantic
+cargo test -p automexia-terminal renderer::island::tests
+cargo test -p automexia-terminal renderer::devops_status::tests
+powershell -NoProfile -File tools/ci/test_shell_integration.ps1
+```
+
+The DevOps status suite covers bounded WSL probe parsing, session-local
+Docker/Kubernetes/cloud/Git/Terraform/user models, truthful badge visibility,
+default Docker labeling, and the 100 ms pending/three-second steady refresh
+cadence. Release smoke testing must additionally confirm a real WSL Docker
+context appears and that switching a local context is reflected without a new
+prompt or terminal restart.
+
+These cover Windows-drive versus WSL title classification, custom chrome hit
+targets and resize edges, responsive context layout, bundled Nerd icon
+codepoints, explicit shell identity, resize-safe full-path three-row prompts, per-command
+context snapshots, OSC command status/timing, and context/result survival
+through shrink/grow reflow.
 
 ## Nightly and release depth
 

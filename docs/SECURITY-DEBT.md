@@ -14,3 +14,19 @@ in `deny.toml`, and must be reassessed on every stable patch.
 The yanked `wide` 1.6.0 dependency was removed from the v0.4 lockfile by
 updating to compatible `wide` 1.6.1. Vulnerability, unsoundness, and yanked
 advisories have no standing exception policy.
+
+## Duplicate dependency baseline
+
+The v0.4 renderer, windowing, font, PTY, and operating-system backends contain
+some incompatible transitive dependency generations. Cargo cannot merge these
+entries because their dependants request non-overlapping semantic-version
+ranges. They are compatibility and binary-size debt, not test failures or
+security advisories.
+
+`deny.toml` records every reviewed older version with an exact version and a
+reason. The general `multiple-versions` policy is `deny`, so a pull request that
+introduces any duplicate outside that baseline fails `cargo ready` and CI.
+Removing a dependency from the graph also requires removing its stale baseline
+entry. This makes the list an auditable ceiling rather than a blanket
+suppression. Reassess and reduce the baseline during renderer/platform upgrades
+and on every stable release.

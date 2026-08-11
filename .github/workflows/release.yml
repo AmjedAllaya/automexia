@@ -3,7 +3,6 @@ name: Stable release
 on:
   push:
     tags: ['v*']
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -23,14 +22,22 @@ jobs:
       APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+      - name: Install Linux build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
       - name: Protected-main and tag preconditions
+        id: version
         run: |
-          test "${GITHUB_REF_NAME}" = "v0.4.0"
-          cargo xtask release --version 0.4.0
+          version="${GITHUB_REF_NAME#v}"
+          test -n "$version"
+          test "$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "automexia-terminal") | .version')" = "$version"
+          cargo xtask release --version "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
   build:
     needs: preflight
@@ -58,6 +65,8 @@ jobs:
             target: aarch64-unknown-linux-gnu
             artifact: linux-arm64
     runs-on: ${{ matrix.os }}
+    env:
+      AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install Linux build dependencies
@@ -87,13 +96,20 @@ jobs:
         shell: bash
         run: |
           mkdir -p "dist/${{ matrix.artifact }}"
-          cp "target/${{ matrix.target }}/release/automexia"* "dist/${{ matrix.artifact }}/"
-          cp LICENSE NOTICE.md README.md "dist/${{ matrix.artifact }}/"
+          binary="target/${{ matrix.target }}/release/automexia"
+          [[ "${{ runner.os }}" == "Windows" ]] && binary="${binary}.exe"
+          cp "$binary" "dist/${{ matrix.artifact }}/"
+          cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md README.md "dist/${{ matrix.artifact }}/"
       - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: dist/${{ matrix.artifact }}
           format: spdx-json
           output-file: dist/${{ matrix.artifact }}.spdx.json
+      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: dist/${{ matrix.artifact }}
+          format: cyclonedx-json
+          output-file: dist/${{ matrix.artifact }}.cdx.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.artifact }}
@@ -101,9 +117,11 @@ jobs:
           if-no-files-found: error
 
   package-windows:
-    needs: build
+    needs: [preflight, build]
     runs-on: windows-latest
     environment: stable-release
+    env:
+      AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
     strategy:
       matrix:
         include:
@@ -132,8 +150,6 @@ jobs:
           signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f signed\automexia.pfx /p $env:CERTIFICATE_PASSWORD $binary.FullName
           signtool verify /pa $binary.FullName
           Copy-Item $binary.FullName signed\automexia.exe
-          Copy-Item LICENSE,NOTICE.md,README.md signed
-          Compress-Archive -Path signed\automexia.exe,signed\LICENSE,signed\NOTICE.md,signed\README.md -DestinationPath "signed\automexia-0.4.0-${{ matrix.target }}.zip"
           $targetDir = "target\${{ matrix.target }}\release"
           New-Item -ItemType Directory -Force $targetDir | Out-Null
           Copy-Item $binary.FullName "$targetDir\automexia.exe"
@@ -142,13 +158,20 @@ jobs:
         env:
           CERTIFICATE_PASSWORD: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          cargo packager --manifest-path apps/automexia-terminal/Cargo.toml --release --out-dir target/package --target ${{ matrix.target }} --formats wix
-          $msi = Get-ChildItem target -Recurse -Filter *.msi | Select-Object -First 1
+          $env:AUTOMEXIA_PACKAGE_SKIP_BUILD = '1'
+          cargo xtask package --target ${{ matrix.target }}
+          $packageDir = "target\package\${{ matrix.target }}"
+          $msi = Get-ChildItem $packageDir -Filter *.msi | Select-Object -First 1
           if (-not $msi) { throw 'cargo-packager did not produce an MSI' }
           signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f signed\automexia.pfx /p $env:CERTIFICATE_PASSWORD $msi.FullName
           signtool verify /pa $msi.FullName
-          Copy-Item $msi.FullName "signed\automexia-0.4.0-${{ matrix.target }}.msi"
+          Copy-Item $msi.FullName "signed\automexia-$env:AUTOMEXIA_VERSION-${{ matrix.target }}.msi"
+          Copy-Item "$packageDir\automexia-terminal-$env:AUTOMEXIA_VERSION-${{ matrix.target }}.zip" signed
           Remove-Item signed\automexia.pfx -Force
+      - name: Clean install, identity, and uninstall smoke
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        run: tools/ci/test_windows_installer.ps1 -MsiPath (Get-ChildItem signed -Filter *.msi | Select-Object -First 1).FullName -Version $env:AUTOMEXIA_VERSION
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: packages-${{ matrix.artifact }}
@@ -156,9 +179,11 @@ jobs:
           if-no-files-found: error
 
   package-macos:
-    needs: build
+    needs: [preflight, build]
     runs-on: macos-latest
     environment: stable-release
+    env:
+      AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -184,9 +209,10 @@ jobs:
           app='dist/Automexia Terminal.app'
           mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
           lipo -create "$x64" "$arm" -output "$app/Contents/MacOS/automexia"
-          cp packaging/macos/Info.plist "$app/Contents/Info.plist"
+          sed "s/@AUTOMEXIA_VERSION@/$AUTOMEXIA_VERSION/g" packaging/macos/Info.plist > "$app/Contents/Info.plist"
           cp assets/brand/automexia-terminal.icns "$app/Contents/Resources/automexia-terminal.icns"
-          cp LICENSE NOTICE.md "$app/Contents/Resources/"
+          cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md "$app/Contents/Resources/"
+          "$app/Contents/MacOS/automexia" --version | grep -F "$AUTOMEXIA_VERSION"
           echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
           security create-keychain -p temporary automexia.keychain
           security import certificate.p12 -k automexia.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
@@ -194,28 +220,37 @@ jobs:
           security default-keychain -s automexia.keychain
           codesign --force --options runtime --timestamp --deep --sign "$APPLE_SIGNING_IDENTITY" "$app"
           codesign --verify --deep --strict --verbose=2 "$app"
-          hdiutil create -volname 'Automexia Terminal' -srcfolder "$app" -ov -format UDZO dist/automexia-terminal-0.4.0-universal.dmg
-          xcrun notarytool submit dist/automexia-terminal-0.4.0-universal.dmg --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
-          xcrun stapler staple dist/automexia-terminal-0.4.0-universal.dmg
-          spctl --assess --type open --context context:primary-signature -v dist/automexia-terminal-0.4.0-universal.dmg
+          dmg="dist/automexia-terminal-$AUTOMEXIA_VERSION-universal.dmg"
+          hdiutil create -volname 'Automexia Terminal' -srcfolder "$app" -ov -format UDZO "$dmg"
+          xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple "$dmg"
+          xcrun stapler validate "$dmg"
+          spctl --assess --type open --context context:primary-signature -v "$dmg"
+          mount=$(hdiutil attach -nobrowse -readonly "$dmg" | sed -n 's#^.*\(/Volumes/.*\)$#\1#p' | tail -1)
+          test -x "$mount/Automexia Terminal.app/Contents/MacOS/automexia"
+          hdiutil detach "$mount"
           security delete-keychain automexia.keychain
           rm -f certificate.p12
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: packages-macos-universal
-          path: dist/automexia-terminal-0.4.0-universal.dmg
+          path: dist/automexia-terminal-${{ needs.preflight.outputs.version }}-universal.dmg
           if-no-files-found: error
 
   package-linux:
-    needs: build
+    needs: [preflight, build]
     runs-on: ubuntu-latest
+    env:
+      AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
     strategy:
       matrix:
         include:
           - artifact: linux-x86_64
             arch: amd64
+            target: x86_64-unknown-linux-gnu
           - artifact: linux-arm64
             arch: arm64
+            target: aarch64-unknown-linux-gnu
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -223,34 +258,66 @@ jobs:
           name: ${{ matrix.artifact }}
           path: staged
       - name: Install Linux package validators
-        run: sudo apt-get update && sudo apt-get install -y appstream desktop-file-utils lintian ncurses-bin rpm scdoc
+        run: sudo apt-get update && sudo apt-get install -y appstream cpio desktop-file-utils lintian ncurses-bin rpm scdoc
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:
           tool: nfpm@v2.43.4
       - name: Build DEB, RPM, and portable archive
         run: |
           set -euo pipefail
-          mkdir -p packages/terminfo
           binary=$(find staged -type f -name automexia | head -1)
           chmod +x "$binary"
-          scdoc < packaging/linux/automexia.1.scd > packages/automexia.1
-          tic -x -o packages/terminfo packaging/linux/automexia.terminfo
-          export NFPM_ARCH=${{ matrix.arch }} AUTOMEXIA_VERSION=0.4.0 AUTOMEXIA_BINARY="$binary"
-          export AUTOMEXIA_MANPAGE=packages/automexia.1 AUTOMEXIA_TERMINFO_ROOT=packages/terminfo
-          nfpm package --config packaging/linux/nfpm.yaml --packager deb --target packages/
-          nfpm package --config packaging/linux/nfpm.yaml --packager rpm --target packages/
+          target_dir="target/${{ matrix.target }}/release"
+          mkdir -p "$target_dir"
+          cp "$binary" "$target_dir/automexia"
+          export AUTOMEXIA_PACKAGE_SKIP_BUILD=1
+          cargo xtask package --target "${{ matrix.target }}"
+          package_dir="target/package/${{ matrix.target }}"
           desktop-file-validate packaging/linux/automexia-terminal.desktop
           appstreamcli validate --no-net packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml
-          lintian packages/*.deb
-          tar -czf "packages/automexia-terminal-0.4.0-linux-${{ matrix.arch }}.tar.gz" -C "$(dirname "$binary")" automexia LICENSE NOTICE.md README.md
+          lintian "$package_dir"/*.deb
+          "$binary" --version | grep -F "$AUTOMEXIA_VERSION" || [[ "${{ matrix.arch }}" == "arm64" ]]
+      - name: Clean install, metadata, and uninstall smoke
+        if: matrix.arch == 'amd64'
+        run: bash tools/ci/test_linux_package.sh "target/package/${{ matrix.target }}" "$AUTOMEXIA_VERSION"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: packages-${{ matrix.artifact }}
-          path: packages/*
+          path: target/package/${{ matrix.target }}/*
           if-no-files-found: error
 
+  hardware-smoke:
+    name: Controlled GPU, PTY, and WSL smoke
+    needs: [preflight, build]
+    runs-on: [self-hosted, windows, x64, automexia-release, gpu, wsl]
+    environment: stable-release
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-x86_64
+          path: smoke/windows
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: linux-x86_64
+          path: smoke/linux
+      - name: Native GPU/PTY launch and WSL portable smoke
+        shell: pwsh
+        run: |
+          $windows = Get-ChildItem smoke/windows -Recurse -Filter automexia.exe | Select-Object -First 1
+          & $windows.FullName --version
+          $process = Start-Process -FilePath $windows.FullName -PassThru
+          Start-Sleep -Seconds 8
+          if ($process.HasExited) { throw "Automexia exited during the controlled GPU/PTY smoke" }
+          Stop-Process -Id $process.Id
+          $linux = Get-ChildItem smoke/linux -Recurse -Filter automexia | Select-Object -First 1
+          $wslPath = (& wsl.exe wslpath -u $linux.FullName).Trim()
+          & wsl.exe chmod +x $wslPath
+          if ($LASTEXITCODE -ne 0) { throw 'WSL could not prepare the Linux artifact' }
+          & wsl.exe $wslPath --version
+          if ($LASTEXITCODE -ne 0) { throw 'WSL portable smoke failed' }
+
   publish:
-    needs: [build, package-windows, package-macos, package-linux]
+    needs: [preflight, build, package-windows, package-macos, package-linux, hardware-smoke]
     runs-on: ubuntu-latest
     environment: stable-release
     steps:
@@ -260,11 +327,16 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Checksums
-        run: find dist -type f -print0 | sort -z | xargs -0 sha256sum > dist/SHA256SUMS
+        run: |
+          find dist -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+          mv SHA256SUMS dist/SHA256SUMS
       - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
         with:
           subject-path: 'dist/**/*'
       - name: Publish protected-tag assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/**/* --clobber
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --draft --generate-notes --title "Automexia Terminal ${{ needs.preflight.outputs.version }}"
+          find dist -type f -print0 | xargs -0 gh release upload "$GITHUB_REF_NAME" --clobber
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest

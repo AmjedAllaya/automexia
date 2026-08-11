@@ -22,3 +22,7 @@ packaging, and release policy.
 Upstream updates are reviewed on compatibility branches and selectively ported
 with provenance. Moving upstream branches are never merged directly into stable
 Automexia branches. See `UPSTREAM.md`.
+
+Bundled fonts, shader sources, and MPL-derived filter-runtime files retain
+separate licenses described in `THIRD_PARTY_NOTICES.md`. The MIT license for
+Automexia-owned code does not replace those component licenses.

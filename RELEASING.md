@@ -6,9 +6,13 @@ Stable releases are tag-driven from protected `main`. Run:
 cargo xtask release --version 0.4.0
 ```
 
-This command is a preflight, not a publisher. It requires a clean full CI gate,
-final approved brand assets, the private conduct contact, Windows Authenticode
-credentials, and Apple Developer ID/notarization credentials.
+On its first invocation for a version, this command assembles reviewed
+`changes/` fragments into `CHANGELOG.md` and asks the maintainer to commit the
+result before tagging. On the tagged commit it is a preflight, not a publisher.
+It requires a clean full CI gate, final approved brand assets under the process
+in `docs/BRANDING.md`, the private
+conduct contact, Windows Authenticode credentials, and Apple Developer
+ID/notarization credentials.
 
 The release workflow builds Windows x86_64/ARM64 MSI and ZIP artifacts, a
 signed/notarized universal macOS app in a DMG, and Linux x86_64/ARM64 DEB, RPM,

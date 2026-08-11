@@ -6,11 +6,6 @@ tagged release.
 
 ## [Unreleased]
 
-### Added
-
-- Standalone Automexia repository, identity, configuration migration, contributor
-  verification, and cross-platform release scaffolding.
-
 ## [0.3.13] - 2026-08-11
 
 - Audited downstream baseline applied to Rio commit

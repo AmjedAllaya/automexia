@@ -10,8 +10,7 @@
 
 ## Verification
 
-- [ ] `cargo xtask ci`
-- [ ] `cargo xtask package --check`
+- [ ] `cargo ready`
 - [ ] Focused regression tests added/updated
 - [ ] Performance impact measured or not applicable
 - [ ] Security/capability impact reviewed or not applicable

@@ -19,8 +19,20 @@ contents:
     dst: /usr/share/applications/automexia-terminal.desktop
   - src: packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml
     dst: /usr/share/metainfo/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml
-  - src: assets/brand/automexia-terminal.svg
-    dst: /usr/share/icons/hicolor/scalable/apps/automexia-terminal.svg
+  - src: assets/brand/png/automexia-terminal-16.png
+    dst: /usr/share/icons/hicolor/16x16/apps/automexia-terminal.png
+  - src: assets/brand/png/automexia-terminal-32.png
+    dst: /usr/share/icons/hicolor/32x32/apps/automexia-terminal.png
+  - src: assets/brand/png/automexia-terminal-48.png
+    dst: /usr/share/icons/hicolor/48x48/apps/automexia-terminal.png
+  - src: assets/brand/png/automexia-terminal-64.png
+    dst: /usr/share/icons/hicolor/64x64/apps/automexia-terminal.png
+  - src: assets/brand/png/automexia-terminal-128.png
+    dst: /usr/share/icons/hicolor/128x128/apps/automexia-terminal.png
+  - src: assets/brand/png/automexia-terminal-256.png
+    dst: /usr/share/icons/hicolor/256x256/apps/automexia-terminal.png
+  - src: assets/brand/png/automexia-terminal-512.png
+    dst: /usr/share/icons/hicolor/512x512/apps/automexia-terminal.png
   - src: ${AUTOMEXIA_TERMINFO_ROOT}/
     dst: /usr/share/terminfo
     type: tree
@@ -32,6 +44,8 @@ contents:
     dst: /usr/share/doc/automexia-terminal/LICENSE
   - src: NOTICE.md
     dst: /usr/share/doc/automexia-terminal/NOTICE.md
+  - src: THIRD_PARTY_NOTICES.md
+    dst: /usr/share/doc/automexia-terminal/THIRD_PARTY_NOTICES.md
 rpm:
   compression: xz
 deb:

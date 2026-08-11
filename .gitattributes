@@ -1,0 +1,21 @@
+# Keep source, configuration, scripts, and documentation deterministic across
+# Windows, macOS, and Linux. PowerShell 7 and Windows PowerShell both accept LF.
+* text=auto eol=lf
+
+# Brand, font, archive, and executable assets must never undergo normalization.
+*.bmp binary
+*.dll binary
+*.dmg binary
+*.exe binary
+*.gif binary
+*.icns binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.msi binary
+*.otf binary
+*.png binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.zip binary

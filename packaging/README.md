@@ -7,6 +7,7 @@ attestations, and validation.
 
 `cargo xtask package --check` validates metadata without mutating the tree.
 `cargo xtask package --target <triple>` builds the requested release binary.
-Nightly workflows may use the explicit placeholder mark; `cargo xtask release`
-blocks stable publication until the final asset manifest and signing prerequisites
+Nightly workflows use the supplied Automexia raster mark and its audited
+platform derivatives. `cargo xtask release` blocks stable publication until the
+complete vector brand kit, redistribution approval, and signing prerequisites
 are satisfied.

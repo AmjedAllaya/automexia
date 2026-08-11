@@ -18,8 +18,20 @@ PROTECTED_PREFIXES = (
     "RELEASING.md",
     "NOTICE.md",
     "CODEOWNERS",
-    "rio-base-",
+    "corcovado/",
+    "librio/",
+    "librio-wasm/",
+    "rio-backend/",
+    "rio-fonts/",
+    "rio-graphics/",
+    "rio-grapheme-width/",
+    "rio-notifier/",
+    "rio-vt/",
+    "rio-window/",
+    "sugarloaf/",
+    "teletypewriter/",
 )
+ENGINE_PREFIXES = PROTECTED_PREFIXES[-12:]
 EXEMPT_LABELS = {"documentation", "tests-only", "internal-maintenance"}
 TITLE = re.compile(
     r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)"
@@ -76,6 +88,28 @@ def main() -> int:
             "protected paths require two distinct approving reviewers: "
             + ", ".join(protected)
         )
+
+    engine_sources = {
+        path
+        for path in changed
+        if path.endswith(".rs")
+        and any(path.startswith(prefix) for prefix in ENGINE_PREFIXES)
+        and "/tests/" not in path
+    }
+    if engine_sources:
+        diff = git("diff", "--unified=0", f"{base}...{head}", "--", "*.rs")
+        changed_test_file = any(
+            "/tests/" in path or path.endswith("/tests.rs") for path in changed
+        )
+        added_inline_test = any(
+            line.startswith("+") and not line.startswith("+++") and "#[test]" in line
+            for line in diff.splitlines()
+        )
+        if not changed_test_file and not added_inline_test:
+            failures.append(
+                "engine Rust changes require a focused integration test or a newly added inline test: "
+                + ", ".join(sorted(engine_sources))
+            )
 
     if failures:
         print("PR policy failed:", file=sys.stderr)
