@@ -54,6 +54,24 @@ Automexia IDs or path policy.
   This metadata is copied, recycled, merged and split with the row and marks
   metadata-only snapshots dirty.
 
+## Interactive performance invariants
+
+- Ordinary keyboard input is written to the PTY without scheduling a
+  speculative frame. The terminal-damage event produced by parsed output is
+  the redraw authority; frontend-only shortcuts still request an immediate
+  redraw when they mutate local UI state.
+- Incremental terminal snapshots return before copying style or row data when
+  neither grid rows nor semantic metadata changed.
+- Renderer row buffers, live DevOps segments, and stable OSC metadata retain
+  their allocations across frames. They are rebuilt only when their source
+  revision changes or a wider panel requires more capacity.
+- The Windows vsync worker parks while there is no redraw or high-rate input.
+  A redraw request or the transition into a sustained high-rate input burst
+  wakes it, so isolated keys and idle terminals do not call DWM or scan the
+  window registry speculatively.
+- PTY parsing, DevOps discovery, and extension work stay off the render thread;
+  the renderer consumes bounded cached snapshots without blocking on them.
+
 `cargo ready` includes the architecture gate. For focused diagnosis,
 `cargo xtask verify architecture` checks the Cargo graph and critical source
 invariants. Tests cover bounded queue pressure, busy/disconnected workers,

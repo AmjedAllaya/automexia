@@ -16,6 +16,11 @@ the full gate has already passed. These commands are Cargo aliases backed by
 The launcher returns after a successful spawn, leaving Cargo available for the
 next command while Automexia continues running.
 
+On Windows, a running debug Automexia process owns its executable. To validate
+another checkout or cache without closing that session, provide an alternate
+Cargo target directory; `xtask` resolves both absolute and invocation-relative
+`CARGO_TARGET_DIR` values for build, smoke, and launch consistently.
+
 The local gate validates all checks that can run on the current host. GitHub CI
 keeps separate native and cross-platform jobs for operating-system matrices,
 coverage, CodeQL, dependency review, fuzzing, sanitizers, and controlled
@@ -107,6 +112,19 @@ Performance tracking includes startup, sustained PTY throughput, resize/reflow
 latency, idle/scrollback memory, and extension refresh latency. Results are
 informational for the first 30-day baseline; afterward, regressions above 5%
 latency or 10% memory need a recorded maintainer waiver.
+
+For a focused optimized measurement of the most common unchanged-frame fast
+path, run:
+
+```text
+cargo bench -p rio-vt --bench vt_input snapshot_visible_noop -- --noplot
+```
+
+The benchmark starts from a populated styled terminal and repeatedly requests
+a no-damage snapshot. It protects the contract that cursor/UI-only activity
+does not copy the resident style table or visible grid. Run the complete
+`vt_input` benchmark before and after changes to parser, grid, or snapshot code;
+record the machine, power mode, and median result in any performance waiver.
 
 Nightly builds unsigned installers for every artifact target. Stable release
 requires WSL, real-GPU, clean-install, upgrade, uninstall, signature,
