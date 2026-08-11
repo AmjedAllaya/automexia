@@ -25,7 +25,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Install Linux build dependencies
@@ -68,7 +68,7 @@ jobs:
     env:
       AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
@@ -110,7 +110,7 @@ jobs:
           path: dist/${{ matrix.artifact }}
           format: cyclonedx-json
           output-file: dist/${{ matrix.artifact }}.cdx.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.artifact }}
           path: dist
@@ -130,8 +130,8 @@ jobs:
           - artifact: windows-arm64
             target: aarch64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ matrix.artifact }}
           path: staged
@@ -172,7 +172,7 @@ jobs:
         if: matrix.target == 'x86_64-pc-windows-msvc'
         shell: pwsh
         run: tools/ci/test_windows_installer.ps1 -MsiPath (Get-ChildItem signed -Filter *.msi | Select-Object -First 1).FullName -Version $env:AUTOMEXIA_VERSION
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: packages-${{ matrix.artifact }}
           path: signed/*
@@ -185,12 +185,12 @@ jobs:
     env:
       AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: macos-x86_64
           path: staged/x86_64
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: macos-arm64
           path: staged/arm64
@@ -231,7 +231,7 @@ jobs:
           hdiutil detach "$mount"
           security delete-keychain automexia.keychain
           rm -f certificate.p12
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: packages-macos-universal
           path: dist/automexia-terminal-${{ needs.preflight.outputs.version }}-universal.dmg
@@ -252,8 +252,8 @@ jobs:
             arch: arm64
             target: aarch64-unknown-linux-gnu
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ matrix.artifact }}
           path: staged
@@ -280,7 +280,7 @@ jobs:
       - name: Clean install, metadata, and uninstall smoke
         if: matrix.arch == 'amd64'
         run: bash tools/ci/test_linux_package.sh "target/package/${{ matrix.target }}" "$AUTOMEXIA_VERSION"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: packages-${{ matrix.artifact }}
           path: target/package/${{ matrix.target }}/*
@@ -292,11 +292,11 @@ jobs:
     runs-on: [self-hosted, windows, x64, automexia-release, gpu, wsl]
     environment: stable-release
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: windows-x86_64
           path: smoke/windows
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: linux-x86_64
           path: smoke/linux
@@ -321,8 +321,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: stable-release
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: dist
           merge-multiple: true
@@ -330,7 +330,7 @@ jobs:
         run: |
           find dist -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
           mv SHA256SUMS dist/SHA256SUMS
-      - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           subject-path: 'dist/**/*'
       - name: Publish protected-tag assets
