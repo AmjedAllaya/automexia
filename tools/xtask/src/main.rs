@@ -221,7 +221,28 @@ fn debug_binary(identity: &ProductIdentity) -> PathBuf {
     } else {
         identity.executable.clone()
     };
-    root().join("target").join("debug").join(binary)
+    cargo_target_dir().join("debug").join(binary)
+}
+
+fn cargo_target_dir() -> PathBuf {
+    // Cargo resolves a relative CARGO_TARGET_DIR from the invocation working
+    // directory, which is inherited by every nested command we spawn.
+    let invocation_directory = env::current_dir().unwrap_or_else(|_| root());
+    resolve_target_dir(
+        &invocation_directory,
+        env::var_os("CARGO_TARGET_DIR").as_deref(),
+    )
+}
+
+fn resolve_target_dir(
+    invocation_directory: &Path,
+    configured: Option<&OsStr>,
+) -> PathBuf {
+    match configured.map(PathBuf::from) {
+        Some(path) if path.is_absolute() => path,
+        Some(path) => invocation_directory.join(path),
+        None => root().join("target"),
+    }
 }
 
 fn smoke_debug_app() -> TaskResult {
@@ -506,7 +527,7 @@ fn verify_architecture() -> TaskResult {
     ] {
         require(
             renderable.contains(&format!("pub {field}:"))
-                && renderer.contains(&format!("renderable_content.{field} =")),
+                && snapshots_renderable_field(&renderer, field),
             &format!("shell/prompt readiness metadata {field} is not snapshotted"),
         )?;
     }
@@ -554,6 +575,21 @@ fn verify_architecture() -> TaskResult {
     }
     println!("PASS: dependency graph and render/PTY/extension boundaries verified");
     Ok(())
+}
+
+/// Recognize both direct assignment and allocation-preserving `clone_from`
+/// snapshots. Whitespace is deliberately ignored so rustfmt layout changes do
+/// not weaken or spuriously break this architecture invariant.
+fn snapshots_renderable_field(renderer: &str, field: &str) -> bool {
+    let compact: String = renderer
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect();
+    let destination = format!("renderable_content.{field}");
+
+    compact.contains(&format!("{destination}="))
+        || compact.contains(&format!("{destination}.clone_from("))
+        || compact.contains(&format!("sync_optional_metadata(&mut{destination},"))
 }
 
 fn verify_identity() -> TaskResult {
@@ -1378,5 +1414,40 @@ mod tests {
             "io.github.AmjedAllaya.AutomexiaTerminal"
         );
         assert_eq!(RIO_BASE_SHA.len(), 40);
+    }
+
+    #[test]
+    fn metadata_snapshot_check_accepts_assignments_and_reused_allocations() {
+        assert!(snapshots_renderable_field(
+            "renderable_content.shell_integration = terminal.enabled;",
+            "shell_integration"
+        ));
+        assert!(snapshots_renderable_field(
+            "context\n    .renderable_content\n    .current_directory\n    .clone_from(&terminal.current_directory);",
+            "current_directory"
+        ));
+        assert!(!snapshots_renderable_field(
+            "let current_directory = terminal.current_directory.clone();",
+            "current_directory"
+        ));
+    }
+
+    #[test]
+    fn debug_binary_respects_relative_and_absolute_cargo_target_dirs() {
+        let invocation_directory = Path::new("repo/subdirectory");
+        assert_eq!(
+            resolve_target_dir(invocation_directory, None),
+            root().join("target")
+        );
+        assert_eq!(
+            resolve_target_dir(invocation_directory, Some(OsStr::new("target/isolated"))),
+            invocation_directory.join("target/isolated")
+        );
+
+        let absolute = root().join("target").join("isolated-absolute");
+        assert_eq!(
+            resolve_target_dir(invocation_directory, Some(absolute.as_os_str())),
+            absolute
+        );
     }
 }
