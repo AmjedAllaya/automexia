@@ -1927,10 +1927,22 @@ impl<U: EventListener> Crosswords<U> {
         let count = (end - start) as usize;
 
         let _ = cols;
+        let needs_full = matches!(damage, TerminalDamage::Full) || dst.len() != count;
+
+        // Cursor-only and UI-only frames normally reuse the resident row and
+        // style snapshots verbatim. Check the grid's dirty bits before
+        // copying the style table: cursor blink, shortcut and overlay frames
+        // are extremely common, while a newly interned style cannot affect a
+        // visible row until that row is dirtied as well.
+        if !needs_full
+            && matches!(damage, TerminalDamage::Noop | TerminalDamage::CursorOnly)
+            && !(0..count as i32).any(|y| self.grid[Line(start + y)].dirty)
+        {
+            return;
+        }
+
         style_table.clear();
         style_table.extend_from_slice(self.grid.style_set.styles());
-
-        let needs_full = matches!(damage, TerminalDamage::Full) || dst.len() != count;
 
         if needs_full {
             dst.clear();
@@ -1947,17 +1959,6 @@ impl<U: EventListener> Crosswords<U> {
                 self.grid[Line(row_idx)].dirty = false;
             }
             return;
-        }
-
-        // A Noop/CursorOnly frame normally has nothing to copy, but rows
-        // written after the damage event was consumed (e.g. a graphics
-        // insert racing a redraw) still carry their dirty bit. Fall
-        // through when any row is dirty so the snapshot can't go stale.
-        if matches!(damage, TerminalDamage::Noop | TerminalDamage::CursorOnly) {
-            let any_dirty = (0..count as i32).any(|y| self.grid[Line(start + y)].dirty);
-            if !any_dirty {
-                return;
-            }
         }
 
         #[allow(clippy::needless_range_loop)]
@@ -5633,6 +5634,53 @@ mod tests {
         );
         assert_eq!(visible[0].semantic_prompt, SemanticPrompt::Prompt);
         assert_eq!(visible[0].semantic_prompt_id, Some(7));
+    }
+
+    #[test]
+    fn noop_snapshot_reuses_the_resident_style_table() {
+        use crate::config::colors::{AnsiColor, NamedColor};
+        use crate::crosswords::style::{Style, StyleFlags};
+        use crate::event::TerminalDamage;
+
+        let size = CrosswordsSize::new(40, 5);
+        let window_id = crate::event::WindowId::from(0);
+        let mut cw = Crosswords::new(
+            size,
+            CursorShape::Block,
+            VoidListener {},
+            window_id,
+            0,
+            10_000,
+        );
+        let mut visible = Vec::new();
+        let mut styles = Vec::new();
+        let mut extras = rustc_hash::FxHashMap::default();
+        cw.snapshot_visible(
+            &TerminalDamage::Full,
+            40,
+            &mut visible,
+            &mut styles,
+            &mut extras,
+        );
+        let resident_len = styles.len();
+
+        // Interning a style alone changes no visible row. A UI/cursor frame
+        // should therefore retain the already materialized snapshot instead
+        // of copying the live style table again.
+        cw.grid.style_set.intern(Style {
+            fg: AnsiColor::Named(NamedColor::Red),
+            bg: AnsiColor::Named(NamedColor::Background),
+            underline_color: None,
+            flags: StyleFlags::BOLD,
+        });
+        cw.snapshot_visible(
+            &TerminalDamage::Noop,
+            40,
+            &mut visible,
+            &mut styles,
+            &mut extras,
+        );
+        assert_eq!(styles.len(), resident_len);
     }
 
     #[test]
