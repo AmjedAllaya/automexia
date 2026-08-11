@@ -1259,29 +1259,32 @@ pub fn platform_key_bindings(
     use_splits: bool,
     _: ConfigKeyboard,
 ) -> Vec<KeyBinding> {
+    // AUTOMEXIA WINDOWS DEFAULTS v2.3 — application shortcuts follow
+    // Windows/browser conventions while readline/editor control keys remain PTY input.
     let mut key_bindings = bindings!(
         KeyBinding;
         "v", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::Paste;
         "c", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::Copy;
         "c", ModifiersState::CONTROL | ModifiersState::SHIFT, +BindingMode::VI; Action::ClearSelection;
+        "a", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; Action::SelectAll;
+        "k", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::ClearHistory;
         Key::Named(Insert), ModifiersState::SHIFT, ~BindingMode::VI; Action::PasteSelection;
         "0", ModifiersState::CONTROL; Action::ResetFontSize;
         "=", ModifiersState::CONTROL; Action::IncreaseFontSize;
         "+", ModifiersState::CONTROL; Action::IncreaseFontSize;
         "-", ModifiersState::CONTROL; Action::DecreaseFontSize;
         Key::Named(Enter), ModifiersState::ALT; Action::ToggleFullscreen;
+        Key::Named(F11); Action::ToggleFullscreen;
         "n", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::WindowCreateNew;
-        ",", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::ConfigEditor;
-        // This is actually a Windows Powershell shortcut
-        // https://github.com/alacritty/alacritty/issues/2930
-        // https://github.com/raphamorim/rio/issues/220#issuecomment-1761651339
-        Key::Named(Backspace), ModifiersState::CONTROL, ~BindingMode::VI; Action::Esc("\u{0017}".into());
-        Key::Named(Space), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::ToggleViMode;
+        ",", ModifiersState::CONTROL; Action::ConfigEditor;
         "p", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::OpenCommandPalette;
+        Key::Named(Space), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::ToggleViMode;
+        Key::Named(Space), ModifiersState::CONTROL | ModifiersState::ALT; Action::ToggleQuake;
+        "t", ModifiersState::ALT | ModifiersState::SHIFT; Action::ToggleAppearanceTheme;
+        Key::Named(Backspace), ModifiersState::CONTROL, ~BindingMode::VI; Action::Esc("\u{0017}".into());
 
-        // Search
+        // Search. Backward search remains Shift+Enter inside search mode.
         "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchForward;
-        "b", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchBackward;
         "c", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchCancel;
         "u", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchClear;
         "w", ModifiersState::CONTROL,  +BindingMode::SEARCH; SearchAction::SearchDeleteWord;
@@ -1295,11 +1298,22 @@ pub fn platform_key_bindings(
         key_bindings.extend(bindings!(
             KeyBinding;
             "t", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::TabCreateNew;
+            "w", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::CloseCurrentSplitOrTab;
             Key::Named(Tab), ModifiersState::CONTROL; Action::SelectNextTab;
             Key::Named(Tab), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectPrevTab;
-            "w", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::CloseCurrentSplitOrTab;
-            "[", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectPrevTab;
-            "]", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectNextTab;
+            Key::Named(PageUp), ModifiersState::CONTROL; Action::SelectPrevTab;
+            Key::Named(PageDown), ModifiersState::CONTROL; Action::SelectNextTab;
+            Key::Named(PageUp), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::MoveCurrentTabToPrev;
+            Key::Named(PageDown), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::MoveCurrentTabToNext;
+            "1", ModifiersState::CONTROL; Action::SelectTab(0);
+            "2", ModifiersState::CONTROL; Action::SelectTab(1);
+            "3", ModifiersState::CONTROL; Action::SelectTab(2);
+            "4", ModifiersState::CONTROL; Action::SelectTab(3);
+            "5", ModifiersState::CONTROL; Action::SelectTab(4);
+            "6", ModifiersState::CONTROL; Action::SelectTab(5);
+            "7", ModifiersState::CONTROL; Action::SelectTab(6);
+            "8", ModifiersState::CONTROL; Action::SelectTab(7);
+            "9", ModifiersState::CONTROL; Action::SelectLastTab;
         ));
     }
 
@@ -1308,17 +1322,16 @@ pub fn platform_key_bindings(
             KeyBinding;
             "r", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
             "d", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
-            "]", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectNextSplit;
-            "[", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectPrevSplit;
-            Key::Named(ArrowUp), ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerUp;
-            Key::Named(ArrowDown), ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerDown;
-            Key::Named(ArrowLeft), ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerLeft;
-            Key::Named(ArrowRight), ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerRight;
+            Key::Named(F6), ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectNextSplit;
+            Key::Named(F6), ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectPrevSplit;
+            Key::Named(ArrowUp), ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerUp;
+            Key::Named(ArrowDown), ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerDown;
+            Key::Named(ArrowLeft), ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerLeft;
+            Key::Named(ArrowRight), ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerRight;
         ));
     }
 
-    // Note: Hint bindings are added separately in Screen::new() based on config
-
+    // Hint bindings are added separately in Screen::new() based on config.
     key_bindings
 }
 

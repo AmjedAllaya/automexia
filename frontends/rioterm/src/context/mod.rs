@@ -52,7 +52,6 @@ pub struct Context<T: EventListener> {
     pub messenger: Messenger,
     #[cfg(not(target_os = "windows"))]
     pub main_fd: Arc<i32>,
-    #[cfg(not(target_os = "windows"))]
     pub shell_pid: u32,
     pub rich_text_id: usize,
     pub dimension: ContextDimension,
@@ -182,7 +181,6 @@ pub fn create_dead_context<T: rio_backend::event::EventListener>(
         route_id,
         #[cfg(not(target_os = "windows"))]
         main_fd: Arc::new(-1),
-        #[cfg(not(target_os = "windows"))]
         shell_pid: 1,
         messenger: Messenger::new(sender),
         renderable_content: RenderableContent::new(Cursor::default()),
@@ -302,12 +300,21 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         let main_fd = pty.child.id.clone();
         #[cfg(not(target_os = "windows"))]
         let shell_pid = *pty.child.pid.clone() as u32;
+        #[cfg(target_os = "windows")]
+        let shell_pid = 0u32;
 
         #[cfg(target_os = "windows")]
         {
-            pty = match create_pty(
+            let automexia_shell_program = crate::automexia::shell::normalized_program(
                 config.shell.program.as_deref(),
-                config.shell.args.clone(),
+            );
+            let automexia_shell_args = crate::automexia::shell::normalized_args(
+                automexia_shell_program.as_deref(),
+                &config.shell.args,
+            );
+            pty = match create_pty(
+                automexia_shell_program.as_deref(),
+                automexia_shell_args,
                 &config.working_dir,
                 None,
                 cols,
@@ -341,7 +348,6 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             route_id,
             #[cfg(not(target_os = "windows"))]
             main_fd,
-            #[cfg(not(target_os = "windows"))]
             shell_pid,
             messenger,
             terminal,

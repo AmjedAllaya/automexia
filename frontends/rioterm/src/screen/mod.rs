@@ -454,7 +454,9 @@ impl Screen<'_> {
         self.renderer = Renderer::new(config);
         self.renderer.is_window_focused = was_focused;
         if let Some(mut island) = old_island {
-            island.update_colors(config.colors.tabs, config.colors.tabs_active);
+            let automexia_colors =
+                crate::automexia::theme::effective_colors(config.colors);
+            island.update_colors(automexia_colors.tabs, automexia_colors.tabs_active);
             island.max_tab_width = config.navigation.max_tab_width;
             self.renderer.island = Some(island);
         }
@@ -3726,6 +3728,9 @@ impl Screen<'_> {
             PaletteAction::ClearHistory => {
                 let mut terminal = self.context_manager.current_mut().terminal.lock();
                 terminal.clear_saved_history();
+            }
+            PaletteAction::OpenMarket => {
+                // Handled by the router because it changes palette mode.
             }
             PaletteAction::ListFonts => {
                 // Handled in the router: switches the palette into fonts

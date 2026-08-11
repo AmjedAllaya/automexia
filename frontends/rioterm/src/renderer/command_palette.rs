@@ -3,6 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
+use crate::automexia::marketplace::MarketItem;
 use crate::renderer::scrollbar;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
@@ -66,6 +67,103 @@ const DEPTH_BG: f32 = 0.1;
 const DEPTH_ELEMENT: f32 = 0.2;
 const ORDER: u8 = 20;
 
+#[cfg(target_os = "macos")]
+const SHORTCUT_NEW_TAB: &str = "Cmd+T";
+#[cfg(target_os = "windows")]
+const SHORTCUT_NEW_TAB: &str = "Ctrl+Shift+T";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SHORTCUT_NEW_TAB: &str = "Ctrl+Shift+T";
+#[cfg(target_os = "macos")]
+const SHORTCUT_CLOSE: &str = "Cmd+W";
+#[cfg(target_os = "windows")]
+const SHORTCUT_CLOSE: &str = "Ctrl+Shift+W";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SHORTCUT_CLOSE: &str = "Ctrl+Shift+W";
+#[cfg(target_os = "macos")]
+const SHORTCUT_SPLIT_RIGHT: &str = "Cmd+D";
+#[cfg(target_os = "windows")]
+const SHORTCUT_SPLIT_RIGHT: &str = "Ctrl+Shift+R";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SHORTCUT_SPLIT_RIGHT: &str = "Ctrl+Shift+R";
+#[cfg(target_os = "macos")]
+const SHORTCUT_SPLIT_DOWN: &str = "Cmd+Shift+D";
+#[cfg(target_os = "windows")]
+const SHORTCUT_SPLIT_DOWN: &str = "Ctrl+Shift+D";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SHORTCUT_SPLIT_DOWN: &str = "Ctrl+Shift+D";
+#[cfg(target_os = "macos")]
+const SHORTCUT_SETTINGS: &str = "Cmd+,";
+#[cfg(target_os = "windows")]
+const SHORTCUT_SETTINGS: &str = "Ctrl+,";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SHORTCUT_SETTINGS: &str = "Ctrl+Shift+,";
+#[cfg(target_os = "macos")]
+const SHORTCUT_NEW_WINDOW: &str = "Cmd+N";
+#[cfg(target_os = "windows")]
+const SHORTCUT_NEW_WINDOW: &str = "Ctrl+Shift+N";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SHORTCUT_NEW_WINDOW: &str = "Ctrl+Shift+N";
+#[cfg(target_os = "macos")]
+const SHORTCUT_COPY: &str = "Cmd+C";
+#[cfg(target_os = "windows")]
+const SHORTCUT_COPY: &str = "Ctrl+Shift+C";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SHORTCUT_COPY: &str = "Ctrl+Shift+C";
+#[cfg(target_os = "macos")]
+const SHORTCUT_PASTE: &str = "Cmd+V";
+#[cfg(target_os = "windows")]
+const SHORTCUT_PASTE: &str = "Ctrl+Shift+V";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SHORTCUT_PASTE: &str = "Ctrl+Shift+V";
+#[cfg(target_os = "macos")]
+const SHORTCUT_SEARCH: &str = "Cmd+F";
+#[cfg(target_os = "windows")]
+const SHORTCUT_SEARCH: &str = "Ctrl+Shift+F";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SHORTCUT_SEARCH: &str = "Ctrl+Shift+F";
+#[cfg(target_os = "macos")]
+const SHORTCUT_FONT_UP: &str = "Cmd++";
+#[cfg(target_os = "windows")]
+const SHORTCUT_FONT_UP: &str = "Ctrl++";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SHORTCUT_FONT_UP: &str = "Ctrl++";
+#[cfg(target_os = "macos")]
+const SHORTCUT_FONT_DOWN: &str = "Cmd+-";
+#[cfg(target_os = "windows")]
+const SHORTCUT_FONT_DOWN: &str = "Ctrl+-";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SHORTCUT_FONT_DOWN: &str = "Ctrl+-";
+#[cfg(target_os = "macos")]
+const SHORTCUT_FONT_RESET: &str = "Cmd+0";
+#[cfg(target_os = "windows")]
+const SHORTCUT_FONT_RESET: &str = "Ctrl+0";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SHORTCUT_FONT_RESET: &str = "Ctrl+0";
+#[cfg(target_os = "macos")]
+const SHORTCUT_VI_MODE: &str = "Alt+Shift+Space";
+#[cfg(target_os = "windows")]
+const SHORTCUT_VI_MODE: &str = "Ctrl+Shift+Space";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SHORTCUT_VI_MODE: &str = "Alt+Shift+Space";
+#[cfg(target_os = "macos")]
+const SHORTCUT_FULLSCREEN: &str = "Ctrl+Cmd+F";
+#[cfg(target_os = "windows")]
+const SHORTCUT_FULLSCREEN: &str = "F11";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SHORTCUT_FULLSCREEN: &str = "";
+#[cfg(target_os = "macos")]
+const SHORTCUT_APPEARANCE: &str = "";
+#[cfg(target_os = "windows")]
+const SHORTCUT_APPEARANCE: &str = "Alt+Shift+T";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SHORTCUT_APPEARANCE: &str = "";
+#[cfg(target_os = "macos")]
+const SHORTCUT_CLEAR_HISTORY: &str = "Cmd+K";
+#[cfg(target_os = "windows")]
+const SHORTCUT_CLEAR_HISTORY: &str = "Ctrl+Shift+K";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const SHORTCUT_CLEAR_HISTORY: &str = "";
+
 /// Actions that can be triggered from the command palette.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaletteAction {
@@ -92,6 +190,7 @@ pub enum PaletteAction {
     SearchBackward,
     ClearHistory,
     CloseCurrentSplitOrTab,
+    OpenMarket,
     /// Browse the family names of every registered font. Does NOT
     /// execute a one-shot action — the palette stays open with the
     /// font list as its contents. Handled by `router`, not
@@ -109,12 +208,12 @@ struct Command {
 const COMMANDS: &[Command] = &[
     Command {
         title: "New Tab",
-        shortcut: "Cmd+T",
+        shortcut: SHORTCUT_NEW_TAB,
         action: PaletteAction::TabCreate,
     },
     Command {
         title: "Close Tab",
-        shortcut: "Cmd+W",
+        shortcut: SHORTCUT_CLOSE,
         action: PaletteAction::TabClose,
     },
     Command {
@@ -134,12 +233,12 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         title: "Split Right",
-        shortcut: "Cmd+D",
+        shortcut: SHORTCUT_SPLIT_RIGHT,
         action: PaletteAction::SplitRight,
     },
     Command {
         title: "Split Down",
-        shortcut: "Cmd+Shift+D",
+        shortcut: SHORTCUT_SPLIT_DOWN,
         action: PaletteAction::SplitDown,
     },
     Command {
@@ -159,57 +258,57 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         title: "Settings",
-        shortcut: "Cmd+,",
+        shortcut: SHORTCUT_SETTINGS,
         action: PaletteAction::ConfigEditor,
     },
     Command {
         title: "New Window",
-        shortcut: "Cmd+N",
+        shortcut: SHORTCUT_NEW_WINDOW,
         action: PaletteAction::WindowCreateNew,
     },
     Command {
         title: "Increase Font Size",
-        shortcut: "Cmd++",
+        shortcut: SHORTCUT_FONT_UP,
         action: PaletteAction::IncreaseFontSize,
     },
     Command {
         title: "Decrease Font Size",
-        shortcut: "Cmd+-",
+        shortcut: SHORTCUT_FONT_DOWN,
         action: PaletteAction::DecreaseFontSize,
     },
     Command {
         title: "Reset Font Size",
-        shortcut: "Cmd+0",
+        shortcut: SHORTCUT_FONT_RESET,
         action: PaletteAction::ResetFontSize,
     },
     Command {
         title: "Toggle Vi Mode",
-        shortcut: "",
+        shortcut: SHORTCUT_VI_MODE,
         action: PaletteAction::ToggleViMode,
     },
     Command {
         title: "Toggle Fullscreen",
-        shortcut: "",
+        shortcut: SHORTCUT_FULLSCREEN,
         action: PaletteAction::ToggleFullscreen,
     },
     Command {
         title: "Toggle Appearance Theme",
-        shortcut: "",
+        shortcut: SHORTCUT_APPEARANCE,
         action: PaletteAction::ToggleAppearanceTheme,
     },
     Command {
         title: "Copy",
-        shortcut: "Cmd+C",
+        shortcut: SHORTCUT_COPY,
         action: PaletteAction::Copy,
     },
     Command {
         title: "Paste",
-        shortcut: "Cmd+V",
+        shortcut: SHORTCUT_PASTE,
         action: PaletteAction::Paste,
     },
     Command {
         title: "Search Forward",
-        shortcut: "Cmd+F",
+        shortcut: SHORTCUT_SEARCH,
         action: PaletteAction::SearchForward,
     },
     Command {
@@ -219,8 +318,13 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         title: "Clear History",
-        shortcut: "",
+        shortcut: SHORTCUT_CLEAR_HISTORY,
         action: PaletteAction::ClearHistory,
+    },
+    Command {
+        title: "/market · Browse extensions",
+        shortcut: "",
+        action: PaletteAction::OpenMarket,
     },
     Command {
         title: "List Fonts",
@@ -247,6 +351,7 @@ const COMMANDS: &[Command] = &[
 enum PaletteMode {
     Commands,
     Fonts(Vec<String>),
+    Market(Vec<MarketItem>),
 }
 
 /// One row in the filtered result list. Variants carry exactly the
@@ -261,6 +366,11 @@ enum PaletteRow<'a> {
     Font {
         family: &'a str,
     },
+    Market {
+        id: &'a str,
+        name: &'a str,
+        installed: bool,
+    },
 }
 
 impl<'a> PaletteRow<'a> {
@@ -268,6 +378,7 @@ impl<'a> PaletteRow<'a> {
         match *self {
             PaletteRow::Command { title, .. } => title,
             PaletteRow::Font { family } => family,
+            PaletteRow::Market { name, .. } => name,
         }
     }
 
@@ -275,13 +386,19 @@ impl<'a> PaletteRow<'a> {
         match *self {
             PaletteRow::Command { shortcut, .. } => shortcut,
             PaletteRow::Font { .. } => "",
+            PaletteRow::Market {
+                installed: true, ..
+            } => "Remove",
+            PaletteRow::Market {
+                installed: false, ..
+            } => "Install",
         }
     }
 
     fn action(&self) -> Option<PaletteAction> {
         match *self {
             PaletteRow::Command { action, .. } => Some(action),
-            PaletteRow::Font { .. } => None,
+            PaletteRow::Font { .. } | PaletteRow::Market { .. } => None,
         }
     }
 }
@@ -506,6 +623,15 @@ impl CommandPalette {
         self.last_scroll_time = None;
     }
 
+    pub fn enter_market_mode(&mut self, items: Vec<MarketItem>) {
+        self.mode = PaletteMode::Market(items);
+        self.query.clear();
+        self.selected_index = 0;
+        self.scroll_offset = 0;
+        self.caret_blink_start = Instant::now();
+        self.last_scroll_time = None;
+    }
+
     pub fn set_query(&mut self, query: String) {
         self.query = query;
         self.selected_index = 0;
@@ -552,7 +678,16 @@ impl CommandPalette {
             .get(self.selected_index)
             .and_then(|(_, row)| match row {
                 PaletteRow::Font { family } => Some((*family).to_owned()),
-                PaletteRow::Command { .. } => None,
+                PaletteRow::Command { .. } | PaletteRow::Market { .. } => None,
+            })
+    }
+
+    pub fn get_selected_market_id(&self) -> Option<String> {
+        self.filtered_rows()
+            .get(self.selected_index)
+            .and_then(|(_, row)| match row {
+                PaletteRow::Market { id, .. } => Some((*id).to_owned()),
+                PaletteRow::Command { .. } | PaletteRow::Font { .. } => None,
             })
     }
 
@@ -589,6 +724,27 @@ impl CommandPalette {
                 .filter_map(|family| {
                     let score = fuzzy_score(&self.query, family)?;
                     Some((score, PaletteRow::Font { family }))
+                })
+                .collect(),
+            PaletteMode::Market(items) => items
+                .iter()
+                .filter_map(|item| {
+                    let score = [
+                        item.name.as_str(),
+                        item.id.as_str(),
+                        item.description.as_str(),
+                    ]
+                    .into_iter()
+                    .filter_map(|candidate| fuzzy_score(&self.query, candidate))
+                    .max()?;
+                    Some((
+                        score,
+                        PaletteRow::Market {
+                            id: &item.id,
+                            name: &item.name,
+                            installed: item.installed,
+                        },
+                    ))
                 })
                 .collect(),
         };
@@ -708,6 +864,7 @@ impl CommandPalette {
         let placeholder = match self.mode {
             PaletteMode::Commands => "Type a command...",
             PaletteMode::Fonts(_) => "Type a font name...",
+            PaletteMode::Market(_) => "Search extensions...",
         };
         let display_text = if self.query.is_empty() {
             placeholder

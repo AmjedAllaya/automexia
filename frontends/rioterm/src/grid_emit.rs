@@ -335,6 +335,73 @@ fn cell_fg_hinted(tag: HintTag, renderer: &Renderer) -> [u8; 4] {
     }
 }
 
+fn semantic_row_fg(
+    row: &Row<Square>,
+    cols: usize,
+    renderer: &Renderer,
+    scratch: &mut String,
+) -> Option<[u8; 4]> {
+    if !renderer.devops_enabled {
+        return None;
+    }
+    scratch.clear();
+    if scratch.capacity() < cols {
+        scratch.reserve(cols);
+    }
+    for square in row.inner.iter().take(cols) {
+        if square.content_tag() != ContentTag::Codepoint {
+            continue;
+        }
+        let character = square.c();
+        if character != ' ' && !character.is_control() {
+            scratch.push(character);
+        }
+    }
+    match crate::automexia::runtime::classify_row_text(scratch)? {
+        crate::automexia::api::SemanticSeverity::Error => {
+            Some(normalized_to_u8(renderer.named_colors.red))
+        }
+        crate::automexia::api::SemanticSeverity::Warning => {
+            Some(normalized_to_u8(renderer.named_colors.yellow))
+        }
+        crate::automexia::api::SemanticSeverity::Success => {
+            Some(normalized_to_u8(renderer.named_colors.green))
+        }
+        crate::automexia::api::SemanticSeverity::Info => {
+            Some(normalized_to_u8(renderer.named_colors.cyan))
+        }
+        crate::automexia::api::SemanticSeverity::Debug => {
+            Some(normalized_to_u8(renderer.named_colors.blue))
+        }
+    }
+}
+
+#[inline]
+fn semantic_or_cell_fg(
+    semantic: Option<[u8; 4]>,
+    sq: Square,
+    style: Style,
+    renderer: &Renderer,
+    term_colors: &TermColors,
+) -> [u8; 4] {
+    // Preserve colors explicitly produced by applications (kubecolor,
+    // Terraform, TUIs, etc.). Semantic highlighting only improves plain
+    // default-foreground output.
+    let can_override = !style.flags.contains(StyleFlags::INVERSE)
+        && matches!(
+            style.fg,
+            AnsiColor::Named(NamedColor::Foreground)
+                | AnsiColor::Named(NamedColor::White)
+                | AnsiColor::Named(NamedColor::LightWhite)
+        );
+    if can_override {
+        if let Some(color) = semantic {
+            return color;
+        }
+    }
+    cell_fg(sq, style, renderer, term_colors)
+}
+
 use rio_backend::sugarloaf::font::FontLibrary;
 use rio_backend::sugarloaf::grid::{
     AtlasSlot, CellBg, CellText, GlyphKey, GridRenderer, RasterizedGlyph,
@@ -1208,6 +1275,8 @@ pub struct GridGlyphRasterizer {
     /// while still letting the glyph→column mapping recover the right
     /// cell for each shaped glyph.
     run_cell_columns: Vec<u16>,
+    /// Reused DevOps row-classification buffer; no per-row String allocation after warm-up.
+    semantic_text_scratch: String,
     /// Cached CoreText handles per font_id.
     #[cfg(target_os = "macos")]
     handle_cache: FxHashMap<u32, rio_backend::sugarloaf::font::macos::FontHandle>,
@@ -1262,6 +1331,7 @@ impl GridGlyphRasterizer {
             #[cfg(target_os = "macos")]
             run_cell_starts: Vec::new(),
             run_cell_columns: Vec::new(),
+            semantic_text_scratch: String::new(),
             #[cfg(not(target_os = "macos"))]
             run_str_scratch: String::new(),
             #[cfg(target_os = "macos")]
@@ -1655,7 +1725,9 @@ pub fn build_row_fg(
     // the row has no selection / no color-changing hints.
     let has_sel = row_sel.is_some();
     let has_color_hints = row_hints.iter().any(|rh| rh.tag != HintTag::HyperlinkHover);
-    let needs_per_cell_check = has_sel || has_color_hints;
+    let semantic_fg =
+        semantic_row_fg(row, cols, renderer, &mut rasterizer.semantic_text_scratch);
+    let needs_per_cell_check = has_sel || has_color_hints || semantic_fg.is_some();
     // Consulted in the per-cell sprite hook and the run-extension break.
     let use_drawable_chars = renderer.use_drawable_chars();
 
@@ -1749,7 +1821,7 @@ pub fn build_row_fg(
                 } else if let Some(tag) = hint_tag {
                     cell_fg_hinted(tag, renderer)
                 } else {
-                    cell_fg(sq, style, renderer, term_colors)
+                    semantic_or_cell_fg(semantic_fg, sq, style, renderer, term_colors)
                 }
             };
 
@@ -1835,7 +1907,13 @@ pub fn build_row_fg(
                         } else if let Some(tag) = hint_tag {
                             cell_fg_hinted(tag, renderer)
                         } else {
-                            cell_fg(sq, style, renderer, term_colors)
+                            semantic_or_cell_fg(
+                                semantic_fg,
+                                sq,
+                                style,
+                                renderer,
+                                term_colors,
+                            )
                         }
                     };
                     fg_scratch.push(CellText {
@@ -2180,7 +2258,13 @@ pub fn build_row_fg(
                 } else {
                     (
                         CellText::ATLAS_GRAYSCALE,
-                        cell_fg(src_sq, src_style, renderer, term_colors),
+                        semantic_or_cell_fg(
+                            semantic_fg,
+                            src_sq,
+                            src_style,
+                            renderer,
+                            term_colors,
+                        ),
                     )
                 }
             };

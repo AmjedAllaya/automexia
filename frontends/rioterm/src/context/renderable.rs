@@ -9,6 +9,7 @@ use rio_backend::crosswords::square::Square;
 use rio_backend::event::TerminalDamage;
 use rio_backend::selection::SelectionRange;
 use rustc_hash::FxHashMap;
+use std::path::PathBuf;
 use std::time::Instant;
 
 #[derive(Clone, Copy, Debug)]
@@ -83,6 +84,21 @@ pub struct RenderableContent {
     /// Per-context palette + named-color overrides as of the snapshot.
     /// `Copy` — captured by value alongside the row data.
     pub term_colors: TermColors,
+    /// Current working directory captured under the same terminal lock as the visible rows.
+    /// Extension/UI code reads this cached value and never re-locks the PTY state during paint.
+    pub current_directory: Option<PathBuf>,
+    /// Raw terminal/OSC title captured with the same snapshot. Unlike the
+    /// configurable window title, this preserves child-session metadata
+    /// such as the standard WSL `user@host:/path` title.
+    pub terminal_title: String,
+    /// Optional shell-published distro metadata from OSC 1337 SetUserVar.
+    pub shell_distro: Option<String>,
+    /// Optional shell-published OS version metadata.
+    pub shell_os_version: Option<String>,
+    /// Whether Automexia shell integration announced itself for this session.
+    pub shell_integration: bool,
+    /// Whether the shell is currently waiting for editable prompt input.
+    pub shell_prompt_active: bool,
     /// Visible-area scroll offset at the time of the snapshot. Used by
     /// downstream selection-line / hint-line math.
     pub display_offset: usize,
@@ -126,6 +142,12 @@ impl RenderableContent {
             style_table: Vec::new(),
             extras: rustc_hash::FxHashMap::default(),
             term_colors: TermColors::default(),
+            current_directory: None,
+            terminal_title: String::new(),
+            shell_distro: None,
+            shell_os_version: None,
+            shell_integration: false,
+            shell_prompt_active: false,
             display_offset: 0,
             columns: 0,
             screen_lines: 0,
