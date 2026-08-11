@@ -2,6 +2,7 @@ pub mod assistant;
 pub mod command_palette;
 pub mod confirm_quit;
 pub mod custom_cursor;
+pub mod devops_status;
 pub mod helpers;
 pub mod island;
 pub mod scrollbar;
@@ -56,6 +57,9 @@ pub struct Renderer {
     pub margin: rio_backend::config::layout::Margin,
     pub island: Option<island::Island>,
     pub command_palette: command_palette::CommandPalette,
+    pub devops_enabled: bool,
+    extension_generation: u32,
+    pub devops_status: devops_status::DevOpsStatus,
     unfocused_split_opacity: f32,
     unfocused_split_fill: Option<ColorArray>,
     /// Route id of the pane rendered as active last frame. Keyed on
@@ -99,8 +103,8 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(config: &Config) -> Renderer {
-        let colors = List::from(&config.colors);
-        let named_colors = config.colors;
+        let named_colors = crate::automexia::theme::effective_colors(config.colors);
+        let colors = List::from(&named_colors);
 
         let mut dynamic_background =
             (named_colors.background.0, named_colors.background.1, false);
@@ -155,6 +159,11 @@ impl Renderer {
                 palette.has_adaptive_theme = config.adaptive_colors.is_some();
                 palette
             },
+            devops_enabled: crate::automexia::runtime::is_installed(
+                crate::automexia::builtins::devops::ID,
+            ),
+            extension_generation: crate::automexia::runtime::generation(),
+            devops_status: devops_status::DevOpsStatus::default(),
             named_colors,
             dynamic_background,
             opacity_cells: config.window.opacity_cells,
@@ -169,6 +178,25 @@ impl Renderer {
             trail_cursor_enabled: config.effects.trail_cursor,
             trail_cursor: trail_cursor::TrailCursor::new(),
         }
+    }
+
+    /// Synchronize the cached extension activation state. The fast path is one
+    /// atomic generation load; filesystem state is never checked per frame.
+    pub fn sync_extension_state(&mut self) -> bool {
+        let generation = crate::automexia::runtime::generation();
+        if generation == self.extension_generation {
+            return false;
+        }
+        self.extension_generation = generation;
+        let enabled = crate::automexia::runtime::is_installed(
+            crate::automexia::builtins::devops::ID,
+        );
+        let changed = enabled != self.devops_enabled;
+        self.devops_enabled = enabled;
+        if !enabled {
+            self.devops_status.clear();
+        }
+        changed
     }
 
     #[inline]
@@ -280,6 +308,7 @@ impl Renderer {
         sugarloaf: &mut Sugarloaf,
         context_manager: &mut ContextManager<EventProxy>,
     ) -> (Option<crate::context::renderable::WindowUpdate>, bool) {
+        let extension_state_changed = self.sync_extension_state();
         let mut any_panel_dirty = false;
         let grid = context_manager.current_grid_mut();
         let active_route = grid.current().route_id;
@@ -309,7 +338,9 @@ impl Renderer {
                     context.renderable_content.cursor.content_ref;
             }
 
-            let force_full_damage = has_active_changed || self.is_game_mode_enabled;
+            let force_full_damage = has_active_changed
+                || self.is_game_mode_enabled
+                || extension_state_changed;
 
             let is_dirty = context.renderable_content.pending_update.is_dirty();
 
@@ -365,6 +396,21 @@ impl Renderer {
                     &mut context.renderable_content.extras,
                 );
                 context.renderable_content.term_colors = terminal.colors;
+                context.renderable_content.current_directory =
+                    terminal.current_directory.clone();
+                context.renderable_content.terminal_title = terminal.title.to_string();
+                context.renderable_content.shell_distro =
+                    terminal.user_vars.get("automexia_distro").cloned();
+                context.renderable_content.shell_os_version =
+                    terminal.user_vars.get("automexia_os_version").cloned();
+                context.renderable_content.shell_integration = terminal
+                    .user_vars
+                    .get("automexia_shell")
+                    .is_some_and(|value| value == "1");
+                context.renderable_content.shell_prompt_active = terminal
+                    .user_vars
+                    .get("automexia_prompt_active")
+                    .is_some_and(|value| value == "1");
                 context.renderable_content.display_offset = terminal.display_offset();
                 context.renderable_content.columns = snapshot_cols;
                 context.renderable_content.screen_lines = terminal.screen_lines();
@@ -677,6 +723,145 @@ impl Renderer {
             sugarloaf,
             (window_size.width, window_size.height, scale_factor),
         );
+
+        if self.devops_enabled {
+            let (session, prompt_active, historical_anchors, live_anchor) = {
+                let grid = context_manager.current_grid();
+                let (context, margin) = grid.current_context_with_computed_dimension();
+                let rc = &context.renderable_content;
+                let scale = scale_factor.max(f32::EPSILON);
+                let cell_height = context.dimension.cell.cell_height as f32 / scale;
+                let cell_width = context.dimension.cell.cell_width as f32 / scale;
+                let origin_x = margin.left / scale;
+                let origin_y = margin.top / scale;
+                let grid_width = rc.columns.max(1) as f32 * cell_width;
+                let first_absolute_row = rc.lines_evicted.saturating_add(
+                    rc.history_size.saturating_sub(rc.display_offset) as u64,
+                );
+
+                let historical_anchors =
+                    rc.visible_rows
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(row_index, row)| {
+                            if row.semantic_prompt
+                            != rio_backend::crosswords::grid::row::SemanticPrompt::Prompt
+                        {
+                            return None;
+                        }
+                            let blank = row.inner.iter().all(|sq| {
+                                sq.is_bg_only() || matches!(sq.c(), '\0' | ' ')
+                            });
+                            if !blank {
+                                return None;
+                            }
+                            Some(crate::automexia::ui::PromptAnchor {
+                                key: first_absolute_row.saturating_add(row_index as u64),
+                                x: origin_x,
+                                y: origin_y + row_index as f32 * cell_height,
+                                width: grid_width,
+                                height: cell_height,
+                            })
+                        })
+                        .collect::<Vec<_>>();
+
+                // The shell marks the editable command row with OSC-133
+                // PromptContinuation. The DevOps row is the blank Prompt row
+                // immediately above it. Resolve that pair on every frame so
+                // resize/reflow follows terminal semantics rather than a stale
+                // cached y coordinate. Only the very first top-of-screen paint
+                // may fall back to cursor geometry before semantic rows arrive.
+                let cursor_row = rc.cursor.state.pos.row.0;
+                let semantic_live_anchor = if cursor_row >= 0 {
+                    let cursor_index = cursor_row as usize;
+                    rc.visible_rows
+                        .iter()
+                        .enumerate()
+                        .rev()
+                        .find_map(|(row_index, row)| {
+                            if row_index == 0
+                                || row_index > cursor_index
+                                || row.semantic_prompt
+                                    != rio_backend::crosswords::grid::row::SemanticPrompt::PromptContinuation
+                            {
+                                return None;
+                            }
+                            let prompt_row = &rc.visible_rows[row_index - 1];
+                            if prompt_row.semantic_prompt
+                                != rio_backend::crosswords::grid::row::SemanticPrompt::Prompt
+                            {
+                                return None;
+                            }
+                            let blank = prompt_row.inner.iter().all(|sq| {
+                                sq.is_bg_only() || matches!(sq.c(), '\0' | ' ')
+                            });
+                            if !blank { return None; }
+                            let prompt_index = row_index - 1;
+                            Some(crate::automexia::ui::PromptAnchor {
+                                key: first_absolute_row.saturating_add(prompt_index as u64),
+                                x: origin_x,
+                                y: origin_y + prompt_index as f32 * cell_height,
+                                width: grid_width,
+                                height: cell_height,
+                            })
+                        })
+                } else {
+                    None
+                };
+
+                let live_anchor = if rc.shell_integration
+                    && rc.shell_prompt_active
+                    && rc.display_offset == 0
+                {
+                    semantic_live_anchor.or({
+                        // First prompt after startup/clear: the prompt consists
+                        // of exactly the blank context row plus the editable row.
+                        // Do not use this fallback deeper in the screen because a
+                        // long wrapped command can legitimately scroll its context
+                        // row out of view.
+                        if cursor_row == 1 {
+                            Some(crate::automexia::ui::PromptAnchor {
+                                key: first_absolute_row,
+                                x: origin_x,
+                                y: origin_y,
+                                width: grid_width,
+                                height: cell_height,
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                } else {
+                    None
+                };
+
+                (
+                    crate::automexia::api::SessionFacts {
+                        session_id: context.route_id,
+                        cwd: rc.current_directory.clone(),
+                        title: rc.terminal_title.clone(),
+                        distro: rc.shell_distro.clone(),
+                        os_version: rc.shell_os_version.clone(),
+                        shell_integration: rc.shell_integration,
+                        shell_pid: context.shell_pid,
+                    },
+                    rc.shell_prompt_active,
+                    historical_anchors,
+                    live_anchor,
+                )
+            };
+            let refresh_pending = self.devops_status.render_prompt_rows(
+                sugarloaf,
+                self.named_colors,
+                &session,
+                prompt_active,
+                &historical_anchors,
+                live_anchor,
+            );
+            if refresh_pending {
+                context_manager.schedule_render_on_route(100);
+            }
+        }
 
         self.command_palette.render(
             sugarloaf,

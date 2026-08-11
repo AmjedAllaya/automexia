@@ -1890,7 +1890,8 @@ impl Renderer {
             // composite on top. Single fullscreen instance, dedicated
             // vertex buffer, reuses the kitty image pipeline + sampler.
             if let Some(bg_tex) = background_image_texture.as_ref() {
-                if let ImageTexture::Wgpu { view, .. } = &bg_tex.gpu {
+                {
+                    let ImageTexture::Wgpu { view, .. } = &bg_tex.gpu;
                     let instance = ImageInstance {
                         dest_pos: [0.0, 0.0],
                         dest_size: [ctx.size.width, ctx.size.height],
@@ -1956,7 +1957,8 @@ impl Renderer {
                         continue;
                     }
                     if let Some(img) = image_textures.get(&draw.image_id) {
-                        if let ImageTexture::Wgpu { view, .. } = &img.gpu {
+                        {
+                            let ImageTexture::Wgpu { view, .. } = &img.gpu;
                             let bg = ctx.device.create_bind_group(
                                 &wgpu::BindGroupDescriptor {
                                     label: None,
@@ -2114,7 +2116,8 @@ impl Renderer {
                         continue;
                     }
                     if let Some(img) = image_textures.get(&draw.image_id) {
-                        if let ImageTexture::Wgpu { view, .. } = &img.gpu {
+                        {
+                            let ImageTexture::Wgpu { view, .. } = &img.gpu;
                             let bg = ctx.device.create_bind_group(
                                 &wgpu::BindGroupDescriptor {
                                     label: None,

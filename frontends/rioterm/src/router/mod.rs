@@ -211,6 +211,12 @@ impl Route<'_> {
                             .renderer
                             .command_palette
                             .get_selected_font();
+                        let selected_market_id = self
+                            .window
+                            .screen
+                            .renderer
+                            .command_palette
+                            .get_selected_market_id();
                         let selected_action = self
                             .window
                             .screen
@@ -236,7 +242,38 @@ impl Route<'_> {
                             return true;
                         }
 
+                        if let Some(extension_id) = selected_market_id {
+                            match crate::automexia::runtime::toggle(&extension_id) {
+                                Ok(_) => {
+                                    // Manager generation changes atomically. The requested redraw
+                                    // lets Renderer::run synchronize the state and force full damage
+                                    // for every visible split before row emission.
+                                    let items = crate::automexia::runtime::market_items();
+                                    self.window
+                                        .screen
+                                        .renderer
+                                        .command_palette
+                                        .enter_market_mode(items);
+                                }
+                                Err(error) => tracing::warn!(
+                                    "extension activation change failed for {}: {}",
+                                    extension_id,
+                                    error
+                                ),
+                            }
+                            self.request_overlay_redraw();
+                            return true;
+                        }
+
                         match selected_action {
+                            Some(PaletteAction::OpenMarket) => {
+                                let items = crate::automexia::runtime::market_items();
+                                self.window
+                                    .screen
+                                    .renderer
+                                    .command_palette
+                                    .enter_market_mode(items);
+                            }
                             // `ListFonts` stays inside the palette —
                             // swap the palette's contents from the
                             // command list to the registered font

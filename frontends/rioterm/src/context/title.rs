@@ -22,6 +22,9 @@ impl Default for ContextTitle {
 pub fn create_title_extra_from_context<T: rio_backend::event::EventListener>(
     context: &Context<T>,
 ) -> Option<ContextTitleExtra> {
+    #[cfg(not(unix))]
+    let _ = context;
+
     #[cfg(unix)]
     let program =
         teletypewriter::foreground_process_name(*context.main_fd, context.shell_pid);
@@ -46,6 +49,8 @@ pub fn create_title_extra_from_context<T: rio_backend::event::EventListener>(
 /// - If 4+ components deep, show `…/last/three/components`
 fn shorten_path(absolute: &str) -> String {
     let path = Path::new(absolute);
+    #[cfg(not(unix))]
+    let _ = path;
 
     // Replace home prefix with ~
     #[cfg(unix)]
