@@ -21,6 +21,17 @@ pub enum SemanticPrompt {
     PromptContinuation,
 }
 
+/// Completed shell command metadata attached to its semantic prompt row.
+///
+/// The data is renderer-neutral and travels with the row through scrollback
+/// and reflow.  This lets application chrome draw a durable right-aligned
+/// status/duration badge without writing decoration bytes into the PTY.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SemanticCommandResult {
+    pub exit_code: i32,
+    pub elapsed_ms: u64,
+}
+
 /// A row in the grid.
 #[derive(Clone, Debug)]
 pub struct Row<T> {
@@ -43,6 +54,16 @@ pub struct Row<T> {
     /// scrollback; cleared when the row is recycled.
     pub semantic_prompt: SemanticPrompt,
 
+    /// Stable shell-provided prompt identity (`OSC 133;A;aid=<id>`).
+    /// Unlike an absolute grid row, this survives resize/reflow and lets
+    /// renderer contributions keep per-prompt state attached to the same
+    /// logical prompt.
+    pub semantic_prompt_id: Option<u64>,
+
+    /// Result of the command entered at this prompt, populated from the OSC
+    /// 133 `C`/`D` lifecycle.  It remains `None` for an editable prompt.
+    pub semantic_command_result: Option<SemanticCommandResult>,
+
     /// Per-row dirty bit set on every write through `IndexMut` /
     /// `last_mut` / `iter_mut` / `reset` / `append*` / `front_split_off`.
     /// Read + cleared by the renderer's snapshot path so it can copy
@@ -60,6 +81,8 @@ impl<T> Default for Row<T> {
             kitty_virtual_placeholder: false,
             has_extras: false,
             semantic_prompt: SemanticPrompt::None,
+            semantic_prompt_id: None,
+            semantic_command_result: None,
             dirty: true,
         }
     }
@@ -99,6 +122,8 @@ impl<T: Clone + Default> Row<T> {
             kitty_virtual_placeholder: false,
             has_extras: false,
             semantic_prompt: SemanticPrompt::None,
+            semantic_prompt_id: None,
+            semantic_command_result: None,
             dirty: true,
         }
     }
@@ -116,6 +141,8 @@ impl<T: Clone + Default> Row<T> {
         self.kitty_virtual_placeholder = src.kitty_virtual_placeholder;
         self.has_extras = src.has_extras;
         self.semantic_prompt = src.semantic_prompt;
+        self.semantic_prompt_id = src.semantic_prompt_id;
+        self.semantic_command_result = src.semantic_command_result;
     }
 
     /// Reset a recycled row back to a blank `columns`-wide row, reusing the
@@ -132,6 +159,8 @@ impl<T: Clone + Default> Row<T> {
         self.kitty_virtual_placeholder = false;
         self.has_extras = false;
         self.semantic_prompt = SemanticPrompt::None;
+        self.semantic_prompt_id = None;
+        self.semantic_command_result = None;
         self.dirty = true;
     }
 
@@ -217,6 +246,8 @@ impl<T: Clone + Default> Row<T> {
         self.kitty_virtual_placeholder = false;
         self.has_extras = false;
         self.semantic_prompt = SemanticPrompt::None;
+        self.semantic_prompt_id = None;
+        self.semantic_command_result = None;
         self.dirty = true;
     }
 }
@@ -231,6 +262,8 @@ impl<T> Row<T> {
             kitty_virtual_placeholder: false,
             has_extras: true,
             semantic_prompt: SemanticPrompt::None,
+            semantic_prompt_id: None,
+            semantic_command_result: None,
             dirty: true,
         }
     }
@@ -308,6 +341,30 @@ impl<T> Row<T> {
         T: GridSquare,
     {
         self.inner.iter().all(GridSquare::is_empty)
+    }
+
+    /// Apply an OSC 133 row marker and participate in incremental snapshots.
+    /// Metadata-only writes must mark the row dirty even when no terminal cell
+    /// changed, otherwise the renderer retains a stale semantic row forever.
+    #[inline]
+    pub fn set_semantic_prompt(
+        &mut self,
+        prompt: SemanticPrompt,
+        prompt_id: Option<u64>,
+    ) {
+        self.semantic_prompt = prompt;
+        self.semantic_prompt_id = prompt_id;
+        if prompt == SemanticPrompt::Prompt {
+            self.semantic_command_result = None;
+        }
+        self.dirty = true;
+    }
+
+    /// Store a completed command result as metadata-only row damage.
+    #[inline]
+    pub fn set_semantic_command_result(&mut self, result: SemanticCommandResult) {
+        self.semantic_command_result = Some(result);
+        self.dirty = true;
     }
 }
 

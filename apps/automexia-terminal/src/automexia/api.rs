@@ -47,6 +47,10 @@ pub struct SessionFacts {
     pub distro: Option<String>,
     /// Optional shell-published OS version (for example 24.04).
     pub os_version: Option<String>,
+    /// Shell name published by the integration (`PowerShell`, `bash`, `zsh`).
+    /// Keeping this explicit prevents a stale distro variable or window title
+    /// from relabeling a native PowerShell session as WSL.
+    pub shell_name: Option<String>,
     /// True after Automexia shell integration announces itself over OSC 1337.
     /// This is stable session metadata; transient prompt/editing state stays in
     /// the application render snapshot so extension discovery caches do not churn.

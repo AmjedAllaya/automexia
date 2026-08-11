@@ -1,5 +1,14 @@
+//! Persistent, renderer-owned operational chrome.
+//!
+//! Context is intentionally outside the terminal grid. PTY output, prompt
+//! editing, scrollback and resize/reflow therefore cannot erase it. Discovery
+//! is asynchronous and local-only; this renderer never contacts a daemon,
+//! cluster or cloud API.
+
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
+#[cfg(not(target_os = "windows"))]
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use rio_backend::config::colors::Colors;
 use rio_backend::sugarloaf::text::DrawOpts;
@@ -8,18 +17,30 @@ use rio_backend::sugarloaf::Sugarloaf;
 use crate::automexia::api::SessionFacts;
 use crate::automexia::builtins::devops::{CloudContext, DevOpsSnapshot};
 use crate::automexia::runtime;
-use crate::automexia::ui::{PromptAnchor, MAX_PROMPT_CONTEXT_HISTORY};
+use crate::automexia::ui::{
+    CommandResultAnchor, PromptAnchor, MAX_PROMPT_CONTEXT_HISTORY,
+};
+use crate::renderer::island::{CONTEXT_BAR_HEIGHT, CONTEXT_BAR_TOP};
 
-const REFRESH_INTERVAL: Duration = Duration::from_secs(3);
+pub(crate) const LIVE_REFRESH_MILLIS: u64 = 3_000;
+const REFRESH_INTERVAL: Duration = Duration::from_millis(LIVE_REFRESH_MILLIS);
 const REFRESH_IN_FLIGHT_TIMEOUT: Duration = Duration::from_secs(10);
-const FONT_SIZE: f32 = 12.0;
-const SEGMENT_HEIGHT: f32 = 20.0;
-const SEGMENT_PAD_X: f32 = 5.0;
-const SEGMENT_GAP: f32 = 7.0;
-const ICON_SIZE: f32 = 13.0;
-const ICON_TEXT_GAP: f32 = 6.0;
-const SEPARATOR_GAP: f32 = 6.0;
 const ORDER: u8 = 19;
+const CONTEXT_MARGIN_X: f32 = 18.0;
+const CONTEXT_GAP: f32 = 24.0;
+const CONTEXT_PAD_X: f32 = 20.0;
+const CONTEXT_FONT_SIZE: f32 = 18.0;
+const CONTEXT_ICON_SIZE: f32 = 24.0;
+const CLOCK_ICON_SIZE: f32 = 23.0;
+const PROMPT_CONTEXT_FONT_SIZE: f32 = 18.0;
+const PROMPT_CONTEXT_ICON_SIZE: f32 = 23.0;
+const PROMPT_CONTEXT_PAD_X: f32 = 4.0;
+const PROMPT_CONTEXT_ICON_GAP: f32 = 8.0;
+const PROMPT_CONTEXT_SEPARATOR_GAP: f32 = 9.0;
+const PROMPT_RESULT_RESERVE: f32 = 112.0;
+const CONTEXT_RADIUS: f32 = 9.0;
+const RIGHT_STATUS_WIDTH: f32 = 310.0;
+const RIGHT_STATUS_BREAKPOINT: f32 = 760.0;
 
 const MAX_WSL_CHARS: usize = 14;
 const MAX_CONTEXT_CHARS: usize = 22;
@@ -29,25 +50,27 @@ const MAX_ENV_CHARS: usize = 16;
 
 #[derive(Clone, Copy)]
 enum SegmentColor {
-    Foreground,
     Cyan,
     Blue,
     Yellow,
     Magenta,
     Red,
     Green,
+    Orange,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum IconKind {
-    Ubuntu,
+    Wsl,
+    Windows,
     Docker,
     Kubernetes,
     Cloud,
     Terraform,
     Git,
-    User,
     Environment,
+    User,
+    Clock,
     Production,
 }
 
@@ -60,14 +83,30 @@ struct Segment {
 
 struct PromptSnapshot {
     session_id: usize,
+    generation: Option<u64>,
     key: u64,
     segments: Vec<Segment>,
 }
 
 struct ActivePrompt {
     session_id: usize,
+    generation: Option<u64>,
     key: u64,
     segments: Vec<Segment>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ContextBarLayout {
+    left_x: f32,
+    left_width: f32,
+    right: Option<(f32, f32)>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SnapshotCandidate {
+    Unchanged,
+    StaleSession,
+    Current,
 }
 
 #[derive(Default)]
@@ -85,27 +124,65 @@ pub struct DevOpsStatus {
 
 impl DevOpsStatus {
     pub fn clear(&mut self) {
-        self.snapshot = DevOpsSnapshot::default();
-        self.prompt_history.clear();
-        self.active_prompt = None;
-        self.last_refresh_request = None;
-        self.last_session = None;
-        self.observed_global_generation = 0;
-        self.snapshot_revision = 0;
-        self.refresh_pending = false;
-        self.request_in_flight = false;
+        *self = Self::default();
     }
 
-    /// Render DevOps context for historical semantic prompt rows plus one live
-    /// cursor-anchored prompt row.
+    /// Draw the persistent second chrome row from cached local context facts.
+    /// Returns true while the discovery worker owes us another snapshot.
+    pub fn render_context_bar(
+        &mut self,
+        sugarloaf: &mut Sugarloaf,
+        colors: Colors,
+        session: &SessionFacts,
+        dimensions: (f32, f32, f32),
+    ) -> bool {
+        self.request_refresh_if_needed(session, false);
+        self.sync_cached_snapshot(session);
+
+        let (window_width, _window_height, scale_factor) = dimensions;
+        let logical_width = window_width / scale_factor.max(f32::EPSILON);
+        let layout = context_bar_layout(logical_width);
+        let outline = [0.10, 0.17, 0.24, 0.96];
+        let fill = [0.018, 0.040, 0.066, 0.91];
+
+        draw_glass_surface(
+            sugarloaf,
+            layout.left_x,
+            CONTEXT_BAR_TOP,
+            layout.left_width,
+            fill,
+            outline,
+        );
+        let segments = self.build_live_segments(session);
+        self.draw_context_segments(
+            sugarloaf,
+            colors,
+            layout.left_x,
+            layout.left_width,
+            &segments,
+        );
+
+        if let Some((right_x, right_width)) = layout.right {
+            draw_glass_surface(
+                sugarloaf,
+                right_x,
+                CONTEXT_BAR_TOP,
+                right_width,
+                fill,
+                outline,
+            );
+            self.draw_shell_clock(sugarloaf, colors, session, right_x, right_width);
+        }
+
+        self.refresh_pending
+    }
+
+    /// Draw a renderer-owned context row above every semantic shell prompt.
     ///
-    /// Historical rows come from OSC-133 markers carried in scrollback. The live
-    /// row is derived from active cursor geometry every frame by the application,
-    /// so resize/fullscreen and an incomplete first visible-row snapshot cannot
-    /// orphan the current context line.
-    ///
-    /// Returns `true` while asynchronous discovery is pending so the caller can
-    /// schedule a short follow-up redraw without blocking the render thread.
+    /// The shell reserves a blank `Prompt` row, a complete-path continuation,
+    /// and a short editable continuation. Context is therefore durable grid
+    /// metadata rather than prompt text: typing cannot erase it, scrollback
+    /// retains it, and resize/reflow resolves its current geometry each frame.
     pub fn render_prompt_rows(
         &mut self,
         sugarloaf: &mut Sugarloaf,
@@ -114,51 +191,81 @@ impl DevOpsStatus {
         prompt_active: bool,
         historical_anchors: &[PromptAnchor],
         live_anchor: Option<PromptAnchor>,
-    ) -> bool {
+    ) {
         let new_prompt = self.sync_active_prompt(
             session,
             prompt_active,
             live_anchor,
             historical_anchors,
         );
-        self.request_refresh_if_needed(session, new_prompt);
-        self.sync_cached_snapshot(session);
+        if new_prompt {
+            self.request_refresh_if_needed(session, true);
+            self.sync_cached_snapshot(session);
+        }
 
         if prompt_active {
             if let Some(anchor) = live_anchor {
-                let live = self.build_live_segments(session);
+                let segments = self.build_live_segments(session);
                 match self.active_prompt.as_mut() {
                     Some(active)
                         if active.session_id == session.session_id
-                            && active.key == anchor.key =>
+                            && same_prompt_identity(
+                                active.generation,
+                                active.key,
+                                anchor.generation,
+                                anchor.key,
+                            ) =>
                     {
-                        active.segments = live;
+                        active.generation = anchor.generation;
+                        active.key = anchor.key;
+                        active.segments = segments;
                     }
                     _ => {
                         self.active_prompt = Some(ActivePrompt {
                             session_id: session.session_id,
+                            generation: anchor.generation,
                             key: anchor.key,
-                            segments: live,
+                            segments,
                         });
                     }
                 }
             }
         }
 
+        // A newly visible historical row can predate this renderer instance
+        // (for example after restoring a route or deep scrollback). Never
+        // leave its context strip empty: use the current local snapshot until
+        // a prompt-specific snapshot exists.
+        let fallback_segments = self.build_live_segments(session);
         for anchor in historical_anchors {
-            if live_anchor.is_some_and(|live| live.key == anchor.key) {
+            if live_anchor.is_some_and(|live| {
+                same_prompt_identity(
+                    live.generation,
+                    live.key,
+                    anchor.generation,
+                    anchor.key,
+                )
+            }) {
                 continue;
             }
-            if let Some(cached) = self.cached_segments(session.session_id, anchor.key) {
-                self.draw_prompt_segments(sugarloaf, colors, anchor, cached);
-            }
+            let segments = self
+                .cached_segments(session.session_id, anchor)
+                .unwrap_or(&fallback_segments);
+            self.draw_prompt_segments(sugarloaf, colors, anchor, segments);
         }
 
         if prompt_active {
-            if let Some(anchor) = live_anchor {
-                if let Some(active) = self.active_prompt.as_ref().filter(|entry| {
-                    entry.session_id == session.session_id && entry.key == anchor.key
-                }) {
+            if let (Some(anchor), Some(active)) =
+                (live_anchor, self.active_prompt.as_ref())
+            {
+                if active.session_id == session.session_id
+                    && same_prompt_identity(
+                        active.generation,
+                        active.key,
+                        anchor.generation,
+                        anchor.key,
+                    )
+                {
                     self.draw_prompt_segments(
                         sugarloaf,
                         colors,
@@ -168,18 +275,8 @@ impl DevOpsStatus {
                 }
             }
         }
-
-        self.refresh_pending
     }
 
-    /// Synchronize the live prompt with generic shell lifecycle metadata.
-    ///
-    /// A prompt is frozen when the shell leaves editable-prompt state. If an
-    /// intermediate frame is coalesced and the next prompt arrives while the
-    /// previous prompt is still marked active, a changed anchor is treated as a
-    /// new prompt only when the previous key is still visible in the historical
-    /// anchors. If the previous key disappeared, the change is considered
-    /// resize/reflow and the active prompt simply adopts the new key.
     fn sync_active_prompt(
         &mut self,
         session: &SessionFacts,
@@ -189,83 +286,74 @@ impl DevOpsStatus {
     ) -> bool {
         if !prompt_active {
             if let Some(previous) = self.active_prompt.take() {
-                self.remember_prompt(
-                    previous.session_id,
-                    previous.key,
-                    previous.segments,
-                );
+                self.remember_prompt(previous);
             }
             return false;
         }
 
         let Some(anchor) = newest else {
-            // The active semantic row can legitimately be outside the visible
-            // viewport after a very long wrapped command. Keep the model but do
-            // not invent an on-screen position.
             return false;
         };
+        let Some(active) = self.active_prompt.as_ref() else {
+            self.active_prompt = Some(ActivePrompt {
+                session_id: session.session_id,
+                generation: anchor.generation,
+                key: anchor.key,
+                segments: self.build_live_segments(session),
+            });
+            return true;
+        };
 
-        let current = self
-            .active_prompt
-            .as_ref()
-            .map(|active| (active.session_id, active.key));
-        match current {
-            Some((session_id, key))
-                if session_id == session.session_id && key == anchor.key =>
-            {
-                false
+        if active.session_id == session.session_id
+            && same_prompt_identity(
+                active.generation,
+                active.key,
+                anchor.generation,
+                anchor.key,
+            )
+        {
+            if let Some(active) = self.active_prompt.as_mut() {
+                active.generation = anchor.generation;
+                active.key = anchor.key;
             }
-            Some((session_id, key)) if session_id == session.session_id => {
-                let previous_still_visible = historical_anchors
-                    .iter()
-                    .any(|candidate| candidate.key == key);
-                if previous_still_visible {
-                    if let Some(previous) = self.active_prompt.take() {
-                        self.remember_prompt(
-                            previous.session_id,
-                            previous.key,
-                            previous.segments,
-                        );
-                    }
-                    self.active_prompt = Some(ActivePrompt {
-                        session_id: session.session_id,
-                        key: anchor.key,
-                        segments: self.immediate_segments(session),
-                    });
-                    true
-                } else {
-                    // Reflow/resize moved the semantic row. Preserve its live
-                    // model and just update the current geometry key.
-                    if let Some(active) = self.active_prompt.as_mut() {
-                        active.key = anchor.key;
-                    }
-                    false
-                }
-            }
-            Some(_) => {
-                if let Some(previous) = self.active_prompt.take() {
-                    self.remember_prompt(
-                        previous.session_id,
-                        previous.key,
-                        previous.segments,
-                    );
-                }
-                self.active_prompt = Some(ActivePrompt {
-                    session_id: session.session_id,
-                    key: anchor.key,
-                    segments: self.immediate_segments(session),
-                });
-                true
-            }
-            None => {
-                self.active_prompt = Some(ActivePrompt {
-                    session_id: session.session_id,
-                    key: anchor.key,
-                    segments: self.immediate_segments(session),
-                });
-                true
-            }
+            return false;
         }
+
+        let generation_proves_new_prompt = active.session_id == session.session_id
+            && active.generation.is_some()
+            && anchor.generation.is_some();
+        let previous_still_visible = historical_anchors.iter().any(|candidate| {
+            same_prompt_identity(
+                active.generation,
+                active.key,
+                candidate.generation,
+                candidate.key,
+            )
+        });
+        if active.session_id != session.session_id
+            || generation_proves_new_prompt
+            || previous_still_visible
+        {
+            if let Some(previous) = self.active_prompt.take() {
+                self.remember_prompt(previous);
+            }
+            self.active_prompt = Some(ActivePrompt {
+                session_id: session.session_id,
+                generation: anchor.generation,
+                key: anchor.key,
+                segments: self.build_live_segments(session),
+            });
+            return true;
+        }
+
+        // Legacy integrations without `aid` cannot distinguish a reflowed row
+        // from a new row by identity alone. If the old key vanished, preserve
+        // the live prompt and adopt its recomputed geometry key.
+        if let Some(active) = self.active_prompt.as_mut() {
+            active.generation = anchor.generation;
+            active.key = anchor.key;
+        }
+        false
     }
 
     fn draw_prompt_segments(
@@ -275,96 +363,253 @@ impl DevOpsStatus {
         anchor: &PromptAnchor,
         segments: &[Segment],
     ) {
-        let row_height = anchor.height.max(FONT_SIZE + 2.0);
-        let segment_height = SEGMENT_HEIGHT.min(row_height);
-        let segment_y = anchor.y + (row_height - segment_height) / 2.0;
-        let text_y = segment_y + (segment_height - FONT_SIZE) / 2.0;
-        let right_edge = anchor.x + anchor.width.max(40.0);
-        let mut cursor_x = anchor.x + 2.0;
-        let separator = muted(colors.foreground, 0.28);
-        let mut drew_any = false;
+        let text_y = anchor.y
+            + (anchor.height.max(PROMPT_CONTEXT_FONT_SIZE) - PROMPT_CONTEXT_FONT_SIZE)
+                / 2.0
+            - 1.0;
+        let mut cursor_x = anchor.x + PROMPT_CONTEXT_PAD_X;
+        let right_edge = anchor.x + (anchor.width - PROMPT_RESULT_RESERVE).max(80.0);
+        let separator = muted(colors.foreground, 0.32);
 
-        for segment in segments {
-            let value_color = segment_color(colors, segment.color);
-            let opts = DrawOpts {
-                font_size: FONT_SIZE,
-                color: color_to_u8(value_color),
+        for (index, segment) in segments.iter().enumerate() {
+            let color = segment_color(colors, segment.color);
+            let icon_opts = DrawOpts {
+                font_size: PROMPT_CONTEXT_ICON_SIZE,
+                color: color_to_u8(color),
                 ..DrawOpts::default()
             };
-            let value_width = sugarloaf.text_mut().measure(&segment.value, &opts);
-            let segment_width =
-                SEGMENT_PAD_X + ICON_SIZE + ICON_TEXT_GAP + value_width + SEGMENT_PAD_X;
-            let separator_width = if drew_any {
-                SEPARATOR_GAP * 2.0 + 1.0
-            } else {
-                0.0
+            let text_opts = DrawOpts {
+                font_size: PROMPT_CONTEXT_FONT_SIZE,
+                color: color_to_u8(color),
+                ..DrawOpts::default()
             };
+            let icon = icon_glyph(segment.icon);
+            let icon_width = sugarloaf.text_mut().measure(icon, &icon_opts);
+            let text_width = sugarloaf.text_mut().measure(&segment.value, &text_opts);
+            let separator_width = if index == 0 {
+                0.0
+            } else {
+                PROMPT_CONTEXT_SEPARATOR_GAP * 2.0 + 1.0
+            };
+            let segment_width =
+                icon_width + PROMPT_CONTEXT_ICON_GAP + text_width + PROMPT_CONTEXT_PAD_X;
             if cursor_x + separator_width + segment_width > right_edge {
                 break;
             }
 
-            if drew_any {
-                cursor_x += SEPARATOR_GAP;
+            if index != 0 {
+                cursor_x += PROMPT_CONTEXT_SEPARATOR_GAP;
                 sugarloaf.line(
                     cursor_x,
-                    segment_y + 2.0,
+                    anchor.y + 3.0,
                     cursor_x,
-                    segment_y + segment_height - 2.0,
+                    anchor.y + anchor.height - 3.0,
                     1.0,
                     0.0,
                     separator,
                     ORDER,
                 );
-                cursor_x += SEPARATOR_GAP + 1.0;
+                cursor_x += PROMPT_CONTEXT_SEPARATOR_GAP + 1.0;
             }
-
-            let icon_x = cursor_x + SEGMENT_PAD_X;
-            let icon_y = segment_y + (segment_height - ICON_SIZE) / 2.0;
-            draw_icon(
-                sugarloaf,
-                segment.icon,
-                icon_x,
-                icon_y,
-                ICON_SIZE,
-                segment.color,
-                ORDER + 1,
-            );
-            sugarloaf.text_mut().draw(
-                icon_x + ICON_SIZE + ICON_TEXT_GAP,
-                text_y,
-                &segment.value,
-                &opts,
-            );
-            cursor_x += segment_width + SEGMENT_GAP;
-            drew_any = true;
+            sugarloaf
+                .text_mut()
+                .draw(cursor_x, text_y - 2.0, icon, &icon_opts);
+            cursor_x += icon_width + PROMPT_CONTEXT_ICON_GAP;
+            sugarloaf
+                .text_mut()
+                .draw(cursor_x, text_y, &segment.value, &text_opts);
+            cursor_x += text_width + PROMPT_CONTEXT_PAD_X;
         }
     }
 
-    fn cached_segments(&self, session_id: usize, key: u64) -> Option<&[Segment]> {
+    fn cached_segments(
+        &self,
+        session_id: usize,
+        anchor: &PromptAnchor,
+    ) -> Option<&[Segment]> {
         self.prompt_history
             .iter()
             .rev()
-            .find(|entry| entry.session_id == session_id && entry.key == key)
+            .find(|entry| {
+                entry.session_id == session_id
+                    && same_prompt_identity(
+                        entry.generation,
+                        entry.key,
+                        anchor.generation,
+                        anchor.key,
+                    )
+            })
             .map(|entry| entry.segments.as_slice())
     }
 
-    fn remember_prompt(&mut self, session_id: usize, key: u64, segments: Vec<Segment>) {
-        if let Some(existing) = self
-            .prompt_history
-            .iter_mut()
-            .find(|entry| entry.session_id == session_id && entry.key == key)
-        {
-            existing.segments = segments;
+    fn remember_prompt(&mut self, prompt: ActivePrompt) {
+        if let Some(existing) = self.prompt_history.iter_mut().find(|entry| {
+            entry.session_id == prompt.session_id
+                && same_prompt_identity(
+                    entry.generation,
+                    entry.key,
+                    prompt.generation,
+                    prompt.key,
+                )
+        }) {
+            existing.generation = prompt.generation;
+            existing.key = prompt.key;
+            existing.segments = prompt.segments;
             return;
         }
         self.prompt_history.push_back(PromptSnapshot {
-            session_id,
-            key,
-            segments,
+            session_id: prompt.session_id,
+            generation: prompt.generation,
+            key: prompt.key,
+            segments: prompt.segments,
         });
         while self.prompt_history.len() > MAX_PROMPT_CONTEXT_HISTORY {
             self.prompt_history.pop_front();
         }
+    }
+
+    /// Draw completion state on the semantic row that owns the command.
+    pub fn render_command_results(
+        &self,
+        sugarloaf: &mut Sugarloaf,
+        colors: Colors,
+        anchors: &[CommandResultAnchor],
+    ) {
+        for anchor in anchors {
+            let success = anchor.exit_code == 0;
+            let status = if success { "✓" } else { "×" };
+            let label = format!("{status}  {}", format_duration(anchor.elapsed_ms));
+            let opts = DrawOpts {
+                font_size: CONTEXT_FONT_SIZE,
+                color: color_to_u8(if success { colors.green } else { colors.red }),
+                ..DrawOpts::default()
+            };
+            let text_width = sugarloaf.text_mut().measure(&label, &opts);
+            let x = anchor.x + anchor.width - text_width - 10.0;
+            if x <= anchor.x + 24.0 {
+                continue;
+            }
+            let y = anchor.y + (anchor.height - CONTEXT_FONT_SIZE) / 2.0;
+            sugarloaf.text_mut().draw(x, y, &label, &opts);
+        }
+    }
+
+    fn draw_context_segments(
+        &self,
+        sugarloaf: &mut Sugarloaf,
+        colors: Colors,
+        x: f32,
+        width: f32,
+        segments: &[Segment],
+    ) {
+        let mut cursor_x = x + CONTEXT_PAD_X;
+        let right_edge = x + width - CONTEXT_PAD_X;
+        let text_y =
+            CONTEXT_BAR_TOP + (CONTEXT_BAR_HEIGHT - CONTEXT_FONT_SIZE) / 2.0 - 1.0;
+        let separator = muted(colors.foreground, 0.27);
+
+        for (index, segment) in segments.iter().enumerate() {
+            let icon = icon_glyph(segment.icon);
+            let color = segment_color(colors, segment.color);
+            let icon_opts = DrawOpts {
+                font_size: CONTEXT_ICON_SIZE,
+                color: color_to_u8(color),
+                ..DrawOpts::default()
+            };
+            let text_opts = DrawOpts {
+                font_size: CONTEXT_FONT_SIZE,
+                color: color_to_u8(color),
+                ..DrawOpts::default()
+            };
+            let icon_width = sugarloaf.text_mut().measure(icon, &icon_opts);
+            let text_width = sugarloaf.text_mut().measure(&segment.value, &text_opts);
+            let separator_width = if index == 0 { 0.0 } else { 25.0 };
+            if cursor_x + separator_width + icon_width + 10.0 + text_width > right_edge {
+                break;
+            }
+
+            if index != 0 {
+                cursor_x += 12.0;
+                sugarloaf.line(
+                    cursor_x,
+                    CONTEXT_BAR_TOP + 12.0,
+                    cursor_x,
+                    CONTEXT_BAR_TOP + CONTEXT_BAR_HEIGHT - 12.0,
+                    1.0,
+                    0.0,
+                    separator,
+                    ORDER + 1,
+                );
+                cursor_x += 13.0;
+            }
+            sugarloaf
+                .text_mut()
+                .draw(cursor_x, text_y - 1.0, icon, &icon_opts);
+            cursor_x += icon_width + 10.0;
+            sugarloaf
+                .text_mut()
+                .draw(cursor_x, text_y, &segment.value, &text_opts);
+            cursor_x += text_width;
+        }
+    }
+
+    fn draw_shell_clock(
+        &self,
+        sugarloaf: &mut Sugarloaf,
+        colors: Colors,
+        session: &SessionFacts,
+        x: f32,
+        width: f32,
+    ) {
+        let shell_text = format!("Shell: {}", shell_label(session));
+        let clock_text = local_clock_hhmm();
+        let clock_icon = icon_glyph(IconKind::Clock);
+        let shell_opts = DrawOpts {
+            font_size: CONTEXT_FONT_SIZE,
+            color: color_to_u8(colors.blue),
+            ..DrawOpts::default()
+        };
+        let clock_icon_opts = DrawOpts {
+            font_size: CLOCK_ICON_SIZE,
+            color: color_to_u8(colors.cyan),
+            ..DrawOpts::default()
+        };
+        let clock_opts = DrawOpts {
+            font_size: CONTEXT_FONT_SIZE,
+            color: color_to_u8(muted(colors.foreground, 0.70)),
+            ..DrawOpts::default()
+        };
+        let shell_width = sugarloaf.text_mut().measure(&shell_text, &shell_opts);
+        let clock_icon_width = sugarloaf.text_mut().measure(clock_icon, &clock_icon_opts);
+        let clock_text_width = sugarloaf.text_mut().measure(&clock_text, &clock_opts);
+        let clock_width = clock_icon_width + 10.0 + clock_text_width;
+        let text_y =
+            CONTEXT_BAR_TOP + (CONTEXT_BAR_HEIGHT - CONTEXT_FONT_SIZE) / 2.0 - 1.0;
+        let shell_x = x + 18.0;
+        sugarloaf
+            .text_mut()
+            .draw(shell_x, text_y, &shell_text, &shell_opts);
+        let separator_x = shell_x + shell_width + 17.0;
+        sugarloaf.line(
+            separator_x,
+            CONTEXT_BAR_TOP + 12.0,
+            separator_x,
+            CONTEXT_BAR_TOP + CONTEXT_BAR_HEIGHT - 12.0,
+            1.0,
+            0.0,
+            muted(colors.foreground, 0.22),
+            ORDER + 1,
+        );
+        let clock_x = (x + width - clock_width - 16.0).max(separator_x + 14.0);
+        sugarloaf
+            .text_mut()
+            .draw(clock_x, text_y - 2.5, clock_icon, &clock_icon_opts);
+        sugarloaf.text_mut().draw(
+            clock_x + clock_icon_width + 10.0,
+            text_y,
+            &clock_text,
+            &clock_opts,
+        );
     }
 
     fn request_refresh_if_needed(&mut self, session: &SessionFacts, force: bool) {
@@ -384,9 +629,6 @@ impl DevOpsStatus {
             return;
         }
         if self.request_in_flight && !in_flight_fresh {
-            // A worker should normally finish well before this timeout. If it
-            // did not (thread failure, pathological filesystem, etc.), allow a
-            // later request rather than leaving this session permanently stale.
             self.request_in_flight = false;
         }
 
@@ -405,13 +647,11 @@ impl DevOpsStatus {
                 self.request_in_flight = true;
             }
             runtime::RefreshSubmission::Busy => {
-                // Nothing was queued for this session. Keep short redraw polling
-                // enabled, but do not mark a request in-flight or the capacity-1
-                // queue could permanently starve this pane.
                 self.refresh_pending = true;
                 self.request_in_flight = false;
             }
-            runtime::RefreshSubmission::Unavailable => {
+            runtime::RefreshSubmission::Rejected
+            | runtime::RefreshSubmission::Unavailable => {
                 self.last_session = Some(session.clone());
                 self.last_refresh_request = Some(Instant::now());
                 self.refresh_pending = false;
@@ -429,73 +669,58 @@ impl DevOpsStatus {
 
         let (revision, cached_session, snapshot) =
             runtime::devops_snapshot(session.session_id);
-        if revision == self.snapshot_revision || cached_session.as_ref() != Some(session)
-        {
-            return;
+        match snapshot_candidate(
+            self.snapshot_revision,
+            revision,
+            cached_session.as_ref(),
+            session,
+        ) {
+            SnapshotCandidate::Unchanged => return,
+            SnapshotCandidate::StaleSession => {
+                // Shell startup can finish an early request after OSC metadata has
+                // changed the session from the native shell to WSL. Release the
+                // in-flight latch so the next repaint immediately requests the
+                // current session instead of waiting for the timeout fallback.
+                self.refresh_pending = true;
+                self.request_in_flight = false;
+                return;
+            }
+            SnapshotCandidate::Current => {}
         }
-
         self.snapshot_revision = revision;
         self.refresh_pending = false;
         self.request_in_flight = false;
         self.snapshot = snapshot;
     }
 
-    /// Synchronous, zero-IO prompt facts. These must be present even if the
-    /// extension worker has not yet completed its first discovery.
-    fn immediate_segments(&self, session: &SessionFacts) -> Vec<Segment> {
-        let mut segments = Vec::new();
-
-        if let Some(os) = immediate_os_value(session) {
-            segments.push(Segment {
-                value: compact_label(&os, MAX_WSL_CHARS),
-                color: SegmentColor::Cyan,
-                icon: IconKind::Ubuntu,
-            });
-        }
-
-        if let Some(user) = immediate_user_value(session) {
-            segments.push(Segment {
-                value: compact_label(&user, 18),
-                color: SegmentColor::Foreground,
-                icon: IconKind::User,
-            });
-        }
-
-        segments
-    }
-
-    /// Merge the synchronous prompt facts with the latest asynchronously
-    /// discovered DevOps model. Duplicate OS/user values are intentionally
-    /// avoided so the row remains compact.
     fn build_live_segments(&self, session: &SessionFacts) -> Vec<Segment> {
         let mut segments = Vec::new();
-
         if self.snapshot.production {
             segments.push(Segment {
-                value: "PROD".to_string(),
+                value: "PRODUCTION".to_string(),
                 color: SegmentColor::Red,
                 icon: IconKind::Production,
             });
         }
-
-        if let Some(os) = immediate_os_value(session)
-            .or_else(|| self.snapshot.wsl.as_ref().map(|wsl| wsl_value(&wsl.distro)))
-        {
+        let immediate_os = immediate_os_value(session);
+        let detected_wsl = immediate_os.or_else(|| {
+            (shell_label(session) != "PowerShell")
+                .then(|| self.snapshot.wsl.as_ref().map(|wsl| wsl_value(&wsl.distro)))
+                .flatten()
+        });
+        if let Some(os) = detected_wsl {
             segments.push(Segment {
                 value: compact_label(&os, MAX_WSL_CHARS),
-                color: SegmentColor::Cyan,
-                icon: IconKind::Ubuntu,
+                color: SegmentColor::Orange,
+                icon: IconKind::Wsl,
             });
-        }
-
-        if let Some(context) = &self.snapshot.docker {
+        } else if shell_label(session) == "PowerShell" {
             segments.push(Segment {
-                value: compact_label(context, MAX_CONTEXT_CHARS),
+                value: "Windows".to_string(),
                 color: SegmentColor::Blue,
-                icon: IconKind::Docker,
+                icon: IconKind::Windows,
             });
         }
-
         if let Some(branch) = &self.snapshot.git_branch {
             segments.push(Segment {
                 value: compact_middle(branch, MAX_GIT_CHARS),
@@ -503,15 +728,13 @@ impl DevOpsStatus {
                 icon: IconKind::Git,
             });
         }
-
         if let Some(kubernetes) = &self.snapshot.kubernetes {
             let value =
                 if kubernetes.namespace.is_empty() || kubernetes.namespace == "default" {
                     compact_label(&kubernetes.context, MAX_CONTEXT_CHARS)
                 } else {
-                    let namespace = compact_label(&kubernetes.namespace, 12);
                     compact_label(
-                        &format!("{}/{}", kubernetes.context, namespace),
+                        &format!("{}/{}", kubernetes.context, kubernetes.namespace),
                         MAX_CONTEXT_CHARS,
                     )
                 };
@@ -521,7 +744,6 @@ impl DevOpsStatus {
                 icon: IconKind::Kubernetes,
             });
         }
-
         for cloud in &self.snapshot.clouds {
             segments.push(Segment {
                 value: cloud_value(cloud),
@@ -529,7 +751,13 @@ impl DevOpsStatus {
                 icon: IconKind::Cloud,
             });
         }
-
+        if let Some(context) = &self.snapshot.docker {
+            segments.push(Segment {
+                value: docker_value(context),
+                color: SegmentColor::Blue,
+                icon: IconKind::Docker,
+            });
+        }
         if let Some(workspace) = &self.snapshot.terraform {
             segments.push(Segment {
                 value: compact_label(workspace, MAX_CONTEXT_CHARS),
@@ -537,16 +765,6 @@ impl DevOpsStatus {
                 icon: IconKind::Terraform,
             });
         }
-
-        let user = immediate_user_value(session).or_else(|| self.snapshot.user.clone());
-        if let Some(user) = user {
-            segments.push(Segment {
-                value: compact_label(&user, 18),
-                color: SegmentColor::Foreground,
-                icon: IconKind::User,
-            });
-        }
-
         if let Some(environment) = &self.snapshot.environment {
             segments.push(Segment {
                 value: compact_label(environment, MAX_ENV_CHARS),
@@ -554,45 +772,211 @@ impl DevOpsStatus {
                 icon: IconKind::Environment,
             });
         }
-
+        if let Some(user) = self
+            .snapshot
+            .user
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            segments.push(Segment {
+                value: compact_label(user, MAX_ENV_CHARS),
+                color: SegmentColor::Blue,
+                icon: IconKind::User,
+            });
+        }
         segments
     }
 }
 
-fn immediate_os_value(session: &SessionFacts) -> Option<String> {
-    session
-        .os_version
-        .as_ref()
-        .filter(|value| !value.trim().is_empty())
-        .cloned()
-        .or_else(|| {
-            session
-                .distro
-                .as_ref()
-                .filter(|value| !value.trim().is_empty())
-                .map(|value| wsl_value(value))
-        })
-}
-
-fn immediate_user_value(session: &SessionFacts) -> Option<String> {
-    parse_shell_title(&session.title).map(|(user, _)| user)
-}
-
-/// Parse the shell title emitted by Automexia integrations. Bash/Zsh use
-/// `user@host:/path`; PowerShell uses `user@host: C:/path`. Keeping this parser
-/// in the application renderer makes first-prompt user identity synchronous and
-/// avoids waiting for filesystem/environment discovery.
-fn parse_shell_title(title: &str) -> Option<(String, String)> {
-    let title = title.trim();
-    let (prefix, path) = if let Some(index) = title.find(": ") {
-        (&title[..index], title[index + 2..].trim())
-    } else if let Some(index) = title.find(":/") {
-        (&title[..index], title[index + 1..].trim())
+fn snapshot_candidate(
+    current_revision: u32,
+    candidate_revision: u32,
+    cached_session: Option<&SessionFacts>,
+    current_session: &SessionFacts,
+) -> SnapshotCandidate {
+    if candidate_revision == current_revision || cached_session.is_none() {
+        SnapshotCandidate::Unchanged
+    } else if cached_session != Some(current_session) {
+        SnapshotCandidate::StaleSession
     } else {
-        return None;
-    };
-    let (user, host) = prefix.rsplit_once('@')?;
+        SnapshotCandidate::Current
+    }
+}
+
+fn same_prompt_identity(
+    left_generation: Option<u64>,
+    left_key: u64,
+    right_generation: Option<u64>,
+    right_key: u64,
+) -> bool {
+    match (left_generation, right_generation) {
+        (Some(left), Some(right)) => left == right,
+        _ => left_key == right_key,
+    }
+}
+
+fn context_bar_layout(window_width: f32) -> ContextBarLayout {
+    let usable = (window_width - CONTEXT_MARGIN_X * 2.0).max(120.0);
+    if window_width >= RIGHT_STATUS_BREAKPOINT {
+        let right_width = RIGHT_STATUS_WIDTH.min(usable * 0.36);
+        let right_x = window_width - CONTEXT_MARGIN_X - right_width;
+        ContextBarLayout {
+            left_x: CONTEXT_MARGIN_X,
+            left_width: (right_x - CONTEXT_GAP - CONTEXT_MARGIN_X).max(120.0),
+            right: Some((right_x, right_width)),
+        }
+    } else {
+        ContextBarLayout {
+            left_x: CONTEXT_MARGIN_X,
+            left_width: usable,
+            right: None,
+        }
+    }
+}
+
+fn draw_glass_surface(
+    sugarloaf: &mut Sugarloaf,
+    x: f32,
+    y: f32,
+    width: f32,
+    fill: [f32; 4],
+    outline: [f32; 4],
+) {
+    sugarloaf.rounded_rect(
+        None,
+        x,
+        y,
+        width,
+        CONTEXT_BAR_HEIGHT,
+        outline,
+        0.06,
+        CONTEXT_RADIUS,
+        ORDER,
+    );
+    sugarloaf.rounded_rect(
+        None,
+        x + 1.0,
+        y + 1.0,
+        (width - 2.0).max(0.0),
+        CONTEXT_BAR_HEIGHT - 2.0,
+        fill,
+        0.06,
+        CONTEXT_RADIUS - 1.0,
+        ORDER + 1,
+    );
+}
+
+/// Symbols from the Nerd Font vocabulary used by the reference project.
+fn icon_glyph(icon: IconKind) -> &'static str {
+    match icon {
+        IconKind::Wsl => "\u{f31b}",
+        IconKind::Windows => "\u{e70f}",
+        IconKind::Docker => "\u{f308}",
+        IconKind::Kubernetes => "\u{f10fe}",
+        IconKind::Cloud => "\u{f0c2}",
+        IconKind::Terraform => "\u{f1062}",
+        IconKind::Git => "\u{e725}",
+        IconKind::Environment => "\u{f1b2}",
+        IconKind::User => "\u{f007}",
+        // Octicons' outlined clock stays legible at chrome sizes; the older
+        // Font Awesome codepoint collapsed to a filled dot in our bundled
+        // Symbols Nerd Font at common Windows scale factors.
+        IconKind::Clock => "\u{f43a}",
+        IconKind::Production => "⚠",
+    }
+}
+
+fn shell_label(session: &SessionFacts) -> &'static str {
+    if let Some(name) = session.shell_name.as_deref() {
+        if name.eq_ignore_ascii_case("powershell") || name.eq_ignore_ascii_case("pwsh") {
+            return "PowerShell";
+        }
+        if name.eq_ignore_ascii_case("bash") {
+            return "bash";
+        }
+        if name.eq_ignore_ascii_case("zsh") {
+            return "zsh";
+        }
+    }
+    if session
+        .distro
+        .as_ref()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return "zsh";
+    }
+    #[cfg(target_os = "windows")]
+    return "PowerShell";
+    #[cfg(not(target_os = "windows"))]
+    return "zsh";
+}
+
+fn format_duration(elapsed_ms: u64) -> String {
+    if elapsed_ms < 1_000 {
+        format!("{elapsed_ms}ms")
+    } else if elapsed_ms < 60_000 {
+        format!("{:.1}s", elapsed_ms as f64 / 1_000.0)
+    } else {
+        format!(
+            "{}m {:02}s",
+            elapsed_ms / 60_000,
+            (elapsed_ms % 60_000) / 1_000
+        )
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn utc_clock_hhmm() -> String {
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        % 86_400;
+    format!("{:02}:{:02}", seconds / 3_600, (seconds % 3_600) / 60)
+}
+
+#[cfg(target_os = "windows")]
+fn local_clock_hhmm() -> String {
+    use windows_sys::Win32::Foundation::SYSTEMTIME;
+    use windows_sys::Win32::System::SystemInformation::GetLocalTime;
+
+    let mut time: SYSTEMTIME = unsafe { std::mem::zeroed() };
+    unsafe { GetLocalTime(&mut time) };
+    format!("{:02}:{:02}", time.wHour, time.wMinute)
+}
+
+#[cfg(all(unix, not(target_arch = "wasm32")))]
+fn local_clock_hhmm() -> String {
+    let raw = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as libc::time_t;
+    let mut local: libc::tm = unsafe { std::mem::zeroed() };
+    if unsafe { libc::localtime_r(&raw, &mut local) }.is_null() {
+        return utc_clock_hhmm();
+    }
+    format!("{:02}:{:02}", local.tm_hour, local.tm_min)
+}
+
+#[cfg(any(target_arch = "wasm32", not(any(unix, target_os = "windows"))))]
+fn local_clock_hhmm() -> String {
+    utc_clock_hhmm()
+}
+
+fn immediate_os_value(session: &SessionFacts) -> Option<String> {
+    let distro = session
+        .distro
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())?;
+    let (_, path) = parse_shell_title(&session.title)?;
+    path.starts_with('/').then(|| wsl_value(distro))
+}
+
+fn parse_shell_title(title: &str) -> Option<(String, String)> {
+    let (user, host_and_path) = title.trim().rsplit_once('@')?;
+    let (host, path) = host_and_path.split_once(':')?;
     let user = user.split_whitespace().last()?.trim();
+    let path = path.trim();
     if user.is_empty() || host.trim().is_empty() || path.is_empty() {
         return None;
     }
@@ -601,21 +985,40 @@ fn parse_shell_title(title: &str) -> Option<(String, String)> {
 
 fn wsl_value(distro: &str) -> String {
     let distro = distro.trim();
-    if let Some(version) = distro.strip_prefix("Ubuntu-") {
-        return version.to_string();
+    if distro.eq_ignore_ascii_case("Ubuntu") || distro.starts_with("Ubuntu-") {
+        "Ubuntu".to_string()
+    } else {
+        distro.to_string()
     }
-    if distro.eq_ignore_ascii_case("Ubuntu") {
-        return "Ubuntu".to_string();
-    }
-    distro.to_string()
 }
 
 fn cloud_value(cloud: &CloudContext) -> String {
-    let profile = compact_label(&cloud.profile, MAX_CLOUD_CHARS);
-    if cloud.region.is_empty() {
-        profile
+    if !cloud.region.trim().is_empty() {
+        compact_label(&cloud.region, MAX_CLOUD_CHARS)
+    } else if !cloud.profile.trim().is_empty() {
+        compact_label(&cloud.profile, MAX_CLOUD_CHARS)
     } else {
-        compact_label(&format!("{}/{}", profile, cloud.region), MAX_CLOUD_CHARS)
+        cloud.provider.to_string()
+    }
+}
+
+fn docker_value(context: &str) -> String {
+    let context = context.trim();
+    if context.is_empty()
+        || context.eq_ignore_ascii_case("default")
+        || context.eq_ignore_ascii_case("docker")
+    {
+        "docker".to_string()
+    } else {
+        compact_label(context, MAX_CONTEXT_CHARS)
+    }
+}
+
+pub(crate) fn next_context_wake_millis(refresh_pending: bool) -> u64 {
+    if refresh_pending {
+        100
+    } else {
+        LIVE_REFRESH_MILLIS
     }
 }
 
@@ -624,16 +1027,14 @@ fn compact_label(value: &str, max_chars: usize) -> String {
     if value.chars().count() <= max_chars {
         return value.to_string();
     }
-    let keep = max_chars.saturating_sub(1);
-    let mut out: String = value.chars().take(keep).collect();
+    let mut out: String = value.chars().take(max_chars.saturating_sub(1)).collect();
     out.push('…');
     out
 }
 
 fn compact_middle(value: &str, max_chars: usize) -> String {
     let value = value.trim();
-    let count = value.chars().count();
-    if count <= max_chars {
+    if value.chars().count() <= max_chars {
         return value.to_string();
     }
     if max_chars < 5 {
@@ -660,670 +1061,167 @@ fn muted(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
 
 fn segment_color(colors: Colors, color: SegmentColor) -> [f32; 4] {
     match color {
-        SegmentColor::Foreground => colors.foreground,
         SegmentColor::Cyan => colors.cyan,
         SegmentColor::Blue => colors.blue,
         SegmentColor::Yellow => colors.yellow,
         SegmentColor::Magenta => colors.magenta,
         SegmentColor::Red => colors.red,
         SegmentColor::Green => colors.green,
+        SegmentColor::Orange => [1.0, 0.35, 0.04, 1.0],
     }
-}
-
-fn accent_color(color: SegmentColor) -> [f32; 4] {
-    // Exact normalized values from automexia/theme.rs so application chrome,
-    // semantic output and shell editor colors speak one visual language.
-    match color {
-        SegmentColor::Foreground => [238.0 / 255.0, 247.0 / 255.0, 242.0 / 255.0, 1.0],
-        SegmentColor::Cyan => [97.0 / 255.0, 231.0 / 255.0, 1.0, 1.0],
-        SegmentColor::Blue => [72.0 / 255.0, 167.0 / 255.0, 1.0, 1.0],
-        SegmentColor::Yellow => [1.0, 209.0 / 255.0, 102.0 / 255.0, 1.0],
-        SegmentColor::Magenta => [181.0 / 255.0, 140.0 / 255.0, 1.0, 1.0],
-        SegmentColor::Red => [1.0, 111.0 / 255.0, 145.0 / 255.0, 1.0],
-        SegmentColor::Green => [124.0 / 255.0, 1.0, 178.0 / 255.0, 1.0],
-    }
-}
-
-fn draw_icon(
-    sugarloaf: &mut Sugarloaf,
-    icon: IconKind,
-    x: f32,
-    y: f32,
-    size: f32,
-    color: SegmentColor,
-    order: u8,
-) {
-    match icon {
-        IconKind::Ubuntu => {
-            draw_ubuntu_icon(sugarloaf, x, y, size, accent_color(color), order)
-        }
-        IconKind::Docker => {
-            draw_docker_icon(sugarloaf, x, y, size, accent_color(color), order)
-        }
-        IconKind::Kubernetes => {
-            draw_kubernetes_icon(sugarloaf, x, y, size, accent_color(color), order)
-        }
-        IconKind::Cloud => {
-            draw_cloud_icon(sugarloaf, x, y, size, accent_color(color), order)
-        }
-        IconKind::Terraform => {
-            draw_terraform_icon(sugarloaf, x, y, size, accent_color(color), order)
-        }
-        IconKind::Git => draw_git_icon(sugarloaf, x, y, size, accent_color(color), order),
-        IconKind::User => {
-            draw_user_icon(sugarloaf, x, y, size, accent_color(color), order)
-        }
-        IconKind::Environment => {
-            draw_environment_icon(sugarloaf, x, y, size, accent_color(color), order)
-        }
-        IconKind::Production => {
-            draw_production_icon(sugarloaf, x, y, size, accent_color(color), order)
-        }
-    }
-}
-
-fn draw_badge(
-    sugarloaf: &mut Sugarloaf,
-    x: f32,
-    y: f32,
-    size: f32,
-    fill: [f32; 4],
-    order: u8,
-) {
-    sugarloaf.rounded_rect(None, x, y, size, size, fill, 0.06, size / 2.3, order);
-}
-
-fn draw_ubuntu_icon(
-    sugarloaf: &mut Sugarloaf,
-    x: f32,
-    y: f32,
-    size: f32,
-    fill: [f32; 4],
-    order: u8,
-) {
-    draw_badge(sugarloaf, x, y, size, fill, order);
-    let dot = size * 0.16;
-    let cx = x + size / 2.0;
-    let cy = y + size / 2.0;
-    let r = size * 0.27;
-    for (dx, dy) in [(0.0, -r), (r * 0.85, r * 0.48), (-r * 0.85, r * 0.48)] {
-        sugarloaf.rounded_rect(
-            None,
-            cx + dx - dot / 2.0,
-            cy + dy - dot / 2.0,
-            dot,
-            dot,
-            [1.0, 1.0, 1.0, 0.95],
-            0.05,
-            dot / 2.0,
-            order + 1,
-        );
-    }
-    sugarloaf.rounded_rect(
-        None,
-        cx - dot * 0.35,
-        cy - dot * 0.35,
-        dot * 0.7,
-        dot * 0.7,
-        [1.0, 1.0, 1.0, 0.95],
-        0.05,
-        dot * 0.35,
-        order + 1,
-    );
-}
-
-fn draw_docker_icon(
-    sugarloaf: &mut Sugarloaf,
-    x: f32,
-    y: f32,
-    size: f32,
-    fill: [f32; 4],
-    order: u8,
-) {
-    let block = size * 0.16;
-    let base_x = x + size * 0.08;
-    let top_y = y + size * 0.20;
-    let bottom_y = y + size * 0.42;
-    for col in 0..3 {
-        let bx = base_x + col as f32 * (block + block * 0.12);
-        sugarloaf.rect(None, bx, top_y, block, block, fill, 0.0, order);
-    }
-    for col in 0..4 {
-        let bx = base_x + col as f32 * (block + block * 0.12);
-        sugarloaf.rect(None, bx, bottom_y, block, block, fill, 0.0, order);
-    }
-    sugarloaf.line(
-        x + size * 0.10,
-        y + size * 0.74,
-        x + size * 0.84,
-        y + size * 0.74,
-        1.2,
-        0.0,
-        fill,
-        order,
-    );
-    sugarloaf.line(
-        x + size * 0.70,
-        y + size * 0.74,
-        x + size * 0.86,
-        y + size * 0.64,
-        1.2,
-        0.0,
-        fill,
-        order,
-    );
-}
-
-fn draw_kubernetes_icon(
-    sugarloaf: &mut Sugarloaf,
-    x: f32,
-    y: f32,
-    size: f32,
-    fill: [f32; 4],
-    order: u8,
-) {
-    let cx = x + size / 2.0;
-    let cy = y + size / 2.0;
-    let outer = size * 0.43;
-    let inner = size * 0.10;
-    sugarloaf.rounded_rect(
-        None,
-        cx - outer,
-        cy - outer,
-        outer * 2.0,
-        outer * 2.0,
-        fill,
-        0.05,
-        outer,
-        order,
-    );
-    sugarloaf.rounded_rect(
-        None,
-        cx - inner,
-        cy - inner,
-        inner * 2.0,
-        inner * 2.0,
-        [1.0, 1.0, 1.0, 0.95],
-        0.05,
-        inner,
-        order + 1,
-    );
-    let spoke = size * 0.26;
-    for (dx, dy) in [(0.0, -spoke), (spoke, 0.0), (0.0, spoke), (-spoke, 0.0)] {
-        sugarloaf.line(
-            cx,
-            cy,
-            cx + dx,
-            cy + dy,
-            1.0,
-            0.0,
-            [1.0, 1.0, 1.0, 0.95],
-            order + 1,
-        );
-    }
-}
-
-fn draw_cloud_icon(
-    sugarloaf: &mut Sugarloaf,
-    x: f32,
-    y: f32,
-    size: f32,
-    fill: [f32; 4],
-    order: u8,
-) {
-    let white = [1.0, 1.0, 1.0, 0.97];
-    draw_badge(sugarloaf, x, y, size, fill, order);
-    sugarloaf.rounded_rect(
-        None,
-        x + size * 0.18,
-        y + size * 0.48,
-        size * 0.58,
-        size * 0.18,
-        white,
-        0.05,
-        size * 0.09,
-        order + 1,
-    );
-    for (cx, cy, r) in [
-        (x + size * 0.34, y + size * 0.46, size * 0.12),
-        (x + size * 0.50, y + size * 0.36, size * 0.16),
-        (x + size * 0.66, y + size * 0.46, size * 0.12),
-    ] {
-        sugarloaf.rounded_rect(
-            None,
-            cx - r,
-            cy - r,
-            r * 2.0,
-            r * 2.0,
-            white,
-            0.05,
-            r,
-            order + 1,
-        );
-    }
-}
-
-fn draw_terraform_icon(
-    sugarloaf: &mut Sugarloaf,
-    x: f32,
-    y: f32,
-    size: f32,
-    fill: [f32; 4],
-    order: u8,
-) {
-    let w = size * 0.24;
-    let h = size * 0.28;
-    sugarloaf.rect(
-        None,
-        x + size * 0.10,
-        y + size * 0.22,
-        w,
-        h,
-        fill,
-        0.0,
-        order,
-    );
-    sugarloaf.rect(
-        None,
-        x + size * 0.40,
-        y + size * 0.22,
-        w,
-        h,
-        fill,
-        0.0,
-        order,
-    );
-    sugarloaf.rect(
-        None,
-        x + size * 0.25,
-        y + size * 0.56,
-        w,
-        h,
-        fill,
-        0.0,
-        order,
-    );
-}
-
-fn draw_git_icon(
-    sugarloaf: &mut Sugarloaf,
-    x: f32,
-    y: f32,
-    size: f32,
-    fill: [f32; 4],
-    order: u8,
-) {
-    let p1 = (x + size * 0.22, y + size * 0.78);
-    let p2 = (x + size * 0.48, y + size * 0.52);
-    let p3 = (x + size * 0.74, y + size * 0.26);
-    sugarloaf.line(p1.0, p1.1, p2.0, p2.1, 1.2, 0.0, fill, order);
-    sugarloaf.line(p2.0, p2.1, p3.0, p3.1, 1.2, 0.0, fill, order);
-    sugarloaf.line(p2.0, p2.1, p2.0, y + size * 0.82, 1.2, 0.0, fill, order);
-    for (cx, cy) in [p1, p2, p3, (p2.0, y + size * 0.82)] {
-        let r = size * 0.11;
-        sugarloaf.rounded_rect(
-            None,
-            cx - r,
-            cy - r,
-            r * 2.0,
-            r * 2.0,
-            fill,
-            0.05,
-            r,
-            order + 1,
-        );
-    }
-}
-
-fn draw_user_icon(
-    sugarloaf: &mut Sugarloaf,
-    x: f32,
-    y: f32,
-    size: f32,
-    fill: [f32; 4],
-    order: u8,
-) {
-    let head = size * 0.22;
-    let cx = x + size / 2.0;
-    sugarloaf.rounded_rect(
-        None,
-        cx - head,
-        y + size * 0.08,
-        head * 2.0,
-        head * 2.0,
-        fill,
-        0.05,
-        head,
-        order,
-    );
-    sugarloaf.rounded_rect(
-        None,
-        x + size * 0.18,
-        y + size * 0.56,
-        size * 0.64,
-        size * 0.34,
-        fill,
-        0.05,
-        size * 0.16,
-        order,
-    );
-}
-
-fn draw_environment_icon(
-    sugarloaf: &mut Sugarloaf,
-    x: f32,
-    y: f32,
-    size: f32,
-    fill: [f32; 4],
-    order: u8,
-) {
-    draw_badge(sugarloaf, x, y, size, fill, order);
-    let r = size * 0.18;
-    sugarloaf.rounded_rect(
-        None,
-        x + size * 0.5 - r,
-        y + size * 0.5 - r,
-        r * 2.0,
-        r * 2.0,
-        [1.0, 1.0, 1.0, 0.98],
-        0.05,
-        r,
-        order + 1,
-    );
-}
-
-fn draw_production_icon(
-    sugarloaf: &mut Sugarloaf,
-    x: f32,
-    y: f32,
-    size: f32,
-    fill: [f32; 4],
-    order: u8,
-) {
-    draw_badge(sugarloaf, x, y, size, fill, order);
-    sugarloaf.line(
-        x + size * 0.50,
-        y + size * 0.24,
-        x + size * 0.50,
-        y + size * 0.62,
-        1.4,
-        0.0,
-        [1.0, 1.0, 1.0, 0.98],
-        order + 1,
-    );
-    let r = size * 0.08;
-    sugarloaf.rounded_rect(
-        None,
-        x + size * 0.5 - r,
-        y + size * 0.76 - r,
-        r * 2.0,
-        r * 2.0,
-        [1.0, 1.0, 1.0, 0.98],
-        0.05,
-        r,
-        order + 1,
-    );
 }
 
 fn color_to_u8(color: [f32; 4]) -> [u8; 4] {
-    [
-        (color[0].clamp(0.0, 1.0) * 255.0) as u8,
-        (color[1].clamp(0.0, 1.0) * 255.0) as u8,
-        (color[2].clamp(0.0, 1.0) * 255.0) as u8,
-        (color[3].clamp(0.0, 1.0) * 255.0) as u8,
-    ]
+    color.map(|value| (value.clamp(0.0, 1.0) * 255.0) as u8)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn empty_prompt_snapshot_is_cached() {
-        let mut status = DevOpsStatus::default();
-        status.remember_prompt(7, 42, Vec::new());
-        let cached = status
-            .cached_segments(7, 42)
-            .expect("empty discovery result should still be cached");
-        assert!(cached.is_empty());
-    }
-
-    #[test]
-    fn first_prompt_has_immediate_wsl_version_and_user() {
-        let status = DevOpsStatus::default();
-        let session = SessionFacts {
-            session_id: 11,
+    fn session(title: &str, distro: Option<&str>) -> SessionFacts {
+        SessionFacts {
+            session_id: 1,
             cwd: None,
-            title: "amjed@DESKTOP:/mnt/d/workstation/custom_terminal/automexia-terminal-source".to_string(),
-            distro: Some("Ubuntu-24.04".to_string()),
-            os_version: Some("24.04".to_string()),
-            shell_integration: true,
-            shell_pid: 0,
-        };
-        let segments = status.immediate_segments(&session);
-        assert!(segments
-            .iter()
-            .any(|segment| segment.icon == IconKind::Ubuntu && segment.value == "24.04"));
-        assert!(segments
-            .iter()
-            .any(|segment| segment.icon == IconKind::User && segment.value == "amjed"));
-    }
-
-    #[test]
-    fn live_anchor_drives_prompt_without_semantic_row_scan() {
-        let mut status = DevOpsStatus::default();
-        let session = SessionFacts {
-            session_id: 12,
-            cwd: None,
-            title: "amjed@host:/work".to_string(),
-            distro: Some("Ubuntu-24.04".to_string()),
-            os_version: Some("24.04".to_string()),
-            shell_integration: true,
-            shell_pid: 0,
-        };
-        let live = PromptAnchor {
-            key: 77,
-            x: 0.0,
-            y: 20.0,
-            width: 500.0,
-            height: 20.0,
-        };
-        assert!(status.sync_active_prompt(&session, true, Some(live), &[live]));
-        assert_eq!(status.active_prompt.as_ref().map(|p| p.key), Some(77));
-    }
-
-    #[test]
-    fn previous_prompt_is_frozen_when_next_prompt_starts() {
-        let mut status = DevOpsStatus::default();
-        let session = SessionFacts {
-            session_id: 9,
-            cwd: None,
-            title: "amjed@host:/mnt/d/work".to_string(),
-            distro: Some("Ubuntu-24.04".to_string()),
-            os_version: Some("24.04".to_string()),
-            shell_integration: true,
-            shell_pid: 0,
-        };
-        let first = PromptAnchor {
-            key: 100,
-            x: 0.0,
-            y: 0.0,
-            width: 500.0,
-            height: 20.0,
-        };
-        let second = PromptAnchor {
-            key: 102,
-            x: 0.0,
-            y: 40.0,
-            width: 500.0,
-            height: 20.0,
-        };
-        assert!(status.sync_active_prompt(&session, true, Some(first), &[first]));
-        status
-            .active_prompt
-            .as_mut()
-            .unwrap()
-            .segments
-            .push(Segment {
-                value: "default".to_string(),
-                color: SegmentColor::Blue,
-                icon: IconKind::Docker,
-            });
-        assert!(!status.sync_active_prompt(&session, false, None, &[first]));
-        assert!(status.sync_active_prompt(
-            &session,
-            true,
-            Some(second),
-            &[first, second]
-        ));
-        let frozen = status
-            .cached_segments(session.session_id, first.key)
-            .expect("previous prompt should be frozen");
-        assert!(frozen.iter().any(
-            |segment| segment.icon == IconKind::Docker && segment.value == "default"
-        ));
-    }
-
-    #[test]
-    fn reflow_key_change_does_not_freeze_or_duplicate_live_prompt() {
-        let mut status = DevOpsStatus::default();
-        let session = SessionFacts {
-            session_id: 13,
-            cwd: None,
-            title: "amjed@host:/work".to_string(),
-            distro: Some("Ubuntu-24.04".to_string()),
-            os_version: Some("24.04".to_string()),
-            shell_integration: true,
-            shell_pid: 0,
-        };
-        let before = PromptAnchor {
-            key: 200,
-            x: 0.0,
-            y: 20.0,
-            width: 500.0,
-            height: 20.0,
-        };
-        let after = PromptAnchor {
-            key: 196,
-            x: 0.0,
-            y: 20.0,
-            width: 700.0,
-            height: 20.0,
-        };
-        assert!(status.sync_active_prompt(&session, true, Some(before), &[before]));
-        // The old absolute-row key disappeared from the current reflow layout,
-        // so this is geometry movement, not a new shell prompt.
-        assert!(!status.sync_active_prompt(&session, true, Some(after), &[after]));
-        assert_eq!(
-            status.active_prompt.as_ref().map(|prompt| prompt.key),
-            Some(after.key)
-        );
-        assert!(status
-            .cached_segments(session.session_id, before.key)
-            .is_none());
-    }
-
-    #[test]
-    fn coalesced_next_prompt_freezes_previous_when_old_anchor_is_still_visible() {
-        let mut status = DevOpsStatus::default();
-        let session = SessionFacts {
-            session_id: 14,
-            cwd: None,
-            title: "amjed@host:/work".to_string(),
-            distro: None,
+            title: title.to_string(),
+            distro: distro.map(str::to_string),
             os_version: None,
+            shell_name: None,
             shell_integration: true,
-            shell_pid: 0,
-        };
-        let first = PromptAnchor {
-            key: 300,
-            x: 0.0,
-            y: 20.0,
-            width: 500.0,
-            height: 20.0,
-        };
-        let second = PromptAnchor {
-            key: 302,
-            x: 0.0,
-            y: 60.0,
-            width: 500.0,
-            height: 20.0,
-        };
-        assert!(status.sync_active_prompt(&session, true, Some(first), &[first]));
-        assert!(status.sync_active_prompt(
-            &session,
-            true,
-            Some(second),
-            &[first, second]
-        ));
-        assert!(status
-            .cached_segments(session.session_id, first.key)
-            .is_some());
+            shell_pid: 42,
+        }
+    }
+
+    #[test]
+    fn wide_layout_keeps_context_and_right_status_separate() {
+        let layout = context_bar_layout(1_600.0);
+        let (right_x, right_width) = layout.right.unwrap();
+        assert!(layout.left_width > 1_000.0);
+        assert!(layout.left_x + layout.left_width + CONTEXT_GAP <= right_x);
+        assert_eq!(right_x + right_width + CONTEXT_MARGIN_X, 1_600.0);
+    }
+
+    #[test]
+    fn narrow_layout_gives_context_the_full_width() {
+        let layout = context_bar_layout(600.0);
+        assert_eq!(layout.right, None);
+        assert_eq!(layout.left_width, 600.0 - CONTEXT_MARGIN_X * 2.0);
+    }
+
+    #[test]
+    fn powershell_never_inherits_a_stale_wsl_badge() {
+        let mut native = session(
+            "<REDACTED_LOCAL_VALUE>@DESKTOP: D:/workstation/projects",
+            Some("Ubuntu-24.04"),
+        );
+        native.shell_name = Some("PowerShell".to_string());
+        assert_eq!(immediate_os_value(&native), None);
+        assert_eq!(shell_label(&native), "PowerShell");
+    }
+
+    #[test]
+    fn wsl_title_and_distro_produce_the_real_distribution() {
+        let wsl = session("<REDACTED_LOCAL_VALUE>@DESKTOP:/mnt/d/workstation", Some("Ubuntu-24.04"));
+        assert_eq!(immediate_os_value(&wsl).as_deref(), Some("Ubuntu"));
+    }
+
+    #[test]
+    fn command_duration_uses_compact_units() {
+        assert_eq!(format_duration(18), "18ms");
+        assert_eq!(format_duration(1_250), "1.2s");
+        assert_eq!(format_duration(62_000), "1m 02s");
+    }
+
+    #[test]
+    fn reference_icons_are_real_nerd_font_codepoints() {
+        for kind in [
+            IconKind::Wsl,
+            IconKind::Windows,
+            IconKind::Docker,
+            IconKind::Kubernetes,
+            IconKind::Cloud,
+            IconKind::Terraform,
+            IconKind::Git,
+            IconKind::Environment,
+            IconKind::User,
+            IconKind::Clock,
+        ] {
+            assert!(icon_glyph(kind)
+                .chars()
+                .all(|character| character as u32 >= 0xe000));
+        }
+    }
+
+    #[test]
+    fn labels_truncate_on_unicode_boundaries() {
+        assert_eq!(compact_label("dev-😀-cluster-name", 10), "dev-😀-clu…");
         assert_eq!(
-            status.active_prompt.as_ref().map(|prompt| prompt.key),
-            Some(second.key)
+            compact_middle("feature/very-long-branch", 12)
+                .chars()
+                .count(),
+            12
         );
     }
 
     #[test]
-    fn busy_refresh_is_retryable_instead_of_stuck_in_flight() {
+    fn default_docker_context_uses_the_product_label() {
+        assert_eq!(docker_value("default"), "docker");
+        assert_eq!(docker_value("desktop-linux"), "desktop-linux");
+    }
+
+    #[test]
+    fn completed_refreshes_schedule_the_next_live_poll() {
+        assert_eq!(next_context_wake_millis(true), 100);
+        assert_eq!(next_context_wake_millis(false), LIVE_REFRESH_MILLIS);
+    }
+
+    #[test]
+    fn stale_startup_snapshot_is_retried_without_waiting_for_timeout() {
+        let current = session("amjed@host:/work/current", Some("Ubuntu"));
+        let stale = session("Automexia", None);
+        assert_eq!(
+            snapshot_candidate(0, 2, Some(&stale), &current),
+            SnapshotCandidate::StaleSession
+        );
+        assert_eq!(
+            snapshot_candidate(0, 2, Some(&current), &current),
+            SnapshotCandidate::Current
+        );
+        assert_eq!(
+            snapshot_candidate(2, 2, Some(&current), &current),
+            SnapshotCandidate::Unchanged
+        );
+    }
+
+    #[test]
+    fn live_user_is_the_final_context_segment() {
+        let session = session("amjed@host:/work", Some("Ubuntu"));
         let status = DevOpsStatus {
-            refresh_pending: true,
-            request_in_flight: false,
+            snapshot: DevOpsSnapshot {
+                docker: Some("default".to_string()),
+                user: Some("amjed".to_string()),
+                ..DevOpsSnapshot::default()
+            },
             ..DevOpsStatus::default()
         };
-        assert!(status.refresh_pending);
-        assert!(!status.request_in_flight);
-    }
-
-    #[test]
-    fn repeated_freeze_updates_existing_prompt_snapshot() {
-        let mut status = DevOpsStatus::default();
-        status.remember_prompt(
-            1,
-            5,
-            vec![Segment {
-                value: "old".to_string(),
-                color: SegmentColor::Foreground,
-                icon: IconKind::User,
-            }],
-        );
-        status.remember_prompt(
-            1,
-            5,
-            vec![Segment {
-                value: "new".to_string(),
-                color: SegmentColor::Foreground,
-                icon: IconKind::User,
-            }],
-        );
-        let cached = status.cached_segments(1, 5).expect("snapshot exists");
-        assert_eq!(cached.len(), 1);
-        assert_eq!(cached[0].value, "new");
-    }
-
-    #[test]
-    fn parses_bash_and_powershell_shell_titles() {
+        let segments = status.build_live_segments(&session);
         assert_eq!(
-            parse_shell_title("amjed@DESKTOP:/mnt/d/work"),
-            Some(("amjed".to_string(), "/mnt/d/work".to_string()))
+            segments.last().map(|segment| segment.icon),
+            Some(IconKind::User)
         );
-        assert_eq!(
-            parse_shell_title("amjed@DESKTOP: D:/work"),
-            Some(("amjed".to_string(), "D:/work".to_string()))
+        assert!(
+            segments
+                .iter()
+                .any(|segment| segment.icon == IconKind::Docker
+                    && segment.value == "docker")
         );
     }
 
     #[test]
-    fn prompt_history_is_bounded() {
-        let mut status = DevOpsStatus::default();
-        for key in 0..(MAX_PROMPT_CONTEXT_HISTORY as u64 + 17) {
-            status.remember_prompt(3, key, Vec::new());
-        }
-        assert_eq!(status.prompt_history.len(), MAX_PROMPT_CONTEXT_HISTORY);
-        assert!(status.cached_segments(3, 0).is_none());
-        assert!(status
-            .cached_segments(3, MAX_PROMPT_CONTEXT_HISTORY as u64 + 16)
-            .is_some());
+    fn stable_prompt_identity_survives_reflow_key_changes() {
+        assert!(same_prompt_identity(Some(7), 12, Some(7), 99));
+        assert!(!same_prompt_identity(Some(7), 12, Some(8), 12));
+        assert!(same_prompt_identity(None, 12, None, 12));
+        assert!(!same_prompt_identity(None, 12, None, 99));
     }
 }

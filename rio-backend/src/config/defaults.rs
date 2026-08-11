@@ -7,7 +7,9 @@ pub fn default_bool_true() -> bool {
 
 #[inline]
 pub fn default_line_height() -> f32 {
-    1.0
+    // Give long listings and structured command output enough vertical air to
+    // keep adjacent semantic/color roles visually distinct.
+    1.20
 }
 
 #[inline]
@@ -122,12 +124,12 @@ pub fn default_editor() -> Shell {
 
 #[inline]
 pub fn default_window_width() -> i32 {
-    800
+    1280
 }
 
 #[inline]
 pub fn default_window_height() -> i32 {
-    490
+    760
 }
 
 #[inline]

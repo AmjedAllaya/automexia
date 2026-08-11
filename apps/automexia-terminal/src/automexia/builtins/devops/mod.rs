@@ -9,7 +9,7 @@ pub use model::{CloudContext, DevOpsSnapshot};
 pub use semantics::classify_row_text;
 
 pub const ID: &str = "automexia.devops";
-pub const VERSION: &str = "0.3.13";
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub const MANIFEST: ExtensionManifest = ExtensionManifest {
     id: ID,

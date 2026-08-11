@@ -4,6 +4,7 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
     $global:AutomexiaShellIntegrationLoaded = $true
     $script:AutomexiaEsc = [char]27
     $script:AutomexiaBel = [char]7
+    [uint64]$script:AutomexiaPromptGeneration = 0
 
     $env:COLORTERM = 'truecolor'
     $env:TERM_PROGRAM = 'Automexia'
@@ -11,6 +12,12 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
 
     # Announce the integration once (base64('1') per OSC 1337 SetUserVar).
     [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell=MQ==$script:AutomexiaBel")
+    [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==$script:AutomexiaBel")
+    # Clear WSL-only metadata that may remain after a nested wsl.exe session
+    # exits back into this native PowerShell terminal. Empty base64 payloads
+    # are valid OSC 1337 user-variable values.
+    [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_distro=$script:AutomexiaBel")
+    [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_os_version=$script:AutomexiaBel")
 
     if (Get-Module -ListAvailable -Name PSReadLine) {
         Import-Module PSReadLine -ErrorAction SilentlyContinue
@@ -58,33 +65,31 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
 
 
     function script:Get-AutomexiaPromptPath {
-        $raw = (Get-Location).Path
-        if ($raw.Length -le 64) { return $raw }
-        $parts = @($raw -split '[\/]') | Where-Object { $_ -ne '' }
-        if ($parts.Count -le 3) { return $raw }
-        $tail = ($parts[($parts.Count - 3)..($parts.Count - 1)] -join '\')
-        if ($raw -match '^[A-Za-z]:') { return $raw.Substring(0, 2) + '\...\' + $tail }
-        return '...\' + $tail
+        return (Get-Location).Path
     }
 
     function global:prompt {
         $succeeded = $?
         $exitCode = if ($succeeded) { 0 } elseif ($null -ne $global:LASTEXITCODE) { $global:LASTEXITCODE } else { 1 }
+        $script:AutomexiaPromptGeneration++
         $path = (Get-Location).Path.Replace('\', '/')
         $osc7 = "$script:AutomexiaEsc]7;file://localhost/$path$script:AutomexiaBel"
-        $titleText = "{0}@{1}: {2}" -f $env:USERNAME, $env:COMPUTERNAME, $path
+        $titleText = "PowerShell - {0}" -f $path
         $title = "$script:AutomexiaEsc]2;$titleText$script:AutomexiaBel"
         $done = "$script:AutomexiaEsc]133;D;$exitCode$script:AutomexiaBel"
         $ready = "$script:AutomexiaEsc]1337;SetUserVar=automexia_prompt_active=MQ==$script:AutomexiaBel"
-        $start = "$script:AutomexiaEsc]133;A$script:AutomexiaBel"
-        $continuation = "$script:AutomexiaEsc]133;P;k=c$script:AutomexiaBel"
+        $start = "$script:AutomexiaEsc]133;A;aid=$script:AutomexiaPromptGeneration$script:AutomexiaBel"
+        $continuation = "$script:AutomexiaEsc]133;P;k=c;aid=$script:AutomexiaPromptGeneration$script:AutomexiaBel"
         $input = "$script:AutomexiaEsc]133;B$script:AutomexiaBel"
-        $pathPrompt = $script:AutomexiaEsc + "[38;2;72;167;255m" + (Get-AutomexiaPromptPath) + $script:AutomexiaEsc + "[0m "
+        $pathPrompt = $script:AutomexiaEsc + "[38;2;72;167;255m" + (Get-AutomexiaPromptPath) + $script:AutomexiaEsc + "[0m"
         $lambdaColor = if ($exitCode -eq 0) { '38;2;124;255;178' } else { '38;2;255;111;145' }
         $lambdaGlyph = [char]0x03BB
         $lambda = $script:AutomexiaEsc + "[" + $lambdaColor + "m" + $lambdaGlyph + $script:AutomexiaEsc + "[0m "
-        # DevOps owns the blank row above. The normal shell location stays on
-        # the command line where users expect it, followed by lambda + input.
-        return $done + $osc7 + $title + $ready + $start + "`n" + $continuation + $pathPrompt + $lambda + $input
+        # Keep the renderer-owned context row and complete path outside
+        # PSReadLine's editable prompt. PSReadLine then owns only the short
+        # lambda/input row and can redisplay it after a resize without
+        # duplicating or erasing the path stored in terminal history.
+        [Console]::Write($done + $osc7 + $title + $ready + $start + " `r`n" + $continuation + $pathPrompt + "`r`n" + $continuation)
+        return $lambda + $input
     }
 }

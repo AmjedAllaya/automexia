@@ -10,6 +10,8 @@ pub mod search;
 pub mod trail_cursor;
 pub mod utils;
 
+use rio_backend::crosswords::grid::row::{Row, SemanticPrompt};
+use rio_backend::crosswords::square::Square;
 use rio_backend::event::TerminalDamage;
 
 use crate::context::renderable::{PendingUpdate, RenderableContent};
@@ -44,6 +46,140 @@ fn window_bg_alpha(config: &Config) -> f32 {
 }
 
 pub use rio_backend::sugarloaf::{atlas_image_key, kitty_image_key};
+
+#[inline]
+fn terminal_row_is_blank(row: &Row<Square>) -> bool {
+    row.inner
+        .iter()
+        .all(|square| square.is_bg_only() || matches!(square.c(), '\0' | ' '))
+}
+
+#[inline]
+fn terminal_row_first_character(row: &Row<Square>) -> Option<char> {
+    row.inner
+        .iter()
+        .map(|square| square.c())
+        .find(|character| !matches!(character, '\0' | ' '))
+}
+
+#[inline]
+fn terminal_row_starts_like_path(row: &Row<Square>) -> bool {
+    let mut characters = row
+        .inner
+        .iter()
+        .map(|square| square.c())
+        .filter(|character| !matches!(character, '\0' | ' '));
+    let first = characters.next();
+    let second = characters.next();
+    matches!(first, Some('/' | '~' | '\\')) || second == Some(':')
+}
+
+/// Recover Automexia's reserved context row when Readline/ZLE/PSReadLine has
+/// dropped OSC row metadata during resize. The lambda-owned command row plus a
+/// path-shaped nonblank run and a blank predecessor form a narrow, deterministic
+/// signature; ordinary command output is not treated as a prompt.
+#[inline]
+fn synthetic_prompt_visual_anchor(
+    rows: &[Row<Square>],
+    command_index: usize,
+) -> Option<usize> {
+    if command_index < 2
+        || terminal_row_first_character(&rows[command_index]) != Some('λ')
+        || terminal_row_is_blank(&rows[command_index - 1])
+    {
+        return None;
+    }
+
+    let mut first_path_row = command_index - 1;
+    while first_path_row > 0 && !terminal_row_is_blank(&rows[first_path_row - 1]) {
+        first_path_row -= 1;
+    }
+    if first_path_row == 0
+        || !terminal_row_starts_like_path(&rows[first_path_row])
+        || !terminal_row_is_blank(&rows[first_path_row - 1])
+    {
+        return None;
+    }
+    Some(first_path_row - 1)
+}
+
+/// Return the physical row where renderer-owned prompt context belongs.
+///
+/// Readline can move the managed `Prompt` marker onto the first path row while
+/// handling a resize. The reserved blank row is still directly above it; use
+/// that row for overlays so neither context nor completion status obscures the
+/// complete path. Legacy OSC prompts without a stable `aid` remain untouched.
+#[inline]
+fn prompt_visual_anchor(rows: &[Row<Square>], semantic_index: usize) -> Option<usize> {
+    let row = &rows[semantic_index];
+    if semantic_index > 0
+        && row.semantic_prompt == SemanticPrompt::Prompt
+        && row.semantic_prompt_id.is_some()
+        && !terminal_row_is_blank(row)
+    {
+        let mut first_path_row = semantic_index;
+        while first_path_row > 0 && !terminal_row_is_blank(&rows[first_path_row - 1]) {
+            first_path_row -= 1;
+        }
+        if first_path_row > 0 && terminal_row_is_blank(&rows[first_path_row - 1]) {
+            return Some(first_path_row - 1);
+        }
+        // The reserved context row is above the visible viewport. Do not draw
+        // over the remaining visible path tail; scrolling up will make the
+        // real anchor recoverable again.
+        return None;
+    }
+
+    // Repeated native resize events can rotate a blank managed Prompt row to
+    // the end of its already-wrapped path run. Recover the reserved blank row
+    // immediately before that run, preserving the visual contract even while
+    // Readline is concurrently processing SIGWINCH.
+    if let Some(prompt_id) = row.semantic_prompt_id {
+        if row.semantic_prompt == SemanticPrompt::Prompt
+            && terminal_row_is_blank(row)
+            && semantic_index > 0
+            && rows[semantic_index - 1].semantic_prompt
+                == SemanticPrompt::PromptContinuation
+            && rows[semantic_index - 1].semantic_prompt_id == Some(prompt_id)
+        {
+            let mut first_path_row = semantic_index - 1;
+            while first_path_row > 0
+                && rows[first_path_row - 1].semantic_prompt
+                    == SemanticPrompt::PromptContinuation
+                && rows[first_path_row - 1].semantic_prompt_id == Some(prompt_id)
+            {
+                first_path_row -= 1;
+            }
+            if first_path_row > 0 && terminal_row_is_blank(&rows[first_path_row - 1]) {
+                return Some(first_path_row - 1);
+            }
+        }
+
+        // Some Readline redisplays drop continuation metadata while keeping
+        // the cell order. The lambda row is an unambiguous managed-prompt
+        // boundary: when it follows a blank Prompt marker and nonblank rows
+        // precede that marker, those rows are the complete path run. Move the
+        // visual context to the blank row immediately before the run.
+        if row.semantic_prompt == SemanticPrompt::Prompt
+            && terminal_row_is_blank(row)
+            && semantic_index > 0
+            && semantic_index + 1 < rows.len()
+            && terminal_row_first_character(&rows[semantic_index + 1]) == Some('λ')
+            && !terminal_row_is_blank(&rows[semantic_index - 1])
+        {
+            let mut first_path_row = semantic_index - 1;
+            while first_path_row > 0 && !terminal_row_is_blank(&rows[first_path_row - 1])
+            {
+                first_path_row -= 1;
+            }
+            if first_path_row > 0 && terminal_row_is_blank(&rows[first_path_row - 1]) {
+                return Some(first_path_row - 1);
+            }
+        }
+    }
+
+    Some(semantic_index)
+}
 
 pub struct Renderer {
     is_vi_mode_enabled: bool,
@@ -131,6 +267,10 @@ impl Renderer {
                 named_colors.tabs_active,
                 config.navigation.hide_if_single,
                 config.navigation.max_tab_width,
+                matches!(
+                    config.window.decorations,
+                    rio_backend::config::window::Decorations::Disabled
+                ),
             ))
         } else {
             None
@@ -399,10 +539,21 @@ impl Renderer {
                 context.renderable_content.current_directory =
                     terminal.current_directory.clone();
                 context.renderable_content.terminal_title = terminal.title.to_string();
-                context.renderable_content.shell_distro =
-                    terminal.user_vars.get("automexia_distro").cloned();
-                context.renderable_content.shell_os_version =
-                    terminal.user_vars.get("automexia_os_version").cloned();
+                context.renderable_content.shell_distro = terminal
+                    .user_vars
+                    .get("automexia_distro")
+                    .filter(|value| !value.trim().is_empty())
+                    .cloned();
+                context.renderable_content.shell_os_version = terminal
+                    .user_vars
+                    .get("automexia_os_version")
+                    .filter(|value| !value.trim().is_empty())
+                    .cloned();
+                context.renderable_content.shell_name = terminal
+                    .user_vars
+                    .get("automexia_shell_name")
+                    .filter(|value| !value.trim().is_empty())
+                    .cloned();
                 context.renderable_content.shell_integration = terminal
                     .user_vars
                     .get("automexia_shell")
@@ -725,7 +876,13 @@ impl Renderer {
         );
 
         if self.devops_enabled {
-            let (session, prompt_active, historical_anchors, live_anchor) = {
+            let (
+                session,
+                prompt_active,
+                historical_anchors,
+                live_anchor,
+                command_results,
+            ) = {
                 let grid = context_manager.current_grid();
                 let (context, margin) = grid.current_context_with_computed_dimension();
                 let rc = &context.renderable_content;
@@ -738,39 +895,70 @@ impl Renderer {
                 let first_absolute_row = rc.lines_evicted.saturating_add(
                     rc.history_size.saturating_sub(rc.display_offset) as u64,
                 );
-
-                let historical_anchors =
-                    rc.visible_rows
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(row_index, row)| {
-                            if row.semantic_prompt
+                let mut historical_anchors = rc
+                    .visible_rows
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(row_index, row)| {
+                        if row.semantic_prompt
                             != rio_backend::crosswords::grid::row::SemanticPrompt::Prompt
                         {
                             return None;
                         }
-                            let blank = row.inner.iter().all(|sq| {
-                                sq.is_bg_only() || matches!(sq.c(), '\0' | ' ')
-                            });
-                            if !blank {
-                                return None;
-                            }
-                            Some(crate::automexia::ui::PromptAnchor {
-                                key: first_absolute_row.saturating_add(row_index as u64),
-                                x: origin_x,
-                                y: origin_y + row_index as f32 * cell_height,
-                                width: grid_width,
-                                height: cell_height,
-                            })
+                        let blank = terminal_row_is_blank(row);
+                        // A managed `aid` is stronger evidence than physical
+                        // cell contents. Shell editors may repaint attributes
+                        // or a glyph while processing SIGWINCH, but they must
+                        // not make Automexia forget the semantic context row.
+                        if row.semantic_prompt_id.is_none() && !blank {
+                            return None;
+                        }
+                        let visual_index =
+                            prompt_visual_anchor(&rc.visible_rows, row_index)?;
+                        Some(crate::automexia::ui::PromptAnchor {
+                            generation: row.semantic_prompt_id,
+                            key: first_absolute_row.saturating_add(row_index as u64),
+                            x: origin_x,
+                            y: origin_y + visual_index as f32 * cell_height,
+                            width: grid_width,
+                            height: cell_height,
                         })
-                        .collect::<Vec<_>>();
+                    })
+                    .collect::<Vec<_>>();
+                // Managed three-row prompts remain recoverable even if a
+                // shell editor drops OSC row metadata while handling resize.
+                // Add only missing visual anchors; semantic anchors stay the
+                // primary source whenever they survived.
+                for command_index in 0..rc.visible_rows.len() {
+                    let Some(visual_index) =
+                        synthetic_prompt_visual_anchor(&rc.visible_rows, command_index)
+                    else {
+                        continue;
+                    };
+                    let y = origin_y + visual_index as f32 * cell_height;
+                    if historical_anchors
+                        .iter()
+                        .any(|anchor| (anchor.y - y).abs() < f32::EPSILON)
+                    {
+                        continue;
+                    }
+                    let generation = rc.visible_rows[visual_index..=command_index]
+                        .iter()
+                        .find_map(|row| row.semantic_prompt_id);
+                    historical_anchors.push(crate::automexia::ui::PromptAnchor {
+                        generation,
+                        key: first_absolute_row.saturating_add(visual_index as u64),
+                        x: origin_x,
+                        y,
+                        width: grid_width,
+                        height: cell_height,
+                    });
+                }
+                historical_anchors.sort_by(|left, right| left.y.total_cmp(&right.y));
 
-                // The shell marks the editable command row with OSC-133
-                // PromptContinuation. The DevOps row is the blank Prompt row
-                // immediately above it. Resolve that pair on every frame so
-                // resize/reflow follows terminal semantics rather than a stale
-                // cached y coordinate. Only the very first top-of-screen paint
-                // may fall back to cursor geometry before semantic rows arrive.
+                // Resolve the live blank Prompt row from its adjacent complete-
+                // path continuation. The short editable row follows it. Stable
+                // `aid` identity keeps all three attached through reflow.
                 let cursor_row = rc.cursor.state.pos.row.0;
                 let semantic_live_anchor = if cursor_row >= 0 {
                     let cursor_index = cursor_row as usize;
@@ -786,21 +974,67 @@ impl Renderer {
                             {
                                 return None;
                             }
-                            let prompt_row = &rc.visible_rows[row_index - 1];
+                            let prompt_index = row_index - 1;
+                            let prompt_row = &rc.visible_rows[prompt_index];
                             if prompt_row.semantic_prompt
                                 != rio_backend::crosswords::grid::row::SemanticPrompt::Prompt
                             {
                                 return None;
                             }
-                            let blank = prompt_row.inner.iter().all(|sq| {
-                                sq.is_bg_only() || matches!(sq.c(), '\0' | ' ')
-                            });
-                            if !blank { return None; }
-                            let prompt_index = row_index - 1;
+                            let blank = terminal_row_is_blank(prompt_row);
+                            if prompt_row.semantic_prompt_id.is_none() && !blank {
+                                return None;
+                            }
+                            let visual_index = prompt_visual_anchor(
+                                &rc.visible_rows,
+                                prompt_index,
+                            )?;
                             Some(crate::automexia::ui::PromptAnchor {
-                                key: first_absolute_row.saturating_add(prompt_index as u64),
+                                    generation: prompt_row.semantic_prompt_id,
+                                    key: first_absolute_row
+                                        .saturating_add(prompt_index as u64),
+                                    x: origin_x,
+                                    y: origin_y + visual_index as f32 * cell_height,
+                                    width: grid_width,
+                                    height: cell_height,
+                            })
+                        })
+                } else {
+                    None
+                };
+                let live_anchor = if rc.shell_integration
+                    && rc.shell_prompt_active
+                    && rc.display_offset == 0
+                {
+                    semantic_live_anchor
+                        .or_else(|| {
+                            let cursor_index = usize::try_from(cursor_row).ok()?;
+                            let visual_index = synthetic_prompt_visual_anchor(
+                                &rc.visible_rows,
+                                cursor_index,
+                            )?;
+                            Some(crate::automexia::ui::PromptAnchor {
+                                generation: rc.visible_rows[visual_index..=cursor_index]
+                                    .iter()
+                                    .find_map(|row| row.semantic_prompt_id),
+                                key: first_absolute_row
+                                    .saturating_add(visual_index as u64),
                                 x: origin_x,
-                                y: origin_y + prompt_index as f32 * cell_height,
+                                y: origin_y + visual_index as f32 * cell_height,
+                                width: grid_width,
+                                height: cell_height,
+                            })
+                        })
+                        .or_else(|| {
+                            if cursor_row != 1 {
+                                return None;
+                            }
+                            let row = rc.visible_rows.first()?;
+                            Some(crate::automexia::ui::PromptAnchor {
+                                generation: row.semantic_prompt_id,
+                                key: first_absolute_row,
+                                x: origin_x,
+                                y: origin_y,
                                 width: grid_width,
                                 height: cell_height,
                             })
@@ -808,32 +1042,33 @@ impl Renderer {
                 } else {
                     None
                 };
-
-                let live_anchor = if rc.shell_integration
-                    && rc.shell_prompt_active
-                    && rc.display_offset == 0
-                {
-                    semantic_live_anchor.or({
-                        // First prompt after startup/clear: the prompt consists
-                        // of exactly the blank context row plus the editable row.
-                        // Do not use this fallback deeper in the screen because a
-                        // long wrapped command can legitimately scroll its context
-                        // row out of view.
-                        if cursor_row == 1 {
-                            Some(crate::automexia::ui::PromptAnchor {
-                                key: first_absolute_row,
-                                x: origin_x,
-                                y: origin_y,
-                                width: grid_width,
-                                height: cell_height,
-                            })
-                        } else {
-                            None
-                        }
+                let command_results = rc
+                    .visible_rows
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(row_index, row)| {
+                        let result = row.semantic_command_result?;
+                        let synthetic_index = (row_index..rc.visible_rows.len())
+                            .take(8)
+                            .find_map(|command_index| {
+                                synthetic_prompt_visual_anchor(
+                                    &rc.visible_rows,
+                                    command_index,
+                                )
+                            });
+                        let visual_index = synthetic_index.or_else(|| {
+                            prompt_visual_anchor(&rc.visible_rows, row_index)
+                        })?;
+                        Some(crate::automexia::ui::CommandResultAnchor {
+                            x: origin_x,
+                            y: origin_y + visual_index as f32 * cell_height,
+                            width: grid_width,
+                            height: cell_height,
+                            exit_code: result.exit_code,
+                            elapsed_ms: result.elapsed_ms,
+                        })
                     })
-                } else {
-                    None
-                };
+                    .collect::<Vec<_>>();
 
                 (
                     crate::automexia::api::SessionFacts {
@@ -842,15 +1077,23 @@ impl Renderer {
                         title: rc.terminal_title.clone(),
                         distro: rc.shell_distro.clone(),
                         os_version: rc.shell_os_version.clone(),
+                        shell_name: rc.shell_name.clone(),
                         shell_integration: rc.shell_integration,
                         shell_pid: context.shell_pid,
                     },
                     rc.shell_prompt_active,
                     historical_anchors,
                     live_anchor,
+                    command_results,
                 )
             };
-            let refresh_pending = self.devops_status.render_prompt_rows(
+            let refresh_pending = self.devops_status.render_context_bar(
+                sugarloaf,
+                self.named_colors,
+                &session,
+                (window_size.width, window_size.height, scale_factor),
+            );
+            self.devops_status.render_prompt_rows(
                 sugarloaf,
                 self.named_colors,
                 &session,
@@ -858,9 +1101,17 @@ impl Renderer {
                 &historical_anchors,
                 live_anchor,
             );
-            if refresh_pending {
-                context_manager.schedule_render_on_route(100);
-            }
+            self.devops_status.render_command_results(
+                sugarloaf,
+                self.named_colors,
+                &command_results,
+            );
+            // Route timers are de-duplicated by the scheduler. Pending worker
+            // results repaint promptly; completed snapshots keep polling local
+            // Docker/Kubernetes/Git state without continuous animation.
+            context_manager.schedule_render_on_route(
+                devops_status::next_context_wake_millis(refresh_pending),
+            );
         }
 
         self.command_palette.render(
@@ -1161,5 +1412,86 @@ impl Renderer {
                 overlays.push(overlay);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod prompt_visual_anchor_tests {
+    use super::*;
+    use rio_backend::crosswords::pos::Column;
+
+    #[test]
+    fn managed_prompt_repaint_recovers_reserved_blank_row() {
+        let mut rows = vec![Row::<Square>::new(8), Row::<Square>::new(8)];
+        rows[1].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+        rows[1][Column(0)].set_c('/');
+        assert_eq!(prompt_visual_anchor(&rows, 1), Some(0));
+    }
+
+    #[test]
+    fn managed_prompt_on_wrapped_path_tail_recovers_row_before_path() {
+        let mut rows = vec![
+            Row::<Square>::new(8),
+            Row::<Square>::new(8),
+            Row::<Square>::new(8),
+        ];
+        rows[1][Column(0)].set_c('/');
+        rows[2].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+        rows[2][Column(0)].set_c('t');
+        assert_eq!(prompt_visual_anchor(&rows, 2), Some(0));
+    }
+
+    #[test]
+    fn blank_and_legacy_prompts_keep_their_semantic_row() {
+        let mut managed = vec![Row::<Square>::new(8), Row::<Square>::new(8)];
+        managed[1].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+        assert_eq!(prompt_visual_anchor(&managed, 1), Some(1));
+
+        managed[1].set_semantic_prompt(SemanticPrompt::Prompt, None);
+        managed[1][Column(0)].set_c('$');
+        assert_eq!(prompt_visual_anchor(&managed, 1), Some(1));
+    }
+
+    #[test]
+    fn rotated_context_row_moves_before_wrapped_path_run() {
+        let mut rows = vec![
+            Row::<Square>::new(8),
+            Row::<Square>::new(8),
+            Row::<Square>::new(8),
+            Row::<Square>::new(8),
+        ];
+        rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+        rows[1][Column(0)].set_c('/');
+        rows[2].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+        rows[3].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+        rows[3][Column(0)].set_c('λ');
+        assert_eq!(prompt_visual_anchor(&rows, 2), Some(0));
+    }
+
+    #[test]
+    fn readline_rotation_recovers_path_without_continuation_metadata() {
+        let mut rows = vec![
+            Row::<Square>::new(8),
+            Row::<Square>::new(8),
+            Row::<Square>::new(8),
+            Row::<Square>::new(8),
+        ];
+        rows[1][Column(0)].set_c('/');
+        rows[2].set_semantic_prompt(SemanticPrompt::Prompt, Some(9));
+        rows[3][Column(0)].set_c('λ');
+        assert_eq!(prompt_visual_anchor(&rows, 2), Some(0));
+    }
+
+    #[test]
+    fn three_row_contract_recovers_an_entirely_missing_osc_anchor() {
+        let mut rows = vec![
+            Row::<Square>::new(12),
+            Row::<Square>::new(12),
+            Row::<Square>::new(12),
+        ];
+        rows[1][Column(0)].set_c('/');
+        rows[1][Column(1)].set_c('w');
+        rows[2][Column(0)].set_c('λ');
+        assert_eq!(synthetic_prompt_visual_anchor(&rows, 2), Some(0));
     }
 }

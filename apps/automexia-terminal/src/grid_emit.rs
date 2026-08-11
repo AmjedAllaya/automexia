@@ -335,12 +335,12 @@ fn cell_fg_hinted(tag: HintTag, renderer: &Renderer) -> [u8; 4] {
     }
 }
 
-fn semantic_row_fg(
+fn semantic_row_severity(
     row: &Row<Square>,
     cols: usize,
     renderer: &Renderer,
     scratch: &mut String,
-) -> Option<[u8; 4]> {
+) -> Option<crate::automexia::api::SemanticSeverity> {
     if !renderer.devops_enabled {
         return None;
     }
@@ -357,7 +357,16 @@ fn semantic_row_fg(
             scratch.push(character);
         }
     }
-    match crate::automexia::runtime::classify_row_text(scratch)? {
+    crate::automexia::runtime::classify_row_text(scratch)
+}
+
+fn semantic_row_fg(
+    row: &Row<Square>,
+    cols: usize,
+    renderer: &Renderer,
+    scratch: &mut String,
+) -> Option<[u8; 4]> {
+    match semantic_row_severity(row, cols, renderer, scratch)? {
         crate::automexia::api::SemanticSeverity::Error => {
             Some(normalized_to_u8(renderer.named_colors.red))
         }
@@ -374,6 +383,32 @@ fn semantic_row_fg(
             Some(normalized_to_u8(renderer.named_colors.blue))
         }
     }
+}
+
+fn semantic_row_bg(severity: crate::automexia::api::SemanticSeverity) -> Option<[u8; 4]> {
+    match severity {
+        crate::automexia::api::SemanticSeverity::Error => Some([105, 12, 25, 86]),
+        crate::automexia::api::SemanticSeverity::Warning => Some([96, 69, 0, 78]),
+        _ => None,
+    }
+}
+
+#[inline]
+fn semantic_or_cell_bg(
+    semantic: Option<[u8; 4]>,
+    sq: Square,
+    style: Style,
+    renderer: &Renderer,
+    term_colors: &TermColors,
+) -> [u8; 4] {
+    if let Some(semantic) = semantic {
+        if !style.flags.contains(StyleFlags::INVERSE)
+            && matches!(style.bg, AnsiColor::Named(NamedColor::Background))
+        {
+            return semantic;
+        }
+    }
+    cell_bg(sq, style, renderer, term_colors)
 }
 
 #[inline]
@@ -1126,9 +1161,13 @@ pub fn build_row_bg(
     term_colors: &TermColors,
     row_sel: Option<RowSelection>,
     row_hints: &[RowHint],
+    rasterizer: &mut GridGlyphRasterizer,
     bg_scratch: &mut Vec<CellBg>,
 ) {
     bg_scratch.clear();
+    let semantic_bg =
+        semantic_row_severity(row, cols, renderer, &mut rasterizer.semantic_text_scratch)
+            .and_then(semantic_row_bg);
 
     // Fast path: row has no selection and no color-changing hints
     // (HyperlinkHover only contributes an underline, never bg). The
@@ -1141,8 +1180,9 @@ pub fn build_row_bg(
         bg_scratch.reserve(cols);
         for x in 0..cols {
             let sq = row[Column(x)];
+            let style = resolve_style(style_table, sq);
             bg_scratch.push(CellBg {
-                rgba: cell_bg(sq, resolve_style(style_table, sq), renderer, term_colors),
+                rgba: semantic_or_cell_bg(semantic_bg, sq, style, renderer, term_colors),
             });
         }
         return;
@@ -1182,14 +1222,18 @@ pub fn build_row_bg(
                 HintTag::Match => {
                     match_bg.unwrap_or_else(|| cell_bg(sq, style, renderer, term_colors))
                 }
-                HintTag::Label => cell_bg(sq, style, renderer, term_colors),
+                HintTag::Label => {
+                    semantic_or_cell_bg(semantic_bg, sq, style, renderer, term_colors)
+                }
                 // `cell_in_row_hints` filters HyperlinkHover out, but
                 // make the match exhaustive so a future caller can't
                 // accidentally hit a panic.
-                HintTag::HyperlinkHover => cell_bg(sq, style, renderer, term_colors),
+                HintTag::HyperlinkHover => {
+                    semantic_or_cell_bg(semantic_bg, sq, style, renderer, term_colors)
+                }
             }
         } else {
-            cell_bg(sq, style, renderer, term_colors)
+            semantic_or_cell_bg(semantic_bg, sq, style, renderer, term_colors)
         };
         bg_scratch.push(CellBg { rgba });
     }
@@ -1201,6 +1245,54 @@ pub fn build_row_bg(
 /// italic pick different font files. Color / decoration / dim don't
 /// affect shaping so they don't break runs.
 const SHAPING_FLAG_MASK: u16 = StyleFlags::BOLD.bits() | StyleFlags::ITALIC.bits();
+
+/// The direct grid renderer bypasses Sugarloaf's rich-text span compositor,
+/// so Nerd Font `Height::Icon` constraints must be applied here as well. A
+/// modest raster-size increase makes eza/dev-tool glyphs fill their icon box
+/// like the mockup without changing the grid font, advance, or copied text.
+/// Powerline separators use `Height::Cell` and are intentionally excluded.
+const NERD_ICON_RASTER_SCALE: f32 = 1.2;
+
+fn nerd_icon_raster_size(codepoint: u32, base_size: u16) -> Option<u16> {
+    use rio_backend::sugarloaf::font::nerd_font_attributes::{get_constraint, Height};
+
+    // Custom protocols also live in the PUA. Only table-backed Nerd Font
+    // icons get this treatment; registered custom glyphs take their separate
+    // renderer path before run shaping reaches this helper.
+    if codepoint < 0xE000 {
+        return None;
+    }
+    let constraint = get_constraint(codepoint)?;
+    if constraint.height != Height::Icon {
+        return None;
+    }
+    Some(
+        ((base_size as f32) * NERD_ICON_RASTER_SCALE)
+            .ceil()
+            .clamp(1.0, u16::MAX as f32) as u16,
+    )
+}
+
+fn centered_nerd_icon_bearings(
+    glyph_width: u16,
+    glyph_height: u16,
+    cell_width: u32,
+    cell_height: f32,
+    has_trailing_space: bool,
+) -> [i16; 2] {
+    // Icon-producing tools conventionally emit "<glyph><space><name>". Use
+    // that blank cell as the icon box when present so an enlarged folder can
+    // never overlap permissions on its left or the filename on its right.
+    let span = if has_trailing_space { 2 } else { 1 };
+    let box_width = cell_width.saturating_mul(span).min(i16::MAX as u32) as i16;
+    let glyph_width = glyph_width.min(i16::MAX as u16) as i16;
+    let glyph_height = glyph_height.min(i16::MAX as u16) as i16;
+    let cell_height = cell_height.round().clamp(0.0, i16::MAX as f32) as i16;
+    [
+        box_width.saturating_sub(glyph_width) / 2,
+        cell_height.saturating_add(glyph_height) / 2,
+    ]
+}
 
 /// 256 × 8 bucketed LRU cache — CellCacheTable.
 const RUN_BUCKET_COUNT: usize = 256;
@@ -2199,13 +2291,22 @@ pub fn build_row_fg(
                 continue;
             }
 
+            // Resolve the source cell before rasterization because PUA icons
+            // use the Nerd Font constraint table to select a larger raster
+            // size. The atlas key remains stable for this glyph/codepoint at
+            // the current grid size; glyph ids are face-local and unique.
+            let src_col = (grid_col as usize).min(cols.saturating_sub(1));
+            let src_sq = row[Column(src_col)];
+            let nerd_icon_size = nerd_icon_raster_size(src_sq.c() as u32, size_u16);
+            let raster_size_u16 = nerd_icon_size.unwrap_or(size_u16);
+
             let Some((_, slot, is_color)) = ensure_glyph_by_id(
                 rasterizer,
                 grid,
                 font_id,
                 glyph_id,
                 size_bucket,
-                size_u16,
+                raster_size_u16,
                 cell_h,
                 ascent_px,
                 is_emoji,
@@ -2223,8 +2324,6 @@ pub fn build_row_fg(
             // ligatures take the first cluster cell's colour. Mapped
             // through `run_cell_columns` for the same reason as
             // `grid_col` above.
-            let src_col = (grid_col as usize).min(cols.saturating_sub(1));
-            let src_sq = row[Column(src_col)];
             let src_style = resolve_style(style_table, src_sq);
             let (atlas, color) = if is_color {
                 // Colour glyphs (emoji) don't take the selection-fg /
@@ -2269,10 +2368,25 @@ pub fn build_row_fg(
                 }
             };
 
+            let bearings = if nerd_icon_size.is_some() {
+                let has_trailing_space = src_col + 1 < cols
+                    && row[Column(src_col + 1)].content_tag() == ContentTag::Codepoint
+                    && row[Column(src_col + 1)].c() == ' ';
+                centered_nerd_icon_bearings(
+                    slot.w,
+                    slot.h,
+                    cell_w_u32,
+                    cell_h,
+                    has_trailing_space,
+                )
+            } else {
+                [slot.bearing_x, slot.bearing_y]
+            };
+
             fg_scratch.push(CellText {
                 glyph_pos: [slot.x as u32, slot.y as u32],
                 glyph_size: [slot.w as u32, slot.h as u32],
-                bearings: [slot.bearing_x, slot.bearing_y],
+                bearings,
                 grid_pos: [grid_col, y],
                 color,
                 atlas,
@@ -2801,5 +2915,29 @@ mod hint_label_tests {
         let mut hints = Vec::new();
         assert!(overlay_hint_labels(&row, &oob, 3, 0, 5, &mut hints).is_none());
         assert!(hints.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod nerd_icon_tests {
+    use super::*;
+
+    #[test]
+    fn table_backed_pua_icons_receive_a_larger_raster() {
+        // U+E5FF is eza's folder icon; U+E725 is the Git branch mark.
+        assert_eq!(nerd_icon_raster_size(0xE5FF, 16), Some(20));
+        assert_eq!(nerd_icon_raster_size(0xE725, 16), Some(20));
+    }
+
+    #[test]
+    fn text_and_powerline_metrics_are_unchanged() {
+        assert_eq!(nerd_icon_raster_size('A' as u32, 16), None);
+        assert_eq!(nerd_icon_raster_size(0xE0B0, 16), None);
+    }
+
+    #[test]
+    fn trailing_space_provides_a_two_cell_centered_icon_box() {
+        assert_eq!(centered_nerd_icon_bearings(12, 14, 10, 20.0, true), [4, 17]);
+        assert_eq!(centered_nerd_icon_bearings(8, 14, 10, 20.0, false), [1, 17]);
     }
 }

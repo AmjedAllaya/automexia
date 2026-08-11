@@ -2,6 +2,7 @@
 // https://github.com/alacritty/alacritty/blob/e35e5ad14fce8456afdd89f2b392b9924bb27471/alacritty_terminal/src/grid/resize.rs
 // which is licensed under Apache 2.0 license.
 
+use crate::crosswords::grid::row::SemanticPrompt;
 use crate::crosswords::grid::{Dimensions, Grid, ReflowRemap};
 use crate::crosswords::pos::{Boundary, Column, Line};
 use crate::crosswords::square::{Square, Wide};
@@ -139,6 +140,17 @@ impl Grid<Square> {
         });
 
         for (i, mut row) in rows.drain(..).enumerate().rev() {
+            // The intentionally blank Prompt row is application-owned layout,
+            // not disposable terminal whitespace. It forms a hard semantic
+            // boundary before the editable PromptContinuation row.
+            if is_prompt_spacer(&row) {
+                reversed.push(row);
+                if let Some(r) = remap.as_mut() {
+                    r.new_pos[old_len - 1 - i] = (reversed.len() - 1) as i64;
+                }
+                continue;
+            }
+
             // Index of the merge target while `last_row` holds the
             // mutable borrow below.
             let merge_target = reversed.len().wrapping_sub(1);
@@ -154,6 +166,42 @@ impl Grid<Square> {
                     continue;
                 }
             };
+
+            let last_prompt = last_row.semantic_prompt;
+            let row_prompt = row.semantic_prompt;
+            let merged_prompt = match (last_prompt, row_prompt) {
+                (SemanticPrompt::Prompt, _) | (_, SemanticPrompt::Prompt) => {
+                    SemanticPrompt::Prompt
+                }
+                (SemanticPrompt::PromptContinuation, _)
+                | (_, SemanticPrompt::PromptContinuation) => {
+                    SemanticPrompt::PromptContinuation
+                }
+                _ => SemanticPrompt::None,
+            };
+            // Command completion metadata belongs to the logical prompt, not
+            // to a physical grid line.  When resize merges wrapped lines,
+            // retain the result from whichever input row owns the Prompt
+            // marker.  Continuation rows must never replace it.
+            last_row.semantic_command_result = if last_prompt == SemanticPrompt::Prompt {
+                last_row.semantic_command_result
+            } else if row_prompt == SemanticPrompt::Prompt {
+                row.semantic_command_result
+            } else {
+                last_row
+                    .semantic_command_result
+                    .or(row.semantic_command_result)
+            };
+            last_row.semantic_prompt_id = if merged_prompt != SemanticPrompt::None {
+                if last_prompt != SemanticPrompt::None {
+                    last_row.semantic_prompt_id.or(row.semantic_prompt_id)
+                } else {
+                    row.semantic_prompt_id
+                }
+            } else {
+                None
+            };
+            last_row.semantic_prompt = merged_prompt;
 
             // Remove wrap flag before appending additional cells.
             if let Some(cell) = last_row.last_mut() {
@@ -221,12 +269,15 @@ impl Grid<Square> {
                 // this will always be either `0` or `1`.
                 let line_delta = self.cursor.pos.row - target.row;
 
-                if line_delta != 0 && row.is_clear() {
+                if line_delta != 0
+                    && row.is_clear()
+                    && row.semantic_prompt != SemanticPrompt::Prompt
+                {
                     continue;
                 }
 
                 cursor_line_delta += line_delta.0 as usize;
-            } else if row.is_clear() {
+            } else if row.is_clear() && row.semantic_prompt != SemanticPrompt::Prompt {
                 if i < self.display_offset {
                     // Since we removed a line, rotate down the viewport.
                     self.display_offset = self.display_offset.saturating_sub(1);
@@ -336,7 +387,7 @@ impl Grid<Square> {
         }
 
         let mut new_raw = Vec::with_capacity(self.raw.len());
-        let mut buffered: Option<Vec<Square>> = None;
+        let mut buffered: Option<(Vec<Square>, SemanticPrompt, Option<u64>)> = None;
 
         let mut rows = self.raw.take_all();
         let old_len = rows.len();
@@ -356,13 +407,21 @@ impl Grid<Square> {
         let mut trackers: Vec<(usize, i64)> = Vec::new();
 
         for (i, mut row) in rows.drain(..).enumerate().rev() {
+            let continuation_mark = match row.semantic_prompt {
+                SemanticPrompt::None => SemanticPrompt::None,
+                SemanticPrompt::Prompt | SemanticPrompt::PromptContinuation => {
+                    SemanticPrompt::PromptContinuation
+                }
+            };
+            let continuation_id = row.semantic_prompt_id;
             if remap.is_some() {
-                let own_first = buffered.as_ref().map_or(0, |b| b.len()) as i64;
+                let own_first =
+                    buffered.as_ref().map_or(0, |(cells, _, _)| cells.len()) as i64;
                 trackers.push((old_len - 1 - i, own_first));
             }
 
             // Append lines left over from the previous row.
-            if let Some(buffered) = buffered.take() {
+            if let Some((buffered, buffered_mark, buffered_id)) = buffered.take() {
                 // Add a column for every cell added before the cursor, if it goes beyond the new
                 // width it is then later reflown.
                 let cursor_buffer_line = self.lines - self.cursor.pos.row.0 as usize - 1;
@@ -371,6 +430,10 @@ impl Grid<Square> {
                 }
 
                 row.append_front(buffered);
+                if buffered_mark != SemanticPrompt::None {
+                    row.semantic_prompt = buffered_mark;
+                    row.semantic_prompt_id = buffered_id;
+                }
             }
 
             loop {
@@ -488,7 +551,7 @@ impl Grid<Square> {
                     }
 
                     // Add removed cells to start of next row.
-                    buffered = Some(wrapped);
+                    buffered = Some((wrapped, continuation_mark, continuation_id));
                     break;
                 } else {
                     // Reflow cursor if a line below it is deleted.
@@ -513,6 +576,8 @@ impl Grid<Square> {
                         wrapped.resize_with(columns, Square::default);
                     }
                     row = Row::from_vec(wrapped, occ);
+                    row.semantic_prompt = continuation_mark;
+                    row.semantic_prompt_id = continuation_id;
 
                     if i < self.display_offset {
                         // Since we added a new line, rotate up the viewport.
@@ -555,4 +620,12 @@ impl Grid<Square> {
 
         self.reflow_remap = remap;
     }
+}
+
+fn is_prompt_spacer(row: &Row<Square>) -> bool {
+    row.semantic_prompt == SemanticPrompt::Prompt
+        && row
+            .inner
+            .iter()
+            .all(|square| square.is_bg_only() || matches!(square.c(), '\0' | ' '))
 }

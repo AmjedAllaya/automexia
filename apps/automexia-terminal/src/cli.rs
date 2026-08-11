@@ -24,7 +24,7 @@ mod tests {
         let command = Cli::command();
         assert_eq!(command.get_name(), "automexia");
         assert_eq!(command.get_bin_name(), Some("automexia"));
-        assert_eq!(command.get_version(), Some("0.4.0"));
+        assert_eq!(command.get_version(), Some(env!("CARGO_PKG_VERSION")));
     }
 }
 

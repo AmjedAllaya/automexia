@@ -7,11 +7,11 @@ pub fn default_unfocused_split_opacity() -> f32 {
     0.7
 }
 
-/// macOS hides the strip for a lone tab (the native-app feel);
-/// Linux/Windows keep it, drawn as a centred title.
+/// Automexia's operational context and profile controls are persistent chrome,
+/// so the default never hides them merely because a single tab is open.
 #[inline]
 pub fn default_hide_if_single() -> bool {
-    cfg!(target_os = "macos")
+    false
 }
 
 #[inline]
@@ -244,21 +244,13 @@ mod tests {
         navigation: Navigation,
     }
 
-    /// The default is platform-split: macOS hides the strip for a lone
-    /// tab, Linux/Windows keep it as a centred title with no island
-    /// behind it.
+    /// Persistent Automexia chrome is visible by default on every platform.
     #[test]
     fn hide_if_single_platform_default() {
         let decoded = toml::from_str::<Root>("[navigation]\nmode = 'Tab'\n").unwrap();
-        assert_eq!(decoded.navigation.hide_if_single, cfg!(target_os = "macos"));
-        assert_eq!(
-            decoded.navigation.island_visible(1),
-            !cfg!(target_os = "macos")
-        );
-        assert_eq!(
-            Navigation::default().island_visible(1),
-            !cfg!(target_os = "macos")
-        );
+        assert!(!decoded.navigation.hide_if_single);
+        assert!(decoded.navigation.island_visible(1));
+        assert!(Navigation::default().island_visible(1));
         // More than one tab always shows the strip.
         assert!(decoded.navigation.island_visible(2));
     }

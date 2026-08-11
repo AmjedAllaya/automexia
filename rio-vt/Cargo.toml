@@ -81,6 +81,7 @@ wgpu = ["renderer", "dep:sugarloaf", "sugarloaf/wgpu"]
 
 [dev-dependencies]
 criterion = { workspace = true }
+serde_json = { workspace = true }
 
 [[bench]]
 name = "vt_input"

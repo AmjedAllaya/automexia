@@ -57,8 +57,11 @@ if (-not $SkipWsl -and (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
     # source the user's rc files during installation.
     $bashPath = Join-Path $PackageRoot 'bash\automexia.bash'
     $zshPath = Join-Path $PackageRoot 'zsh\automexia.zsh'
-    $bash = [System.IO.File]::ReadAllText($bashPath, [System.Text.Encoding]::UTF8)
-    $zsh = [System.IO.File]::ReadAllText($zshPath, [System.Text.Encoding]::UTF8)
+    # The here-document template below supplies exactly one terminating LF.
+    # Remove source terminators before interpolation so installation does not
+    # append a second blank line or change the checksum on every platform.
+    $bash = [System.IO.File]::ReadAllText($bashPath, [System.Text.Encoding]::UTF8).TrimEnd([char[]]"`r`n")
+    $zsh = [System.IO.File]::ReadAllText($zshPath, [System.Text.Encoding]::UTF8).TrimEnd([char[]]"`r`n")
     $payload = @"
 set -eu
 cfg="`${XDG_CONFIG_HOME:-`$HOME/.config}/automexia"

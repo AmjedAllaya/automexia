@@ -4,7 +4,6 @@
 
 use std::cmp::{max, PartialEq};
 use std::mem;
-use std::mem::MaybeUninit;
 use std::ops::{Index, IndexMut};
 
 use super::Row;
@@ -270,38 +269,13 @@ impl<T> Storage<T> {
         }
     }
 
-    /// Swap implementation for Row<T>.
-    ///
-    /// Exploits the known size of Row<T> to produce a slightly more efficient
-    /// swap than going through slice::swap.
-    ///
-    /// `Row<T>` is currently 5 usizes wide: `inner: Vec<T>` (3 usize) +
-    /// `occ: usize` (1) + `kitty_virtual_placeholder: bool` (1 with padding).
-    /// The hand-rolled qword loop has to copy that many slots — bumping
-    /// the field count requires bumping the loop bound below.
+    /// Swap complete rows without depending on the private layout or size of
+    /// `Row<T>`. Semantic metadata and future row fields must travel together;
+    /// a hard-coded machine-word copy becomes invalid whenever the row grows.
     pub fn swap(&mut self, a: Line, b: Line) {
-        debug_assert_eq!(mem::size_of::<Row<T>>(), mem::size_of::<usize>() * 5);
-
         let a = self.compute_index(a);
         let b = self.compute_index(b);
-
-        unsafe {
-            // Cast to a qword array to opt out of copy restrictions and avoid
-            // drop hazards. Byte array is no good here since for whatever
-            // reason LLVM won't optimized it.
-            let a_ptr = self.inner.as_mut_ptr().add(a) as *mut MaybeUninit<usize>;
-            let b_ptr = self.inner.as_mut_ptr().add(b) as *mut MaybeUninit<usize>;
-
-            // Copy 1 qword at a time.
-            //
-            // The optimizer unrolls this loop and vectorizes it.
-            let mut tmp: MaybeUninit<usize>;
-            for i in 0..5 {
-                tmp = *a_ptr.offset(i);
-                *a_ptr.offset(i) = *b_ptr.offset(i);
-                *b_ptr.offset(i) = tmp;
-            }
-        }
+        self.inner.swap(a, b);
     }
 
     /// Rotate the grid, moving all lines up/down in history.
@@ -945,6 +919,40 @@ mod tests {
         storage.rotate(2);
 
         assert!(storage.zero < storage.inner.len());
+    }
+
+    #[test]
+    fn swap_moves_complete_row_metadata_without_layout_assumptions() {
+        use crate::crosswords::grid::row::SemanticPrompt;
+
+        let mut first = filled_row('a');
+        first.set_semantic_prompt(SemanticPrompt::Prompt, Some(42));
+        let mut second = filled_row('b');
+        second.set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
+        let mut storage = Storage {
+            inner: vec![first, second],
+            zero: 0,
+            visible_lines: 2,
+            len: 2,
+            free: Vec::new(),
+        };
+        let a = Line(0);
+        let b = Line(1);
+        let a_char = storage[a][Column(0)];
+        let a_prompt = storage[a].semantic_prompt;
+        let a_id = storage[a].semantic_prompt_id;
+        let b_char = storage[b][Column(0)];
+        let b_prompt = storage[b].semantic_prompt;
+        let b_id = storage[b].semantic_prompt_id;
+
+        storage.swap(a, b);
+
+        assert_eq!(storage[a][Column(0)], b_char);
+        assert_eq!(storage[a].semantic_prompt, b_prompt);
+        assert_eq!(storage[a].semantic_prompt_id, b_id);
+        assert_eq!(storage[b][Column(0)], a_char);
+        assert_eq!(storage[b].semantic_prompt, a_prompt);
+        assert_eq!(storage[b].semantic_prompt_id, a_id);
     }
 
     fn filled_row(content: char) -> Row<char> {

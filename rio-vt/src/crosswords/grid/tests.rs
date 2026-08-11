@@ -305,6 +305,139 @@ fn grow_reflow_multiline() {
 }
 
 #[test]
+fn semantic_prompt_rows_survive_shrink_and_grow_reflow() {
+    use crate::crosswords::grid::row::{SemanticCommandResult, SemanticPrompt};
+
+    let mut grid = Grid::<Square>::new(3, 8, 8);
+    grid[Line(0)].set_semantic_prompt(SemanticPrompt::Prompt, Some(42));
+    grid[Line(0)].set_semantic_command_result(SemanticCommandResult {
+        exit_code: 17,
+        elapsed_ms: 1_234,
+    });
+    grid[Line(1)].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(42));
+    for (column, character) in "12345678".chars().enumerate() {
+        grid[Line(1)][Column(column)] = cell(character);
+    }
+
+    grid.resize(true, 3, 4);
+    let rows_after_shrink = grid.raw.rows().collect::<Vec<_>>();
+    assert!(rows_after_shrink
+        .iter()
+        .any(|row| { row.semantic_prompt == SemanticPrompt::Prompt && row.is_clear() }));
+    assert!(rows_after_shrink.iter().any(|row| {
+        row.semantic_prompt == SemanticPrompt::Prompt
+            && row.semantic_prompt_id == Some(42)
+            && row.semantic_command_result
+                == Some(SemanticCommandResult {
+                    exit_code: 17,
+                    elapsed_ms: 1_234,
+                })
+    }));
+    assert!(rows_after_shrink
+        .iter()
+        .filter(|row| !row.is_clear())
+        .all(|row| {
+            row.semantic_prompt == SemanticPrompt::PromptContinuation
+                && row.semantic_prompt_id == Some(42)
+        }));
+
+    grid.resize(true, 3, 8);
+    let rows_after_grow = grid.raw.rows().collect::<Vec<_>>();
+    assert!(rows_after_grow
+        .iter()
+        .any(|row| { row.semantic_prompt == SemanticPrompt::Prompt && row.is_clear() }));
+    assert!(rows_after_grow.iter().any(|row| {
+        row.semantic_prompt == SemanticPrompt::Prompt
+            && row.semantic_prompt_id == Some(42)
+            && row.semantic_command_result
+                == Some(SemanticCommandResult {
+                    exit_code: 17,
+                    elapsed_ms: 1_234,
+                })
+    }));
+    assert!(rows_after_grow
+        .iter()
+        .filter(|row| !row.is_clear())
+        .all(|row| {
+            row.semantic_prompt == SemanticPrompt::PromptContinuation
+                && row.semantic_prompt_id == Some(42)
+        }));
+}
+
+#[test]
+fn multiple_three_row_prompts_keep_order_and_text_through_reflow() {
+    use crate::crosswords::grid::row::SemanticPrompt;
+
+    fn write_row(grid: &mut Grid<Square>, line: i32, text: &str) {
+        for (column, character) in text.chars().enumerate() {
+            grid[Line(line)][Column(column)] = cell(character);
+        }
+    }
+
+    fn meaningful_rows(
+        grid: &Grid<Square>,
+    ) -> Vec<(SemanticPrompt, Option<u64>, String)> {
+        (0..grid.screen_lines())
+            .filter_map(|line| {
+                let row = &grid[Line(line as i32)];
+                let text = row
+                    .inner
+                    .iter()
+                    .map(|square| square.c())
+                    .collect::<String>()
+                    .trim_end_matches(['\0', ' '])
+                    .to_string();
+                (row.semantic_prompt != SemanticPrompt::None || !text.is_empty())
+                    .then_some((row.semantic_prompt, row.semantic_prompt_id, text))
+            })
+            .collect()
+    }
+
+    let mut grid = Grid::<Square>::new(12, 52, 100);
+    grid[Line(0)].set_semantic_prompt(SemanticPrompt::Prompt, Some(1));
+    grid[Line(1)].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(1));
+    write_row(&mut grid, 1, "/workspace/automexia/standalone");
+    grid[Line(2)].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(1));
+    write_row(&mut grid, 2, "λ pwd");
+    write_row(&mut grid, 3, "/workspace/automexia/standalone");
+    grid[Line(4)].set_semantic_prompt(SemanticPrompt::Prompt, Some(2));
+    grid[Line(5)].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(2));
+    write_row(&mut grid, 5, "/workspace/automexia/standalone");
+    grid[Line(6)].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(2));
+    write_row(&mut grid, 6, "λ echo ok");
+    write_row(&mut grid, 7, "ok");
+    grid[Line(8)].set_semantic_prompt(SemanticPrompt::Prompt, Some(3));
+    grid[Line(9)].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(3));
+    write_row(&mut grid, 9, "/workspace/automexia/standalone");
+    grid[Line(10)].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(3));
+    write_row(&mut grid, 10, "λ ");
+    grid.cursor.pos = Pos::new(Line(10), Column(2));
+
+    let before = meaningful_rows(&grid);
+    grid.resize(true, 9, 24);
+    grid.resize(true, 12, 52);
+    let after = meaningful_rows(&grid);
+
+    assert_eq!(after, before);
+    for generation in 1..=3 {
+        let prompt = after
+            .iter()
+            .position(|(kind, id, _)| {
+                *kind == SemanticPrompt::Prompt && *id == Some(generation)
+            })
+            .expect("semantic prompt row was lost");
+        assert_eq!(
+            after.get(prompt + 1).map(|row| row.0),
+            Some(SemanticPrompt::PromptContinuation),
+            "prompt {generation} detached from its path row"
+        );
+        assert_eq!(after[prompt + 1].1, Some(generation));
+        assert_eq!(after[prompt + 2].0, SemanticPrompt::PromptContinuation);
+        assert_eq!(after[prompt + 2].1, Some(generation));
+    }
+}
+
+#[test]
 fn grow_reflow_disabled() {
     let mut grid = Grid::<Square>::new(2, 2, 0);
     grid[Line(0)][Column(0)] = cell('1');

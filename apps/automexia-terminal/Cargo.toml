@@ -12,6 +12,7 @@ repository.workspace = true
 homepage.workspace = true
 documentation.workspace = true
 readme.workspace = true
+build = "build.rs"
 
 [package.metadata.packager]
 product-name = "Automexia Terminal"
@@ -22,12 +23,11 @@ license-file = "../../LICENSE"
 copyright = "Copyright 2022-present Raphael Amorim; Copyright 2026-present Automexia Contributors"
 formats = ["wix", "app", "dmg", "deb"]
 icons = [
-    "../../assets/brand/automexia-terminal.svg",
     "../../assets/brand/automexia-terminal.ico",
     "../../assets/brand/automexia-terminal.icns",
     "../../assets/brand/png/*.png",
 ]
-resources = ["../../LICENSE", "../../NOTICE.md", "../../README.md", "../../shell-integration"]
+resources = ["../../LICENSE", "../../NOTICE.md", "../../THIRD_PARTY_NOTICES.md", "../../README.md", "../../shell-integration"]
 binaries = [{ path = "automexia", main = true }]
 
 [package.metadata.packager.windows]
@@ -70,13 +70,13 @@ parking_lot = { workspace = true }
 serde = { workspace = true }
 serde_json = "1.0"
 toml = "0.9.2"
+tempfile = { workspace = true }
 taffy = { version = "0.10.1", features = ["flexbox","grid"] }
 teletypewriter = { workspace = true }
 unicode-width = { workspace = true }
 url = { workspace = true }
 smallvec = { workspace = true }
 rio-window = { workspace = true }
-lru = "0.16.0"
 rio-notifier = { workspace = true }
 
 [target.'cfg(all(not(target_os = "macos"), not(target_os = "windows")))'.dependencies]
@@ -97,11 +97,15 @@ windows-sys = { version = "0.60.2", features = [
     "Win32_System_Threading",
     "Win32_System_WindowsProgramming",
     "Win32_System_IO",
+    "Win32_System_SystemInformation",
     "Win32_Graphics_Gdi",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
     "Win32_System_Diagnostics_Debug",
 ]}
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1.12"
 # `wgpu` backend is a hard requirement on Windows — there's no native
 # DX12/Vulkan-via-ash backend yet, so without it the binary has no
 # GPU rendering path. Force it on for Windows builds; Linux/macOS

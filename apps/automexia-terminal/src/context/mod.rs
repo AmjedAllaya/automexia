@@ -740,6 +740,17 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         self.contexts.get(index).map(|grid| &grid.current().title)
     }
 
+    /// Raw OSC/window title from the terminal engine. The renderer-owned tab
+    /// strip uses this ahead of the formatted title template so Windows can
+    /// identify PowerShell/WSL profiles without relying on Unix-only process
+    /// inspection.
+    pub fn raw_terminal_title(&self, index: usize) -> Option<String> {
+        self.contexts.get(index).and_then(|grid| {
+            let title = grid.current().terminal.lock().title.to_string();
+            (!title.trim().is_empty()).then_some(title)
+        })
+    }
+
     #[inline]
     pub fn custom_title(&self, index: usize) -> Option<&str> {
         self.contexts

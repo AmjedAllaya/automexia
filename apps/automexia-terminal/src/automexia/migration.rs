@@ -2,8 +2,10 @@
 
 use rio_backend::config::product;
 use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
+use std::io::{self, Write};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 
 const COMPLETE_MARKER: &str = ".migrated-from-rio-v0.4";
 const PROGRESS_MARKER: &str = ".migration-in-progress";
@@ -37,6 +39,16 @@ fn migrate_paths(source: &Path, destination: &Path) -> Result<MigrationStatus, S
 
     let progress = destination.join(PROGRESS_MARKER);
     let continuing = progress.is_file();
+    if continuing {
+        let recorded_source = fs::read_to_string(&progress)
+            .map_err(|error| format!("could not read {}: {error}", progress.display()))?;
+        if recorded_source != source.to_string_lossy() {
+            return Err(format!(
+                "{} belongs to a different migration source; review the partial destination before retrying",
+                progress.display()
+            ));
+        }
+    }
     if destination.join("config.toml").exists() && !continuing {
         return Ok(MigrationStatus::DestinationHasConfiguration);
     }
@@ -58,7 +70,12 @@ fn migrate_paths(source: &Path, destination: &Path) -> Result<MigrationStatus, S
     )?;
     atomic_write(
         &destination.join(COMPLETE_MARKER),
-        format!("source={}\nversion=0.4.0\n", source.display()).as_bytes(),
+        format!(
+            "source={}\nversion={}\n",
+            source.display(),
+            env!("CARGO_PKG_VERSION")
+        )
+        .as_bytes(),
     )?;
     fs::remove_file(&progress)
         .map_err(|error| format!("could not clear {}: {error}", progress.display()))?;
@@ -143,12 +160,11 @@ fn copy_extension_state(source: &Path, destination: &Path) -> Result<(), String>
 
 fn atomic_copy_if_missing(source: &Path, destination: &Path) -> Result<(), String> {
     if destination.exists() {
-        clear_stale_temporary(destination)?;
         return Ok(());
     }
     let bytes = fs::read(source)
         .map_err(|error| format!("could not read {}: {error}", source.display()))?;
-    atomic_write(destination, &bytes)
+    atomic_write_if_missing(destination, &bytes)
 }
 
 fn atomic_write(destination: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -157,37 +173,41 @@ fn atomic_write(destination: &Path, bytes: &[u8]) -> Result<(), String> {
         .ok_or_else(|| format!("invalid migration path: {}", destination.display()))?;
     fs::create_dir_all(parent)
         .map_err(|error| format!("could not create {}: {error}", parent.display()))?;
-    let temporary = migration_temporary_path(destination);
-    match fs::remove_file(&temporary) {
-        Ok(()) => {}
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(format!("could not clear {}: {error}", temporary.display()));
-        }
-    }
-    fs::write(&temporary, bytes)
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)
         .map_err(|error| format!("could not stage {}: {error}", destination.display()))?;
-    fs::rename(&temporary, destination).map_err(|error| {
-        let _ = fs::remove_file(&temporary);
-        format!("could not install {}: {error}", destination.display())
+    temporary
+        .write_all(bytes)
+        .and_then(|_| temporary.as_file().sync_all())
+        .map_err(|error| format!("could not stage {}: {error}", destination.display()))?;
+    temporary.persist(destination).map(|_| ()).map_err(|error| {
+        format!(
+            "could not install {}: {}",
+            destination.display(),
+            error.error
+        )
     })
 }
 
-fn migration_temporary_path(destination: &Path) -> PathBuf {
-    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
-    let name = destination
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or("state");
-    parent.join(format!(".{name}.automexia-migration.tmp"))
-}
-
-fn clear_stale_temporary(destination: &Path) -> Result<(), String> {
-    let temporary = migration_temporary_path(destination);
-    match fs::remove_file(&temporary) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(format!("could not clear {}: {error}", temporary.display())),
+fn atomic_write_if_missing(destination: &Path, bytes: &[u8]) -> Result<(), String> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| format!("invalid migration path: {}", destination.display()))?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("could not create {}: {error}", parent.display()))?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|error| format!("could not stage {}: {error}", destination.display()))?;
+    temporary
+        .write_all(bytes)
+        .and_then(|_| temporary.as_file().sync_all())
+        .map_err(|error| format!("could not stage {}: {error}", destination.display()))?;
+    match temporary.persist_noclobber(destination) {
+        Ok(_) => Ok(()),
+        Err(error) if error.error.kind() == io::ErrorKind::AlreadyExists => Ok(()),
+        Err(error) => Err(format!(
+            "could not install {}: {}",
+            destination.display(),
+            error.error
+        )),
     }
 }
 
@@ -312,25 +332,18 @@ mod tests {
         fs::create_dir_all(dirs.source.join("themes")).unwrap();
         fs::write(dirs.source.join("themes/resumed.toml"), "[colors]\n").unwrap();
         fs::create_dir_all(&dirs.destination).unwrap();
-        fs::write(dirs.destination.join(PROGRESS_MARKER), b"interrupted").unwrap();
-        fs::write(dirs.destination.join("config.toml"), "theme = \"\"\n").unwrap();
         fs::write(
-            dirs.destination
-                .join(".config.toml.automexia-migration.tmp"),
-            b"stale",
+            dirs.destination.join(PROGRESS_MARKER),
+            dirs.source.to_string_lossy().as_bytes(),
         )
         .unwrap();
-
+        fs::write(dirs.destination.join("config.toml"), "theme = \"\"\n").unwrap();
         assert_eq!(
             migrate_paths(&dirs.source, &dirs.destination).unwrap(),
             MigrationStatus::Migrated
         );
         assert!(dirs.destination.join("themes/resumed.toml").is_file());
         assert!(!dirs.destination.join(PROGRESS_MARKER).exists());
-        assert!(!dirs
-            .destination
-            .join(".config.toml.automexia-migration.tmp")
-            .exists());
         assert_eq!(
             migrate_paths(&dirs.source, &dirs.destination).unwrap(),
             MigrationStatus::AlreadyMigrated
@@ -348,6 +361,25 @@ mod tests {
         assert_eq!(
             migrate_paths(&dirs.source, &dirs.destination).unwrap(),
             MigrationStatus::Migrated
+        );
+    }
+
+    #[test]
+    fn progress_marker_from_another_source_is_rejected() {
+        let dirs = TestDirs::new("wrong-source");
+        dirs.valid_config();
+        fs::create_dir_all(&dirs.destination).unwrap();
+        fs::write(
+            dirs.destination.join(PROGRESS_MARKER),
+            dirs.root.join("another-rio").to_string_lossy().as_bytes(),
+        )
+        .unwrap();
+        fs::write(dirs.destination.join("config.toml"), "theme = \"mine\"\n").unwrap();
+
+        assert!(migrate_paths(&dirs.source, &dirs.destination).is_err());
+        assert_eq!(
+            fs::read_to_string(dirs.destination.join("config.toml")).unwrap(),
+            "theme = \"mine\"\n"
         );
     }
 }
