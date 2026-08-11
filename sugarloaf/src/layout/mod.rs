@@ -239,7 +239,7 @@ pub fn canonical_cell_metrics(
 /// Compute the canonical [`CellMetrics`] for a `(font_size,
 /// line_height, scale_factor)` triple using `font_library`'s primary
 /// font. Pure function — no per-id state, no caching, no
-/// side effects. Callers (rioterm's `ContextDimension`, future panel
+/// side effects. Callers (Automexia's `ContextDimension`, future panel
 /// owners) recompute on font / size / scale change and store the
 /// result themselves.
 ///

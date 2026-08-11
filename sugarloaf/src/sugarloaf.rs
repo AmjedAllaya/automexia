@@ -370,7 +370,7 @@ impl Sugarloaf<'_> {
         &self.state.fonts
     }
 
-    /// Stateless cell-metrics computation. Callers (rioterm's
+    /// Stateless cell-metrics computation. Callers (Automexia's
     /// `ContextDimension`) recompute on font / size / scale change
     /// and store the result themselves — sugarloaf no longer keeps
     /// per-panel dimensions. Returns `(TextDimensions, CellMetrics)`
@@ -895,7 +895,7 @@ impl Sugarloaf<'_> {
     /// etc. with a single drawable acquisition + present.
     ///
     /// Pass `&mut []` to skip (equivalent to `render()`). Phase 2 call
-    /// sites in rioterm build the slice with one entry per panel.
+    /// sites in Automexia build the slice with one entry per panel.
     #[inline]
     pub fn render_with_grids(
         &mut self,

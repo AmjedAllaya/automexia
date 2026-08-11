@@ -1,48 +1,71 @@
-<!-- LOGO -->
-<h1>
-<p align="center">
-  <img src="https://rioterm.com/assets/rio-logo.png" alt="Rio terminal logo" width="128">
-  <br>Rio Terminal
-</h1>
-  <p align="center">
-    Rio is a modern terminal built to run everywhere.
-    <br />
-    <a href="#about">About</a>
-    ·
-    <a href="https://rioterm.com/docs/install">Install</a>
-    ·
-    <a href="https://rioterm.com/docs/config">Config</a>
-    ·
-    <a href="https://rioterm.com/changelog">Changelog</a>
-    ·
-    <a href="https://github.com/sponsors/raphamorim">Sponsor</a>
-  </p>
-</p>
+# Automexia Terminal
 
-Documentation: [rioterm.com](https://rioterm.com).
+Automexia Terminal is a fast, hardware-accelerated desktop terminal focused on
+modern development workflows. Version 0.4.0 is a standalone downstream of Rio
+with a separate executable, application identity, configuration root, and
+release process.
 
-## Supporting the Project
+> Stable v0.4.0 publication is intentionally blocked until the final Automexia
+> brand kit, Windows signing certificate, Apple signing/notarization credentials,
+> and a private conduct-reporting contact are configured. Development builds do
+> not reuse Rio artwork.
 
-If you use and like Rio, please consider sponsoring it: your support helps to cover the fees required to maintain the project and to validate the time spent working on it!
+## Build
 
-[![Sponsor Rio terminal](https://img.shields.io/github/sponsors/raphamorim?label=Sponsor%20Rio&logo=github&style=for-the-badge)](https://github.com/sponsors/raphamorim)
+Install the Rust toolchain declared in `rust-toolchain.toml`, then run:
 
-## Packaging
+```text
+cargo xtask doctor
+cargo xtask check
+cargo build -p automexia-terminal
+```
 
-[![Packaging status](https://repology.org/badge/vertical-allrepos/rio-terminal.svg?columns=3)](https://repology.org/project/rio-terminal/versions)
+The executable is `target/debug/automexia` (`automexia.exe` on Windows). A
+normal build or test must leave tracked files unchanged.
 
-> Demo with split and CRT on MacOS
+## Verify changes
 
-![Demo Rio 0.2.0 on MacOS](https://rioterm.com/assets/posts/0.2.0/demo-rio.png)
+```text
+cargo xtask verify architecture
+cargo xtask verify identity
+cargo xtask verify provenance
+cargo xtask test conformance
+cargo xtask ci
+cargo xtask package --check
+```
 
-> Demo with blurred background on Linux
+The complete command contract and platform prerequisites are documented in
+[CONTRIBUTING.md](CONTRIBUTING.md) and [docs/TESTING.md](docs/TESTING.md).
 
-![Demo blurred background](https://rioterm.com/assets/demos/demos-nixos-blur.png)
+## Configuration
 
-> Demo of Rio running on a Steam Deck
+Automexia uses these roots by default:
 
-![Demo of Rio running on a Steam Deck](https://rioterm.com/assets/demos/demo-flatpak-steamdeck.jpg)
+- Windows: `%LOCALAPPDATA%\Automexia\Terminal`
+- macOS: `~/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal`
+- Linux/BSD: `$XDG_CONFIG_HOME/automexia`, or `~/.config/automexia`
 
-## Minimal stable rust version
+`AUTOMEXIA_CONFIG_HOME` overrides the root. See
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md) for migration and compatibility
+details.
 
-Rio's MSRV is 1.96.1.
+## Project status
+
+- v0.4 keeps attributed private `rio-*`, `librio`, Sugarloaf, and related
+  engine crate names while all product-facing identity is Automexia.
+- v0.5 will extract Automexia-owned application modules and then consider
+  grouping inherited engines beneath `engine/`.
+- Third-party extension downloads, a public extension SDK, and Wasm sandboxing
+  remain out of scope until the documented v0.6 milestone.
+
+## Contributing and security
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md),
+[SUPPORT.md](SUPPORT.md), and [GOVERNANCE.md](GOVERNANCE.md). All commits must
+carry a DCO `Signed-off-by` line.
+
+## License and provenance
+
+Automexia Terminal is MIT licensed. It preserves Rio's full Git history and
+copyright notice. See [NOTICE.md](NOTICE.md) and [UPSTREAM.md](UPSTREAM.md) for
+the exact fork point and upstream-port policy.

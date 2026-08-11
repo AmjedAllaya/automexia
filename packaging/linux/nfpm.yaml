@@ -1,0 +1,38 @@
+name: automexia-terminal
+arch: ${NFPM_ARCH}
+platform: linux
+version: ${AUTOMEXIA_VERSION}
+section: utils
+priority: optional
+maintainer: Automexia Contributors
+description: Hardware-accelerated terminal for modern development workflows
+vendor: Automexia
+homepage: https://github.com/AmjedAllaya/automexia-terminal
+license: MIT
+contents:
+  - src: ${AUTOMEXIA_BINARY}
+    dst: /usr/bin/automexia
+    expand: true
+    file_info:
+      mode: 0755
+  - src: packaging/linux/automexia-terminal.desktop
+    dst: /usr/share/applications/automexia-terminal.desktop
+  - src: packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml
+    dst: /usr/share/metainfo/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml
+  - src: assets/brand/automexia-terminal.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/automexia-terminal.svg
+  - src: ${AUTOMEXIA_TERMINFO_ROOT}/
+    dst: /usr/share/terminfo
+    type: tree
+    expand: true
+  - src: ${AUTOMEXIA_MANPAGE}
+    dst: /usr/share/man/man1/automexia.1
+    expand: true
+  - src: LICENSE
+    dst: /usr/share/doc/automexia-terminal/LICENSE
+  - src: NOTICE.md
+    dst: /usr/share/doc/automexia-terminal/NOTICE.md
+rpm:
+  compression: xz
+deb:
+  compression: xz

@@ -1,183 +1,270 @@
-name: Release
+name: Stable release
+
 on:
   push:
-    branches: [main]
-    tags:
-      - "v*.*.*"
-    paths:
-      - ".github/workflows/release.yml"
-      - ".goreleaser.yaml"
+    tags: ['v*']
   workflow_dispatch:
-concurrency:
-  group: release-${{ github.event_name }}-${{ github.ref_name }}
-  cancel-in-progress: true
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    environment: stable-release
+    env:
+      AUTOMEXIA_WINDOWS_CERTIFICATE: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE }}
+      AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Protected-main and tag preconditions
+        run: |
+          test "${GITHUB_REF_NAME}" = "v0.4.0"
+          cargo xtask release --version 0.4.0
+
   build:
+    needs: preflight
+    environment: stable-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: windows-x86_64
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            artifact: windows-arm64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: macos-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: macos-arm64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: linux-x86_64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact: linux-arm64
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
-      discussions: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
+      - run: rustup target add ${{ matrix.target }}
+      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+        with:
+          tool: cross@0.2.5
+        if: runner.os == 'Linux' && matrix.target == 'aarch64-unknown-linux-gnu'
+      - name: Build native/cross artifact
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}-${{ matrix.target }}" == "Linux-aarch64-unknown-linux-gnu" ]]; then
+            cross build --release --locked -p automexia-terminal --target "${{ matrix.target }}"
+          else
+            cargo build --release --locked -p automexia-terminal --target "${{ matrix.target }}"
+          fi
+      - name: Version smoke
+        if: matrix.target == 'x86_64-pc-windows-msvc' || matrix.target == 'x86_64-unknown-linux-gnu' || (runner.os == 'macOS' && runner.arch == 'ARM64' && matrix.target == 'aarch64-apple-darwin')
+        shell: bash
+        run: |
+          binary="target/${{ matrix.target }}/release/automexia"
+          [[ "${{ runner.os }}" == "Windows" ]] && binary="${binary}.exe"
+          "$binary" --version
+      - name: Stage portable artifact
+        shell: bash
+        run: |
+          mkdir -p "dist/${{ matrix.artifact }}"
+          cp "target/${{ matrix.target }}/release/automexia"* "dist/${{ matrix.artifact }}/"
+          cp LICENSE NOTICE.md README.md "dist/${{ matrix.artifact }}/"
+      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: dist/${{ matrix.artifact }}
+          format: spdx-json
+          output-file: dist/${{ matrix.artifact }}.spdx.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist
+          if-no-files-found: error
+
+  package-windows:
+    needs: build
+    runs-on: windows-latest
+    environment: stable-release
     strategy:
       matrix:
         include:
-          - os: macos-latest
-            cache-subdir: darwin
-          - os: ubuntu-22.04
-            cache-subdir: linux
-            _ids: --id linux-x64-wayland --id linux-x64-x11
-          - os: ubuntu-22.04-arm
-            cache-subdir: linux
-            _ids: --id linux-arm64-wayland --id linux-arm64-x11
-          - os: windows-latest
-            cache-subdir: windows
-      fail-fast: false
-    outputs:
-      cache-hit: ${{ steps.cache-check.outputs.cache-hit }}
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
-      MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
-      MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
-      MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
-      MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
-      MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
-      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-      MACOS_NOTARY_KEYCHAIN_PROFILE: ${{ secrets.MACOS_NOTARY_KEYCHAIN_PROFILE }}
+          - artifact: windows-x86_64
+            target: x86_64-pc-windows-msvc
+          - artifact: windows-arm64
+            target: aarch64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          fetch-depth: 0
-      - uses: actions/cache@v5
+          name: ${{ matrix.artifact }}
+          path: staged
+      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:
-          path: dist/${{ matrix.cache-subdir }}
-          key: goreleaser-${{ matrix.os }}-${{ github.sha }}
-          enableCrossOsArchive: ${{ matrix.os == 'windows-latest' }}
-          lookup-only: true
-          fail-on-cache-miss: false
-        id: cache-check
-      - if: startsWith(matrix.os, 'ubuntu')
+          tool: cargo-packager@0.11.8
+      - name: Import certificate and sign executable
+        shell: pwsh
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwayland-dev pkg-config libfontconfig1-dev glslang-tools
-      - if: matrix.os == 'macos-latest'
-        run: rustup target add x86_64-apple-darwin
-      - if: matrix.os == 'windows-latest'
-        run: rustup target add aarch64-pc-windows-msvc
-      - if: matrix.os == 'macos-latest'
+          New-Item -ItemType Directory -Force signed | Out-Null
+          [IO.File]::WriteAllBytes('signed\automexia.pfx', [Convert]::FromBase64String($env:CERTIFICATE_BASE64))
+          $binary = Get-ChildItem staged -Recurse -Filter automexia.exe | Select-Object -First 1
+          signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f signed\automexia.pfx /p $env:CERTIFICATE_PASSWORD $binary.FullName
+          signtool verify /pa $binary.FullName
+          Copy-Item $binary.FullName signed\automexia.exe
+          Copy-Item LICENSE,NOTICE.md,README.md signed
+          Compress-Archive -Path signed\automexia.exe,signed\LICENSE,signed\NOTICE.md,signed\README.md -DestinationPath "signed\automexia-0.4.0-${{ matrix.target }}.zip"
+          $targetDir = "target\${{ matrix.target }}\release"
+          New-Item -ItemType Directory -Force $targetDir | Out-Null
+          Copy-Item $binary.FullName "$targetDir\automexia.exe"
+      - name: Build and sign MSI
+        shell: pwsh
+        env:
+          CERTIFICATE_PASSWORD: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          # create variables
-          CERTIFICATE_PATH=$RUNNER_TEMP/goreleaser.p12
-          KEY_PATH=$RUNNER_TEMP/goreleaser.p8
-          KEYCHAIN_PATH=$RUNNER_TEMP/goreleaser.keychain-db
-
-          # import certificate and key from secrets
-          echo -n "$MACOS_SIGN_P12" | base64 --decode -o $CERTIFICATE_PATH
-          echo -n "$MACOS_NOTARY_KEY" | base64 --decode -o $KEY_PATH
-
-          # create temporary keychain
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-
-          # import certificate to keychain
-          security import $CERTIFICATE_PATH -P "$MACOS_SIGN_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
-
-          # create notary profile
-          xcrun notarytool store-credentials "$MACOS_NOTARY_KEYCHAIN_PROFILE" \
-            --key "$KEY_PATH" \
-            --key-id "$MACOS_NOTARY_KEY_ID" \
-            --issuer "$MACOS_NOTARY_ISSUER_ID" \
-            --keychain $KEYCHAIN_PATH
-
-          # export the keychain path
-          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >>$GITHUB_ENV
-
-      - if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && steps.cache-check.outputs.cache-hit != 'true'
-        uses: goreleaser/goreleaser-action@v7
+          cargo packager --manifest-path apps/automexia-terminal/Cargo.toml --release --out-dir target/package --target ${{ matrix.target }} --formats wix
+          $msi = Get-ChildItem target -Recurse -Filter *.msi | Select-Object -First 1
+          if (-not $msi) { throw 'cargo-packager did not produce an MSI' }
+          signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f signed\automexia.pfx /p $env:CERTIFICATE_PASSWORD $msi.FullName
+          signtool verify /pa $msi.FullName
+          Copy-Item $msi.FullName "signed\automexia-0.4.0-${{ matrix.target }}.msi"
+          Remove-Item signed\automexia.pfx -Force
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          distribution: goreleaser-pro
-          version: nightly
-          args: release --clean --split ${{ matrix._ids }} --skip=winget
-      - if: (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/v'))) && steps.cache-check.outputs.cache-hit != 'true'
-        uses: goreleaser/goreleaser-action@v7
+          name: packages-${{ matrix.artifact }}
+          path: signed/*
+          if-no-files-found: error
+
+  package-macos:
+    needs: build
+    runs-on: macos-latest
+    environment: stable-release
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          distribution: goreleaser-pro
-          version: nightly
-          args: release --clean --split ${{ matrix._ids }} --nightly --skip=winget
-  release:
-    # skip if cache exists for same commit, since we probably already released
-    if: needs.build.outputs.cache-hit != 'true'
+          name: macos-x86_64
+          path: staged/x86_64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: macos-arm64
+          path: staged/arm64
+      - name: Assemble, sign, notarize, and staple universal DMG
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          x64=$(find staged/x86_64 -type f -name automexia | head -1)
+          arm=$(find staged/arm64 -type f -name automexia | head -1)
+          app='dist/Automexia Terminal.app'
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+          lipo -create "$x64" "$arm" -output "$app/Contents/MacOS/automexia"
+          cp packaging/macos/Info.plist "$app/Contents/Info.plist"
+          cp assets/brand/automexia-terminal.icns "$app/Contents/Resources/automexia-terminal.icns"
+          cp LICENSE NOTICE.md "$app/Contents/Resources/"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p temporary automexia.keychain
+          security import certificate.p12 -k automexia.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k temporary automexia.keychain
+          security default-keychain -s automexia.keychain
+          codesign --force --options runtime --timestamp --deep --sign "$APPLE_SIGNING_IDENTITY" "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          hdiutil create -volname 'Automexia Terminal' -srcfolder "$app" -ov -format UDZO dist/automexia-terminal-0.4.0-universal.dmg
+          xcrun notarytool submit dist/automexia-terminal-0.4.0-universal.dmg --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple dist/automexia-terminal-0.4.0-universal.dmg
+          spctl --assess --type open --context context:primary-signature -v dist/automexia-terminal-0.4.0-universal.dmg
+          security delete-keychain automexia.keychain
+          rm -f certificate.p12
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: packages-macos-universal
+          path: dist/automexia-terminal-0.4.0-universal.dmg
+          if-no-files-found: error
+
+  package-linux:
     needs: build
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - artifact: linux-x86_64
+            arch: amd64
+          - artifact: linux-arm64
+            arch: arm64
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          fetch-depth: 0
-      - uses: actions/cache@v5
+          name: ${{ matrix.artifact }}
+          path: staged
+      - name: Install Linux package validators
+        run: sudo apt-get update && sudo apt-get install -y appstream desktop-file-utils lintian ncurses-bin rpm scdoc
+      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:
-          key: goreleaser-macos-latest-${{ github.sha }}
-          path: dist/darwin
-          fail-on-cache-miss: true
-      - uses: actions/cache@v5
-        with:
-          key: goreleaser-windows-latest-${{ github.sha }}
-          path: dist/windows
-          fail-on-cache-miss: true
-      - uses: actions/cache@v5
-        with:
-          key: goreleaser-ubuntu-22.04-arm-${{ github.sha }}
-          path: dist/linux
-          fail-on-cache-miss: true
-      - name: workaround to avoid conflicts b/w linux x64/arm64 caches
+          tool: nfpm@v2.43.4
+      - name: Build DEB, RPM, and portable archive
         run: |
-          # rename linux to linux-arm64, to avoid cache restore conflicts
-          mv dist/linux dist/linux-arm64
-          # update paths in artifacts.json (dist/linux -> dist/linux-arm64)
-          sed -i 's/dist\/linux/dist\/linux-arm64/g' dist/linux-arm64/artifacts.json
-      - uses: actions/cache@v5
+          set -euo pipefail
+          mkdir -p packages/terminfo
+          binary=$(find staged -type f -name automexia | head -1)
+          chmod +x "$binary"
+          scdoc < packaging/linux/automexia.1.scd > packages/automexia.1
+          tic -x -o packages/terminfo packaging/linux/automexia.terminfo
+          export NFPM_ARCH=${{ matrix.arch }} AUTOMEXIA_VERSION=0.4.0 AUTOMEXIA_BINARY="$binary"
+          export AUTOMEXIA_MANPAGE=packages/automexia.1 AUTOMEXIA_TERMINFO_ROOT=packages/terminfo
+          nfpm package --config packaging/linux/nfpm.yaml --packager deb --target packages/
+          nfpm package --config packaging/linux/nfpm.yaml --packager rpm --target packages/
+          desktop-file-validate packaging/linux/automexia-terminal.desktop
+          appstreamcli validate --no-net packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml
+          lintian packages/*.deb
+          tar -czf "packages/automexia-terminal-0.4.0-linux-${{ matrix.arch }}.tar.gz" -C "$(dirname "$binary")" automexia LICENSE NOTICE.md README.md
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          key: goreleaser-ubuntu-22.04-${{ github.sha }}
-          path: dist/linux
-          fail-on-cache-miss: true
-      - uses: goreleaser/goreleaser-action@v7
-        with:
-          distribution: goreleaser-pro
-          version: nightly
-          args: continue --merge
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
-      # The release body cannot come from goreleaser's release.header, because
-      # changelog.disable skips the pipe that renders it, leaving the body
-      # empty. Set it here instead.
-      - name: Set release notes
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG='${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'nightly' }}'
-          gh release edit "$TAG" --notes '**Full Changelog**: https://rioterm.com/changelog'
-  librio-xcframework:
-    needs: release
-    runs-on: macos-latest
-    timeout-minutes: 30
-    permissions:
-      contents: write
+          name: packages-${{ matrix.artifact }}
+          path: packages/*
+          if-no-files-found: error
+
+  publish:
+    needs: [build, package-windows, package-macos, package-linux]
+    runs-on: ubuntu-latest
+    environment: stable-release
     steps:
-      - uses: actions/checkout@v6
-      - name: Build RioKit.xcframework
-        run: make librio-xcframework
-      - name: Package
-        run: ditto -c -k --keepParent target/librio/RioKit.xcframework RioKit.xcframework.zip
-      - name: Upload to release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: find dist -type f -print0 | sort -z | xargs -0 sha256sum > dist/SHA256SUMS
+      - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: 'dist/**/*'
+      - name: Publish protected-tag assets
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG='${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'nightly' }}'
-          gh release upload "$TAG" \
-            RioKit.xcframework.zip \
-            target/librio/RioKit.xcframework/macos-arm64/librio.a \
-            librio/include/librio.h \
-            --clobber
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/**/* --clobber

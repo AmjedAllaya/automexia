@@ -1,5 +1,6 @@
 [package]
 name = "rio-graphics"
+publish = false
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

@@ -1,5 +1,6 @@
 [package]
 name = "corcovado"
+publish = false
 version = { workspace = true }
 license = "MIT"
 edition = "2021"

@@ -411,8 +411,8 @@ mod tests {
     fn test_default_regex_matches_bare_relative_paths_with_extension() {
         assert_eq!(find_all("edit src/main.rs now"), vec!["src/main.rs"]);
         assert_eq!(
-            find_all("see frontends/rioterm/src/hints.rs"),
-            vec!["frontends/rioterm/src/hints.rs"]
+            find_all("see apps/automexia-terminal/src/hints.rs"),
+            vec!["apps/automexia-terminal/src/hints.rs"]
         );
     }
 

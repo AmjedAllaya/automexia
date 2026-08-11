@@ -1,0 +1,5 @@
+automexia|Automexia Terminal,
+    use=xterm-256color,
+
+xterm-automexia|Automexia Terminal with xterm compatibility,
+    use=automexia,

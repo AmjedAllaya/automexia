@@ -1,0 +1,353 @@
+//! One-release, non-destructive import of safe Rio configuration state.
+
+use rio_backend::config::product;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+
+const COMPLETE_MARKER: &str = ".migrated-from-rio-v0.4";
+const PROGRESS_MARKER: &str = ".migration-in-progress";
+const MAX_MARKER_BYTES: u64 = 64 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MigrationStatus {
+    Migrated,
+    AlreadyMigrated,
+    NoLegacyConfiguration,
+    DestinationHasConfiguration,
+    SameDirectory,
+}
+
+pub fn migrate_legacy_configuration() -> Result<MigrationStatus, String> {
+    migrate_paths(&product::legacy_config_dir(), &product::config_dir_path())
+}
+
+fn migrate_paths(source: &Path, destination: &Path) -> Result<MigrationStatus, String> {
+    if source == destination {
+        return Ok(MigrationStatus::SameDirectory);
+    }
+    if destination.join(COMPLETE_MARKER).is_file() {
+        return Ok(MigrationStatus::AlreadyMigrated);
+    }
+
+    let source_config = source.join("config.toml");
+    if !source_config.is_file() {
+        return Ok(MigrationStatus::NoLegacyConfiguration);
+    }
+
+    let progress = destination.join(PROGRESS_MARKER);
+    let continuing = progress.is_file();
+    if destination.join("config.toml").exists() && !continuing {
+        return Ok(MigrationStatus::DestinationHasConfiguration);
+    }
+
+    let config_text = fs::read_to_string(&source_config).map_err(|error| {
+        format!("could not read {}: {error}", source_config.display())
+    })?;
+    validate_legacy_config(&config_text)?;
+
+    fs::create_dir_all(destination).map_err(|error| {
+        format!("could not create {}: {error}", destination.display())
+    })?;
+    atomic_write(&progress, source.to_string_lossy().as_bytes())?;
+    atomic_copy_if_missing(&source_config, &destination.join("config.toml"))?;
+    copy_theme_tree(&source.join("themes"), &destination.join("themes"))?;
+    copy_extension_state(
+        &source.join("automexia").join("extensions"),
+        &destination.join("extensions"),
+    )?;
+    atomic_write(
+        &destination.join(COMPLETE_MARKER),
+        format!("source={}\nversion=0.4.0\n", source.display()).as_bytes(),
+    )?;
+    fs::remove_file(&progress)
+        .map_err(|error| format!("could not clear {}: {error}", progress.display()))?;
+    Ok(MigrationStatus::Migrated)
+}
+
+pub fn validate_legacy_config(config: &str) -> Result<(), String> {
+    toml::from_str::<toml::Value>(config)
+        .map(|_| ())
+        .map_err(|error| format!("legacy config is malformed: {error}"))
+}
+
+fn copy_theme_tree(source: &Path, destination: &Path) -> Result<(), String> {
+    if !source.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(source)
+        .map_err(|error| format!("could not read {}: {error}", source.display()))?
+    {
+        let entry = entry.map_err(|error| format!("theme entry failed: {error}"))?;
+        let file_type = entry.file_type().map_err(|error| {
+            format!("could not inspect {}: {error}", entry.path().display())
+        })?;
+        if file_type.is_symlink() {
+            continue;
+        }
+        let target = destination.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_theme_tree(&entry.path(), &target)?;
+        } else if file_type.is_file()
+            && entry.path().extension().and_then(|value| value.to_str()) == Some("toml")
+        {
+            atomic_copy_if_missing(&entry.path(), &target)?;
+        }
+    }
+    Ok(())
+}
+
+fn copy_extension_state(source: &Path, destination: &Path) -> Result<(), String> {
+    if !source.is_dir() {
+        return Ok(());
+    }
+    for extension in fs::read_dir(source)
+        .map_err(|error| format!("could not read {}: {error}", source.display()))?
+    {
+        let extension =
+            extension.map_err(|error| format!("extension entry failed: {error}"))?;
+        if !extension
+            .file_type()
+            .map_err(|error| format!("could not inspect extension: {error}"))?
+            .is_dir()
+        {
+            continue;
+        }
+        for marker in ["installed", "disabled"] {
+            let source_marker = extension.path().join(marker);
+            let metadata = match fs::symlink_metadata(&source_marker) {
+                Ok(metadata)
+                    if metadata.file_type().is_file()
+                        && metadata.len() <= MAX_MARKER_BYTES =>
+                {
+                    metadata
+                }
+                Ok(_) => continue,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    return Err(format!(
+                        "could not inspect {}: {error}",
+                        source_marker.display()
+                    ));
+                }
+            };
+            let _ = metadata;
+            atomic_copy_if_missing(
+                &source_marker,
+                &destination.join(extension.file_name()).join(marker),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn atomic_copy_if_missing(source: &Path, destination: &Path) -> Result<(), String> {
+    if destination.exists() {
+        clear_stale_temporary(destination)?;
+        return Ok(());
+    }
+    let bytes = fs::read(source)
+        .map_err(|error| format!("could not read {}: {error}", source.display()))?;
+    atomic_write(destination, &bytes)
+}
+
+fn atomic_write(destination: &Path, bytes: &[u8]) -> Result<(), String> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| format!("invalid migration path: {}", destination.display()))?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("could not create {}: {error}", parent.display()))?;
+    let temporary = migration_temporary_path(destination);
+    match fs::remove_file(&temporary) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!("could not clear {}: {error}", temporary.display()));
+        }
+    }
+    fs::write(&temporary, bytes)
+        .map_err(|error| format!("could not stage {}: {error}", destination.display()))?;
+    fs::rename(&temporary, destination).map_err(|error| {
+        let _ = fs::remove_file(&temporary);
+        format!("could not install {}: {error}", destination.display())
+    })
+}
+
+fn migration_temporary_path(destination: &Path) -> PathBuf {
+    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
+    let name = destination
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("state");
+    parent.join(format!(".{name}.automexia-migration.tmp"))
+}
+
+fn clear_stale_temporary(destination: &Path) -> Result<(), String> {
+    let temporary = migration_temporary_path(destination);
+    match fs::remove_file(&temporary) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("could not clear {}: {error}", temporary.display())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+
+    struct TestDirs {
+        root: PathBuf,
+        source: PathBuf,
+        destination: PathBuf,
+    }
+
+    impl TestDirs {
+        fn new(name: &str) -> Self {
+            let root = std::env::temp_dir().join(format!(
+                "automexia-migration-{name}-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            let source = root.join("rio");
+            let destination = root.join("automexia");
+            fs::create_dir_all(&source).unwrap();
+            Self {
+                root,
+                source,
+                destination,
+            }
+        }
+
+        fn valid_config(&self) {
+            fs::write(self.source.join("config.toml"), "theme = \"\"\n").unwrap();
+        }
+    }
+
+    impl Drop for TestDirs {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn missing_legacy_configuration_is_a_noop() {
+        let dirs = TestDirs::new("missing");
+        assert_eq!(
+            migrate_paths(&dirs.source, &dirs.destination).unwrap(),
+            MigrationStatus::NoLegacyConfiguration
+        );
+        assert!(!dirs.destination.exists());
+    }
+
+    #[test]
+    fn migrates_only_config_themes_and_activation_markers() {
+        let dirs = TestDirs::new("safe-content");
+        dirs.valid_config();
+        fs::create_dir_all(dirs.source.join("themes")).unwrap();
+        fs::write(dirs.source.join("themes/custom.toml"), "[colors]\n").unwrap();
+        fs::write(dirs.source.join("themes/unsafe.exe"), b"no").unwrap();
+        fs::create_dir_all(dirs.source.join("automexia/extensions/devops")).unwrap();
+        fs::write(
+            dirs.source.join("automexia/extensions/devops/installed"),
+            "enabled=true\n",
+        )
+        .unwrap();
+        fs::write(
+            dirs.source.join("automexia/extensions/devops/payload.exe"),
+            b"no",
+        )
+        .unwrap();
+        fs::create_dir_all(dirs.source.join("logs")).unwrap();
+        fs::write(dirs.source.join("logs/rio.log"), b"private").unwrap();
+
+        assert_eq!(
+            migrate_paths(&dirs.source, &dirs.destination).unwrap(),
+            MigrationStatus::Migrated
+        );
+        assert!(dirs.destination.join("config.toml").is_file());
+        assert!(dirs.destination.join("themes/custom.toml").is_file());
+        assert!(dirs
+            .destination
+            .join("extensions/devops/installed")
+            .is_file());
+        assert!(!dirs.destination.join("themes/unsafe.exe").exists());
+        assert!(!dirs
+            .destination
+            .join("extensions/devops/payload.exe")
+            .exists());
+        assert!(!dirs.destination.join("logs").exists());
+    }
+
+    #[test]
+    fn malformed_config_is_rejected_without_partial_output() {
+        let dirs = TestDirs::new("malformed");
+        fs::write(dirs.source.join("config.toml"), "not = [valid").unwrap();
+        assert!(migrate_paths(&dirs.source, &dirs.destination).is_err());
+        assert!(!dirs.destination.join("config.toml").exists());
+    }
+
+    #[test]
+    fn conflicting_automexia_config_is_preserved() {
+        let dirs = TestDirs::new("conflict");
+        dirs.valid_config();
+        fs::create_dir_all(&dirs.destination).unwrap();
+        fs::write(dirs.destination.join("config.toml"), "theme = \"mine\"\n").unwrap();
+        assert_eq!(
+            migrate_paths(&dirs.source, &dirs.destination).unwrap(),
+            MigrationStatus::DestinationHasConfiguration
+        );
+        assert_eq!(
+            fs::read_to_string(dirs.destination.join("config.toml")).unwrap(),
+            "theme = \"mine\"\n"
+        );
+    }
+
+    #[test]
+    fn interrupted_migration_resumes_and_repeated_run_is_idempotent() {
+        let dirs = TestDirs::new("resume");
+        dirs.valid_config();
+        fs::create_dir_all(dirs.source.join("themes")).unwrap();
+        fs::write(dirs.source.join("themes/resumed.toml"), "[colors]\n").unwrap();
+        fs::create_dir_all(&dirs.destination).unwrap();
+        fs::write(dirs.destination.join(PROGRESS_MARKER), b"interrupted").unwrap();
+        fs::write(dirs.destination.join("config.toml"), "theme = \"\"\n").unwrap();
+        fs::write(
+            dirs.destination
+                .join(".config.toml.automexia-migration.tmp"),
+            b"stale",
+        )
+        .unwrap();
+
+        assert_eq!(
+            migrate_paths(&dirs.source, &dirs.destination).unwrap(),
+            MigrationStatus::Migrated
+        );
+        assert!(dirs.destination.join("themes/resumed.toml").is_file());
+        assert!(!dirs.destination.join(PROGRESS_MARKER).exists());
+        assert!(!dirs
+            .destination
+            .join(".config.toml.automexia-migration.tmp")
+            .exists());
+        assert_eq!(
+            migrate_paths(&dirs.source, &dirs.destination).unwrap(),
+            MigrationStatus::AlreadyMigrated
+        );
+    }
+
+    #[test]
+    fn read_only_legacy_config_can_be_imported() {
+        let dirs = TestDirs::new("read-only");
+        dirs.valid_config();
+        let config = dirs.source.join("config.toml");
+        let mut permissions = fs::metadata(&config).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&config, permissions).unwrap();
+        assert_eq!(
+            migrate_paths(&dirs.source, &dirs.destination).unwrap(),
+            MigrationStatus::Migrated
+        );
+    }
+}

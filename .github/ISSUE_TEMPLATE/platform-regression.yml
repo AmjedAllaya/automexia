@@ -1,0 +1,17 @@
+name: Platform regression
+description: Report a Windows, macOS, Linux, BSD, WSL, X11, or Wayland regression.
+title: 'fix(platform): '
+labels: [platform, regression]
+body:
+  - type: dropdown
+    attributes:
+      label: Platform
+      options: [Windows, macOS, Linux-X11, Linux-Wayland, BSD, WSL]
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Environment and reproduction
+      description: Include versions, GPU/driver, shell, last known good build, and exact steps.
+    validations:
+      required: true

@@ -1,3 +1,12 @@
+[alias]
+xtask = "run --package xtask --"
+
+[build]
+# The WGPU/shader workspace can exhaust Windows' paging file when Cargo fans
+# out across every logical CPU while linking tests and examples. Two jobs keep
+# the mandatory workspace gate deterministic on contributor machines and CI.
+jobs = 2
+
 [target.wasm32-unknown-unknown]
 rustflags = [
     # Enabled unstable APIs from web_sys

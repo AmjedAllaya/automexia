@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.AmjedAllaya.AutomexiaTerminal</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Automexia Terminal</name>
+  <developer id="io.github.amjedallaya"><name>Automexia Contributors</name></developer>
+  <summary>Hardware-accelerated terminal for modern development workflows</summary>
+  <description><p>Automexia Terminal is a fast cross-platform terminal with development context integration.</p></description>
+  <launchable type="desktop-id">automexia-terminal.desktop</launchable>
+  <url type="homepage">https://github.com/AmjedAllaya/automexia-terminal</url>
+  <provides><binary>automexia</binary></provides>
+  <content_rating type="oars-1.1" />
+  <releases><release version="0.4.0" date="2026-08-11" /></releases>
+</component>

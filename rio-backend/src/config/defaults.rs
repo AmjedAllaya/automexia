@@ -160,6 +160,6 @@ pub fn default_forward_to_ime_modifier_mask() -> Vec<String> {
 
 pub fn default_config_file_content() -> String {
     String::from(
-        "# See the full configuration reference: https://rioterm.com/docs/config\n",
+        "# See the configuration reference: https://github.com/AmjedAllaya/automexia-terminal/tree/main/docs\n",
     )
 }

@@ -1,0 +1,27 @@
+name: Bug report
+description: Report a reproducible Automexia defect.
+title: 'fix: '
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: Description
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Version
+      placeholder: automexia 0.4.0
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Environment and reproduction
+      description: OS, display server, GPU, shell, steps, and sanitized config.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Logs
+      description: Remove secrets before attaching logs.
