@@ -65,16 +65,14 @@ jobs:
       - name: Build unsigned MSI and portable ZIP
         shell: pwsh
         run: |
-          cargo packager --manifest-path apps/automexia-terminal/Cargo.toml --release --out-dir target/package --target ${{ matrix.target }} --formats wix
-          New-Item -ItemType Directory -Force target/package/portable | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/automexia.exe",LICENSE,NOTICE.md,README.md target/package/portable
-          Compress-Archive -Path target/package/portable/* -DestinationPath "target/package/automexia-nightly-${{ matrix.target }}.zip"
+          $env:AUTOMEXIA_PACKAGE_SKIP_BUILD = '1'
+          cargo xtask package --target ${{ matrix.target }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: automexia-nightly-${{ matrix.target }}
           path: |
-            target/package/*.msi
-            target/package/*.zip
+            target/package/${{ matrix.target }}/*.msi
+            target/package/${{ matrix.target }}/*.zip
           if-no-files-found: error
           retention-days: 7
 
@@ -105,22 +103,15 @@ jobs:
           fi
       - name: Build unsigned DEB, RPM, and portable archive
         run: |
-          mkdir -p target/package/terminfo
-          scdoc < packaging/linux/automexia.1.scd > target/package/automexia.1
-          tic -x -o target/package/terminfo packaging/linux/automexia.terminfo
-          export NFPM_ARCH=${{ matrix.arch }} AUTOMEXIA_VERSION=0.4.0
-          export AUTOMEXIA_BINARY=target/${{ matrix.target }}/release/automexia
-          export AUTOMEXIA_MANPAGE=target/package/automexia.1 AUTOMEXIA_TERMINFO_ROOT=target/package/terminfo
-          nfpm package --config packaging/linux/nfpm.yaml --packager deb --target target/package/
-          nfpm package --config packaging/linux/nfpm.yaml --packager rpm --target target/package/
-          tar -czf "target/package/automexia-nightly-${{ matrix.target }}.tar.gz" -C "target/${{ matrix.target }}/release" automexia -C "$GITHUB_WORKSPACE" LICENSE NOTICE.md README.md
+          export AUTOMEXIA_PACKAGE_SKIP_BUILD=1
+          cargo xtask package --target "${{ matrix.target }}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: automexia-nightly-${{ matrix.target }}
           path: |
-            target/package/*.deb
-            target/package/*.rpm
-            target/package/*.tar.gz
+            target/package/${{ matrix.target }}/*.deb
+            target/package/${{ matrix.target }}/*.rpm
+            target/package/${{ matrix.target }}/*.tar.gz
           if-no-files-found: error
           retention-days: 7
 
@@ -138,7 +129,7 @@ jobs:
           cargo build --release --locked -p automexia-terminal --target aarch64-apple-darwin
           mkdir -p target/release
           lipo -create target/x86_64-apple-darwin/release/automexia target/aarch64-apple-darwin/release/automexia -output target/release/automexia
-          cargo packager --manifest-path apps/automexia-terminal/Cargo.toml --release --out-dir target/package --formats app,dmg
+          cargo packager --manifest-path apps/automexia-terminal/Cargo.toml --release --no-build --out-dir target/package --formats app,dmg
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: automexia-nightly-macos-universal

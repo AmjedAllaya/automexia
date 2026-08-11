@@ -34,7 +34,7 @@ jobs:
       - name: Install repository format validators
         run: sudo apt-get update && sudo apt-get install -y python3-yaml shellcheck zsh
       - name: Repository contracts
-        run: cargo xtask check
+        run: cargo xtask verify all
       - name: Validate TOML, YAML, JSON, XML, and desktop metadata
         run: python tools/ci/validate_repository.py
       - name: Shell syntax
@@ -63,7 +63,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          approvals=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/reviews" --paginate --jq '[.[] | select(.state == "APPROVED") | .user.login] | unique | join(",")')
+          approvals=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/reviews" --paginate --slurp --jq '[add | group_by(.user.login)[] | sort_by(.submitted_at) | last | select(.state == "APPROVED") | .user.login] | unique | join(",")')
           echo "APPROVAL_LOGINS=$approvals" >> "$GITHUB_ENV"
       - name: PR title, DCO, changelog, and protected reviews
         if: github.event_name == 'pull_request'
@@ -137,12 +137,11 @@ jobs:
   coverage:
     name: Coverage
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:
           tool: cargo-llvm-cov@0.6.21
@@ -150,6 +149,7 @@ jobs:
       - env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          COVERAGE_PLATFORM: windows-x86_64-msvc
         run: python tools/ci/check_coverage.py
       - uses: codecov/codecov-action@04b047e8bb82a0c002c8312c1c880fbc6a999d45 # v5
         with:
@@ -164,7 +164,7 @@ jobs:
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:
           tool: cargo-deny@0.20.2
-      - run: cargo deny check
+      - run: cargo deny --locked --color never check --hide-inclusion-graph
 
   dependency-review:
     name: Dependency review

@@ -1,5 +1,8 @@
 [alias]
 xtask = "run --package xtask --"
+dev = "run --package xtask -- dev"
+ready = "run --package xtask -- ready"
+automexia = "run --package xtask -- run"
 
 [build]
 # The WGPU/shader workspace can exhaust Windows' paging file when Cargo fans

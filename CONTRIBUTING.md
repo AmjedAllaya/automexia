@@ -7,11 +7,11 @@ Developer Certificate of Origin 1.1. Add a sign-off to every commit with
 ## Start here
 
 1. Install the pinned Rust toolchain and platform dependencies.
-2. Run `cargo xtask doctor`.
+2. Run `cargo dev` once to validate, build, smoke, and launch the project.
 3. Create a focused branch from `main`.
 4. Add or update a fragment under `changes/`.
 5. Make the smallest coherent change and its tests.
-6. Run `cargo xtask ci` and `cargo xtask package --check`.
+6. Run `cargo ready` before pushing.
 7. Open a pull request using the repository template.
 
 All PR policy jobs run for every pull request. Path filters may add expensive
@@ -25,6 +25,8 @@ domain checks but never remove the base policy suite.
 - Add an ADR for dependency boundaries, persistence, threading,
   security/capabilities, or public-behavior decisions.
 - Include screenshots or renderer-neutral goldens for visible UI changes.
+- Follow `docs/BRANDING.md` for logo changes; never overwrite the canonical
+  source or approve redistribution rights without reviewable evidence.
 - Engine changes require a focused regression test even when inherited engine
   files are excluded from the untouched changed-line threshold.
 - Do not introduce network access, arbitrary process execution, or new extension
@@ -33,20 +35,24 @@ domain checks but never remove the base policy suite.
 Documentation-only, tests-only, or internal-maintenance PRs may omit a changelog
 fragment only when the corresponding repository label is applied.
 
-## Required commands
+## One-command workflows
 
 ```text
-cargo xtask verify architecture
-cargo xtask verify identity
-cargo xtask verify provenance
-cargo xtask test conformance
-cargo xtask ci
-cargo xtask package --check
+cargo dev       # complete local gate, then launch Automexia
+cargo automexia # fast incremental build and launch
+cargo ready     # complete local gate without launching
 ```
 
-Platform-specific changes must also run on their native OS. See
-`docs/TESTING.md` for X11/Wayland, MSVC/ARM64, macOS universal, coverage,
-sanitizer, fuzz, benchmark, and package matrices.
+`cargo ready` is the required contributor command. It includes tool and
+structured-file validation, all Automexia verification scopes, package metadata,
+rustfmt, locked workspace checks, warning-denied Clippy, workspace tests,
+dependency policy, a debug build, and executable identity smoke.
+
+Individual `cargo xtask` commands remain available for focused diagnosis, but
+contributors do not need to assemble the normal gate manually. Platform-specific
+changes must also run on their native OS. See `docs/TESTING.md` for X11/Wayland,
+MSVC/ARM64, macOS universal, coverage, sanitizer, fuzz, benchmark, and package
+matrices.
 
 ## Reviews and merging
 

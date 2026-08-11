@@ -12,7 +12,7 @@ import sys
 
 
 OWNED_PREFIXES = (
-    "apps/automexia-terminal/src/automexia/",
+    "apps/automexia-terminal/src/",
     "rio-backend/src/config/product.rs",
     "tools/xtask/src/",
 )
@@ -59,9 +59,18 @@ def main() -> int:
     found = sum(len(lines) for lines in coverage.values())
     hit = sum(sum(value > 0 for value in lines.values()) for lines in coverage.values())
     global_percent = (100.0 * hit / found) if found else 0.0
-    baseline = json.loads(
+    baseline_record = json.loads(
         Path(".github/coverage-baseline.json").read_text(encoding="utf-8")
-    )["line_percent"]
+    )
+    platform = os.environ.get("COVERAGE_PLATFORM")
+    if platform != baseline_record.get("platform"):
+        print(
+            "coverage platform does not match the recorded baseline: "
+            f"{platform!r} != {baseline_record.get('platform')!r}",
+            file=sys.stderr,
+        )
+        return 1
+    baseline = baseline_record["line_percent"]
 
     base = os.environ["BASE_SHA"]
     head = os.environ.get("HEAD_SHA", "HEAD")
