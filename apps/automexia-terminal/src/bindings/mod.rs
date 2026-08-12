@@ -1114,6 +1114,28 @@ fn clone_split_key_bindings() -> Vec<KeyBinding> {
     )
 }
 
+/// Non-macOS tab scopes deliberately use different modifier sets:
+///
+/// - Ctrl+T creates a new independent window with its initial tab.
+/// - Ctrl+Shift+T adds a global tab to the current window's tab strip.
+///
+/// Keeping this in one constructor makes it impossible for platform defaults
+/// to accidentally collapse both shortcuts onto the same action.
+#[cfg(any(not(target_os = "macos"), test))]
+fn scoped_tab_key_bindings(global_tabs_enabled: bool) -> Vec<KeyBinding> {
+    let mut key_bindings = bindings!(
+        KeyBinding;
+        "t", ModifiersState::CONTROL; Action::WindowCreateNew;
+    );
+    if global_tabs_enabled {
+        key_bindings.extend(bindings!(
+            KeyBinding;
+            "t", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::TabCreateNew;
+        ));
+    }
+    key_bindings
+}
+
 // Macos
 #[cfg(all(target_os = "macos", not(test)))]
 pub fn platform_key_bindings(
@@ -1240,10 +1262,11 @@ pub fn platform_key_bindings(
         Key::Named(ArrowDown), +BindingMode::SEARCH; SearchAction::SearchHistoryNext;
     );
 
+    key_bindings.extend(scoped_tab_key_bindings(use_navigation_key_bindings));
+
     if use_navigation_key_bindings {
         key_bindings.extend(bindings!(
             KeyBinding;
-            "t", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::TabCreateNew;
             Key::Named(Tab), ModifiersState::CONTROL; Action::SelectNextTab;
             Key::Named(Tab), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectPrevTab;
             "[", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectPrevTab;
@@ -1312,10 +1335,11 @@ pub fn platform_key_bindings(
         Key::Named(ArrowDown), +BindingMode::SEARCH; SearchAction::SearchHistoryNext;
     );
 
+    key_bindings.extend(scoped_tab_key_bindings(use_navigation_key_bindings));
+
     if use_navigation_key_bindings {
         key_bindings.extend(bindings!(
             KeyBinding;
-            "t", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::TabCreateNew;
             "w", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::CloseCurrentSplitOrTab;
             Key::Named(Tab), ModifiersState::CONTROL; Action::SelectNextTab;
             Key::Named(Tab), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectPrevTab;
@@ -1735,6 +1759,51 @@ mod tests {
         );
         assert_eq!(Action::from("splitright".to_string()), Action::SplitRight);
         assert_eq!(Action::from("splitdown".to_string()), Action::SplitDown);
+    }
+
+    #[test]
+    fn ctrl_t_opens_a_window_tab_and_ctrl_shift_t_keeps_global_tabs() {
+        let bindings = scoped_tab_key_bindings(true);
+        assert_eq!(bindings.len(), 2);
+        assert_eq!(bindings[0].mods, ModifiersState::CONTROL);
+        assert_eq!(bindings[0].action, Action::WindowCreateNew);
+        assert_eq!(
+            bindings[1].mods,
+            ModifiersState::CONTROL | ModifiersState::SHIFT
+        );
+        assert_eq!(bindings[1].action, Action::TabCreateNew);
+        assert_eq!(bindings[0].trigger, bindings[1].trigger);
+        assert_ne!(bindings[0].mods, bindings[1].mods);
+
+        let without_global_tabs = scoped_tab_key_bindings(false);
+        assert_eq!(without_global_tabs.len(), 1);
+        assert_eq!(without_global_tabs[0].action, Action::WindowCreateNew);
+    }
+
+    #[test]
+    fn user_binding_can_override_ctrl_t_without_changing_global_tab_shortcut() {
+        let updated = config_key_bindings(
+            vec![ConfigKeyBinding {
+                key: "t".to_string(),
+                action: "receivechar".to_string(),
+                with: "control".to_string(),
+                esc: String::new(),
+                mode: String::new(),
+            }],
+            scoped_tab_key_bindings(true),
+        );
+        assert!(updated.iter().any(|binding| {
+            binding.mods == ModifiersState::CONTROL
+                && binding.action == Action::ReceiveChar
+        }));
+        assert!(updated.iter().any(|binding| {
+            binding.mods == ModifiersState::CONTROL | ModifiersState::SHIFT
+                && binding.action == Action::TabCreateNew
+        }));
+        assert!(!updated.iter().any(|binding| {
+            binding.mods == ModifiersState::CONTROL
+                && binding.action == Action::WindowCreateNew
+        }));
     }
 
     #[test]
