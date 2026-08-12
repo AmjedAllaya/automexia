@@ -96,13 +96,16 @@ impl EventedAnonRead {
                     // Write from the temp buffer into the producer
                     let mut written = 0usize;
                     while written < nbytes {
-                        // Wait for buffer to clear if need be.
-                        if producer.is_full() {
-                            let mut wait_tag = inner.wait_tag.lock();
+                        // Hold the predicate mutex while checking and waiting.
+                        // Without this handshake a consumer could empty the
+                        // buffer and notify between `is_full` and `wait`,
+                        // leaving ConPTY output asleep until unrelated I/O.
+                        let mut wait_tag = inner.wait_tag.lock();
+                        while producer.is_full() && !inner.done.load(Ordering::SeqCst) {
                             inner.sig_buffer_not_full.wait(&mut wait_tag);
-                            if inner.done.load(Ordering::SeqCst) {
-                                return;
-                            }
+                        }
+                        if inner.done.load(Ordering::SeqCst) {
+                            return;
                         }
 
                         written += producer.write_from_slice(&tmp_buf[written..nbytes]);
@@ -145,6 +148,9 @@ impl io::Read for EventedAnonRead {
             Err(TryRecvError::Empty) => {}
         }
 
+        // Pair the buffer mutation and notification with the producer's
+        // predicate check so a wakeup cannot be lost.
+        let _wait_tag = self.inner.wait_tag.lock();
         let nbytes = self.consumer.read_to_slice(buf);
 
         if self.consumer.is_empty() {
@@ -193,9 +199,11 @@ impl Evented for EventedAnonRead {
 
 impl Drop for EventedAnonRead {
     fn drop(&mut self) {
-        self.inner.done.store(true, Ordering::SeqCst);
-
-        self.inner.sig_buffer_not_full.notify_one();
+        {
+            let _wait_tag = self.inner.wait_tag.lock();
+            self.inner.done.store(true, Ordering::SeqCst);
+            self.inner.sig_buffer_not_full.notify_one();
+        }
 
         let thread = self.thread.take().unwrap();
 
@@ -272,15 +280,17 @@ impl EventedAnonWrite {
                         return;
                     }
 
-                    // Read into temp buffer while holding the lock
+                    // Check the empty predicate while holding the same mutex
+                    // used by the producer. This closes the check-then-wait
+                    // race which could leave freshly queued keyboard input
+                    // stuck until a later key or resize woke the thread.
                     let nbytes = {
-                        // Wait for buffer to have contents
-                        if consumer.is_empty() {
-                            let mut wait_tag = inner.wait_tag.lock();
+                        let mut wait_tag = inner.wait_tag.lock();
+                        while consumer.is_empty() && !inner.done.load(Ordering::SeqCst) {
                             inner.sig_buffer_not_empty.wait(&mut wait_tag);
-                            if inner.done.load(Ordering::SeqCst) {
-                                return;
-                            }
+                        }
+                        if inner.done.load(Ordering::SeqCst) {
+                            return;
                         }
 
                         let nbytes = consumer.read_to_slice(&mut tmp_buf);
@@ -333,6 +343,10 @@ impl io::Write for EventedAnonWrite {
             Err(TryRecvError::Empty) => {}
         }
 
+        // Mutate the predicate and notify while holding the consumer's mutex;
+        // `Condvar::wait` releases it atomically, so the notification cannot
+        // arrive in the gap before the consumer actually sleeps.
+        let _wait_tag = self.inner.wait_tag.lock();
         let nbytes = self.producer.write_from_slice(buf);
         if self.producer.is_full() {
             self.inner.readiness.set_readiness(Ready::empty())?;
@@ -384,15 +398,56 @@ impl Evented for EventedAnonWrite {
 
 impl Drop for EventedAnonWrite {
     fn drop(&mut self) {
-        self.inner.done.store(true, Ordering::SeqCst);
+        {
+            let _wait_tag = self.inner.wait_tag.lock();
+            self.inner.done.store(true, Ordering::SeqCst);
 
-        // Stop the writer thread waiting for contents
-        self.inner.sig_buffer_not_empty.notify_one();
+            // Stop the writer thread waiting for contents.
+            self.inner.sig_buffer_not_empty.notify_one();
+        }
 
         self.thread
             .take()
             .unwrap()
             .join()
             .expect("Could not close EventedAnonWrite worker");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EventedAnonWrite;
+    use std::io::{Read, Write};
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    #[test]
+    fn idle_input_writer_wakes_for_every_small_message() {
+        let (mut pipe_reader, pipe_writer) = miow::pipe::anonymous(0).unwrap();
+        let mut evented_writer = EventedAnonWrite::new(pipe_writer);
+        let (received_tx, received_rx) = mpsc::channel();
+
+        let reader = std::thread::spawn(move || {
+            for _ in 0..128 {
+                let mut byte = [0_u8; 1];
+                pipe_reader.read_exact(&mut byte).unwrap();
+                received_tx.send(byte[0]).unwrap();
+            }
+        });
+
+        for byte in 0_u8..128 {
+            // Exercise the idle transition repeatedly instead of relying on a
+            // continuously non-empty buffer to keep the worker awake.
+            std::thread::sleep(Duration::from_millis(2));
+            evented_writer.write_all(&[byte]).unwrap();
+            assert_eq!(
+                received_rx.recv_timeout(Duration::from_millis(250)),
+                Ok(byte),
+                "ConPTY input writer did not wake for byte {byte}",
+            );
+        }
+
+        drop(evented_writer);
+        reader.join().unwrap();
     }
 }
