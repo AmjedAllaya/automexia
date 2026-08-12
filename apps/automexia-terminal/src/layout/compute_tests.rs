@@ -256,6 +256,42 @@ fn test_compute_basic_grid() {
 }
 
 #[test]
+fn active_panel_outline_is_inset_complete_and_theme_colored() {
+    let color = [0.12, 0.78, 0.96, 1.0];
+    let outline = panel_focus_outline(
+        [10.0, 20.0, 300.0, 180.0],
+        BorderConfig { width: 3.0, color },
+    );
+
+    assert_eq!(outline.len(), 4);
+    assert_eq!((outline[0].x, outline[0].y), (10.0, 20.0));
+    assert_eq!((outline[0].width, outline[0].height), (300.0, 3.0));
+    assert_eq!((outline[1].x, outline[1].y), (10.0, 197.0));
+    assert_eq!((outline[2].width, outline[2].height), (3.0, 180.0));
+    assert_eq!((outline[3].x, outline[3].y), (307.0, 20.0));
+    assert!(outline.iter().all(|edge| edge.color == color));
+}
+
+#[test]
+fn active_panel_outline_stays_valid_at_extreme_small_sizes() {
+    let outline = panel_focus_outline(
+        [0.0, 0.0, 1.0, 1.0],
+        BorderConfig {
+            width: 8.0,
+            color: [1.0; 4],
+        },
+    );
+    assert!(outline.iter().all(|edge| {
+        edge.x >= 0.0
+            && edge.y >= 0.0
+            && edge.width > 0.0
+            && edge.height > 0.0
+            && edge.x + edge.width <= 1.0
+            && edge.y + edge.height <= 1.0
+    }));
+}
+
+#[test]
 fn test_compute_floors_fractional_rows() {
     // 840px / 33px = 25.45 → floor → 25
     let dims = TextDimensions {

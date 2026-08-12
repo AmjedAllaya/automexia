@@ -125,6 +125,7 @@ features = ["wgpu"]
 
 [features]
 default = ["wayland", "x11"]
+native-gui-test-hooks = []
 audio = ["cpal"]
 x11 = [
     "rio-backend/x11",
@@ -136,5 +137,9 @@ wayland = [
     "rio-window/wayland-dlopen",
 ]
 wgpu = ["sugarloaf/wgpu", "rio-backend/wgpu"]
+
+[[bench]]
+name = "automexia_services"
+harness = false
 
 # "rio-window/wayland-csd-adwaita-crossfont",

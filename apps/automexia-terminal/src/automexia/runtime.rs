@@ -134,6 +134,8 @@ fn equivalent_shell_context(left: &SessionFacts, right: &SessionFacts) -> bool {
         && left.distro == right.distro
         && left.os_version == right.os_version
         && left.shell_name == right.shell_name
+        && left.shell_user == right.shell_user
+        && left.shell_path == right.shell_path
 }
 
 fn runtime() -> &'static RwLock<RuntimeState> {
@@ -243,7 +245,7 @@ struct RefreshRequest {
 
 #[cfg(not(target_arch = "wasm32"))]
 enum WorkerMessage {
-    Refresh(RefreshRequest),
+    Refresh(Box<RefreshRequest>),
     Shutdown,
 }
 
@@ -279,7 +281,7 @@ fn spawn_worker() -> Option<Worker> {
                         let RefreshRequest {
                             session,
                             completion,
-                        } = request;
+                        } = *request;
                         let snapshot = devops::detect(&session);
                         tracing::debug!(
                             session_id = session.session_id,
@@ -431,10 +433,10 @@ pub fn request_devops_refresh(
     if !ensure_worker(&mut slot) {
         return RefreshSubmission::Unavailable;
     }
-    let message = WorkerMessage::Refresh(RefreshRequest {
+    let message = WorkerMessage::Refresh(Box::new(RefreshRequest {
         session: session.clone(),
         completion,
-    });
+    }));
     match slot
         .as_ref()
         .expect("worker was ensured")
@@ -485,6 +487,8 @@ mod tests {
             distro: None,
             os_version: None,
             shell_name: None,
+            shell_user: None,
+            shell_path: None,
             shell_integration: true,
             shell_pid: 0,
         }

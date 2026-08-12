@@ -96,6 +96,12 @@ pub struct RenderableContent {
     /// Optional shell-published OS version metadata.
     pub shell_os_version: Option<String>,
     pub shell_name: Option<String>,
+    /// Explicit shell identity used by independent session cloning.
+    pub shell_user: Option<String>,
+    pub shell_path: Option<String>,
+    /// Strictly equivalent source metadata retained only until a cloned PTY
+    /// publishes its own integration marker.
+    pub seeded_session_metadata: bool,
     /// Whether Automexia shell integration announced itself for this session.
     pub shell_integration: bool,
     /// Whether the shell is currently waiting for editable prompt input.
@@ -123,6 +129,18 @@ pub struct RenderableContent {
     pub kitty_graphics_dirty: bool,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SessionMetadataSeed {
+    current_directory: Option<PathBuf>,
+    terminal_title: String,
+    shell_distro: Option<String>,
+    shell_os_version: Option<String>,
+    shell_name: Option<String>,
+    shell_user: Option<String>,
+    shell_path: Option<String>,
+    shell_integration: bool,
+}
+
 impl RenderableContent {
     pub fn new(cursor: Cursor) -> Self {
         RenderableContent {
@@ -148,6 +166,9 @@ impl RenderableContent {
             shell_distro: None,
             shell_os_version: None,
             shell_name: None,
+            shell_user: None,
+            shell_path: None,
+            seeded_session_metadata: false,
             shell_integration: false,
             shell_prompt_active: false,
             display_offset: 0,
@@ -172,6 +193,31 @@ impl RenderableContent {
             is_ime_enabled: false,
         };
         Self::new(cursor)
+    }
+
+    pub fn session_metadata_seed(&self) -> SessionMetadataSeed {
+        SessionMetadataSeed {
+            current_directory: self.current_directory.clone(),
+            terminal_title: self.terminal_title.clone(),
+            shell_distro: self.shell_distro.clone(),
+            shell_os_version: self.shell_os_version.clone(),
+            shell_name: self.shell_name.clone(),
+            shell_user: self.shell_user.clone(),
+            shell_path: self.shell_path.clone(),
+            shell_integration: self.shell_integration,
+        }
+    }
+
+    pub fn apply_session_metadata_seed(&mut self, seed: SessionMetadataSeed) {
+        self.current_directory = seed.current_directory;
+        self.terminal_title = seed.terminal_title;
+        self.shell_distro = seed.shell_distro;
+        self.shell_os_version = seed.shell_os_version;
+        self.shell_name = seed.shell_name;
+        self.shell_user = seed.shell_user;
+        self.shell_path = seed.shell_path;
+        self.shell_integration = seed.shell_integration;
+        self.seeded_session_metadata = seed.shell_integration;
     }
 }
 

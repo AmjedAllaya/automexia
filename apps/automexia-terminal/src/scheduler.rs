@@ -86,6 +86,44 @@ impl Scheduler {
     ) {
         let deadline = Instant::now() + interval;
 
+        self.insert_timer(event, interval, repeat, timer_id, deadline);
+    }
+
+    /// Schedule a one-shot event unless an equal or earlier event with the same ID exists.
+    ///
+    /// Render requests commonly share a timer ID so they can be coalesced. Keeping the first
+    /// request unconditionally can leave urgent input-driven redraws waiting behind a much slower
+    /// maintenance refresh. This method preserves coalescing while allowing the earliest requested
+    /// deadline to win.
+    pub fn schedule_earliest(
+        &mut self,
+        event: EventPayload,
+        interval: Duration,
+        timer_id: TimerId,
+    ) -> bool {
+        let deadline = Instant::now() + interval;
+        let existing_index = self.timers.iter().position(|timer| timer.id == timer_id);
+
+        if let Some(index) = existing_index {
+            if !should_replace_timer(self.timers[index].deadline, deadline) {
+                return false;
+            }
+
+            self.timers.remove(index);
+        }
+
+        self.insert_timer(event, interval, false, timer_id, deadline);
+        true
+    }
+
+    fn insert_timer(
+        &mut self,
+        event: EventPayload,
+        interval: Duration,
+        repeat: bool,
+        timer_id: TimerId,
+        deadline: Instant,
+    ) {
         // Get insert position in the schedule.
         let index = self
             .timers
@@ -124,5 +162,36 @@ impl Scheduler {
     /// stick around forever and cause a memory leak.
     pub fn unschedule_window(&mut self, id: usize) {
         self.timers.retain(|timer| timer.id.id != id);
+    }
+}
+
+#[inline]
+fn should_replace_timer(existing_deadline: Instant, requested_deadline: Instant) -> bool {
+    requested_deadline < existing_deadline
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_replace_timer;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn urgent_timer_replaces_slower_timer() {
+        let now = Instant::now();
+        assert!(should_replace_timer(
+            now + Duration::from_secs(3),
+            now + Duration::from_millis(10),
+        ));
+    }
+
+    #[test]
+    fn slower_or_equal_timer_does_not_postpone_existing_timer() {
+        let now = Instant::now();
+        let existing = now + Duration::from_millis(10);
+        assert!(!should_replace_timer(
+            existing,
+            now + Duration::from_secs(3),
+        ));
+        assert!(!should_replace_timer(existing, existing));
     }
 }

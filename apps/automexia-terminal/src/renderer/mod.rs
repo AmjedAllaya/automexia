@@ -27,6 +27,7 @@ use rio_backend::config::navigation::Navigation;
 use rio_backend::config::Config;
 use rio_backend::event::EventProxy;
 use rio_backend::sugarloaf::Sugarloaf;
+use rustc_hash::FxHashMap;
 
 /// The window-bg clear alpha that flows into sugarloaf's
 /// `set_background_color`. Stored on the renderer and re-applied on
@@ -219,6 +220,200 @@ fn sync_optional_metadata(target: &mut Option<String>, source: Option<&String>) 
     }
 }
 
+/// Renderer-neutral data needed to paint one pane's operational context.
+/// Keeping this snapshot per route prevents the active pane from lending its
+/// Git/cloud/user state to another visible split.
+struct DevOpsPaneRenderState {
+    session: crate::automexia::api::SessionFacts,
+    prompt_active: bool,
+    historical_anchors: Vec<crate::automexia::ui::PromptAnchor>,
+    live_anchor: Option<crate::automexia::ui::PromptAnchor>,
+    command_results: Vec<crate::automexia::ui::CommandResultAnchor>,
+    is_active: bool,
+}
+
+fn devops_pane_render_state(
+    context: &crate::context::Context<EventProxy>,
+    margin: rio_backend::config::layout::Margin,
+    scale_factor: f32,
+    is_active: bool,
+) -> DevOpsPaneRenderState {
+    let rc = &context.renderable_content;
+    let scale = scale_factor.max(f32::EPSILON);
+    let cell_height = context.dimension.cell.cell_height as f32 / scale;
+    let cell_width = context.dimension.cell.cell_width as f32 / scale;
+    let origin_x = margin.left / scale;
+    let origin_y = margin.top / scale;
+    let grid_width = rc.columns.max(1) as f32 * cell_width;
+    let first_absolute_row = rc
+        .lines_evicted
+        .saturating_add(rc.history_size.saturating_sub(rc.display_offset) as u64);
+    let mut historical_anchors = rc
+        .visible_rows
+        .iter()
+        .enumerate()
+        .filter_map(|(row_index, row)| {
+            if row.semantic_prompt != SemanticPrompt::Prompt {
+                return None;
+            }
+            let blank = terminal_row_is_blank(row);
+            if row.semantic_prompt_id.is_none() && !blank {
+                return None;
+            }
+            let visual_index = prompt_visual_anchor(&rc.visible_rows, row_index)?;
+            Some(crate::automexia::ui::PromptAnchor {
+                generation: row.semantic_prompt_id,
+                key: first_absolute_row.saturating_add(row_index as u64),
+                x: origin_x,
+                y: origin_y + visual_index as f32 * cell_height,
+                width: grid_width,
+                height: cell_height,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    for command_index in 0..rc.visible_rows.len() {
+        let Some(visual_index) =
+            synthetic_prompt_visual_anchor(&rc.visible_rows, command_index)
+        else {
+            continue;
+        };
+        let y = origin_y + visual_index as f32 * cell_height;
+        if historical_anchors
+            .iter()
+            .any(|anchor| (anchor.y - y).abs() < f32::EPSILON)
+        {
+            continue;
+        }
+        let generation = rc.visible_rows[visual_index..=command_index]
+            .iter()
+            .find_map(|row| row.semantic_prompt_id);
+        historical_anchors.push(crate::automexia::ui::PromptAnchor {
+            generation,
+            key: first_absolute_row.saturating_add(visual_index as u64),
+            x: origin_x,
+            y,
+            width: grid_width,
+            height: cell_height,
+        });
+    }
+    historical_anchors.sort_by(|left, right| left.y.total_cmp(&right.y));
+
+    let cursor_row = rc.cursor.state.pos.row.0;
+    let semantic_live_anchor = if cursor_row >= 0 {
+        let cursor_index = cursor_row as usize;
+        rc.visible_rows
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(row_index, row)| {
+                if row_index == 0
+                    || row_index > cursor_index
+                    || row.semantic_prompt != SemanticPrompt::PromptContinuation
+                {
+                    return None;
+                }
+                let prompt_index = row_index - 1;
+                let prompt_row = &rc.visible_rows[prompt_index];
+                if prompt_row.semantic_prompt != SemanticPrompt::Prompt {
+                    return None;
+                }
+                let blank = terminal_row_is_blank(prompt_row);
+                if prompt_row.semantic_prompt_id.is_none() && !blank {
+                    return None;
+                }
+                let visual_index = prompt_visual_anchor(&rc.visible_rows, prompt_index)?;
+                Some(crate::automexia::ui::PromptAnchor {
+                    generation: prompt_row.semantic_prompt_id,
+                    key: first_absolute_row.saturating_add(prompt_index as u64),
+                    x: origin_x,
+                    y: origin_y + visual_index as f32 * cell_height,
+                    width: grid_width,
+                    height: cell_height,
+                })
+            })
+    } else {
+        None
+    };
+    let live_anchor =
+        if rc.shell_integration && rc.shell_prompt_active && rc.display_offset == 0 {
+            semantic_live_anchor
+                .or_else(|| {
+                    let cursor_index = usize::try_from(cursor_row).ok()?;
+                    let visual_index =
+                        synthetic_prompt_visual_anchor(&rc.visible_rows, cursor_index)?;
+                    Some(crate::automexia::ui::PromptAnchor {
+                        generation: rc.visible_rows[visual_index..=cursor_index]
+                            .iter()
+                            .find_map(|row| row.semantic_prompt_id),
+                        key: first_absolute_row.saturating_add(visual_index as u64),
+                        x: origin_x,
+                        y: origin_y + visual_index as f32 * cell_height,
+                        width: grid_width,
+                        height: cell_height,
+                    })
+                })
+                .or_else(|| {
+                    let visual_index =
+                        first_paint_prompt_visual_anchor(&rc.visible_rows, cursor_row)?;
+                    let row = &rc.visible_rows[visual_index];
+                    Some(crate::automexia::ui::PromptAnchor {
+                        generation: row.semantic_prompt_id,
+                        key: first_absolute_row.saturating_add(visual_index as u64),
+                        x: origin_x,
+                        y: origin_y + visual_index as f32 * cell_height,
+                        width: grid_width,
+                        height: cell_height,
+                    })
+                })
+        } else {
+            None
+        };
+    let command_results =
+        rc.visible_rows
+            .iter()
+            .enumerate()
+            .filter_map(|(row_index, row)| {
+                let result = row.semantic_command_result?;
+                let synthetic_index = (row_index..rc.visible_rows.len())
+                    .take(8)
+                    .find_map(|command_index| {
+                        synthetic_prompt_visual_anchor(&rc.visible_rows, command_index)
+                    });
+                let visual_index = synthetic_index
+                    .or_else(|| prompt_visual_anchor(&rc.visible_rows, row_index))?;
+                Some(crate::automexia::ui::CommandResultAnchor {
+                    x: origin_x,
+                    y: origin_y + visual_index as f32 * cell_height,
+                    width: grid_width,
+                    height: cell_height,
+                    exit_code: result.exit_code,
+                    elapsed_ms: result.elapsed_ms,
+                })
+            })
+            .collect::<Vec<_>>();
+
+    DevOpsPaneRenderState {
+        session: crate::automexia::api::SessionFacts {
+            session_id: context.route_id,
+            cwd: rc.current_directory.clone(),
+            title: rc.terminal_title.clone(),
+            distro: rc.shell_distro.clone(),
+            os_version: rc.shell_os_version.clone(),
+            shell_name: rc.shell_name.clone(),
+            shell_user: rc.shell_user.clone(),
+            shell_path: rc.shell_path.clone(),
+            shell_integration: rc.shell_integration,
+            shell_pid: context.shell_pid,
+        },
+        prompt_active: rc.shell_prompt_active,
+        historical_anchors,
+        live_anchor,
+        command_results,
+        is_active,
+    }
+}
+
 pub struct Renderer {
     is_vi_mode_enabled: bool,
     is_game_mode_enabled: bool,
@@ -233,7 +428,13 @@ pub struct Renderer {
     pub command_palette: command_palette::CommandPalette,
     pub devops_enabled: bool,
     extension_generation: u32,
+    /// Status state for the selected route, including the persistent window
+    /// context bar.
     pub devops_status: devops_status::DevOpsStatus,
+    /// Independent operational state for every inactive visible route. A
+    /// single shared status object made those splits disappear and could lend
+    /// the selected pane's context to their prompt history.
+    devops_statuses: FxHashMap<usize, devops_status::DevOpsStatus>,
     unfocused_split_opacity: f32,
     unfocused_split_fill: Option<ColorArray>,
     /// Route id of the pane rendered as active last frame. Keyed on
@@ -342,6 +543,7 @@ impl Renderer {
             ),
             extension_generation: crate::automexia::runtime::generation(),
             devops_status: devops_status::DevOpsStatus::default(),
+            devops_statuses: FxHashMap::default(),
             named_colors,
             dynamic_background,
             opacity_cells: config.window.opacity_cells,
@@ -373,6 +575,7 @@ impl Renderer {
         self.devops_enabled = enabled;
         if !enabled {
             self.devops_status.clear();
+            self.devops_statuses.clear();
         }
         changed
     }
@@ -574,36 +777,53 @@ impl Renderer {
                     &mut context.renderable_content.extras,
                 );
                 context.renderable_content.term_colors = terminal.colors;
-                if context.renderable_content.current_directory.as_ref()
-                    != terminal.current_directory.as_ref()
+                let live_shell_integration = terminal
+                    .user_vars
+                    .get("automexia_shell")
+                    .is_some_and(|value| value == "1");
+                let retain_seed = context.renderable_content.seeded_session_metadata
+                    && !live_shell_integration;
+                if (!retain_seed || terminal.current_directory.is_some())
+                    && context.renderable_content.current_directory.as_ref()
+                        != terminal.current_directory.as_ref()
                 {
                     context
                         .renderable_content
                         .current_directory
                         .clone_from(&terminal.current_directory);
                 }
-                if context.renderable_content.terminal_title != terminal.title {
+                if (!retain_seed || !terminal.title.trim().is_empty())
+                    && context.renderable_content.terminal_title != terminal.title
+                {
                     context
                         .renderable_content
                         .terminal_title
                         .clone_from(&terminal.title);
                 }
-                sync_optional_metadata(
-                    &mut context.renderable_content.shell_distro,
-                    terminal.user_vars.get("automexia_distro"),
-                );
-                sync_optional_metadata(
-                    &mut context.renderable_content.shell_os_version,
-                    terminal.user_vars.get("automexia_os_version"),
-                );
-                sync_optional_metadata(
-                    &mut context.renderable_content.shell_name,
-                    terminal.user_vars.get("automexia_shell_name"),
-                );
-                context.renderable_content.shell_integration = terminal
-                    .user_vars
-                    .get("automexia_shell")
-                    .is_some_and(|value| value == "1");
+                if !retain_seed {
+                    sync_optional_metadata(
+                        &mut context.renderable_content.shell_distro,
+                        terminal.user_vars.get("automexia_distro"),
+                    );
+                    sync_optional_metadata(
+                        &mut context.renderable_content.shell_os_version,
+                        terminal.user_vars.get("automexia_os_version"),
+                    );
+                    sync_optional_metadata(
+                        &mut context.renderable_content.shell_name,
+                        terminal.user_vars.get("automexia_shell_name"),
+                    );
+                    sync_optional_metadata(
+                        &mut context.renderable_content.shell_user,
+                        terminal.user_vars.get("automexia_shell_user"),
+                    );
+                    sync_optional_metadata(
+                        &mut context.renderable_content.shell_path,
+                        terminal.user_vars.get("automexia_shell_path"),
+                    );
+                    context.renderable_content.shell_integration = live_shell_integration;
+                    context.renderable_content.seeded_session_metadata = false;
+                }
                 context.renderable_content.shell_prompt_active = terminal
                     .user_vars
                     .get("automexia_prompt_active")
@@ -1126,6 +1346,8 @@ impl Renderer {
                         distro: rc.shell_distro.clone(),
                         os_version: rc.shell_os_version.clone(),
                         shell_name: rc.shell_name.clone(),
+                        shell_user: rc.shell_user.clone(),
+                        shell_path: rc.shell_path.clone(),
                         shell_integration: rc.shell_integration,
                         shell_pid: context.shell_pid,
                     },
@@ -1166,6 +1388,75 @@ impl Renderer {
             context_manager.schedule_render_on_route(
                 devops_status::next_context_wake_millis(refresh_pending),
             );
+
+            // Every visible split owns its own context overlay. Build these
+            // snapshots after the selected pane so the window-level bar stays
+            // selected-pane-specific while Git/cloud/environment/user facts
+            // remain visible inside every other pane.
+            let inactive_panes = {
+                let grid = context_manager.current_grid();
+                let active_route = grid.current().route_id;
+                let base_margin = grid.get_scaled_margin();
+                grid.contexts()
+                    .values()
+                    .filter(|item| item.context().route_id != active_route)
+                    .map(|item| {
+                        let [panel_x, panel_y, _, _] = item.layout_rect;
+                        let margin = rio_backend::config::layout::Margin {
+                            left: base_margin.left + panel_x,
+                            top: base_margin.top + panel_y,
+                            right: base_margin.right,
+                            bottom: base_margin.bottom,
+                        };
+                        devops_pane_render_state(
+                            item.context(),
+                            margin,
+                            scale_factor,
+                            false,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let visible_inactive_routes = inactive_panes
+                .iter()
+                .map(|pane| pane.session.session_id)
+                .collect::<Vec<_>>();
+            self.devops_statuses
+                .retain(|route, _| visible_inactive_routes.contains(route));
+
+            let mut inactive_refresh_pending = false;
+            for pane in inactive_panes {
+                debug_assert!(!pane.is_active);
+                let route = pane.session.session_id;
+                let status = self.devops_statuses.entry(route).or_default();
+                inactive_refresh_pending |= status
+                    .refresh_visible_session(&pane.session, || {
+                        context_manager.devops_refresh_completion(route)
+                    });
+                let new_prompt = status.render_prompt_rows(
+                    sugarloaf,
+                    self.named_colors,
+                    &pane.session,
+                    pane.prompt_active,
+                    &pane.historical_anchors,
+                    pane.live_anchor,
+                );
+                if new_prompt {
+                    status.request_prompt_refresh(&pane.session, || {
+                        context_manager.devops_refresh_completion(route)
+                    });
+                }
+                status.render_command_results(
+                    sugarloaf,
+                    self.named_colors,
+                    &pane.command_results,
+                );
+            }
+            if inactive_refresh_pending {
+                context_manager.schedule_render_on_route(
+                    devops_status::next_context_wake_millis(true),
+                );
+            }
         }
 
         self.command_palette.render(

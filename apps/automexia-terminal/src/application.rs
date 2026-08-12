@@ -451,15 +451,11 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                                 window_id,
                             );
 
-                            // Only schedule if not already scheduled
-                            if !self.scheduler.scheduled(timer_id) {
-                                self.scheduler.schedule(
-                                    event,
-                                    wait_duration,
-                                    false,
-                                    timer_id,
-                                );
-                            }
+                            self.scheduler.schedule_earliest(
+                                event,
+                                wait_duration,
+                                timer_id,
+                            );
                         } else {
                             // We can render immediately
                             route.request_redraw();
@@ -776,14 +772,11 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     let event =
                         EventPayload::new(RioEventType::Rio(RioEvent::Render), window_id);
 
-                    if !self.scheduler.scheduled(timer_id) {
-                        self.scheduler.schedule(
-                            event,
-                            Duration::from_millis(millis),
-                            false,
-                            timer_id,
-                        );
-                    }
+                    self.scheduler.schedule_earliest(
+                        event,
+                        Duration::from_millis(millis),
+                        timer_id,
+                    );
                 }
             }
             RioEventType::Rio(RioEvent::PrepareRenderOnRoute(millis, route_id)) => {
@@ -793,14 +786,11 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     window_id,
                 );
 
-                if !self.scheduler.scheduled(timer_id) {
-                    self.scheduler.schedule(
-                        event,
-                        Duration::from_millis(millis),
-                        false,
-                        timer_id,
-                    );
-                }
+                self.scheduler.schedule_earliest(
+                    event,
+                    Duration::from_millis(millis),
+                    timer_id,
+                );
             }
             RioEventType::Rio(RioEvent::BlinkCursor(millis, route_id)) => {
                 let timer_id = TimerId::new(Topic::CursorBlinking, route_id);

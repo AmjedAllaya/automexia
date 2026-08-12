@@ -89,6 +89,29 @@ fn create_border(color: [f32; 4], position: [f32; 2], size: [f32; 2]) -> Rect {
     Rect::new(position[0], position[1], size[0], size[1], color)
 }
 
+/// Build an inset four-sided focus ring for a pane rectangle.
+///
+/// Keeping every edge inside the pane prevents clipping at the window bounds
+/// and makes nested horizontal/vertical layouts behave identically. The
+/// renderer adds the grid's outer margin when these rectangles are painted.
+fn panel_focus_outline(panel: [f32; 4], config: BorderConfig) -> [Rect; 4] {
+    let [x, y, width, height] = panel;
+    let thickness = config
+        .width
+        .max(1.0)
+        .min(width.max(1.0))
+        .min(height.max(1.0));
+    let right = (x + width - thickness).max(x);
+    let bottom = (y + height - thickness).max(y);
+
+    [
+        create_border(config.color, [x, y], [width, thickness]),
+        create_border(config.color, [x, bottom], [width, thickness]),
+        create_border(config.color, [x, y], [thickness, height]),
+        create_border(config.color, [right, y], [thickness, height]),
+    ]
+}
+
 /// Separator configuration for split panels
 #[derive(Debug, Clone, Copy)]
 pub struct BorderConfig {
@@ -121,6 +144,7 @@ pub struct ContextGrid<T: EventListener> {
     tree: TaffyTree<()>,
     root_node: NodeId,
     border_config: BorderConfig,
+    active_border_config: BorderConfig,
 }
 
 pub struct ContextGridItem<T: EventListener> {
@@ -158,7 +182,7 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
         context: Context<T>,
         scaled_margin: Margin,
         border_color: [f32; 4],
-        _border_active_color: [f32; 4],
+        border_active_color: [f32; 4],
         panel_config: rio_backend::config::layout::Panel,
     ) -> Self {
         let width = context.dimension.width;
@@ -223,6 +247,13 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             width: panel_config.border_width,
             color: border_color,
         };
+        let active_border_config = BorderConfig {
+            // Keep the focus ring at least two physical pixels wide. A split
+            // with a hairline divider still needs an immediately legible
+            // focus target in a dense multi-cloud workspace.
+            width: panel_config.border_width.max(2.0),
+            color: border_active_color,
+        };
 
         let mut grid = Self {
             inner,
@@ -238,6 +269,7 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             tree,
             root_node,
             border_config,
+            active_border_config,
         };
         grid.calculate_positions();
         grid
@@ -451,6 +483,16 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             }
             None // continue walking
         });
+
+        // Paint the active pane last so its themed focus ring wins where it
+        // intersects a neutral split divider. The outline is an overlay: it
+        // never consumes grid cells or changes PTY dimensions.
+        if let Some(active) = self.inner.get(&self.current) {
+            separators.extend(panel_focus_outline(
+                active.layout_rect,
+                self.active_border_config,
+            ));
+        }
 
         separators
     }

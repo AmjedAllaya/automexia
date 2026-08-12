@@ -34,6 +34,8 @@ __automexia_publish_static_metadata() {
   fi
   __automexia_set_user_var automexia_distro "${WSL_DISTRO_NAME:-}"
   __automexia_set_user_var automexia_os_version "$os_version"
+  __automexia_set_user_var automexia_shell_user "${USER:-}"
+  __automexia_set_user_var automexia_shell_path "${commands[zsh]:-${SHELL:-}}"
   printf '\e]1337;SetUserVar=automexia_shell=MQ==\a'
   printf '\e]1337;SetUserVar=automexia_shell_name=enNo\a'
 }
@@ -85,20 +87,23 @@ if [[ ${AUTOMEXIA_PLAIN_LS:-0} != 1 ]] && (( $+commands[eza] )); then
 fi
 
 __automexia_precmd() {
-  local status=$?
-  printf '\e[0m\e]133;D;%s\a' "$status"
+  # `status` is a read-only special parameter in Zsh; use a private name so
+  # the hook works under both interactive Zsh and the non-interactive tests.
+  local exit_status=$?
+  printf '\e[0m\e]133;D;%s\a' "$exit_status"
   printf '\e]7;file://%s%s\a' "${HOST:-localhost}" "${PWD// /%20}"
   printf '\e]2;%s@%s: %s\a' "${USER:-user}" "${HOST:-host}" "$PWD"
   ((__automexia_prompt_generation += 1))
   __automexia_prompt_is_active=1
-  # Only the renderer-owned context row is outside ZLE. `%d` is Zsh's full,
-  # unabridged current directory, and keeping it in the multiline PROMPT lets
-  # ZLE restore the whole path after every SIGWINCH redisplay.
+  # Automexia owns the stable context spacer and complete path rows. ZLE owns
+  # only the lambda, editable command, and cursor row, so its delayed SIGWINCH
+  # repaint cannot erase or duplicate the terminal-owned path.
   printf '\e]1337;SetUserVar=automexia_prompt_active=MQ==\a\e]133;A;aid=%s\a \n' \
     "$__automexia_prompt_generation"
-  printf -v PROMPT '%%{\e]133;P;k=c;aid=%s\a%%}%%F{#48A7FF}%%d%%f\n%%{\e]133;P;k=c;aid=%s\a%%}%%F{cyan}' \
-    "$__automexia_prompt_generation" "$__automexia_prompt_generation"
-  PROMPT+=$'\xCE\xBB%f %{\e]133;B\a%}%F{white}'
+  printf '\e]133;P;k=c;aid=%s\a\e[38;2;72;167;255m%s\e[0m\n' \
+    "$__automexia_prompt_generation" "$PWD"
+  printf '\e]133;P;k=c;aid=%s\a' "$__automexia_prompt_generation"
+  PROMPT=$'%F{cyan}\xCE\xBB%f %{\e]133;B\a%}%F{white}'
 }
 __automexia_preexec() {
   __automexia_prompt_is_active=0
@@ -108,6 +113,6 @@ add-zsh-hook precmd __automexia_precmd
 add-zsh-hook preexec __automexia_preexec
 setopt PROMPT_SUBST
 
-# `precmd` emits the stable context row and builds the resize-owned multiline
-# ZLE prompt. The full `%d` path is never abbreviated.
+# `precmd` emits the stable context and complete path rows. ZLE owns only the
+# editable lambda row.
 PROMPT=''

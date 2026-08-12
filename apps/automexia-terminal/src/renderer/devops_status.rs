@@ -33,7 +33,6 @@ const CONTEXT_PAD_X: f32 = 20.0;
 const CONTEXT_FONT_SIZE: f32 = 18.0;
 const CONTEXT_ICON_SIZE: f32 = 24.0;
 const DOCKER_CONTEXT_ICON_SIZE: f32 = 30.0;
-const CLOCK_ICON_SIZE: f32 = 23.0;
 const PROMPT_CONTEXT_FONT_SIZE: f32 = 18.0;
 const PROMPT_CONTEXT_ICON_SIZE: f32 = 23.0;
 const DOCKER_PROMPT_ICON_SIZE: f32 = 29.0;
@@ -44,6 +43,13 @@ const PROMPT_RESULT_RESERVE: f32 = 112.0;
 const CONTEXT_RADIUS: f32 = 9.0;
 const RIGHT_STATUS_WIDTH: f32 = 310.0;
 const RIGHT_STATUS_BREAKPOINT: f32 = 760.0;
+const STATUS_CHIP_INSET: f32 = 6.0;
+const STATUS_CHIP_GAP: f32 = 7.0;
+const STATUS_CHIP_RADIUS: f32 = 7.0;
+const STATUS_CHIP_LABEL_SIZE: f32 = 9.5;
+const STATUS_CHIP_VALUE_SIZE: f32 = 16.5;
+const STATUS_CHIP_ICON_SIZE: f32 = 19.0;
+const MIN_SEGMENT_CONTRAST: f32 = 4.55;
 
 const MAX_WSL_CHARS: usize = 14;
 const MAX_CONTEXT_CHARS: usize = 22;
@@ -51,19 +57,26 @@ const MAX_CLOUD_CHARS: usize = 22;
 const MAX_GIT_CHARS: usize = 24;
 const MAX_ENV_CHARS: usize = 16;
 
-#[derive(Clone, Copy)]
-enum SegmentColor {
-    Cyan,
-    Blue,
-    Yellow,
-    Magenta,
-    Red,
-    Green,
-    Orange,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum SegmentRole {
+    Production,
+    UbuntuWsl,
+    Windows,
+    Git,
+    Kubernetes,
+    Docker,
+    Azure,
+    Aws,
+    Gcp,
+    UnknownCloud,
+    Terraform,
+    Environment,
+    User,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum IconKind {
+    Terminal,
     Wsl,
     Windows,
     Docker,
@@ -80,7 +93,7 @@ enum IconKind {
 #[derive(Clone)]
 struct Segment {
     value: String,
-    color: SegmentColor,
+    role: SegmentRole,
     icon: IconKind,
 }
 
@@ -110,6 +123,20 @@ struct ContextBarLayout {
 struct ContextBarGeometry {
     top: f32,
     height: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct StatusChipGeometry {
+    x: f32,
+    top: f32,
+    width: f32,
+    height: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ShellClockLayout {
+    shell: StatusChipGeometry,
+    clock: StatusChipGeometry,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -313,6 +340,25 @@ impl DevOpsStatus {
         self.ensure_live_segments(session);
     }
 
+    /// Keep an inactive but visible pane's operational snapshot current.
+    ///
+    /// Inactive panes do not own the window-level context bar, so they need a
+    /// small preparation entry point that performs the same asynchronous cache
+    /// synchronization without painting global chrome.
+    pub fn refresh_visible_session<F>(
+        &mut self,
+        session: &SessionFacts,
+        completion: F,
+    ) -> bool
+    where
+        F: FnOnce() -> runtime::DevOpsRefreshCompletion,
+    {
+        self.request_refresh_if_needed(session, false, completion);
+        self.sync_cached_snapshot(session);
+        self.ensure_live_segments(session);
+        self.refresh_pending
+    }
+
     fn sync_active_prompt(
         &mut self,
         session: &SessionFacts,
@@ -410,7 +456,7 @@ impl DevOpsStatus {
         let separator = muted(colors.foreground, 0.32);
 
         for (index, segment) in segments.iter().enumerate() {
-            let color = segment_color(colors, segment.color);
+            let color = segment_color(colors, segment.role);
             let icon_opts = DrawOpts {
                 font_size: prompt_icon_size(segment.icon),
                 color: color_to_u8(color),
@@ -548,7 +594,7 @@ impl DevOpsStatus {
 
         for (index, segment) in segments.iter().enumerate() {
             let icon = icon_glyph(segment.icon);
-            let color = segment_color(colors, segment.color);
+            let color = segment_color(colors, segment.role);
             let icon_opts = DrawOpts {
                 font_size: context_icon_size(segment.icon),
                 color: color_to_u8(color),
@@ -600,53 +646,28 @@ impl DevOpsStatus {
         width: f32,
         bar: ContextBarGeometry,
     ) {
-        let shell_text = format!("Shell: {}", shell_label(session));
-        let clock_text = local_clock_hhmm();
-        let clock_icon = icon_glyph(IconKind::Clock);
-        let shell_opts = DrawOpts {
-            font_size: CONTEXT_FONT_SIZE,
-            color: color_to_u8(colors.blue),
-            ..DrawOpts::default()
-        };
-        let clock_icon_opts = DrawOpts {
-            font_size: CLOCK_ICON_SIZE,
-            color: color_to_u8(colors.cyan),
-            ..DrawOpts::default()
-        };
-        let clock_opts = DrawOpts {
-            font_size: CONTEXT_FONT_SIZE,
-            color: color_to_u8(muted(colors.foreground, 0.70)),
-            ..DrawOpts::default()
-        };
-        let shell_width = sugarloaf.text_mut().measure(&shell_text, &shell_opts);
-        let clock_icon_width = sugarloaf.text_mut().measure(clock_icon, &clock_icon_opts);
-        let clock_text_width = sugarloaf.text_mut().measure(&clock_text, &clock_opts);
-        let clock_width = clock_icon_width + 10.0 + clock_text_width;
-        let text_y = bar.top + (bar.height - CONTEXT_FONT_SIZE) / 2.0 - 1.0;
-        let shell_x = x + 18.0;
-        sugarloaf
-            .text_mut()
-            .draw(shell_x, text_y, &shell_text, &shell_opts);
-        let separator_x = shell_x + shell_width + 17.0;
-        sugarloaf.line(
-            separator_x,
-            bar.top + 10.0,
-            separator_x,
-            bar.top + bar.height - 10.0,
-            1.0,
-            0.0,
-            muted(colors.foreground, 0.22),
-            ORDER + 1,
+        let layout = shell_clock_layout(x, width, bar);
+        draw_status_chip(
+            sugarloaf,
+            colors,
+            layout.shell,
+            IconKind::Terminal,
+            "SHELL",
+            shell_label(session),
+            shell_status_accent(colors, session),
         );
-        let clock_x = (x + width - clock_width - 16.0).max(separator_x + 14.0);
-        sugarloaf
-            .text_mut()
-            .draw(clock_x, text_y - 2.5, clock_icon, &clock_icon_opts);
-        sugarloaf.text_mut().draw(
-            clock_x + clock_icon_width + 10.0,
-            text_y,
-            &clock_text,
-            &clock_opts,
+        draw_status_chip(
+            sugarloaf,
+            colors,
+            layout.clock,
+            IconKind::Clock,
+            "LOCAL",
+            &local_clock_hhmm(),
+            ensure_contrast(
+                [0.31, 0.84, 1.0, 1.0],
+                colors.background.0,
+                MIN_SEGMENT_CONTRAST,
+            ),
         );
     }
 
@@ -756,7 +777,7 @@ impl DevOpsStatus {
         if self.snapshot.production {
             segments.push(Segment {
                 value: "PRODUCTION".to_string(),
-                color: SegmentColor::Red,
+                role: SegmentRole::Production,
                 icon: IconKind::Production,
             });
         }
@@ -769,20 +790,20 @@ impl DevOpsStatus {
         if let Some(os) = detected_wsl {
             segments.push(Segment {
                 value: compact_label(&os, MAX_WSL_CHARS),
-                color: SegmentColor::Orange,
+                role: SegmentRole::UbuntuWsl,
                 icon: IconKind::Wsl,
             });
         } else if shell_label(session) == "PowerShell" {
             segments.push(Segment {
                 value: "Windows".to_string(),
-                color: SegmentColor::Blue,
+                role: SegmentRole::Windows,
                 icon: IconKind::Windows,
             });
         }
         if let Some(branch) = &self.snapshot.git_branch {
             segments.push(Segment {
                 value: compact_middle(branch, MAX_GIT_CHARS),
-                color: SegmentColor::Magenta,
+                role: SegmentRole::Git,
                 icon: IconKind::Git,
             });
         }
@@ -798,35 +819,35 @@ impl DevOpsStatus {
                 };
             segments.push(Segment {
                 value,
-                color: SegmentColor::Cyan,
+                role: SegmentRole::Kubernetes,
                 icon: IconKind::Kubernetes,
             });
         }
         for cloud in &self.snapshot.clouds {
             segments.push(Segment {
                 value: cloud_value(cloud),
-                color: SegmentColor::Yellow,
+                role: cloud_segment_role(cloud.provider),
                 icon: IconKind::Cloud,
             });
         }
         if let Some(context) = &self.snapshot.docker {
             segments.push(Segment {
                 value: docker_value(context),
-                color: SegmentColor::Blue,
+                role: SegmentRole::Docker,
                 icon: IconKind::Docker,
             });
         }
         if let Some(workspace) = &self.snapshot.terraform {
             segments.push(Segment {
                 value: compact_label(workspace, MAX_CONTEXT_CHARS),
-                color: SegmentColor::Magenta,
+                role: SegmentRole::Terraform,
                 icon: IconKind::Terraform,
             });
         }
         if let Some(environment) = &self.snapshot.environment {
             segments.push(Segment {
                 value: compact_label(environment, MAX_ENV_CHARS),
-                color: SegmentColor::Green,
+                role: SegmentRole::Environment,
                 icon: IconKind::Environment,
             });
         }
@@ -838,7 +859,7 @@ impl DevOpsStatus {
         {
             segments.push(Segment {
                 value: compact_label(user, MAX_ENV_CHARS),
-                color: SegmentColor::Blue,
+                role: SegmentRole::User,
                 icon: IconKind::User,
             });
         }
@@ -870,6 +891,31 @@ fn same_prompt_identity(
     match (left_generation, right_generation) {
         (Some(left), Some(right)) => left == right,
         _ => left_key == right_key,
+    }
+}
+
+fn shell_clock_layout(x: f32, width: f32, bar: ContextBarGeometry) -> ShellClockLayout {
+    let inner_width = (width - STATUS_CHIP_INSET * 2.0).max(1.0);
+    let available = (inner_width - STATUS_CHIP_GAP).max(1.0);
+    let clock_width = (available * 0.36).clamp(96.0, 106.0).min(available);
+    let shell_width = (available - clock_width).max(1.0);
+    let top = bar.top + 5.0;
+    let height = (bar.height - 10.0).max(1.0);
+    let shell_x = x + STATUS_CHIP_INSET;
+    let clock_x = shell_x + shell_width + STATUS_CHIP_GAP;
+    ShellClockLayout {
+        shell: StatusChipGeometry {
+            x: shell_x,
+            top,
+            width: shell_width,
+            height,
+        },
+        clock: StatusChipGeometry {
+            x: clock_x,
+            top,
+            width: clock_width,
+            height,
+        },
     }
 }
 
@@ -935,9 +981,111 @@ fn draw_glass_surface(
     );
 }
 
+fn draw_status_chip(
+    sugarloaf: &mut Sugarloaf,
+    colors: Colors,
+    chip: StatusChipGeometry,
+    icon: IconKind,
+    label: &str,
+    value: &str,
+    accent: [f32; 4],
+) {
+    let fill = mix_surface(colors.background.0, accent, 0.10, 0.88);
+    let accent = ensure_contrast(accent, fill, MIN_SEGMENT_CONTRAST);
+    let outline = mix_surface(colors.background.0, accent, 0.34, 0.58);
+    let foreground = ensure_contrast(colors.foreground, fill, MIN_SEGMENT_CONTRAST);
+
+    sugarloaf.rounded_rect(
+        None,
+        chip.x,
+        chip.top,
+        chip.width,
+        chip.height,
+        outline,
+        0.06,
+        STATUS_CHIP_RADIUS,
+        ORDER + 2,
+    );
+    sugarloaf.rounded_rect(
+        None,
+        chip.x + 1.0,
+        chip.top + 1.0,
+        (chip.width - 2.0).max(0.0),
+        (chip.height - 2.0).max(0.0),
+        fill,
+        0.06,
+        STATUS_CHIP_RADIUS - 1.0,
+        ORDER + 3,
+    );
+
+    let icon_well_size = (chip.height - 10.0).clamp(22.0, 28.0);
+    let icon_well_x = chip.x + 7.0;
+    let icon_well_y = chip.top + (chip.height - icon_well_size) * 0.5;
+    sugarloaf.rounded_rect(
+        None,
+        icon_well_x,
+        icon_well_y,
+        icon_well_size,
+        icon_well_size,
+        muted(accent, 0.12),
+        0.06,
+        7.0,
+        ORDER + 4,
+    );
+
+    let icon_glyph = icon_glyph(icon);
+    let icon_opts = DrawOpts {
+        font_size: STATUS_CHIP_ICON_SIZE,
+        color: color_to_u8(accent),
+        ..DrawOpts::default()
+    };
+    let icon_width = sugarloaf.text_mut().measure(icon_glyph, &icon_opts);
+    let icon_x = icon_well_x + (icon_well_size - icon_width) * 0.5;
+    let icon_y = chip.top + (chip.height - STATUS_CHIP_ICON_SIZE) * 0.5 - 1.0;
+    sugarloaf
+        .text_mut()
+        .draw(icon_x, icon_y, icon_glyph, &icon_opts);
+
+    let text_x = icon_well_x + icon_well_size + 8.0;
+    let label_opts = DrawOpts {
+        font_size: STATUS_CHIP_LABEL_SIZE,
+        color: color_to_u8(muted(foreground, 0.72)),
+        bold: true,
+        ..DrawOpts::default()
+    };
+    let value_opts = DrawOpts {
+        font_size: STATUS_CHIP_VALUE_SIZE,
+        color: color_to_u8(accent),
+        bold: true,
+        ..DrawOpts::default()
+    };
+    sugarloaf
+        .text_mut()
+        .draw(text_x, chip.top + 3.5, label, &label_opts);
+    sugarloaf
+        .text_mut()
+        .draw(text_x, chip.top + 15.0, value, &value_opts);
+}
+
+fn mix_surface(
+    background: [f32; 4],
+    accent: [f32; 4],
+    accent_amount: f32,
+    alpha: f32,
+) -> [f32; 4] {
+    let amount = accent_amount.clamp(0.0, 1.0);
+    [
+        background[0] * (1.0 - amount) + accent[0] * amount,
+        background[1] * (1.0 - amount) + accent[1] * amount,
+        background[2] * (1.0 - amount) + accent[2] * amount,
+        alpha,
+    ]
+}
+
 /// Symbols from the Nerd Font vocabulary used by the reference project.
 fn icon_glyph(icon: IconKind) -> &'static str {
     match icon {
+        IconKind::Terminal => "\u{f489}",
         IconKind::Wsl => "\u{f31b}",
         IconKind::Windows => "\u{e70f}",
         IconKind::Docker => "\u{f308}",
@@ -996,6 +1144,16 @@ fn shell_label(session: &SessionFacts) -> &'static str {
     return "PowerShell";
     #[cfg(not(target_os = "windows"))]
     return "zsh";
+}
+
+fn shell_status_accent(colors: Colors, session: &SessionFacts) -> [f32; 4] {
+    let anchor = match shell_label(session) {
+        "PowerShell" => segment_anchor(SegmentRole::Windows),
+        "bash" => segment_anchor(SegmentRole::Environment),
+        "zsh" => segment_anchor(SegmentRole::Git),
+        _ => [0.31, 0.84, 1.0, 1.0],
+    };
+    ensure_contrast(anchor, colors.background.0, MIN_SEGMENT_CONTRAST)
 }
 
 fn format_duration(elapsed_ms: u64) -> String {
@@ -1089,6 +1247,15 @@ fn cloud_value(cloud: &CloudContext) -> String {
     }
 }
 
+fn cloud_segment_role(provider: &str) -> SegmentRole {
+    match provider.trim().to_ascii_lowercase().as_str() {
+        "aws" | "amazon" | "amazon web services" => SegmentRole::Aws,
+        "azure" | "microsoft azure" => SegmentRole::Azure,
+        "gcp" | "google" | "google cloud" | "google cloud platform" => SegmentRole::Gcp,
+        _ => SegmentRole::UnknownCloud,
+    }
+}
+
 fn docker_value(context: &str) -> String {
     let context = context.trim();
     if context.is_empty()
@@ -1146,16 +1313,148 @@ fn muted(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
     color
 }
 
-fn segment_color(colors: Colors, color: SegmentColor) -> [f32; 4] {
-    match color {
-        SegmentColor::Cyan => colors.cyan,
-        SegmentColor::Blue => colors.blue,
-        SegmentColor::Yellow => colors.yellow,
-        SegmentColor::Magenta => colors.magenta,
-        SegmentColor::Red => colors.red,
-        SegmentColor::Green => colors.green,
-        SegmentColor::Orange => [1.0, 0.35, 0.04, 1.0],
+fn segment_anchor_rgb(role: SegmentRole) -> [u8; 3] {
+    match role {
+        SegmentRole::Production => [0xff, 0x5c, 0x7a],
+        SegmentRole::UbuntuWsl => [0xff, 0x6a, 0x00],
+        SegmentRole::Windows => [0x62, 0xb0, 0xff],
+        SegmentRole::Git => [0xdc, 0x78, 0xff],
+        SegmentRole::Kubernetes => [0x50, 0xd5, 0xff],
+        SegmentRole::Docker => [0x24, 0x96, 0xed],
+        SegmentRole::Azure => [0x14, 0x7d, 0xdb],
+        SegmentRole::Aws => [0xff, 0xb0, 0x20],
+        SegmentRole::Gcp => [0xf4, 0x6f, 0x61],
+        SegmentRole::UnknownCloud => [0xff, 0xd1, 0x66],
+        SegmentRole::Terraform => [0xa7, 0x8b, 0xfa],
+        SegmentRole::Environment => [0x2d, 0xd4, 0xbf],
+        SegmentRole::User => [0xb8, 0xf3, 0x6b],
     }
+}
+
+fn segment_anchor(role: SegmentRole) -> [f32; 4] {
+    let [red, green, blue] = segment_anchor_rgb(role);
+    [
+        f32::from(red) / 255.0,
+        f32::from(green) / 255.0,
+        f32::from(blue) / 255.0,
+        1.0,
+    ]
+}
+
+/// Resolve every operational identity from one semantic source for both the
+/// persistent context bar and historical prompt rows. Theme customization may
+/// move only HSL lightness; the identity's anchor hue and saturation remain
+/// stable while text contrast is brought up to WCAG AA.
+fn segment_color(colors: Colors, role: SegmentRole) -> [f32; 4] {
+    let anchor = segment_anchor(role);
+    let rendered_anchor = color_to_u8(anchor).map(|channel| f32::from(channel) / 255.0);
+    if contrast_ratio(rendered_anchor, colors.background.0) >= 4.5 {
+        return anchor;
+    }
+    // Keep a small margin so conversion to the renderer's 8-bit color does
+    // not pull the displayed result below the 4.5:1 contract.
+    ensure_contrast(anchor, colors.background.0, MIN_SEGMENT_CONTRAST)
+}
+
+fn ensure_contrast(anchor: [f32; 4], background: [f32; 4], minimum: f32) -> [f32; 4] {
+    if contrast_ratio(anchor, background) >= minimum {
+        return anchor;
+    }
+
+    let (hue, saturation, lightness) = rgb_to_hsl(anchor);
+    let black = hsl_to_rgb(hue, saturation, 0.0);
+    let white = hsl_to_rgb(hue, saturation, 1.0);
+    let lighten = contrast_ratio(white, background) >= contrast_ratio(black, background);
+
+    // Find the smallest lightness movement that satisfies the contrast floor.
+    // One of the black/white endpoints always reaches at least 4.5:1 for a
+    // finite sRGB background, so the search remains deterministic.
+    let resolved_lightness = if lighten {
+        let mut failing = lightness;
+        let mut passing = 1.0;
+        for _ in 0..24 {
+            let candidate = (failing + passing) * 0.5;
+            if contrast_ratio(hsl_to_rgb(hue, saturation, candidate), background)
+                >= minimum
+            {
+                passing = candidate;
+            } else {
+                failing = candidate;
+            }
+        }
+        passing
+    } else {
+        let mut passing = 0.0;
+        let mut failing = lightness;
+        for _ in 0..24 {
+            let candidate = (passing + failing) * 0.5;
+            if contrast_ratio(hsl_to_rgb(hue, saturation, candidate), background)
+                >= minimum
+            {
+                passing = candidate;
+            } else {
+                failing = candidate;
+            }
+        }
+        passing
+    };
+    hsl_to_rgb(hue, saturation, resolved_lightness)
+}
+
+fn contrast_ratio(left: [f32; 4], right: [f32; 4]) -> f32 {
+    let left = relative_luminance(left);
+    let right = relative_luminance(right);
+    (left.max(right) + 0.05) / (left.min(right) + 0.05)
+}
+
+fn relative_luminance(color: [f32; 4]) -> f32 {
+    let channel = |value: f32| {
+        let value = value.clamp(0.0, 1.0);
+        if value <= 0.04045 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * channel(color[0]) + 0.7152 * channel(color[1]) + 0.0722 * channel(color[2])
+}
+
+fn rgb_to_hsl(color: [f32; 4]) -> (f32, f32, f32) {
+    let red = color[0].clamp(0.0, 1.0);
+    let green = color[1].clamp(0.0, 1.0);
+    let blue = color[2].clamp(0.0, 1.0);
+    let maximum = red.max(green).max(blue);
+    let minimum = red.min(green).min(blue);
+    let delta = maximum - minimum;
+    let lightness = (maximum + minimum) * 0.5;
+    if delta <= f32::EPSILON {
+        return (0.0, 0.0, lightness);
+    }
+    let saturation = delta / (1.0 - (2.0 * lightness - 1.0).abs());
+    let hue_sector = if maximum == red {
+        ((green - blue) / delta).rem_euclid(6.0)
+    } else if maximum == green {
+        (blue - red) / delta + 2.0
+    } else {
+        (red - green) / delta + 4.0
+    };
+    (hue_sector / 6.0, saturation, lightness)
+}
+
+fn hsl_to_rgb(hue: f32, saturation: f32, lightness: f32) -> [f32; 4] {
+    let chroma = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation;
+    let hue_sector = hue.rem_euclid(1.0) * 6.0;
+    let secondary = chroma * (1.0 - (hue_sector.rem_euclid(2.0) - 1.0).abs());
+    let (red, green, blue) = match hue_sector as u8 {
+        0 => (chroma, secondary, 0.0),
+        1 => (secondary, chroma, 0.0),
+        2 => (0.0, chroma, secondary),
+        3 => (0.0, secondary, chroma),
+        4 => (secondary, 0.0, chroma),
+        _ => (chroma, 0.0, secondary),
+    };
+    let offset = lightness - chroma * 0.5;
+    [red + offset, green + offset, blue + offset, 1.0]
 }
 
 fn color_to_u8(color: [f32; 4]) -> [u8; 4] {
@@ -1166,6 +1465,32 @@ fn color_to_u8(color: [f32; 4]) -> [u8; 4] {
 mod tests {
     use super::*;
 
+    const ALL_SEGMENT_ROLES: [SegmentRole; 13] = [
+        SegmentRole::Production,
+        SegmentRole::UbuntuWsl,
+        SegmentRole::Windows,
+        SegmentRole::Git,
+        SegmentRole::Kubernetes,
+        SegmentRole::Docker,
+        SegmentRole::Azure,
+        SegmentRole::Aws,
+        SegmentRole::Gcp,
+        SegmentRole::UnknownCloud,
+        SegmentRole::Terraform,
+        SegmentRole::Environment,
+        SegmentRole::User,
+    ];
+
+    fn colors_with_background(background: [f32; 4]) -> Colors {
+        let mut colors = Colors::default();
+        colors.background.0 = background;
+        colors
+    }
+
+    fn quantized(color: [f32; 4]) -> [f32; 4] {
+        color_to_u8(color).map(|channel| f32::from(channel) / 255.0)
+    }
+
     fn session(title: &str, distro: Option<&str>) -> SessionFacts {
         SessionFacts {
             session_id: 1,
@@ -1174,9 +1499,121 @@ mod tests {
             distro: distro.map(str::to_string),
             os_version: None,
             shell_name: None,
+            shell_user: None,
+            shell_path: None,
             shell_integration: true,
             shell_pid: 42,
         }
+    }
+
+    #[test]
+    fn every_semantic_role_has_the_exact_brand_anchor() {
+        let expected = [
+            (SegmentRole::Production, [0xff, 0x5c, 0x7a]),
+            (SegmentRole::UbuntuWsl, [0xff, 0x6a, 0x00]),
+            (SegmentRole::Windows, [0x62, 0xb0, 0xff]),
+            (SegmentRole::Git, [0xdc, 0x78, 0xff]),
+            (SegmentRole::Kubernetes, [0x50, 0xd5, 0xff]),
+            (SegmentRole::Docker, [0x24, 0x96, 0xed]),
+            (SegmentRole::Azure, [0x14, 0x7d, 0xdb]),
+            (SegmentRole::Aws, [0xff, 0xb0, 0x20]),
+            (SegmentRole::Gcp, [0xf4, 0x6f, 0x61]),
+            (SegmentRole::UnknownCloud, [0xff, 0xd1, 0x66]),
+            (SegmentRole::Terraform, [0xa7, 0x8b, 0xfa]),
+            (SegmentRole::Environment, [0x2d, 0xd4, 0xbf]),
+            (SegmentRole::User, [0xb8, 0xf3, 0x6b]),
+        ];
+        for (role, anchor) in expected {
+            assert_eq!(
+                segment_anchor_rgb(role),
+                anchor,
+                "wrong anchor for {role:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn semantic_colors_reach_contrast_on_dark_light_and_custom_themes() {
+        let backgrounds = [
+            [0.01, 0.02, 0.03, 1.0],
+            [0.98, 0.98, 0.96, 1.0],
+            [0.32, 0.34, 0.37, 1.0],
+            [0.08, 0.31, 0.28, 1.0],
+        ];
+        for background in backgrounds {
+            let colors = colors_with_background(background);
+            let mut distinct = std::collections::HashSet::new();
+            for role in ALL_SEGMENT_ROLES {
+                let resolved = segment_color(colors, role);
+                let rendered = quantized(resolved);
+                assert!(
+                    contrast_ratio(rendered, background) >= 4.5,
+                    "{role:?} resolved to {rendered:?} below 4.5:1 on {background:?}"
+                );
+                assert!(
+                    distinct.insert(color_to_u8(resolved)),
+                    "{role:?} duplicated another identity color on {background:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn low_contrast_correction_preserves_anchor_hue() {
+        for role in ALL_SEGMENT_ROLES {
+            let anchor = segment_anchor(role);
+            let colors = colors_with_background(anchor);
+            let resolved = segment_color(colors, role);
+            let (anchor_hue, anchor_saturation, _) = rgb_to_hsl(anchor);
+            let (resolved_hue, resolved_saturation, _) = rgb_to_hsl(resolved);
+            assert!((anchor_hue - resolved_hue).abs() < 0.0001, "{role:?}");
+            assert!(
+                (anchor_saturation - resolved_saturation).abs() < 0.0001,
+                "{role:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn default_theme_keeps_every_identity_visibly_distinct() {
+        let colors = Colors::default();
+        let mut resolved = std::collections::HashSet::new();
+        for role in ALL_SEGMENT_ROLES {
+            assert!(
+                resolved.insert(color_to_u8(segment_color(colors, role))),
+                "{role:?} duplicated another default identity color"
+            );
+        }
+        assert_ne!(
+            segment_color(colors, SegmentRole::Windows),
+            segment_color(colors, SegmentRole::Docker)
+        );
+        assert_ne!(
+            segment_color(colors, SegmentRole::Docker),
+            segment_color(colors, SegmentRole::Azure)
+        );
+        assert_eq!(segment_anchor_rgb(SegmentRole::User), [0xb8, 0xf3, 0x6b]);
+    }
+
+    #[test]
+    fn header_and_prompt_history_share_one_role_resolver() {
+        let colors = colors_with_background([0.92, 0.90, 0.86, 1.0]);
+        for role in ALL_SEGMENT_ROLES {
+            let header_color = segment_color(colors, role);
+            let historical_prompt_color = segment_color(colors, role);
+            assert_eq!(header_color, historical_prompt_color);
+        }
+    }
+
+    #[test]
+    fn cloud_providers_map_to_independent_roles() {
+        assert_eq!(cloud_segment_role("AWS"), SegmentRole::Aws);
+        assert_eq!(cloud_segment_role("azure"), SegmentRole::Azure);
+        assert_eq!(cloud_segment_role("Google Cloud"), SegmentRole::Gcp);
+        assert_eq!(
+            cloud_segment_role("private-cloud"),
+            SegmentRole::UnknownCloud
+        );
     }
 
     #[test]
@@ -1186,6 +1623,52 @@ mod tests {
         assert!(layout.left_width > 1_000.0);
         assert!(layout.left_x + layout.left_width + CONTEXT_GAP <= right_x);
         assert_eq!(right_x + right_width + CONTEXT_MARGIN_X, 1_600.0);
+    }
+
+    #[test]
+    fn shell_and_clock_chips_are_balanced_and_contained() {
+        let bar = ContextBarGeometry {
+            top: 82.0,
+            height: 47.0,
+        };
+        for width in [273.6, RIGHT_STATUS_WIDTH, 420.0] {
+            let layout = shell_clock_layout(900.0, width, bar);
+            assert_eq!(layout.shell.x, 900.0 + STATUS_CHIP_INSET);
+            assert!(layout.shell.width > layout.clock.width);
+            assert!(layout.shell.height > STATUS_CHIP_ICON_SIZE);
+            assert_eq!(layout.shell.top, layout.clock.top);
+            assert_eq!(layout.shell.height, layout.clock.height);
+            assert_eq!(
+                layout.clock.x,
+                layout.shell.x + layout.shell.width + STATUS_CHIP_GAP
+            );
+            assert!(
+                layout.clock.x + layout.clock.width
+                    <= 900.0 + width - STATUS_CHIP_INSET + f32::EPSILON
+            );
+        }
+    }
+
+    #[test]
+    fn shell_chip_accents_are_distinct_and_contrast_safe() {
+        let colors = Colors::default();
+        let mut powershell = session("PowerShell", None);
+        powershell.shell_name = Some("PowerShell".to_string());
+        let mut bash = session("bash", None);
+        bash.shell_name = Some("bash".to_string());
+        let mut zsh = session("zsh", None);
+        zsh.shell_name = Some("zsh".to_string());
+        let accents = [
+            shell_status_accent(colors, &powershell),
+            shell_status_accent(colors, &bash),
+            shell_status_accent(colors, &zsh),
+        ];
+        assert_ne!(color_to_u8(accents[0]), color_to_u8(accents[1]));
+        assert_ne!(color_to_u8(accents[1]), color_to_u8(accents[2]));
+        assert_ne!(color_to_u8(accents[0]), color_to_u8(accents[2]));
+        for accent in accents {
+            assert!(contrast_ratio(accent, colors.background.0) >= 4.5);
+        }
     }
 
     #[test]
@@ -1232,6 +1715,7 @@ mod tests {
     #[test]
     fn reference_icons_are_real_nerd_font_codepoints() {
         for kind in [
+            IconKind::Terminal,
             IconKind::Wsl,
             IconKind::Windows,
             IconKind::Docker,
