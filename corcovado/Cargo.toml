@@ -24,8 +24,8 @@ tracing = { workspace = true }
 libc = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = "0.42.0"
-miow = "0.5.0"
+windows-sys = "0.61.2"
+miow = "0.6.1"
 
 [dev-dependencies]
 criterion = { workspace = true }

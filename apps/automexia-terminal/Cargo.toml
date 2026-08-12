@@ -69,9 +69,9 @@ libc = { workspace = true }
 parking_lot = { workspace = true }
 serde = { workspace = true }
 serde_json = "1.0"
-toml = "0.9.2"
+toml = "1.1.4"
 tempfile = { workspace = true }
-taffy = { version = "0.10.1", features = ["flexbox","grid"] }
+taffy = { version = "0.13.0", features = ["flexbox","grid"] }
 teletypewriter = { workspace = true }
 unicode-width = { workspace = true }
 url = { workspace = true }
@@ -80,7 +80,7 @@ rio-window = { workspace = true }
 rio-notifier = { workspace = true }
 
 [target.'cfg(all(not(target_os = "macos"), not(target_os = "windows")))'.dependencies]
-cpal = { version = "0.15", optional = true }
+cpal = { version = "0.18", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = { workspace = true }
@@ -89,7 +89,7 @@ objc = { workspace = true }
 ahash = { version = "0.8.12", default-features = false, features = ["std"] }
 dunce = "1.0.5"
 tinyvec = { version = "1.8.1", features = ["alloc"] }
-windows-sys = { version = "0.60.2", features = [
+windows-sys = { version = "0.61.2", features = [
     "Win32_System_Console",
     "Win32_Foundation",
     "Win32_Security",
