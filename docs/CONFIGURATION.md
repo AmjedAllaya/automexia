@@ -48,6 +48,28 @@ size = 20.0
 `Ctrl`+`+` and `Ctrl`+`-` adjust an individual terminal panel at runtime;
 `Ctrl`+`0` returns it to the configured size.
 
+Split shortcuts distinguish a clean default shell from an independent clone:
+
+| Shortcut | Result |
+|---|---|
+| `Ctrl`+`Shift`+`R` | open the configured default shell in a right split |
+| `Ctrl`+`Shift`+`D` | open the configured default shell in a lower split |
+| `Ctrl`+`Alt`+`R` | clone the active shell/profile/directory into a right split |
+| `Ctrl`+`Alt`+`D` | clone the active shell/profile/directory into a lower split |
+
+Clones are independent sessions: they receive a new PTY, process, route,
+scrollback, input queue, and extension state. PowerShell/pwsh, Bash, Zsh, and
+WSL retain their active executable/profile/current directory; WSL also retains
+its distro, user, and shell. Jobs, process memory, command history position,
+partially typed input, and scrollback are never copied. Bare `Ctrl`+`R` and
+`Ctrl`+`D` remain available to the shell for history search and EOF behavior.
+The actions can be rebound as `clonesplitright` and `clonesplitdown`.
+Only absolute, control-free OSC 7 directories can replace the stored launch
+directory. Missing or invalid metadata keeps the safe profile fallback. If the
+profile, WSL distribution, or PTY cannot be recreated, Automexia leaves the
+layout unchanged and displays the concrete failure; it never opens PowerShell
+as a silent substitute for a failed WSL clone.
+
 On Windows, disabled native decorations are the default so Automexia can draw
 coherent tabs and window controls. All edges and corners remain resizable. See
 `docs/LIQUID-HACKER-UX.md` for the layout and interaction contract.

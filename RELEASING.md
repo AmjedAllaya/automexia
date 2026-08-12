@@ -24,5 +24,11 @@ signature/notarization verification, desktop/AppStream/icon/URL/terminfo checks,
 `automexia --version` for every portable archive, config migration preservation,
 and the manual controlled-hardware GPU/PTY checklist in `docs/TESTING.md`.
 
+The tag workflow will not enter preflight unless both protected runner gates
+succeed: `AUTOMEXIA_NATIVE_GUI_RUNNER=1` drives real PowerShell/ConPTY clone and
+resize storms on the `automexia-gpu` runner, while
+`AUTOMEXIA_WSL_RUNNER=1` and `AUTOMEXIA_TEST_WSL_DISTRO` prove WSL distro,
+user, shell, directory, and PTY isolation on the `automexia-wsl` runner.
+
 No stable release may contain placeholder assets or unsigned/notarized desktop
 artifacts.

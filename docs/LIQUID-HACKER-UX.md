@@ -14,7 +14,10 @@ chrome and are never part of the terminal grid:
 - a 47 px operational context surface at y=82 with local OS/WSL, Git,
   Kubernetes, cloud, Docker, Terraform, environment and production facts;
 - a separate right surface for the real shell name and local clock on
-  comfortable windows. Narrow windows give the full row to context instead.
+  comfortable windows. Two inset glass chips establish clear hierarchy with
+  terminal/clock glyph wells, restrained uppercase labels, emphasized values,
+  shell-aware accents, and theme-corrected contrast. Narrow windows give the
+  full row to context instead.
 
 Chrome has one shared responsive contract for drawing, hit-testing and terminal
 grid reservation:
@@ -38,6 +41,13 @@ every viewport and DPI change. Typing, output, scrollback and resize/reflow
 therefore cannot erase the tabs or context bar, nor can a stale 148 px margin
 consume a compact window. Windows uses a 6 px renderer-owned resize frame and
 supports all edges and corners when native decorations are disabled.
+
+The per-command prompt uses a strict ownership boundary. Automexia writes the
+context spacer and the complete, unabridged path once; the shell line editor
+redraws only the lambda and editable input row. Resizing reflows the semantic
+block by its stable `aid`, retains the entire logical path at physically tiny
+sizes, and reveals it again immediately when enough columns return. A user
+viewing scrollback is never forced back to the active cursor by resize.
 
 The default window is 1280x760. Tabs remain visible with one session; users may
 still explicitly set `navigation.hide-if-single = true` on platforms with
@@ -88,6 +98,31 @@ not blur them. Product/context icons use the bundled Cascadia Code Nerd Font
 and Symbols Nerd Font assets, never platform emoji, so the same codepoint has a
 stable shape on every machine.
 
+Operational identities use semantic brand anchors rather than generic terminal
+palette slots. The same resolver colors both the persistent header and frozen
+prompt-history snapshot, and uses the color for both icon and label:
+
+| Identity | Anchor |
+|---|---|
+| Production | `#FF5C7A` |
+| Ubuntu/WSL | `#FF6A00` |
+| Windows | `#62B0FF` |
+| Git | `#DC78FF` |
+| Kubernetes | `#50D5FF` |
+| Docker | `#2496ED` |
+| Azure | `#147DDB` |
+| AWS | `#FFB020` |
+| GCP | `#F46F61` |
+| Unknown cloud | `#FFD166` |
+| Terraform | `#A78BFA` |
+| Environment | `#2DD4BF` |
+| User | `#B8F36B` |
+
+Custom themes retain each anchor's hue and saturation. Automexia changes only
+HSL lightness when required to keep the rendered 8-bit color at or above 4.5:1
+contrast against the configured context background. Icons and labels remain
+present together, so color is never the only identifier.
+
 ## Prompt and command lifecycle
 
 The bundled PowerShell, Bash and Zsh integrations reserve three logical rows
@@ -105,15 +140,20 @@ They publish OSC 7 current-directory data, explicit shell identity, and the OSC
 Automexia snapshots every available fact on the context row, updates the active
 row in real time, and freezes it when a command starts. The path row always
 uses the shell's complete path and never abbreviates it to `.../` or duplicates
-Git or infrastructure metadata beside it. The complete path and short command
-row belong to Readline, ZLE, or PSReadLine as one multiline prompt; the
-renderer-owned context row remains outside the editor. A SIGWINCH redisplay
-therefore restores the path head even after repeated extreme-width changes
-without letting the editor erase or duplicate renderer metadata. Command
+Git or infrastructure metadata beside it. Automexia owns the context spacer
+and complete path as durable terminal rows; Readline, ZLE, or PSReadLine owns
+only the lambda, editable command, and cursor row. A delayed SIGWINCH editor
+repaint therefore cannot erase the path or duplicate renderer metadata. Command
 completion includes the actual exit code; Automexia measures between `C` and
 `D` and draws a right-aligned success/failure badge with duration. Prompt
 identity, context, and command results survive scrollback and column
 shrink/grow reflow.
+
+Use `Ctrl`+`Alt`+`R` or `Ctrl`+`Alt`+`D` to create an independent clone of the
+active session to the right or below. The clone preserves the current
+PowerShell/pwsh, Bash, Zsh, or WSL launch identity and directory while keeping
+its process, input, scrollback, and DevOps discovery state isolated. Existing
+`Ctrl`+`Shift`+`R`/`D` shortcuts continue to open the configured default shell.
 
 ## File and folder icons
 
@@ -140,6 +180,10 @@ POSIX commands.
 Native Windows PowerShell does not require `eza`. Automexia installs a native
 PowerShell format view for `DirectoryInfo` and `FileInfo`, so the existing
 `ls` alias and `Get-ChildItem` display folder and file-type icons automatically.
+The native metadata columns are `Mode`, `Last Modified`, `Size`, and `Name`;
+each glyph is kept together with its filename in the final `Name` column, and
+directories keep their trailing `\`. Narrow windows shorten only the displayed
+name while preserving the leading type glyph. There is no separate icon column.
 The command still returns the original filesystem objects: `Where-Object`,
 `Sort-Object`, property access, pipelines, scripts, and redirection keep normal
 PowerShell behavior. `AUTOMEXIA_PLAIN_LS=1` disables this presentation layer

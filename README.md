@@ -22,8 +22,9 @@ cargo dev
 
 This checks required tools and repository formats; verifies identity,
 architecture, provenance, packages, and brand assets; runs rustfmt, locked
-metadata, workspace checks, warning-denied Clippy, all tests, and `cargo deny`;
-builds Automexia; verifies `automexia --version`; and launches the terminal.
+metadata, native shell-integration validation, workspace checks, warning-denied
+Clippy, all tests, and `cargo deny`; builds Automexia; verifies
+`automexia --version`; and launches the terminal.
 The first run can take several minutes. Exhaustive checks use a dedicated,
 non-incremental verification target that is removed whether the gate passes or
 returns an ordinary failure; only the reusable application build remains in the
@@ -73,6 +74,8 @@ where build storage is being used with `cargo storage`. To remove all Cargo
 build artifacts, close running Automexia windows and run `cargo purge`.
 Brand-source and platform-export rules are in
 [docs/BRANDING.md](docs/BRANDING.md).
+The latest plan-by-plan implementation evidence and explicit external release
+blockers are recorded in [docs/READINESS-AUDIT.md](docs/READINESS-AUDIT.md).
 
 The native liquid-hacker interface, persistent context bar, tab/window
 interactions, one-line shell prompt, command timing, semantic output styling,
@@ -92,6 +95,12 @@ installed `eza` for icon-aware `ls`, `ll`, and `tree` output and falls back
 cleanly when `eza` is unavailable; see
 [docs/LIQUID-HACKER-UX.md](docs/LIQUID-HACKER-UX.md#file-and-folder-icons) for
 the shortcuts and opt-out.
+
+Clone the active PowerShell, Bash, Zsh, or WSL session into an independent
+right/lower split with `Ctrl`+`Alt`+`R` / `Ctrl`+`Alt`+`D`. The existing
+`Ctrl`+`Shift` split shortcuts still open the configured default shell, and bare
+`Ctrl`+`R` / `Ctrl`+`D` remain native shell input. See
+[configuration](docs/CONFIGURATION.md) for the exact isolation contract.
 
 ## Configuration
 

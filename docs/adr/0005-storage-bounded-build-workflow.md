@@ -21,14 +21,17 @@ Reducing coverage is not an acceptable storage optimization.
 
 1. `cargo automexia` keeps one persistent incremental debug application build.
 2. `cargo xtask check`, `cargo ci`, and `cargo ready` run compilation-heavy
-   policy in the exact direct child `automexia-verification-v1` of the resolved
-   Cargo target with `CARGO_INCREMENTAL=0`. Cargo's built-in `cargo check`
+   policy in a process/time-named direct child matching
+   `automexia-verification-v1-<pid>-<generation>` of the resolved Cargo target
+   with `CARGO_INCREMENTAL=0`. Cargo's built-in `cargo check`
    remains an incremental focused-diagnosis command.
 3. The isolated directory is deleted on success and ordinary failure. A drop
    guard attempts cleanup during early returns. A process kill or machine loss
-   may leave the named directory, which the next gate removes before use.
-4. Cleanup is allowed only for that exact direct-child name after rejecting
-   symbolic links and Windows reparse points.
+   may leave its unique directory; `cargo purge` removes interrupted artifacts.
+   Concurrent verification runs never share or delete one another's target.
+4. Cleanup is allowed only for a generated direct-child name with the strict
+   prefix and numeric process/generation suffix after rejecting symbolic links
+   and Windows reparse points.
 5. Verification requires 12 GiB free and an app build requires 4 GiB free by
    default. `cargo storage` reports usage; `cargo purge` delegates to Cargo's
    supported clean operation.

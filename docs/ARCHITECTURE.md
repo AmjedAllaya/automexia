@@ -41,6 +41,20 @@ Automexia IDs or path policy.
 - OSC semantic rows are the prompt-lifecycle authority. The
   `automexia_prompt_active` user variable is retained only for first-paint and
   compatibility fallback behavior.
+- Prompt row ownership is exclusive: shell integration emits the blank context
+  spacer and complete path once as terminal-owned rows, while
+  PSReadLine/Readline/ZLE owns only the lambda, editable command, and cursor
+  row. `OSC 133;A` begins the active block, `B` enters input, and `C`, `D`, or
+  the inactive user variable completes it. Repeating an active `aid` atomically
+  clears the previous block before accepting its replacement. While input is
+  active, the VT owns a compact copy of only those prompt rows. After each PTY
+  batch it repairs a delayed line-editor clear from that copy, reflowing through
+  the normal grid path; rows which cannot fit stay in scrollback until the
+  viewport grows. Completed command history is never copied or replaced.
+- Adjacent PTY resize messages coalesce to the newest effective dimensions.
+  Input and shutdown are barriers, duplicate effective sizes are skipped, and
+  a transient PTY resize failure is logged without terminating the session.
+  Every effective grid resize forces one complete renderer snapshot.
 - The renderer owns a responsive top-chrome reservation: 148 logical pixels at
   comfortable sizes, 115 in compact mode, 100 in minimal mode with context,
   and 54 at the 300×200 minimum where the secondary context surface folds
@@ -61,6 +75,15 @@ Automexia IDs or path policy.
 
 ## Interactive performance invariants
 
+- On Windows, `CSI ?9001h` switches keyboard delivery to ConPTY's Win32 input
+  record protocol. The window backend retains the native virtual key, scan
+  code, modifier/toggle state, and enhanced-key bit; the screen forwards that
+  record only after Automexia-owned bindings have had an opportunity to handle
+  it. Bare Up Arrow, `Ctrl+R`, and `Ctrl+D` therefore remain shell-owned while
+  configured frontend shortcuts remain local.
+- Windows PTY ring-buffer producers and consumers check, mutate, wait, and
+  notify under the same predicate mutex. This prevents the first input or
+  output after an idle transition from losing its wakeup.
 - Ordinary keyboard input is written to the PTY without scheduling a
   speculative frame. The terminal-damage event produced by parsed output is
   the redraw authority; frontend-only shortcuts still request an immediate
@@ -84,6 +107,15 @@ Automexia IDs or path policy.
   five seconds old only when path, title, distro, version, shell, and integration
   identity all match. Live discovery is still queued immediately, so reuse
   removes duplicate WSL/CLI startup latency without weakening pane isolation.
+- Session clones cross a narrower boundary than ordinary process duplication.
+  Every context stores an immutable descriptor containing its normalized
+  executable, argv, configured environment overrides, profile identity, and
+  starting directory. Clone invocation overlays the live OSC 7 directory and
+  explicit distro/user/shell-path metadata, creates a new PTY/performer/route,
+  and never copies jobs, process memory, terminal cells, input state, or
+  extension caches. WSL identity is never inferred from a title. A strictly
+  equivalent metadata seed may paint the new pane's chrome immediately, but
+  the new PTY replaces it and queues live discovery on its first frame.
 - The WSL probe reads Docker and Kubernetes configuration directly and invokes
   only CLIs whose live state cannot be obtained safely from bounded files.
   PowerShell keeps prompt/command-lifecycle hooks synchronous but defers icon
@@ -99,6 +131,10 @@ lifecycle, resize/reflow, and semantic precedence.
 
 The contributor workflow treats build storage as a bounded resource. Fast
 application builds remain incremental in the persistent Cargo target.
+The latency-critical `rio-vt` parser/reflow crate uses optimization level 2 in
+the development profile so everyday runs do not turn shell history repaints
+into debug-only stalls; other workspace crates retain the fastest-to-compile
+development optimization level.
 Exhaustive all-target checks, warning-denied Clippy, and workspace tests run in
 one direct-child verification target with `CARGO_INCREMENTAL=0`; normal process
 exit removes that directory regardless of gate outcome. Windows launches copy
