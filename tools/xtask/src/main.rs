@@ -1347,6 +1347,30 @@ fn verify_architecture() -> TaskResult {
             &format!("operational context is missing semantic role {role}"),
         )?;
     }
+    let island_renderer = read(&app.join("src/renderer/island.rs"))?;
+    let screen = read(&app.join("src/screen/mod.rs"))?;
+    require(
+        island_renderer.contains("const UTILITY_ACTIONS: [ChromeAction; 4]")
+            && island_renderer.contains("ChromeAction::Search")
+            && island_renderer.contains("ChromeAction::SplitRight")
+            && island_renderer.contains("ChromeAction::SplitDown")
+            && island_renderer.contains("ChromeAction::NextPane")
+            && island_renderer.contains(
+                "Option<[UtilityActionGeometry; UTILITY_ACTIONS.len()]>",
+            )
+            && context_renderer.contains("pub fn refresh_session_context")
+            && !context_renderer.contains("pub fn render_context_bar"),
+        "global session status was not replaced by the allocation-free workspace action rail",
+    )?;
+    require(
+        screen.contains("ChromeAction::Search => self.start_search")
+            && screen.contains("ChromeAction::SplitRight => self.split_right()")
+            && screen.contains("ChromeAction::SplitDown => self.split_down()")
+            && screen.contains(
+                "ChromeAction::NextPane => self.context_manager.select_next_split()",
+            ),
+        "workspace action rail does not route every visible action to screen behavior",
+    )?;
     let powershell_view =
         read(&root().join("shell-integration/powershell/automexia.format.ps1xml"))?;
     require(
@@ -1355,10 +1379,30 @@ fn verify_architecture() -> TaskResult {
             && powershell_view.contains("<Label>Size</Label>")
             && powershell_view.contains("<Label>Name</Label>")
             && !powershell_view.contains("<Label>Icon</Label>")
-            && powershell_view.contains("$glyph + ' ' + $displayName")
+            && powershell_view.contains("$glyph $displayName")
             && powershell_view.contains("ReparsePoint")
-            && powershell_view.contains("ConvertFromUtf32"),
-        "PowerShell filesystem view does not keep differentiated icons beside native object names",
+            && powershell_view.contains("ConvertFromUtf32")
+            && powershell_view.contains("0xF023")
+            && powershell_view.contains("0xF013")
+            && powershell_view.contains("0xF15C")
+            && powershell_view.contains("0xF121")
+            && powershell_view.contains("255;92;122")
+            && powershell_view.contains("PSVersionTable.PSVersion.Major -ge 7"),
+        "PowerShell filesystem view does not keep category icons and width-safe colors beside native object names",
+    )?;
+    let cmd_integration = read(&root().join("shell-integration/cmd/automexia.cmd"))?;
+    let cmd_listing = read(&root().join("shell-integration/cmd/automexia-ls.ps1"))?;
+    require(
+        cmd_integration.contains("SetUserVar=automexia_shell_name=Q01E")
+            && cmd_integration.contains("]7;file:///$P")
+            && cmd_integration.contains("]133;A")
+            && cmd_integration.contains("]133;P;k=c")
+            && cmd_integration.contains("]133;B")
+            && cmd_integration.contains("doskey ls=call")
+            && !cmd_integration.contains("doskey dir=")
+            && cmd_listing.contains("Update-FormatData -PrependPath")
+            && cmd_listing.contains("Get-ChildItem @parameters | Format-Table"),
+        "CMD integration does not preserve shell identity, semantic prompts, native DIR, and icon-aware ls",
     )?;
     let devops_manifest = read(&app.join("src/automexia/builtins/devops/mod.rs"))?;
     for capability in [

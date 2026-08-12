@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [switch]$SkipPowerShell,
+    [switch]$SkipCmd,
     [switch]$SkipWsl
 )
 $ErrorActionPreference = 'Stop'
@@ -11,6 +12,24 @@ $PowerShellIntegration = Join-Path $InstallRoot 'automexia.ps1'
 Copy-Item (Join-Path $PackageRoot 'powershell\automexia.ps1') $PowerShellIntegration -Force
 $PowerShellFormat = Join-Path $InstallRoot 'automexia.format.ps1xml'
 Copy-Item (Join-Path $PackageRoot 'powershell\automexia.format.ps1xml') $PowerShellFormat -Force
+
+if (-not $SkipCmd) {
+    $cmdSourceRoot = Join-Path $PackageRoot 'cmd'
+    $cmdIntegration = Join-Path $InstallRoot 'automexia.cmd'
+    $cmdSource = [IO.File]::ReadAllText((Join-Path $cmdSourceRoot 'automexia.cmd'), [Text.Encoding]::UTF8)
+    $cmdUser = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([Environment]::UserName))
+    $cmdExecutable = if ($env:ComSpec) { $env:ComSpec } else { Join-Path $env:SystemRoot 'System32\cmd.exe' }
+    $cmdPath = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($cmdExecutable))
+    $cmdSource = $cmdSource.Replace('__AUTOMEXIA_CMD_USER_BASE64__', $cmdUser)
+    $cmdSource = $cmdSource.Replace('__AUTOMEXIA_CMD_PATH_BASE64__', $cmdPath)
+    $cmdSource = [regex]::Replace($cmdSource, "\r?\n", "`r`n")
+    [IO.File]::WriteAllText($cmdIntegration, $cmdSource, [Text.UTF8Encoding]::new($true))
+    $cmdListLauncher = [IO.File]::ReadAllText((Join-Path $cmdSourceRoot 'automexia-ls.cmd'), [Text.Encoding]::UTF8)
+    $cmdListLauncher = [regex]::Replace($cmdListLauncher, "\r?\n", "`r`n")
+    [IO.File]::WriteAllText((Join-Path $InstallRoot 'automexia-ls.cmd'), $cmdListLauncher, [Text.Encoding]::ASCII)
+    Copy-Item (Join-Path $cmdSourceRoot 'automexia-ls.ps1') (Join-Path $InstallRoot 'automexia-ls.ps1') -Force
+    Write-Host "Command Prompt integration installed: $cmdIntegration" -ForegroundColor Cyan
+}
 
 function Add-MarkedBlock([string]$Path, [string]$Body) {
     if ([string]::IsNullOrWhiteSpace($Path)) { return }

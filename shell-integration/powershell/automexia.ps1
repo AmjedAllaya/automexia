@@ -1,6 +1,8 @@
 # Automexia shell integration — metadata + unified prompt/editor colors only.
 # Native filesystem icons are added through PowerShell's formatting layer.
-# No custom CLI commands are installed or intercepted.
+# Interactive `cmd`/`cmd.exe` launches are kept inside the current Automexia PTY
+# and initialized by the dedicated CMD integration. Explicit cmd arguments are
+# passed to the native executable unchanged.
 if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq '1') -and -not $global:AutomexiaShellIntegrationLoaded) {
     $global:AutomexiaShellIntegrationLoaded = $true
     $script:AutomexiaEsc = [char]27
@@ -12,6 +14,39 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
     $env:COLORTERM = 'truecolor'
     $env:TERM_PROGRAM = 'Automexia'
     $env:AUTOMEXIA_SHELL_INTEGRATION = '1'
+
+    $script:AutomexiaCmdExecutable = if ($env:ComSpec) {
+        $env:ComSpec
+    } else {
+        Join-Path $env:SystemRoot 'System32\cmd.exe'
+    }
+    $script:AutomexiaCmdIntegration = Join-Path $PSScriptRoot 'automexia.cmd'
+    if (-not (Test-Path -LiteralPath $script:AutomexiaCmdIntegration)) {
+        # Repository-source layout; installation flattens these files.
+        $script:AutomexiaCmdIntegration = Join-Path $PSScriptRoot '..\cmd\automexia.cmd'
+    }
+    function global:Invoke-AutomexiaCmd {
+        [CmdletBinding(PositionalBinding = $false)]
+        param(
+            [Parameter(ValueFromRemainingArguments = $true, Position = 0)]
+            [object[]]$ArgumentList
+        )
+
+        $nativeArguments = @($ArgumentList | ForEach-Object { [string]$_ })
+        if ($nativeArguments.Count -gt 0 -or
+            $env:AUTOMEXIA_PLAIN_CMD -eq '1' -or
+            -not (Test-Path -LiteralPath $script:AutomexiaCmdIntegration)) {
+            & $script:AutomexiaCmdExecutable @nativeArguments
+            return
+        }
+
+        # Invoke the executable directly: the child inherits this exact ConPTY
+        # and returns to the existing PowerShell session when the user types exit.
+        $startup = 'call "{0}"' -f $script:AutomexiaCmdIntegration.Replace('"', '""')
+        & $script:AutomexiaCmdExecutable /D /K $startup
+    }
+    Set-Alias -Name cmd -Value Invoke-AutomexiaCmd -Scope Global -Force
+    Set-Alias -Name cmd.exe -Value Invoke-AutomexiaCmd -Scope Global -Force
 
     # Keep PowerShell's native `ls` -> Get-ChildItem alias and real filesystem
     # objects. Parsing a format file synchronously adds about 60 ms to every new

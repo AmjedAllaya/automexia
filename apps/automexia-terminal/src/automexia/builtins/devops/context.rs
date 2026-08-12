@@ -276,11 +276,11 @@ fn windows_wsl_session_view(session: &SessionFacts) -> Option<SessionView> {
         .distro
         .as_ref()
         .filter(|value| !value.trim().is_empty())?;
-    if session
-        .shell_name
-        .as_deref()
-        .is_some_and(|shell| shell.eq_ignore_ascii_case("PowerShell"))
-    {
+    if session.shell_name.as_deref().is_some_and(|shell| {
+        shell.eq_ignore_ascii_case("PowerShell")
+            || shell.eq_ignore_ascii_case("CMD")
+            || shell.eq_ignore_ascii_case("Command Prompt")
+    }) {
         return None;
     }
     let user = sanitize_label(
@@ -1164,6 +1164,24 @@ mod tests {
             shell_path: Some(
                 r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe".to_string(),
             ),
+            shell_integration: true,
+            shell_pid: 42,
+        };
+        assert!(windows_wsl_session_view(&session).is_none());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn native_command_prompt_never_inherits_a_stale_wsl_badge() {
+        let session = SessionFacts {
+            session_id: 1,
+            cwd: Some(PathBuf::from(r"D:\workstation\projects\automexia")),
+            title: "CMD - D:/workstation/projects/automexia".to_string(),
+            distro: Some("Ubuntu-24.04".to_string()),
+            os_version: Some("24.04".to_string()),
+            shell_name: Some("CMD".to_string()),
+            shell_user: Some("lamjed".to_string()),
+            shell_path: Some(r"C:\Windows\System32\cmd.exe".to_string()),
             shell_integration: true,
             shell_pid: 42,
         };

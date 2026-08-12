@@ -14,6 +14,11 @@ if ($firstPrompt -ne $secondPrompt) { throw 'second source changed the prompt ha
 if ($secondPrompt -notmatch '\[char\]0x03BB') { throw 'prompt does not generate lambda from U+03BB' }
 if ($secondPrompt -match 'alias docker|alias kubectl|function ax|function kgp') { throw 'integration adds forbidden commands' }
 if ($integrationSource -match 'function\s+(global:)?ls\b|Set-Alias\s+ls') { throw 'PowerShell integration replaces native ls semantics' }
+if ($integrationSource -notmatch 'function global:Invoke-AutomexiaCmd' -or
+    $integrationSource -notmatch 'Set-Alias -Name cmd' -or
+    $integrationSource -match '(?im)^\s*Start-Process\b') {
+    throw 'PowerShell does not keep an interactive CMD launch inside the existing Automexia PTY'
+}
 if ($integrationSource -notmatch 'SetUserVar=automexia_distro=\$script:AutomexiaBel') { throw 'PowerShell does not clear stale WSL distro metadata' }
 if ($integrationSource -notmatch 'SetUserVar=automexia_os_version=\$script:AutomexiaBel') { throw 'PowerShell does not clear stale WSL version metadata' }
 if ($integrationSource -notmatch 'SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==') { throw 'PowerShell does not publish its real shell name' }
@@ -32,6 +37,17 @@ if ($integrationSource -notmatch '\$continuation\s*\+\s*\$pathPrompt\s*\+\s*"`r`
 if ($integrationSource -notmatch 'return\s+\$lambda\s*\+\s*\$input' -or $integrationSource -match 'return\s+\$pathPrompt') { throw 'PowerShell does not limit PSReadLine ownership to the editable lambda row' }
 if ($integrationSource -match '\.\.\.[\\/]') { throw 'PowerShell prompt still truncates the current path' }
 if ($global:LASTEXITCODE -ne 73) { throw 'PowerShell prompt changed LASTEXITCODE' }
+
+$cmdAlias = Get-Command cmd -ErrorAction Stop
+$cmdExeAlias = Get-Command cmd.exe -ErrorAction Stop
+if ($cmdAlias.CommandType -ne 'Alias' -or $cmdAlias.Definition -ne 'Invoke-AutomexiaCmd' -or
+    $cmdExeAlias.CommandType -ne 'Alias' -or $cmdExeAlias.Definition -ne 'Invoke-AutomexiaCmd') {
+    throw 'PowerShell cmd/cmd.exe entry points do not resolve to the in-pane launcher'
+}
+$nativeCmdResult = (& cmd /D /C 'echo AUTOMEXIA_CMD_NATIVE_OK' | Out-String).Trim()
+if ($nativeCmdResult -ne 'AUTOMEXIA_CMD_NATIVE_OK') {
+    throw 'Explicit cmd /c behavior was changed by Automexia integration'
+}
 
 $samplePath = "D:\cloud project\$([char]0x00E9)\automexia-terminal"
 $styledPath = Format-AutomexiaPromptPath -Path $samplePath
@@ -62,6 +78,25 @@ $formatSource = Get-Content -LiteralPath $formatPath -Raw
 if ($formatSource -notmatch 'ReparsePoint' -or $formatSource -notmatch '0xF481') {
     throw 'PowerShell filesystem view has no differentiated symlink icon'
 }
+foreach ($categoryContract in @(
+    @{ Pattern = 'secret\|secrets\|private'; Glyph = '0xF023'; Color = '255;92;122' },
+    @{ Pattern = 'config\|configs\|configuration'; Glyph = '0xF013'; Color = '255;176;32' },
+    @{ Pattern = 'logs\?\|logfiles'; Glyph = '0xF15C'; Color = '242;201;76' },
+    @{ Pattern = 'apps\?\|src\|source'; Glyph = '0xF121'; Color = '80;213;255' },
+    @{ Pattern = 'docs\?\|documentation'; Glyph = '0xF02D'; Color = '96;211;148' },
+    @{ Pattern = 'tests\?\|specs'; Glyph = '0xF0C3'; Color = '220;120;255' },
+    @{ Pattern = 'target\|build\|dist'; Glyph = '0xF1B2'; Color = '244;111;97' },
+    @{ Pattern = 'data\|db\|database'; Glyph = '0xF1C0'; Color = '129;140;248' }
+)) {
+    if ($formatSource -notmatch $categoryContract.Pattern -or
+        $formatSource -notmatch $categoryContract.Glyph -or
+        $formatSource -notmatch [regex]::Escape($categoryContract.Color)) {
+        throw "PowerShell filesystem taxonomy is missing $($categoryContract.Pattern)"
+    }
+}
+if ($formatSource -notmatch 'PSVersionTable\.PSVersion\.Major -ge 7') {
+    throw 'PowerShell category colors do not protect Windows PowerShell 5 table width'
+}
 $formatDeadline = [DateTime]::UtcNow.AddSeconds(2)
 do {
     $formatView = (Get-FormatData -TypeName System.IO.FileInfo).FormatViewDefinition |
@@ -82,6 +117,7 @@ if ($filesystemObjects[0] -isnot [System.IO.DirectoryInfo] -or $filesystemObject
 }
 $formattedFilesystem = $filesystemObjects | Format-Table | Out-String -Width 180
 $folderGlyph = [char]0xF07B
+$sourceFolderGlyph = [char]0xF121
 $rustGlyph = [char]0xE7A8
 $dockerGlyph = [char]0xF308
 $kubernetesGlyph = [char]::ConvertFromUtf32(0xF10FE)
@@ -92,8 +128,8 @@ if ($formattedFilesystem -match '(?m)^\s*Icon(?:\s|$)') { throw 'PowerShell list
 if ($formattedFilesystem -notmatch '(?m)^Mode\s+Last Modified\s+Size\s+Name\s*$') {
     throw 'PowerShell listing headers are not Mode, Last Modified, Size, and Name'
 }
-if ($formattedFilesystem -notmatch [regex]::Escape("$folderGlyph apps\")) {
-    throw 'PowerShell folder icon is not immediately before apps\ in the Name column'
+if ($formattedFilesystem -notmatch [regex]::Escape("$sourceFolderGlyph apps\")) {
+    throw 'PowerShell source-folder icon is not immediately before apps\ in the Name column'
 }
 if ($formattedFilesystem -notmatch [regex]::Escape("$rustGlyph lib.rs")) {
     throw 'PowerShell Rust icon is not immediately before lib.rs in the Name column'
@@ -107,12 +143,83 @@ try {
     $longRustName = 'this is a very long Unicode-é-Rust-source-file-name.rs'
     $specialRustName = 'literal [x] $value.rs'
     $devopsNames = @('docker-compose.yml', 'Chart.yaml', 'main.tf', 'diagram.png', 'bundle.zip')
+    $categoryFileNames = @('.env.production', 'service.log', 'state.db', 'settings.json', 'README.md', 'deploy.ps1', 'main.py')
+    $categoryFolders = @('secret', 'config', 'logs', 'src', 'docs', 'tests', 'target', 'assets', 'packages', 'tools', 'data', 'cache', 'infra', 'packaging')
     $null = New-Item -ItemType Directory -Path (Join-Path $fixtureRoot $unicodeFolderName)
+    foreach ($name in $categoryFolders) {
+        $null = New-Item -ItemType Directory -Path (Join-Path $fixtureRoot $name)
+    }
     $null = New-Item -ItemType File -Path (Join-Path $fixtureRoot $unicodeRustName)
     $null = New-Item -ItemType File -Path (Join-Path $fixtureRoot $longRustName)
     [IO.File]::WriteAllText((Join-Path $fixtureRoot $specialRustName), '')
     foreach ($name in $devopsNames) {
         $null = New-Item -ItemType File -Path (Join-Path $fixtureRoot $name)
+    }
+    foreach ($name in $categoryFileNames) {
+        [IO.File]::WriteAllText((Join-Path $fixtureRoot $name), 'classification must use names only')
+    }
+
+    $cmdRoot = Join-Path $root 'shell-integration\cmd'
+    $cmdIntegrationPath = Join-Path $cmdRoot 'automexia.cmd'
+    $cmdListingPath = Join-Path $cmdRoot 'automexia-ls.ps1'
+    $cmdLauncherPath = Join-Path $cmdRoot 'automexia-ls.cmd'
+    foreach ($requiredCmdFile in @($cmdIntegrationPath, $cmdListingPath, $cmdLauncherPath)) {
+        if (-not (Test-Path -LiteralPath $requiredCmdFile)) {
+            throw "CMD integration file is missing: $requiredCmdFile"
+        }
+    }
+    $cmdSource = [IO.File]::ReadAllText($cmdIntegrationPath, [Text.Encoding]::UTF8)
+    foreach ($contract in @(
+        'SetUserVar=automexia_shell_name=Q01E',
+        'SetUserVar=automexia_shell_user=__AUTOMEXIA_CMD_USER_BASE64__',
+        'SetUserVar=automexia_shell_path=__AUTOMEXIA_CMD_PATH_BASE64__',
+        'SetUserVar=automexia_distro=',
+        ']7;file:///$P',
+        ']133;A',
+        ']133;P;k=c',
+        ']133;B',
+        '38;2;98;176;255m$P',
+        'doskey ls=call',
+        'doskey ll=call'
+    )) {
+        if ($cmdSource -notmatch [regex]::Escape($contract)) {
+            throw "CMD integration is missing contract: $contract"
+        }
+    }
+    if ($cmdSource -match 'doskey dir=') {
+        throw 'CMD integration replaces the native DIR command'
+    }
+
+    $cmdListing = & $cmdListingPath -la $fixtureRoot | Out-String -Width 240
+    if ($cmdListing -notmatch [regex]::Escape("$([char]0xF023) secret\") -or
+        $cmdListing -notmatch [regex]::Escape("$rustGlyph $unicodeRustName")) {
+        throw 'CMD ls helper does not retain Automexia category/file icons beside names'
+    }
+
+    # Generate the same account-specific batch installed by install-windows.ps1
+    # and execute it inside a child CMD. This verifies prompt/identity state
+    # without opening a window or depending on the caller's persistent profile.
+    $cmdProbeRoot = Join-Path $fixtureRoot 'cmd-probe'
+    $null = New-Item -ItemType Directory -Path $cmdProbeRoot
+    $generatedCmd = Join-Path $cmdProbeRoot 'automexia.cmd'
+    $generatedSource = $cmdSource.Replace(
+        '__AUTOMEXIA_CMD_USER_BASE64__',
+        [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([Environment]::UserName))
+    )
+    $generatedSource = $generatedSource.Replace(
+        '__AUTOMEXIA_CMD_PATH_BASE64__',
+        [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:ComSpec))
+    )
+    $generatedSource = [regex]::Replace($generatedSource, "\r?\n", "`r`n")
+    [IO.File]::WriteAllText($generatedCmd, $generatedSource, [Text.UTF8Encoding]::new($true))
+    $probePath = Join-Path $cmdProbeRoot 'probe.cmd'
+    $probeSource = "@echo off`r`ncall `"$generatedCmd`"`r`necho AUTOMEXIA_CMD_LOADED=%AUTOMEXIA_CMD_INTEGRATION_LOADED%`r`necho AUTOMEXIA_CMD_PROMPT=%PROMPT%`r`n"
+    [IO.File]::WriteAllText($probePath, $probeSource, [Text.Encoding]::ASCII)
+    $cmdProbe = & $env:ComSpec /D /C $probePath | Out-String
+    if ($cmdProbe -notmatch 'AUTOMEXIA_CMD_LOADED=1' -or
+        $cmdProbe -notmatch [regex]::Escape(']7;file:///$P') -or
+        $cmdProbe -notmatch [regex]::Escape('SetUserVar=automexia_prompt_active=MQ==')) {
+        throw 'Native CMD startup did not install the Automexia prompt and metadata in-process'
     }
 
     $pipelineObjects = @(Get-ChildItem -LiteralPath $fixtureRoot |
@@ -127,6 +234,47 @@ try {
     $unicodeListing = $pipelineObjects | Format-Table | Out-String -Width 240
     if ($unicodeListing -notmatch [regex]::Escape("$folderGlyph $unicodeFolderName\")) {
         throw 'PowerShell listing damaged a folder name containing spaces or Unicode'
+    }
+
+    $categoryListing = Get-ChildItem -LiteralPath $fixtureRoot |
+        Where-Object Name -in $categoryFolders | Sort-Object Name |
+        Format-Table | Out-String -Width 240
+    foreach ($expectation in @(
+        @{ Glyph = [char]0xF023; Name = 'secret' },
+        @{ Glyph = [char]0xF013; Name = 'config' },
+        @{ Glyph = [char]0xF15C; Name = 'logs' },
+        @{ Glyph = [char]0xF121; Name = 'src' },
+        @{ Glyph = [char]0xF02D; Name = 'docs' },
+        @{ Glyph = [char]0xF0C3; Name = 'tests' },
+        @{ Glyph = [char]0xF1B2; Name = 'target' },
+        @{ Glyph = [char]0xF1C5; Name = 'assets' },
+        @{ Glyph = [char]0xF487; Name = 'packages' },
+        @{ Glyph = [char]0xF0AD; Name = 'tools' },
+        @{ Glyph = [char]0xF1C0; Name = 'data' },
+        @{ Glyph = [char]0xF017; Name = 'cache' },
+        @{ Glyph = [char]0xF0C2; Name = 'infra' },
+        @{ Glyph = [char]0xF487; Name = 'packaging' }
+    )) {
+        if ($categoryListing -notmatch [regex]::Escape("$($expectation.Glyph) $($expectation.Name)\")) {
+            throw "PowerShell listing did not categorize the $($expectation.Name) folder"
+        }
+    }
+
+    $categoryFileListing = Get-ChildItem -LiteralPath $fixtureRoot -Force |
+        Where-Object Name -in $categoryFileNames | Sort-Object Name |
+        Format-Table | Out-String -Width 240
+    foreach ($expectation in @(
+        @{ Glyph = [char]0xF023; Name = '.env.production' },
+        @{ Glyph = [char]0xF15C; Name = 'service.log' },
+        @{ Glyph = [char]0xF1C0; Name = 'state.db' },
+        @{ Glyph = [char]0xE60B; Name = 'settings.json' },
+        @{ Glyph = [char]0xE73E; Name = 'README.md' },
+        @{ Glyph = [char]0xE86C; Name = 'deploy.ps1' },
+        @{ Glyph = [char]0xF121; Name = 'main.py' }
+    )) {
+        if ($categoryFileListing -notmatch [regex]::Escape("$($expectation.Glyph) $($expectation.Name)")) {
+            throw "PowerShell listing did not categorize the $($expectation.Name) file"
+        }
     }
     if ($unicodeListing -notmatch [regex]::Escape("$rustGlyph $unicodeRustName")) {
         throw 'PowerShell listing damaged a Rust filename containing spaces or Unicode'
@@ -193,12 +341,32 @@ foreach ($source in @($bashIntegration, $zshIntegration)) {
     if ($source -notmatch 'hd=1;38;5;117') { throw 'POSIX listing headers are not visually emphasized' }
     if ($source -notmatch 'ur=38;5;81' -or $source -notmatch 'uw=38;5;220' -or $source -notmatch 'ux=38;5;114') { throw 'POSIX permission roles are not color-separated' }
     if ($source -notmatch 'ex=38;5;252') { throw 'WSL executable metadata is not neutralized for DrvFs listings' }
+    foreach ($categoryColor in @(
+        '*secret=1;38;5;203', '*config=38;5;214', '*logs=38;5;220',
+        '*src=38;5;81', '*docs=38;5;114', '*tests=38;5;177',
+        '*target=38;5;209', '*assets=38;5;211', '*data=38;5;105',
+        '*cache=38;5;245', '*infra=38;5;39', '*packaging=38;5;214'
+    )) {
+        if ($source -notmatch [regex]::Escape($categoryColor)) {
+            throw "POSIX icon listing is missing category color $categoryColor"
+        }
+    }
+}
+$bashEzaPalette = [regex]::Match($bashIntegration, "export EZA_COLORS='([^']+)'").Groups[1].Value
+$zshEzaPalette = [regex]::Match($zshIntegration, "typeset -gx EZA_COLORS='([^']+)'").Groups[1].Value
+if (-not $bashEzaPalette -or $bashEzaPalette -cne $zshEzaPalette) {
+    throw 'Bash and Zsh folder/file category palettes have drifted apart'
 }
 
 $installerSource = Get-Content (Join-Path $root 'shell-integration\install-windows.ps1') -Raw
 if ($installerSource -notmatch '\.TrimEnd\(\[char\[\]\]"`r`n"\)') { throw 'WSL installer does not normalize here-document terminators deterministically' }
 if ($installerSource -notmatch 'automexia\.format\.ps1xml') { throw 'Windows installer does not deploy the PowerShell icon view' }
+if ($installerSource -notmatch 'automexia\.cmd' -or
+    $installerSource -notmatch '__AUTOMEXIA_CMD_USER_BASE64__' -or
+    $installerSource -notmatch '__AUTOMEXIA_CMD_PATH_BASE64__') {
+    throw 'Windows installer does not deploy account-specific CMD integration metadata'
+}
 
 $uninstall = Get-Content (Join-Path $root 'shell-integration\uninstall-windows.ps1') -Raw
 if ($uninstall -notmatch 'AUTOMEXIA SHELL INTEGRATION') { throw 'uninstall marker cleanup is missing' }
-Write-Output 'PASS: shell integration is idempotent, UTF-8-safe, WSL-isolated, icon-aware on PowerShell/Bash/Zsh, pipeline-safe, semantically path-colored, three-row prompt-identified, full-path, resize-safe, command-neutral, and uninstallable'
+Write-Output 'PASS: shell integration is idempotent, UTF-8-safe, WSL-isolated, icon-aware on PowerShell/CMD/Bash/Zsh, pipeline-safe, semantically path-colored, three-row prompt-identified, full-path, resize-safe, script-safe, and uninstallable'
