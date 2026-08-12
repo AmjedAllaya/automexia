@@ -23,14 +23,32 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         }
     }
 
-    # Announce the integration once (base64('1') per OSC 1337 SetUserVar).
-    [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell=MQ==$script:AutomexiaBel")
+    # Publish identity first, then the integration-ready marker. This lets a
+    # newly cloned pane replace its equivalent seed in one atomic VT batch.
     [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==$script:AutomexiaBel")
+    $automexiaShellUser = [Convert]::ToBase64String(
+        [Text.Encoding]::UTF8.GetBytes([Environment]::UserName)
+    )
+    $automexiaShellExecutable = try {
+        (Get-Process -Id $PID -ErrorAction Stop).Path
+    } catch {
+        if ($PSVersionTable.PSEdition -eq 'Core') {
+            Join-Path $PSHOME 'pwsh.exe'
+        } else {
+            Join-Path $PSHOME 'powershell.exe'
+        }
+    }
+    $automexiaShellPath = [Convert]::ToBase64String(
+        [Text.Encoding]::UTF8.GetBytes($automexiaShellExecutable)
+    )
+    [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell_user=$automexiaShellUser$script:AutomexiaBel")
+    [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell_path=$automexiaShellPath$script:AutomexiaBel")
     # Clear WSL-only metadata that may remain after a nested wsl.exe session
     # exits back into this native PowerShell terminal. Empty base64 payloads
     # are valid OSC 1337 user-variable values.
     [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_distro=$script:AutomexiaBel")
     [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_os_version=$script:AutomexiaBel")
+    [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell=MQ==$script:AutomexiaBel")
 
     # ConsoleHost normally imports PSReadLine before the first prompt. Use the
     # already-loaded module when available; otherwise one direct import is much
@@ -80,12 +98,15 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         $lambdaColor = if ($exitCode -eq 0) { '38;2;124;255;178' } else { '38;2;255;111;145' }
         $lambdaGlyph = [char]0x03BB
         $lambda = $script:AutomexiaEsc + "[" + $lambdaColor + "m" + $lambdaGlyph + $script:AutomexiaEsc + "[0m "
-        # Keep only the renderer-owned context row outside PSReadLine. The
-        # complete path and short command row are one multiline editor prompt,
-        # so PSReadLine redraws both after SIGWINCH instead of leaving the head
-        # of a path in scrollback after repeated narrow/wide reflow.
-        [Console]::Write($done + $osc7 + $title + $ready + $start + " `r`n" + $continuation)
-        return $pathPrompt + "`r`n" + $continuation + $lambda + $input
+        # Automexia owns the stable context spacer and complete path rows.
+        # PSReadLine owns only the lambda, editable command, and cursor row.
+        # This prevents PSReadLine's delayed SIGWINCH repaint from erasing or
+        # duplicating a path which the terminal has already reflowed.
+        [Console]::Write(
+            $done + $osc7 + $title + $ready + $start + " `r`n" +
+            $continuation + $pathPrompt + "`r`n" + $continuation
+        )
+        return $lambda + $input
     }
 
     # Formatting and editor colors do not affect shell correctness. Apply them
@@ -144,5 +165,5 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
             Write-Warning "Automexia deferred shell styling could not be scheduled: $($_.Exception.Message)"
         }
     }
-    Remove-Variable psReadLineModule, configureEditorColors, candidateFormatPath, formatPath, deferredEnhancements -ErrorAction SilentlyContinue
+    Remove-Variable psReadLineModule, configureEditorColors, candidateFormatPath, formatPath, deferredEnhancements, automexiaShellUser, automexiaShellExecutable, automexiaShellPath -ErrorAction SilentlyContinue
 }

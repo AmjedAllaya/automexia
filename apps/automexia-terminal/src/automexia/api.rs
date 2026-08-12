@@ -51,6 +51,9 @@ pub struct SessionFacts {
     /// Keeping this explicit prevents a stale distro variable or window title
     /// from relabeling a native PowerShell session as WSL.
     pub shell_name: Option<String>,
+    /// Explicit account and executable identity published by shell integration.
+    pub shell_user: Option<String>,
+    pub shell_path: Option<String>,
     /// True after Automexia shell integration announces itself over OSC 1337.
     /// This is stable session metadata; transient prompt/editing state stays in
     /// the application render snapshot so extension discovery caches do not churn.

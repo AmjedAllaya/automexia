@@ -1,3 +1,4 @@
+pub mod launch;
 pub mod renderable;
 pub mod title;
 
@@ -11,6 +12,7 @@ use crate::ime::Ime;
 pub use crate::layout::{ContextDimension, ContextGrid, ContextGridItem};
 use crate::messenger::Messenger;
 use crate::performer::{self, Machine};
+use launch::{LiveSessionMetadata, SessionLaunchDescriptor};
 use renderable::Cursor;
 use renderable::RenderableContent;
 use rio_backend::config::layout::Margin;
@@ -53,6 +55,8 @@ pub struct Context<T: EventListener> {
     #[cfg(not(target_os = "windows"))]
     pub main_fd: Arc<i32>,
     pub shell_pid: u32,
+    /// Immutable launch intent used to create independent session clones.
+    pub launch_descriptor: SessionLaunchDescriptor,
     pub rich_text_id: usize,
     pub dimension: ContextDimension,
     pub title: ContextTitle,
@@ -129,6 +133,10 @@ pub struct ContextManagerConfig {
     #[cfg(test)]
     pub dead_pty: bool,
     pub shell: Shell,
+    /// Configuration-owned overrides only; the inherited process environment
+    /// remains owned by the OS launch path.
+    pub environment: Vec<(String, String)>,
+    pub profile_identity: Option<String>,
     #[cfg(not(target_os = "windows"))]
     pub use_fork: bool,
     pub working_dir: Option<String>,
@@ -165,6 +173,7 @@ pub fn create_dead_context<T: rio_backend::event::EventListener>(
     rich_text_id: usize,
     dimension: ContextDimension,
 ) -> Context<T> {
+    let launch_descriptor = SessionLaunchDescriptor::default();
     let terminal = Crosswords::new(
         dimension,
         CursorShape::Block,
@@ -182,6 +191,7 @@ pub fn create_dead_context<T: rio_backend::event::EventListener>(
         #[cfg(not(target_os = "windows"))]
         main_fd: Arc::new(-1),
         shell_pid: 1,
+        launch_descriptor,
         messenger: Messenger::new(sender),
         renderable_content: RenderableContent::new(Cursor::default()),
         terminal,
@@ -229,15 +239,39 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     ) -> Result<Context<T>, Box<dyn Error>> {
         let route_id = ROUTE_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
 
+        #[cfg(target_os = "windows")]
+        let launch_program =
+            crate::automexia::shell::normalized_program(config.shell.program.as_deref());
+        #[cfg(not(target_os = "windows"))]
+        let launch_program = config.shell.program.clone();
+
+        #[cfg(target_os = "windows")]
+        let launch_args = crate::automexia::shell::normalized_args(
+            launch_program.as_deref(),
+            &config.shell.args,
+        );
+        #[cfg(not(target_os = "windows"))]
+        let launch_args = config.shell.args.clone();
+
+        let launch_descriptor = SessionLaunchDescriptor::new(
+            launch_program,
+            launch_args,
+            config.environment.clone(),
+            config.profile_identity.clone(),
+            config.working_dir.clone(),
+        );
+
         #[cfg(test)]
         if config.dead_pty {
-            return Ok(create_dead_context(
+            let mut context = create_dead_context(
                 event_proxy,
                 window_id,
                 route_id,
                 rich_text_id,
                 dimension,
-            ));
+            );
+            context.launch_descriptor = launch_descriptor;
+            return Ok(context);
         }
 
         let cols: u16 = dimension.columns.try_into().unwrap_or(MIN_COLUMNS as u16);
@@ -278,10 +312,13 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             } else {
                 tracing::info!("automexia -> teletypewriter: create_pty_with_spawn");
                 pty = match create_pty_with_spawn(
-                    config.shell.program.as_deref(),
-                    config.shell.args.clone(),
-                    &config.working_dir,
-                    None,
+                    launch_descriptor.program(),
+                    launch_descriptor.args().to_vec(),
+                    &launch_descriptor
+                        .starting_directory()
+                        .map(ToOwned::to_owned),
+                    (!launch_descriptor.environment().is_empty())
+                        .then(|| launch_descriptor.environment().to_vec()),
                     cols,
                     rows,
                     initial_winsize.width,
@@ -301,22 +338,18 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         #[cfg(not(target_os = "windows"))]
         let shell_pid = *pty.child.pid.clone() as u32;
         #[cfg(target_os = "windows")]
-        let shell_pid = 0u32;
+        let shell_pid;
 
         #[cfg(target_os = "windows")]
         {
-            let automexia_shell_program = crate::automexia::shell::normalized_program(
-                config.shell.program.as_deref(),
-            );
-            let automexia_shell_args = crate::automexia::shell::normalized_args(
-                automexia_shell_program.as_deref(),
-                &config.shell.args,
-            );
             pty = match create_pty(
-                automexia_shell_program.as_deref(),
-                automexia_shell_args,
-                &config.working_dir,
-                None,
+                launch_descriptor.program(),
+                launch_descriptor.args().to_vec(),
+                &launch_descriptor
+                    .starting_directory()
+                    .map(ToOwned::to_owned),
+                (!launch_descriptor.environment().is_empty())
+                    .then(|| launch_descriptor.environment().to_vec()),
                 cols,
                 rows,
             ) {
@@ -325,7 +358,12 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                     tracing::error!("{err:?}");
                     return Err(Box::new(err));
                 }
-            }
+            };
+            shell_pid = pty
+                .child_watcher()
+                .pid()
+                .map(std::num::NonZeroU32::get)
+                .unwrap_or(0);
         }
 
         let machine = Machine::new(
@@ -349,6 +387,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             #[cfg(not(target_os = "windows"))]
             main_fd,
             shell_pid,
+            launch_descriptor,
             messenger,
             terminal,
             rich_text_id,
@@ -952,6 +991,66 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         self.contexts[self.current_index].current_mut()
     }
 
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub fn native_test_panel_snapshots(&self) -> Vec<serde_json::Value> {
+        let active_route = self.current().route_id;
+        self.contexts[self.current_index]
+            .contexts()
+            .values()
+            .map(|item| {
+                let context = item.context();
+                let visible_text = context
+                    .renderable_content
+                    .visible_rows
+                    .iter()
+                    .map(|row| {
+                        row.inner
+                            .iter()
+                            .map(|square| square.c())
+                            .collect::<String>()
+                            .trim_end_matches(['\0', ' '])
+                            .to_string()
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let cursor_row = context
+                    .renderable_content
+                    .cursor
+                    .state
+                    .pos
+                    .row
+                    .0;
+                let cursor_line_text = usize::try_from(cursor_row)
+                    .ok()
+                    .and_then(|row| context.renderable_content.visible_rows.get(row))
+                    .map(|row| {
+                        row.inner
+                            .iter()
+                            .map(|square| square.c())
+                            .collect::<String>()
+                            .trim_end_matches(['\0', ' '])
+                            .to_string()
+                    });
+                serde_json::json!({
+                    "route_id": context.route_id,
+                    "active": context.route_id == active_route,
+                    "shell_pid": context.shell_pid,
+                    "launch_program": context.launch_descriptor.program(),
+                    "launch_args": context.launch_descriptor.args(),
+                    "profile_identity": context.launch_descriptor.profile_identity(),
+                    "starting_directory": context.launch_descriptor.starting_directory(),
+                    "current_directory": context.renderable_content.current_directory.as_ref().map(|path| path.to_string_lossy().into_owned()),
+                    "shell_distro": context.renderable_content.shell_distro.as_deref(),
+                    "shell_user": context.renderable_content.shell_user.as_deref(),
+                    "shell_path": context.renderable_content.shell_path.as_deref(),
+                    "cursor_row": cursor_row,
+                    "cursor_line_text": cursor_line_text,
+                    "visible_text": visible_text,
+                })
+            })
+            .collect()
+    }
+
     #[inline]
     pub fn switch_to_next(&mut self) {
         if self.config.is_native {
@@ -1089,6 +1188,107 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         }
     }
 
+    /// Create a new, independent PTY from the active session's launch intent.
+    /// Only immutable launch data and strictly equivalent display metadata are
+    /// carried across; terminal/process/editor state remains session-local.
+    pub fn clone_split(
+        &mut self,
+        rich_text_id: usize,
+        split_down: bool,
+        sugarloaf: &mut Sugarloaf,
+    ) -> bool {
+        let (launch, cursor, blinking, dimension, seed) = {
+            let source = self.current();
+            let live = LiveSessionMetadata {
+                current_directory: source.renderable_content.current_directory.clone(),
+                distro: source.renderable_content.shell_distro.clone(),
+                user: source.renderable_content.shell_user.clone(),
+                shell_name: source.renderable_content.shell_name.clone(),
+                shell_path: source.renderable_content.shell_path.clone(),
+            };
+            let launch = match source.launch_descriptor.fresh_clone(&live) {
+                Ok(launch) => launch,
+                Err(error) => {
+                    self.report_clone_error(error.to_string());
+                    return false;
+                }
+            };
+            (
+                launch,
+                source.cursor_from_ref(),
+                source.renderable_content.has_blinking_enabled,
+                source.dimension,
+                source.renderable_content.session_metadata_seed(),
+            )
+        };
+
+        #[cfg(all(target_os = "windows", not(test)))]
+        if let Err(error) = launch::validate_wsl_distribution(&launch) {
+            self.report_clone_error(error.to_string());
+            return false;
+        }
+
+        let mut cloned_config = self.config.clone();
+        cloned_config.shell = Shell {
+            program: launch.program().map(ToOwned::to_owned),
+            args: launch.args().to_vec(),
+        };
+        cloned_config.environment = launch.environment().to_vec();
+        cloned_config.profile_identity = launch.profile_identity().map(ToOwned::to_owned);
+        cloned_config.working_dir = launch.starting_directory().map(ToOwned::to_owned);
+        #[cfg(not(target_os = "windows"))]
+        {
+            // Spawn is required for a per-clone working directory and explicit
+            // environment. Fork mode remains available for ordinary sessions.
+            cloned_config.use_fork = false;
+        }
+
+        match ContextManager::create_context(
+            (&cursor, blinking),
+            self.event_proxy.clone(),
+            self.window_id,
+            rich_text_id,
+            dimension,
+            &cloned_config,
+        ) {
+            Ok(mut new_context) => {
+                // The descriptor resolution above proves shell/profile/cwd
+                // equivalence. Seed chrome only; the fresh terminal grid,
+                // scrollback, input queue and extension route remain empty.
+                new_context
+                    .renderable_content
+                    .apply_session_metadata_seed(seed);
+                let new_route_id = new_context.route_id;
+                if split_down {
+                    self.contexts[self.current_index].split_down(new_context, sugarloaf);
+                } else {
+                    self.contexts[self.current_index].split_right(new_context, sugarloaf);
+                }
+                self.current_route = new_route_id;
+                true
+            }
+            Err(error) => {
+                self.report_clone_error(format!(
+                    "Could not create the independent session: {error}"
+                ));
+                false
+            }
+        }
+    }
+
+    fn report_clone_error(&self, message: String) {
+        tracing::error!("Automexia session clone failed: {message}");
+        self.event_proxy.send_event(
+            RioEvent::ReportToAssistant(RioError {
+                report: RioErrorType::InitializationError(format!(
+                    "Automexia session clone failed. {message}"
+                )),
+                level: RioErrorLevel::Error,
+            }),
+            self.window_id,
+        );
+    }
+
     pub fn split_from_config(
         &mut self,
         rich_text_id: usize,
@@ -1108,6 +1308,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             dead_pty: false,
             cwd: config.navigation.current_working_directory,
             shell,
+            environment: launch::environment_overrides(&config.env_vars),
+            profile_identity: config.shell.program.clone(),
             working_dir,
             spawn_performer: true,
             #[cfg(not(target_os = "windows"))]

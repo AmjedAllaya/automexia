@@ -62,6 +62,146 @@ const MAX_SEARCH_WHILE_TYPING: Option<usize> = Some(1000);
 /// Maximum number of search terms stored in the history.
 const MAX_SEARCH_HISTORY_SIZE: usize = 255;
 
+#[cfg(any(test, feature = "native-gui-test-hooks"))]
+fn decode_native_test_hex(value: &str) -> Option<Vec<u8>> {
+    if !value.len().is_multiple_of(2)
+        || !value.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return None;
+    }
+    (0..value.len())
+        .step_by(2)
+        .map(|index| u8::from_str_radix(&value[index..index + 2], 16).ok())
+        .collect()
+}
+
+#[cfg(windows)]
+fn build_win32_key_sequence(key: &rio_window::event::KeyEvent) -> Option<Vec<u8>> {
+    use rio_window::keyboard::NamedKey::{Alt, Control, Shift, Super};
+    use rio_window::platform::windows::KeyEventExtWindows;
+
+    // Modifier state is included losslessly on the actual key record. Avoid
+    // forwarding standalone modifier events since an Automexia shortcut may
+    // consume the following key and must not leave ConPTY with a stuck Ctrl,
+    // Alt, Shift, or Windows key.
+    if matches!(key.logical_key, Key::Named(Alt | Control | Shift | Super)) {
+        return None;
+    }
+
+    let native = key.win32_key_event();
+    let unicode = key
+        .text_with_all_modifiers()
+        .and_then(|text| {
+            let mut characters = text.encode_utf16();
+            let first = characters.next()?;
+            characters.next().is_none().then_some(first)
+        })
+        .unwrap_or(0);
+    let key_down = u8::from(key.state == ElementState::Pressed);
+    Some(encode_win32_key_sequence(native, unicode, key_down))
+}
+
+#[cfg(windows)]
+fn encode_win32_key_sequence(
+    native: rio_window::platform::windows::Win32KeyEvent,
+    unicode: u16,
+    key_down: u8,
+) -> Vec<u8> {
+    let sequence = format!(
+        "\x1b[{};{};{};{};{};1_",
+        native.virtual_key,
+        native.scan_code & 0xff,
+        unicode,
+        key_down,
+        native.control_key_state,
+    );
+    sequence.into_bytes()
+}
+
+/// Emit a renderer-neutral state snapshot for the opt-in native resize driver.
+/// The feature is absent from product builds, so normal rendering performs no
+/// filesystem access and exposes no test-only environment surface.
+#[cfg(feature = "native-gui-test-hooks")]
+fn write_native_resize_snapshot(
+    content: &RenderableContent,
+    panels: Vec<serde_json::Value>,
+    window_width: f32,
+    window_height: f32,
+    last_control: &str,
+) {
+    use rio_backend::crosswords::grid::row::SemanticPrompt;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+    let Some(path) = std::env::var_os("AUTOMEXIA_RESIZE_SNAPSHOT") else {
+        return;
+    };
+
+    let mut visible_text = String::new();
+    let mut prompt_ids = std::collections::BTreeSet::new();
+    let mut prompt_starts = 0_usize;
+    for row in &content.visible_rows {
+        if row.semantic_prompt == SemanticPrompt::Prompt {
+            prompt_starts += 1;
+        }
+        if let Some(id) = row.semantic_prompt_id {
+            prompt_ids.insert(id);
+        }
+        let row_text = row
+            .inner
+            .iter()
+            .map(|square| square.c())
+            .collect::<String>();
+        visible_text.push_str(row_text.trim_end_matches(['\0', ' ']));
+    }
+
+    let current_directory = content
+        .current_directory
+        .as_ref()
+        .map(|directory| directory.to_string_lossy().into_owned());
+    let full_path_visible = current_directory.as_ref().is_some_and(|directory| {
+        let visible = visible_text.replace('\\', "/");
+        let directory = directory.replace('\\', "/");
+        visible.contains(&directory)
+    });
+    let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed) + 1;
+    let latest_prompt_id = prompt_ids.last().copied();
+    let latest_prompt_start_count = latest_prompt_id.map_or(0, |latest| {
+        content
+            .visible_rows
+            .iter()
+            .filter(|row| {
+                row.semantic_prompt == SemanticPrompt::Prompt
+                    && row.semantic_prompt_id == Some(latest)
+            })
+            .count()
+    });
+    let snapshot = serde_json::json!({
+        "sequence": sequence,
+        "columns": content.columns,
+        "rows": content.screen_lines,
+        "window_width": window_width,
+        "window_height": window_height,
+        "cursor_column": content.cursor.state.pos.col.0,
+        "cursor_row": content.cursor.state.pos.row.0,
+        "current_directory": current_directory,
+        "full_path_visible": full_path_visible,
+        "prompt_active": content.shell_prompt_active,
+        "prompt_starts": prompt_starts,
+        "prompt_ids": prompt_ids,
+        "latest_prompt_id": latest_prompt_id,
+        "latest_prompt_start_count": latest_prompt_start_count,
+        "last_control": last_control,
+        "panel_count": panels.len(),
+        "panels": panels,
+    });
+
+    if let Err(error) = std::fs::write(path, snapshot.to_string()) {
+        tracing::warn!("could not write native resize snapshot: {error}");
+    }
+}
+
 /// Reusable buffers for the hottest row-emission path. Keeping these on the
 /// screen avoids allocating foreground/background vectors after every command,
 /// shortcut, cursor animation, or split redraw. Their capacity grows to the
@@ -109,6 +249,8 @@ pub struct Screen<'screen> {
     pub grids: rustc_hash::FxHashMap<usize, rio_backend::sugarloaf::grid::GridRenderer>,
     pub grid_rasterizer: crate::grid_emit::GridGlyphRasterizer,
     row_render_scratch: RowRenderScratch,
+    #[cfg(feature = "native-gui-test-hooks")]
+    native_test_last_control: String,
 }
 
 pub struct ChromePress {
@@ -246,6 +388,8 @@ impl Screen<'_> {
             dead_pty: false,
             cwd: config.navigation.current_working_directory,
             shell,
+            environment: context::launch::environment_overrides(&config.env_vars),
+            profile_identity: config.shell.program.clone(),
             working_dir,
             spawn_performer: true,
             #[cfg(not(target_os = "windows"))]
@@ -354,6 +498,8 @@ impl Screen<'_> {
             grids: rustc_hash::FxHashMap::default(),
             grid_rasterizer: crate::grid_emit::GridGlyphRasterizer::new(),
             row_render_scratch: RowRenderScratch::default(),
+            #[cfg(feature = "native-gui-test-hooks")]
+            native_test_last_control: String::new(),
         })
     }
 
@@ -748,6 +894,18 @@ impl Screen<'_> {
         let mods = self.modifiers.state();
 
         if key.state == ElementState::Released {
+            #[cfg(windows)]
+            if mode.contains(Mode::WIN32_INPUT)
+                && !mode.contains(Mode::VI)
+                && !self.search_active()
+                && !self.hint_state.is_active()
+            {
+                if let Some(bytes) = build_win32_key_sequence(key) {
+                    self.ctx_mut().current_mut().messenger.send_write(bytes);
+                }
+                return;
+            }
+
             if !mode.contains(Mode::REPORT_EVENT_TYPES)
                 || mode.contains(Mode::VI)
                 || self.search_active()
@@ -845,6 +1003,16 @@ impl Screen<'_> {
 
         // Vi mode on its own doesn't have any input, the search input was done before.
         if mode.contains(Mode::VI) {
+            return;
+        }
+
+        #[cfg(windows)]
+        if mode.contains(Mode::WIN32_INPUT) {
+            if let Some(bytes) = build_win32_key_sequence(key) {
+                self.scroll_bottom_when_cursor_not_visible();
+                self.clear_selection();
+                self.ctx_mut().current_mut().messenger.send_write(bytes);
+            }
             return;
         }
 
@@ -980,19 +1148,23 @@ impl Screen<'_> {
             // We don't want the key without modifier, because it means something else most of
             // the time. However what we want is to manually lowercase the character to account
             // for both small and capital letters on regular characters at the same time.
-            let logical_key = if let Key::Character(ch) = key.logical_key.as_ref() {
+            let logical_key = if cfg!(windows) && mods.control_key() && mods.alt_key() {
+                // Windows may expose Ctrl+Alt as AltGr and mangle the logical
+                // key into an unidentified/composed value. Normalize before
+                // character classification so application shortcuts such as
+                // Ctrl+Alt+R/D remain reachable. Exact modifier matching still
+                // prevents these actions from consuming bare Ctrl+R/Ctrl+D.
+                match key.key_without_modifiers() {
+                    Key::Character(character) => {
+                        Key::Character(character.to_lowercase().into())
+                    }
+                    key => key,
+                }
+            } else if let Key::Character(ch) = key.logical_key.as_ref() {
                 // Match `Alt` bindings without `Alt` being applied, otherwise they use the
                 // composed chars, which are not intuitive to bind.
                 //
-                // On Windows, the `Ctrl + Alt` mangles `logical_key` to unidentified values, thus
-                // preventing them from being used in bindings
-                //
-                // For more see https://github.com/rust-windowing/winit/issues/2945.
-                // if (cfg!(target_os = "macos") || (cfg!(windows) && mods.control_key()))
-                // && mods.alt_key()
-                if (mods.shift_key() || mods.alt_key())
-                    || mods.alt_key() && (cfg!(windows) && mods.control_key())
-                {
+                if mods.shift_key() || mods.alt_key() {
                     key.key_without_modifiers()
                 } else {
                     Key::Character(ch.to_lowercase().into())
@@ -1206,6 +1378,12 @@ impl Screen<'_> {
                     }
                     Act::SplitDown => {
                         self.split_down();
+                    }
+                    Act::CloneSplitRight => {
+                        self.clone_split_right();
+                    }
+                    Act::CloneSplitDown => {
+                        self.clone_split_down();
                     }
                     Act::MoveDividerUp => {
                         // User wants divider to move up visually, which means expanding the bottom split
@@ -1573,6 +1751,26 @@ impl Screen<'_> {
             .split(rich_text_id, true, &mut self.sugarloaf);
 
         self.mark_dirty();
+    }
+
+    pub fn clone_split_right(&mut self) {
+        let rich_text_id = next_rich_text_id();
+        if self
+            .context_manager
+            .clone_split(rich_text_id, false, &mut self.sugarloaf)
+        {
+            self.mark_dirty();
+        }
+    }
+
+    pub fn clone_split_down(&mut self) {
+        let rich_text_id = next_rich_text_id();
+        if self
+            .context_manager
+            .clone_split(rich_text_id, true, &mut self.sugarloaf)
+        {
+            self.mark_dirty();
+        }
     }
 
     pub fn move_divider_up(&mut self) {
@@ -3919,6 +4117,26 @@ impl Screen<'_> {
         let (window_update, any_panel_dirty) = self
             .renderer
             .run(&mut self.sugarloaf, &mut self.context_manager);
+        #[cfg(feature = "native-gui-test-hooks")]
+        {
+            self.process_native_test_control();
+            let window_size = self.sugarloaf.window_size();
+            let panels = self.context_manager.native_test_panel_snapshots();
+            write_native_resize_snapshot(
+                &self.context_manager.current().renderable_content,
+                panels,
+                window_size.width,
+                window_size.height,
+                &self.native_test_last_control,
+            );
+            // The control file is intentionally not watched by product code.
+            // Keep feature-gated automation responsive while the window is
+            // otherwise idle so latency measurements cover PTY/shell/render
+            // work instead of the normal three-second DevOps refresh cadence.
+            if std::env::var_os("AUTOMEXIA_NATIVE_TEST_CONTROL").is_some() {
+                self.context_manager.schedule_render_on_route(10);
+            }
+        }
         let has_animation = self.renderer.needs_redraw();
         let should_present = any_panel_dirty || has_animation;
 
@@ -4630,6 +4848,61 @@ impl Screen<'_> {
         window_update
     }
 
+    /// Renderer-neutral control surface for native GUI tests. It exists only
+    /// in explicitly feature-gated test builds, performs no work without the
+    /// environment opt-in, and avoids flaky OCR/focus-dependent automation.
+    #[cfg(feature = "native-gui-test-hooks")]
+    fn process_native_test_control(&mut self) {
+        let Some(path) = std::env::var_os("AUTOMEXIA_NATIVE_TEST_CONTROL") else {
+            return;
+        };
+        let Ok(control) = std::fs::read_to_string(path) else {
+            return;
+        };
+        let control = control.trim().to_string();
+        if control.is_empty() || control == self.native_test_last_control {
+            return;
+        }
+        self.native_test_last_control.clone_from(&control);
+
+        let mut fields = control.splitn(3, ':');
+        let action = fields.next().unwrap_or_default();
+        let _sequence = fields.next();
+        match action {
+            "clone-right" => self.clone_split_right(),
+            "clone-down" => self.clone_split_down(),
+            "select-prev" => {
+                self.context_manager.select_prev_split();
+                self.mark_dirty();
+            }
+            "write-line" => {
+                let Some(line) = fields.next() else {
+                    return;
+                };
+                let mut bytes = line.as_bytes().to_vec();
+                bytes.push(b'\r');
+                self.context_manager
+                    .current_mut()
+                    .messenger
+                    .send_write(bytes);
+            }
+            "write-hex" => {
+                let Some(encoded) = fields.next() else {
+                    return;
+                };
+                let Some(bytes) = decode_native_test_hex(encoded) else {
+                    tracing::warn!("ignored malformed native test hex input");
+                    return;
+                };
+                self.context_manager
+                    .current_mut()
+                    .messenger
+                    .send_write(bytes);
+            }
+            _ => tracing::warn!("ignored unknown native test control {action:?}"),
+        }
+    }
+
     /// Update IME cursor position based on terminal cursor position
     /// This should be called after rendering to ensure cursor position is current
     pub fn update_ime_cursor_position_if_needed(
@@ -5123,6 +5396,41 @@ fn post_process_hyperlink_uri(uri: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_test_hex_decoder_preserves_history_control_sequences() {
+        assert_eq!(decode_native_test_hex("1b5b41"), Some(b"\x1b[A".to_vec()));
+        assert_eq!(decode_native_test_hex("12"), Some(vec![0x12]));
+        assert_eq!(decode_native_test_hex("03"), Some(vec![0x03]));
+        assert_eq!(decode_native_test_hex("0"), None);
+        assert_eq!(decode_native_test_hex("zz"), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn win32_input_encoder_preserves_native_key_record_fields() {
+        use rio_window::platform::windows::Win32KeyEvent;
+
+        let up = Win32KeyEvent {
+            virtual_key: 38,
+            scan_code: 0xe048,
+            control_key_state: 0x0100,
+        };
+        assert_eq!(
+            encode_win32_key_sequence(up, 0, 1),
+            b"\x1b[38;72;0;1;256;1_"
+        );
+
+        let ctrl_r = Win32KeyEvent {
+            virtual_key: 82,
+            scan_code: 19,
+            control_key_state: 0x0008,
+        };
+        assert_eq!(
+            encode_win32_key_sequence(ctrl_r, 0x12, 1),
+            b"\x1b[82;19;18;1;8;1_"
+        );
+    }
 
     #[test]
     fn row_render_scratch_reuses_widest_panel_capacity() {

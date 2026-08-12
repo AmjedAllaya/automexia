@@ -258,6 +258,8 @@ impl From<String> for Action {
             "scrolltobottom" => Some(Action::ScrollToBottom),
             "splitright" => Some(Action::SplitRight),
             "splitdown" => Some(Action::SplitDown),
+            "clonesplitright" => Some(Action::CloneSplitRight),
+            "clonesplitdown" => Some(Action::CloneSplitDown),
             "selectnextsplit" => Some(Action::SelectNextSplit),
             "selectprevsplit" => Some(Action::SelectPrevSplit),
             "selectnextsplitortab" => Some(Action::SelectNextSplitOrTab),
@@ -495,6 +497,12 @@ pub enum Action {
 
     /// Split vertically
     SplitDown,
+
+    /// Create an independent clone of the active session in a right split.
+    CloneSplitRight,
+
+    /// Create an independent clone of the active session in a lower split.
+    CloneSplitDown,
 
     /// Select next split
     SelectNextSplit,
@@ -1098,6 +1106,14 @@ pub fn create_hint_bindings(
     hint_bindings
 }
 
+fn clone_split_key_bindings() -> Vec<KeyBinding> {
+    bindings!(
+        KeyBinding;
+        "r", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
+        "d", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown;
+    )
+}
+
 // Macos
 #[cfg(all(target_os = "macos", not(test)))]
 pub fn platform_key_bindings(
@@ -1173,6 +1189,7 @@ pub fn platform_key_bindings(
     }
 
     if use_splits {
+        key_bindings.extend(clone_split_key_bindings());
         key_bindings.extend(bindings!(
             KeyBinding;
             "d", ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
@@ -1236,6 +1253,7 @@ pub fn platform_key_bindings(
     }
 
     if use_splits {
+        key_bindings.extend(clone_split_key_bindings());
         key_bindings.extend(bindings!(
             KeyBinding;
             "r", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
@@ -1318,6 +1336,7 @@ pub fn platform_key_bindings(
     }
 
     if use_splits {
+        key_bindings.extend(clone_split_key_bindings());
         key_bindings.extend(bindings!(
             KeyBinding;
             "r", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
@@ -1673,6 +1692,7 @@ mod tests {
         assert_eq!(ctrl_seq(&key("6"), "6", ctrl | alt), Some(0x1e));
         // Letters map, except the fixterms exclusions.
         assert_eq!(ctrl_seq(&key("q"), "q", ctrl), Some(0x11));
+        assert_eq!(ctrl_seq(&key("r"), "r", ctrl), Some(0x12));
         assert_eq!(ctrl_seq(&key("i"), "i", ctrl), None);
         assert_eq!(ctrl_seq(&key("m"), "m", ctrl), None);
         // ctrl+shift+letter stays distinguishable: no C0 collapse.
@@ -1701,6 +1721,77 @@ mod tests {
         let new_bindings = config_key_bindings(config_bindings, bindings);
         assert_eq!(new_bindings.len(), 1);
         assert_eq!(new_bindings[0].action, Action::Quit);
+    }
+
+    #[test]
+    fn clone_actions_parse_with_stable_configuration_names() {
+        assert_eq!(
+            Action::from("clonesplitright".to_string()),
+            Action::CloneSplitRight
+        );
+        assert_eq!(
+            Action::from("CloneSplitDown".to_string()),
+            Action::CloneSplitDown
+        );
+        assert_eq!(Action::from("splitright".to_string()), Action::SplitRight);
+        assert_eq!(Action::from("splitdown".to_string()), Action::SplitDown);
+    }
+
+    #[test]
+    fn clone_shortcuts_require_ctrl_alt_and_exclude_search_and_vi() {
+        let bindings = clone_split_key_bindings();
+        assert_eq!(bindings.len(), 2);
+        assert_eq!(bindings[0].action, Action::CloneSplitRight);
+        assert_eq!(bindings[1].action, Action::CloneSplitDown);
+        for binding in &bindings {
+            assert_eq!(binding.mods, ModifiersState::CONTROL | ModifiersState::ALT);
+            assert!(binding.notmode.contains(BindingMode::SEARCH));
+            assert!(binding.notmode.contains(BindingMode::VI));
+            assert!(!binding.is_triggered_by(
+                BindingMode::SEARCH,
+                binding.mods,
+                &binding.trigger
+            ));
+            assert!(!binding.is_triggered_by(
+                BindingMode::VI,
+                binding.mods,
+                &binding.trigger
+            ));
+            assert!(!binding.is_triggered_by(
+                BindingMode::empty(),
+                ModifiersState::CONTROL,
+                &binding.trigger
+            ));
+        }
+        assert!(!bindings.iter().any(|binding| {
+            binding.mods == ModifiersState::CONTROL
+                && matches!(
+                    binding.action,
+                    Action::CloneSplitRight | Action::CloneSplitDown
+                )
+        }));
+    }
+
+    #[test]
+    fn user_binding_can_override_a_clone_shortcut() {
+        let updated = config_key_bindings(
+            vec![ConfigKeyBinding {
+                key: "r".to_string(),
+                action: "receivechar".to_string(),
+                with: "control | alt".to_string(),
+                esc: String::new(),
+                mode: String::new(),
+            }],
+            clone_split_key_bindings(),
+        );
+        assert_eq!(updated.len(), 2);
+        assert!(updated.iter().any(|binding| {
+            binding.mods == ModifiersState::CONTROL | ModifiersState::ALT
+                && binding.action == Action::ReceiveChar
+        }));
+        assert!(updated
+            .iter()
+            .any(|binding| binding.action == Action::CloneSplitDown));
     }
 
     #[test]
@@ -1741,6 +1832,29 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn shell_history_keys_are_native_pty_input() {
+        let config = rio_backend::config::Config::default();
+        let bindings = default_key_bindings(&config);
+        assert!(bindings.iter().any(|binding| {
+            binding.mods.is_empty()
+                && binding.trigger
+                    == BindingKey::Keycode {
+                        key: Key::Named(ArrowUp),
+                        location: KeyLocation::Standard,
+                    }
+                && matches!(&binding.action, Action::Esc(value) if value == "\x1b[A")
+        }));
+        assert!(!bindings.iter().any(|binding| {
+            binding.mods == ModifiersState::CONTROL
+                && binding.trigger
+                    == BindingKey::Keycode {
+                        key: Key::Character("r".into()),
+                        location: KeyLocation::Standard,
+                    }
+        }));
     }
 
     #[test]

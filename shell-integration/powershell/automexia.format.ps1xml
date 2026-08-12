@@ -10,11 +10,6 @@
       <TableControl>
         <TableHeaders>
           <TableColumnHeader>
-            <Label>Icon</Label>
-            <Width>4</Width>
-            <Alignment>Left</Alignment>
-          </TableColumnHeader>
-          <TableColumnHeader>
             <Label>Mode</Label>
             <Width>11</Width>
             <Alignment>Left</Alignment>
@@ -38,26 +33,6 @@
           <TableRowEntry>
             <TableColumnItems>
               <TableColumnItem>
-                <ScriptBlock>
-                  if ($_.PSIsContainer) { [char]0xF07B }
-                  elseif ($_.Name -ieq 'Dockerfile') { [char]0xF308 }
-                  elseif ($_.Name -ieq 'Cargo.toml') { [char]0xE7A8 }
-                  elseif ($_.Name -ieq 'Cargo.lock') { [char]0xE7A8 }
-                  elseif ($_.Name -ieq '.gitignore') { [char]0xE702 }
-                  elseif ($_.Extension -ieq '.rs') { [char]0xE7A8 }
-                  elseif ($_.Extension -ieq '.ps1') { [char]0xE86C }
-                  elseif ($_.Extension -ieq '.json') { [char]0xE60B }
-                  elseif ($_.Extension -ieq '.toml') { [char]0xE615 }
-                  elseif ($_.Extension -ieq '.yaml') { [char]0xE6A8 }
-                  elseif ($_.Extension -ieq '.yml') { [char]0xE6A8 }
-                  elseif ($_.Extension -ieq '.md') { [char]0xE73E }
-                  elseif ($_.Extension -ieq '.git') { [char]0xE702 }
-                  elseif ($_.Extension -ieq '.zip') { [char]0xF410 }
-                  elseif ($_.Extension -ieq '.exe') { [char]0xF489 }
-                  else { [char]0xF15B }
-                </ScriptBlock>
-              </TableColumnItem>
-              <TableColumnItem>
                 <PropertyName>Mode</PropertyName>
               </TableColumnItem>
               <TableColumnItem>
@@ -67,7 +42,35 @@
                 <ScriptBlock>if (-not $_.PSIsContainer) { $_.Length }</ScriptBlock>
               </TableColumnItem>
               <TableColumnItem>
-                <ScriptBlock>if ($_.PSIsContainer) { $_.Name + [IO.Path]::DirectorySeparatorChar } else { $_.Name }</ScriptBlock>
+                <ScriptBlock>
+                  $name = $_.Name
+                  $extension = $_.Extension.ToLowerInvariant()
+                  $isLink = ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
+                  $glyph = if ($isLink) { [char]0xF481 }
+                    elseif ($_.PSIsContainer) { [char]0xF07B }
+                    elseif ($name -imatch '^dockerfile(?:\..+)?$' -or $name -imatch '^(?:docker-)?compose.*\.ya?ml$') { [char]0xF308 }
+                    elseif ($name -ieq 'Cargo.toml' -or $name -ieq 'Cargo.lock' -or $extension -eq '.rs') { [char]0xE7A8 }
+                    elseif ($name -in @('.gitignore', '.gitattributes', '.gitmodules') -or $extension -eq '.git') { [char]0xE702 }
+                    elseif ($name -ieq 'Chart.yaml' -or $name -imatch '^kustomization\.ya?ml$') { [char]::ConvertFromUtf32(0xF10FE) }
+                    elseif ($extension -in @('.tf', '.tfvars', '.hcl')) { [char]::ConvertFromUtf32(0xF1062) }
+                    elseif ($extension -in @('.ps1', '.psm1', '.psd1')) { [char]0xE86C }
+                    elseif ($extension -in @('.sh', '.bash', '.zsh', '.fish', '.cmd', '.bat')) { [char]0xF121 }
+                    elseif ($extension -in @('.js', '.jsx', '.ts', '.tsx', '.py', '.go', '.c', '.cc', '.cpp', '.h', '.hpp', '.java', '.kt', '.swift')) { [char]0xF121 }
+                    elseif ($extension -in @('.json', '.jsonc')) { [char]0xE60B }
+                    elseif ($extension -eq '.toml') { [char]0xE615 }
+                    elseif ($extension -in @('.yaml', '.yml')) { [char]0xE6A8 }
+                    elseif ($extension -in @('.md', '.mdx', '.rst')) { [char]0xE73E }
+                    elseif ($extension -in @('.zip', '.7z', '.rar', '.tar', '.gz', '.bz2', '.xz', '.tgz')) { [char]0xF410 }
+                    elseif ($extension -in @('.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp')) { [char]0xF1C5 }
+                    elseif ($extension -in @('.exe', '.msi', '.app', '.deb', '.rpm')) { [char]0xF489 }
+                    else { [char]0xF15B }
+                  $displayName = if ($_.PSIsContainer) {
+                    $_.Name + [IO.Path]::DirectorySeparatorChar
+                  } else {
+                    $_.Name
+                  }
+                  $glyph + ' ' + $displayName
+                </ScriptBlock>
               </TableColumnItem>
             </TableColumnItems>
           </TableRowEntry>

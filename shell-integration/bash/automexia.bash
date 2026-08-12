@@ -38,6 +38,8 @@ __automexia_publish_static_metadata() {
   fi
   __automexia_set_user_var automexia_distro "${WSL_DISTRO_NAME:-}"
   __automexia_set_user_var automexia_os_version "$os_version"
+  __automexia_set_user_var automexia_shell_user "${USER:-}"
+  __automexia_set_user_var automexia_shell_path "${BASH:-$(command -v bash 2>/dev/null)}"
   # base64("1") is constant; publish the activation marker without spawning
   # another encoder process on shell startup.
   printf '\e]1337;SetUserVar=automexia_shell=MQ==\a'
@@ -112,11 +114,14 @@ __automexia_pre_prompt() {
   __automexia_title
   ((__automexia_prompt_generation += 1))
   __automexia_prompt_is_active=1
-  # Emit only the stable renderer-owned context row here. Readline owns the
-  # complete path and command rows through PS1 below, so a SIGWINCH redisplay
-  # always restores the path head after extreme narrow/wide transitions.
+  # Automexia owns the stable context spacer and complete path rows. Readline
+  # owns only the lambda, editable command, and cursor row, so its delayed
+  # SIGWINCH repaint cannot erase or duplicate the terminal-owned path.
   printf '\e]1337;SetUserVar=automexia_prompt_active=MQ==\a\e]133;A;aid=%s\a \n' \
     "$__automexia_prompt_generation"
+  printf '\e]133;P;k=c;aid=%s\a\e[38;2;72;167;255m%s\e[0m\n' \
+    "$__automexia_prompt_generation" "$PWD"
+  printf '\e]133;P;k=c;aid=%s\a' "$__automexia_prompt_generation"
   return "$status"
 }
 
@@ -149,8 +154,7 @@ case "$(declare -p PROMPT_COMMAND 2>/dev/null)" in
   ;;
 esac
 
-# Readline owns the complete path and short lambda/input rows as one multiline
-# prompt. `promptvars` expands the full `$PWD` and current generation again on
-# every redisplay; neither value is abbreviated.
-PS1='\[\e]133;P;k=c;aid=${__automexia_prompt_generation}\a\]\[\e[38;2;72;167;255m\]${PWD}\[\e[0m\]\n\[\e]133;P;k=c;aid=${__automexia_prompt_generation}\a\]\[\e[38;2;97;231;255m\]'$'\xCE\xBB''\[\e[0m\] \[\e]133;B\a\]\[\e[38;2;238;247;242m\]'
+# Readline owns only the short lambda/input row. The path was already emitted
+# by `__automexia_pre_prompt` as terminal-owned content.
+PS1='\[\e[38;2;97;231;255m\]'$'\xCE\xBB''\[\e[0m\] \[\e]133;B\a\]\[\e[38;2;238;247;242m\]'
 PS0='\[\e[0;$((__automexia_prompt_is_active=0))m\]\[\e]1337;SetUserVar=automexia_prompt_active=MA==\a\]\[\e]133;C\a\]'
