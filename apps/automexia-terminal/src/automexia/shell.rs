@@ -28,6 +28,27 @@ pub fn normalized_args(program: Option<&str>, args: &[String]) -> Vec<String> {
         let program = normalized_program(program)
             .unwrap_or_default()
             .to_ascii_lowercase();
+        let basename = program.rsplit(['/', '\\']).next().unwrap_or(&program);
+        let command_prompt = matches!(basename, "cmd" | "cmd.exe");
+        if command_prompt {
+            let explicit_command = result.iter().any(|arg| {
+                arg.eq_ignore_ascii_case("/c")
+                    || arg.eq_ignore_ascii_case("/k")
+                    || arg.eq_ignore_ascii_case("/?")
+            });
+            if !explicit_command {
+                if !result.iter().any(|arg| arg.eq_ignore_ascii_case("/d")) {
+                    result.insert(0, "/D".to_string());
+                }
+                result.push("/K".to_string());
+                result.push(
+                    "if exist \"%LOCALAPPDATA%\\Automexia\\shell-integration\\automexia.cmd\" call \"%LOCALAPPDATA%\\Automexia\\shell-integration\\automexia.cmd\""
+                        .to_string(),
+                );
+            }
+            return result;
+        }
+
         let powershell = program.ends_with("powershell")
             || program.ends_with("powershell.exe")
             || program.ends_with("pwsh")
@@ -134,5 +155,23 @@ mod tests {
             1
         );
         assert!(!output.iter().any(|arg| arg.eq_ignore_ascii_case("-NoExit")));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn interactive_cmd_loads_automexia_in_the_same_pty() {
+        let output = normalized_args(Some(r"C:\Windows\System32\cmd.exe"), &[]);
+        assert!(output.iter().any(|arg| arg.eq_ignore_ascii_case("/D")));
+        assert!(output.iter().any(|arg| arg.eq_ignore_ascii_case("/K")));
+        assert!(output.iter().any(|arg| arg.contains("automexia.cmd")));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn noninteractive_cmd_commands_are_never_rewritten() {
+        for control in ["/c", "/k", "/?"] {
+            let input = vec![control.to_string(), "ver".to_string()];
+            assert_eq!(normalized_args(Some("cmd.exe"), &input), input);
+        }
     }
 }

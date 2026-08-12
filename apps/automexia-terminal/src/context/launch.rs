@@ -133,6 +133,28 @@ impl SessionLaunchDescriptor {
         }
 
         let mut clone = self.clone();
+        // A user can enter Command Prompt by typing `cmd` from PowerShell. In
+        // that case the immutable pane descriptor still names PowerShell, but
+        // the live CMD integration publishes the exact native executable.
+        // Reconstruct CMD explicitly so clone actions preserve the shell the
+        // user is actually looking at instead of silently reverting profiles.
+        if live
+            .shell_name
+            .as_deref()
+            .is_some_and(is_command_prompt_name)
+            && !is_command_prompt_program(self.program.as_deref())
+        {
+            let shell_path = nonempty(live.shell_path.as_deref())
+                .filter(|path| is_command_prompt_program(Some(path)))
+                .ok_or_else(|| CloneLaunchError(
+                    "Cannot clone this Command Prompt session because its executable metadata is unavailable. Reinstall Automexia shell integration and retry."
+                        .to_string(),
+                ))?;
+            clone.program = Some(shell_path.to_string());
+            clone.args.clear();
+            clone.profile_identity = Some("CMD".to_string());
+            clone.kind = SessionKind::Native;
+        }
         if let Some(directory) = live
             .current_directory
             .as_ref()
@@ -362,6 +384,26 @@ fn is_wsl_program(program: Option<&str>) -> bool {
         .unwrap_or(program)
         .to_ascii_lowercase();
     basename == "wsl" || basename == "wsl.exe"
+}
+
+fn is_command_prompt_name(name: &str) -> bool {
+    name.trim().eq_ignore_ascii_case("cmd")
+        || name.trim().eq_ignore_ascii_case("command prompt")
+}
+
+fn is_command_prompt_program(program: Option<&str>) -> bool {
+    let Some(program) = nonempty(program) else {
+        return false;
+    };
+    matches!(
+        program
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or(program)
+            .to_ascii_lowercase()
+            .as_str(),
+        "cmd" | "cmd.exe"
+    )
 }
 
 fn parse_wsl_launch(args: &[String]) -> WslLaunch {
@@ -646,6 +688,35 @@ mod tests {
             .unwrap();
         assert_eq!(clone.program(), Some("pwsh.exe"));
         assert!(!clone.is_wsl());
+    }
+
+    #[test]
+    fn nested_command_prompt_clone_preserves_live_shell_and_directory() {
+        let source = descriptor("powershell.exe", &["-NoLogo"], r"D:\old");
+        let clone = source
+            .fresh_clone(&LiveSessionMetadata {
+                current_directory: Some(PathBuf::from(r"D:\work tree\project")),
+                shell_name: Some("CMD".to_string()),
+                shell_path: Some(r"C:\Windows\System32\cmd.exe".to_string()),
+                ..LiveSessionMetadata::default()
+            })
+            .unwrap();
+        assert_eq!(clone.program(), Some(r"C:\Windows\System32\cmd.exe"));
+        assert!(clone.args().is_empty());
+        assert_eq!(clone.starting_directory(), Some(r"D:\work tree\project"));
+        assert_eq!(clone.profile_identity(), Some("CMD"));
+    }
+
+    #[test]
+    fn nested_command_prompt_clone_rejects_missing_executable_metadata() {
+        let source = descriptor("powershell.exe", &["-NoLogo"], r"D:\old");
+        let error = source
+            .fresh_clone(&LiveSessionMetadata {
+                shell_name: Some("CMD".to_string()),
+                ..LiveSessionMetadata::default()
+            })
+            .unwrap_err();
+        assert!(error.to_string().contains("Command Prompt"));
     }
 
     #[test]

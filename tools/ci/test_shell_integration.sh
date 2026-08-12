@@ -62,6 +62,13 @@ expected_path=$'\e[38;2;88;113;141m/\e[38;2;98;176;255msrv\e[38;2;88;113;141m/\e
 [[ $EZA_COLORS == *'hd=1;38;5;117'* ]]
 [[ $EZA_COLORS == *'di=1;38;5;39'* ]]
 [[ $EZA_COLORS == *'ex=38;5;252'* ]]
+for category_color in \
+  '*secret=1;38;5;203' '*config=38;5;214' '*logs=38;5;220' \
+  '*src=38;5;81' '*docs=38;5;114' '*tests=38;5;177' \
+  '*target=38;5;209' '*assets=38;5;211' '*data=38;5;105' \
+  '*cache=38;5;245' '*infra=38;5;39' '*packaging=38;5;214'; do
+  [[ $EZA_COLORS == *"$category_color"* ]]
+done
 
 unset -f ls l ll la lA tree __automexia_eza
 AUTOMEXIA_PLAIN_LS=1
