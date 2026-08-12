@@ -4,7 +4,7 @@ use std::io::Error;
 use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use windows_sys::Win32::Foundation::{BOOLEAN, HANDLE};
+use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::System::Threading::{
     GetExitCodeProcess, GetProcessId, RegisterWaitForSingleObject, UnregisterWait,
     INFINITE, WT_EXECUTEINWAITTHREAD, WT_EXECUTEONLYONCE,
@@ -18,8 +18,8 @@ struct ChildExitSender {
 }
 
 /// WinAPI callback to run when child process exits.
-extern "system" fn child_exit_callback(ctx: *mut c_void, timed_out: BOOLEAN) {
-    if timed_out != 0 {
+unsafe extern "system" fn child_exit_callback(ctx: *mut c_void, timed_out: bool) {
+    if timed_out {
         return;
     }
 
