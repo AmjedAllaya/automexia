@@ -16,8 +16,8 @@ pub const MANIFEST: ExtensionManifest = ExtensionManifest {
     name: "Automexia DevOps",
     description: "Native DevOps context HUD plus semantic error, warning, success and log highlighting.",
     version: VERSION,
-    // This is part of the default Automexia experience. /market can disable it
-    // without introducing shell commands or modifying the user's prompt.
+    // This is part of the default Automexia experience. The market palette can
+    // disable it without introducing shell commands or modifying the user's prompt.
     default_enabled: true,
     capabilities: &[
         Capability::FilesystemRead,

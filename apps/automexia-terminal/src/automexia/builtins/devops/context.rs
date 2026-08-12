@@ -342,16 +342,44 @@ run_quick() {
 }
 one_line() { sed -n '1{s/[[:cntrl:]]//g;p;}' | cut -c 1-128; }
 
-if command -v docker >/dev/null 2>&1; then
-  value=$(run_quick docker context show 2>/dev/null | one_line)
-  [ -n "$value" ] || value=docker
+value=${DOCKER_CONTEXT:-}
+if [ -z "$value" ] && [ -r "${HOME:-}/.docker/config.json" ]; then
+  value=$(sed -n 's/.*"currentContext"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${HOME:-}/.docker/config.json" | one_line)
+fi
+if [ -n "$value" ] || command -v docker >/dev/null 2>&1 || [ -d "${HOME:-}/.docker" ]; then
+  [ -n "$value" ] || value=default
   printf 'docker\t%s\n' "$value"
 fi
 
-if command -v kubectl >/dev/null 2>&1; then
-  context=$(run_quick kubectl config current-context 2>/dev/null | one_line)
+kube_config=''
+if [ -n "${KUBECONFIG:-}" ]; then
+  old_ifs=$IFS
+  IFS=:
+  for candidate in $KUBECONFIG; do
+    if [ -r "$candidate" ]; then kube_config=$candidate; break; fi
+  done
+  IFS=$old_ifs
+elif [ -r "${HOME:-}/.kube/config" ]; then
+  kube_config="${HOME:-}/.kube/config"
+fi
+if [ -n "$kube_config" ]; then
+  context=$(sed -n 's/^[[:space:]]*current-context:[[:space:]]*//p' "$kube_config" | one_line)
+  context=${context#\"}; context=${context%\"}
+  context=${context#\'}; context=${context%\'}
+  namespace=$(awk -v wanted="$context" '
+    /^[[:space:]]*-[[:space:]]*context:/ { active=1; namespace=""; next }
+    active && /^[[:space:]]*namespace:/ {
+      sub(/^[[:space:]]*namespace:[[:space:]]*/, ""); namespace=$0; next
+    }
+    active && /^[[:space:]]*name:/ {
+      sub(/^[[:space:]]*name:[[:space:]]*/, ""); name=$0
+      gsub(/^["'\'' ]+|["'\'' ]+$/, "", name)
+      gsub(/^["'\'' ]+|["'\'' ]+$/, "", namespace)
+      if (name == wanted) print namespace
+      active=0
+    }
+  ' "$kube_config" | one_line)
   if [ -n "$context" ]; then
-    namespace=$(run_quick kubectl config view --minify --output 'jsonpath={..namespace}' 2>/dev/null | one_line)
     [ -n "$namespace" ] || namespace=default
     printf 'kubernetes\t%s\t%s\n' "$context" "$namespace"
   fi
@@ -364,13 +392,13 @@ if command -v aws >/dev/null 2>&1; then
   fi
 fi
 
-if command -v az >/dev/null 2>&1; then
+if [ -d "${HOME:-}/.azure" ] && command -v az >/dev/null 2>&1; then
   account=$(run_quick az account show --query name --output tsv 2>/dev/null | one_line)
   region=$(run_quick az configure --list-defaults 2>/dev/null | sed -n 's/^location[[:space:]]*=[[:space:]]*//p' | one_line)
   [ -n "$account" ] && printf 'cloud\tAzure\t%s\t%s\n' "$account" "$region"
 fi
 
-if command -v gcloud >/dev/null 2>&1; then
+if [ -d "${HOME:-}/.config/gcloud" ] && command -v gcloud >/dev/null 2>&1; then
   project=$(run_quick gcloud config get-value project 2>/dev/null | one_line)
   region=$(run_quick gcloud config get-value compute/region 2>/dev/null | one_line)
   [ -n "$project" ] && [ "$project" != '(unset)' ] && printf 'cloud\tGCP\t%s\t%s\n' "$project" "$region"
@@ -1172,6 +1200,15 @@ mod tests {
             "docker\t\ncloud\tunknown\taccount\tregion\nkubernetes\t\tdefault\n",
         );
         assert_eq!(contexts, WslLiveContexts::default());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn wsl_probe_keeps_file_backed_contexts_off_slow_cli_paths() {
+        assert!(WSL_CONTEXT_PROBE_SCRIPT.contains("currentContext"));
+        assert!(WSL_CONTEXT_PROBE_SCRIPT.contains("current-context:"));
+        assert!(!WSL_CONTEXT_PROBE_SCRIPT.contains("docker context show"));
+        assert!(!WSL_CONTEXT_PROBE_SCRIPT.contains("kubectl config"));
     }
 
     #[test]

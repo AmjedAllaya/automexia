@@ -540,6 +540,21 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             .send_event(RioEvent::RenderRoute(self.current_route), self.window_id);
     }
 
+    /// Build a one-shot wake-up for an asynchronous DevOps context refresh.
+    /// The route is captured explicitly so a result can never repaint or dirty
+    /// whichever tab happens to be active when background discovery completes.
+    #[inline]
+    pub fn devops_refresh_completion(
+        &self,
+        route_id: usize,
+    ) -> crate::automexia::runtime::DevOpsRefreshCompletion {
+        let event_proxy = self.event_proxy.clone();
+        let window_id = self.window_id;
+        Box::new(move || {
+            event_proxy.send_event(RioEvent::RenderRoute(route_id), window_id);
+        })
+    }
+
     #[inline]
     pub fn blink_cursor(&mut self, scheduled_time: u64) {
         // PrepareRender will force a render for any route that is focused on window
@@ -1280,6 +1295,32 @@ pub fn process_open_url(
 pub mod test {
     use super::*;
     use crate::event::VoidListener;
+    use std::sync::Mutex;
+
+    #[derive(Clone, Default)]
+    struct RecordingListener {
+        renders: Arc<Mutex<Vec<(usize, WindowId)>>>,
+    }
+
+    impl EventListener for RecordingListener {
+        fn send_event(&self, event: RioEvent, window_id: WindowId) {
+            if let RioEvent::RenderRoute(route_id) = event {
+                self.renders.lock().unwrap().push((route_id, window_id));
+            }
+        }
+    }
+
+    #[test]
+    fn devops_completion_wakes_the_originating_route_immediately() {
+        let window_id = WindowId::from(73);
+        let listener = RecordingListener::default();
+        let context_manager =
+            ContextManager::start_with_capacity(1, listener.clone(), window_id).unwrap();
+
+        context_manager.devops_refresh_completion(912)();
+
+        assert_eq!(*listener.renders.lock().unwrap(), [(912, window_id)]);
+    }
 
     #[test]
     fn test_capacity() {

@@ -27,7 +27,7 @@ use crate::crosswords::{
 use crate::hints::HintState;
 use crate::layout::ContextDimension;
 use crate::mouse::{calculate_mouse_position, Mouse};
-use crate::renderer::island::{self, ChromeAction, TabStripLayout, ISLAND_HEIGHT};
+use crate::renderer::island::{self, ChromeAction, TabStripLayout};
 use crate::renderer::{utils::padding_top_from_config, Renderer};
 use crate::screen::hint::HintMatches;
 use crate::selection::{Selection, SelectionType};
@@ -158,6 +158,9 @@ impl Screen<'_> {
             config.margin.top,
             1,
             config.window.macos_use_unified_titlebar,
+            size.width as f32,
+            size.height as f32,
+            scale as f32,
         );
 
         let padding_y_bottom = config.margin.bottom;
@@ -452,11 +455,16 @@ impl Screen<'_> {
         should_update_font_library: bool,
     ) {
         let num_tabs = self.ctx().len();
+        let window_size = self.sugarloaf.window_size();
+        let scale = self.sugarloaf.scale_factor();
         let padding_y_top = padding_top_from_config(
             &config.navigation,
             config.margin.top,
             num_tabs,
             config.window.macos_use_unified_titlebar,
+            window_size.width,
+            window_size.height,
+            scale,
         );
         let padding_y_bottom = config.margin.bottom;
 
@@ -592,6 +600,7 @@ impl Screen<'_> {
             self.clear_selection();
         }
         self.sugarloaf.resize(new_size.width, new_size.height);
+        self.resize_top_or_bottom_line(self.context_manager.len());
         let width = new_size.width as f32;
         let height = new_size.height as f32;
 
@@ -660,6 +669,11 @@ impl Screen<'_> {
 
             context_grid.update_dimensions(&mut self.sugarloaf);
         }
+
+        // Density can change independently of DPI. Recompute the logical top
+        // reservation from the new viewport instead of preserving a stale
+        // regular-height margin on a compact display.
+        self.resize_top_or_bottom_line(self.context_manager.len());
 
         let width = new_size.width as f32;
         let height = new_size.height as f32;
@@ -1678,6 +1692,9 @@ impl Screen<'_> {
             self.renderer.margin.top,
             num_tabs,
             self.renderer.macos_use_unified_titlebar,
+            self.sugarloaf.window_size().width,
+            self.sugarloaf.window_size().height,
+            self.sugarloaf.scale_factor(),
         );
         let padding_y_bottom = self.renderer.margin.bottom;
 
@@ -2470,7 +2487,8 @@ impl Screen<'_> {
         }
 
         let scale_factor = self.sugarloaf.scale_factor();
-        let window_width = self.sugarloaf.window_size().width;
+        let window_size = self.sugarloaf.window_size();
+        let window_width = window_size.width;
         let mouse_x = self.mouse.x as f32 / scale_factor;
         let mouse_y = self.mouse.y as f32 / scale_factor;
 
@@ -2478,6 +2496,7 @@ impl Screen<'_> {
             mouse_x,
             mouse_y,
             window_width,
+            window_size.height,
             scale_factor,
         ) {
             Ok(Some(index)) => {
@@ -2513,7 +2532,8 @@ impl Screen<'_> {
         }
 
         let scale_factor = self.sugarloaf.scale_factor();
-        let window_width = self.sugarloaf.window_size().width;
+        let window_size = self.sugarloaf.window_size();
+        let window_width = window_size.width;
         let mouse_x = self.mouse.x as f32 / scale_factor;
         let mouse_y = self.mouse.y as f32 / scale_factor;
 
@@ -2558,7 +2578,8 @@ impl Screen<'_> {
         }
 
         let scale_factor = self.sugarloaf.scale_factor();
-        let window_width = self.sugarloaf.window_size().width;
+        let window_size = self.sugarloaf.window_size();
+        let window_width = window_size.width;
         let mouse_x = self.mouse.x as f32 / scale_factor;
         let mouse_y = self.mouse.y as f32 / scale_factor;
 
@@ -2566,6 +2587,7 @@ impl Screen<'_> {
             mouse_x,
             mouse_y,
             window_width,
+            window_size.height,
             scale_factor,
         ) {
             Ok(Some(action)) => {
@@ -2741,6 +2763,14 @@ impl Screen<'_> {
         )
     }
 
+    #[inline]
+    pub fn chrome_header_height_px(&self) -> f64 {
+        let size = self.sugarloaf.window_size();
+        let scale = self.sugarloaf.scale_factor();
+        (island::chrome_metrics(size.width, size.height, scale).header_height * scale)
+            as f64
+    }
+
     #[cfg(target_os = "macos")]
     pub fn start_window_drag(&mut self, window: &rio_window::window::Window) {
         self.mouse.left_button_state = ElementState::Released;
@@ -2807,7 +2837,7 @@ impl Screen<'_> {
 
         let hovering = num_tabs > 1
             && self.renderer.navigation.island_visible(num_tabs)
-            && mouse_y <= (ISLAND_HEIGHT * scale_factor) as f64
+            && mouse_y <= self.chrome_header_height_px()
             && island::close_button_hit(
                 &self.island_tab_layout(num_tabs),
                 self.context_manager.current_index(),
@@ -2824,11 +2854,13 @@ impl Screen<'_> {
 
     pub fn update_chrome_action_hover(&mut self, mouse_x: f64, mouse_y: f64) -> bool {
         let scale_factor = self.sugarloaf.scale_factor();
-        let window_width = self.sugarloaf.window_size().width;
+        let window_size = self.sugarloaf.window_size();
+        let window_width = window_size.width;
         let num_tabs = self.context_manager.len();
         let action = self.renderer.island.as_ref().and_then(|island| {
             island.chrome_action_at(
                 window_width,
+                window_size.height,
                 scale_factor,
                 num_tabs,
                 mouse_x as f32 / scale_factor,
@@ -2874,9 +2906,10 @@ impl Screen<'_> {
         let mouse_y = self.mouse.y;
 
         let scale_factor = self.sugarloaf.scale_factor();
-        let island_height_px = (ISLAND_HEIGHT * scale_factor) as f64;
+        let island_height_px = self.chrome_header_height_px();
 
-        let window_width = self.sugarloaf.window_size().width;
+        let window_size = self.sugarloaf.window_size();
+        let window_width = window_size.width;
         let num_tabs = self.context_manager.len();
         let island_visible = self.renderer.navigation.island_visible(num_tabs);
 
@@ -2884,6 +2917,7 @@ impl Screen<'_> {
             let action = self.renderer.island.as_ref().and_then(|island| {
                 island.chrome_action_at(
                     window_width,
+                    window_size.height,
                     scale_factor,
                     num_tabs,
                     mouse_x as f32 / scale_factor,
@@ -2912,8 +2946,7 @@ impl Screen<'_> {
                 let consumed = island.handle_color_picker_click(
                     mouse_x as f32,
                     mouse_y as f32,
-                    scale_factor,
-                    window_width,
+                    (window_width, window_size.height, scale_factor),
                     num_tabs,
                     &mut self.context_manager,
                 );

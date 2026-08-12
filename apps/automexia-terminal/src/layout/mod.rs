@@ -168,8 +168,9 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
         let mut tree: TaffyTree<()> = TaffyTree::new();
 
         // Calculate available size after window margin (already scaled)
-        let available_width = width - scaled_margin.left - scaled_margin.right;
-        let available_height = height - scaled_margin.top - scaled_margin.bottom;
+        let available_width = (width - scaled_margin.left - scaled_margin.right).max(0.0);
+        let available_height =
+            (height - scaled_margin.top - scaled_margin.bottom).max(0.0);
 
         // Create root container (window margin handled separately via position offset)
         let root_style = Style {
@@ -274,9 +275,10 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
 
     fn try_update_size(&mut self, width: f32, height: f32) -> Result<(), TaffyError> {
         // Subtract window margin from available size
-        let available_width = width - self.scaled_margin.left - self.scaled_margin.right;
+        let available_width =
+            (width - self.scaled_margin.left - self.scaled_margin.right).max(0.0);
         let available_height =
-            height - self.scaled_margin.top - self.scaled_margin.bottom;
+            (height - self.scaled_margin.top - self.scaled_margin.bottom).max(0.0);
 
         let mut style = self.tree.style(self.root_node)?.clone();
         style.size = geometry::Size {
@@ -401,10 +403,10 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
         delta: f32,
         sugarloaf: &mut Sugarloaf,
     ) {
-        let min_size = 50.0 * self.scale;
-
-        let new_a = (original_sizes.0 + delta).max(min_size);
-        let new_b = (original_sizes.1 - delta).max(min_size);
+        let total = (original_sizes.0 + original_sizes.1).max(0.0);
+        let min_size = (50.0 * self.scale).min(total / 2.0);
+        let new_a = (original_sizes.0 + delta).clamp(min_size, total - min_size);
+        let new_b = total - new_a;
 
         match border.direction {
             BorderDirection::Vertical => {
@@ -904,6 +906,8 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
 
         for item in self.inner.values_mut() {
             let [abs_x, abs_y, width, height] = item.layout_rect;
+            let previous_grid_size =
+                (item.val.dimension.columns, item.val.dimension.lines);
 
             let x = (abs_x + self.scaled_margin.left) / scale;
             let y = (abs_y + self.scaled_margin.top) / scale;
@@ -912,6 +916,8 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             item.val.dimension.margin = Margin::all(0.0);
             item.val.dimension.update_width(width);
             item.val.dimension.update_height(height);
+            let grid_size_changed = previous_grid_size
+                != (item.val.dimension.columns, item.val.dimension.lines);
 
             // Update terminal size
             let mut terminal = item.val.terminal.lock();
@@ -922,10 +928,21 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
                 crate::renderer::utils::terminal_dimensions(&item.val.dimension);
             let _ = item.val.messenger.send_resize(winsize);
 
-            // The reflow damages the Crosswords, but the present gate reads
-            // `pending_update.is_dirty()` and skips the panel before reading
-            // that. Mark it dirty so an idle terminal still presents.
-            item.val.renderable_content.pending_update.set_dirty();
+            // A columns/lines change reflows Crosswords and invalidates the
+            // resident GPU row buffers. The terminal's asynchronous damage
+            // event can arrive after the resize frame, so explicitly request
+            // one full rebuild here; otherwise rapid small/large transitions
+            // can briefly combine freshly positioned overlays with stale text
+            // rows. Pixel-only changes that preserve the grid stay on the
+            // cheaper dirty-only path.
+            if grid_size_changed {
+                item.val
+                    .renderable_content
+                    .pending_update
+                    .set_terminal_damage(rio_backend::event::TerminalDamage::Full);
+            } else {
+                item.val.renderable_content.pending_update.set_dirty();
+            }
 
             // Panel position / clipping bounds are tracked rio-side
             // now; the grid pass reads `panel_rect` from the renderer's

@@ -3,6 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
+use crate::renderer::responsive::{elide_end, Viewport};
 use rio_backend::error::{RioError, RioErrorLevel};
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
@@ -99,17 +100,30 @@ impl AssistantOverlay {
     }
 
     /// Returns (overlay_x, overlay_y, overlay_width, overlay_height) in logical coords.
-    fn overlay_rect(&self, window_width: f32, scale_factor: f32) -> (f32, f32, f32, f32) {
-        let logical_width = window_width / scale_factor;
-        let x = logical_width - OVERLAY_WIDTH - OVERLAY_MARGIN_RIGHT;
-        let y = OVERLAY_MARGIN_TOP;
-        let line_count = self.body_line_count().min(MAX_VISIBLE_LINES);
+    fn overlay_rect(
+        &self,
+        window_width: f32,
+        window_height: f32,
+        scale_factor: f32,
+    ) -> (f32, f32, f32, f32, usize) {
+        let viewport = Viewport::from_physical(window_width, window_height, scale_factor);
+        let width = viewport.fitted_surface(OVERLAY_WIDTH, OVERLAY_MARGIN_RIGHT);
+        let x = (viewport.width - width - OVERLAY_MARGIN_RIGHT).max(0.0);
+        let y = OVERLAY_MARGIN_TOP.min((viewport.height * 0.05).max(0.0));
+        let fixed_height = OVERLAY_PADDING * 2.0 + HEADING_HEIGHT + LINK_ROW_HEIGHT;
+        let available_height = (viewport.height - y - OVERLAY_MARGIN_TOP).max(0.0);
+        let fitting_lines =
+            (((available_height - fixed_height) / LINE_HEIGHT).floor() as usize).max(1);
+        let line_count = self
+            .body_line_count()
+            .min(MAX_VISIBLE_LINES)
+            .min(fitting_lines);
         let h = OVERLAY_PADDING
             + HEADING_HEIGHT
             + (line_count as f32 * LINE_HEIGHT)
             + LINK_ROW_HEIGHT
             + OVERLAY_PADDING;
-        (x, y, OVERLAY_WIDTH, h)
+        (x, y, width, h, line_count)
     }
 
     fn body_line_count(&self) -> usize {
@@ -133,14 +147,20 @@ impl AssistantOverlay {
     }
 
     /// Returns the docs link button rect (covers the link text area).
-    fn docs_button_rect(&self, overlay_x: f32, overlay_y: f32) -> (f32, f32, f32, f32) {
-        let line_count = self.body_line_count().min(MAX_VISIBLE_LINES);
+    fn docs_button_rect(
+        &self,
+        overlay_x: f32,
+        overlay_y: f32,
+        line_count: usize,
+        overlay_width: f32,
+    ) -> (f32, f32, f32, f32) {
         let by = overlay_y
             + OVERLAY_PADDING
             + HEADING_HEIGHT
             + (line_count as f32 * LINE_HEIGHT);
         let bx = overlay_x + OVERLAY_PADDING - 4.0;
-        let bw = self.link_button_width + 8.0;
+        let bw = (self.link_button_width + 8.0)
+            .min((overlay_width - OVERLAY_PADDING * 2.0).max(1.0));
         (bx, by, bw, LINK_ROW_HEIGHT)
     }
 
@@ -167,13 +187,15 @@ impl AssistantOverlay {
         mouse_x: f32,
         mouse_y: f32,
         window_width: f32,
+        window_height: f32,
         scale_factor: f32,
     ) -> Result<Option<AssistantOverlayAction>, ()> {
         if !self.is_active() {
             return Err(());
         }
 
-        let (ox, oy, ow, oh) = self.overlay_rect(window_width, scale_factor);
+        let (ox, oy, ow, oh, line_count) =
+            self.overlay_rect(window_width, window_height, scale_factor);
 
         if mouse_x < ox || mouse_x > ox + ow || mouse_y < oy || mouse_y > oy + oh {
             return Err(());
@@ -184,7 +206,7 @@ impl AssistantOverlay {
             return Ok(Some(AssistantOverlayAction::Close));
         }
 
-        let (bx, by, bw, bh) = self.docs_button_rect(ox, oy);
+        let (bx, by, bw, bh) = self.docs_button_rect(ox, oy, line_count, ow);
         if Self::hit_test_button(mouse_x, mouse_y, bx, by, bw, bh) {
             return Ok(Some(AssistantOverlayAction::OpenDocs));
         }
@@ -198,13 +220,15 @@ impl AssistantOverlay {
         mouse_x: f32,
         mouse_y: f32,
         window_width: f32,
+        window_height: f32,
         scale_factor: f32,
     ) -> bool {
         if !self.is_active() {
             return false;
         }
 
-        let (ox, oy, ow, _oh) = self.overlay_rect(window_width, scale_factor);
+        let (ox, oy, ow, _oh, line_count) =
+            self.overlay_rect(window_width, window_height, scale_factor);
 
         let (bx, by, bw, bh) = self.close_button_rect(ox, oy, ow);
         let mut new_hover = if Self::hit_test_button(mouse_x, mouse_y, bx, by, bw, bh) {
@@ -214,7 +238,7 @@ impl AssistantOverlay {
         };
 
         if new_hover.is_none() {
-            let (bx, by, bw, bh) = self.docs_button_rect(ox, oy);
+            let (bx, by, bw, bh) = self.docs_button_rect(ox, oy, line_count, ow);
             if Self::hit_test_button(mouse_x, mouse_y, bx, by, bw, bh) {
                 new_hover = Some(AssistantOverlayAction::OpenDocs);
             }
@@ -235,7 +259,8 @@ impl AssistantOverlay {
 
         let (window_width, window_height, scale_factor) = dimensions;
 
-        let (ox, oy, ow, oh) = self.overlay_rect(window_width, scale_factor);
+        let (ox, oy, ow, oh, visible_count) =
+            self.overlay_rect(window_width, window_height, scale_factor);
 
         // Backdrop
         sugarloaf.rect(
@@ -287,7 +312,7 @@ impl AssistantOverlay {
         let body_y_start = heading_y + HEADING_HEIGHT;
         let report_text = error.report.to_string();
         let lines: Vec<&str> = report_text.lines().collect();
-        let visible_count = lines.len().min(MAX_VISIBLE_LINES);
+        let visible_count = lines.len().min(visible_count);
         let body_opts = DrawOpts {
             font_size: BODY_FONT_SIZE,
             color: color_u8(TEXT_COLOR),
@@ -295,9 +320,15 @@ impl AssistantOverlay {
         };
         for (i, line_text) in lines.iter().take(visible_count).enumerate() {
             let line_y = body_y_start + (i as f32 * LINE_HEIGHT);
+            let visible_line = elide_end(
+                sugarloaf,
+                line_text,
+                (ow - OVERLAY_PADDING * 2.0).max(0.0),
+                BODY_FONT_SIZE,
+            );
             sugarloaf
                 .text_mut()
-                .draw(text_x, line_y, line_text, &body_opts);
+                .draw(text_x, line_y, &visible_line, &body_opts);
         }
 
         // Docs link button
@@ -311,12 +342,19 @@ impl AssistantOverlay {
             color: color_u8(LINK_COLOR),
             ..DrawOpts::default()
         };
-        let rendered_width = sugarloaf
-            .text_mut()
-            .draw(link_x, link_y, DOCS_URL, &link_opts);
+        let visible_link = elide_end(
+            sugarloaf,
+            DOCS_URL,
+            (ow - OVERLAY_PADDING * 2.0).max(0.0),
+            LINK_FONT_SIZE,
+        );
+        let rendered_width =
+            sugarloaf
+                .text_mut()
+                .draw(link_x, link_y, &visible_link, &link_opts);
         self.link_button_width = rendered_width;
 
-        let (dbx, dby, dbw, dbh) = self.docs_button_rect(ox, oy);
+        let (dbx, dby, dbw, dbh) = self.docs_button_rect(ox, oy, line_count, ow);
         let docs_hovered = self.hovered_button == Some(AssistantOverlayAction::OpenDocs);
 
         if docs_hovered {
@@ -361,5 +399,28 @@ impl AssistantOverlay {
         let label_x = bx + (bw - label_w) / 2.0;
         let label_y = by + (bh - BUTTON_FONT_SIZE) / 2.0;
         ui.draw(label_x, label_y, "\u{2022}", &close_opts);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_surface_fits_minimum_window() {
+        let overlay = AssistantOverlay::default();
+        let (x, y, width, height, _) = overlay.overlay_rect(300.0, 200.0, 1.0);
+        assert!(x >= 0.0 && y >= 0.0);
+        assert!(x + width <= 300.0);
+        assert!(y + height <= 200.0);
+    }
+
+    #[test]
+    fn diagnostic_surface_is_dpi_invariant() {
+        let overlay = AssistantOverlay::default();
+        assert_eq!(
+            overlay.overlay_rect(600.0, 400.0, 1.0),
+            overlay.overlay_rect(1_200.0, 800.0, 2.0)
+        );
     }
 }

@@ -3,6 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
+use crate::renderer::responsive::Viewport;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
 use std::time::Instant;
@@ -92,10 +93,11 @@ impl SearchOverlay {
 
     /// Returns (overlay_x, overlay_y, overlay_width, overlay_height) in logical coords.
     fn overlay_rect(&self, window_width: f32, scale_factor: f32) -> (f32, f32, f32, f32) {
-        let logical_width = window_width / scale_factor;
-        let x = logical_width - OVERLAY_WIDTH - OVERLAY_MARGIN_RIGHT;
+        let viewport = Viewport::from_physical(window_width, 200.0, scale_factor);
+        let width = viewport.fitted_surface(OVERLAY_WIDTH, OVERLAY_MARGIN_RIGHT);
+        let x = (viewport.width - width - OVERLAY_MARGIN_RIGHT).max(0.0);
         let y = OVERLAY_MARGIN_TOP;
-        (x, y, OVERLAY_WIDTH, OVERLAY_HEIGHT)
+        (x, y, width, OVERLAY_HEIGHT)
     }
 
     /// Returns the rect for each button: (prev, next, close).
@@ -357,5 +359,28 @@ impl SearchOverlay {
             let label_y = by + (bh - BUTTON_FONT_SIZE) / 2.0;
             ui.draw(label_x, label_y, labels[i], &btn_opts);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn search_surface_fits_minimum_width() {
+        let search = SearchOverlay::default();
+        let (x, _, width, _) = search.overlay_rect(300.0, 1.0);
+        assert!(x >= 0.0);
+        assert!(x + width <= 300.0);
+        assert!(width > BUTTONS_AREA_WIDTH + OVERLAY_PADDING_X * 2.0);
+    }
+
+    #[test]
+    fn search_surface_uses_logical_hidpi_width() {
+        let search = SearchOverlay::default();
+        assert_eq!(
+            search.overlay_rect(600.0, 1.0),
+            search.overlay_rect(1_200.0, 2.0)
+        );
     }
 }

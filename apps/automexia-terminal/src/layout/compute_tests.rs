@@ -160,6 +160,38 @@ fn test_rows_fit_scale_1() {
 }
 
 #[test]
+fn extreme_small_viewport_returns_safe_grid_minimum() {
+    let dimensions = TextDimensions {
+        width: 9.0,
+        height: 18.0,
+        scale: 1.0,
+    };
+    let margin = Margin::new(148.0, 40.0, 40.0, 40.0);
+    assert_eq!(
+        compute(80.0, 60.0, cell_for(dimensions), margin, 1.0),
+        (MIN_COLS, MIN_LINES)
+    );
+}
+
+#[test]
+fn extreme_large_viewport_uses_finite_cell_counts() {
+    let dimensions = TextDimensions {
+        width: 10.0,
+        height: 20.0,
+        scale: 1.0,
+    };
+    let (columns, lines) = compute(
+        32_000.0,
+        18_000.0,
+        cell_for(dimensions),
+        Margin::all(0.0),
+        1.0,
+    );
+    assert_eq!(columns, 3_200);
+    assert_eq!(lines, 900);
+}
+
+#[test]
 fn test_rows_fit_zero_leading() {
     for height in (500..=2000).step_by(100) {
         assert_rows_fit(1600.0, height as f32, 16.0, 2.0, 1.0, 12.77, 3.50, 0.0);
