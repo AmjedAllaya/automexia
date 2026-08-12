@@ -33,6 +33,29 @@ if ($integrationSource -notmatch 'return\s+\$lambda\s*\+\s*\$input' -or $integra
 if ($integrationSource -match '\.\.\.[\\/]') { throw 'PowerShell prompt still truncates the current path' }
 if ($global:LASTEXITCODE -ne 73) { throw 'PowerShell prompt changed LASTEXITCODE' }
 
+$samplePath = "D:\cloud project\$([char]0x00E9)\automexia-terminal"
+$styledPath = Format-AutomexiaPromptPath -Path $samplePath
+$escape = [char]27
+$plainStyledPath = [regex]::Replace($styledPath, "$escape\[[0-9;]*m", '')
+if ($plainStyledPath -cne $samplePath) {
+    throw 'PowerShell semantic path coloring changed the literal copied path'
+}
+$expectedStyledPath =
+    "$escape[38;2;98;176;255mD:" +
+    "$escape[38;2;88;113;141m\" +
+    "$escape[38;2;72;167;255mcloud project" +
+    "$escape[38;2;88;113;141m\" +
+    "$escape[38;2;72;167;255m$([char]0x00E9)" +
+    "$escape[38;2;88;113;141m\" +
+    "$escape[38;2;45;212;191mautomexia-terminal" +
+    "$escape[0m"
+if ($styledPath -cne $expectedStyledPath) {
+    throw 'PowerShell path roles are not root/parent/separator/current-directory ordered'
+}
+if ((Format-AutomexiaPromptPath -Path $samplePath) -cne $styledPath) {
+    throw 'PowerShell path-color cache is not stable for an unchanged directory'
+}
+
 $formatPath = Join-Path $root 'shell-integration\powershell\automexia.format.ps1xml'
 if (-not (Test-Path -LiteralPath $formatPath)) { throw 'PowerShell filesystem icon view is missing' }
 $formatSource = Get-Content -LiteralPath $formatPath -Raw
@@ -147,8 +170,8 @@ if ($integrationSource -notmatch 'AUTOMEXIA_PLAIN_LS') { throw 'PowerShell icon 
 
 $bashIntegration = Get-Content (Join-Path $root 'shell-integration\bash\automexia.bash') -Raw
 $zshIntegration = Get-Content (Join-Path $root 'shell-integration\zsh\automexia.zsh') -Raw
-if ($bashIntegration -notmatch '133;A;aid=%s.*\\n' -or $bashIntegration -notmatch '(?s)38;2;72;167;255m%s.*\$PWD' -or $bashIntegration -notmatch "PS1=.*xCE.*133;B") { throw 'Bash does not keep terminal-owned context/path rows plus a Readline-owned lambda row' }
-if ($zshIntegration -notmatch '133;A;aid=%s.*\\n' -or $zshIntegration -notmatch '(?s)38;2;72;167;255m%s.*\$PWD' -or $zshIntegration -notmatch "PROMPT=.*xCE.*133;B") { throw 'Zsh does not keep terminal-owned context/path rows plus a ZLE-owned lambda row' }
+if ($bashIntegration -notmatch '133;A;aid=%s.*\\n' -or $bashIntegration -notmatch '__automexia_print_colored_path "\$PWD"' -or $bashIntegration -notmatch "PS1=.*xCE.*133;B") { throw 'Bash does not keep a colored terminal-owned complete-path row plus a Readline-owned lambda row' }
+if ($zshIntegration -notmatch '133;A;aid=%s.*\\n' -or $zshIntegration -notmatch '__automexia_print_colored_path "\$PWD"' -or $zshIntegration -notmatch "PROMPT=.*xCE.*133;B") { throw 'Zsh does not keep a colored terminal-owned complete-path row plus a ZLE-owned lambda row' }
 if ($bashIntegration -notmatch '133;D;%s') { throw 'Bash does not publish command exit status' }
 if ($zshIntegration -notmatch '133;D;%s') { throw 'Zsh does not publish command exit status' }
 if ($bashIntegration -notmatch 'automexia_shell_name=YmFzaA==') { throw 'Bash does not publish its real shell name' }
@@ -159,6 +182,9 @@ if ($bashIntegration -notmatch '"\$PWD"' -or $bashIntegration -match 'PROMPT_DIR
 if ($zshIntegration -notmatch '"\$PWD"' -or $zshIntegration -match '%[0-9]*~') { throw 'Zsh integration does not emit the complete current path' }
 if ($bashIntegration -match '__automexia_git_segment' -or $zshIntegration -match '__automexia_git_segment') { throw 'POSIX prompts still duplicate Git context on the editable path row' }
 foreach ($source in @($bashIntegration, $zshIntegration)) {
+    foreach ($pathColor in @('98;176;255', '72;167;255', '45;212;191', '88;113;141')) {
+        if ($source -notmatch [regex]::Escape($pathColor)) { throw "POSIX prompt path is missing semantic color $pathColor" }
+    }
     if ($source -notmatch 'function ls \{ __automexia_eza') { throw 'POSIX integration does not enable icon-aware ls through eza' }
     if ($source -notmatch 'function ll \{ __automexia_eza -lah --git') { throw 'POSIX integration does not enable the detailed Git-aware listing' }
     if ($source -notmatch '--header --group --time-style=long-iso') { throw 'POSIX long listing does not provide separated labeled columns' }
@@ -175,4 +201,4 @@ if ($installerSource -notmatch 'automexia\.format\.ps1xml') { throw 'Windows ins
 
 $uninstall = Get-Content (Join-Path $root 'shell-integration\uninstall-windows.ps1') -Raw
 if ($uninstall -notmatch 'AUTOMEXIA SHELL INTEGRATION') { throw 'uninstall marker cleanup is missing' }
-Write-Output 'PASS: shell integration is idempotent, UTF-8-safe, WSL-isolated, icon-aware on PowerShell/Bash/Zsh, pipeline-safe, three-row prompt-identified, full-path, resize-safe, command-neutral, and uninstallable'
+Write-Output 'PASS: shell integration is idempotent, UTF-8-safe, WSL-isolated, icon-aware on PowerShell/Bash/Zsh, pipeline-safe, semantically path-colored, three-row prompt-identified, full-path, resize-safe, command-neutral, and uninstallable'
