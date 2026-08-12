@@ -745,11 +745,6 @@ impl IconCanvas<'_, '_> {
         self.line(x, y - radius, x, y + radius);
     }
 
-    fn close(&mut self, x: f32, y: f32, radius: f32) {
-        self.line(x - radius, y - radius, x + radius, y + radius);
-        self.line(x + radius, y - radius, x - radius, y + radius);
-    }
-
     fn chevron_right(&mut self, x: f32, y: f32, radius: f32) {
         self.line(x - radius, y - radius, x, y);
         self.line(x, y, x - radius, y + radius);
@@ -797,12 +792,12 @@ fn draw_command_icon(
         }
         CommandIcon::TabClose => {
             canvas.tab_frame();
-            canvas.close(15.5, 12.5, 2.4);
+            canvas.line(12.5, 12.5, 18.5, 12.5);
         }
         CommandIcon::TabsClose => {
             canvas.outline(4.0, 1.5, 16.5, 14.0, 3.0);
             canvas.outline(1.5, 5.0, 16.5, 14.0, 3.0);
-            canvas.close(13.0, 13.5, 2.2);
+            canvas.line(10.0, 13.5, 16.0, 13.5);
         }
         CommandIcon::TabNext => {
             canvas.tab_frame();
@@ -833,7 +828,10 @@ fn draw_command_icon(
             canvas.line(11.0, 2.5, 11.0, 19.5);
             canvas.chevron_left(5.0, 11.0, 2.5);
         }
-        CommandIcon::Close => canvas.close(11.0, 11.0, 6.0),
+        CommandIcon::Close => {
+            canvas.outline(3.5, 3.5, 15.0, 15.0, 7.5);
+            canvas.line(7.0, 11.0, 15.0, 11.0);
+        }
         CommandIcon::Settings => {
             canvas.line(2.5, 5.0, 19.5, 5.0);
             canvas.line(2.5, 11.0, 19.5, 11.0);
