@@ -86,6 +86,42 @@ if [[ ${AUTOMEXIA_PLAIN_LS:-0} != 1 ]] && (( $+commands[eza] )); then
   function tree { command eza --tree --icons=auto --color=auto "$@"; }
 fi
 
+__automexia_print_colored_path() {
+  local remaining=$1 component separators color
+  local first_component=1
+  local root_color=$'\e[38;2;98;176;255m'
+  local parent_color=$'\e[38;2;72;167;255m'
+  local leaf_color=$'\e[38;2;45;212;191m'
+  local separator_color=$'\e[38;2;88;113;141m'
+  local reset_color=$'\e[0m'
+
+  # Keep the path formatter allocation- and subprocess-free on ZLE's hot path.
+  while [[ -n $remaining ]]; do
+    if [[ $remaining == /* ]]; then
+      separators=${remaining%%[^/]*}
+      printf '%s%s' "$separator_color" "$separators"
+      remaining=${remaining#"$separators"}
+      continue
+    fi
+
+    if [[ $remaining == */* ]]; then
+      component=${remaining%%/*}
+      if (( first_component )); then
+        color=$root_color
+      else
+        color=$parent_color
+      fi
+    else
+      component=$remaining
+      color=$leaf_color
+    fi
+    printf '%s%s' "$color" "$component"
+    first_component=0
+    remaining=${remaining#"$component"}
+  done
+  printf '%s' "$reset_color"
+}
+
 __automexia_precmd() {
   # `status` is a read-only special parameter in Zsh; use a private name so
   # the hook works under both interactive Zsh and the non-interactive tests.
@@ -100,8 +136,9 @@ __automexia_precmd() {
   # repaint cannot erase or duplicate the terminal-owned path.
   printf '\e]1337;SetUserVar=automexia_prompt_active=MQ==\a\e]133;A;aid=%s\a \n' \
     "$__automexia_prompt_generation"
-  printf '\e]133;P;k=c;aid=%s\a\e[38;2;72;167;255m%s\e[0m\n' \
-    "$__automexia_prompt_generation" "$PWD"
+  printf '\e]133;P;k=c;aid=%s\a' "$__automexia_prompt_generation"
+  __automexia_print_colored_path "$PWD"
+  printf '\n'
   printf '\e]133;P;k=c;aid=%s\a' "$__automexia_prompt_generation"
   PROMPT=$'%F{cyan}\xCE\xBB%f %{\e]133;B\a%}%F{white}'
 }

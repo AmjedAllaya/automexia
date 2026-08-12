@@ -6,6 +6,8 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
     $script:AutomexiaEsc = [char]27
     $script:AutomexiaBel = [char]7
     [uint64]$script:AutomexiaPromptGeneration = 0
+    $script:AutomexiaCachedPromptPath = $null
+    $script:AutomexiaCachedStyledPromptPath = ''
 
     $env:COLORTERM = 'truecolor'
     $env:TERM_PROGRAM = 'Automexia'
@@ -81,11 +83,61 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         return (Get-Location).Path
     }
 
+    function script:Format-AutomexiaPromptPath {
+        param([Parameter(Mandatory)][string]$Path)
+
+        if ($Path -ceq $script:AutomexiaCachedPromptPath) {
+            return $script:AutomexiaCachedStyledPromptPath
+        }
+
+        # A quiet four-role hierarchy makes long paths scannable without
+        # turning them into a rainbow. ANSI changes presentation only: copied
+        # text and VT semantic-path matching still receive the exact path.
+        $rootColor = "$script:AutomexiaEsc[38;2;98;176;255m"
+        $parentColor = "$script:AutomexiaEsc[38;2;72;167;255m"
+        $leafColor = "$script:AutomexiaEsc[38;2;45;212;191m"
+        $separatorColor = "$script:AutomexiaEsc[38;2;88;113;141m"
+        $resetColor = "$script:AutomexiaEsc[0m"
+        $tokens = [regex]::Split($Path, '([\\/]+)')
+        $componentCount = 0
+        foreach ($token in $tokens) {
+            if ($token.Length -gt 0 -and $token[0] -ne [char]92 -and $token[0] -ne [char]47) {
+                $componentCount++
+            }
+        }
+
+        $componentIndex = 0
+        $styled = [Text.StringBuilder]::new($Path.Length + 96)
+        foreach ($token in $tokens) {
+            if ($token.Length -eq 0) { continue }
+            if ($token[0] -eq [char]92 -or $token[0] -eq [char]47) {
+                [void]$styled.Append($separatorColor).Append($token)
+                continue
+            }
+
+            $componentIndex++
+            $color = if ($componentIndex -eq $componentCount) {
+                $leafColor
+            } elseif ($componentIndex -eq 1) {
+                $rootColor
+            } else {
+                $parentColor
+            }
+            [void]$styled.Append($color).Append($token)
+        }
+        [void]$styled.Append($resetColor)
+
+        $script:AutomexiaCachedPromptPath = $Path
+        $script:AutomexiaCachedStyledPromptPath = $styled.ToString()
+        return $script:AutomexiaCachedStyledPromptPath
+    }
+
     function global:prompt {
         $succeeded = $?
         $exitCode = if ($succeeded) { 0 } elseif ($null -ne $global:LASTEXITCODE) { $global:LASTEXITCODE } else { 1 }
         $script:AutomexiaPromptGeneration++
-        $path = (Get-Location).Path.Replace('\', '/')
+        $promptPath = Get-AutomexiaPromptPath
+        $path = $promptPath.Replace('\', '/')
         $osc7 = "$script:AutomexiaEsc]7;file://localhost/$path$script:AutomexiaBel"
         $titleText = "PowerShell - {0}" -f $path
         $title = "$script:AutomexiaEsc]2;$titleText$script:AutomexiaBel"
@@ -94,7 +146,7 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         $start = "$script:AutomexiaEsc]133;A;aid=$script:AutomexiaPromptGeneration$script:AutomexiaBel"
         $continuation = "$script:AutomexiaEsc]133;P;k=c;aid=$script:AutomexiaPromptGeneration$script:AutomexiaBel"
         $input = "$script:AutomexiaEsc]133;B$script:AutomexiaBel"
-        $pathPrompt = $script:AutomexiaEsc + "[38;2;72;167;255m" + (Get-AutomexiaPromptPath) + $script:AutomexiaEsc + "[0m"
+        $pathPrompt = Format-AutomexiaPromptPath -Path $promptPath
         $lambdaColor = if ($exitCode -eq 0) { '38;2;124;255;178' } else { '38;2;255;111;145' }
         $lambdaGlyph = [char]0x03BB
         $lambda = $script:AutomexiaEsc + "[" + $lambdaColor + "m" + $lambdaGlyph + $script:AutomexiaEsc + "[0m "
