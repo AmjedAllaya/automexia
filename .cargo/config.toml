@@ -3,6 +3,12 @@ xtask = "run --package xtask --"
 dev = "run --package xtask -- dev"
 ready = "run --package xtask -- ready"
 automexia = "run --package xtask -- run"
+ci = "run --package xtask -- ci"
+storage = "run --package xtask -- storage"
+# This remains a built-in Cargo clean, so it can remove xtask itself after all
+# Automexia windows have closed. An xtask process cannot safely delete its own
+# executable on Windows.
+purge = "clean"
 
 [build]
 # The WGPU/shader workspace can exhaust Windows' paging file when Cargo fans
