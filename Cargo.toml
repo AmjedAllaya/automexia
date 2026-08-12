@@ -92,19 +92,19 @@ wgpu = "30.0.0"
 libc = "0.2.189"
 smol_str = "0.3.2"
 futures = "0.3.31"
-zbus = "4.4.0"
+zbus = "5.18.0"
 wasm-bindgen = "0.2.87"
 wasm-bindgen-futures = "0.4.34"
 wasm-bindgen-test = "0.3.42"
 env_logger = "0.11.8"
-console_log = "0.2.2"
+console_log = "1.1.0"
 bitflags = "2.9.0"
 console_error_panic_hook = "0.1.7"
 tracing = "0.1.41"
 objc = { package = "objc-rs", version = "0.3.2" }
 memmap2 = "0.9.11"
 url = "2.5.4"
-criterion = { version = "0.6.0", features = ["html_reports"] }
+criterion = { version = "0.8.2", features = ["html_reports"] }
 dashmap = "6.2.1"
 flate2 = "1.1.9"
 
