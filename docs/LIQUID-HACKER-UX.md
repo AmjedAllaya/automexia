@@ -6,24 +6,50 @@ styles, and renderer decoration never changes command output.
 
 ## Layout contract
 
-The first 148 logical pixels are persistent application chrome and are never
-part of the terminal grid:
+At comfortable sizes, the first 148 logical pixels are persistent application
+chrome and are never part of the terminal grid:
 
 - a 66 px profile/tab row with an application mark, draggable tabs, new-tab
   button, command/profile menu, and native-looking window controls on Windows;
 - a 47 px operational context surface at y=82 with local OS/WSL, Git,
   Kubernetes, cloud, Docker, Terraform, environment and production facts;
-- a separate right surface for the real shell name and local clock on windows
-  at least 760 px wide. Narrow windows give the full row to context instead.
+- a separate right surface for the real shell name and local clock on
+  comfortable windows. Narrow windows give the full row to context instead.
 
-The terminal grid begins below this reservation. Typing, output, scrollback and
-resize/reflow therefore cannot erase the tabs or context bar. Windows uses a
-6 px renderer-owned resize frame and supports all edges and corners when native
-decorations are disabled.
+Chrome has one shared responsive contract for drawing, hit-testing and terminal
+grid reservation:
+
+| Density | Trigger (logical viewport) | Header | Context behavior |
+|---|---|---:|---|
+| comfortable | at least 840 px wide and 480 px high | 66 px | 47 px row; separate shell/clock surface |
+| compact | below either comfortable threshold | 54 px | 41 px single context surface |
+| minimal | below 480 px wide or 280 px high | 46 px | 38 px row when height permits |
+
+Below 260 logical pixels of height, the context surface folds away and the
+minimal header reserves only 54 px, leaving 146 px for terminal content at the
+supported 300×200 minimum. The prompt-level context row remains available in
+the grid. As width contracts, controls fold in priority order: the product mark,
+palette chevron, and then new-tab button hide before the active tab can collide
+with the always-reachable minimize, maximize and close controls. Narrow
+multi-tab strips use icon-only tabs when a readable title no longer fits.
+
+The terminal grid begins below the live reservation, which is recomputed on
+every viewport and DPI change. Typing, output, scrollback and resize/reflow
+therefore cannot erase the tabs or context bar, nor can a stale 148 px margin
+consume a compact window. Windows uses a 6 px renderer-owned resize frame and
+supports all edges and corners when native decorations are disabled.
 
 The default window is 1280x760. Tabs remain visible with one session; users may
 still explicitly set `navigation.hide-if-single = true` on platforms with
 native decorations.
+
+Command palette, search, diagnostic and quit overlays fit to the logical
+viewport. The command palette reduces its visible result count with height,
+long labels are ellipsized on Unicode boundaries, and editable input keeps its
+tail visible. Split containers clamp negative available space and preserve the
+combined adjacent-panel size when a divider reaches a compact limit. These
+rules apply equally at 1× and HiDPI scale factors and do not upscale UI on very
+large displays; the terminal grid simply gains rows and columns.
 
 ## Live operational context
 
@@ -79,9 +105,11 @@ They publish OSC 7 current-directory data, explicit shell identity, and the OSC
 Automexia snapshots every available fact on the context row, updates the active
 row in real time, and freezes it when a command starts. The path row always
 uses the shell's complete path and never abbreviates it to `.../` or duplicates
-Git or infrastructure metadata beside it. Only the short lambda and command
-buffer belong to Readline, ZLE, or PSReadLine; this prevents a line-editor
-redisplay after resize from erasing or duplicating the stored path. Command
+Git or infrastructure metadata beside it. The complete path and short command
+row belong to Readline, ZLE, or PSReadLine as one multiline prompt; the
+renderer-owned context row remains outside the editor. A SIGWINCH redisplay
+therefore restores the path head even after repeated extreme-width changes
+without letting the editor erase or duplicate renderer metadata. Command
 completion includes the actual exit code; Automexia measures between `C` and
 `D` and draws a right-aligned success/failure badge with duration. Prompt
 identity, context, and command results survive scrollback and column
@@ -89,9 +117,9 @@ shrink/grow reflow.
 
 ## File and folder icons
 
-The reference mockup's file glyphs are produced by `eza`, not by rewriting
-arbitrary terminal output in the renderer. When `eza` is installed, the Bash
-and Zsh integrations provide these interactive shortcuts:
+The reference mockup's file glyphs are produced by the shell integration, not
+by rewriting arbitrary terminal output in the renderer. Bash and Zsh use
+`eza` when it is installed and provide these interactive shortcuts:
 
 ```text
 ls    icon-aware listing; ordinary ls arguments remain valid
@@ -102,12 +130,20 @@ lA    long listing including hidden files except . and ..
 tree  icon-aware directory tree
 ```
 
-Icons use eza's Nerd Font vocabulary and render through Automexia's bundled
-symbol fallback. They are enabled only for terminal output, so piping or
-redirecting a listing remains machine-friendly. `command ls` bypasses the
-function. Set `AUTOMEXIA_PLAIN_LS=1` before the integration is sourced to
-disable all listing functions. Machines without `eza` retain their original
-commands.
+POSIX icons use eza's Nerd Font vocabulary and render through Automexia's
+bundled symbol fallback. They are enabled only for terminal output, so piping
+or redirecting a listing remains machine-friendly. `command ls` bypasses the
+POSIX function. Set `AUTOMEXIA_PLAIN_LS=1` before the integration is sourced to
+disable the icon presentation. Machines without `eza` retain their original
+POSIX commands.
+
+Native Windows PowerShell does not require `eza`. Automexia installs a native
+PowerShell format view for `DirectoryInfo` and `FileInfo`, so the existing
+`ls` alias and `Get-ChildItem` display folder and file-type icons automatically.
+The command still returns the original filesystem objects: `Where-Object`,
+`Sort-Object`, property access, pipelines, scripts, and redirection keep normal
+PowerShell behavior. `AUTOMEXIA_PLAIN_LS=1` disables this presentation layer
+before the integration is loaded on every supported shell.
 
 Interactive long listings (`ls -l`, `l`, `ll`, `la`, and `lA`) are tables with
 bold column headers, owner and group columns, ISO timestamps, and stable color
@@ -152,6 +188,7 @@ only and never rewrites terminal cells or copied text.
 cargo test -p rio-vt semantic
 cargo test -p automexia-terminal renderer::island::tests
 cargo test -p automexia-terminal renderer::devops_status::tests
+cargo test -p automexia-terminal renderer::responsive::tests
 powershell -NoProfile -File tools/ci/test_shell_integration.ps1
 ```
 

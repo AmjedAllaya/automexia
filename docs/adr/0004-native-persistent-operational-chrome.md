@@ -19,8 +19,10 @@ decoration.
 
 Consequences: the application reserves 148 logical pixels when tab navigation
 is enabled and three semantic rows for every prompt. Readline, ZLE, and
-PSReadLine own only the short editable row; the complete path is terminal grid
-history and reflows without shell-editor duplication. Stable `aid` values join
+PSReadLine own the complete-path and short command rows as one multiline
+prompt, while the renderer alone owns the context row. This makes the editor
+restore the complete path after SIGWINCH instead of stranding its head in
+scrollback. Stable `aid` values join
 each context row to both continuations and let the renderer restore historical
 snapshots after reflow. Windows supplies its own move/resize/control
 hit targets when using disabled native decorations; chrome or prompt-row
