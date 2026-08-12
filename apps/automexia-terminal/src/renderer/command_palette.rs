@@ -1753,6 +1753,39 @@ mod tests {
     }
 
     #[test]
+    fn primary_actions_have_distinct_icons_on_one_optical_grid() {
+        assert_eq!(RESULT_ICON_SIZE, 22.0);
+        let icons = [
+            PaletteAction::TabCreate,
+            PaletteAction::TabClose,
+            PaletteAction::TabCloseUnfocused,
+            PaletteAction::SelectNextTab,
+            PaletteAction::SelectPrevTab,
+            PaletteAction::SplitRight,
+            PaletteAction::SplitDown,
+            PaletteAction::SelectNextSplit,
+            PaletteAction::SelectPrevSplit,
+            PaletteAction::ConfigEditor,
+            PaletteAction::WindowCreateNew,
+            PaletteAction::ToggleFullscreen,
+            PaletteAction::ToggleAppearanceTheme,
+            PaletteAction::OpenMarket,
+            PaletteAction::Quit,
+        ]
+        .map(|action| command_presentation(action).icon);
+
+        for (index, icon) in icons.iter().enumerate() {
+            assert!(
+                !icons
+                    .iter()
+                    .skip(index + 1)
+                    .any(|candidate| candidate == icon),
+                "primary command icons must remain visually distinct: {icon:?}"
+            );
+        }
+    }
+
+    #[test]
     fn destructive_automexia_and_pane_commands_have_distinct_roles() {
         assert_eq!(
             command_presentation(PaletteAction::Quit).accent,
@@ -1905,7 +1938,16 @@ mod tests {
     #[test]
     fn headerless_search_surface_is_not_a_result_hit_target() {
         let palette = CommandPalette::new();
-        let (x, y, width, _, _) = palette.palette_rect(1_280.0, 760.0, 1.0);
+        let (x, y, width, height, rows) = palette.palette_rect(1_280.0, 760.0, 1.0);
+        assert_eq!(
+            height,
+            PALETTE_PADDING
+                + INPUT_HEIGHT
+                + SEPARATOR_HEIGHT
+                + RESULTS_MARGIN_TOP
+                + RESULT_ITEM_HEIGHT * rows as f32
+                + PALETTE_PADDING
+        );
         assert_eq!(
             palette.hit_test(x + width / 2.0, y + 20.0, 1_280.0, 760.0, 1.0),
             Ok(None)
