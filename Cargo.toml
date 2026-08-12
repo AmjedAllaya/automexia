@@ -132,6 +132,12 @@ lto = false
 opt-level = 0
 incremental = true
 
+# Shell line editors can repaint the active prompt several times for one
+# history-navigation key. Keep the VT parser/reflow hot path representative of
+# shipped builds without slowing incremental compilation for every crate.
+[profile.dev.package.rio-vt]
+opt-level = 2
+
 [profile.test]
 debug = 1
 # Test and all-target verification artifacts are short-lived. Incremental test

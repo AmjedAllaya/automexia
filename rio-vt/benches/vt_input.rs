@@ -175,6 +175,76 @@ fn bench(c: &mut Criterion) {
             )
         });
     });
+
+    c.bench_function("row_rebuild_full_snapshot", |b| {
+        b.iter(|| {
+            crosswords.snapshot_visible(
+                &TerminalDamage::Full,
+                COLS,
+                &mut rows,
+                &mut styles,
+                &mut extras,
+            )
+        });
+    });
+
+    // Prompt/path layout is VT reflow, not renderer state. Alternate between
+    // a narrow and a wide grid so the benchmark includes both wrap and unwrap
+    // of the same semantic prompt without shell or GPU noise.
+    let prompt_path =
+        "/workspace/équipe-🚀/platform/kubernetes/production/automexia-terminal";
+    let prompt_stream = format!(
+        "\x1b]1337;SetUserVar=automexia_prompt_active=MQ==\x07\
+         \x1b]133;A;aid=701\x07 \r\n\
+         \x1b]133;P;k=c;aid=701\x07{prompt_path}\r\n\
+         \x1b]133;P;k=c;aid=701\x07λ \x1b]133;B\x07cargo test"
+    );
+    let mut prompt_terminal = Crosswords::new(
+        CrosswordsSize::new(160, 24),
+        CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0),
+        0,
+        20_000,
+    );
+    let mut prompt_processor = Processor::default();
+    prompt_processor.advance(&mut prompt_terminal, prompt_stream.as_bytes());
+    let mut narrow = true;
+    c.bench_function("prompt_layout_resize_reflow", |b| {
+        b.iter(|| {
+            let columns = if narrow { 24 } else { 240 };
+            narrow = !narrow;
+            prompt_terminal.resize(CrosswordsSize::new(columns, 40));
+            std::hint::black_box(&prompt_terminal);
+        })
+    });
+
+    // Shell history navigation is a clear-and-repaint workload. Keep a deep
+    // scrollback behind the active semantic prompt so this benchmark catches
+    // accidental O(scrollback) work in Up Arrow/Ctrl+R handling.
+    let mut history_terminal = Crosswords::new(
+        CrosswordsSize::new(COLS, ROWS),
+        CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0),
+        0,
+        20_000,
+    );
+    let mut history_processor = Processor::default();
+    let history = "historical command output\r\n".repeat(15_000);
+    history_processor.advance(&mut history_terminal, history.as_bytes());
+    history_processor.advance(
+        &mut history_terminal,
+        b"\x1b]133;A;aid=501\x07 \r\n\x1b]133;P;k=c;aid=501\x07/workspace\r\n\x1b]133;P;k=c;aid=501\x07lambda \x1b]133;B\x07",
+    );
+    c.bench_function("history_navigation_repaint_deep_scrollback", |b| {
+        b.iter(|| {
+            history_processor.advance(
+                &mut history_terminal,
+                b"\r\x1b[2Klambda cargo test -p rio-vt",
+            )
+        });
+    });
 }
 
 criterion_group!(benches, bench);

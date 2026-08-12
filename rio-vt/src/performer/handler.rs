@@ -103,6 +103,9 @@ pub trait Handler {
     ) {
     }
 
+    /// OSC 133 `B`: the prompt has entered its editable input phase.
+    fn semantic_prompt_input(&mut self) {}
+
     /// OSC 133 `C`: the command associated with the latest prompt started.
     fn semantic_command_start(&mut self) {}
 
@@ -111,6 +114,12 @@ pub trait Handler {
 
     /// OSC 1337 SetUserVar: record a shell-provided variable.
     fn set_user_var(&mut self, _name: String, _value: String) {}
+
+    /// Reconcile terminal-owned semantic state after one PTY byte batch.
+    /// Shell editors often repaint with cursor/erase sequences after SIGWINCH;
+    /// implementations can repair protected prompt rows once that repaint is
+    /// complete instead of fighting each intermediate escape independently.
+    fn finish_pty_batch(&mut self) {}
 
     /// Set the cursor style.
     fn set_cursor_style(&mut self, _style: Option<CursorShape>, _blinking: bool) {}
@@ -607,6 +616,7 @@ impl Processor {
             let mut performer = Performer::new(&mut self.state, handler);
             self.parser.advance(&mut performer, bytes);
         }
+        handler.finish_pty_batch();
     }
 
     /// End a synchronized update.
@@ -615,6 +625,7 @@ impl Processor {
         H: Handler,
     {
         self.stop_sync_internal(handler, None);
+        handler.finish_pty_batch();
     }
 
     /// End a synchronized update.
@@ -1126,6 +1137,9 @@ impl<U: Handler> Perform for Performer<'_, U> {
                     self.handler.set_semantic_prompt(mark, prompt_id);
                 } else if let Some(command) = osc::parse_semantic_command(params) {
                     match command {
+                        osc::SemanticCommand::Input => {
+                            self.handler.semantic_prompt_input();
+                        }
                         osc::SemanticCommand::Start => {
                             self.handler.semantic_command_start();
                         }
@@ -2328,6 +2342,7 @@ mod tests {
     fn semantic_command_lifecycle_parsing() {
         use crate::performer::osc::{parse_semantic_command as parse, SemanticCommand};
 
+        assert_eq!(parse(&[b"133", b"B"]), Some(SemanticCommand::Input));
         assert_eq!(parse(&[b"133", b"C"]), Some(SemanticCommand::Start));
         assert_eq!(
             parse(&[b"133", b"D", b"17"]),
@@ -2341,7 +2356,7 @@ mod tests {
             parse(&[b"133", b"D", b"invalid"]),
             Some(SemanticCommand::End { exit_code: 0 })
         );
-        assert_eq!(parse(&[b"133", b"B"]), None);
+        assert_eq!(parse(&[b"133", b"A"]), None);
     }
 
     #[test]
