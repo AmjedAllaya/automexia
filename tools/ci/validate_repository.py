@@ -8,9 +8,11 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import struct
 import sys
 import tomllib
+from urllib.parse import unquote
 import xml.etree.ElementTree as element_tree
 
 import yaml
@@ -18,6 +20,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 EXCLUDED_PARTS = {".git", ".cargo-packager", "target"}
+MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+ACTION_USE = re.compile(r"^\s*-\s+uses:\s*([^\s#]+)", re.MULTILINE)
 
 
 def files_with_suffixes(*suffixes: str) -> list[Path]:
@@ -133,6 +137,73 @@ def validate_brand_assets() -> None:
         )
 
 
+def markdown_anchors(path: Path) -> set[str]:
+    anchors: set[str] = set()
+    occurrences: dict[str, int] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = re.match(r"^#{1,6}\s+(.+?)\s*#*\s*$", line)
+        if not match:
+            continue
+        heading = re.sub(r"<[^>]+>", "", match.group(1)).strip().lower()
+        slug = re.sub(r"[^\w\- ]", "", heading, flags=re.UNICODE)
+        slug = re.sub(r"[\s-]+", "-", slug).strip("-")
+        duplicate = occurrences.get(slug, 0)
+        occurrences[slug] = duplicate + 1
+        anchors.add(slug if duplicate == 0 else f"{slug}-{duplicate}")
+    return anchors
+
+
+def validate_markdown_links() -> int:
+    markdown_files = files_with_suffixes(".md")
+    anchor_cache: dict[Path, set[str]] = {}
+    for source in markdown_files:
+        content = source.read_text(encoding="utf-8")
+        for match in MARKDOWN_LINK.finditer(content):
+            raw_target = match.group(1).strip()
+            if raw_target.startswith("<") and raw_target.endswith(">"):
+                raw_target = raw_target[1:-1]
+            if re.match(r"^(?:https?|mailto):", raw_target, re.IGNORECASE):
+                continue
+            target_text, separator, anchor = raw_target.partition("#")
+            target_text = unquote(target_text)
+            target = source if not target_text else (source.parent / target_text).resolve()
+            try:
+                target.relative_to(ROOT)
+            except ValueError as error:
+                raise ValueError(
+                    f"{relative(source)} links outside the repository: {raw_target}"
+                ) from error
+            if not target.exists():
+                raise ValueError(
+                    f"{relative(source)} has a missing local link: {raw_target}"
+                )
+            if separator and anchor and target.suffix.lower() == ".md":
+                anchors = anchor_cache.setdefault(target, markdown_anchors(target))
+                if unquote(anchor).lower() not in anchors:
+                    raise ValueError(
+                        f"{relative(source)} has a missing Markdown anchor: {raw_target}"
+                    )
+    return len(markdown_files)
+
+
+def validate_action_pins() -> int:
+    workflows = sorted((ROOT / ".github/workflows").glob("*.y*ml"))
+    uses = 0
+    for path in workflows:
+        content = path.read_text(encoding="utf-8")
+        for match in ACTION_USE.finditer(content):
+            action = match.group(1).strip("'\"")
+            if action.startswith("./"):
+                continue
+            _, separator, revision = action.rpartition("@")
+            if not separator or not re.fullmatch(r"[0-9a-f]{40}", revision):
+                raise ValueError(
+                    f"{relative(path)} uses an action without a full commit pin: {action}"
+                )
+            uses += 1
+    return uses
+
+
 def validate() -> None:
     counts: dict[str, int] = {}
 
@@ -183,6 +254,9 @@ def validate() -> None:
         if "x-scheme-handler/automexia;" not in entry.get("MimeType", ""):
             raise ValueError(f"{relative(path)} does not register automexia://")
     counts["desktop"] = len(desktop_files)
+
+    counts["Markdown"] = validate_markdown_links()
+    counts["pinned Actions"] = validate_action_pins()
 
     validate_brand_assets()
     counts["brand assets"] = 1

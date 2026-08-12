@@ -11,6 +11,9 @@ import subprocess
 import sys
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+GIT = ["git", "-c", f"safe.directory={REPO_ROOT.as_posix()}"]
+
 OWNED_PREFIXES = (
     "apps/automexia-terminal/src/",
     "rio-backend/src/config/product.rs",
@@ -34,11 +37,13 @@ def parse_lcov(path: Path) -> dict[str, dict[int, int]]:
 
 
 def changed_lines(base: str, head: str) -> dict[str, set[int]]:
+    diff_range = base if head == "WORKTREE" else f"{base}...{head}"
     output = subprocess.run(
-        ["git", "diff", "--unified=0", f"{base}...{head}", "--", "*.rs"],
+        [*GIT, "diff", "--unified=0", diff_range, "--", "*.rs"],
         check=True,
         text=True,
         stdout=subprocess.PIPE,
+        cwd=REPO_ROOT,
     ).stdout
     current: str | None = None
     changed: dict[str, set[int]] = {}
@@ -51,16 +56,34 @@ def changed_lines(base: str, head: str) -> dict[str, set[int]]:
                 start = int(match.group(1))
                 count = int(match.group(2) or "1")
                 changed.setdefault(current, set()).update(range(start, start + count))
+
+    if head == "WORKTREE":
+        untracked = subprocess.run(
+            [*GIT, "ls-files", "--others", "--exclude-standard", "--", "*.rs"],
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            cwd=REPO_ROOT,
+        ).stdout.splitlines()
+        for raw_path in untracked:
+            path = REPO_ROOT / raw_path
+            if not path.is_file():
+                continue
+            line_count = len(path.read_text(encoding="utf-8").splitlines())
+            changed[Path(raw_path).as_posix()] = set(range(1, line_count + 1))
     return changed
 
 
 def main() -> int:
-    coverage = parse_lcov(Path(os.environ.get("LCOV_FILE", "lcov.info")))
+    lcov_path = Path(os.environ.get("LCOV_FILE", "lcov.info"))
+    if not lcov_path.is_absolute():
+        lcov_path = REPO_ROOT / lcov_path
+    coverage = parse_lcov(lcov_path)
     found = sum(len(lines) for lines in coverage.values())
     hit = sum(sum(value > 0 for value in lines.values()) for lines in coverage.values())
     global_percent = (100.0 * hit / found) if found else 0.0
     baseline_record = json.loads(
-        Path(".github/coverage-baseline.json").read_text(encoding="utf-8")
+        (REPO_ROOT / ".github/coverage-baseline.json").read_text(encoding="utf-8")
     )
     platform = os.environ.get("COVERAGE_PLATFORM")
     if platform != baseline_record.get("platform"):

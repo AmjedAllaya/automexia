@@ -12,7 +12,7 @@ type TaskResult<T = ()> = Result<T, String>;
 
 const RIO_BASE_SHA: &str = "7d595af583f6ef1ea6036a66b367ba1e5a84d4a2";
 const GIB: u64 = 1024 * 1024 * 1024;
-const VERIFICATION_TARGET_NAME: &str = "automexia-verification-v1";
+const VERIFICATION_TARGET_PREFIX: &str = "automexia-verification-v1-";
 const RUNTIME_TARGET_NAME: &str = "automexia-runtime";
 const DEFAULT_VERIFY_MIN_FREE_GIB: u64 = 12;
 const DEFAULT_BUILD_MIN_FREE_GIB: u64 = 4;
@@ -73,6 +73,33 @@ fn dispatch(args: Vec<String>) -> TaskResult {
         [command, scope] if command == "test" && scope == "conformance" => {
             test_conformance()
         }
+        [command, scope] if command == "test" && scope == "resize-stress" => {
+            test_resize_stress(false)
+        }
+        [command, scope] if command == "test" && scope == "session-clone" => {
+            test_session_clone(None)
+        }
+        [command, scope, flag]
+            if command == "test"
+                && scope == "session-clone"
+                && flag == "--native-windows" =>
+        {
+            test_session_clone(Some("windows"))
+        }
+        [command, scope, flag]
+            if command == "test"
+                && scope == "session-clone"
+                && flag == "--native-wsl" =>
+        {
+            test_session_clone(Some("wsl"))
+        }
+        [command, scope, flag]
+            if command == "test"
+                && scope == "resize-stress"
+                && flag == "--native-gui" =>
+        {
+            test_resize_stress(true)
+        }
         [command, flag] if command == "package" && flag == "--check" => package_check(),
         [command, flag, target] if command == "package" && flag == "--target" => {
             package_target(target)
@@ -85,7 +112,7 @@ fn dispatch(args: Vec<String>) -> TaskResult {
 }
 
 fn usage() -> String {
-    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|storage|check|ci|verify architecture|verify identity|verify provenance|verify all|test conformance|package --check|package --target TARGET|release --version VERSION>".into()
+    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|storage|check|ci|verify architecture|verify identity|verify provenance|verify all|test conformance|test resize-stress [--native-gui]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
 }
 
 fn root() -> PathBuf {
@@ -124,7 +151,19 @@ fn python_yaml_available(program: &str) -> bool {
 }
 
 fn doctor() -> TaskResult {
+    #[cfg(target_os = "windows")]
     let required = ["cargo", "rustc", "rustfmt", "git", "cargo-deny"];
+    #[cfg(not(target_os = "windows"))]
+    let required = [
+        "cargo",
+        "rustc",
+        "rustfmt",
+        "git",
+        "cargo-deny",
+        "bash",
+        "zsh",
+        "shellcheck",
+    ];
     let optional = ["cargo-llvm-cov", "cargo-packager", "nfpm"];
     let mut missing = Vec::new();
     for program in required {
@@ -371,8 +410,12 @@ impl VerificationTarget {
             configured_gib("AUTOMEXIA_VERIFY_MIN_FREE_GIB", DEFAULT_VERIFY_MIN_FREE_GIB)?,
             "the exhaustive isolated verification gate",
         )?;
-        let path = verified_target_child(&parent, VERIFICATION_TARGET_NAME)?;
-        remove_verification_target(&parent, &path)?;
+        let generation = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| format!("system clock is before the Unix epoch: {error}"))?
+            .as_nanos();
+        let name = verification_target_name(std::process::id(), generation);
+        let path = verified_target_child(&parent, &name)?;
         fs::create_dir(&path).map_err(|error| {
             format!(
                 "could not create verification target {}: {error}",
@@ -422,8 +465,8 @@ impl Drop for VerificationTarget {
 fn remove_verification_target(parent: &Path, path: &Path) -> TaskResult {
     require(
         path.parent() == Some(parent)
-            && path.file_name() == Some(OsStr::new(VERIFICATION_TARGET_NAME)),
-        "refusing to remove a verification directory outside its exact target child",
+            && path.file_name().is_some_and(is_verification_target_name),
+        "refusing to remove a directory that is not a generated verification target",
     )?;
     if !path.exists() {
         return Ok(());
@@ -434,6 +477,26 @@ fn remove_verification_target(parent: &Path, path: &Path) -> TaskResult {
     )?;
     fs::remove_dir_all(path)
         .map_err(|error| format!("could not remove {}: {error}", path.display()))
+}
+
+fn verification_target_name(process_id: u32, generation: u128) -> String {
+    format!("{VERIFICATION_TARGET_PREFIX}{process_id}-{generation}")
+}
+
+fn is_verification_target_name(name: &OsStr) -> bool {
+    let Some(suffix) = name
+        .to_str()
+        .and_then(|name| name.strip_prefix(VERIFICATION_TARGET_PREFIX))
+    else {
+        return false;
+    };
+    let Some((process_id, generation)) = suffix.split_once('-') else {
+        return false;
+    };
+    !process_id.is_empty()
+        && !generation.is_empty()
+        && process_id.bytes().all(|byte| byte.is_ascii_digit())
+        && generation.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 fn environment_truthy(variable: &str) -> bool {
@@ -466,20 +529,7 @@ fn ready() -> TaskResult {
     println!(
         "Automexia local readiness: isolated policy/tests, persistent app build, and smoke"
     );
-    doctor()?;
-    run_python("tools/ci/validate_repository.py")?;
-    with_verification_target(ci_in)?;
-    run(
-        "cargo",
-        &[
-            "deny",
-            "--locked",
-            "--color",
-            "never",
-            "check",
-            "--hide-inclusion-graph",
-        ],
-    )?;
+    complete_ci_gate()?;
     build_debug_app()?;
     smoke_debug_app()?;
     println!("PASS: Automexia is locally ready to run and submit");
@@ -524,6 +574,15 @@ fn debug_binary(identity: &ProductIdentity) -> PathBuf {
         identity.executable.clone()
     };
     cargo_target_dir().join("debug").join(binary)
+}
+
+fn release_binary_in(target_dir: &Path, target: &str, executable: &str) -> PathBuf {
+    let binary = if target.contains("windows") {
+        format!("{executable}.exe")
+    } else {
+        executable.to_owned()
+    };
+    target_dir.join(target).join("release").join(binary)
 }
 
 fn cargo_target_dir() -> PathBuf {
@@ -812,7 +871,44 @@ fn verify_all() -> TaskResult {
 }
 
 fn ci() -> TaskResult {
-    with_verification_target(ci_in)
+    complete_ci_gate()
+}
+
+fn complete_ci_gate() -> TaskResult {
+    doctor()?;
+    run_python("tools/ci/validate_repository.py")?;
+    validate_shell_integrations()?;
+    with_verification_target(ci_in)?;
+    run(
+        "cargo",
+        &[
+            "deny",
+            "--locked",
+            "--color",
+            "never",
+            "check",
+            "--hide-inclusion-graph",
+        ],
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn validate_shell_integrations() -> TaskResult {
+    run(
+        "powershell",
+        &[
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "tools/ci/test_powershell.ps1",
+        ],
+    )
+}
+
+#[cfg(not(target_os = "windows"))]
+fn validate_shell_integrations() -> TaskResult {
+    run("bash", &["tools/ci/test_shell_sources.sh"])
 }
 
 fn ci_in(target: &Path) -> TaskResult {
@@ -854,6 +950,149 @@ fn test_conformance() -> TaskResult {
             "-p",
             "teletypewriter",
             "--locked",
+        ],
+    )
+}
+
+fn test_resize_stress(native_gui: bool) -> TaskResult {
+    run(
+        "cargo",
+        &[
+            "test",
+            "-p",
+            "rio-vt",
+            "--lib",
+            "--locked",
+            "resize_stress",
+            "--",
+            "--nocapture",
+        ],
+    )?;
+
+    if !native_gui {
+        return Ok(());
+    }
+
+    if !cfg!(target_os = "windows") {
+        return Err(
+            "test resize-stress --native-gui is currently supported on Windows".into(),
+        );
+    }
+
+    run(
+        "cargo",
+        &[
+            "build",
+            "-p",
+            "automexia-terminal",
+            "--locked",
+            "--features",
+            "native-gui-test-hooks",
+        ],
+    )?;
+    let identity = product_identity()?;
+    let binary = debug_binary(&identity);
+    let binary = binary.to_str().ok_or_else(|| {
+        format!(
+            "native GUI test binary path is not UTF-8: {}",
+            binary.display()
+        )
+    })?;
+    run(
+        "powershell",
+        &[
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "tests/integration/resize-stress-windows.ps1",
+            "-Binary",
+            binary,
+        ],
+    )
+}
+
+fn test_session_clone(native: Option<&str>) -> TaskResult {
+    run(
+        "cargo",
+        &[
+            "test",
+            "-p",
+            "automexia-terminal",
+            "--locked",
+            "context::launch::tests",
+            "--",
+            "--nocapture",
+        ],
+    )?;
+    run(
+        "cargo",
+        &[
+            "test",
+            "-p",
+            "automexia-terminal",
+            "--locked",
+            "clone_",
+            "--",
+            "--nocapture",
+        ],
+    )?;
+    run(
+        "cargo",
+        &[
+            "test",
+            "-p",
+            "teletypewriter",
+            "--locked",
+            "command_line_tests",
+            "--",
+            "--nocapture",
+        ],
+    )?;
+
+    let Some(native) = native else {
+        return Ok(());
+    };
+    if !cfg!(target_os = "windows") {
+        return Err(format!(
+            "test session-clone --native-{native} is currently supported on Windows"
+        ));
+    }
+
+    run(
+        "cargo",
+        &[
+            "build",
+            "-p",
+            "automexia-terminal",
+            "--locked",
+            "--features",
+            "native-gui-test-hooks",
+        ],
+    )?;
+    let identity = product_identity()?;
+    let binary = debug_binary(&identity);
+    let binary = binary.to_str().ok_or_else(|| {
+        format!(
+            "native GUI test binary path is not UTF-8: {}",
+            binary.display()
+        )
+    })?;
+    let script = match native {
+        "windows" => "tests/integration/resize-stress-windows.ps1",
+        "wsl" => "tests/integration/session-clone-wsl-windows.ps1",
+        _ => return Err(format!("unsupported native clone suite: {native}")),
+    };
+    run(
+        "powershell",
+        &[
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            script,
+            "-Binary",
+            binary,
         ],
     )
 }
@@ -1043,6 +1282,10 @@ fn verify_architecture() -> TaskResult {
     for field in [
         "current_directory",
         "terminal_title",
+        "shell_distro",
+        "shell_name",
+        "shell_user",
+        "shell_path",
         "shell_integration",
         "shell_prompt_active",
     ] {
@@ -1052,6 +1295,71 @@ fn verify_architecture() -> TaskResult {
             &format!("shell/prompt readiness metadata {field} is not snapshotted"),
         )?;
     }
+    let launch = read(&app.join("src/context/launch.rs"))?;
+    let context = read(&app.join("src/context/mod.rs"))?;
+    require(
+        launch.contains("pub struct SessionLaunchDescriptor")
+            && launch.contains("pub fn fresh_clone")
+            && context.contains("pub launch_descriptor: SessionLaunchDescriptor")
+            && context.contains("pub fn clone_split")
+            && context.contains("ContextManager::create_context"),
+        "session cloning does not pass through an immutable launch descriptor and fresh context",
+    )?;
+    require(
+        launch.contains("No PowerShell fallback was opened")
+            && launch.contains("valid_directory_text")
+            && !launch.contains("terminal_title")
+            && !launch.contains("visible_text"),
+        "WSL session cloning may infer launch identity from presentation text or silently fall back",
+    )?;
+    require(
+        context.contains("report_clone_error")
+            && context.contains("RioEvent::ReportToAssistant")
+            && context.contains("return false"),
+        "session clone failures do not preserve layout and report a user-visible error",
+    )?;
+    let context_renderer = read(&app.join("src/renderer/devops_status.rs"))?;
+    require(
+        context_renderer.contains("enum SegmentRole")
+            && context_renderer.contains("segment_anchor_rgb")
+            && context_renderer.contains("ensure_contrast")
+            && context_renderer.contains("MIN_SEGMENT_CONTRAST")
+            && !context_renderer.contains("enum SegmentColor"),
+        "operational context does not resolve semantic brand roles through the shared contrast gate",
+    )?;
+    for role in [
+        "Production",
+        "UbuntuWsl",
+        "Windows",
+        "Git",
+        "Kubernetes",
+        "Docker",
+        "Azure",
+        "Aws",
+        "Gcp",
+        "UnknownCloud",
+        "Terraform",
+        "Environment",
+        "User",
+    ] {
+        require(
+            context_renderer.contains(&format!("SegmentRole::{role}")),
+            &format!("operational context is missing semantic role {role}"),
+        )?;
+    }
+    let powershell_view =
+        read(&root().join("shell-integration/powershell/automexia.format.ps1xml"))?;
+    require(
+        powershell_view.contains("<Label>Mode</Label>")
+            && powershell_view.contains("<Label>Last Modified</Label>")
+            && powershell_view.contains("<Label>Size</Label>")
+            && powershell_view.contains("<Label>Name</Label>")
+            && !powershell_view.contains("<Label>Icon</Label>")
+            && powershell_view.contains("$glyph + ' ' + $displayName")
+            && powershell_view.contains("ReparsePoint")
+            && powershell_view.contains("ConvertFromUtf32"),
+        "PowerShell filesystem view does not keep differentiated icons beside native object names",
+    )?;
     let devops_manifest = read(&app.join("src/automexia/builtins/devops/mod.rs"))?;
     for capability in [
         "Capability::FilesystemRead",
@@ -1110,6 +1418,9 @@ fn snapshots_renderable_field(renderer: &str, field: &str) -> bool {
 
     compact.contains(&format!("{destination}="))
         || compact.contains(&format!("{destination}.clone_from("))
+        || compact.contains(&format!(
+            "sync_optional_metadata(&mutcontext.{destination},"
+        ))
         || compact.contains(&format!("sync_optional_metadata(&mut{destination},"))
 }
 
@@ -1204,6 +1515,7 @@ fn verify_identity() -> TaskResult {
         root.join("shell-integration"),
         root.join("sugarloaf"),
         root.join("teletypewriter"),
+        root.join("misc"),
     ];
     let forbidden = [
         "\"Rio Terminal",
@@ -1218,6 +1530,12 @@ fn verify_identity() -> TaskResult {
         "TERM=rio",
         "xterm-rio",
     ];
+    let forbidden_product_phrases = [
+        "inside a Rio window",
+        "Run inside a Rio window",
+        "Rio's terminal app",
+        "NULL restores Rio's default theme",
+    ];
     let mut failures = Vec::new();
     for scope in scopes {
         for path in files_under(&scope)? {
@@ -1229,6 +1547,14 @@ fn verify_identity() -> TaskResult {
                 if content.contains(token) {
                     failures.push(format!(
                         "{} contains forbidden user-facing token {token:?}",
+                        display_relative(&path)
+                    ));
+                }
+            }
+            for phrase in forbidden_product_phrases {
+                if content.contains(phrase) {
+                    failures.push(format!(
+                        "{} contains forbidden user-facing Rio product phrase {phrase:?}",
                         display_relative(&path)
                     ));
                 }
@@ -1483,16 +1809,7 @@ fn package_target(target: &str) -> TaskResult {
         )?;
     }
 
-    let binary_name = if target.contains("windows") {
-        format!("{}.exe", identity.executable)
-    } else {
-        identity.executable.clone()
-    };
-    let binary = root()
-        .join("target")
-        .join(target)
-        .join("release")
-        .join(&binary_name);
+    let binary = release_binary_in(&cargo_target_dir(), target, &identity.executable);
     require(
         binary.is_file(),
         &format!("release binary is missing: {}", binary.display()),
@@ -1927,6 +2244,8 @@ mod tests {
         assert!(usage().contains("storage"));
         assert!(usage().contains("verify architecture"));
         assert!(usage().contains("test conformance"));
+        assert!(usage().contains("test resize-stress [--native-gui]"));
+        assert!(usage().contains("test session-clone [--native-windows|--native-wsl]"));
         assert!(usage().contains("release --version"));
         assert!(usage().contains("verify all"));
     }
@@ -1978,12 +2297,39 @@ mod tests {
     }
 
     #[test]
+    fn release_binary_uses_the_effective_cargo_target_directory() {
+        let target_dir = Path::new("D:/isolated-cargo-target");
+        assert_eq!(
+            release_binary_in(target_dir, "x86_64-pc-windows-msvc", "automexia"),
+            target_dir
+                .join("x86_64-pc-windows-msvc")
+                .join("release")
+                .join("automexia.exe")
+        );
+        assert_eq!(
+            release_binary_in(target_dir, "x86_64-unknown-linux-gnu", "automexia"),
+            target_dir
+                .join("x86_64-unknown-linux-gnu")
+                .join("release")
+                .join("automexia")
+        );
+    }
+
+    #[test]
     fn verification_target_is_an_exact_direct_child() {
         let parent = root().join("target");
+        let name = verification_target_name(42, 1234);
         assert_eq!(
-            verified_target_child(&parent, VERIFICATION_TARGET_NAME).unwrap(),
-            parent.join(VERIFICATION_TARGET_NAME)
+            verified_target_child(&parent, &name).unwrap(),
+            parent.join(&name)
         );
+        assert!(is_verification_target_name(OsStr::new(&name)));
+        assert!(!is_verification_target_name(OsStr::new(
+            "automexia-verification-v1"
+        )));
+        assert!(!is_verification_target_name(OsStr::new(
+            "automexia-verification-v1-active-run"
+        )));
         assert!(verified_target_child(&parent, "../outside").is_err());
         assert!(verified_target_child(&parent, "nested/child").is_err());
     }
