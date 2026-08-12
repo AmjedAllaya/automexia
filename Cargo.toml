@@ -134,3 +134,7 @@ incremental = true
 
 [profile.test]
 debug = 1
+# Test and all-target verification artifacts are short-lived. Incremental test
+# graphs multiply storage across check, Clippy, examples, and harness binaries
+# without helping the persistent everyday Automexia application build.
+incremental = false

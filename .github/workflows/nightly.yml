@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
 jobs:
   fuzz:
     runs-on: ubuntu-latest

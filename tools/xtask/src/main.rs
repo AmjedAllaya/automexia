@@ -6,10 +6,17 @@ use std::fs;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 type TaskResult<T = ()> = Result<T, String>;
 
 const RIO_BASE_SHA: &str = "7d595af583f6ef1ea6036a66b367ba1e5a84d4a2";
+const GIB: u64 = 1024 * 1024 * 1024;
+const VERIFICATION_TARGET_NAME: &str = "automexia-verification-v1";
+const RUNTIME_TARGET_NAME: &str = "automexia-runtime";
+const DEFAULT_VERIFY_MIN_FREE_GIB: u64 = 12;
+const DEFAULT_BUILD_MIN_FREE_GIB: u64 = 4;
+const DEFAULT_TARGET_WARN_GIB: u64 = 12;
 
 #[derive(Debug)]
 struct ProductIdentity {
@@ -50,6 +57,7 @@ fn dispatch(args: Vec<String>) -> TaskResult {
             run_app(app_args)
         }
         [command] if command == "doctor" => doctor(),
+        [command] if command == "storage" => storage_report(),
         [command] if command == "check" => check(),
         [command] if command == "ci" => ci(),
         [command, scope] if command == "verify" && scope == "architecture" => {
@@ -77,7 +85,7 @@ fn dispatch(args: Vec<String>) -> TaskResult {
 }
 
 fn usage() -> String {
-    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|check|ci|verify architecture|verify identity|verify provenance|verify all|test conformance|package --check|package --target TARGET|release --version VERSION>".into()
+    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|storage|check|ci|verify architecture|verify identity|verify provenance|verify all|test conformance|package --check|package --target TARGET|release --version VERSION>".into()
 }
 
 fn root() -> PathBuf {
@@ -160,6 +168,9 @@ fn doctor() -> TaskResult {
     println!("platform           macOS: Xcode CLI tools and Apple signing credentials are required for releases");
     #[cfg(target_os = "linux")]
     println!("platform           Linux: X11, Wayland, fontconfig, and audio development packages are required");
+    if let Err(error) = storage_health_summary() {
+        println!("storage            unavailable ({error})");
+    }
     if missing.is_empty() {
         Ok(())
     } else {
@@ -167,11 +178,297 @@ fn doctor() -> TaskResult {
     }
 }
 
+fn storage_report() -> TaskResult {
+    let target = canonical_target_dir()?;
+    let used = directory_size(&target)?;
+    let available = fs2::available_space(&target).map_err(|error| {
+        format!(
+            "could not query free space for {}: {error}",
+            target.display()
+        )
+    })?;
+    let total = fs2::total_space(&target).map_err(|error| {
+        format!(
+            "could not query filesystem size for {}: {error}",
+            target.display()
+        )
+    })?;
+    let warn_bytes =
+        configured_gib("AUTOMEXIA_TARGET_WARN_GIB", DEFAULT_TARGET_WARN_GIB)? * GIB;
+
+    println!("Automexia build storage");
+    println!("target             {}", target.display());
+    println!("target used        {}", format_bytes(used));
+    println!("filesystem free    {}", format_bytes(available));
+    println!("filesystem total   {}", format_bytes(total));
+    println!("warning threshold  {}", format_bytes(warn_bytes));
+
+    let mut children = Vec::new();
+    for entry in fs::read_dir(&target)
+        .map_err(|error| format!("could not read {}: {error}", target.display()))?
+    {
+        let entry = entry.map_err(|error| format!("target entry failed: {error}"))?;
+        let size = if entry
+            .file_type()
+            .map_err(|error| {
+                format!("could not inspect {}: {error}", entry.path().display())
+            })?
+            .is_dir()
+        {
+            directory_size(&entry.path())?
+        } else {
+            entry
+                .metadata()
+                .map_err(|error| {
+                    format!("could not inspect {}: {error}", entry.path().display())
+                })?
+                .len()
+        };
+        children.push((entry.file_name(), size));
+    }
+    children.sort_by_key(|(_, size)| std::cmp::Reverse(*size));
+    for (name, size) in children.into_iter().take(12) {
+        println!("  {:<22} {}", name.to_string_lossy(), format_bytes(size));
+    }
+
+    if used >= warn_bytes {
+        println!(
+            "WARNING: the persistent target exceeds its storage threshold; close Automexia and run `cargo purge`"
+        );
+    } else {
+        println!("PASS: persistent build storage is below its warning threshold");
+    }
+    Ok(())
+}
+
+fn storage_health_summary() -> TaskResult {
+    let target = canonical_target_dir()?;
+    let used = directory_size(&target)?;
+    let available = fs2::available_space(&target).map_err(|error| {
+        format!(
+            "could not query free space for {}: {error}",
+            target.display()
+        )
+    })?;
+    let warn =
+        configured_gib("AUTOMEXIA_TARGET_WARN_GIB", DEFAULT_TARGET_WARN_GIB)? * GIB;
+    println!(
+        "storage            {} used, {} free ({})",
+        format_bytes(used),
+        format_bytes(available),
+        target.display()
+    );
+    if used >= warn {
+        println!(
+            "storage warning    persistent target exceeds {}; close Automexia and run `cargo purge`",
+            format_bytes(warn)
+        );
+    }
+    Ok(())
+}
+
+fn directory_size(path: &Path) -> TaskResult<u64> {
+    if !path.exists() {
+        return Ok(0);
+    }
+    require(
+        !path_is_reparse_point(path)?,
+        &format!(
+            "refusing to traverse symlink/reparse-point directory {}",
+            path.display()
+        ),
+    )?;
+
+    let mut total = 0u64;
+    let mut pending = vec![path.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(&directory)
+            .map_err(|error| format!("could not read {}: {error}", directory.display()))?
+        {
+            let entry =
+                entry.map_err(|error| format!("directory entry failed: {error}"))?;
+            let metadata = fs::symlink_metadata(entry.path()).map_err(|error| {
+                format!("could not inspect {}: {error}", entry.path().display())
+            })?;
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::fs::MetadataExt;
+                const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+                if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                    continue;
+                }
+            }
+            if metadata.is_dir() {
+                pending.push(entry.path());
+            } else if metadata.is_file() {
+                total = total.saturating_add(metadata.len());
+            }
+        }
+    }
+    Ok(total)
+}
+
+fn format_bytes(bytes: u64) -> String {
+    if bytes >= GIB {
+        format!("{:.2} GiB", bytes as f64 / GIB as f64)
+    } else if bytes >= 1024 * 1024 {
+        format!("{:.2} MiB", bytes as f64 / (1024 * 1024) as f64)
+    } else if bytes >= 1024 {
+        format!("{:.2} KiB", bytes as f64 / 1024.0)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+fn configured_gib(variable: &str, default: u64) -> TaskResult<u64> {
+    match env::var(variable) {
+        Ok(value) => value.parse::<u64>().map_err(|_| {
+            format!("{variable} must be a non-negative integer number of GiB")
+        }),
+        Err(env::VarError::NotPresent) => Ok(default),
+        Err(error) => Err(format!("could not read {variable}: {error}")),
+    }
+}
+
+fn ensure_free_space(path: &Path, required_gib: u64, purpose: &str) -> TaskResult {
+    fs::create_dir_all(path)
+        .map_err(|error| format!("could not create {}: {error}", path.display()))?;
+    let available = fs2::available_space(path).map_err(|error| {
+        format!("could not query free space for {}: {error}", path.display())
+    })?;
+    let required = required_gib.saturating_mul(GIB);
+    require(
+        available >= required,
+        &format!(
+            "{purpose} requires at least {}; only {} is free on the target filesystem. Close Automexia and run `cargo purge`, free disk space, or select a larger CARGO_TARGET_DIR",
+            format_bytes(required),
+            format_bytes(available)
+        ),
+    )?;
+    println!(
+        "storage preflight  {} free for {purpose} (minimum {})",
+        format_bytes(available),
+        format_bytes(required)
+    );
+    Ok(())
+}
+
+struct VerificationTarget {
+    parent: PathBuf,
+    path: PathBuf,
+    keep: bool,
+    finished: bool,
+}
+
+impl VerificationTarget {
+    fn prepare() -> TaskResult<Self> {
+        let parent = canonical_target_dir()?;
+        ensure_free_space(
+            &parent,
+            configured_gib("AUTOMEXIA_VERIFY_MIN_FREE_GIB", DEFAULT_VERIFY_MIN_FREE_GIB)?,
+            "the exhaustive isolated verification gate",
+        )?;
+        let path = verified_target_child(&parent, VERIFICATION_TARGET_NAME)?;
+        remove_verification_target(&parent, &path)?;
+        fs::create_dir(&path).map_err(|error| {
+            format!(
+                "could not create verification target {}: {error}",
+                path.display()
+            )
+        })?;
+        let keep = environment_truthy("AUTOMEXIA_KEEP_VERIFY_TARGET");
+        println!("verification target {}", path.display());
+        println!("incremental         disabled for verification artifacts");
+        Ok(Self {
+            parent,
+            path,
+            keep,
+            finished: false,
+        })
+    }
+
+    fn finish(&mut self) -> TaskResult {
+        let used = directory_size(&self.path)?;
+        if self.keep {
+            println!(
+                "verification target retained at {} ({}) because AUTOMEXIA_KEEP_VERIFY_TARGET is set",
+                self.path.display(),
+                format_bytes(used)
+            );
+            self.finished = true;
+            return Ok(());
+        }
+        remove_verification_target(&self.parent, &self.path)?;
+        println!(
+            "PASS: removed isolated verification artifacts ({})",
+            format_bytes(used)
+        );
+        self.finished = true;
+        Ok(())
+    }
+}
+
+impl Drop for VerificationTarget {
+    fn drop(&mut self) {
+        if !self.finished && !self.keep {
+            let _ = remove_verification_target(&self.parent, &self.path);
+        }
+    }
+}
+
+fn remove_verification_target(parent: &Path, path: &Path) -> TaskResult {
+    require(
+        path.parent() == Some(parent)
+            && path.file_name() == Some(OsStr::new(VERIFICATION_TARGET_NAME)),
+        "refusing to remove a verification directory outside its exact target child",
+    )?;
+    if !path.exists() {
+        return Ok(());
+    }
+    require(
+        !path_is_reparse_point(path)?,
+        "refusing to remove a symlink/reparse-point verification directory",
+    )?;
+    fs::remove_dir_all(path)
+        .map_err(|error| format!("could not remove {}: {error}", path.display()))
+}
+
+fn environment_truthy(variable: &str) -> bool {
+    env::var(variable).is_ok_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
+}
+
+fn with_verification_target<F>(task: F) -> TaskResult
+where
+    F: FnOnce(&Path) -> TaskResult,
+{
+    let mut target = VerificationTarget::prepare()?;
+    let task_result = task(&target.path);
+    let cleanup_result = target.finish();
+    match (task_result, cleanup_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(task_error), Ok(())) => Err(task_error),
+        (Ok(()), Err(cleanup_error)) => Err(cleanup_error),
+        (Err(task_error), Err(cleanup_error)) => Err(format!(
+            "{task_error}; verification cleanup also failed: {cleanup_error}"
+        )),
+    }
+}
+
 fn ready() -> TaskResult {
-    println!("Automexia local readiness: tools, policy, tests, build, and smoke");
+    println!(
+        "Automexia local readiness: isolated policy/tests, persistent app build, and smoke"
+    );
     doctor()?;
     run_python("tools/ci/validate_repository.py")?;
-    ci()?;
+    with_verification_target(ci_in)?;
     run(
         "cargo",
         &[
@@ -202,6 +499,11 @@ fn run_app(app_args: &[String]) -> TaskResult {
 
 fn build_debug_app() -> TaskResult {
     let identity = product_identity()?;
+    ensure_free_space(
+        &cargo_target_dir(),
+        configured_gib("AUTOMEXIA_BUILD_MIN_FREE_GIB", DEFAULT_BUILD_MIN_FREE_GIB)?,
+        "the persistent Automexia application build",
+    )?;
     run(
         "cargo",
         &[
@@ -245,6 +547,180 @@ fn resolve_target_dir(
     }
 }
 
+fn canonical_target_dir() -> TaskResult<PathBuf> {
+    let target = cargo_target_dir();
+    fs::create_dir_all(&target)
+        .map_err(|error| format!("could not create {}: {error}", target.display()))?;
+    target
+        .canonicalize()
+        .map(normalize_canonical_path)
+        .map_err(|error| format!("could not resolve {}: {error}", target.display()))
+}
+
+#[cfg(target_os = "windows")]
+fn normalize_canonical_path(path: PathBuf) -> PathBuf {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+    // std::fs::canonicalize returns a verbatim path on Windows. Rust accepts
+    // it, but MSVC link.exe can misparse object paths below a verbatim
+    // CARGO_TARGET_DIR and report LNK1181 for a phantom `.obj` input.
+    const VERBATIM: &[u16] = &[b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16];
+    const VERBATIM_UNC: &[u16] = &[
+        b'\\' as u16,
+        b'\\' as u16,
+        b'?' as u16,
+        b'\\' as u16,
+        b'U' as u16,
+        b'N' as u16,
+        b'C' as u16,
+        b'\\' as u16,
+    ];
+    let wide = path.as_os_str().encode_wide().collect::<Vec<_>>();
+    if wide.starts_with(VERBATIM_UNC) {
+        let mut normalized = vec![b'\\' as u16, b'\\' as u16];
+        normalized.extend_from_slice(&wide[VERBATIM_UNC.len()..]);
+        PathBuf::from(OsString::from_wide(&normalized))
+    } else if wide.starts_with(VERBATIM) {
+        PathBuf::from(OsString::from_wide(&wide[VERBATIM.len()..]))
+    } else {
+        path
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn normalize_canonical_path(path: PathBuf) -> PathBuf {
+    path
+}
+
+fn verified_target_child(parent: &Path, name: &str) -> TaskResult<PathBuf> {
+    require(
+        Path::new(name).components().count() == 1,
+        "target child name must be exactly one path component",
+    )?;
+    let child = parent.join(name);
+    require(
+        child.parent() == Some(parent) && child.file_name() == Some(OsStr::new(name)),
+        "target child escaped its intended parent",
+    )?;
+    Ok(child)
+}
+
+fn path_is_reparse_point(path: &Path) -> TaskResult<bool> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|error| format!("could not inspect {}: {error}", path.display()))?;
+    if metadata.file_type().is_symlink() {
+        return Ok(true);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        Ok(metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    Ok(false)
+}
+
+fn stage_runtime_binary(
+    identity: &ProductIdentity,
+    build_binary: &Path,
+) -> TaskResult<PathBuf> {
+    let target = canonical_target_dir()?;
+    let runtime = verified_target_child(&target, RUNTIME_TARGET_NAME)?;
+    if runtime.exists() {
+        require(
+            !path_is_reparse_point(&runtime)?,
+            "refusing to use a symlink/reparse point as the runtime directory",
+        )?;
+    } else {
+        fs::create_dir(&runtime).map_err(|error| {
+            format!(
+                "could not create runtime directory {}: {error}",
+                runtime.display()
+            )
+        })?;
+    }
+
+    let (removed, retained) = cleanup_runtime_copies(&runtime, &identity.executable)?;
+    if removed > 0 || retained > 0 {
+        println!(
+            "runtime copies      removed {removed} stale, retained {retained} still in use"
+        );
+    }
+
+    let generation = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("system clock is before the Unix epoch: {error}"))?
+        .as_millis();
+    let filename = generation_binary_name(
+        &identity.executable,
+        std::process::id(),
+        generation,
+        cfg!(target_os = "windows"),
+    );
+    let staged = runtime.join(filename);
+    fs::copy(build_binary, &staged).map_err(|error| {
+        format!(
+            "could not stage {} as {}: {error}",
+            build_binary.display(),
+            staged.display()
+        )
+    })?;
+    Ok(staged)
+}
+
+fn generation_binary_name(
+    executable: &str,
+    process_id: u32,
+    generation: u128,
+    windows: bool,
+) -> String {
+    format!(
+        "{executable}-{process_id}-{generation}{}",
+        if windows { ".exe" } else { "" }
+    )
+}
+
+fn cleanup_runtime_copies(
+    runtime: &Path,
+    executable: &str,
+) -> TaskResult<(usize, usize)> {
+    let prefix = format!("{executable}-");
+    let mut removed = 0;
+    let mut retained = 0;
+    for entry in fs::read_dir(runtime)
+        .map_err(|error| format!("could not read {}: {error}", runtime.display()))?
+    {
+        let entry = entry.map_err(|error| format!("runtime entry failed: {error}"))?;
+        let file_type = entry.file_type().map_err(|error| {
+            format!("could not inspect {}: {error}", entry.path().display())
+        })?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !file_type.is_file() || !name.starts_with(&prefix) {
+            continue;
+        }
+        match fs::remove_file(entry.path()) {
+            Ok(()) => removed += 1,
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+                // Windows keeps running executable images locked. They are
+                // intentionally retained and retried on the next launch.
+                retained += 1;
+            }
+            Err(error) => {
+                return Err(format!(
+                    "could not remove stale runtime copy {}: {error}",
+                    entry.path().display()
+                ));
+            }
+        }
+    }
+    Ok((removed, retained))
+}
+
 fn smoke_debug_app() -> TaskResult {
     let identity = product_identity()?;
     let binary = debug_binary(&identity);
@@ -280,11 +756,12 @@ fn smoke_debug_app() -> TaskResult {
 
 fn launch_debug_app(app_args: &[String]) -> TaskResult {
     let identity = product_identity()?;
-    let binary = debug_binary(&identity);
+    let build_binary = debug_binary(&identity);
     require(
-        binary.is_file(),
-        &format!("debug executable is missing: {}", binary.display()),
+        build_binary.is_file(),
+        &format!("debug executable is missing: {}", build_binary.display()),
     )?;
+    let binary = stage_runtime_binary(&identity, &build_binary)?;
     println!(
         "+ {}{}",
         binary.display(),
@@ -300,21 +777,29 @@ fn launch_debug_app(app_args: &[String]) -> TaskResult {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|error| format!("could not launch {}: {error}", binary.display()))?;
+        .map_err(|error| {
+            let _ = fs::remove_file(&binary);
+            format!("could not launch {}: {error}", binary.display())
+        })?;
     println!(
-        "PASS: launched {} as process {}; Cargo is free for the next command",
+        "PASS: launched {} as process {} from {}; Cargo's build output remains unlocked",
         identity.executable,
-        child.id()
+        child.id(),
+        display_relative_or_absolute(&binary)
     );
     Ok(())
 }
 
 fn check() -> TaskResult {
+    with_verification_target(check_in)
+}
+
+fn check_in(target: &Path) -> TaskResult {
     verify_all()?;
     run("cargo", &["fmt", "--all", "--", "--check"])?;
     run_quiet("cargo", &["metadata", "--locked", "--format-version", "1"])?;
-    run(
-        "cargo",
+    run_cargo_in(
+        target,
         &["check", "--workspace", "--all-targets", "--locked"],
     )
 }
@@ -327,9 +812,13 @@ fn verify_all() -> TaskResult {
 }
 
 fn ci() -> TaskResult {
-    check()?;
-    run(
-        "cargo",
+    with_verification_target(ci_in)
+}
+
+fn ci_in(target: &Path) -> TaskResult {
+    check_in(target)?;
+    run_cargo_in(
+        target,
         &[
             "clippy",
             "--workspace",
@@ -340,8 +829,8 @@ fn ci() -> TaskResult {
             "warnings",
         ],
     )?;
-    run_summarized(
-        "cargo",
+    run_cargo_summarized_in(
+        target,
         &["test", "--workspace", "--locked"],
         "workspace unit, integration, and documentation tests passed",
     )
@@ -398,13 +887,45 @@ fn run_quiet(program: &str, args: &[&str]) -> TaskResult {
     }
 }
 
-fn run_summarized(program: &str, args: &[&str], success_message: &str) -> TaskResult {
-    println!("+ {program} {}", args.join(" "));
-    let output = Command::new(program)
+fn cargo_command(target: &Path, args: &[&str]) -> Command {
+    let mut command = Command::new("cargo");
+    command
         .args(args)
         .current_dir(root())
+        .env("CARGO_TARGET_DIR", target)
+        .env("CARGO_INCREMENTAL", "0");
+    command
+}
+
+fn run_cargo_in(target: &Path, args: &[&str]) -> TaskResult {
+    println!(
+        "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR={} cargo {}",
+        target.display(),
+        args.join(" ")
+    );
+    let status = cargo_command(target, args)
+        .status()
+        .map_err(|error| format!("could not start cargo: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("cargo exited with {status}"))
+    }
+}
+
+fn run_cargo_summarized_in(
+    target: &Path,
+    args: &[&str],
+    success_message: &str,
+) -> TaskResult {
+    println!(
+        "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR={} cargo {}",
+        target.display(),
+        args.join(" ")
+    );
+    let output = cargo_command(target, args)
         .output()
-        .map_err(|error| format!("could not start {program}: {error}"))?;
+        .map_err(|error| format!("could not start cargo: {error}"))?;
     if output.status.success() {
         println!("PASS: {success_message}");
         return Ok(());
@@ -414,7 +935,7 @@ fn run_summarized(program: &str, args: &[&str], success_message: &str) -> TaskRe
     // the complete harness and compiler diagnostics needed for investigation.
     eprint!("{}", String::from_utf8_lossy(&output.stderr));
     print!("{}", String::from_utf8_lossy(&output.stdout));
-    Err(format!("{program} exited with {}", output.status))
+    Err(format!("cargo exited with {}", output.status))
 }
 
 fn metadata() -> TaskResult<Value> {
@@ -1384,6 +1905,10 @@ fn require(condition: bool, message: &str) -> TaskResult {
 }
 
 fn display_relative(path: &Path) -> String {
+    display_relative_or_absolute(path)
+}
+
+fn display_relative_or_absolute(path: &Path) -> String {
     path.strip_prefix(root())
         .unwrap_or(path)
         .display()
@@ -1399,6 +1924,7 @@ mod tests {
         assert!(usage().contains("dev [-- APP_ARGS...]"));
         assert!(usage().contains("ready"));
         assert!(usage().contains("run [-- APP_ARGS...]"));
+        assert!(usage().contains("storage"));
         assert!(usage().contains("verify architecture"));
         assert!(usage().contains("test conformance"));
         assert!(usage().contains("release --version"));
@@ -1448,6 +1974,50 @@ mod tests {
         assert_eq!(
             resolve_target_dir(invocation_directory, Some(absolute.as_os_str())),
             absolute
+        );
+    }
+
+    #[test]
+    fn verification_target_is_an_exact_direct_child() {
+        let parent = root().join("target");
+        assert_eq!(
+            verified_target_child(&parent, VERIFICATION_TARGET_NAME).unwrap(),
+            parent.join(VERIFICATION_TARGET_NAME)
+        );
+        assert!(verified_target_child(&parent, "../outside").is_err());
+        assert!(verified_target_child(&parent, "nested/child").is_err());
+    }
+
+    #[test]
+    fn runtime_binary_names_are_unique_and_platform_correct() {
+        assert_eq!(
+            generation_binary_name("automexia", 42, 1234, true),
+            "automexia-42-1234.exe"
+        );
+        assert_eq!(
+            generation_binary_name("automexia", 42, 1234, false),
+            "automexia-42-1234"
+        );
+    }
+
+    #[test]
+    fn storage_units_are_human_readable() {
+        assert_eq!(format_bytes(0), "0 B");
+        assert_eq!(format_bytes(1024), "1.00 KiB");
+        assert_eq!(format_bytes(1024 * 1024), "1.00 MiB");
+        assert_eq!(format_bytes(GIB), "1.00 GiB");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn canonical_windows_paths_are_linker_compatible() {
+        assert_eq!(
+            normalize_canonical_path(PathBuf::from(r"\\?\D:\workspace\target")),
+            PathBuf::from(r"D:\workspace\target")
+        );
+        assert_eq!(
+            normalize_canonical_path(PathBuf::from(r"\\?\UNC\server\share\target")),
+            PathBuf::from(r"\\server\share\target")
         );
     }
 }
