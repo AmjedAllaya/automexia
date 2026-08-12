@@ -16,10 +16,59 @@ the full gate has already passed. These commands are Cargo aliases backed by
 The launcher returns after a successful spawn, leaving Cargo available for the
 next command while Automexia continues running.
 
-On Windows, a running debug Automexia process owns its executable. To validate
-another checkout or cache without closing that session, provide an alternate
-Cargo target directory; `xtask` resolves both absolute and invocation-relative
-`CARGO_TARGET_DIR` values for build, smoke, and launch consistently.
+## Build-artifact lifecycle and storage
+
+The workflow has three deliberately separate artifact classes:
+
+- `target/debug` is the persistent incremental application build used by
+  `cargo automexia`; it makes ordinary edits and launches fast.
+- `target/automexia-verification-v1` is the non-incremental target used by
+  `cargo xtask check`, `cargo ci`, `cargo ready`, and the verification phase
+  of `cargo dev`. It is removed after success or ordinary failure, so
+  all-target checks, Clippy, and tests cannot accumulate separate incremental
+  graphs. Cargo's native `cargo check` command remains available for focused
+  incremental diagnosis.
+- `target/automexia-runtime` contains generation-specific launch copies. On
+  Windows this lets the running process own its copy while Cargo's canonical
+  `target/debug/automexia.exe` remains replaceable. Stale, unlocked copies are
+  removed automatically before each launch.
+
+Inspect the current target without changing it:
+
+```text
+cargo storage
+```
+
+The report shows the resolved target, filesystem capacity, total target size,
+and its twelve largest direct children. The default warning is 12 GiB. To
+recover all build space, first close every Automexia window and then run:
+
+```text
+cargo purge
+```
+
+`cargo purge` is the cross-platform alias for Cargo's built-in `clean` and
+honors `CARGO_TARGET_DIR`. It removes rebuildable artifacts, never configuration
+or source files.
+
+An exhaustive verification gate needs at least 12 GiB free before it starts; a
+persistent application build needs 4 GiB. This prevents a predictable build
+from filling the volume halfway through. The following integer-GiB environment
+variables exist for unusual build hosts:
+
+- `AUTOMEXIA_VERIFY_MIN_FREE_GIB` (default `12`);
+- `AUTOMEXIA_BUILD_MIN_FREE_GIB` (default `4`);
+- `AUTOMEXIA_TARGET_WARN_GIB` (default `12`);
+- `AUTOMEXIA_KEEP_VERIFY_TARGET=1` retains verification output for deliberate
+  diagnosis instead of deleting it.
+
+Keep the defaults on contributor machines. CI, nightly, and release workflows
+set `CARGO_INCREMENTAL=0` and cache only downloaded Cargo registry/Git content,
+not `target` build products.
+
+To validate another checkout or filesystem, provide an absolute or
+invocation-relative `CARGO_TARGET_DIR`; build, smoke, launch, storage preflight,
+and cleanup all resolve the same directory consistently.
 
 The local gate validates all checks that can run on the current host. GitHub CI
 keeps separate native and cross-platform jobs for operating-system matrices,
@@ -88,18 +137,37 @@ cargo test -p automexia-terminal renderer::devops_status::tests
 powershell -NoProfile -File tools/ci/test_shell_integration.ps1
 ```
 
-The DevOps status suite covers bounded WSL probe parsing, session-local
+The DevOps/runtime suites cover bounded WSL probe parsing, session-local
 Docker/Kubernetes/cloud/Git/Terraform/user models, truthful badge visibility,
-default Docker labeling, and the 100 ms pending/three-second steady refresh
-cadence. Release smoke testing must additionally confirm a real WSL Docker
-context appears and that switching a local context is reflected without a new
-prompt or terminal restart.
+default Docker labeling, snapshot-publication-before-redraw ordering,
+originating-route wake-up, strictly equivalent five-second snapshot reuse,
+rejection of cross-path/unintegrated/stale reuse, and the 100 ms fallback/
+three-second steady refresh cadence. Release smoke testing must additionally
+confirm a real WSL Docker context appears at initial launch and after switching
+shells without typing, opening a new prompt, or restarting the terminal.
+
+The Windows shell integration test also waits for the automatic deferred style
+event and proves that first-prompt deferral does not remove filesystem icons,
+change native `ls` object semantics, or require user input.
 
 These cover Windows-drive versus WSL title classification, custom chrome hit
 targets and resize edges, responsive context layout, bundled Nerd icon
-codepoints, explicit shell identity, resize-safe full-path three-row prompts, per-command
-context snapshots, OSC command status/timing, and context/result survival
-through shrink/grow reflow.
+codepoints, explicit shell identity, resize-owned full-path three-row prompts,
+per-command context snapshots, OSC command status/timing, and context/result
+survival through shrink/grow reflow.
+
+Responsive regressions exercise the supported 300×200 minimum, compact and
+comfortable breakpoints, transient invalid dimensions, 4K/8K HiDPI logical
+equivalence, very large grid counts, tab/control non-overlap, hidden-control
+hit targets, adaptive palette row counts, overlay containment, Unicode-safe
+label elision and split-layout underflow. Run the focused set with:
+
+```text
+cargo test -p automexia-terminal renderer::responsive::tests
+cargo test -p automexia-terminal renderer::island::tests
+cargo test -p automexia-terminal renderer::command_palette::tests
+cargo test -p automexia-terminal layout::compute_tests
+```
 
 ## Nightly and release depth
 

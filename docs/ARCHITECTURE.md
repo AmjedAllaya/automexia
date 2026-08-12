@@ -41,8 +41,13 @@ Automexia IDs or path policy.
 - OSC semantic rows are the prompt-lifecycle authority. The
   `automexia_prompt_active` user variable is retained only for first-paint and
   compatibility fallback behavior.
-- The top 148 logical pixels are renderer-owned chrome and keep a live overview
-  of the active session. In addition, every shell prompt reserves a semantic,
+- The renderer owns a responsive top-chrome reservation: 148 logical pixels at
+  comfortable sizes, 115 in compact mode, 100 in minimal mode with context,
+  and 54 at the 300×200 minimum where the secondary context surface folds
+  away. One viewport policy drives paint geometry, pointer hit-testing and grid
+  margins, and live resize/DPI changes recompute every grid before layout. The
+  chrome keeps a live overview of the active session whenever height permits.
+  In addition, every shell prompt reserves a semantic,
   blank `Prompt` row, a complete-path `PromptContinuation` row, and a short
   editable `PromptContinuation` row. The renderer paints operational context
   on the blank row without adding characters to PTY output. The shell line
@@ -71,11 +76,39 @@ Automexia IDs or path policy.
   window registry speculatively.
 - PTY parsing, DevOps discovery, and extension work stay off the render thread;
   the renderer consumes bounded cached snapshots without blocking on them.
+- A completed DevOps discovery publishes its session-scoped snapshot before it
+  directly wakes the originating window and route. Initial PowerShell or WSL
+  context therefore appears without keyboard/mouse input; the short route timer
+  remains only a queue-pressure and worker-failure fallback.
+- New tabs and splits may seed their first frame from a snapshot no more than
+  five seconds old only when path, title, distro, version, shell, and integration
+  identity all match. Live discovery is still queued immediately, so reuse
+  removes duplicate WSL/CLI startup latency without weakening pane isolation.
+- The WSL probe reads Docker and Kubernetes configuration directly and invokes
+  only CLIs whose live state cannot be obtained safely from bounded files.
+  PowerShell keeps prompt/command-lifecycle hooks synchronous but defers icon
+  format parsing and editor colors until after the first prompt is visible.
 
 `cargo ready` includes the architecture gate. For focused diagnosis,
 `cargo xtask verify architecture` checks the Cargo graph and critical source
-invariants. Tests cover bounded queue pressure, busy/disconnected workers,
-session isolation, prompt lifecycle, resize/reflow, and semantic precedence.
+invariants. Tests cover publication-before-wake ordering, exact-route wake-up,
+bounded queue pressure, busy/disconnected workers, session isolation, prompt
+lifecycle, resize/reflow, and semantic precedence.
+
+## Build artifact lifecycle
+
+The contributor workflow treats build storage as a bounded resource. Fast
+application builds remain incremental in the persistent Cargo target.
+Exhaustive all-target checks, warning-denied Clippy, and workspace tests run in
+one direct-child verification target with `CARGO_INCREMENTAL=0`; normal process
+exit removes that directory regardless of gate outcome. Windows launches copy
+the verified debug executable to a unique runtime generation, preventing a
+running image from locking the canonical Cargo output. Path containment and
+reparse-point checks guard every workflow-owned recursive cleanup.
+
+CI caches downloaded dependencies but not compiled target trees. The rationale,
+safety invariants, failure behavior, and tradeoffs are recorded in
+[ADR 0005](adr/0005-storage-bounded-build-workflow.md).
 
 ## Capabilities
 

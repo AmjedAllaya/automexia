@@ -24,7 +24,10 @@ This checks required tools and repository formats; verifies identity,
 architecture, provenance, packages, and brand assets; runs rustfmt, locked
 metadata, workspace checks, warning-denied Clippy, all tests, and `cargo deny`;
 builds Automexia; verifies `automexia --version`; and launches the terminal.
-The first run can take several minutes.
+The first run can take several minutes. Exhaustive checks use a dedicated,
+non-incremental verification target that is removed whether the gate passes or
+returns an ordinary failure; only the reusable application build remains in the
+normal Cargo target.
 
 The complete gate requires Python 3 with PyYAML and `cargo-deny`. If either is
 missing, `cargo dev` reports it before starting the expensive build. Install
@@ -43,7 +46,9 @@ cargo automexia
 
 It rebuilds only changed code, performs a version smoke, and launches Automexia.
 Both launch commands return after starting the Automexia process, so the
-terminal remains usable and Cargo's build lock is released immediately.
+terminal remains usable and Cargo's build output stays unlocked. Each launch
+uses a generation-specific copy under `target/automexia-runtime`; stale copies
+are reclaimed automatically on later launches.
 Pass terminal arguments after `--`, for example:
 
 ```text
@@ -61,6 +66,11 @@ The executable remains available at `target/debug/automexia`
 (`automexia.exe` on Windows). Advanced scoped `cargo xtask` commands are
 documented in [CONTRIBUTING.md](CONTRIBUTING.md) and
 [docs/TESTING.md](docs/TESTING.md).
+
+The workflow refuses to start an exhaustive gate with less than 12 GiB free or
+an application build with less than 4 GiB free on the target filesystem. Check
+where build storage is being used with `cargo storage`. To remove all Cargo
+build artifacts, close running Automexia windows and run `cargo purge`.
 Brand-source and platform-export rules are in
 [docs/BRANDING.md](docs/BRANDING.md).
 
@@ -76,9 +86,10 @@ after building, then restart Automexia:
 .\shell-integration\install-windows.ps1
 ```
 
-In Bash and Zsh, the integration automatically uses an installed `eza` for the
-mockup's icon-aware `ls`, `ll`, and `tree` output. It falls back cleanly when
-`eza` is unavailable; see
+Native PowerShell gains icon-aware `ls` output through a bundled, pipeline-safe
+format view and does not require `eza`. In Bash and Zsh, the integration uses an
+installed `eza` for icon-aware `ls`, `ll`, and `tree` output and falls back
+cleanly when `eza` is unavailable; see
 [docs/LIQUID-HACKER-UX.md](docs/LIQUID-HACKER-UX.md#file-and-folder-icons) for
 the shortcuts and opt-out.
 

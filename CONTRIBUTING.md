@@ -41,12 +41,28 @@ fragment only when the corresponding repository label is applied.
 cargo dev       # complete local gate, then launch Automexia
 cargo automexia # fast incremental build and launch
 cargo ready     # complete local gate without launching
+cargo storage   # report target size, free space, and largest target children
+cargo purge     # remove Cargo artifacts after closing Automexia windows
 ```
 
 `cargo ready` is the required contributor command. It includes tool and
 structured-file validation, all Automexia verification scopes, package metadata,
 rustfmt, locked workspace checks, warning-denied Clippy, workspace tests,
 dependency policy, a debug build, and executable identity smoke.
+Compilation-heavy checks run with incremental compilation disabled inside an
+isolated target that is deleted on both success and ordinary failure. This
+keeps a complete contributor gate from permanently multiplying workspace
+artifacts. The final application build remains incremental for fast daily use.
+The gate requires 12 GiB free on the selected target filesystem; the app-only
+workflow requires 4 GiB.
+
+Set `CARGO_TARGET_DIR` to place both persistent and isolated artifacts on a
+different filesystem. Diagnostic reproductions may set
+`AUTOMEXIA_KEEP_VERIFY_TARGET=1` to retain the isolated target deliberately;
+remove it afterward with `cargo purge`. Threshold overrides
+`AUTOMEXIA_VERIFY_MIN_FREE_GIB`, `AUTOMEXIA_BUILD_MIN_FREE_GIB`, and
+`AUTOMEXIA_TARGET_WARN_GIB` accept integer GiB values, but lowering the safety
+minimums is not recommended.
 
 Individual `cargo xtask` commands remain available for focused diagnosis, but
 contributors do not need to assemble the normal gate manually. Platform-specific
