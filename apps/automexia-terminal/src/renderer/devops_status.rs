@@ -1,14 +1,12 @@
-//! Persistent, renderer-owned operational chrome.
+//! Renderer-owned operational context for semantic prompt rows.
 //!
-//! Context is intentionally outside the terminal grid. PTY output, prompt
-//! editing, scrollback and resize/reflow therefore cannot erase it. Discovery
-//! is asynchronous and local-only; this renderer never contacts a daemon,
+//! Context is attached to every prompt generation so PTY output, prompt
+//! editing, scrollback and resize/reflow cannot erase it. Discovery is
+//! asynchronous and local-only; this renderer never contacts a daemon,
 //! cluster or cloud API.
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
-#[cfg(not(target_os = "windows"))]
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use rio_backend::config::colors::Colors;
 use rio_backend::sugarloaf::text::DrawOpts;
@@ -20,19 +18,12 @@ use crate::automexia::runtime;
 use crate::automexia::ui::{
     CommandResultAnchor, PromptAnchor, MAX_PROMPT_CONTEXT_HISTORY,
 };
-use crate::renderer::island::chrome_metrics;
-use crate::renderer::responsive::Density;
 
 pub(crate) const LIVE_REFRESH_MILLIS: u64 = 3_000;
 const REFRESH_INTERVAL: Duration = Duration::from_millis(LIVE_REFRESH_MILLIS);
 const REFRESH_IN_FLIGHT_TIMEOUT: Duration = Duration::from_secs(10);
 const ORDER: u8 = 19;
-const CONTEXT_MARGIN_X: f32 = 18.0;
-const CONTEXT_GAP: f32 = 24.0;
-const CONTEXT_PAD_X: f32 = 20.0;
 const CONTEXT_FONT_SIZE: f32 = 18.0;
-const CONTEXT_ICON_SIZE: f32 = 24.0;
-const CONTEXT_ICON_SLOT: f32 = 28.0;
 const PROMPT_CONTEXT_FONT_SIZE: f32 = 18.0;
 const PROMPT_CONTEXT_ICON_SIZE: f32 = 23.0;
 const PROMPT_CONTEXT_ICON_SLOT: f32 = 27.0;
@@ -40,20 +31,10 @@ const PROMPT_CONTEXT_PAD_X: f32 = 4.0;
 const PROMPT_CONTEXT_ICON_GAP: f32 = 8.0;
 const PROMPT_CONTEXT_SEPARATOR_GAP: f32 = 9.0;
 const PROMPT_RESULT_RESERVE: f32 = 112.0;
-const CONTEXT_RADIUS: f32 = 9.0;
-const RIGHT_STATUS_WIDTH: f32 = 310.0;
-const RIGHT_STATUS_BREAKPOINT: f32 = 760.0;
-const STATUS_RAIL_INSET: f32 = 16.0;
-const STATUS_RAIL_DIVIDER_GAP: f32 = 14.0;
-const STATUS_VALUE_SIZE: f32 = 18.0;
-const STATUS_ICON_SIZE: f32 = 23.0;
-const STATUS_ICON_SLOT: f32 = 25.0;
 const MIN_SEGMENT_CONTRAST: f32 = 4.55;
 
 const _: () = {
-    assert!(CONTEXT_ICON_SLOT >= CONTEXT_ICON_SIZE);
     assert!(PROMPT_CONTEXT_ICON_SLOT >= PROMPT_CONTEXT_ICON_SIZE);
-    assert!(STATUS_ICON_SLOT >= STATUS_ICON_SIZE);
 };
 
 const MAX_WSL_CHARS: usize = 14;
@@ -81,7 +62,6 @@ enum SegmentRole {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum IconKind {
-    Terminal,
     Wsl,
     Windows,
     Docker,
@@ -91,7 +71,6 @@ enum IconKind {
     Git,
     Environment,
     User,
-    Clock,
     Production,
 }
 
@@ -118,34 +97,6 @@ struct ActivePrompt {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct ContextBarLayout {
-    left_x: f32,
-    left_width: f32,
-    right: Option<(f32, f32)>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct ContextBarGeometry {
-    top: f32,
-    height: f32,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct StatusItemGeometry {
-    x: f32,
-    top: f32,
-    width: f32,
-    height: f32,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct ShellClockLayout {
-    shell: StatusItemGeometry,
-    clock: StatusItemGeometry,
-    divider_x: f32,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
 struct IconOptics {
     /// Compensates for the amount of unused space inside each icon's font
     /// bounding box. The result is an equal perceived height, not an equal
@@ -165,7 +116,7 @@ enum SnapshotCandidate {
 #[derive(Default)]
 pub struct DevOpsStatus {
     snapshot: DevOpsSnapshot,
-    /// Materialized segment labels shared by the header and every prompt row.
+    /// Materialized segment labels shared by live and historical prompt rows.
     /// Rebuilt only when session facts or the async discovery revision change.
     live_segments: Vec<Segment>,
     live_segments_session: Option<SessionFacts>,
@@ -198,14 +149,15 @@ impl DevOpsStatus {
         ))
     }
 
-    /// Draw the persistent second chrome row from cached local context facts.
-    /// Returns true while the discovery worker owes us another snapshot.
-    pub fn render_context_bar<F>(
+    /// Keep asynchronous context discovery warm for semantic prompt rows.
+    ///
+    /// The former persistent context/status header duplicated the same facts
+    /// above every command. The chrome row is now action-focused and rendered
+    /// by `Island`, while this method keeps prompt metadata current without
+    /// submitting any global-header drawing primitives.
+    pub fn refresh_session_context<F>(
         &mut self,
-        sugarloaf: &mut Sugarloaf,
-        colors: Colors,
         session: &SessionFacts,
-        dimensions: (f32, f32, f32),
         completion: F,
     ) -> bool
     where
@@ -214,43 +166,6 @@ impl DevOpsStatus {
         self.request_refresh_if_needed(session, false, completion);
         self.sync_cached_snapshot(session);
         self.ensure_live_segments(session);
-
-        let (window_width, window_height, scale_factor) = dimensions;
-        let logical_width = window_width / scale_factor.max(f32::EPSILON);
-        let metrics = chrome_metrics(window_width, window_height, scale_factor);
-        if !metrics.show_context {
-            return self.refresh_pending;
-        }
-        let layout = context_bar_layout(logical_width, metrics.density);
-        let bar = ContextBarGeometry {
-            top: metrics.context_top,
-            height: metrics.context_height,
-        };
-        let outline = [0.10, 0.17, 0.24, 0.96];
-        let fill = [0.018, 0.040, 0.066, 0.91];
-
-        draw_glass_surface(
-            sugarloaf,
-            layout.left_x,
-            layout.left_width,
-            bar,
-            fill,
-            outline,
-        );
-        self.draw_context_segments(
-            sugarloaf,
-            colors,
-            layout.left_x,
-            layout.left_width,
-            &self.live_segments,
-            bar,
-        );
-
-        if let Some((right_x, right_width)) = layout.right {
-            draw_glass_surface(sugarloaf, right_x, right_width, bar, fill, outline);
-            self.draw_shell_clock(sugarloaf, colors, session, right_x, right_width, bar);
-        }
-
         self.refresh_pending
     }
 
@@ -370,8 +285,7 @@ impl DevOpsStatus {
 
     /// Keep an inactive but visible pane's operational snapshot current.
     ///
-    /// Inactive panes do not own the window-level context bar, so they need a
-    /// small preparation entry point that performs the same asynchronous cache
+    /// This small preparation entry point performs asynchronous cache
     /// synchronization without painting global chrome.
     pub fn refresh_visible_session<F>(
         &mut self,
@@ -607,115 +521,6 @@ impl DevOpsStatus {
         }
     }
 
-    fn draw_context_segments(
-        &self,
-        sugarloaf: &mut Sugarloaf,
-        colors: Colors,
-        x: f32,
-        width: f32,
-        segments: &[Segment],
-        bar: ContextBarGeometry,
-    ) {
-        let mut cursor_x = x + CONTEXT_PAD_X;
-        let right_edge = x + width - CONTEXT_PAD_X;
-        let text_y = bar.top + (bar.height - CONTEXT_FONT_SIZE) / 2.0 - 1.0;
-        let separator = muted(colors.foreground, 0.27);
-
-        for (index, segment) in segments.iter().enumerate() {
-            let color = segment_color(colors, segment.role);
-            let text_opts = DrawOpts {
-                font_size: CONTEXT_FONT_SIZE,
-                color: color_to_u8(color),
-                ..DrawOpts::default()
-            };
-            let text_width = sugarloaf.text_mut().measure(&segment.value, &text_opts);
-            let separator_width = if index == 0 { 0.0 } else { 25.0 };
-            if cursor_x + separator_width + CONTEXT_ICON_SLOT + 10.0 + text_width
-                > right_edge
-            {
-                break;
-            }
-
-            if index != 0 {
-                cursor_x += 12.0;
-                sugarloaf.line(
-                    cursor_x,
-                    bar.top + 10.0,
-                    cursor_x,
-                    bar.top + bar.height - 10.0,
-                    1.0,
-                    0.0,
-                    separator,
-                    ORDER + 1,
-                );
-                cursor_x += 13.0;
-            }
-            draw_icon_in_slot(
-                sugarloaf,
-                segment.icon,
-                cursor_x,
-                text_y - 1.0,
-                CONTEXT_ICON_SLOT,
-                CONTEXT_ICON_SIZE,
-                color,
-            );
-            cursor_x += CONTEXT_ICON_SLOT + 10.0;
-            sugarloaf
-                .text_mut()
-                .draw(cursor_x, text_y, &segment.value, &text_opts);
-            cursor_x += text_width;
-        }
-    }
-
-    fn draw_shell_clock(
-        &self,
-        sugarloaf: &mut Sugarloaf,
-        colors: Colors,
-        session: &SessionFacts,
-        x: f32,
-        width: f32,
-        bar: ContextBarGeometry,
-    ) {
-        let layout = shell_clock_layout(x, width, bar);
-        let shell_accent = shell_status_accent(colors, session);
-        let clock_accent = ensure_contrast(
-            [0.31, 0.84, 1.0, 1.0],
-            colors.background.0,
-            MIN_SEGMENT_CONTRAST,
-        );
-        let foreground =
-            ensure_contrast(colors.foreground, colors.background.0, MIN_SEGMENT_CONTRAST);
-
-        // One restrained divider inside the existing glass surface replaces
-        // the previous stack of nested cards and icon wells.
-        sugarloaf.line(
-            layout.divider_x,
-            bar.top + 10.0,
-            layout.divider_x,
-            bar.top + bar.height - 10.0,
-            1.0,
-            0.0,
-            muted(foreground, 0.24),
-            ORDER + 2,
-        );
-        draw_status_item(
-            sugarloaf,
-            layout.shell,
-            IconKind::Terminal,
-            shell_label(session),
-            shell_accent,
-            shell_accent,
-        );
-        draw_status_item(
-            sugarloaf,
-            layout.clock,
-            IconKind::Clock,
-            &local_clock_hhmm(),
-            clock_accent,
-            foreground,
-        );
-    }
-
     fn request_refresh_if_needed<F>(
         &mut self,
         session: &SessionFacts,
@@ -828,7 +633,7 @@ impl DevOpsStatus {
         }
         let immediate_os = immediate_os_value(session);
         let detected_wsl = immediate_os.or_else(|| {
-            (shell_label(session) != "PowerShell")
+            (!is_native_windows_shell(session))
                 .then(|| self.snapshot.wsl.as_ref().map(|wsl| wsl_value(&wsl.distro)))
                 .flatten()
         });
@@ -838,7 +643,7 @@ impl DevOpsStatus {
                 role: SegmentRole::UbuntuWsl,
                 icon: IconKind::Wsl,
             });
-        } else if shell_label(session) == "PowerShell" {
+        } else if is_native_windows_shell(session) {
             segments.push(Segment {
                 value: "Windows".to_string(),
                 role: SegmentRole::Windows,
@@ -939,134 +744,9 @@ fn same_prompt_identity(
     }
 }
 
-fn shell_clock_layout(x: f32, width: f32, bar: ContextBarGeometry) -> ShellClockLayout {
-    let inner_width = (width - STATUS_RAIL_INSET * 2.0).max(1.0);
-    let divider_space = STATUS_RAIL_DIVIDER_GAP * 2.0 + 1.0;
-    let available = (inner_width - divider_space).max(1.0);
-    let clock_width = (available * 0.35).clamp(86.0, 96.0).min(available);
-    let shell_width = (available - clock_width).max(1.0);
-    let top = bar.top;
-    let height = bar.height;
-    let shell_x = x + STATUS_RAIL_INSET;
-    let divider_x = shell_x + shell_width + STATUS_RAIL_DIVIDER_GAP;
-    let clock_x = divider_x + STATUS_RAIL_DIVIDER_GAP + 1.0;
-    ShellClockLayout {
-        shell: StatusItemGeometry {
-            x: shell_x,
-            top,
-            width: shell_width,
-            height,
-        },
-        clock: StatusItemGeometry {
-            x: clock_x,
-            top,
-            width: clock_width,
-            height,
-        },
-        divider_x,
-    }
-}
-
-fn context_bar_layout(window_width: f32, density: Density) -> ContextBarLayout {
-    let preferred_margin = match density {
-        Density::Minimal => 8.0,
-        Density::Compact => 12.0,
-        Density::Comfortable => CONTEXT_MARGIN_X,
-    };
-    let margin = preferred_margin.min((window_width * 0.25).max(0.0));
-    let gap = match density {
-        Density::Minimal => 12.0,
-        Density::Compact => 18.0,
-        Density::Comfortable => CONTEXT_GAP,
-    };
-    let usable = (window_width - margin * 2.0).max(1.0);
-    if density == Density::Comfortable && window_width >= RIGHT_STATUS_BREAKPOINT {
-        let right_width = RIGHT_STATUS_WIDTH.min(usable * 0.36);
-        let right_x = window_width - margin - right_width;
-        ContextBarLayout {
-            left_x: margin,
-            left_width: (right_x - gap - margin).max(1.0),
-            right: Some((right_x, right_width)),
-        }
-    } else {
-        ContextBarLayout {
-            left_x: margin,
-            left_width: usable,
-            right: None,
-        }
-    }
-}
-
-fn draw_glass_surface(
-    sugarloaf: &mut Sugarloaf,
-    x: f32,
-    width: f32,
-    bar: ContextBarGeometry,
-    fill: [f32; 4],
-    outline: [f32; 4],
-) {
-    sugarloaf.rounded_rect(
-        None,
-        x,
-        bar.top,
-        width,
-        bar.height,
-        outline,
-        0.06,
-        CONTEXT_RADIUS,
-        ORDER,
-    );
-    sugarloaf.rounded_rect(
-        None,
-        x + 1.0,
-        bar.top + 1.0,
-        (width - 2.0).max(0.0),
-        (bar.height - 2.0).max(0.0),
-        fill,
-        0.06,
-        CONTEXT_RADIUS - 1.0,
-        ORDER + 1,
-    );
-}
-
-fn draw_status_item(
-    sugarloaf: &mut Sugarloaf,
-    item: StatusItemGeometry,
-    icon: IconKind,
-    value: &str,
-    icon_color: [f32; 4],
-    value_color: [f32; 4],
-) {
-    let content_y = item.top + (item.height - STATUS_ICON_SIZE) * 0.5 - 1.0;
-    draw_icon_in_slot(
-        sugarloaf,
-        icon,
-        item.x,
-        content_y,
-        STATUS_ICON_SLOT,
-        STATUS_ICON_SIZE,
-        icon_color,
-    );
-
-    let text_x = item.x + STATUS_ICON_SLOT + 9.0;
-    let value_opts = DrawOpts {
-        font_size: STATUS_VALUE_SIZE,
-        color: color_to_u8(value_color),
-        bold: true,
-        ..DrawOpts::default()
-    };
-    sugarloaf.text_mut().draw(
-        text_x,
-        item.top + (item.height - STATUS_VALUE_SIZE) * 0.5 - 1.0,
-        value,
-        &value_opts,
-    );
-}
-
 /// Symbols from the Nerd Font vocabulary used by the reference project.
 fn icon_glyph(icon: IconKind) -> &'static str {
     match icon {
-        IconKind::Terminal => "\u{f489}",
         IconKind::Wsl => "\u{f31b}",
         IconKind::Windows => "\u{e70f}",
         IconKind::Docker => "\u{f308}",
@@ -1076,10 +756,6 @@ fn icon_glyph(icon: IconKind) -> &'static str {
         IconKind::Git => "\u{e725}",
         IconKind::Environment => "\u{f1b2}",
         IconKind::User => "\u{f007}",
-        // Octicons' outlined clock stays legible at chrome sizes; the older
-        // Font Awesome codepoint collapsed to a filled dot in our bundled
-        // Symbols Nerd Font at common Windows scale factors.
-        IconKind::Clock => "\u{f43a}",
         IconKind::Production => "\u{f071}",
     }
 }
@@ -1091,10 +767,6 @@ fn icon_glyph(icon: IconKind) -> &'static str {
 #[inline]
 fn icon_optics(icon: IconKind) -> IconOptics {
     match icon {
-        IconKind::Terminal => IconOptics {
-            scale: 1.04,
-            y_shift: 0.0,
-        },
         IconKind::Wsl => IconOptics {
             scale: 1.0,
             y_shift: 0.0,
@@ -1129,10 +801,6 @@ fn icon_optics(icon: IconKind) -> IconOptics {
         },
         IconKind::User => IconOptics {
             scale: 1.04,
-            y_shift: 0.0,
-        },
-        IconKind::Clock => IconOptics {
-            scale: 0.98,
             y_shift: 0.0,
         },
         IconKind::Production => IconOptics {
@@ -1186,6 +854,10 @@ fn shell_label(session: &SessionFacts) -> &'static str {
         if name.eq_ignore_ascii_case("zsh") {
             return "zsh";
         }
+        if name.eq_ignore_ascii_case("cmd") || name.eq_ignore_ascii_case("command prompt")
+        {
+            return "CMD";
+        }
     }
     if session
         .distro
@@ -1200,14 +872,8 @@ fn shell_label(session: &SessionFacts) -> &'static str {
     return "zsh";
 }
 
-fn shell_status_accent(colors: Colors, session: &SessionFacts) -> [f32; 4] {
-    let anchor = match shell_label(session) {
-        "PowerShell" => segment_anchor(SegmentRole::Windows),
-        "bash" => segment_anchor(SegmentRole::Environment),
-        "zsh" => segment_anchor(SegmentRole::Git),
-        _ => [0.31, 0.84, 1.0, 1.0],
-    };
-    ensure_contrast(anchor, colors.background.0, MIN_SEGMENT_CONTRAST)
+fn is_native_windows_shell(session: &SessionFacts) -> bool {
+    matches!(shell_label(session), "PowerShell" | "CMD")
 }
 
 fn format_duration(elapsed_ms: u64) -> String {
@@ -1222,44 +888,6 @@ fn format_duration(elapsed_ms: u64) -> String {
             (elapsed_ms % 60_000) / 1_000
         )
     }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn utc_clock_hhmm() -> String {
-    let seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-        % 86_400;
-    format!("{:02}:{:02}", seconds / 3_600, (seconds % 3_600) / 60)
-}
-
-#[cfg(target_os = "windows")]
-fn local_clock_hhmm() -> String {
-    use windows_sys::Win32::Foundation::SYSTEMTIME;
-    use windows_sys::Win32::System::SystemInformation::GetLocalTime;
-
-    let mut time: SYSTEMTIME = unsafe { std::mem::zeroed() };
-    unsafe { GetLocalTime(&mut time) };
-    format!("{:02}:{:02}", time.wHour, time.wMinute)
-}
-
-#[cfg(all(unix, not(target_arch = "wasm32")))]
-fn local_clock_hhmm() -> String {
-    let raw = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as libc::time_t;
-    let mut local: libc::tm = unsafe { std::mem::zeroed() };
-    if unsafe { libc::localtime_r(&raw, &mut local) }.is_null() {
-        return utc_clock_hhmm();
-    }
-    format!("{:02}:{:02}", local.tm_hour, local.tm_min)
-}
-
-#[cfg(any(target_arch = "wasm32", not(any(unix, target_os = "windows"))))]
-fn local_clock_hhmm() -> String {
-    utc_clock_hhmm()
 }
 
 fn immediate_os_value(session: &SessionFacts) -> Option<String> {
@@ -1395,10 +1023,10 @@ fn segment_anchor(role: SegmentRole) -> [f32; 4] {
     ]
 }
 
-/// Resolve every operational identity from one semantic source for both the
-/// persistent context bar and historical prompt rows. Theme customization may
-/// move only HSL lightness; the identity's anchor hue and saturation remain
-/// stable while text contrast is brought up to WCAG AA.
+/// Resolve every operational identity from one semantic source for live and
+/// historical prompt rows. Theme customization may move only HSL lightness;
+/// the identity's anchor hue and saturation remain stable while text contrast
+/// is brought up to WCAG AA.
 fn segment_color(colors: Colors, role: SegmentRole) -> [f32; 4] {
     let anchor = segment_anchor(role);
     let rendered_anchor = color_to_u8(anchor).map(|channel| f32::from(channel) / 255.0);
@@ -1534,8 +1162,7 @@ mod tests {
         SegmentRole::Environment,
         SegmentRole::User,
     ];
-    const ALL_ICON_KINDS: [IconKind; 12] = [
-        IconKind::Terminal,
+    const ALL_ICON_KINDS: [IconKind; 10] = [
         IconKind::Wsl,
         IconKind::Windows,
         IconKind::Docker,
@@ -1545,7 +1172,6 @@ mod tests {
         IconKind::Git,
         IconKind::Environment,
         IconKind::User,
-        IconKind::Clock,
         IconKind::Production,
     ];
 
@@ -1664,12 +1290,12 @@ mod tests {
     }
 
     #[test]
-    fn header_and_prompt_history_share_one_role_resolver() {
+    fn live_and_historical_prompts_share_one_role_resolver() {
         let colors = colors_with_background([0.92, 0.90, 0.86, 1.0]);
         for role in ALL_SEGMENT_ROLES {
-            let header_color = segment_color(colors, role);
+            let live_prompt_color = segment_color(colors, role);
             let historical_prompt_color = segment_color(colors, role);
-            assert_eq!(header_color, historical_prompt_color);
+            assert_eq!(live_prompt_color, historical_prompt_color);
         }
     }
 
@@ -1685,84 +1311,6 @@ mod tests {
     }
 
     #[test]
-    fn wide_layout_keeps_context_and_right_status_separate() {
-        let layout = context_bar_layout(1_600.0, Density::Comfortable);
-        let (right_x, right_width) = layout.right.unwrap();
-        assert!(layout.left_width > 1_000.0);
-        assert!(layout.left_x + layout.left_width + CONTEXT_GAP <= right_x);
-        assert_eq!(right_x + right_width + CONTEXT_MARGIN_X, 1_600.0);
-    }
-
-    #[test]
-    fn shell_and_clock_rail_is_balanced_and_contained() {
-        let bar = ContextBarGeometry {
-            top: 82.0,
-            height: 47.0,
-        };
-        for width in [273.6, RIGHT_STATUS_WIDTH, 420.0] {
-            let layout = shell_clock_layout(900.0, width, bar);
-            assert_eq!(layout.shell.x, 900.0 + STATUS_RAIL_INSET);
-            assert!(layout.shell.width > layout.clock.width);
-            assert!(layout.shell.height > STATUS_ICON_SIZE);
-            assert_eq!(layout.shell.top, layout.clock.top);
-            assert_eq!(layout.shell.height, layout.clock.height);
-            assert_eq!(layout.shell.top, bar.top);
-            assert_eq!(layout.shell.height, bar.height);
-            assert_eq!(
-                layout.divider_x,
-                layout.shell.x + layout.shell.width + STATUS_RAIL_DIVIDER_GAP
-            );
-            assert_eq!(
-                layout.clock.x,
-                layout.divider_x + STATUS_RAIL_DIVIDER_GAP + 1.0
-            );
-            assert!(
-                layout.clock.x + layout.clock.width
-                    <= 900.0 + width - STATUS_RAIL_INSET + f32::EPSILON
-            );
-        }
-    }
-
-    #[test]
-    fn shell_status_accents_are_distinct_and_contrast_safe() {
-        let colors = Colors::default();
-        let mut powershell = session("PowerShell", None);
-        powershell.shell_name = Some("PowerShell".to_string());
-        let mut bash = session("bash", None);
-        bash.shell_name = Some("bash".to_string());
-        let mut zsh = session("zsh", None);
-        zsh.shell_name = Some("zsh".to_string());
-        let accents = [
-            shell_status_accent(colors, &powershell),
-            shell_status_accent(colors, &bash),
-            shell_status_accent(colors, &zsh),
-        ];
-        assert_ne!(color_to_u8(accents[0]), color_to_u8(accents[1]));
-        assert_ne!(color_to_u8(accents[1]), color_to_u8(accents[2]));
-        assert_ne!(color_to_u8(accents[0]), color_to_u8(accents[2]));
-        for accent in accents {
-            assert!(contrast_ratio(accent, colors.background.0) >= 4.5);
-        }
-    }
-
-    #[test]
-    fn narrow_layout_gives_context_the_full_width() {
-        let layout = context_bar_layout(600.0, Density::Compact);
-        assert_eq!(layout.right, None);
-        assert_eq!(layout.left_x, 12.0);
-        assert_eq!(layout.left_width, 576.0);
-    }
-
-    #[test]
-    fn minimum_layout_stays_inside_viewport() {
-        let layout = context_bar_layout(300.0, Density::Minimal);
-        assert_eq!(layout.right, None);
-        assert!(layout.left_x >= 0.0);
-        assert!(layout.left_width > 0.0);
-        assert!(layout.left_x + layout.left_width <= 300.0);
-    }
-
-    #[test]
     fn powershell_never_inherits_a_stale_wsl_badge() {
         let mut native = session(
             "<REDACTED_LOCAL_VALUE>@DESKTOP: D:/workstation/projects",
@@ -1771,6 +1319,16 @@ mod tests {
         native.shell_name = Some("PowerShell".to_string());
         assert_eq!(immediate_os_value(&native), None);
         assert_eq!(shell_label(&native), "PowerShell");
+    }
+
+    #[test]
+    fn command_prompt_is_a_native_windows_shell() {
+        let mut native = session("CMD - D:/workstation/projects", Some("Ubuntu-24.04"));
+        native.shell_name = Some("CMD".to_string());
+        native.distro = None;
+        assert_eq!(shell_label(&native), "CMD");
+        assert!(is_native_windows_shell(&native));
+        assert_eq!(immediate_os_value(&native), None);
     }
 
     #[test]
@@ -1836,7 +1394,7 @@ mod tests {
     }
 
     #[test]
-    fn every_context_icon_has_bounded_optical_metrics() {
+    fn every_prompt_icon_has_bounded_optical_metrics() {
         let docker = icon_optics(IconKind::Docker);
         assert_eq!(docker.scale, 1.85);
         assert!(ALL_ICON_KINDS
@@ -1850,16 +1408,18 @@ mod tests {
                 "unsafe optical scale for {kind:?}: {}",
                 optics.scale
             );
-            let context_size = icon_font_size(CONTEXT_ICON_SIZE, kind);
             let prompt_size = icon_font_size(PROMPT_CONTEXT_ICON_SIZE, kind);
-            assert!(context_size > 0.0 && prompt_size > 0.0);
+            assert!(prompt_size > 0.0);
 
             // Point-size compensation keeps every glyph centered on the same
             // nominal box before its small intentional optical nudge.
-            let context_center = icon_draw_y(20.0, CONTEXT_ICON_SIZE, kind)
-                + context_size * 0.5
+            let prompt_center = icon_draw_y(20.0, PROMPT_CONTEXT_ICON_SIZE, kind)
+                + prompt_size * 0.5
                 - optics.y_shift;
-            assert!((context_center - 32.0).abs() < 0.001, "{kind:?}");
+            assert!(
+                (prompt_center - (20.0 + PROMPT_CONTEXT_ICON_SIZE * 0.5)).abs() < 0.001,
+                "{kind:?}"
+            );
         }
     }
 

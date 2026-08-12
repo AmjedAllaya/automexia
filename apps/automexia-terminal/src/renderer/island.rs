@@ -86,9 +86,72 @@ const APP_BUTTON_SIZE: f32 = 34.0;
 pub enum ChromeAction {
     NewTab,
     OpenPalette,
+    Search,
+    SplitRight,
+    SplitDown,
+    NextPane,
     Minimize,
     Maximize,
     CloseWindow,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct UtilityActionGeometry {
+    action: ChromeAction,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    show_label: bool,
+}
+
+const UTILITY_ACTIONS: [ChromeAction; 4] = [
+    ChromeAction::Search,
+    ChromeAction::SplitRight,
+    ChromeAction::SplitDown,
+    ChromeAction::NextPane,
+];
+
+fn utility_action_geometries(
+    metrics: ChromeMetrics,
+    logical_width: f32,
+) -> Option<[UtilityActionGeometry; UTILITY_ACTIONS.len()]> {
+    if !metrics.show_context {
+        return None;
+    }
+
+    let margin = match metrics.density {
+        Density::Minimal => 8.0,
+        Density::Compact => 12.0,
+        Density::Comfortable => 18.0,
+    };
+    let gap = if metrics.density == Density::Minimal {
+        5.0
+    } else {
+        8.0
+    };
+    let show_label = metrics.density == Density::Comfortable && logical_width >= 800.0;
+    let desired_width: f32 = if show_label { 132.0 } else { 44.0 };
+    let available = (logical_width - margin * 2.0).max(4.0);
+    let button_width = desired_width.min(
+        ((available - gap * (UTILITY_ACTIONS.len() - 1) as f32)
+            / UTILITY_ACTIONS.len() as f32)
+            .max(1.0),
+    );
+    let total = button_width * UTILITY_ACTIONS.len() as f32
+        + gap * (UTILITY_ACTIONS.len() - 1) as f32;
+    let start_x = (logical_width - margin - total).max(margin);
+    let y = metrics.context_top + 4.0;
+    let height = (metrics.context_height - 8.0).max(1.0);
+
+    Some(std::array::from_fn(|index| UtilityActionGeometry {
+        action: UTILITY_ACTIONS[index],
+        x: start_x + index as f32 * (button_width + gap),
+        y,
+        width: button_width,
+        height,
+        show_label,
+    }))
 }
 
 struct TabDrag {
@@ -483,6 +546,17 @@ impl Island {
         y: f32,
     ) -> Option<ChromeAction> {
         let metrics = chrome_metrics(window_width, window_height, scale_factor);
+        let logical_width = window_width / scale_factor.max(f32::EPSILON);
+        if let Some(items) = utility_action_geometries(metrics, logical_width) {
+            if let Some(item) = items.into_iter().find(|item| {
+                x >= item.x
+                    && x <= item.x + item.width
+                    && y >= item.y
+                    && y <= item.y + item.height
+            }) {
+                return Some(item.action);
+            }
+        }
         if !(0.0..=metrics.header_height).contains(&y) {
             return None;
         }
@@ -885,6 +959,13 @@ impl Island {
             0.0,
             [0.10, 0.17, 0.24, 0.92],
             1,
+        );
+        draw_utility_rail(
+            sugarloaf,
+            metrics,
+            logical_width,
+            bg_color,
+            self.chrome_hover,
         );
         #[cfg(not(target_os = "macos"))]
         if metrics.show_app_button {
@@ -1773,6 +1854,13 @@ fn normalized_profile_title(raw: &str) -> Cow<'_, str> {
     {
         return Cow::Borrowed("PowerShell");
     }
+    if lower == "cmd"
+        || lower == "cmd.exe"
+        || lower.contains("command prompt")
+        || lower.starts_with("cmd - ")
+    {
+        return Cow::Borrowed("Command Prompt");
+    }
     if lower.contains("ssh") {
         return Cow::Borrowed("SSH Lab");
     }
@@ -1790,6 +1878,8 @@ fn profile_icon(title: &str) -> &'static str {
     let lower = title.to_ascii_lowercase();
     if lower.contains("powershell") {
         "\u{e70f}"
+    } else if lower.contains("command prompt") || lower == "cmd" {
+        "\u{f489}"
     } else if lower.contains("ubuntu") {
         "\u{f31b}"
     } else if lower.contains("ssh") {
@@ -1805,6 +1895,8 @@ fn profile_accent(title: &str, active: bool) -> [f32; 4] {
         [1.0, 0.35, 0.04, 1.0]
     } else if lower.contains("powershell") {
         [0.29, 0.65, 1.0, 1.0]
+    } else if lower.contains("command prompt") || lower == "cmd" {
+        [0.45, 0.95, 0.42, 1.0]
     } else if lower.contains("ssh") {
         [0.49, 1.0, 0.70, 1.0]
     } else {
@@ -1886,6 +1978,211 @@ fn draw_command_center_button(
             line_color,
             4,
         );
+    }
+}
+
+fn utility_action_label(action: ChromeAction) -> &'static str {
+    match action {
+        ChromeAction::Search => "FIND",
+        ChromeAction::SplitRight => "SPLIT RIGHT",
+        ChromeAction::SplitDown => "SPLIT DOWN",
+        ChromeAction::NextPane => "NEXT PANE",
+        _ => "",
+    }
+}
+
+fn utility_action_accent(action: ChromeAction) -> [f32; 4] {
+    match action {
+        ChromeAction::Search => [0.20, 0.82, 1.0, 1.0],
+        ChromeAction::SplitRight => [0.68, 0.48, 1.0, 1.0],
+        ChromeAction::SplitDown => [0.86, 0.47, 1.0, 1.0],
+        ChromeAction::NextPane => [0.45, 0.95, 0.42, 1.0],
+        _ => [0.72, 0.80, 0.88, 1.0],
+    }
+}
+
+fn draw_utility_rail(
+    sugarloaf: &mut Sugarloaf,
+    metrics: ChromeMetrics,
+    logical_width: f32,
+    bg_color: [f32; 4],
+    hovered: Option<ChromeAction>,
+) {
+    let Some(items) = utility_action_geometries(metrics, logical_width) else {
+        return;
+    };
+    let first = &items[0];
+    let margin = match metrics.density {
+        Density::Minimal => 8.0,
+        Density::Compact => 12.0,
+        Density::Comfortable => 18.0,
+    };
+    let rail_fill = over(bg_color, [0.01, 0.045, 0.075, 0.88]);
+    let rail_outline = over(bg_color, [0.06, 0.22, 0.34, 0.78]);
+    sugarloaf.rounded_rect(
+        None,
+        margin,
+        metrics.context_top,
+        (logical_width - margin * 2.0).max(1.0),
+        metrics.context_height,
+        rail_outline,
+        0.05,
+        9.0,
+        19,
+    );
+    sugarloaf.rounded_rect(
+        None,
+        margin + 1.0,
+        metrics.context_top + 1.0,
+        (logical_width - margin * 2.0 - 2.0).max(0.0),
+        (metrics.context_height - 2.0).max(0.0),
+        rail_fill,
+        0.05,
+        8.0,
+        20,
+    );
+
+    if first.x - margin >= 145.0 {
+        let label_opts = DrawOpts {
+            font_size: 12.5,
+            color: [116, 151, 178, 230],
+            bold: true,
+            ..DrawOpts::default()
+        };
+        sugarloaf.text_mut().draw(
+            margin + 18.0,
+            metrics.context_top + (metrics.context_height - 12.5) * 0.5 - 1.0,
+            "WORKSPACE TOOLS",
+            &label_opts,
+        );
+    }
+
+    for item in items {
+        let is_hovered = hovered == Some(item.action);
+        let accent = utility_action_accent(item.action);
+        let outline = if is_hovered {
+            accent
+        } else {
+            [accent[0], accent[1], accent[2], 0.34]
+        };
+        let fill = if is_hovered {
+            [accent[0] * 0.12, accent[1] * 0.12, accent[2] * 0.12, 0.98]
+        } else {
+            [0.018, 0.064, 0.10, 0.80]
+        };
+        sugarloaf.rounded_rect(
+            None,
+            item.x,
+            item.y,
+            item.width,
+            item.height,
+            outline,
+            0.05,
+            7.0,
+            21,
+        );
+        sugarloaf.rounded_rect(
+            None,
+            item.x + 1.0,
+            item.y + 1.0,
+            (item.width - 2.0).max(0.0),
+            (item.height - 2.0).max(0.0),
+            fill,
+            0.05,
+            6.0,
+            22,
+        );
+
+        let icon_x = if item.show_label {
+            item.x + 12.0
+        } else {
+            item.x + (item.width - 18.0) * 0.5
+        };
+        let icon_y = item.y + (item.height - 18.0) * 0.5;
+        draw_utility_icon(sugarloaf, item.action, icon_x, icon_y, accent, fill);
+
+        if item.show_label {
+            let opts = DrawOpts {
+                font_size: 13.0,
+                color: color_u8(if is_hovered {
+                    [0.92, 0.97, 1.0, 1.0]
+                } else {
+                    [0.70, 0.82, 0.91, 1.0]
+                }),
+                bold: true,
+                ..DrawOpts::default()
+            };
+            sugarloaf.text_mut().draw(
+                item.x + 39.0,
+                item.y + (item.height - 13.0) * 0.5 - 1.0,
+                utility_action_label(item.action),
+                &opts,
+            );
+        }
+    }
+}
+
+fn draw_utility_icon(
+    sugarloaf: &mut Sugarloaf,
+    action: ChromeAction,
+    x: f32,
+    y: f32,
+    color: [f32; 4],
+    inner: [f32; 4],
+) {
+    match action {
+        ChromeAction::Search => {
+            sugarloaf.rounded_rect(None, x, y, 11.0, 11.0, color, 0.04, 6.0, 23);
+            sugarloaf.rounded_rect(
+                None,
+                x + 2.0,
+                y + 2.0,
+                7.0,
+                7.0,
+                inner,
+                0.04,
+                4.0,
+                24,
+            );
+            sugarloaf.line(x + 9.5, y + 9.5, x + 15.5, y + 15.5, 2.0, 0.0, color, 24);
+        }
+        ChromeAction::SplitRight | ChromeAction::SplitDown => {
+            sugarloaf.rounded_rect(None, x, y + 1.0, 18.0, 15.0, color, 0.04, 3.0, 23);
+            sugarloaf.rounded_rect(
+                None,
+                x + 1.7,
+                y + 2.7,
+                14.6,
+                11.6,
+                inner,
+                0.04,
+                2.0,
+                24,
+            );
+            if action == ChromeAction::SplitRight {
+                sugarloaf.line(x + 9.0, y + 2.0, x + 9.0, y + 15.0, 1.5, 0.0, color, 25);
+            } else {
+                sugarloaf.line(x + 1.5, y + 8.5, x + 16.5, y + 8.5, 1.5, 0.0, color, 25);
+            }
+        }
+        ChromeAction::NextPane => {
+            sugarloaf.rounded_rect(None, x, y + 2.0, 11.0, 11.0, color, 0.04, 3.0, 23);
+            sugarloaf.rounded_rect(
+                None,
+                x + 2.0,
+                y + 4.0,
+                7.0,
+                7.0,
+                inner,
+                0.04,
+                2.0,
+                24,
+            );
+            sugarloaf.line(x + 9.0, y + 14.0, x + 16.0, y + 14.0, 1.5, 0.0, color, 24);
+            sugarloaf.line(x + 13.0, y + 11.0, x + 16.0, y + 14.0, 1.5, 0.0, color, 24);
+            sugarloaf.line(x + 13.0, y + 17.0, x + 16.0, y + 14.0, 1.5, 0.0, color, 24);
+        }
+        _ => {}
     }
 }
 
@@ -2161,6 +2458,47 @@ mod tests {
     }
 
     #[test]
+    fn workspace_utility_actions_are_disjoint_and_clickable() {
+        let island = Island::new([1.0; 4], [1.0; 4], false, 240.0, true);
+        let metrics = chrome_metrics(1_280.0, 760.0, 1.0);
+        let items = utility_action_geometries(metrics, 1_280.0).unwrap();
+        assert_eq!(items.len(), UTILITY_ACTIONS.len());
+        for (index, item) in items.iter().enumerate() {
+            assert_eq!(item.action, UTILITY_ACTIONS[index]);
+            assert!(item.x >= 0.0 && item.x + item.width <= 1_280.0);
+            assert!(item.y >= metrics.context_top);
+            assert!(item.y + item.height <= metrics.context_top + metrics.context_height);
+            if let Some(next) = items.get(index + 1) {
+                assert!(item.x + item.width < next.x);
+            }
+            assert_eq!(
+                island.chrome_action_at(
+                    1_280.0,
+                    760.0,
+                    1.0,
+                    2,
+                    item.x + item.width * 0.5,
+                    item.y + item.height * 0.5,
+                ),
+                Some(item.action)
+            );
+        }
+    }
+
+    #[test]
+    fn workspace_tools_fit_extreme_widths_and_hide_on_short_viewports() {
+        let minimal = chrome_metrics(300.0, 320.0, 1.0);
+        let items = utility_action_geometries(minimal, 300.0).unwrap();
+        assert_eq!(items.len(), UTILITY_ACTIONS.len());
+        assert!(items.iter().all(|item| !item.show_label));
+        assert!(items.last().unwrap().x + items.last().unwrap().width <= 292.0);
+
+        let short = chrome_metrics(1_280.0, 220.0, 1.0);
+        assert!(!short.show_context);
+        assert!(utility_action_geometries(short, 1_280.0).is_none());
+    }
+
+    #[test]
     fn profile_title_distinguishes_windows_drives_from_posix_paths() {
         assert_eq!(
             normalized_profile_title("<REDACTED_LOCAL_VALUE>@DESKTOP: D:/workstation/projects/automexia"),
@@ -2173,6 +2511,15 @@ mod tests {
         assert_eq!(
             normalized_profile_title("PowerShell - D:/workstation"),
             "PowerShell"
+        );
+        assert_eq!(
+            normalized_profile_title("CMD - D:\\workstation"),
+            "Command Prompt"
+        );
+        assert_ne!(profile_icon("Command Prompt"), profile_icon("PowerShell"));
+        assert_ne!(
+            profile_accent("Command Prompt", true),
+            profile_accent("PowerShell", true)
         );
     }
 

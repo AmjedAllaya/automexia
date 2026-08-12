@@ -3147,6 +3147,10 @@ impl Screen<'_> {
                     ChromeAction::OpenPalette => {
                         self.renderer.command_palette.set_enabled(true)
                     }
+                    ChromeAction::Search => self.start_search(Direction::Right),
+                    ChromeAction::SplitRight => self.split_right(),
+                    ChromeAction::SplitDown => self.split_down(),
+                    ChromeAction::NextPane => self.context_manager.select_next_split(),
                     ChromeAction::Minimize => window.set_minimized(true),
                     ChromeAction::Maximize => {
                         window.set_maximized(!window.is_maximized())
