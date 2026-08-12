@@ -68,14 +68,15 @@ combined adjacent-panel size when a divider reaches a compact limit. These
 rules apply equally at 1× and HiDPI scale factors and do not upscale UI on very
 large displays; the terminal grid simply gains rows and columns.
 
-The tab-row command-center control is a DPI-independent four-tile Automexia
-mark rather than a font-dependent chevron. It keeps a blue-black glass well at
-rest and gains a cyan focus outline on hover. The menu it opens uses branded
-glass elevation, a headerless search-first surface, semantic command icons,
-compact keyboard-key badges, and a cyan-outlined active row. Session, pane,
-navigation, appearance, clipboard,
-extension, and destructive actions retain distinct color roles; command
-behavior and keyboard navigation remain unchanged.
+The tab-row command control is a DPI-independent three-line vector mark rather
+than a font-dependent chevron or tile grid. Its quiet blue-black well gains a
+cyan focus outline on hover. The palette is intentionally headerless: the
+search field is the first visual anchor, followed directly by the results.
+Every action uses a purpose-drawn 22 px outline icon with one stroke weight and
+optical grid, so no user font can replace it with a fallback glyph. Restrained
+semantic accents, outlined key badges, a slim active indicator, and generous
+spacing provide hierarchy without colored icon blocks or redundant category
+labels. Command behavior and keyboard navigation remain unchanged.
 
 ## Live operational context
 
@@ -254,7 +255,7 @@ only and never rewrites terminal cells or copied text.
   window. `Ctrl`+`Shift`+`N` remains a compatible new-window alias.
 - On macOS, use the native `Cmd`+`N` new-window and `Cmd`+`T` current-window tab
   shortcuts.
-- Click the four-tile command-center control to open the searchable command palette.
+- Click the three-line command button to open the searchable command palette.
 - Right-click a tab to rename it or choose its accent.
 - Use the custom minimize, maximize/restore and close controls on Windows.
 - Drag empty space in the first row to move the window; drag any edge/corner to
