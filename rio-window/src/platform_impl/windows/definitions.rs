@@ -3,8 +3,8 @@
 
 use std::ffi::c_void;
 
-use windows_sys::core::{GUID, HRESULT};
-use windows_sys::Win32::Foundation::{BOOL, HWND, POINTL};
+use windows_sys::core::{BOOL, GUID, HRESULT};
+use windows_sys::Win32::Foundation::{HWND, POINTL};
 use windows_sys::Win32::System::Com::{FORMATETC, STGMEDIUM};
 
 pub type IUnknown = *mut c_void;

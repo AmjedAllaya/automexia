@@ -41,3 +41,20 @@ impl Presentation {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Presentation;
+
+    #[test]
+    fn generated_variation_map_matches_its_phf_runtime() {
+        assert_eq!(
+            Presentation::for_grapheme("\u{1F39F}\u{FE0F}"),
+            (Presentation::Text, Some(Presentation::Emoji))
+        );
+        assert_eq!(
+            Presentation::for_grapheme("\u{1F44D}\u{FE0E}"),
+            (Presentation::Emoji, Some(Presentation::Text))
+        );
+    }
+}
