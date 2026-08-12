@@ -42,8 +42,10 @@ grep -qF '\xCE\xBB' "$root/shell-integration/bash/automexia.bash"
 [[ $PS1 != *'\w'* ]]
 ! grep -qF 'PROMPT_DIRTRIM' "$root/shell-integration/bash/automexia.bash"
 ! grep -qF '__automexia_git_segment' "$root/shell-integration/bash/automexia.bash"
-grep -qF '133;A;aid=%s\a \n\e]133;P;k=c;aid=%s' "$root/shell-integration/bash/automexia.bash"
+grep -qF '133;A;aid=%s\a \n' "$root/shell-integration/bash/automexia.bash"
+grep -qF '133;P;k=c;aid=%s\a' "$root/shell-integration/bash/automexia.bash"
 grep -qF '38;2;72;167;255m%s' "$root/shell-integration/bash/automexia.bash"
+[[ $PS1 != *'PWD'* ]]
 grep -qF '__automexia_prompt_is_active=0' "$root/shell-integration/bash/automexia.bash"
 ! grep -Eiq 'alias (docker|kubectl)=|function (ax|kgp)' "$root/shell-integration/bash/automexia.bash"
 [[ $(type -t ls) == function ]]

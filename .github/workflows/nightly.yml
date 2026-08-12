@@ -13,6 +13,28 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
+  native-gui-resize-stress:
+    name: Native Windows GUI resize and history latency
+    if: vars.AUTOMEXIA_NATIVE_GUI_RUNNER == '1'
+    runs-on: [self-hosted, Windows, X64, automexia-gpu]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Exercise history, clones, real window, ConPTY, and renderer snapshots
+        shell: pwsh
+        run: cargo xtask test session-clone --native-windows
+
+  native-wsl-session-clone:
+    name: Native WSL session clone
+    if: vars.AUTOMEXIA_WSL_RUNNER == '1'
+    runs-on: [self-hosted, Windows, X64, automexia-wsl]
+    env:
+      AUTOMEXIA_TEST_WSL_DISTRO: ${{ vars.AUTOMEXIA_TEST_WSL_DISTRO }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Clone the configured WSL distro without a PowerShell fallback
+        shell: pwsh
+        run: cargo xtask test session-clone --native-wsl
+
   fuzz:
     runs-on: ubuntu-latest
     strategy:
@@ -50,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: cargo bench -p rio-vt -p corcovado --no-run --locked
+      - run: cargo bench -p automexia-terminal -p rio-vt -p corcovado --no-run --locked
 
   unsigned-windows:
     name: Unsigned Windows ${{ matrix.target }}
