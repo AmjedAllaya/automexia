@@ -24,10 +24,11 @@ The inherited configuration schema remains compatible unless a release note
 explicitly documents a change. Generate a default file with
 `automexia --write-config`.
 
-Automexia's default liquid-hacker window is 1280x760 with persistent tab and
-context chrome. Terminal text defaults to 20 points with 1.20 line spacing for
-readable long listings and structured output. The relevant overrides remain
-ordinary inherited settings:
+Automexia's default liquid-hacker window is 1280x760 with a persistent tab row
+and responsive workspace-action rail. Operational context belongs to each
+semantic prompt instead of being duplicated in global chrome. Terminal text
+defaults to 20 points with 1.20 line spacing for readable long listings and
+structured output. The relevant overrides remain ordinary inherited settings:
 
 ```toml
 line-height = 1.20
@@ -71,7 +72,7 @@ Split shortcuts distinguish a clean default shell from an independent clone:
 | `Ctrl`+`Alt`+`D` | clone the active shell/profile/directory into a lower split |
 
 Clones are independent sessions: they receive a new PTY, process, route,
-scrollback, input queue, and extension state. PowerShell/pwsh, Bash, Zsh, and
+scrollback, input queue, and extension state. PowerShell/pwsh, CMD, Bash, Zsh, and
 WSL retain their active executable/profile/current directory; WSL also retains
 its distro, user, and shell. Jobs, process memory, command history position,
 partially typed input, and scrollback are never copied. Bare `Ctrl`+`R` and

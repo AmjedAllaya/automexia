@@ -34,7 +34,9 @@ Automexia IDs or path policy.
 - Session IDs key worker results, completion state, and cached context; one
   window or pane cannot observe another session's state.
 - Selection and search styling take precedence over semantic decoration.
-- Shell integrations assign every prompt a monotonic OSC 133 `aid`. The VT
+- PowerShell, Bash, and Zsh integrations assign every prompt a monotonic OSC
+  133 `aid`. Stock CMD publishes `A/B` semantic boundaries without inventing an
+  unstable identity because its prompt language has no pre/post-command hook. The VT
   grid stores that identity on the semantic prompt row, marks metadata-only
   writes dirty, and preserves it through scrollback and reflow. Renderer caches
   use the identity rather than resize-dependent absolute row numbers.
@@ -43,7 +45,7 @@ Automexia IDs or path policy.
   compatibility fallback behavior.
 - Prompt row ownership is exclusive: shell integration emits the blank context
   spacer and complete path once as terminal-owned rows, while
-  PSReadLine/Readline/ZLE owns only the lambda, editable command, and cursor
+  PSReadLine/Readline/ZLE or CMD's built-in editor owns only the lambda, editable command, and cursor
   row. `OSC 133;A` begins the active block, `B` enters input, and `C`, `D`, or
   the inactive user variable completes it. Repeating an active `aid` atomically
   clears the previous block before accepting its replacement. While input is
@@ -56,12 +58,13 @@ Automexia IDs or path policy.
   a transient PTY resize failure is logged without terminating the session.
   Every effective grid resize forces one complete renderer snapshot.
 - The renderer owns a responsive top-chrome reservation: 148 logical pixels at
-  comfortable sizes, 115 in compact mode, 100 in minimal mode with context,
-  and 54 at the 300×200 minimum where the secondary context surface folds
-  away. One viewport policy drives paint geometry, pointer hit-testing and grid
+  comfortable sizes, 115 in compact mode, 100 in minimal mode with an action
+  rail, and 54 at the 300×200 minimum where the secondary surface folds away.
+  One viewport policy drives paint geometry, pointer hit-testing and grid
   margins, and live resize/DPI changes recompute every grid before layout. The
-  chrome keeps a live overview of the active session whenever height permits.
-  In addition, every shell prompt reserves a semantic,
+  secondary surface exposes Find, Split Right, Split Down, and Next Pane and
+  never duplicates session facts that already belong to prompts. Every shell
+  prompt reserves a semantic,
   blank `Prompt` row, a complete-path `PromptContinuation` row, and a short
   editable `PromptContinuation` row. The renderer paints operational context
   on the blank row without adding characters to PTY output. The shell line
@@ -100,7 +103,7 @@ Automexia IDs or path policy.
 - PTY parsing, DevOps discovery, and extension work stay off the render thread;
   the renderer consumes bounded cached snapshots without blocking on them.
 - A completed DevOps discovery publishes its session-scoped snapshot before it
-  directly wakes the originating window and route. Initial PowerShell or WSL
+  directly wakes the originating window and route. Initial PowerShell, CMD, or WSL
   context therefore appears without keyboard/mouse input; the short route timer
   remains only a queue-pressure and worker-failure fallback.
 - New tabs and splits may seed their first frame from a snapshot no more than

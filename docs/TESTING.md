@@ -148,7 +148,10 @@ Extension tests cover unavailable,
 disconnected, busy, stale, malformed, and oversized inputs plus multi-window
 session isolation. Shell tests cover syntax, idempotency, exit status, history
 handlers, monotonic prompt identities, UTF-8 lambda handling, and uninstall
-behavior.
+behavior. The Windows contract additionally executes a generated native CMD
+integration in-process, verifies that `cmd /c` is untouched, validates CMD
+shell/user/executable and OSC 7/133 metadata, and runs the shared category-aware
+listing helper against Unicode and sensitive/source fixtures.
 
 The conformance suite is included in `cargo ready`. For focused diagnosis only,
 run it directly with `cargo xtask test conformance`.
@@ -194,7 +197,7 @@ cargo xtask test session-clone
 ```
 
 It covers action names, user overrides, Search/Vi exclusions, preservation of
-bare shell control keys, PowerShell/pwsh and native Bash/Zsh descriptors, direct
+bare shell control keys, PowerShell/pwsh, nested/direct CMD, and native Bash/Zsh descriptors, direct
 and nested WSL descriptors, incomplete metadata, spaces/Unicode, environment
 overrides, unknown/invalid logical directories, safe profile fallback, and
 CreateProcess-compatible quoting. On a Windows GPU workstation,
@@ -240,7 +243,7 @@ originating-route wake-up, strictly equivalent five-second snapshot reuse,
 rejection of cross-path/unintegrated/stale reuse, and the 100 ms fallback/
 three-second steady refresh cadence. Renderer tests additionally enforce every
 semantic color anchor, independent AWS/Azure/GCP/unknown-cloud mapping,
-pairwise default-theme distinction, shared header/history resolution, and
+pairwise default-theme distinction, shared live/history resolution, and
 quantized 4.5:1 contrast on dark, light, low-contrast, and custom backgrounds.
 Release smoke testing must additionally
 confirm a real WSL Docker context appears at initial launch and after switching
@@ -251,10 +254,15 @@ event and proves that first-prompt deferral does not remove filesystem icons,
 change native `ls` object semantics, or require user input. Its listing fixtures
 cover the four native metadata columns, icon/name adjacency, directory suffixes,
 spaces and Unicode, narrow-width truncation, and real `DirectoryInfo`/`FileInfo`
-values after filtering and sorting.
+values after filtering and sorting. CMD coverage proves its interactive launcher
+uses the existing PTY rather than a detached process, direct configured CMD
+profiles receive integration once, nested CMD clones retain `%ComSpec%` and the
+live directory, `ls`/`ll` keep icon/name adjacency, and built-in `dir` remains
+unmodified.
 
 These cover Windows-drive versus WSL title classification, custom chrome hit
-targets and resize edges, responsive context layout, bundled Nerd icon
+targets and resize edges, the responsive workspace-action rail and its exact
+Find/split/focus routing, bundled Nerd icon
 codepoints, explicit shell identity, terminal-owned full-path three-row prompts,
 per-command context snapshots, OSC command status/timing, and context/result
 survival through shrink/grow reflow.

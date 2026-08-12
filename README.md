@@ -77,12 +77,12 @@ Brand-source and platform-export rules are in
 The latest plan-by-plan implementation evidence and explicit external release
 blockers are recorded in [docs/READINESS-AUDIT.md](docs/READINESS-AUDIT.md).
 
-The native liquid-hacker interface, persistent context bar, tab/window
-interactions, one-line shell prompt, command timing, semantic output styling,
-and focused regression commands are documented in
+The native liquid-hacker interface, responsive workspace-action rail,
+per-command operational context, tab/window interactions, shell prompt,
+command timing, semantic output styling, and focused regression commands are documented in
 [docs/LIQUID-HACKER-UX.md](docs/LIQUID-HACKER-UX.md).
 
-On Windows, install or refresh the bundled PowerShell and WSL integrations once
+On Windows, install or refresh the bundled PowerShell, Command Prompt, and WSL integrations once
 after building, then restart Automexia:
 
 ```powershell
@@ -90,13 +90,18 @@ after building, then restart Automexia:
 ```
 
 Native PowerShell gains icon-aware `ls` output through a bundled, pipeline-safe
-format view and does not require `eza`. In Bash and Zsh, the integration uses an
+format view and does not require `eza`. Typing `cmd` or `cmd.exe` from an
+integrated PowerShell pane now opens Command Prompt inside that same Automexia
+pane; CMD receives the branded full-path prompt, live context metadata, and
+icon-aware `ls`/`ll` while its built-in `dir` and explicit `cmd /c` behavior stay
+native. In Bash and Zsh, the integration uses an
 installed `eza` for icon-aware `ls`, `ll`, and `tree` output and falls back
 cleanly when `eza` is unavailable; see
 [docs/LIQUID-HACKER-UX.md](docs/LIQUID-HACKER-UX.md#file-and-folder-icons) for
-the shortcuts and opt-out.
+the shortcuts, sensitive/config/log/source/test/build category vocabulary, and
+opt-out.
 
-Clone the active PowerShell, Bash, Zsh, or WSL session into an independent
+Clone the active PowerShell, Command Prompt, Bash, Zsh, or WSL session into an independent
 right/lower split with `Ctrl`+`Alt`+`R` / `Ctrl`+`Alt`+`D`. The existing
 `Ctrl`+`Shift` split shortcuts still open the configured default shell, and bare
 `Ctrl`+`R` / `Ctrl`+`D` remain native shell input. See
