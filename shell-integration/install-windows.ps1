@@ -9,6 +9,8 @@ $InstallRoot = Join-Path $env:LOCALAPPDATA 'Automexia\shell-integration'
 New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
 $PowerShellIntegration = Join-Path $InstallRoot 'automexia.ps1'
 Copy-Item (Join-Path $PackageRoot 'powershell\automexia.ps1') $PowerShellIntegration -Force
+$PowerShellFormat = Join-Path $InstallRoot 'automexia.format.ps1xml'
+Copy-Item (Join-Path $PackageRoot 'powershell\automexia.format.ps1xml') $PowerShellFormat -Force
 
 function Add-MarkedBlock([string]$Path, [string]$Body) {
     if ([string]::IsNullOrWhiteSpace($Path)) { return }

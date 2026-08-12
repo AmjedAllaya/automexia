@@ -91,10 +91,14 @@ __automexia_precmd() {
   printf '\e]2;%s@%s: %s\a' "${USER:-user}" "${HOST:-host}" "$PWD"
   ((__automexia_prompt_generation += 1))
   __automexia_prompt_is_active=1
-  printf '\e]1337;SetUserVar=automexia_prompt_active=MQ==\a\e]133;A;aid=%s\a \n\e]133;P;k=c;aid=%s\a\e[38;2;72;167;255m%s\e[0m\n\e]133;P;k=c;aid=%s\a' \
-    "$__automexia_prompt_generation" "$__automexia_prompt_generation" "$PWD" \
+  # Only the renderer-owned context row is outside ZLE. `%d` is Zsh's full,
+  # unabridged current directory, and keeping it in the multiline PROMPT lets
+  # ZLE restore the whole path after every SIGWINCH redisplay.
+  printf '\e]1337;SetUserVar=automexia_prompt_active=MQ==\a\e]133;A;aid=%s\a \n' \
     "$__automexia_prompt_generation"
-  PROMPT=$'%F{cyan}\xCE\xBB%f %{\e]133;B\a%}%F{white}'
+  printf -v PROMPT '%%{\e]133;P;k=c;aid=%s\a%%}%%F{#48A7FF}%%d%%f\n%%{\e]133;P;k=c;aid=%s\a%%}%%F{cyan}' \
+    "$__automexia_prompt_generation" "$__automexia_prompt_generation"
+  PROMPT+=$'\xCE\xBB%f %{\e]133;B\a%}%F{white}'
 }
 __automexia_preexec() {
   __automexia_prompt_is_active=0
@@ -104,6 +108,6 @@ add-zsh-hook precmd __automexia_precmd
 add-zsh-hook preexec __automexia_preexec
 setopt PROMPT_SUBST
 
-# `precmd` emits the stable context/path rows and builds the short editable
-# command prompt. The full path is never abbreviated.
+# `precmd` emits the stable context row and builds the resize-owned multiline
+# ZLE prompt. The full `%d` path is never abbreviated.
 PROMPT=''

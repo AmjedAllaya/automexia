@@ -154,7 +154,7 @@ def validate() -> None:
             json.load(source)
     counts["JSON"] = len(json_files)
 
-    xml_files = files_with_suffixes(".xml", ".plist", ".wxs")
+    xml_files = files_with_suffixes(".xml", ".plist", ".wxs", ".ps1xml")
     for path in xml_files:
         element_tree.parse(path)
     counts["XML"] = len(xml_files)
