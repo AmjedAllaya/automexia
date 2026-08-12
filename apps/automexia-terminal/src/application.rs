@@ -1217,9 +1217,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         && button == MouseButton::Left
                         && route.window.screen.allow_manual_dragging
                     {
-                        use crate::renderer::island::ISLAND_HEIGHT;
-                        let scale = route.window.screen.sugarloaf.scale_factor();
-                        if route.window.screen.mouse.y <= (ISLAND_HEIGHT * scale) as f64 {
+                        if route.window.screen.mouse.y
+                            <= route.window.screen.chrome_header_height_px()
+                        {
                             let _ = route.window.winit_window.drag_window();
                         }
                     }
@@ -1373,10 +1373,8 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
 
                             #[cfg(target_os = "macos")]
                             if route.window.screen.allow_manual_dragging {
-                                use crate::renderer::island::ISLAND_HEIGHT;
-                                let scale = route.window.screen.sugarloaf.scale_factor();
                                 if route.window.screen.mouse.y
-                                    <= (ISLAND_HEIGHT * scale) as f64
+                                    <= route.window.screen.chrome_header_height_px()
                                 {
                                     route
                                         .window
@@ -1590,16 +1588,17 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 // Handle assistant overlay hover
                 if route.window.screen.renderer.assistant.is_active() {
                     let scale = route.window.screen.sugarloaf.scale_factor();
-                    let win_w = route.window.screen.sugarloaf.window_size().width;
+                    let win_size = route.window.screen.sugarloaf.window_size();
+                    let win_w = win_size.width;
                     let mx = x as f32 / scale;
                     let my = y as f32 / scale;
-                    if route
-                        .window
-                        .screen
-                        .renderer
-                        .assistant
-                        .hover(mx, my, win_w, scale)
-                    {
+                    if route.window.screen.renderer.assistant.hover(
+                        mx,
+                        my,
+                        win_w,
+                        win_size.height,
+                        scale,
+                    ) {
                         route.request_overlay_redraw();
                     }
 
@@ -1621,16 +1620,17 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 // Handle command palette hover
                 if route.window.screen.renderer.command_palette.is_enabled() {
                     let scale = route.window.screen.sugarloaf.scale_factor();
-                    let win_w = route.window.screen.sugarloaf.window_size().width;
+                    let win_size = route.window.screen.sugarloaf.window_size();
+                    let win_w = win_size.width;
                     let mx = x as f32 / scale;
                     let my = y as f32 / scale;
-                    if route
-                        .window
-                        .screen
-                        .renderer
-                        .command_palette
-                        .hover(mx, my, win_w, scale)
-                    {
+                    if route.window.screen.renderer.command_palette.hover(
+                        mx,
+                        my,
+                        win_w,
+                        win_size.height,
+                        scale,
+                    ) {
                         route.request_overlay_redraw();
                     }
                     route.window.winit_window.set_cursor(CursorIcon::Default);
@@ -1697,9 +1697,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 // tab on macOS) the band at the top has no tabs to
                 // hover, and the I-beam from the terminal grid below
                 // should stay during top-edge drags.
-                use crate::renderer::island::ISLAND_HEIGHT;
-                let scale_factor = route.window.screen.sugarloaf.scale_factor();
-                let island_height_px = (ISLAND_HEIGHT * scale_factor) as f64;
+                let island_height_px = route.window.screen.chrome_header_height_px();
                 let num_tabs = route.window.screen.ctx().len();
                 let nav = &route.window.screen.renderer.navigation;
                 if nav.island_visible(num_tabs) && y <= island_height_px {

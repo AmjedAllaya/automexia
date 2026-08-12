@@ -5,6 +5,7 @@ pub mod custom_cursor;
 pub mod devops_status;
 pub mod helpers;
 pub mod island;
+pub mod responsive;
 pub mod scrollbar;
 pub mod search;
 pub mod trail_cursor;
@@ -103,6 +104,24 @@ fn synthetic_prompt_visual_anchor(
     Some(first_path_row - 1)
 }
 
+/// The first-paint fallback is intentionally conservative. During an extreme
+/// resize the reserved context row can be reflowed above the viewport while
+/// the editable prompt lands on row one. Treating the first *nonblank* row as
+/// the context anchor would then paint metadata over the complete path until
+/// the shell finishes its SIGWINCH redisplay.
+#[inline]
+fn first_paint_prompt_visual_anchor(
+    rows: &[Row<Square>],
+    cursor_row: i32,
+) -> Option<usize> {
+    if cursor_row != 1 {
+        return None;
+    }
+    rows.first()
+        .filter(|row| terminal_row_is_blank(row))
+        .map(|_| 0)
+}
+
 /// Return the physical row where renderer-owned prompt context belongs.
 ///
 /// Readline can move the managed `Prompt` marker onto the first path row while
@@ -112,11 +131,15 @@ fn synthetic_prompt_visual_anchor(
 #[inline]
 fn prompt_visual_anchor(rows: &[Row<Square>], semantic_index: usize) -> Option<usize> {
     let row = &rows[semantic_index];
-    if semantic_index > 0
-        && row.semantic_prompt == SemanticPrompt::Prompt
+    if row.semantic_prompt == SemanticPrompt::Prompt
         && row.semantic_prompt_id.is_some()
         && !terminal_row_is_blank(row)
     {
+        if semantic_index == 0 {
+            // The managed context row was reflowed just above the visible
+            // viewport. Row zero is the path tail, never a safe substitute.
+            return None;
+        }
         let mut first_path_row = semantic_index;
         while first_path_row > 0 && !terminal_row_is_blank(&rows[first_path_row - 1]) {
             first_path_row -= 1;
@@ -1049,15 +1072,17 @@ impl Renderer {
                             })
                         })
                         .or_else(|| {
-                            if cursor_row != 1 {
-                                return None;
-                            }
-                            let row = rc.visible_rows.first()?;
+                            let visual_index = first_paint_prompt_visual_anchor(
+                                &rc.visible_rows,
+                                cursor_row,
+                            )?;
+                            let row = &rc.visible_rows[visual_index];
                             Some(crate::automexia::ui::PromptAnchor {
                                 generation: row.semantic_prompt_id,
-                                key: first_absolute_row,
+                                key: first_absolute_row
+                                    .saturating_add(visual_index as u64),
                                 x: origin_x,
-                                y: origin_y,
+                                y: origin_y + visual_index as f32 * cell_height,
                                 width: grid_width,
                                 height: cell_height,
                             })
@@ -1115,8 +1140,9 @@ impl Renderer {
                 self.named_colors,
                 &session,
                 (window_size.width, window_size.height, scale_factor),
+                || context_manager.devops_refresh_completion(session.session_id),
             );
-            self.devops_status.render_prompt_rows(
+            let new_prompt = self.devops_status.render_prompt_rows(
                 sugarloaf,
                 self.named_colors,
                 &session,
@@ -1124,13 +1150,18 @@ impl Renderer {
                 &historical_anchors,
                 live_anchor,
             );
+            if new_prompt {
+                self.devops_status.request_prompt_refresh(&session, || {
+                    context_manager.devops_refresh_completion(session.session_id)
+                });
+            }
             self.devops_status.render_command_results(
                 sugarloaf,
                 self.named_colors,
                 &command_results,
             );
-            // Route timers are de-duplicated by the scheduler. Pending worker
-            // results repaint promptly; completed snapshots keep polling local
+            // Completion directly wakes this route. De-duplicated timers remain
+            // as a fallback for worker pressure and poll changing local
             // Docker/Kubernetes/Git state without continuous animation.
             context_manager.schedule_render_on_route(
                 devops_status::next_context_wake_millis(refresh_pending),
@@ -1465,6 +1496,15 @@ mod prompt_visual_anchor_tests {
     }
 
     #[test]
+    fn managed_path_at_viewport_top_is_not_used_as_an_overlay_anchor() {
+        let mut rows = vec![Row::<Square>::new(8), Row::<Square>::new(8)];
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+        rows[0][Column(0)].set_c('C');
+        rows[0][Column(1)].set_c(':');
+        assert_eq!(prompt_visual_anchor(&rows, 0), None);
+    }
+
+    #[test]
     fn blank_and_legacy_prompts_keep_their_semantic_row() {
         let mut managed = vec![Row::<Square>::new(8), Row::<Square>::new(8)];
         managed[1].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
@@ -1516,6 +1556,17 @@ mod prompt_visual_anchor_tests {
         rows[1][Column(1)].set_c('w');
         rows[2][Column(0)].set_c('λ');
         assert_eq!(synthetic_prompt_visual_anchor(&rows, 2), Some(0));
+    }
+
+    #[test]
+    fn first_paint_fallback_never_overlays_a_reflowed_path() {
+        let mut rows = vec![Row::<Square>::new(12), Row::<Square>::new(12)];
+        assert_eq!(first_paint_prompt_visual_anchor(&rows, 1), Some(0));
+
+        rows[0][Column(0)].set_c('C');
+        rows[0][Column(1)].set_c(':');
+        assert_eq!(first_paint_prompt_visual_anchor(&rows, 1), None);
+        assert_eq!(first_paint_prompt_visual_anchor(&rows, 0), None);
     }
 
     #[test]

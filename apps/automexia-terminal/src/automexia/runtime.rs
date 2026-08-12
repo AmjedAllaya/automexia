@@ -7,6 +7,8 @@ use std::sync::{Mutex, MutexGuard};
 use std::sync::{OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread::{self, JoinHandle};
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::{Duration, Instant};
 
 use super::api::{SemanticSeverity, SessionFacts};
 use super::builtins::devops::{self, DevOpsSnapshot};
@@ -19,6 +21,18 @@ static DEVOPS_COMPLETION_COUNTER: AtomicU32 = AtomicU32::new(1);
 const DEVOPS_CONTEXT_CACHE_LIMIT: usize = 32;
 #[cfg(not(target_arch = "wasm32"))]
 const MAX_SESSION_TITLE_BYTES: usize = 4 * 1024;
+#[cfg(not(target_arch = "wasm32"))]
+const DEVOPS_REUSE_MAX_AGE: Duration = Duration::from_secs(5);
+
+#[derive(Debug)]
+struct DevOpsCacheEntry {
+    session_id: usize,
+    revision: u32,
+    session: SessionFacts,
+    snapshot: DevOpsSnapshot,
+    #[cfg(not(target_arch = "wasm32"))]
+    completed_at: Instant,
+}
 
 #[derive(Debug)]
 struct RuntimeState {
@@ -26,7 +40,7 @@ struct RuntimeState {
     /// Bounded cache keyed by terminal session/route id. Each entry carries
     /// its own completion revision so another pane finishing discovery cannot
     /// accidentally acknowledge this pane's pending refresh.
-    devops_snapshots: VecDeque<(usize, u32, SessionFacts, DevOpsSnapshot)>,
+    devops_snapshots: VecDeque<DevOpsCacheEntry>,
 }
 
 impl RuntimeState {
@@ -48,9 +62,13 @@ impl RuntimeState {
     ) -> (u32, Option<SessionFacts>, DevOpsSnapshot) {
         self.devops_snapshots
             .iter()
-            .find(|(key, _, _, _)| *key == session_id)
-            .map(|(_, revision, session, snapshot)| {
-                (*revision, Some(session.clone()), snapshot.clone())
+            .find(|entry| entry.session_id == session_id)
+            .map(|entry| {
+                (
+                    entry.revision,
+                    Some(entry.session.clone()),
+                    entry.snapshot.clone(),
+                )
             })
             .unwrap_or_default()
     }
@@ -62,23 +80,60 @@ impl RuntimeState {
         snapshot: DevOpsSnapshot,
     ) {
         let session_id = session.session_id;
-        if let Some((_, existing_revision, existing_session, existing)) = self
+        if let Some(existing) = self
             .devops_snapshots
             .iter_mut()
-            .find(|(key, _, _, _)| *key == session_id)
+            .find(|entry| entry.session_id == session_id)
         {
-            *existing_revision = revision;
-            *existing_session = session;
-            *existing = snapshot;
+            existing.revision = revision;
+            existing.session = session;
+            existing.snapshot = snapshot;
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                existing.completed_at = Instant::now();
+            }
             return;
         }
 
         if self.devops_snapshots.len() >= DEVOPS_CONTEXT_CACHE_LIMIT {
             self.devops_snapshots.pop_front();
         }
-        self.devops_snapshots
-            .push_back((session_id, revision, session, snapshot));
+        self.devops_snapshots.push_back(DevOpsCacheEntry {
+            session_id,
+            revision,
+            session,
+            snapshot,
+            #[cfg(not(target_arch = "wasm32"))]
+            completed_at: Instant::now(),
+        });
     }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn reusable_devops_snapshot(&self, session: &SessionFacts) -> Option<DevOpsSnapshot> {
+        if !session.shell_integration {
+            return None;
+        }
+
+        self.devops_snapshots
+            .iter()
+            .rev()
+            .filter(|entry| entry.session_id != session.session_id)
+            .find(|entry| {
+                entry.completed_at.elapsed() <= DEVOPS_REUSE_MAX_AGE
+                    && equivalent_shell_context(&entry.session, session)
+            })
+            .map(|entry| entry.snapshot.clone())
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn equivalent_shell_context(left: &SessionFacts, right: &SessionFacts) -> bool {
+    left.shell_integration
+        && left.cwd == right.cwd
+        && left.title == right.title
+        && left.distro == right.distro
+        && left.os_version == right.os_version
+        && left.shell_name == right.shell_name
 }
 
 fn runtime() -> &'static RwLock<RuntimeState> {
@@ -173,10 +228,17 @@ pub fn devops_snapshot(session_id: usize) -> (u32, Option<SessionFacts>, DevOpsS
     read_runtime().devops_snapshot(session_id)
 }
 
+/// One-shot notification invoked after a refreshed snapshot is visible.
+///
+/// The UI supplies a route-scoped event-loop wake-up here. Keeping the
+/// callback renderer-agnostic lets the extension runtime stay usable without
+/// depending on the desktop event types.
+pub type DevOpsRefreshCompletion = Box<dyn FnOnce() + Send + 'static>;
+
 #[cfg(not(target_arch = "wasm32"))]
-#[derive(Debug)]
 struct RefreshRequest {
     session: SessionFacts,
+    completion: Option<DevOpsRefreshCompletion>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -214,7 +276,10 @@ fn spawn_worker() -> Option<Worker> {
                         if !read_runtime().installed.contains(devops::ID) {
                             continue;
                         }
-                        let session = request.session;
+                        let RefreshRequest {
+                            session,
+                            completion,
+                        } = request;
                         let snapshot = devops::detect(&session);
                         tracing::debug!(
                             session_id = session.session_id,
@@ -228,19 +293,7 @@ fn spawn_worker() -> Option<Worker> {
                         if !read_runtime().installed.contains(devops::ID) {
                             continue;
                         }
-                        // Give every completed request a session-local revision.
-                        // A global generation is still used as the cheap renderer
-                        // wake-up signal, while the revision prevents another pane's
-                        // completion from acknowledging this pane's pending refresh.
-                        let revision = DEVOPS_COMPLETION_COUNTER
-                            .fetch_add(1, Ordering::AcqRel)
-                            .wrapping_add(1);
-                        {
-                            let mut runtime = write_runtime();
-                            runtime.put_devops_snapshot(session, revision, snapshot);
-                        }
-                        // Publish only after the cache entry is visible.
-                        DEVOPS_GENERATION.fetch_add(1, Ordering::Release);
+                        publish_devops_snapshot(session, snapshot, completion);
                     }
                 }
             }
@@ -254,6 +307,54 @@ fn spawn_worker() -> Option<Worker> {
             None
         }
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn publish_devops_snapshot(
+    session: SessionFacts,
+    snapshot: DevOpsSnapshot,
+    completion: Option<DevOpsRefreshCompletion>,
+) {
+    // Give every completed request a session-local revision. A global
+    // generation is still used as the cheap renderer synchronization signal,
+    // while the revision prevents another pane's completion from acknowledging
+    // this pane's pending refresh.
+    let revision = DEVOPS_COMPLETION_COUNTER
+        .fetch_add(1, Ordering::AcqRel)
+        .wrapping_add(1);
+    {
+        let mut runtime = write_runtime();
+        runtime.put_devops_snapshot(session, revision, snapshot);
+    }
+    // Publish before waking the window. The render triggered by `completion`
+    // must always be able to observe the new cache entry on its first frame.
+    DEVOPS_GENERATION.fetch_add(1, Ordering::Release);
+    if let Some(completion) = completion {
+        completion();
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn seed_devops_snapshot(session: &SessionFacts) -> bool {
+    {
+        let mut runtime = write_runtime();
+        if runtime
+            .devops_snapshots
+            .iter()
+            .any(|entry| entry.session == *session)
+        {
+            return false;
+        }
+        let Some(snapshot) = runtime.reusable_devops_snapshot(session) else {
+            return false;
+        };
+        let revision = DEVOPS_COMPLETION_COUNTER
+            .fetch_add(1, Ordering::AcqRel)
+            .wrapping_add(1);
+        runtime.put_devops_snapshot(session.clone(), revision, snapshot);
+    }
+    DEVOPS_GENERATION.fetch_add(1, Ordering::Release);
+    true
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -307,7 +408,10 @@ pub fn shutdown_background_services() {
 /// `Busy` tells a renderer to retry soon rather than waiting a full refresh
 /// interval; this prevents one active window from starving another.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn request_devops_refresh(session: &SessionFacts) -> RefreshSubmission {
+pub fn request_devops_refresh(
+    session: &SessionFacts,
+    completion: Option<DevOpsRefreshCompletion>,
+) -> RefreshSubmission {
     if session.title.len() > MAX_SESSION_TITLE_BYTES {
         tracing::warn!(
             session_id = session.session_id,
@@ -317,12 +421,19 @@ pub fn request_devops_refresh(session: &SessionFacts) -> RefreshSubmission {
         return RefreshSubmission::Rejected;
     }
 
+    // A new tab/split usually starts in the same shell and directory as its
+    // source. Reuse only a very recent equivalent snapshot for the first frame,
+    // then still queue live discovery below. This removes duplicate WSL/Docker
+    // startup latency without allowing one pane's context to leak into another.
+    let _ = seed_devops_snapshot(session);
+
     let mut slot = lock_worker();
     if !ensure_worker(&mut slot) {
         return RefreshSubmission::Unavailable;
     }
     let message = WorkerMessage::Refresh(RefreshRequest {
         session: session.clone(),
+        completion,
     });
     match slot
         .as_ref()
@@ -355,7 +466,10 @@ pub fn request_devops_refresh(session: &SessionFacts) -> RefreshSubmission {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn request_devops_refresh(_session: &SessionFacts) -> RefreshSubmission {
+pub fn request_devops_refresh(
+    _session: &SessionFacts,
+    _completion: Option<DevOpsRefreshCompletion>,
+) -> RefreshSubmission {
     RefreshSubmission::Unavailable
 }
 
@@ -444,7 +558,7 @@ mod tests {
         assert!(state
             .devops_snapshots
             .iter()
-            .all(|(session_id, _, _, _)| *session_id != 0));
+            .all(|entry| entry.session_id != 0));
         assert_eq!(
             state
                 .devops_snapshot(DEVOPS_CONTEXT_CACHE_LIMIT + 4)
@@ -475,6 +589,86 @@ mod tests {
     fn oversized_context_is_rejected_before_worker_submission() {
         let mut facts = session(88, "small");
         facts.title = "x".repeat(MAX_SESSION_TITLE_BYTES + 1);
-        assert_eq!(request_devops_refresh(&facts), RefreshSubmission::Rejected);
+        assert_eq!(
+            request_devops_refresh(&facts, None),
+            RefreshSubmission::Rejected
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn completion_runs_after_the_snapshot_is_visible() {
+        let session = session(usize::MAX - 17, "amjed@host:/mnt/d/work");
+        let expected_session = session.clone();
+        let (sender, receiver) = mpsc::channel();
+
+        publish_devops_snapshot(
+            session,
+            snapshot("wsl"),
+            Some(Box::new(move || {
+                let cached = devops_snapshot(expected_session.session_id);
+                sender.send(cached).unwrap();
+            })),
+        );
+
+        let (revision, cached_session, cached_snapshot) = receiver.recv().unwrap();
+        assert!(revision > 0);
+        assert_eq!(cached_session, Some(expected_session));
+        assert_eq!(cached_snapshot.environment.as_deref(), Some("wsl"));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn equivalent_new_session_reuses_a_fresh_snapshot() {
+        let mut state = RuntimeState {
+            installed: BTreeSet::new(),
+            devops_snapshots: VecDeque::new(),
+        };
+        let mut source = session(301, "amjed@host:/mnt/d/work");
+        source.cwd = Some("D:\\work".into());
+        source.distro = Some("Ubuntu".to_string());
+        source.shell_name = Some("bash".to_string());
+        let mut target = source.clone();
+        target.session_id = 302;
+
+        state.put_devops_snapshot(source, 44, snapshot("docker"));
+
+        assert_eq!(
+            state
+                .reusable_devops_snapshot(&target)
+                .and_then(|value| value.environment),
+            Some("docker".to_string())
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn snapshot_reuse_rejects_other_paths_and_unintegrated_shells() {
+        let mut state = RuntimeState {
+            installed: BTreeSet::new(),
+            devops_snapshots: VecDeque::new(),
+        };
+        let mut source = session(401, "PowerShell - D:/work");
+        source.cwd = Some("D:\\work".into());
+        source.shell_name = Some("PowerShell".to_string());
+        state.put_devops_snapshot(source.clone(), 55, snapshot("staging"));
+
+        let mut other_path = source.clone();
+        other_path.session_id = 402;
+        other_path.cwd = Some("D:\\production".into());
+        other_path.title = "PowerShell - D:/production".to_string();
+        assert!(state.reusable_devops_snapshot(&other_path).is_none());
+
+        let mut unintegrated = source;
+        unintegrated.session_id = 403;
+        unintegrated.shell_integration = false;
+        assert!(state.reusable_devops_snapshot(&unintegrated).is_none());
+
+        let mut expired = unintegrated;
+        expired.session_id = 404;
+        expired.shell_integration = true;
+        state.devops_snapshots[0].completed_at =
+            Instant::now() - DEVOPS_REUSE_MAX_AGE - Duration::from_millis(1);
+        assert!(state.reusable_devops_snapshot(&expired).is_none());
     }
 }

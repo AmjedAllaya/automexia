@@ -438,6 +438,47 @@ fn multiple_three_row_prompts_keep_order_and_text_through_reflow() {
 }
 
 #[test]
+fn active_three_row_prompt_restores_its_complete_path_after_extreme_reflow() {
+    use crate::crosswords::grid::row::SemanticPrompt;
+
+    let path =
+        "<REDACTED_LOCAL_VALUE>";
+    let mut grid = Grid::<Square>::new(3, 120, 512);
+    grid[Line(0)].set_semantic_prompt(SemanticPrompt::Prompt, Some(77));
+    grid[Line(1)].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(77));
+    for (column, character) in path.chars().enumerate() {
+        grid[Line(1)][Column(column)] = cell(character);
+    }
+    grid[Line(2)].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(77));
+    grid[Line(2)][Column(0)] = cell('λ');
+    grid.cursor.pos = Pos::new(Line(2), Column(2));
+
+    for _ in 0..12 {
+        grid.resize(true, 3, 20);
+        grid.resize(true, 16, 84);
+        grid.resize(true, 32, 180);
+        grid.resize(true, 64, 360);
+    }
+    grid.resize(true, 30, 120);
+
+    let visible_text = (0..grid.screen_lines())
+        .map(|line| {
+            grid[Line(line as i32)]
+                .inner
+                .iter()
+                .map(|square| square.c())
+                .collect::<String>()
+                .trim_end_matches(['\0', ' '])
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        visible_text.iter().any(|row| row == path),
+        "complete active path must return to the visible viewport: {visible_text:?}"
+    );
+}
+
+#[test]
 fn grow_reflow_disabled() {
     let mut grid = Grid::<Square>::new(2, 2, 0);
     grid[Line(0)][Column(0)] = cell('1');

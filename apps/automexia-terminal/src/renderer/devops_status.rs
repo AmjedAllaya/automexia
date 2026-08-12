@@ -20,7 +20,8 @@ use crate::automexia::runtime;
 use crate::automexia::ui::{
     CommandResultAnchor, PromptAnchor, MAX_PROMPT_CONTEXT_HISTORY,
 };
-use crate::renderer::island::{CONTEXT_BAR_HEIGHT, CONTEXT_BAR_TOP};
+use crate::renderer::island::chrome_metrics;
+use crate::renderer::responsive::Density;
 
 pub(crate) const LIVE_REFRESH_MILLIS: u64 = 3_000;
 const REFRESH_INTERVAL: Duration = Duration::from_millis(LIVE_REFRESH_MILLIS);
@@ -105,6 +106,12 @@ struct ContextBarLayout {
     right: Option<(f32, f32)>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ContextBarGeometry {
+    top: f32,
+    height: f32,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SnapshotCandidate {
     Unchanged,
@@ -138,28 +145,40 @@ impl DevOpsStatus {
 
     /// Draw the persistent second chrome row from cached local context facts.
     /// Returns true while the discovery worker owes us another snapshot.
-    pub fn render_context_bar(
+    pub fn render_context_bar<F>(
         &mut self,
         sugarloaf: &mut Sugarloaf,
         colors: Colors,
         session: &SessionFacts,
         dimensions: (f32, f32, f32),
-    ) -> bool {
-        self.request_refresh_if_needed(session, false);
+        completion: F,
+    ) -> bool
+    where
+        F: FnOnce() -> runtime::DevOpsRefreshCompletion,
+    {
+        self.request_refresh_if_needed(session, false, completion);
         self.sync_cached_snapshot(session);
         self.ensure_live_segments(session);
 
-        let (window_width, _window_height, scale_factor) = dimensions;
+        let (window_width, window_height, scale_factor) = dimensions;
         let logical_width = window_width / scale_factor.max(f32::EPSILON);
-        let layout = context_bar_layout(logical_width);
+        let metrics = chrome_metrics(window_width, window_height, scale_factor);
+        if !metrics.show_context {
+            return self.refresh_pending;
+        }
+        let layout = context_bar_layout(logical_width, metrics.density);
+        let bar = ContextBarGeometry {
+            top: metrics.context_top,
+            height: metrics.context_height,
+        };
         let outline = [0.10, 0.17, 0.24, 0.96];
         let fill = [0.018, 0.040, 0.066, 0.91];
 
         draw_glass_surface(
             sugarloaf,
             layout.left_x,
-            CONTEXT_BAR_TOP,
             layout.left_width,
+            bar,
             fill,
             outline,
         );
@@ -169,18 +188,12 @@ impl DevOpsStatus {
             layout.left_x,
             layout.left_width,
             &self.live_segments,
+            bar,
         );
 
         if let Some((right_x, right_width)) = layout.right {
-            draw_glass_surface(
-                sugarloaf,
-                right_x,
-                CONTEXT_BAR_TOP,
-                right_width,
-                fill,
-                outline,
-            );
-            self.draw_shell_clock(sugarloaf, colors, session, right_x, right_width);
+            draw_glass_surface(sugarloaf, right_x, right_width, bar, fill, outline);
+            self.draw_shell_clock(sugarloaf, colors, session, right_x, right_width, bar);
         }
 
         self.refresh_pending
@@ -200,7 +213,7 @@ impl DevOpsStatus {
         prompt_active: bool,
         historical_anchors: &[PromptAnchor],
         live_anchor: Option<PromptAnchor>,
-    ) {
+    ) -> bool {
         self.ensure_live_segments(session);
         let new_prompt = self.sync_active_prompt(
             session,
@@ -208,11 +221,6 @@ impl DevOpsStatus {
             live_anchor,
             historical_anchors,
         );
-        if new_prompt {
-            self.request_refresh_if_needed(session, true);
-            self.sync_cached_snapshot(session);
-            self.ensure_live_segments(session);
-        }
 
         if prompt_active {
             if let Some(anchor) = live_anchor {
@@ -289,6 +297,20 @@ impl DevOpsStatus {
                 }
             }
         }
+
+        new_prompt
+    }
+
+    /// Queue fresh external context for a newly emitted prompt. This is kept
+    /// separate from row drawing so renderer geometry stays independent from
+    /// the event-loop wake-up mechanism.
+    pub fn request_prompt_refresh<F>(&mut self, session: &SessionFacts, completion: F)
+    where
+        F: FnOnce() -> runtime::DevOpsRefreshCompletion,
+    {
+        self.request_refresh_if_needed(session, true, completion);
+        self.sync_cached_snapshot(session);
+        self.ensure_live_segments(session);
     }
 
     fn sync_active_prompt(
@@ -517,11 +539,11 @@ impl DevOpsStatus {
         x: f32,
         width: f32,
         segments: &[Segment],
+        bar: ContextBarGeometry,
     ) {
         let mut cursor_x = x + CONTEXT_PAD_X;
         let right_edge = x + width - CONTEXT_PAD_X;
-        let text_y =
-            CONTEXT_BAR_TOP + (CONTEXT_BAR_HEIGHT - CONTEXT_FONT_SIZE) / 2.0 - 1.0;
+        let text_y = bar.top + (bar.height - CONTEXT_FONT_SIZE) / 2.0 - 1.0;
         let separator = muted(colors.foreground, 0.27);
 
         for (index, segment) in segments.iter().enumerate() {
@@ -548,9 +570,9 @@ impl DevOpsStatus {
                 cursor_x += 12.0;
                 sugarloaf.line(
                     cursor_x,
-                    CONTEXT_BAR_TOP + 12.0,
+                    bar.top + 10.0,
                     cursor_x,
-                    CONTEXT_BAR_TOP + CONTEXT_BAR_HEIGHT - 12.0,
+                    bar.top + bar.height - 10.0,
                     1.0,
                     0.0,
                     separator,
@@ -576,6 +598,7 @@ impl DevOpsStatus {
         session: &SessionFacts,
         x: f32,
         width: f32,
+        bar: ContextBarGeometry,
     ) {
         let shell_text = format!("Shell: {}", shell_label(session));
         let clock_text = local_clock_hhmm();
@@ -599,8 +622,7 @@ impl DevOpsStatus {
         let clock_icon_width = sugarloaf.text_mut().measure(clock_icon, &clock_icon_opts);
         let clock_text_width = sugarloaf.text_mut().measure(&clock_text, &clock_opts);
         let clock_width = clock_icon_width + 10.0 + clock_text_width;
-        let text_y =
-            CONTEXT_BAR_TOP + (CONTEXT_BAR_HEIGHT - CONTEXT_FONT_SIZE) / 2.0 - 1.0;
+        let text_y = bar.top + (bar.height - CONTEXT_FONT_SIZE) / 2.0 - 1.0;
         let shell_x = x + 18.0;
         sugarloaf
             .text_mut()
@@ -608,9 +630,9 @@ impl DevOpsStatus {
         let separator_x = shell_x + shell_width + 17.0;
         sugarloaf.line(
             separator_x,
-            CONTEXT_BAR_TOP + 12.0,
+            bar.top + 10.0,
             separator_x,
-            CONTEXT_BAR_TOP + CONTEXT_BAR_HEIGHT - 12.0,
+            bar.top + bar.height - 10.0,
             1.0,
             0.0,
             muted(colors.foreground, 0.22),
@@ -628,7 +650,14 @@ impl DevOpsStatus {
         );
     }
 
-    fn request_refresh_if_needed(&mut self, session: &SessionFacts, force: bool) {
+    fn request_refresh_if_needed<F>(
+        &mut self,
+        session: &SessionFacts,
+        force: bool,
+        completion: F,
+    ) where
+        F: FnOnce() -> runtime::DevOpsRefreshCompletion,
+    {
         let session_changed = self.last_session.as_ref() != Some(session);
         let expired = self
             .last_refresh_request
@@ -655,7 +684,7 @@ impl DevOpsStatus {
             self.request_in_flight = false;
         }
 
-        match runtime::request_devops_refresh(session) {
+        match runtime::request_devops_refresh(session, Some(completion())) {
             runtime::RefreshSubmission::Queued => {
                 self.last_session = Some(session.clone());
                 self.last_refresh_request = Some(Instant::now());
@@ -844,19 +873,30 @@ fn same_prompt_identity(
     }
 }
 
-fn context_bar_layout(window_width: f32) -> ContextBarLayout {
-    let usable = (window_width - CONTEXT_MARGIN_X * 2.0).max(120.0);
-    if window_width >= RIGHT_STATUS_BREAKPOINT {
+fn context_bar_layout(window_width: f32, density: Density) -> ContextBarLayout {
+    let preferred_margin = match density {
+        Density::Minimal => 8.0,
+        Density::Compact => 12.0,
+        Density::Comfortable => CONTEXT_MARGIN_X,
+    };
+    let margin = preferred_margin.min((window_width * 0.25).max(0.0));
+    let gap = match density {
+        Density::Minimal => 12.0,
+        Density::Compact => 18.0,
+        Density::Comfortable => CONTEXT_GAP,
+    };
+    let usable = (window_width - margin * 2.0).max(1.0);
+    if density == Density::Comfortable && window_width >= RIGHT_STATUS_BREAKPOINT {
         let right_width = RIGHT_STATUS_WIDTH.min(usable * 0.36);
-        let right_x = window_width - CONTEXT_MARGIN_X - right_width;
+        let right_x = window_width - margin - right_width;
         ContextBarLayout {
-            left_x: CONTEXT_MARGIN_X,
-            left_width: (right_x - CONTEXT_GAP - CONTEXT_MARGIN_X).max(120.0),
+            left_x: margin,
+            left_width: (right_x - gap - margin).max(1.0),
             right: Some((right_x, right_width)),
         }
     } else {
         ContextBarLayout {
-            left_x: CONTEXT_MARGIN_X,
+            left_x: margin,
             left_width: usable,
             right: None,
         }
@@ -866,17 +906,17 @@ fn context_bar_layout(window_width: f32) -> ContextBarLayout {
 fn draw_glass_surface(
     sugarloaf: &mut Sugarloaf,
     x: f32,
-    y: f32,
     width: f32,
+    bar: ContextBarGeometry,
     fill: [f32; 4],
     outline: [f32; 4],
 ) {
     sugarloaf.rounded_rect(
         None,
         x,
-        y,
+        bar.top,
         width,
-        CONTEXT_BAR_HEIGHT,
+        bar.height,
         outline,
         0.06,
         CONTEXT_RADIUS,
@@ -885,9 +925,9 @@ fn draw_glass_surface(
     sugarloaf.rounded_rect(
         None,
         x + 1.0,
-        y + 1.0,
+        bar.top + 1.0,
         (width - 2.0).max(0.0),
-        CONTEXT_BAR_HEIGHT - 2.0,
+        (bar.height - 2.0).max(0.0),
         fill,
         0.06,
         CONTEXT_RADIUS - 1.0,
@@ -1141,7 +1181,7 @@ mod tests {
 
     #[test]
     fn wide_layout_keeps_context_and_right_status_separate() {
-        let layout = context_bar_layout(1_600.0);
+        let layout = context_bar_layout(1_600.0, Density::Comfortable);
         let (right_x, right_width) = layout.right.unwrap();
         assert!(layout.left_width > 1_000.0);
         assert!(layout.left_x + layout.left_width + CONTEXT_GAP <= right_x);
@@ -1150,9 +1190,19 @@ mod tests {
 
     #[test]
     fn narrow_layout_gives_context_the_full_width() {
-        let layout = context_bar_layout(600.0);
+        let layout = context_bar_layout(600.0, Density::Compact);
         assert_eq!(layout.right, None);
-        assert_eq!(layout.left_width, 600.0 - CONTEXT_MARGIN_X * 2.0);
+        assert_eq!(layout.left_x, 12.0);
+        assert_eq!(layout.left_width, 576.0);
+    }
+
+    #[test]
+    fn minimum_layout_stays_inside_viewport() {
+        let layout = context_bar_layout(300.0, Density::Minimal);
+        assert_eq!(layout.right, None);
+        assert!(layout.left_x >= 0.0);
+        assert!(layout.left_width > 0.0);
+        assert!(layout.left_x + layout.left_width <= 300.0);
     }
 
     #[test]

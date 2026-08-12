@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 use crate::automexia::marketplace::MarketItem;
+use crate::renderer::responsive::{elide_end, elide_start, Viewport};
 use crate::renderer::scrollbar;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
@@ -322,7 +323,7 @@ const COMMANDS: &[Command] = &[
         action: PaletteAction::ClearHistory,
     },
     Command {
-        title: "/market · Browse extensions",
+        title: "market",
         shortcut: "",
         action: PaletteAction::OpenMarket,
     },
@@ -566,6 +567,8 @@ pub struct CommandPalette {
     /// `scrollbar::opacity_from_last_scroll`. `None` while the palette
     /// has never scrolled since it opened — scrollbar stays hidden.
     last_scroll_time: Option<Instant>,
+    /// Number of rows that fit the most recently rendered viewport.
+    visible_results: usize,
 }
 
 impl Default for CommandPalette {
@@ -579,6 +582,7 @@ impl Default for CommandPalette {
             mode: PaletteMode::Commands,
             caret_blink_start: Instant::now(),
             last_scroll_time: None,
+            visible_results: MAX_VISIBLE_RESULTS,
         }
     }
 }
@@ -656,8 +660,8 @@ impl CommandPalette {
         let count = self.filtered_rows().len();
         if self.selected_index < count.saturating_sub(1) {
             self.selected_index += 1;
-            if self.selected_index >= self.scroll_offset + MAX_VISIBLE_RESULTS {
-                self.scroll_offset = self.selected_index - MAX_VISIBLE_RESULTS + 1;
+            if self.selected_index >= self.scroll_offset + self.visible_results {
+                self.scroll_offset = self.selected_index - self.visible_results + 1;
                 self.last_scroll_time = Some(Instant::now());
             }
         }
@@ -753,17 +757,31 @@ impl CommandPalette {
         results
     }
 
-    /// Returns the palette geometry (x, y, width, height) for hit-testing.
-    fn palette_rect(&self, window_width: f32, scale_factor: f32) -> (f32, f32, f32, f32) {
-        let px = (window_width / scale_factor - PALETTE_WIDTH) / 2.0;
-        let py = PALETTE_MARGIN_TOP;
+    /// Returns the palette geometry for drawing and hit-testing. Width and row
+    /// count contract before either edge can leave the live viewport.
+    fn palette_rect(
+        &self,
+        window_width: f32,
+        window_height: f32,
+        scale_factor: f32,
+    ) -> (f32, f32, f32, f32, usize) {
+        let viewport = Viewport::from_physical(window_width, window_height, scale_factor);
+        let pw = viewport.fitted_surface(PALETTE_WIDTH, 8.0);
+        let px = ((viewport.width - pw) / 2.0).max(0.0);
+        let py = PALETTE_MARGIN_TOP.min((viewport.height * 0.12).max(8.0));
+        let fixed_height =
+            PALETTE_PADDING * 2.0 + INPUT_HEIGHT + SEPARATOR_HEIGHT + RESULTS_MARGIN_TOP;
+        let available_height = (viewport.height - py - 8.0).max(0.0);
+        let visible_results = (((available_height - fixed_height) / RESULT_ITEM_HEIGHT)
+            .floor() as usize)
+            .clamp(1, MAX_VISIBLE_RESULTS);
         let h = PALETTE_PADDING
             + INPUT_HEIGHT
             + SEPARATOR_HEIGHT
             + RESULTS_MARGIN_TOP
-            + RESULT_ITEM_HEIGHT * MAX_VISIBLE_RESULTS as f32
+            + RESULT_ITEM_HEIGHT * visible_results as f32
             + PALETTE_PADDING;
-        (px, py, PALETTE_WIDTH, h)
+        (px, py, pw, h, visible_results)
     }
 
     /// Hit-test a mouse click. Returns Some(index) if a result row was clicked,
@@ -774,9 +792,11 @@ impl CommandPalette {
         mouse_x: f32,
         mouse_y: f32,
         window_width: f32,
+        window_height: f32,
         scale_factor: f32,
     ) -> Result<Option<usize>, ()> {
-        let (px, py, pw, ph) = self.palette_rect(window_width, scale_factor);
+        let (px, py, pw, ph, visible_results) =
+            self.palette_rect(window_width, window_height, scale_factor);
 
         // Outside palette bounds
         if mouse_x < px || mouse_x > px + pw || mouse_y < py || mouse_y > py + ph {
@@ -792,6 +812,9 @@ impl CommandPalette {
 
         let relative_y = mouse_y - results_y;
         let row = (relative_y / RESULT_ITEM_HEIGHT) as usize;
+        if row >= visible_results {
+            return Ok(None);
+        }
         let filtered_count = self.filtered_rows().len();
         let actual_index = self.scroll_offset + row;
 
@@ -808,10 +831,11 @@ impl CommandPalette {
         mouse_x: f32,
         mouse_y: f32,
         window_width: f32,
+        window_height: f32,
         scale_factor: f32,
     ) -> bool {
         if let Ok(Some(index)) =
-            self.hit_test(mouse_x, mouse_y, window_width, scale_factor)
+            self.hit_test(mouse_x, mouse_y, window_width, window_height, scale_factor)
         {
             if self.selected_index != index {
                 self.selected_index = index;
@@ -829,8 +853,14 @@ impl CommandPalette {
 
         let (window_width, window_height, scale_factor) = dimensions;
 
-        let (palette_x, palette_y, palette_width, palette_height) =
-            self.palette_rect(window_width, scale_factor);
+        let (palette_x, palette_y, palette_width, palette_height, visible_results) =
+            self.palette_rect(window_width, window_height, scale_factor);
+        self.visible_results = visible_results;
+        if self.selected_index < self.scroll_offset {
+            self.scroll_offset = self.selected_index;
+        } else if self.selected_index >= self.scroll_offset + visible_results {
+            self.scroll_offset = self.selected_index + 1 - visible_results;
+        }
 
         sugarloaf.rect(
             None,
@@ -866,10 +896,16 @@ impl CommandPalette {
             PaletteMode::Fonts(_) => "Type a font name...",
             PaletteMode::Market(_) => "Search extensions...",
         };
+        let input_text_width = (input_width - INPUT_PADDING_X * 2.0 - 4.0).max(0.0);
         let display_text = if self.query.is_empty() {
-            placeholder
+            elide_end(sugarloaf, placeholder, input_text_width, INPUT_FONT_SIZE)
         } else {
-            self.query.as_str()
+            elide_start(
+                sugarloaf,
+                self.query.as_str(),
+                input_text_width,
+                INPUT_FONT_SIZE,
+            )
         };
         let text_color = if self.query.is_empty() {
             DIM_TEXT_COLOR
@@ -887,7 +923,7 @@ impl CommandPalette {
         let input_rendered_width =
             sugarloaf
                 .text_mut()
-                .draw(text_x, text_y, display_text, &input_opts);
+                .draw(text_x, text_y, &display_text, &input_opts);
 
         let elapsed_ms = self.caret_blink_start.elapsed().as_millis();
         let caret_visible = (elapsed_ms / CARET_BLINK_MS).is_multiple_of(2);
@@ -939,7 +975,7 @@ impl CommandPalette {
         for (display_i, (_, row)) in filtered
             .iter()
             .skip(self.scroll_offset)
-            .take(MAX_VISIBLE_RESULTS)
+            .take(visible_results)
             .enumerate()
         {
             let actual_index = self.scroll_offset + display_i;
@@ -972,14 +1008,27 @@ impl CommandPalette {
             };
             let row_text_x = input_x + INPUT_PADDING_X;
             let row_text_y = item_y + (RESULT_ITEM_HEIGHT - RESULT_FONT_SIZE) / 2.0;
+            let shortcut = row.shortcut();
+            let is_font_row = matches!(row, PaletteRow::Font { .. });
+            let trailing_width = if !shortcut.is_empty() {
+                sugarloaf.text_mut().measure(shortcut, &shortcut_opts) + 10.0
+            } else if is_font_row {
+                COPY_ICON_W + 10.0
+            } else {
+                0.0
+            };
+            let row_title = elide_end(
+                sugarloaf,
+                row.title(),
+                (input_width - INPUT_PADDING_X * 2.0 - trailing_width).max(0.0),
+                RESULT_FONT_SIZE,
+            );
             sugarloaf
                 .text_mut()
-                .draw(row_text_x, row_text_y, row.title(), &result_opts);
+                .draw(row_text_x, row_text_y, &row_title, &result_opts);
 
             // Right-side hint: shortcut for commands, copy icon for
             // font rows (signals "Enter copies this to clipboard").
-            let shortcut = row.shortcut();
-            let is_font_row = matches!(row, PaletteRow::Font { .. });
             if !shortcut.is_empty() {
                 let ui = sugarloaf.text_mut();
                 let shortcut_width = ui.measure(shortcut, &shortcut_opts);
@@ -1022,14 +1071,14 @@ impl CommandPalette {
         // Drawn only when the palette has actually been scrolled —
         // hidden on first open, faded out 2.3 s after the last scroll.
         let total = filtered.len();
-        let track_height = MAX_VISIBLE_RESULTS as f32 * RESULT_ITEM_HEIGHT;
-        let normalized = if total > MAX_VISIBLE_RESULTS {
-            self.scroll_offset as f32 / (total - MAX_VISIBLE_RESULTS) as f32
+        let track_height = visible_results as f32 * RESULT_ITEM_HEIGHT;
+        let normalized = if total > visible_results {
+            self.scroll_offset as f32 / (total - visible_results) as f32
         } else {
             0.0
         };
         if let Some((thumb_y, thumb_height)) = scrollbar::compute_thumb(
-            MAX_VISIBLE_RESULTS,
+            visible_results,
             total,
             results_y,
             track_height,
@@ -1105,6 +1154,16 @@ mod tests {
         let filtered = palette.filtered_rows();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].1.title(), "Quit");
+    }
+
+    #[test]
+    fn market_command_uses_plain_label() {
+        let market = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::OpenMarket)
+            .expect("market command");
+        assert_eq!(market.title, "market");
+        assert!(!market.title.starts_with('/'));
     }
 
     #[test]
@@ -1193,7 +1252,25 @@ mod tests {
     #[test]
     fn test_hit_test_outside() {
         let palette = CommandPalette::new();
-        assert!(palette.hit_test(0.0, 0.0, 1200.0, 1.0).is_err());
+        assert!(palette.hit_test(0.0, 0.0, 1200.0, 760.0, 1.0).is_err());
+    }
+
+    #[test]
+    fn palette_contracts_to_minimum_window() {
+        let palette = CommandPalette::new();
+        let (x, y, width, height, rows) = palette.palette_rect(300.0, 200.0, 1.0);
+        assert!(x >= 0.0 && y >= 0.0);
+        assert!(x + width <= 300.0);
+        assert!(y + height <= 200.0);
+        assert!((1..MAX_VISIBLE_RESULTS).contains(&rows));
+    }
+
+    #[test]
+    fn palette_geometry_uses_logical_hidpi_size() {
+        let palette = CommandPalette::new();
+        let logical = palette.palette_rect(600.0, 400.0, 1.0);
+        let hidpi = palette.palette_rect(1_200.0, 800.0, 2.0);
+        assert_eq!(logical, hidpi);
     }
 
     #[test]
