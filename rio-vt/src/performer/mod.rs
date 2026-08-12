@@ -29,7 +29,7 @@ use std::thread::{Builder, JoinHandle};
 #[cfg(feature = "pty")]
 use std::time::Instant;
 #[cfg(feature = "pty")]
-use tracing::error;
+use tracing::{error, warn};
 
 /// Like `thread::spawn`, but with a `name` argument.
 #[cfg(feature = "pty")]
@@ -80,6 +80,96 @@ impl<T> PeekableReceiver<T> {
     }
 }
 
+/// Collapse only adjacent resize messages. Input and shutdown are ordering
+/// barriers: a pending resize remains before them, while a later resize starts
+/// a new coalescing run. This keeps shell line editors synchronized without
+/// forwarding a window-drag backlog to ConPTY/Unix PTYs.
+#[cfg(feature = "pty")]
+fn coalesce_channel_messages(messages: impl IntoIterator<Item = Msg>) -> Vec<Msg> {
+    let mut coalesced = Vec::new();
+    for message in messages {
+        match message {
+            Msg::Resize(size) => match coalesced.last_mut() {
+                Some(Msg::Resize(pending)) => *pending = size,
+                _ => coalesced.push(Msg::Resize(size)),
+            },
+            Msg::Shutdown => {
+                coalesced.push(Msg::Shutdown);
+                break;
+            }
+            input @ Msg::Input(_) => coalesced.push(input),
+        }
+    }
+    coalesced
+}
+
+#[cfg(feature = "pty")]
+trait PtyMessageSink {
+    fn resize(&mut self, size: crate::event::WindowSize) -> io::Result<()>;
+    fn input(&mut self, input: Cow<'static, [u8]>);
+    fn shutdown(&mut self);
+}
+
+#[cfg(feature = "pty")]
+struct LivePtyMessageSink<'a, T> {
+    pty: &'a mut T,
+    write_list: &'a mut VecDeque<Cow<'static, [u8]>>,
+}
+
+#[cfg(feature = "pty")]
+impl<T: teletypewriter::EventedPty> PtyMessageSink for LivePtyMessageSink<'_, T> {
+    fn resize(&mut self, size: crate::event::WindowSize) -> io::Result<()> {
+        self.pty.set_winsize(size.into())
+    }
+
+    fn input(&mut self, input: Cow<'static, [u8]>) {
+        self.write_list.push_back(input);
+    }
+
+    fn shutdown(&mut self) {}
+}
+
+/// Deliver a coalesced channel batch to the PTY boundary. Keeping this policy
+/// in one function makes the exact ordering observable with a recording sink:
+/// an effective resize is committed before following input or shutdown, while
+/// duplicates never reach the operating-system PTY.
+#[cfg(feature = "pty")]
+fn deliver_channel_messages(
+    messages: impl IntoIterator<Item = Msg>,
+    sink: &mut impl PtyMessageSink,
+    last_window_size: &mut Option<crate::event::WindowSize>,
+) -> bool {
+    for msg in coalesce_channel_messages(messages) {
+        match msg {
+            Msg::Input(input) => sink.input(input),
+            Msg::Resize(window_size) => {
+                if *last_window_size == Some(window_size) {
+                    continue;
+                }
+                match sink.resize(window_size) {
+                    Ok(()) => *last_window_size = Some(window_size),
+                    Err(error) => {
+                        // A transient ConPTY/PTY resize failure must not
+                        // terminate the session. Leave the last successful
+                        // size unchanged so a later message can retry.
+                        warn!(
+                            rows = window_size.rows,
+                            cols = window_size.cols,
+                            "could not resize PTY; session remains usable: {error}"
+                        );
+                    }
+                }
+            }
+            Msg::Shutdown => {
+                sink.shutdown();
+                return false;
+            }
+        }
+    }
+
+    true
+}
+
 #[cfg(feature = "pty")]
 pub struct Machine<T: teletypewriter::EventedPty, U: EventListener> {
     sender: channel::Sender<Msg>,
@@ -90,6 +180,7 @@ pub struct Machine<T: teletypewriter::EventedPty, U: EventListener> {
     event_proxy: U,
     window_id: WindowId,
     route_id: usize,
+    last_window_size: Option<crate::event::WindowSize>,
 }
 
 #[cfg(feature = "pty")]
@@ -187,6 +278,7 @@ where
             event_proxy,
             window_id,
             route_id,
+            last_window_size: None,
         })
     }
 
@@ -287,17 +379,12 @@ where
     ///
     /// Returns `false` when a shutdown message was received.
     fn drain_recv_channel(&mut self, state: &mut State) -> bool {
-        while let Some(msg) = self.receiver.recv() {
-            match msg {
-                Msg::Input(input) => state.write_list.push_back(input),
-                Msg::Resize(window_size) => {
-                    let _ = self.pty.set_winsize(window_size.into());
-                }
-                Msg::Shutdown => return false,
-            }
-        }
-
-        true
+        let messages = std::iter::from_fn(|| self.receiver.recv());
+        let mut sink = LivePtyMessageSink {
+            pty: &mut self.pty,
+            write_list: &mut state.write_list,
+        };
+        deliver_channel_messages(messages, &mut sink, &mut self.last_window_size)
     }
 
     #[inline]
@@ -520,5 +607,153 @@ where
 
             (self, state)
         })
+    }
+}
+
+#[cfg(all(test, feature = "pty"))]
+mod tests {
+    use super::*;
+    use crate::event::WindowSize;
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum RecordedPtyEvent {
+        Resize(WindowSize),
+        Input(Vec<u8>),
+        Shutdown,
+    }
+
+    #[derive(Default)]
+    struct RecordingPty {
+        events: Vec<RecordedPtyEvent>,
+        fail_next_resize: bool,
+    }
+
+    impl PtyMessageSink for RecordingPty {
+        fn resize(&mut self, size: WindowSize) -> io::Result<()> {
+            if self.fail_next_resize {
+                self.fail_next_resize = false;
+                return Err(io::Error::other("injected transient resize failure"));
+            }
+            self.events.push(RecordedPtyEvent::Resize(size));
+            Ok(())
+        }
+
+        fn input(&mut self, input: Cow<'static, [u8]>) {
+            self.events
+                .push(RecordedPtyEvent::Input(input.into_owned()));
+        }
+
+        fn shutdown(&mut self) {
+            self.events.push(RecordedPtyEvent::Shutdown);
+        }
+    }
+
+    fn size(cols: u16, rows: u16) -> WindowSize {
+        WindowSize {
+            rows,
+            cols,
+            width: cols.saturating_mul(8),
+            height: rows.saturating_mul(16),
+        }
+    }
+
+    #[test]
+    fn resize_stress_coalesces_one_thousand_adjacent_messages() {
+        let messages = (1..=1_000).map(|index| Msg::Resize(size(index, 40)));
+        let coalesced = coalesce_channel_messages(messages);
+
+        assert_eq!(coalesced.len(), 1);
+        assert!(matches!(
+            coalesced.as_slice(),
+            [Msg::Resize(window_size)] if *window_size == size(1_000, 40)
+        ));
+    }
+
+    #[test]
+    fn resize_stress_preserves_input_and_shutdown_barriers() {
+        let messages = vec![
+            Msg::Resize(size(80, 24)),
+            Msg::Resize(size(100, 30)),
+            Msg::Input(Cow::Borrowed(b"a")),
+            Msg::Resize(size(120, 40)),
+            Msg::Resize(size(140, 50)),
+            Msg::Input(Cow::Borrowed(b"b")),
+            Msg::Resize(size(160, 60)),
+            Msg::Shutdown,
+            Msg::Resize(size(200, 70)),
+        ];
+        let coalesced = coalesce_channel_messages(messages);
+
+        assert_eq!(coalesced.len(), 6);
+        assert!(matches!(coalesced[0], Msg::Resize(value) if value == size(100, 30)));
+        assert!(matches!(coalesced[1], Msg::Input(ref value) if value.as_ref() == b"a"));
+        assert!(matches!(coalesced[2], Msg::Resize(value) if value == size(140, 50)));
+        assert!(matches!(coalesced[3], Msg::Input(ref value) if value.as_ref() == b"b"));
+        assert!(matches!(coalesced[4], Msg::Resize(value) if value == size(160, 60)));
+        assert!(matches!(coalesced[5], Msg::Shutdown));
+    }
+
+    #[test]
+    fn resize_stress_recording_pty_observes_final_sizes_and_input_order() {
+        let messages = vec![
+            Msg::Resize(size(80, 24)),
+            Msg::Resize(size(100, 30)),
+            Msg::Input(Cow::Borrowed(b"first")),
+            Msg::Resize(size(100, 30)),
+            Msg::Resize(size(140, 50)),
+            Msg::Input(Cow::Borrowed(b"second")),
+            Msg::Resize(size(160, 60)),
+            Msg::Shutdown,
+            Msg::Input(Cow::Borrowed(b"after-shutdown")),
+        ];
+        let mut recording_pty = RecordingPty::default();
+        let mut last_window_size = None;
+
+        assert!(!deliver_channel_messages(
+            messages,
+            &mut recording_pty,
+            &mut last_window_size,
+        ));
+        assert_eq!(last_window_size, Some(size(160, 60)));
+        assert_eq!(
+            recording_pty.events,
+            vec![
+                RecordedPtyEvent::Resize(size(100, 30)),
+                RecordedPtyEvent::Input(b"first".to_vec()),
+                RecordedPtyEvent::Resize(size(140, 50)),
+                RecordedPtyEvent::Input(b"second".to_vec()),
+                RecordedPtyEvent::Resize(size(160, 60)),
+                RecordedPtyEvent::Shutdown,
+            ]
+        );
+    }
+
+    #[test]
+    fn resize_stress_recording_pty_retries_after_resize_error() {
+        let requested = size(220, 70);
+        let mut recording_pty = RecordingPty {
+            fail_next_resize: true,
+            ..RecordingPty::default()
+        };
+        let mut last_window_size = Some(size(100, 30));
+
+        assert!(deliver_channel_messages(
+            [Msg::Resize(requested)],
+            &mut recording_pty,
+            &mut last_window_size,
+        ));
+        assert_eq!(last_window_size, Some(size(100, 30)));
+        assert!(recording_pty.events.is_empty());
+
+        assert!(deliver_channel_messages(
+            [Msg::Resize(requested), Msg::Resize(requested)],
+            &mut recording_pty,
+            &mut last_window_size,
+        ));
+        assert_eq!(last_window_size, Some(requested));
+        assert_eq!(
+            recording_pty.events,
+            vec![RecordedPtyEvent::Resize(requested)]
+        );
     }
 }
