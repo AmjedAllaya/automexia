@@ -11,35 +11,34 @@ chrome and are never part of the terminal grid:
 
 - a 66 px profile/tab row with an application mark, draggable tabs, new-tab
   button, command/profile menu, and native-looking window controls on Windows;
-- a 47 px operational context surface at y=82 with local OS/WSL, Git,
-  Kubernetes, cloud, Docker, Terraform, environment and production facts;
-- a separate right surface for the real shell name and local clock on
-  comfortable windows. It is one quiet glass rail with direct icon/value pairs
-  and a restrained divider; there are no nested cards, icon wells, or tiny
-  labels competing with the actual information. Shell-aware accents and
-  theme-corrected contrast preserve identity. Narrow windows give the full row
-  to context instead.
+- a 47 px workspace-action rail at y=82 with direct access to Find, Split
+  Right, Split Down, and Next Pane. It is one quiet glass surface with
+  DPI-independent vector icons, restrained semantic accents, and no repeated
+  shell, clock, OS, Git, Docker, cloud, environment, or user labels. Those
+  session-specific facts remain beside every command in the pane where they
+  belong.
 
 Chrome has one shared responsive contract for drawing, hit-testing and terminal
 grid reservation:
 
-| Density | Trigger (logical viewport) | Header | Context behavior |
+| Density | Trigger (logical viewport) | Header | Workspace tools |
 |---|---|---:|---|
-| comfortable | at least 840 px wide and 480 px high | 66 px | 47 px row; separate shell/clock surface |
-| compact | below either comfortable threshold | 54 px | 41 px single context surface |
-| minimal | below 480 px wide or 280 px high | 46 px | 38 px row when height permits |
+| comfortable | at least 840 px wide and 480 px high | 66 px | 47 px labeled action rail |
+| compact | below either comfortable threshold | 54 px | 41 px icon-only action rail |
+| minimal | below 480 px wide or 280 px high | 46 px | 38 px icon-only rail when height permits |
 
-Below 260 logical pixels of height, the context surface folds away and the
+Below 260 logical pixels of height, the action rail folds away and the
 minimal header reserves only 54 px, leaving 146 px for terminal content at the
-supported 300×200 minimum. The prompt-level context row remains available in
-the grid. As width contracts, controls fold in priority order: the product mark,
-command-center control, and then new-tab button hide before the active tab can collide
-with the always-reachable minimize, maximize and close controls. Narrow
+supported 300×200 minimum. Its commands remain available through shortcuts and
+the command palette, while prompt-level context remains available in the grid.
+As width contracts, controls fold in priority order: the product mark,
+command-center control, and then new-tab button hide before the active tab can
+collide with the always-reachable minimize, maximize and close controls. Narrow
 multi-tab strips use icon-only tabs when a readable title no longer fits.
 
 The terminal grid begins below the live reservation, which is recomputed on
 every viewport and DPI change. Typing, output, scrollback and resize/reflow
-therefore cannot erase the tabs or context bar, nor can a stale 148 px margin
+therefore cannot erase the tabs or action rail, nor can a stale 148 px margin
 consume a compact window. Windows uses a 6 px renderer-owned resize frame and
 supports all edges and corners when native decorations are disabled.
 
@@ -78,20 +77,26 @@ semantic accents, outlined key badges, a slim active indicator, and generous
 spacing provide hierarchy without colored icon blocks or redundant category
 labels. Command behavior and keyboard navigation remain unchanged.
 
-## Live operational context
+The workspace rail is deliberately task-focused: Find opens terminal search,
+Split Right and Split Down create fresh configured-shell panes, and Next Pane
+moves focus without reaching for the keyboard. All four buttons share their
+responsive geometry with pointer hit-testing, use no font-dependent icon, and
+perform no heap allocation during frame rendering or mouse movement.
 
-The second row is a session-scoped live snapshot, not a static list of logos.
-Automexia refreshes completed snapshots every three seconds and repaints a
-worker result within 100 ms. Route-keyed scheduling is de-duplicated, so typing
-or resizing cannot create duplicate refresh loops and one pane cannot publish
-another pane's context.
+## Per-pane operational context
+
+Every semantic prompt owns a session-scoped live snapshot, not a static list
+of logos. Automexia refreshes completed snapshots every three seconds and
+repaints a worker result within 100 ms. Route-keyed scheduling is de-duplicated,
+so typing or resizing cannot create duplicate refresh loops and one pane cannot
+publish another pane's context.
 
 In a split layout, every visible pane renders its own prompt-level operational
 snapshot, including inactive panes. This keeps each pane's OS, Git branch,
 cluster, cloud, Docker, Terraform, environment, and user identity readable at
-a glance in multi-cloud workspaces. The window-level context bar continues to
-follow the selected pane, while a four-sided `split_active` accent outline marks
-that pane without consuming terminal cells or changing PTY dimensions.
+a glance in multi-cloud workspaces. A four-sided `split_active` accent outline
+marks the selected pane without consuming terminal cells or changing PTY
+dimensions. Global chrome never substitutes one pane's facts for another.
 
 | Segment | Appears when |
 |---|---|
@@ -123,8 +128,8 @@ and Symbols Nerd Font assets, never platform emoji, so the same codepoint has a
 stable shape on every machine.
 
 Operational identities use semantic brand anchors rather than generic terminal
-palette slots. The same resolver colors both the persistent header and frozen
-prompt-history snapshot, and uses the color for both icon and label:
+palette slots. The same resolver colors live and frozen prompt-history
+snapshots, and uses the color for both icon and label:
 
 | Identity | Anchor |
 |---|---|
@@ -149,7 +154,7 @@ present together, so color is never the only identifier.
 
 ## Prompt and command lifecycle
 
-The bundled PowerShell, Bash and Zsh integrations reserve three logical rows
+The bundled PowerShell, Bash, and Zsh integrations reserve three logical rows
 for every prompt. The first is a renderer-owned context snapshot, the second
 stores the complete path, and the third is the short editable command row:
 
@@ -173,17 +178,26 @@ completion includes the actual exit code; Automexia measures between `C` and
 identity, context, and command results survive scrollback and column
 shrink/grow reflow.
 
+CMD reserves the same visible three-row structure and publishes OSC 7 plus
+OSC 133 `A/B`, but stock `cmd.exe` exposes no pre/post-command hook from which
+to generate a monotonic identity, true exit status, or completion timestamp.
+Automexia therefore keeps CMD path/context reflow resilient without fabricating
+success badges or durations. The richer `A/B/C/D` lifecycle above remains
+available whenever the active shell is PowerShell, Bash, or Zsh.
+
 The complete path uses a restrained hierarchy shared by PowerShell, Bash, and
 Zsh: separators are muted slate, the root or first component is light blue,
 parent components remain Automexia blue, and the active directory is mint. ANSI style
 changes never alter the copied path, OSC 7 directory, Unicode components, or
 reflow text. The PowerShell formatter caches an unchanged path, and the POSIX
 formatters use shell builtins only, so styling adds no process to prompt input
-or history navigation.
+or history navigation. CMD keeps the complete path in the same blue family as
+one dynamic `$P` token because its prompt language cannot style individual path
+components without changing the literal directory.
 
 Use `Ctrl`+`Alt`+`R` or `Ctrl`+`Alt`+`D` to create an independent clone of the
 active session to the right or below. The clone preserves the current
-PowerShell/pwsh, Bash, Zsh, or WSL launch identity and directory while keeping
+PowerShell/pwsh, Command Prompt, Bash, Zsh, or WSL launch identity and directory while keeping
 its process, input, scrollback, and DevOps discovery state isolated. Existing
 `Ctrl`+`Shift`+`R`/`D` shortcuts continue to open the configured default shell.
 
@@ -209,6 +223,33 @@ POSIX function. Set `AUTOMEXIA_PLAIN_LS=1` before the integration is sourced to
 disable the icon presentation. Machines without `eza` retain their original
 POSIX commands.
 
+Folder and file names also receive a name-based visual category. Icons remain
+the primary signal and colors are secondary, so the categories remain readable
+with color-vision differences and customized themes:
+
+| Category | Common names and files | Default identity |
+|---|---|---|
+| Sensitive | `secret`, `private`, `credentials`, `vault`, `.env*`, keys and certificates | lock, coral red |
+| Configuration | `config`, `settings`, `profiles`, JSON/TOML/YAML/config files | controls, amber |
+| Logs and traces | `log`, `logs`, telemetry, `.log`, `.trace` | log document, gold |
+| Source and engines | `apps`, `src`, `lib*`, `rio-*`, `corcovado`, `sugarloaf` | code, cyan |
+| Documentation | `docs`, `documentation`, `guides`, Markdown and text | book/document, green |
+| Tests and quality | `test*`, `specs`, `fixtures`, `fuzz`, benchmarks | flask, violet |
+| Build output | `target`, `build`, `dist`, `out`, `coverage`, `changes` | cubes, coral |
+| Media and assets | `assets`, `public`, `static`, images, icons and fonts | image, pink |
+| Packages | `.cargo`, `node_modules`, `vendor`, `packages`, dependencies | package, purple |
+| Repository | `.git`, `.github`, `.gitlab`, Git control files | branch, violet |
+| Tools | `scripts`, `tools`, `shell-integration`, `ci` | wrench, mint |
+| Data | `data`, `db`, `database`, migrations, SQL/SQLite | database, indigo |
+| Ephemeral | `cache`, `tmp`, `temp`, sessions and backups | clock, slate |
+| Infrastructure | `infra`, Terraform, Kubernetes, Helm, Docker and cloud | cloud/provider blue |
+| Packaging | `packaging`, installers and archives | package/archive, amber |
+
+Classification uses only the displayed basename and extension; it never opens
+or scans file contents and is not a security verdict. A lock icon means “this
+name commonly contains sensitive material,” not that the item is encrypted or
+permission-protected.
+
 Native Windows PowerShell does not require `eza`. Automexia installs a native
 PowerShell format view for `DirectoryInfo` and `FileInfo`, so the existing
 `ls` alias and `Get-ChildItem` display folder and file-type icons automatically.
@@ -220,6 +261,32 @@ The command still returns the original filesystem objects: `Where-Object`,
 `Sort-Object`, property access, pipelines, scripts, and redirection keep normal
 PowerShell behavior. `AUTOMEXIA_PLAIN_LS=1` disables this presentation layer
 before the integration is loaded on every supported shell.
+
+PowerShell 7 applies the category color to the icon and basename because its
+formatter understands ANSI display width. Windows PowerShell 5 retains the
+same differentiated category icons but omits injected name colors: its legacy
+formatter counts invisible ANSI bytes as table cells, which would otherwise
+damage narrow filenames. This compatibility rule preserves complete names.
+
+Command Prompt has a dedicated integration rather than inheriting PowerShell
+state. Typing `cmd` or `cmd.exe` with no arguments from an integrated
+PowerShell session invokes `%ComSpec%` directly in the same ConPTY; it never
+starts a detached console or another terminal application. `exit` returns to
+the original PowerShell prompt. Explicit invocations such as `cmd /c build.cmd`
+are forwarded unchanged, and `AUTOMEXIA_PLAIN_CMD=1` disables only the
+interactive wrapper.
+
+The CMD prompt publishes its real shell/user/executable identity, clears stale
+WSL identity, updates OSC 7 and its title from dynamic `$P` after every `cd`,
+and renders the same terminal-owned context spacer, complete path, and editable
+lambda rows. The installed `ls` and `ll` DOSKEY macros use the shared Automexia
+filesystem taxonomy and keep icons beside names. Built-in `dir` is deliberately
+not replaced, so batch files, redirection, native switches, and existing CMD
+automation retain Microsoft semantics. CMD itself has no supported pre/post
+command hook equivalent to PSReadLine, Readline, or ZLE; therefore the visual
+prompt/context/listing integration is complete, while per-command exit-status
+timing remains a PowerShell/Bash/Zsh capability rather than displaying an
+incorrect synthetic result.
 
 Interactive long listings (`ls -l`, `l`, `ll`, `la`, and `lA`) are tables with
 bold column headers, owner and group columns, ISO timestamps, and stable color
@@ -235,8 +302,10 @@ Install or refresh the integrations on Windows (including WSL) with:
 .\shell-integration\install-windows.ps1
 ```
 
-Restart Automexia after installation. The installer is idempotent and the
-matching uninstall script removes only marked Automexia blocks.
+Restart Automexia after installation. The installer is idempotent, generates
+CMD clone metadata for the current Windows account without storing plaintext
+credentials, and the matching uninstall script removes only marked Automexia
+blocks.
 
 ## Semantic output
 

@@ -1,6 +1,6 @@
 # ADR 0004: Native persistent operational chrome
 
-Status: Accepted
+Status: Superseded by ADR 0006
 
 Automexia reserves renderer-owned space above the VT grid for profile tabs and
 live operational context. Every shell prompt also reserves an empty semantic
