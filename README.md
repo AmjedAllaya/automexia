@@ -102,6 +102,10 @@ right/lower split with `Ctrl`+`Alt`+`R` / `Ctrl`+`Alt`+`D`. The existing
 `Ctrl`+`R` / `Ctrl`+`D` remain native shell input. See
 [configuration](docs/CONFIGURATION.md) for the exact isolation contract.
 
+On Windows and Linux, `Ctrl`+`T` opens a separate Automexia window containing
+its initial tab. `Ctrl`+`Shift`+`T` continues to add a global tab to the current
+window, while `Ctrl`+`Shift`+`N` remains a compatible new-window alias.
+
 ## Configuration
 
 Automexia uses these roots by default:

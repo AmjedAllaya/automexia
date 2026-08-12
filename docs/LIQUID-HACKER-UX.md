@@ -14,10 +14,11 @@ chrome and are never part of the terminal grid:
 - a 47 px operational context surface at y=82 with local OS/WSL, Git,
   Kubernetes, cloud, Docker, Terraform, environment and production facts;
 - a separate right surface for the real shell name and local clock on
-  comfortable windows. Two inset glass chips establish clear hierarchy with
-  terminal/clock glyph wells, restrained uppercase labels, emphasized values,
-  shell-aware accents, and theme-corrected contrast. Narrow windows give the
-  full row to context instead.
+  comfortable windows. It is one quiet glass rail with direct icon/value pairs
+  and a restrained divider; there are no nested cards, icon wells, or tiny
+  labels competing with the actual information. Shell-aware accents and
+  theme-corrected contrast preserve identity. Narrow windows give the full row
+  to context instead.
 
 Chrome has one shared responsive contract for drawing, hit-testing and terminal
 grid reservation:
@@ -32,7 +33,7 @@ Below 260 logical pixels of height, the context surface folds away and the
 minimal header reserves only 54 px, leaving 146 px for terminal content at the
 supported 300×200 minimum. The prompt-level context row remains available in
 the grid. As width contracts, controls fold in priority order: the product mark,
-palette chevron, and then new-tab button hide before the active tab can collide
+command-center control, and then new-tab button hide before the active tab can collide
 with the always-reachable minimize, maximize and close controls. Narrow
 multi-tab strips use icon-only tabs when a readable title no longer fits.
 
@@ -48,6 +49,12 @@ redraws only the lambda and editable input row. Resizing reflows the semantic
 block by its stable `aid`, retains the entire logical path at physically tiny
 sizes, and reveals it again immediately when enough columns return. A user
 viewing scrollback is never forced back to the active cursor by resize.
+Resize alone never invokes prompt reconstruction. Prompt repair is armed only
+when the shell editor explicitly erases terminal-owned cells, and replacement
+compacts the archived prompt block without clearing completed command output or
+leaving a blank band before the insertion cursor. Optional cursor animation
+snaps across window and pane geometry changes instead of travelling from stale
+pixel coordinates.
 
 The default window is 1280x760. Tabs remain visible with one session; users may
 still explicitly set `navigation.hide-if-single = true` on platforms with
@@ -61,6 +68,15 @@ combined adjacent-panel size when a divider reaches a compact limit. These
 rules apply equally at 1× and HiDPI scale factors and do not upscale UI on very
 large displays; the terminal grid simply gains rows and columns.
 
+The tab-row command-center control is a DPI-independent four-tile Automexia
+mark rather than a font-dependent chevron. It keeps a blue-black glass well at
+rest and gains a cyan focus outline on hover. The menu it opens uses branded
+glass elevation, a headerless search-first surface, semantic command icons,
+compact keyboard-key badges, and a cyan-outlined active row. Session, pane,
+navigation, appearance, clipboard,
+extension, and destructive actions retain distinct color roles; command
+behavior and keyboard navigation remain unchanged.
+
 ## Live operational context
 
 The second row is a session-scoped live snapshot, not a static list of logos.
@@ -68,6 +84,13 @@ Automexia refreshes completed snapshots every three seconds and repaints a
 worker result within 100 ms. Route-keyed scheduling is de-duplicated, so typing
 or resizing cannot create duplicate refresh loops and one pane cannot publish
 another pane's context.
+
+In a split layout, every visible pane renders its own prompt-level operational
+snapshot, including inactive panes. This keeps each pane's OS, Git branch,
+cluster, cloud, Docker, Terraform, environment, and user identity readable at
+a glance in multi-cloud workspaces. The window-level context bar continues to
+follow the selected pane, while a four-sided `split_active` accent outline marks
+that pane without consuming terminal cells or changing PTY dimensions.
 
 | Segment | Appears when |
 |---|---|
@@ -149,6 +172,14 @@ completion includes the actual exit code; Automexia measures between `C` and
 identity, context, and command results survive scrollback and column
 shrink/grow reflow.
 
+The complete path uses a restrained hierarchy shared by PowerShell, Bash, and
+Zsh: separators are muted slate, the root or first component is light blue,
+parent components remain Automexia blue, and the active directory is mint. ANSI style
+changes never alter the copied path, OSC 7 directory, Unicode components, or
+reflow text. The PowerShell formatter caches an unchanged path, and the POSIX
+formatters use shell builtins only, so styling adds no process to prompt input
+or history navigation.
+
 Use `Ctrl`+`Alt`+`R` or `Ctrl`+`Alt`+`D` to create an independent clone of the
 active session to the right or below. The clone preserves the current
 PowerShell/pwsh, Bash, Zsh, or WSL launch identity and directory while keeping
@@ -218,7 +249,12 @@ only and never rewrites terminal cells or copied text.
 
 - Click a tab to select it; drag to reorder it.
 - Click `+` to open another terminal with the configured shell.
-- Click the chevron to open the searchable command palette.
+- On Windows and Linux, press `Ctrl`+`T` to create an independent window with
+  its initial tab, or `Ctrl`+`Shift`+`T` to add a global tab to the current
+  window. `Ctrl`+`Shift`+`N` remains a compatible new-window alias.
+- On macOS, use the native `Cmd`+`N` new-window and `Cmd`+`T` current-window tab
+  shortcuts.
+- Click the four-tile command-center control to open the searchable command palette.
 - Right-click a tab to rename it or choose its accent.
 - Use the custom minimize, maximize/restore and close controls on Windows.
 - Drag empty space in the first row to move the window; drag any edge/corner to

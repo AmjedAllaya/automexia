@@ -48,6 +48,19 @@ size = 20.0
 `Ctrl`+`+` and `Ctrl`+`-` adjust an individual terminal panel at runtime;
 `Ctrl`+`0` returns it to the configured size.
 
+On Windows and Linux, tab shortcuts have two deliberate scopes:
+
+| Shortcut | Result |
+|---|---|
+| `Ctrl`+`T` | create a separate Automexia window containing its initial tab |
+| `Ctrl`+`Shift`+`T` | add a global tab to the current window's tab strip |
+| `Ctrl`+`Shift`+`N` | create a separate window (compatibility alias) |
+
+The new window owns an independent route, terminal session, and tab strip.
+These are defaults, so an explicit user binding can override `Ctrl`+`T` without
+changing `Ctrl`+`Shift`+`T`. macOS retains the platform conventions `Cmd`+`N`
+for a new window and `Cmd`+`T` for a tab in the current window.
+
 Split shortcuts distinguish a clean default shell from an independent clone:
 
 | Shortcut | Result |
