@@ -33,6 +33,22 @@ function Get-ActiveAutomexiaPanel {
     return @($Snapshot.panels | Where-Object { [bool]$_.active })[0]
 }
 
+function Test-AllAutomexiaPaneContexts {
+    param($Snapshot)
+    if ([int]$Snapshot.panel_count -le 0 -or
+        @($Snapshot.panels).Count -ne [int]$Snapshot.panel_count) {
+        return $false
+    }
+    foreach ($panel in @($Snapshot.panels)) {
+        if ($null -eq $panel.context_session_id -or
+            [int64]$panel.context_session_id -ne [int64]$panel.route_id -or
+            @($panel.context_segments).Count -eq 0) {
+            return $false
+        }
+    }
+    return $true
+}
+
 $snapshotPath = Join-Path ([System.IO.Path]::GetTempPath()) (
     'automexia-resize-{0}.json' -f [guid]::NewGuid().ToString('N'))
 $controlPath = Join-Path ([System.IO.Path]::GetTempPath()) (
@@ -315,7 +331,8 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     $lowerClone = Read-AutomexiaSnapshot -AfterSequence ([int64]$sourceAgain.sequence)
     $lowerDeadline = [DateTime]::UtcNow.AddSeconds(15)
     while (([int]$lowerClone.panel_count -ne 3 -or
-            -not [bool]$lowerClone.full_path_visible) -and
+            -not [bool]$lowerClone.full_path_visible -or
+            -not (Test-AllAutomexiaPaneContexts $lowerClone)) -and
            [DateTime]::UtcNow -lt $lowerDeadline) {
         $lowerClone = Read-AutomexiaSnapshot -AfterSequence ([int64]$lowerClone.sequence)
     }
@@ -327,6 +344,10 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     $processIds = @($lowerClone.panels | ForEach-Object { [int64]$_.shell_pid } | Sort-Object -Unique)
     if ($routeIds.Count -ne 3 -or $processIds.Count -ne 3 -or $processIds[0] -le 0) {
         throw 'Cloned panels do not have three independent routes and ConPTY processes'
+    }
+    if (-not (Test-AllAutomexiaPaneContexts $lowerClone)) {
+        Write-Host ($lowerClone | ConvertTo-Json -Depth 8)
+        throw 'Every visible pane must expose a route-matched operational context snapshot'
     }
     $sizes = @(
         @(320, 220),
@@ -391,6 +412,11 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     if ([int]$final.latest_prompt_start_count -gt 1) {
         throw "The active prompt was duplicated $($final.latest_prompt_start_count) times"
     }
+    if ($null -ne $final.active_prompt_gap_rows -and
+        [int]$final.active_prompt_gap_rows -gt 1) {
+        Write-Host ($final | ConvertTo-Json -Depth 4)
+        throw "Resize left $($final.active_prompt_gap_rows) blank rows between completed output and the active prompt"
+    }
     if ([bool]$final.prompt_active -and -not [bool]$final.full_path_visible) {
         Write-Host ($final | ConvertTo-Json -Depth 4)
         throw 'The complete active path did not return after restoring a usable window size'
@@ -402,6 +428,10 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     $finalProcesses = @($final.panels | ForEach-Object { [int64]$_.shell_pid } | Sort-Object -Unique)
     if ($finalRoutes.Count -ne 4 -or $finalProcesses.Count -ne 4 -or $finalProcesses[0] -le 0) {
         throw 'Interleaved clone/resize operations lost route or PTY isolation'
+    }
+    if (-not (Test-AllAutomexiaPaneContexts $final)) {
+        Write-Host ($final | ConvertTo-Json -Depth 8)
+        throw 'A visible pane lost or inherited another route operational context during resize'
     }
 
     Write-Host (
