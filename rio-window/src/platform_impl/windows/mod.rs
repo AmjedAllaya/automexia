@@ -97,6 +97,9 @@ pub type OsError = std::io::Error;
 pub struct KeyEventExtra {
     pub text_with_all_modifiers: Option<SmolStr>,
     pub key_without_modifiers: Key,
+    pub win32_virtual_key: u16,
+    pub win32_scan_code: u16,
+    pub win32_control_key_state: u32,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

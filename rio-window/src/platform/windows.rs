@@ -8,6 +8,7 @@ use std::path::Path;
 
 use crate::dpi::PhysicalSize;
 use crate::event::DeviceId;
+use crate::event::KeyEvent;
 use crate::event_loop::EventLoopBuilder;
 use crate::monitor::MonitorHandle;
 use crate::window::{BadIcon, Icon, Window, WindowAttributes};
@@ -18,6 +19,30 @@ pub type HWND = *mut c_void;
 pub type HMENU = *mut c_void;
 /// Monitor Handle type used by Win32 API
 pub type HMONITOR = *mut c_void;
+
+/// Windows keyboard metadata required by ConPTY's private Win32 input mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Win32KeyEvent {
+    pub virtual_key: u16,
+    pub scan_code: u16,
+    pub control_key_state: u32,
+}
+
+/// Access to the native `KEY_EVENT_RECORD` fields retained by the Windows
+/// event backend. Other platforms never expose or depend on this extension.
+pub trait KeyEventExtWindows {
+    fn win32_key_event(&self) -> Win32KeyEvent;
+}
+
+impl KeyEventExtWindows for KeyEvent {
+    fn win32_key_event(&self) -> Win32KeyEvent {
+        Win32KeyEvent {
+            virtual_key: self.platform_specific.win32_virtual_key,
+            scan_code: self.platform_specific.win32_scan_code,
+            control_key_state: self.platform_specific.win32_control_key_state,
+        }
+    }
+}
 
 /// Describes a system-drawn backdrop material of a window.
 ///

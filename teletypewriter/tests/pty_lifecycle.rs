@@ -1,4 +1,4 @@
-use std::io::{ErrorKind, Read};
+use std::io::{ErrorKind, Read, Write};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -90,4 +90,107 @@ fn pty_resize_throughput_child_exit_and_teardown() {
     // Dropping the final handle exercises platform teardown (including ConPTY
     // handle ordering on Windows) after the child and pipes have completed.
     drop(pty);
+}
+
+#[cfg(windows)]
+fn read_until(
+    pty: &mut Pty,
+    deadline: Instant,
+    predicate: impl Fn(&str) -> bool,
+) -> String {
+    let mut output = Vec::new();
+    let mut buffer = [0_u8; 8 * 1024];
+    while Instant::now() < deadline {
+        match pty.reader().read(&mut buffer) {
+            Ok(0) => {}
+            Ok(read) => {
+                output.extend_from_slice(&buffer[..read]);
+                let visible = String::from_utf8_lossy(&output);
+                if predicate(&visible) {
+                    return visible.into_owned();
+                }
+            }
+            Err(error) if error.kind() == ErrorKind::WouldBlock => {}
+            Err(error) => panic!("interactive PTY read failed: {error}"),
+        }
+        thread::sleep(Duration::from_millis(2));
+    }
+    String::from_utf8_lossy(&output).into_owned()
+}
+
+#[cfg(windows)]
+#[test]
+fn conpty_powershell_history_input_is_delivered_without_idle_stall() {
+    let mut pty = teletypewriter::create_pty(
+        Some("powershell.exe"),
+        vec!["-NoLogo".into(), "-NoProfile".into(), "-NoExit".into()],
+        &None,
+        None,
+        100,
+        30,
+    )
+    .expect("interactive PowerShell ConPTY should start");
+
+    let startup = read_until(
+        &mut pty,
+        Instant::now() + Duration::from_secs(10),
+        |output| output.contains("PS ") && output.contains('>'),
+    );
+    assert!(
+        startup.contains("PS ") && startup.contains('>'),
+        "PowerShell prompt did not start: {startup:?}"
+    );
+
+    let token = "AMX_CONPTY_HISTORY_73491";
+    let command = format!("Write-Output '{token}'\r");
+    pty.writer().write_all(command.as_bytes()).unwrap();
+    let seeded = read_until(
+        &mut pty,
+        Instant::now() + Duration::from_secs(10),
+        |output| output.match_indices(token).count() >= 2 && output.contains("PS "),
+    );
+    assert!(
+        seeded.match_indices(token).count() >= 2,
+        "PowerShell history seed did not complete: {seeded:?}",
+    );
+    let up_started = Instant::now();
+    pty.writer().write_all(b"\x1b[38;72;0;1;256;1_").unwrap();
+    let recalled = read_until(&mut pty, up_started + Duration::from_secs(2), |output| {
+        output.contains(token)
+    });
+    let up_elapsed = up_started.elapsed();
+    assert!(
+        recalled.contains(token),
+        "Up Arrow input stalled before reaching PSReadLine"
+    );
+    assert!(
+        up_elapsed < Duration::from_millis(1_500),
+        "direct ConPTY Up Arrow recall took {up_elapsed:?}"
+    );
+
+    pty.writer().write_all(b"\x03").unwrap();
+    let _ = read_until(
+        &mut pty,
+        Instant::now() + Duration::from_secs(2),
+        |output| output.contains("PS ") && output.contains('>'),
+    );
+
+    let search_started = Instant::now();
+    pty.writer()
+        .write_all(b"\x1b[82;19;18;1;8;1_AMX_CONPTY_HISTORY")
+        .unwrap();
+    let searched = read_until(
+        &mut pty,
+        search_started + Duration::from_secs(2),
+        |output| output.contains("AMX_CONPTY_HISTORY") && output.contains("_73491"),
+    );
+    let search_elapsed = search_started.elapsed();
+    assert!(
+        searched.contains("AMX_CONPTY_HISTORY") && searched.contains("_73491"),
+        "Ctrl+R input stalled before reaching PSReadLine: {searched:?}"
+    );
+    assert!(
+        search_elapsed < Duration::from_millis(1_500),
+        "direct ConPTY Ctrl+R search took {search_elapsed:?}"
+    );
 }
