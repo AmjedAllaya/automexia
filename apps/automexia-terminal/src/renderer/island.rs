@@ -1194,21 +1194,6 @@ impl Island {
                 3,
             );
         }
-        if layout.show_palette
-            && matches!(self.chrome_hover, Some(ChromeAction::OpenPalette))
-        {
-            sugarloaf.rounded_rect(
-                None,
-                actions_x + 30.0,
-                layout.tab_inset_y,
-                34.0,
-                metrics.header_height - layout.tab_inset_y * 2.0,
-                [0.12, 0.22, 0.32, 0.72],
-                0.05,
-                6.0,
-                3,
-            );
-        }
         let action_opts = DrawOpts {
             font_size: 25.0,
             color: [230, 238, 245, 242],
@@ -1222,17 +1207,14 @@ impl Island {
                 &action_opts,
             );
         }
-        let menu_opts = DrawOpts {
-            font_size: 20.0,
-            color: [180, 194, 209, 230],
-            ..DrawOpts::default()
-        };
         if layout.show_palette {
-            sugarloaf.text_mut().draw(
-                actions_x + 41.0,
-                (metrics.header_height - 14.0) / 2.0,
-                "⌄",
-                &menu_opts,
+            draw_command_center_button(
+                sugarloaf,
+                actions_x + 30.0,
+                layout.tab_inset_y,
+                34.0,
+                metrics.header_height - layout.tab_inset_y * 2.0,
+                matches!(self.chrome_hover, Some(ChromeAction::OpenPalette)),
             );
         }
 
@@ -1843,6 +1825,68 @@ fn draw_terminal_mark(sugarloaf: &mut Sugarloaf, x: f32, y: f32) {
     sugarloaf.line(x + 4.5, y + 5.0, x + 7.5, y + 8.0, 1.25, 0.0, line, 6);
     sugarloaf.line(x + 7.5, y + 8.0, x + 4.5, y + 11.0, 1.25, 0.0, line, 6);
     sugarloaf.line(x + 10.0, y + 11.0, x + 15.5, y + 11.0, 1.25, 0.0, line, 6);
+}
+
+/// Header action for the command palette. A restrained vector command-list
+/// mark stays optically centered at every DPI and cannot degrade into a font
+/// fallback glyph.
+fn draw_command_center_button(
+    sugarloaf: &mut Sugarloaf,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    hovered: bool,
+) {
+    let outline = if hovered {
+        [0.08, 0.72, 0.96, 0.94]
+    } else {
+        [0.055, 0.24, 0.36, 0.70]
+    };
+    let fill = if hovered {
+        [0.018, 0.13, 0.21, 0.96]
+    } else {
+        [0.008, 0.045, 0.078, 0.86]
+    };
+    sugarloaf.rounded_rect(None, x, y, width, height, outline, 0.05, 8.0, 3);
+    sugarloaf.rounded_rect(
+        None,
+        x + 1.0,
+        y + 1.0,
+        (width - 2.0).max(0.0),
+        (height - 2.0).max(0.0),
+        fill,
+        0.051,
+        7.0,
+        3,
+    );
+
+    let dot_color = if hovered {
+        [0.10, 0.88, 1.0, 1.0]
+    } else {
+        [0.10, 0.70, 0.90, 0.94]
+    };
+    let line_color = if hovered {
+        [0.72, 0.91, 1.0, 0.98]
+    } else {
+        [0.46, 0.69, 0.82, 0.90]
+    };
+    let start_x = x + (width - 18.0) / 2.0;
+    let start_y = y + (height - 14.0) / 2.0;
+    for (index, line_width) in [11.0, 8.0, 13.0].into_iter().enumerate() {
+        let row_y = start_y + index as f32 * 6.0;
+        sugarloaf.rounded_rect(None, start_x, row_y, 2.5, 2.5, dot_color, 0.06, 1.25, 4);
+        sugarloaf.line(
+            start_x + 6.0,
+            row_y + 1.25,
+            start_x + 6.0 + line_width,
+            row_y + 1.25,
+            1.35,
+            0.06,
+            line_color,
+            4,
+        );
+    }
 }
 
 fn draw_window_controls(

@@ -580,6 +580,23 @@ impl Renderer {
         changed
     }
 
+    /// Renderer-neutral per-pane context exposed only to controlled native GUI
+    /// automation. Product builds contain neither this method nor its data
+    /// serialization path.
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub(crate) fn native_test_pane_context(
+        &self,
+        route_id: usize,
+    ) -> Option<(usize, Vec<String>)> {
+        if self.last_active == Some(route_id) {
+            self.devops_status.native_test_context()
+        } else {
+            self.devops_statuses
+                .get(&route_id)
+                .and_then(devops_status::DevOpsStatus::native_test_context)
+        }
+    }
+
     #[inline]
     pub fn use_drawable_chars(&self) -> bool {
         self.use_drawable_chars

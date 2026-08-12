@@ -32,10 +32,10 @@ const CONTEXT_GAP: f32 = 24.0;
 const CONTEXT_PAD_X: f32 = 20.0;
 const CONTEXT_FONT_SIZE: f32 = 18.0;
 const CONTEXT_ICON_SIZE: f32 = 24.0;
-const DOCKER_CONTEXT_ICON_SIZE: f32 = 30.0;
+const CONTEXT_ICON_SLOT: f32 = 28.0;
 const PROMPT_CONTEXT_FONT_SIZE: f32 = 18.0;
 const PROMPT_CONTEXT_ICON_SIZE: f32 = 23.0;
-const DOCKER_PROMPT_ICON_SIZE: f32 = 29.0;
+const PROMPT_CONTEXT_ICON_SLOT: f32 = 27.0;
 const PROMPT_CONTEXT_PAD_X: f32 = 4.0;
 const PROMPT_CONTEXT_ICON_GAP: f32 = 8.0;
 const PROMPT_CONTEXT_SEPARATOR_GAP: f32 = 9.0;
@@ -43,13 +43,18 @@ const PROMPT_RESULT_RESERVE: f32 = 112.0;
 const CONTEXT_RADIUS: f32 = 9.0;
 const RIGHT_STATUS_WIDTH: f32 = 310.0;
 const RIGHT_STATUS_BREAKPOINT: f32 = 760.0;
-const STATUS_CHIP_INSET: f32 = 6.0;
-const STATUS_CHIP_GAP: f32 = 7.0;
-const STATUS_CHIP_RADIUS: f32 = 7.0;
-const STATUS_CHIP_LABEL_SIZE: f32 = 9.5;
-const STATUS_CHIP_VALUE_SIZE: f32 = 16.5;
-const STATUS_CHIP_ICON_SIZE: f32 = 19.0;
+const STATUS_RAIL_INSET: f32 = 16.0;
+const STATUS_RAIL_DIVIDER_GAP: f32 = 14.0;
+const STATUS_VALUE_SIZE: f32 = 18.0;
+const STATUS_ICON_SIZE: f32 = 23.0;
+const STATUS_ICON_SLOT: f32 = 25.0;
 const MIN_SEGMENT_CONTRAST: f32 = 4.55;
+
+const _: () = {
+    assert!(CONTEXT_ICON_SLOT >= CONTEXT_ICON_SIZE);
+    assert!(PROMPT_CONTEXT_ICON_SLOT >= PROMPT_CONTEXT_ICON_SIZE);
+    assert!(STATUS_ICON_SLOT >= STATUS_ICON_SIZE);
+};
 
 const MAX_WSL_CHARS: usize = 14;
 const MAX_CONTEXT_CHARS: usize = 22;
@@ -126,7 +131,7 @@ struct ContextBarGeometry {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct StatusChipGeometry {
+struct StatusItemGeometry {
     x: f32,
     top: f32,
     width: f32,
@@ -135,8 +140,19 @@ struct StatusChipGeometry {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct ShellClockLayout {
-    shell: StatusChipGeometry,
-    clock: StatusChipGeometry,
+    shell: StatusItemGeometry,
+    clock: StatusItemGeometry,
+    divider_x: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct IconOptics {
+    /// Compensates for the amount of unused space inside each icon's font
+    /// bounding box. The result is an equal perceived height, not an equal
+    /// nominal point size.
+    scale: f32,
+    /// Final optical nudge after point-size centering.
+    y_shift: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -168,6 +184,18 @@ pub struct DevOpsStatus {
 impl DevOpsStatus {
     pub fn clear(&mut self) {
         *self = Self::default();
+    }
+
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub(crate) fn native_test_context(&self) -> Option<(usize, Vec<String>)> {
+        let session_id = self.live_segments_session.as_ref()?.session_id;
+        Some((
+            session_id,
+            self.live_segments
+                .iter()
+                .map(|segment| segment.value.clone())
+                .collect(),
+        ))
     }
 
     /// Draw the persistent second chrome row from cached local context facts.
@@ -457,26 +485,21 @@ impl DevOpsStatus {
 
         for (index, segment) in segments.iter().enumerate() {
             let color = segment_color(colors, segment.role);
-            let icon_opts = DrawOpts {
-                font_size: prompt_icon_size(segment.icon),
-                color: color_to_u8(color),
-                ..DrawOpts::default()
-            };
             let text_opts = DrawOpts {
                 font_size: PROMPT_CONTEXT_FONT_SIZE,
                 color: color_to_u8(color),
                 ..DrawOpts::default()
             };
-            let icon = icon_glyph(segment.icon);
-            let icon_width = sugarloaf.text_mut().measure(icon, &icon_opts);
             let text_width = sugarloaf.text_mut().measure(&segment.value, &text_opts);
             let separator_width = if index == 0 {
                 0.0
             } else {
                 PROMPT_CONTEXT_SEPARATOR_GAP * 2.0 + 1.0
             };
-            let segment_width =
-                icon_width + PROMPT_CONTEXT_ICON_GAP + text_width + PROMPT_CONTEXT_PAD_X;
+            let segment_width = PROMPT_CONTEXT_ICON_SLOT
+                + PROMPT_CONTEXT_ICON_GAP
+                + text_width
+                + PROMPT_CONTEXT_PAD_X;
             if cursor_x + separator_width + segment_width > right_edge {
                 break;
             }
@@ -495,10 +518,16 @@ impl DevOpsStatus {
                 );
                 cursor_x += PROMPT_CONTEXT_SEPARATOR_GAP + 1.0;
             }
-            sugarloaf
-                .text_mut()
-                .draw(cursor_x, text_y - 2.0, icon, &icon_opts);
-            cursor_x += icon_width + PROMPT_CONTEXT_ICON_GAP;
+            draw_icon_in_slot(
+                sugarloaf,
+                segment.icon,
+                cursor_x,
+                text_y - 2.0,
+                PROMPT_CONTEXT_ICON_SLOT,
+                PROMPT_CONTEXT_ICON_SIZE,
+                color,
+            );
+            cursor_x += PROMPT_CONTEXT_ICON_SLOT + PROMPT_CONTEXT_ICON_GAP;
             sugarloaf
                 .text_mut()
                 .draw(cursor_x, text_y, &segment.value, &text_opts);
@@ -593,22 +622,17 @@ impl DevOpsStatus {
         let separator = muted(colors.foreground, 0.27);
 
         for (index, segment) in segments.iter().enumerate() {
-            let icon = icon_glyph(segment.icon);
             let color = segment_color(colors, segment.role);
-            let icon_opts = DrawOpts {
-                font_size: context_icon_size(segment.icon),
-                color: color_to_u8(color),
-                ..DrawOpts::default()
-            };
             let text_opts = DrawOpts {
                 font_size: CONTEXT_FONT_SIZE,
                 color: color_to_u8(color),
                 ..DrawOpts::default()
             };
-            let icon_width = sugarloaf.text_mut().measure(icon, &icon_opts);
             let text_width = sugarloaf.text_mut().measure(&segment.value, &text_opts);
             let separator_width = if index == 0 { 0.0 } else { 25.0 };
-            if cursor_x + separator_width + icon_width + 10.0 + text_width > right_edge {
+            if cursor_x + separator_width + CONTEXT_ICON_SLOT + 10.0 + text_width
+                > right_edge
+            {
                 break;
             }
 
@@ -626,10 +650,16 @@ impl DevOpsStatus {
                 );
                 cursor_x += 13.0;
             }
-            sugarloaf
-                .text_mut()
-                .draw(cursor_x, text_y - 1.0, icon, &icon_opts);
-            cursor_x += icon_width + 10.0;
+            draw_icon_in_slot(
+                sugarloaf,
+                segment.icon,
+                cursor_x,
+                text_y - 1.0,
+                CONTEXT_ICON_SLOT,
+                CONTEXT_ICON_SIZE,
+                color,
+            );
+            cursor_x += CONTEXT_ICON_SLOT + 10.0;
             sugarloaf
                 .text_mut()
                 .draw(cursor_x, text_y, &segment.value, &text_opts);
@@ -647,27 +677,42 @@ impl DevOpsStatus {
         bar: ContextBarGeometry,
     ) {
         let layout = shell_clock_layout(x, width, bar);
-        draw_status_chip(
+        let shell_accent = shell_status_accent(colors, session);
+        let clock_accent = ensure_contrast(
+            [0.31, 0.84, 1.0, 1.0],
+            colors.background.0,
+            MIN_SEGMENT_CONTRAST,
+        );
+        let foreground =
+            ensure_contrast(colors.foreground, colors.background.0, MIN_SEGMENT_CONTRAST);
+
+        // One restrained divider inside the existing glass surface replaces
+        // the previous stack of nested cards and icon wells.
+        sugarloaf.line(
+            layout.divider_x,
+            bar.top + 10.0,
+            layout.divider_x,
+            bar.top + bar.height - 10.0,
+            1.0,
+            0.0,
+            muted(foreground, 0.24),
+            ORDER + 2,
+        );
+        draw_status_item(
             sugarloaf,
-            colors,
             layout.shell,
             IconKind::Terminal,
-            "SHELL",
             shell_label(session),
-            shell_status_accent(colors, session),
+            shell_accent,
+            shell_accent,
         );
-        draw_status_chip(
+        draw_status_item(
             sugarloaf,
-            colors,
             layout.clock,
             IconKind::Clock,
-            "LOCAL",
             &local_clock_hhmm(),
-            ensure_contrast(
-                [0.31, 0.84, 1.0, 1.0],
-                colors.background.0,
-                MIN_SEGMENT_CONTRAST,
-            ),
+            clock_accent,
+            foreground,
         );
     }
 
@@ -895,27 +940,30 @@ fn same_prompt_identity(
 }
 
 fn shell_clock_layout(x: f32, width: f32, bar: ContextBarGeometry) -> ShellClockLayout {
-    let inner_width = (width - STATUS_CHIP_INSET * 2.0).max(1.0);
-    let available = (inner_width - STATUS_CHIP_GAP).max(1.0);
-    let clock_width = (available * 0.36).clamp(96.0, 106.0).min(available);
+    let inner_width = (width - STATUS_RAIL_INSET * 2.0).max(1.0);
+    let divider_space = STATUS_RAIL_DIVIDER_GAP * 2.0 + 1.0;
+    let available = (inner_width - divider_space).max(1.0);
+    let clock_width = (available * 0.35).clamp(86.0, 96.0).min(available);
     let shell_width = (available - clock_width).max(1.0);
-    let top = bar.top + 5.0;
-    let height = (bar.height - 10.0).max(1.0);
-    let shell_x = x + STATUS_CHIP_INSET;
-    let clock_x = shell_x + shell_width + STATUS_CHIP_GAP;
+    let top = bar.top;
+    let height = bar.height;
+    let shell_x = x + STATUS_RAIL_INSET;
+    let divider_x = shell_x + shell_width + STATUS_RAIL_DIVIDER_GAP;
+    let clock_x = divider_x + STATUS_RAIL_DIVIDER_GAP + 1.0;
     ShellClockLayout {
-        shell: StatusChipGeometry {
+        shell: StatusItemGeometry {
             x: shell_x,
             top,
             width: shell_width,
             height,
         },
-        clock: StatusChipGeometry {
+        clock: StatusItemGeometry {
             x: clock_x,
             top,
             width: clock_width,
             height,
         },
+        divider_x,
     }
 }
 
@@ -981,105 +1029,38 @@ fn draw_glass_surface(
     );
 }
 
-fn draw_status_chip(
+fn draw_status_item(
     sugarloaf: &mut Sugarloaf,
-    colors: Colors,
-    chip: StatusChipGeometry,
+    item: StatusItemGeometry,
     icon: IconKind,
-    label: &str,
     value: &str,
-    accent: [f32; 4],
+    icon_color: [f32; 4],
+    value_color: [f32; 4],
 ) {
-    let fill = mix_surface(colors.background.0, accent, 0.10, 0.88);
-    let accent = ensure_contrast(accent, fill, MIN_SEGMENT_CONTRAST);
-    let outline = mix_surface(colors.background.0, accent, 0.34, 0.58);
-    let foreground = ensure_contrast(colors.foreground, fill, MIN_SEGMENT_CONTRAST);
-
-    sugarloaf.rounded_rect(
-        None,
-        chip.x,
-        chip.top,
-        chip.width,
-        chip.height,
-        outline,
-        0.06,
-        STATUS_CHIP_RADIUS,
-        ORDER + 2,
-    );
-    sugarloaf.rounded_rect(
-        None,
-        chip.x + 1.0,
-        chip.top + 1.0,
-        (chip.width - 2.0).max(0.0),
-        (chip.height - 2.0).max(0.0),
-        fill,
-        0.06,
-        STATUS_CHIP_RADIUS - 1.0,
-        ORDER + 3,
+    let content_y = item.top + (item.height - STATUS_ICON_SIZE) * 0.5 - 1.0;
+    draw_icon_in_slot(
+        sugarloaf,
+        icon,
+        item.x,
+        content_y,
+        STATUS_ICON_SLOT,
+        STATUS_ICON_SIZE,
+        icon_color,
     );
 
-    let icon_well_size = (chip.height - 10.0).clamp(22.0, 28.0);
-    let icon_well_x = chip.x + 7.0;
-    let icon_well_y = chip.top + (chip.height - icon_well_size) * 0.5;
-    sugarloaf.rounded_rect(
-        None,
-        icon_well_x,
-        icon_well_y,
-        icon_well_size,
-        icon_well_size,
-        muted(accent, 0.12),
-        0.06,
-        7.0,
-        ORDER + 4,
-    );
-
-    let icon_glyph = icon_glyph(icon);
-    let icon_opts = DrawOpts {
-        font_size: STATUS_CHIP_ICON_SIZE,
-        color: color_to_u8(accent),
-        ..DrawOpts::default()
-    };
-    let icon_width = sugarloaf.text_mut().measure(icon_glyph, &icon_opts);
-    let icon_x = icon_well_x + (icon_well_size - icon_width) * 0.5;
-    let icon_y = chip.top + (chip.height - STATUS_CHIP_ICON_SIZE) * 0.5 - 1.0;
-    sugarloaf
-        .text_mut()
-        .draw(icon_x, icon_y, icon_glyph, &icon_opts);
-
-    let text_x = icon_well_x + icon_well_size + 8.0;
-    let label_opts = DrawOpts {
-        font_size: STATUS_CHIP_LABEL_SIZE,
-        color: color_to_u8(muted(foreground, 0.72)),
-        bold: true,
-        ..DrawOpts::default()
-    };
+    let text_x = item.x + STATUS_ICON_SLOT + 9.0;
     let value_opts = DrawOpts {
-        font_size: STATUS_CHIP_VALUE_SIZE,
-        color: color_to_u8(accent),
+        font_size: STATUS_VALUE_SIZE,
+        color: color_to_u8(value_color),
         bold: true,
         ..DrawOpts::default()
     };
-    sugarloaf
-        .text_mut()
-        .draw(text_x, chip.top + 3.5, label, &label_opts);
-    sugarloaf
-        .text_mut()
-        .draw(text_x, chip.top + 15.0, value, &value_opts);
-}
-
-fn mix_surface(
-    background: [f32; 4],
-    accent: [f32; 4],
-    accent_amount: f32,
-    alpha: f32,
-) -> [f32; 4] {
-    let amount = accent_amount.clamp(0.0, 1.0);
-    [
-        background[0] * (1.0 - amount) + accent[0] * amount,
-        background[1] * (1.0 - amount) + accent[1] * amount,
-        background[2] * (1.0 - amount) + accent[2] * amount,
-        alpha,
-    ]
+    sugarloaf.text_mut().draw(
+        text_x,
+        item.top + (item.height - STATUS_VALUE_SIZE) * 0.5 - 1.0,
+        value,
+        &value_opts,
+    );
 }
 
 /// Symbols from the Nerd Font vocabulary used by the reference project.
@@ -1099,26 +1080,99 @@ fn icon_glyph(icon: IconKind) -> &'static str {
         // Font Awesome codepoint collapsed to a filled dot in our bundled
         // Symbols Nerd Font at common Windows scale factors.
         IconKind::Clock => "\u{f43a}",
-        IconKind::Production => "⚠",
+        IconKind::Production => "\u{f071}",
+    }
+}
+
+/// Optical corrections measured against the bundled Symbols Nerd Font.
+/// Codepoints share an advance cell but not an ink box: Docker occupies only
+/// about two thirds of the height used by Git or Kubernetes, while cloud and
+/// environment marks are also deliberately compact.
+#[inline]
+fn icon_optics(icon: IconKind) -> IconOptics {
+    match icon {
+        IconKind::Terminal => IconOptics {
+            scale: 1.04,
+            y_shift: 0.0,
+        },
+        IconKind::Wsl => IconOptics {
+            scale: 1.0,
+            y_shift: 0.0,
+        },
+        IconKind::Windows => IconOptics {
+            scale: 1.10,
+            y_shift: 0.0,
+        },
+        IconKind::Docker => IconOptics {
+            scale: 1.85,
+            y_shift: -0.5,
+        },
+        IconKind::Kubernetes => IconOptics {
+            scale: 0.94,
+            y_shift: 0.0,
+        },
+        IconKind::Cloud => IconOptics {
+            scale: 1.16,
+            y_shift: 0.5,
+        },
+        IconKind::Terraform => IconOptics {
+            scale: 1.10,
+            y_shift: 0.0,
+        },
+        IconKind::Git => IconOptics {
+            scale: 1.02,
+            y_shift: 0.0,
+        },
+        IconKind::Environment => IconOptics {
+            scale: 1.12,
+            y_shift: 0.0,
+        },
+        IconKind::User => IconOptics {
+            scale: 1.04,
+            y_shift: 0.0,
+        },
+        IconKind::Clock => IconOptics {
+            scale: 0.98,
+            y_shift: 0.0,
+        },
+        IconKind::Production => IconOptics {
+            scale: 1.08,
+            y_shift: 0.0,
+        },
     }
 }
 
 #[inline]
-fn context_icon_size(icon: IconKind) -> f32 {
-    if icon == IconKind::Docker {
-        DOCKER_CONTEXT_ICON_SIZE
-    } else {
-        CONTEXT_ICON_SIZE
-    }
+fn icon_font_size(base_size: f32, icon: IconKind) -> f32 {
+    base_size * icon_optics(icon).scale
 }
 
 #[inline]
-fn prompt_icon_size(icon: IconKind) -> f32 {
-    if icon == IconKind::Docker {
-        DOCKER_PROMPT_ICON_SIZE
-    } else {
-        PROMPT_CONTEXT_ICON_SIZE
-    }
+fn icon_draw_y(base_y: f32, base_size: f32, icon: IconKind) -> f32 {
+    let optics = icon_optics(icon);
+    base_y + (base_size - base_size * optics.scale) * 0.5 + optics.y_shift
+}
+
+fn draw_icon_in_slot(
+    sugarloaf: &mut Sugarloaf,
+    icon: IconKind,
+    slot_x: f32,
+    base_y: f32,
+    slot_width: f32,
+    base_size: f32,
+    color: [f32; 4],
+) {
+    let glyph = icon_glyph(icon);
+    let opts = DrawOpts {
+        font_size: icon_font_size(base_size, icon),
+        color: color_to_u8(color),
+        ..DrawOpts::default()
+    };
+    let measured_width = sugarloaf.text_mut().measure(glyph, &opts);
+    let x = slot_x + (slot_width - measured_width) * 0.5;
+    sugarloaf
+        .text_mut()
+        .draw(x, icon_draw_y(base_y, base_size, icon), glyph, &opts);
 }
 
 fn shell_label(session: &SessionFacts) -> &'static str {
@@ -1480,6 +1534,20 @@ mod tests {
         SegmentRole::Environment,
         SegmentRole::User,
     ];
+    const ALL_ICON_KINDS: [IconKind; 12] = [
+        IconKind::Terminal,
+        IconKind::Wsl,
+        IconKind::Windows,
+        IconKind::Docker,
+        IconKind::Kubernetes,
+        IconKind::Cloud,
+        IconKind::Terraform,
+        IconKind::Git,
+        IconKind::Environment,
+        IconKind::User,
+        IconKind::Clock,
+        IconKind::Production,
+    ];
 
     fn colors_with_background(background: [f32; 4]) -> Colors {
         let mut colors = Colors::default();
@@ -1626,31 +1694,37 @@ mod tests {
     }
 
     #[test]
-    fn shell_and_clock_chips_are_balanced_and_contained() {
+    fn shell_and_clock_rail_is_balanced_and_contained() {
         let bar = ContextBarGeometry {
             top: 82.0,
             height: 47.0,
         };
         for width in [273.6, RIGHT_STATUS_WIDTH, 420.0] {
             let layout = shell_clock_layout(900.0, width, bar);
-            assert_eq!(layout.shell.x, 900.0 + STATUS_CHIP_INSET);
+            assert_eq!(layout.shell.x, 900.0 + STATUS_RAIL_INSET);
             assert!(layout.shell.width > layout.clock.width);
-            assert!(layout.shell.height > STATUS_CHIP_ICON_SIZE);
+            assert!(layout.shell.height > STATUS_ICON_SIZE);
             assert_eq!(layout.shell.top, layout.clock.top);
             assert_eq!(layout.shell.height, layout.clock.height);
+            assert_eq!(layout.shell.top, bar.top);
+            assert_eq!(layout.shell.height, bar.height);
+            assert_eq!(
+                layout.divider_x,
+                layout.shell.x + layout.shell.width + STATUS_RAIL_DIVIDER_GAP
+            );
             assert_eq!(
                 layout.clock.x,
-                layout.shell.x + layout.shell.width + STATUS_CHIP_GAP
+                layout.divider_x + STATUS_RAIL_DIVIDER_GAP + 1.0
             );
             assert!(
                 layout.clock.x + layout.clock.width
-                    <= 900.0 + width - STATUS_CHIP_INSET + f32::EPSILON
+                    <= 900.0 + width - STATUS_RAIL_INSET + f32::EPSILON
             );
         }
     }
 
     #[test]
-    fn shell_chip_accents_are_distinct_and_contrast_safe() {
+    fn shell_status_accents_are_distinct_and_contrast_safe() {
         let colors = Colors::default();
         let mut powershell = session("PowerShell", None);
         powershell.shell_name = Some("PowerShell".to_string());
@@ -1714,19 +1788,7 @@ mod tests {
 
     #[test]
     fn reference_icons_are_real_nerd_font_codepoints() {
-        for kind in [
-            IconKind::Terminal,
-            IconKind::Wsl,
-            IconKind::Windows,
-            IconKind::Docker,
-            IconKind::Kubernetes,
-            IconKind::Cloud,
-            IconKind::Terraform,
-            IconKind::Git,
-            IconKind::Environment,
-            IconKind::User,
-            IconKind::Clock,
-        ] {
+        for kind in ALL_ICON_KINDS {
             assert!(icon_glyph(kind)
                 .chars()
                 .all(|character| character as u32 >= 0xe000));
@@ -1774,11 +1836,31 @@ mod tests {
     }
 
     #[test]
-    fn docker_icon_is_emphasized_in_both_context_rows() {
-        assert!(context_icon_size(IconKind::Docker) > CONTEXT_ICON_SIZE);
-        assert!(prompt_icon_size(IconKind::Docker) > PROMPT_CONTEXT_ICON_SIZE);
-        assert_eq!(context_icon_size(IconKind::Git), CONTEXT_ICON_SIZE);
-        assert_eq!(prompt_icon_size(IconKind::Git), PROMPT_CONTEXT_ICON_SIZE);
+    fn every_context_icon_has_bounded_optical_metrics() {
+        let docker = icon_optics(IconKind::Docker);
+        assert_eq!(docker.scale, 1.85);
+        assert!(ALL_ICON_KINDS
+            .iter()
+            .all(|kind| docker.scale >= icon_optics(*kind).scale));
+
+        for kind in ALL_ICON_KINDS {
+            let optics = icon_optics(kind);
+            assert!(
+                (0.90..=1.90).contains(&optics.scale),
+                "unsafe optical scale for {kind:?}: {}",
+                optics.scale
+            );
+            let context_size = icon_font_size(CONTEXT_ICON_SIZE, kind);
+            let prompt_size = icon_font_size(PROMPT_CONTEXT_ICON_SIZE, kind);
+            assert!(context_size > 0.0 && prompt_size > 0.0);
+
+            // Point-size compensation keeps every glyph centered on the same
+            // nominal box before its small intentional optical nudge.
+            let context_center = icon_draw_y(20.0, CONTEXT_ICON_SIZE, kind)
+                + context_size * 0.5
+                - optics.y_shift;
+            assert!((context_center - 32.0).abs() < 0.001, "{kind:?}");
+        }
     }
 
     #[test]

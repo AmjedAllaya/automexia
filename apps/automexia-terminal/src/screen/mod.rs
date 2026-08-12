@@ -128,6 +128,7 @@ fn write_native_resize_snapshot(
     window_width: f32,
     window_height: f32,
     last_control: &str,
+    palette_enabled: bool,
 ) {
     use rio_backend::crosswords::grid::row::SemanticPrompt;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -139,6 +140,7 @@ fn write_native_resize_snapshot(
     };
 
     let mut visible_text = String::new();
+    let mut visible_row_texts = Vec::with_capacity(content.visible_rows.len());
     let mut prompt_ids = std::collections::BTreeSet::new();
     let mut prompt_starts = 0_usize;
     for row in &content.visible_rows {
@@ -153,7 +155,9 @@ fn write_native_resize_snapshot(
             .iter()
             .map(|square| square.c())
             .collect::<String>();
-        visible_text.push_str(row_text.trim_end_matches(['\0', ' ']));
+        let row_text = row_text.trim_end_matches(['\0', ' ']).to_string();
+        visible_text.push_str(&row_text);
+        visible_row_texts.push(row_text);
     }
 
     let current_directory = content
@@ -177,6 +181,17 @@ fn write_native_resize_snapshot(
             })
             .count()
     });
+    let active_prompt_gap_rows = latest_prompt_id.and_then(|latest| {
+        let prompt_start = content
+            .visible_rows
+            .iter()
+            .position(|row| row.semantic_prompt_id == Some(latest))?;
+        let previous_output = (0..prompt_start).rev().find(|index| {
+            content.visible_rows[*index].semantic_prompt_id != Some(latest)
+                && !visible_row_texts[*index].is_empty()
+        })?;
+        Some(prompt_start.saturating_sub(previous_output + 1))
+    });
     let snapshot = serde_json::json!({
         "sequence": sequence,
         "columns": content.columns,
@@ -192,7 +207,9 @@ fn write_native_resize_snapshot(
         "prompt_ids": prompt_ids,
         "latest_prompt_id": latest_prompt_id,
         "latest_prompt_start_count": latest_prompt_start_count,
+        "active_prompt_gap_rows": active_prompt_gap_rows,
         "last_control": last_control,
+        "palette_enabled": palette_enabled,
         "panel_count": panels.len(),
         "panels": panels,
     });
@@ -745,6 +762,7 @@ impl Screen<'_> {
         {
             self.clear_selection();
         }
+        self.renderer.trail_cursor.snap_after_geometry_change();
         self.sugarloaf.resize(new_size.width, new_size.height);
         self.resize_top_or_bottom_line(self.context_manager.len());
         let width = new_size.width as f32;
@@ -780,6 +798,7 @@ impl Screen<'_> {
         new_scale: f32,
         new_size: rio_window::dpi::PhysicalSize<u32>,
     ) -> &mut Self {
+        self.renderer.trail_cursor.snap_after_geometry_change();
         self.sugarloaf.rescale(new_scale);
         self.sugarloaf.resize(new_size.width, new_size.height);
 
@@ -4121,13 +4140,30 @@ impl Screen<'_> {
         {
             self.process_native_test_control();
             let window_size = self.sugarloaf.window_size();
-            let panels = self.context_manager.native_test_panel_snapshots();
+            let mut panels = self.context_manager.native_test_panel_snapshots();
+            for panel in &mut panels {
+                let Some(route_id) = panel
+                    .get("route_id")
+                    .and_then(serde_json::Value::as_u64)
+                    .and_then(|route| usize::try_from(route).ok())
+                else {
+                    continue;
+                };
+                let Some((context_session_id, segments)) =
+                    self.renderer.native_test_pane_context(route_id)
+                else {
+                    continue;
+                };
+                panel["context_session_id"] = serde_json::json!(context_session_id);
+                panel["context_segments"] = serde_json::json!(segments);
+            }
             write_native_resize_snapshot(
                 &self.context_manager.current().renderable_content,
                 panels,
                 window_size.width,
                 window_size.height,
                 &self.native_test_last_control,
+                self.renderer.command_palette.is_enabled(),
             );
             // The control file is intentionally not watched by product code.
             // Keep feature-gated automation responsive while the window is
@@ -4869,6 +4905,10 @@ impl Screen<'_> {
         let action = fields.next().unwrap_or_default();
         let _sequence = fields.next();
         match action {
+            "open-palette" => {
+                self.renderer.command_palette.set_enabled(true);
+                self.mark_dirty();
+            }
             "clone-right" => self.clone_split_right(),
             "clone-down" => self.clone_split_down(),
             "select-prev" => {
