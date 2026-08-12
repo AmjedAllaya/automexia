@@ -20,7 +20,7 @@ jobs:
       matrix:
         target: [vt_parser, osc_metadata, config_migration, semantic_classification, label_sanitization]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:
           tool: cargo-fuzz@0.13.1
@@ -29,7 +29,7 @@ jobs:
   miri:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install nightly --profile minimal --component miri
       - run: cargo +nightly miri test -p rio-vt --lib --no-default-features
 
@@ -39,7 +39,7 @@ jobs:
       matrix:
         sanitizer: [address, thread]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install nightly --profile minimal
       - env:
           RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
@@ -49,7 +49,7 @@ jobs:
   benchmarks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: cargo bench -p rio-vt -p corcovado --no-run --locked
 
   unsigned-windows:
@@ -60,7 +60,7 @@ jobs:
       matrix:
         target: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup target add ${{ matrix.target }}
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:
@@ -71,7 +71,7 @@ jobs:
         run: |
           $env:AUTOMEXIA_PACKAGE_SKIP_BUILD = '1'
           cargo xtask package --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: automexia-nightly-${{ matrix.target }}
           path: |
@@ -92,7 +92,7 @@ jobs:
           - target: aarch64-unknown-linux-gnu
             arch: arm64
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo apt-get update && sudo apt-get install -y appstream desktop-file-utils libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev ncurses-bin rpm scdoc
       - run: rustup target add ${{ matrix.target }}
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
@@ -109,7 +109,7 @@ jobs:
         run: |
           export AUTOMEXIA_PACKAGE_SKIP_BUILD=1
           cargo xtask package --target "${{ matrix.target }}"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: automexia-nightly-${{ matrix.target }}
           path: |
@@ -123,7 +123,7 @@ jobs:
     name: Unsigned macOS universal
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:
@@ -134,7 +134,7 @@ jobs:
           mkdir -p target/release
           lipo -create target/x86_64-apple-darwin/release/automexia target/aarch64-apple-darwin/release/automexia -output target/release/automexia
           cargo packager --manifest-path apps/automexia-terminal/Cargo.toml --release --no-build --out-dir target/package --formats app,dmg
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: automexia-nightly-macos-universal
           path: |
