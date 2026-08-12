@@ -1282,8 +1282,8 @@ impl CommandPalette {
 
         // UI glyphs are submitted in one pass after every rounded rectangle.
         // Without a modal boundary, labels emitted earlier by tabs and the
-        // operational context bar therefore remain above even an opaque
-        // palette surface. The command center is the top-most modal owner:
+        // workspace action rail therefore remain above even an opaque palette
+        // surface. The command center is the top-most modal owner:
         // discard earlier UI-label instances, then emit only palette labels.
         // Terminal grid text uses a separate pass and remains safely beneath
         // the palette's opaque blue-black surface.

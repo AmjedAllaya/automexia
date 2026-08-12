@@ -428,8 +428,7 @@ pub struct Renderer {
     pub command_palette: command_palette::CommandPalette,
     pub devops_enabled: bool,
     extension_generation: u32,
-    /// Status state for the selected route, including the persistent window
-    /// context bar.
+    /// Operational prompt state for the selected route.
     pub devops_status: devops_status::DevOpsStatus,
     /// Independent operational state for every inactive visible route. A
     /// single shared status object made those splits disappear and could lend
@@ -1374,13 +1373,10 @@ impl Renderer {
                     command_results,
                 )
             };
-            let refresh_pending = self.devops_status.render_context_bar(
-                sugarloaf,
-                self.named_colors,
-                &session,
-                (window_size.width, window_size.height, scale_factor),
-                || context_manager.devops_refresh_completion(session.session_id),
-            );
+            let refresh_pending =
+                self.devops_status.refresh_session_context(&session, || {
+                    context_manager.devops_refresh_completion(session.session_id)
+                });
             let new_prompt = self.devops_status.render_prompt_rows(
                 sugarloaf,
                 self.named_colors,
@@ -1406,10 +1402,9 @@ impl Renderer {
                 devops_status::next_context_wake_millis(refresh_pending),
             );
 
-            // Every visible split owns its own context overlay. Build these
-            // snapshots after the selected pane so the window-level bar stays
-            // selected-pane-specific while Git/cloud/environment/user facts
-            // remain visible inside every other pane.
+            // Every visible split owns its own prompt context. Build these
+            // snapshots after the selected pane so Git/cloud/environment/user
+            // facts remain visible inside every pane without global chrome.
             let inactive_panes = {
                 let grid = context_manager.current_grid();
                 let active_route = grid.current().route_id;
