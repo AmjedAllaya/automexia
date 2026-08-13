@@ -14,13 +14,49 @@ Use `cargo dev` to run that same gate and launch Automexia when it passes. Use
 the full gate has already passed. These commands are Cargo aliases backed by
 `tools/xtask`, so they are identical on Windows, macOS, and Linux.
 The launcher returns after a successful spawn, leaving Cargo available for the
-next command while Automexia continues running.
+next command while Automexia continues running. Both launch paths run the
+cross-platform shell-provisioning phase immediately before the spawn:
 
-The complete gate also parses every repository PowerShell source and executes
+- Windows installs or repairs PowerShell, CMD, and WSL Bash/Zsh support;
+- macOS/Linux installs or repairs Bash/Zsh support and user-local terminfo;
+- an unchanged installation exits through a fingerprinted fast path without
+  rewriting profiles or starting WSL;
+- a provisioning failure aborts launch, so a successful command never opens an
+  unintentionally unintegrated terminal.
+
+`cargo ready`, `cargo check`, and `cargo xtask ci` remain non-mutating. The
+platform installers support direct `--force`/`-Force` invocation for focused
+maintainer diagnosis, but normal development never requires it.
+
+The complete gate also parses every repository PowerShell source, exercises the
+Windows install/repair fast path in an isolated LocalAppData fixture, and executes
 the PowerShell formatter/prompt contract on Windows. On Unix it syntax-checks
-Bash and Zsh, runs ShellCheck, and executes both shell-integration suites.
+Bash and Zsh, runs ShellCheck, exercises automatic installation twice in an
+isolated home, repairs a deliberately changed installed file, and executes both
+shell-integration suites.
 `cargo xtask ci` runs the same non-launching gate; neither command leaves its
 isolated exhaustive build artifacts behind.
+
+Focused tab-scope regressions can be run while iterating:
+
+```text
+cargo test -p automexia-terminal bindings::tests::ctrl_t
+cargo test -p automexia-terminal layout::pane_tab_tests
+cargo test -p automexia-terminal renderer::island::tests::local_tab_rail
+cargo test -p automexia-terminal renderer::command_palette::tests::window_window_tab
+cargo test -p automexia-terminal renderer::session_footer::tests
+cargo test -p automexia-terminal pane_footer_reservation
+```
+
+These checks cover shortcut scope, local order and last-tab retention, distinct
+select/close/add hit targets, command-palette labels, footer action separation,
+DPI-stable grid reservation, and footer collapse at extreme pane heights. The
+full frontend and workspace gates additionally cover PTY route isolation and
+teardown behavior.
+On Windows, `cargo xtask test resize-stress --native-gui` creates a real
+pane-local PowerShell tab, proves independent route/PID and preserved launch
+intent, closes its inactive sibling without losing the source, then runs the
+multi-pane resize storm and requires automatic full-path restoration.
 
 ## Build-artifact lifecycle and storage
 
@@ -144,6 +180,9 @@ Unix lifecycle, resize, child exit, teardown, and throughput.
 Renderer-neutral goldens cover prompt anchors, clipping, segment truncation,
 selection/search precedence, stable OSC prompt identities, metadata-only
 incremental snapshots, repeated command transitions, and shrink/grow reflow.
+Pane-footer checks prove that its controls remain disjoint, its physical grid
+reservation is DPI-stable, tiny panes recover the reserved row space, and the
+terminal scrollbar never enters the footer action surface.
 Extension tests cover unavailable,
 disconnected, busy, stale, malformed, and oversized inputs plus multi-window
 session isolation. Shell tests cover syntax, idempotency, exit status, history
@@ -196,8 +235,9 @@ Session cloning has its own deterministic gate:
 cargo xtask test session-clone
 ```
 
-It covers action names, user overrides, Search/Vi exclusions, preservation of
-bare shell control keys, PowerShell/pwsh, nested/direct CMD, and native Bash/Zsh descriptors, direct
+It covers action names, user overrides, Search/Vi exclusions, bare
+`Ctrl+R`/`Ctrl+D` cloning, alternate shell-control passthroughs,
+PowerShell/pwsh, nested/direct CMD, and native Bash/Zsh descriptors, direct
 and nested WSL descriptors, incomplete metadata, spaces/Unicode, environment
 overrides, unknown/invalid logical directories, safe profile fallback, and
 CreateProcess-compatible quoting. On a Windows GPU workstation,
@@ -208,11 +248,13 @@ cargo xtask test session-clone --native-windows
 ```
 
 That driver first executes a unique PowerShell command and requires both Up
-Arrow recall and `Ctrl+R` reverse search to repaint through ConPTY within the
-1.5-second native budget. The workspace's Windows-only PTY regression also
-starts a clean real PowerShell process, negotiates Win32 input-record mode, and
-checks both operations without the renderer so protocol and shell latency stay
-separable. It then creates three independent PowerShell clones (four panes total),
+Arrow recall and raw `Ctrl+R` reverse search to repaint through ConPTY within
+the 1.5-second native budget. The raw control isolates shell/PTY latency; the
+user-facing history shortcut is `Ctrl+Alt+R` because bare `Ctrl+R` now clones.
+The workspace's Windows-only PTY regression also starts a clean real PowerShell
+process, negotiates Win32 input-record mode, and checks both operations without
+the renderer so protocol and shell latency stay separable. It then creates
+three independent PowerShell clones (four panes total),
 verifies unique routes and ConPTY child PIDs, proves clone-only input/output
 cannot contaminate the source, and interleaves the final clone plus active-pane
 changes into 240 resize transitions before checking prompt/path restoration. A
@@ -252,13 +294,21 @@ shells without typing, opening a new prompt, or restarting the terminal.
 The Windows shell integration test also waits for the automatic deferred style
 event and proves that first-prompt deferral does not remove filesystem icons,
 change native `ls` object semantics, or require user input. Its listing fixtures
-cover the four native metadata columns, icon/name adjacency, directory suffixes,
+cover the four native metadata columns, composite folder-badge/name adjacency,
+directory suffixes,
 spaces and Unicode, narrow-width truncation, and real `DirectoryInfo`/`FileInfo`
 values after filtering and sorting. CMD coverage proves its interactive launcher
 uses the existing PTY rather than a detached process, direct configured CMD
 profiles receive integration once, nested CMD clones retain `%ComSpec%` and the
 live directory, `ls`/`ll` keep icon/name adjacency, and built-in `dir` remains
 unmodified.
+
+The Bash suite feeds representative eza 0.18.x ANSI output through the bundled
+TTY compatibility filter and checks configuration and source folder badges,
+category colors, and an unchanged unclassified folder. Bash/Zsh integration
+tests also assert the deterministic root/cyan/violet/blue/lime path hierarchy.
+`cargo test -p rio-fonts` parses the embedded Symbols Nerd Font and verifies
+that every declared composite folder codepoint has a real glyph.
 
 These cover Windows-drive versus WSL title classification, custom chrome hit
 targets and resize edges, the responsive workspace-action rail and its exact

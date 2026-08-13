@@ -24,7 +24,10 @@ This checks required tools and repository formats; verifies identity,
 architecture, provenance, packages, and brand assets; runs rustfmt, locked
 metadata, native shell-integration validation, workspace checks, warning-denied
 Clippy, all tests, and `cargo deny`; builds Automexia; verifies
-`automexia --version`; and launches the terminal.
+`automexia --version`; installs or refreshes the shell integration; and launches
+the terminal. On Windows that automatic phase prepares PowerShell, Command
+Prompt, and every detected user WSL distribution. On macOS/Linux it prepares Bash, Zsh,
+and user-local terminfo. No separate integration command or restart is needed.
 The first run can take several minutes. Exhaustive checks use a dedicated,
 non-incremental verification target that is removed whether the gate passes or
 returns an ordinary failure; only the reusable application build remains in the
@@ -45,11 +48,16 @@ For normal day-to-day launches after the repository is known to be healthy:
 cargo automexia
 ```
 
-It rebuilds only changed code, performs a version smoke, and launches Automexia.
+It rebuilds only changed code, performs a version smoke, automatically prepares
+the same shell integrations, and launches Automexia.
 Both launch commands return after starting the Automexia process, so the
 terminal remains usable and Cargo's build output stays unlocked. Each launch
 uses a generation-specific copy under `target/automexia-runtime`; stale copies
-are reclaimed automatically on later launches.
+are reclaimed automatically on later launches. Integration provisioning is
+source-aware and idempotent: a current installation is a fast no-op, while a
+changed or missing generated file/profile marker is repaired before process
+creation. Provisioning failure stops the launch with an actionable error rather
+than opening a partially integrated terminal.
 Pass terminal arguments after `--`, for example:
 
 ```text
@@ -78,16 +86,15 @@ The latest plan-by-plan implementation evidence and explicit external release
 blockers are recorded in [docs/READINESS-AUDIT.md](docs/READINESS-AUDIT.md).
 
 The native liquid-hacker interface, responsive workspace-action rail,
-per-command operational context, tab/window interactions, shell prompt,
-command timing, semantic output styling, and focused regression commands are documented in
+pane-local session footers, per-command operational context, tab/window
+interactions, shell prompt, command timing, semantic output styling, and focused regression commands are documented in
 [docs/LIQUID-HACKER-UX.md](docs/LIQUID-HACKER-UX.md).
 
-On Windows, install or refresh the bundled PowerShell, Command Prompt, and WSL integrations once
-after building, then restart Automexia:
-
-```powershell
-.\shell-integration\install-windows.ps1
-```
+Both `cargo dev` and `cargo automexia` install or refresh the repository-owned
+shell support automatically immediately before they launch. `cargo ready`,
+`cargo check`, and CI remain non-mutating verification commands. The standalone
+installer scripts remain available only for maintainer repair and uninstall
+diagnostics; they are not part of the normal user workflow.
 
 Native PowerShell gains icon-aware `ls` output through a bundled, pipeline-safe
 format view and does not require `eza`. Typing `cmd` or `cmd.exe` from an
@@ -96,20 +103,25 @@ pane; CMD receives the branded full-path prompt, live context metadata, and
 icon-aware `ls`/`ll` while its built-in `dir` and explicit `cmd /c` behavior stay
 native. In Bash and Zsh, the integration uses an
 installed `eza` for icon-aware `ls`, `ll`, and `tree` output and falls back
-cleanly when `eza` is unavailable; see
+cleanly when `eza` is unavailable. A bundled compatibility layer gives older
+Ubuntu/WSL eza 0.18.x releases the same colored composite folder badges as
+PowerShell without changing filenames or piped output; see
 [docs/LIQUID-HACKER-UX.md](docs/LIQUID-HACKER-UX.md#file-and-folder-icons) for
 the shortcuts, sensitive/config/log/source/test/build category vocabulary, and
 opt-out.
 
 Clone the active PowerShell, Command Prompt, Bash, Zsh, or WSL session into an independent
-right/lower split with `Ctrl`+`Alt`+`R` / `Ctrl`+`Alt`+`D`. The existing
-`Ctrl`+`Shift` split shortcuts still open the configured default shell, and bare
-`Ctrl`+`R` / `Ctrl`+`D` remain native shell input. See
+right/lower split with `Ctrl`+`R` / `Ctrl`+`D`. The existing `Ctrl`+`Shift`
+split shortcuts still open the configured default shell. Use `Ctrl`+`Alt`+`R`
+for shell history search or `Ctrl`+`Alt`+`D` for shell EOF/logout. See
 [configuration](docs/CONFIGURATION.md) for the exact isolation contract.
 
-On Windows and Linux, `Ctrl`+`T` opens a separate Automexia window containing
-its initial tab. `Ctrl`+`Shift`+`T` continues to add a global tab to the current
-window, while `Ctrl`+`Shift`+`N` remains a compatible new-window alias.
+On Windows and Linux, `Ctrl`+`T` adds a window-level tab to the current
+Automexia window. `Ctrl`+`Shift`+`T` adds an independent tab to the selected
+split/session, preserving that pane's shell/profile, WSL identity, and working
+directory. `Ctrl`+`Shift`+`N` creates a separate OS window. Pane-local tabs have
+their own PTYs and close independently; their tab rail appears inside the
+selected session's workspace row.
 
 ## Configuration
 

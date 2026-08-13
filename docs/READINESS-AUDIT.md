@@ -1,6 +1,6 @@
 # v0.4 implementation and readiness audit
 
-Audit date: 2026-08-12
+Audit date: 2026-08-13
 
 This document reconciles the standalone-rebrand plan and the later prompt,
 resize-storm, PowerShell-listing, responsive-layout, session-cloning, semantic
@@ -15,15 +15,16 @@ code cannot satisfy.
 | Standalone source and history | The checkout builds without an overlay or bootstrap step. `origin` and `rio-upstream` are configured, Rio base `7d595af583f6ef1ea6036a66b367ba1e5a84d4a2` is an ancestor, and local annotated tag `rio-base-0.5.20-7d595af` resolves to that base. |
 | Identity and coexistence | Central identity/path constants, Automexia executable/package/app IDs, environment variables, URL/desktop metadata, terminfo, identity allowlist, and migration/coexistence tests pass. Inherited private `rio-*`, `librio`, Sugarloaf, and engine type names remain intentionally attributed. |
 | Repository structure | The frontend lives at `apps/automexia-terminal`; brand, documentation, packaging, shell integration, conformance fixtures, integration tests, and `tools/xtask` use the planned v0.4 layout. The v0.5 engine/crate regrouping remains deliberately deferred. |
-| Single-command workflow | `cargo ready`, `cargo dev`, `cargo automexia`, storage preflight, isolated verification targets, runtime launch copies, and cleanup are implemented and documented. The complete `cargo ready` gate passed. |
-| Prompt and resize resilience | Generation-scoped OSC prompt metadata, terminal-owned context/path rows, stable `aid`, Unicode-safe full-path reflow, cross-shell semantic path colors that preserve literal text, stale-row repair, snapshot rebuilding, resize deduplication/coalescing, input/shutdown barriers, and transient ConPTY error handling pass deterministic and native tests. |
-| Session cloning | `SessionLaunchDescriptor`, independent right/down clone actions, exact PowerShell/CMD/Unix/WSL shell/profile/user/distro/directory reconstruction, explicit failure without PowerShell fallback, shortcut compatibility, and route/PID isolation pass unit and native tests. |
-| Window and tab scope | On Windows and Linux, `Ctrl+T` dispatches the independent-window action and `Ctrl+Shift+T` retains the current-window global-tab action; `Ctrl+Shift+N` remains a new-window alias. Binding conflict, user override, command-palette action, and shortcut-label regressions pass. |
-| Shell history responsiveness | The ConPTY input writer wake-up regression, real PowerShell Up Arrow recall, and `Ctrl+R` reverse search pass. Native stress measured 930 ms shell/VT latency for Up and 1,048 ms for `Ctrl+R`, within the 1.5-second test budget. |
+| Single-command workflow | `cargo ready`, `cargo dev`, `cargo automexia`, storage preflight, isolated verification targets, runtime launch copies, cleanup, and fail-fast automatic PowerShell/CMD/WSL or Bash/Zsh/terminfo provisioning are implemented and documented. Provisioning is source-aware, idempotent, tested in isolated homes, and occurs directly before every launch; verification-only commands remain non-mutating. The complete `cargo ready` gate passed. |
+| Prompt and resize resilience | Generation-scoped OSC prompt metadata, terminal-owned context/path rows, stable `aid`, Unicode-safe full-path reflow, visibly separated cyan/violet/blue/lime path roles that preserve literal text, screen/line-erase repair, snapshot rebuilding, resize deduplication/coalescing, input/shutdown barriers, and transient ConPTY error handling pass deterministic and native tests. The native storm creates/switches/closes pane-local PowerShell tabs before 240 resizes and restores the complete path without user input. |
+| Session cloning | `SessionLaunchDescriptor`, bare `Ctrl+R`/`Ctrl+D` independent right/down clone actions, alternate shell-control passthroughs, command-palette discovery, exact PowerShell/CMD/Unix/WSL shell/profile/user/distro/directory reconstruction, explicit failure without PowerShell fallback, shortcut compatibility, and route/PID isolation pass unit and native tests. |
+| Window and tab scope | `Ctrl+T` creates a window-level tab, `Ctrl+Shift+T` creates an independent PTY tab inside the selected split/session, and `Ctrl+Shift+N` creates a separate OS window. Pane-local tab order, route lookup, selected styling, direct hit targets, and close isolation have deterministic regressions. |
+| Shell history responsiveness | The ConPTY input writer wake-up regression, real PowerShell Up Arrow recall, and raw `Ctrl+R` reverse search pass. Native stress measured 930 ms shell/VT latency for Up and 1,048 ms for the raw history control, within the 1.5-second test budget. Users reach that shell control through `Ctrl+Alt+R`; bare `Ctrl+R` clones. |
 | Responsive UI | Extreme small/large/HiDPI layout, split ratios, tab/control collision, hidden hit targets, headerless palette containment, the allocation-free Find/Split Right/Split Down/Next Pane rail, DPI-independent vector action icons, prompt restoration, and 4K/8K-equivalent transitions are covered by renderer-neutral tests. A native run completed 590 resize/input operations without a blank surface, stale prompt, invalid grid, or crash. |
+| Pane-local footer | Every usable pane has an independently outlined renderer-owned footer with pane/local-tab position, grid dimensions, selection and integration state, exact history offset, Find, and return-to-live. Layout reserves the strip outside PTY rows and scrollbar hit targets, exact-route action tests pass, narrow panes collapse optional labels, and panes below 112 logical pixels recover the full terminal height. |
 | Context and colors | Live Git, Docker, Kubernetes, cloud, Terraform, environment, OS/WSL, production, and user roles use distinct anchors with centralized contrast correction on every pane's live and historical prompt rows. Provider mapping, default distinction, and custom-theme contrast tests pass; duplicated global status, shell, and clock labels are absent. |
-| PowerShell listings | The native formatting view keeps real `DirectoryInfo`/`FileInfo` objects and renders four metadata columns with the icon adjacent to the name. Name-only sensitive, configuration, log, source, documentation, test, build, asset, package, Git, tool, data, cache, infrastructure, and packaging categories have distinct icons; PowerShell 7 adds safe category colors while Windows PowerShell 5 preserves width without ANSI. Unicode, spaces, narrow views, sorting, filtering, piping, and the plain-listing opt-out pass the PowerShell contract suite. |
-| Shell integration | Every PowerShell source parses; the Windows contract covers PowerShell plus an in-process native CMD prompt, identity, cloning, and icon-aware listing smoke test while preserving explicit `cmd /c` and built-in `dir`. Bash/Zsh syntax, ShellCheck, and integration jobs are part of the Unix local/CI gate. |
+| PowerShell listings | The native formatting view keeps real `DirectoryInfo`/`FileInfo` objects and renders four metadata columns with the icon adjacent to the name. Name-only sensitive, configuration, log, source, documentation, test, build, asset, package, Git, tool, data, cache, infrastructure, and packaging categories use folder-shaped composite badges rather than stand-alone symbols; PowerShell 7 adds safe category colors while Windows PowerShell 5 preserves width without ANSI. Unicode, spaces, narrow views, sorting, filtering, piping, and the plain-listing opt-out pass the PowerShell contract suite. |
+| Shell integration | Every PowerShell source parses; the Windows contract covers isolated automatic install/no-op/repair passes, PowerShell plus an in-process native CMD prompt, identity, cloning, and icon-aware listing smoke while preserving explicit `cmd /c` and built-in `dir`. A TTY-only compatibility layer gives Ubuntu/WSL eza 0.18.x the same composite folder badges without changing redirected output. Bash/Zsh syntax, isolated automatic install/no-op/repair passes, live eza output, ShellCheck, and integration jobs are part of the Unix local/CI gate; a font parser proves every category glyph exists in the bundled Symbols Nerd Font. |
 | Correctness and policy | Locked metadata, rustfmt, all-target workspace check, warning-denied Clippy, workspace tests, conformance tests, migration tests, PTY tests, architecture, identity, provenance, package metadata, and `cargo deny` passed. |
 | Coverage | LLVM coverage on the exact working tree passed at 45.38% global line coverage versus the 43.52% Windows baseline and 100.00% changed Automexia-owned executable lines. The checker now supports explicit `WORKTREE` mode and includes untracked Rust files. |
 | Repository formats | TOML, YAML, JSON, XML, desktop metadata, 44 Markdown documents and local links/anchors, and 59 commit-pinned Actions passed repository validation. PowerShell and Unix shell validation have dedicated wrappers. |
@@ -33,10 +34,16 @@ code cannot satisfy.
 
 ## Test evidence from this audit
 
+- Composite-folder/path follow-up: PowerShell/CMD formatter contracts, Bash and
+  Zsh integration tests, focused ShellCheck/Perl syntax, a real WSL pseudo-TTY
+  run against eza 0.18.2, installed-file SHA-256 comparison, bundled font cmap
+  coverage, locked debug build/smoke, repository formats, warning-denied
+  Clippy, `verify all`, and the expanded conformance suite passed.
 - `cargo ready`: passed the complete local contributor gate and debug binary
   smoke test; its isolated artifacts were removed automatically.
 - `cargo xtask test conformance`: passed all selected application, VT, backend,
-  window, renderer, and PTY suites.
+  window, renderer, and PTY suites, including four pane-footer geometry/routing
+  regressions and the DPI-stable terminal-boundary check.
 - `cargo xtask test resize-stress`: passed deterministic parser/reflow and
   resize-ordering storms.
 - `cargo xtask test session-clone`: passed deterministic launch, keybinding,

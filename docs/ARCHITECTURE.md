@@ -33,6 +33,14 @@ Automexia IDs or path policy.
 - GPU drawing stays in the frontend renderer adapter.
 - Session IDs key worker results, completion state, and cached context; one
   window or pane cannot observe another session's state.
+- Session ownership is explicit: an OS window owns window-level
+  `ContextGrid` tabs; each grid owns split-pane `ContextGridItem` nodes; each
+  pane owns an ordered local tab stack with exactly one active `Context`.
+  Every local tab has an independent PTY and route. Background route events
+  are delivered to the matching context, all tabs track their pane's current
+  dimensions, and only the active context is painted. Deliberate teardown
+  records exact route tombstones so delayed PTY-exit events cannot close a
+  sibling pane, tab, grid, or window.
 - Selection and search styling take precedence over semantic decoration.
 - PowerShell, Bash, and Zsh integrations assign every prompt a monotonic OSC
   133 `aid`. Stock CMD publishes `A/B` semantic boundaries without inventing an
@@ -50,7 +58,7 @@ Automexia IDs or path policy.
   the inactive user variable completes it. Repeating an active `aid` atomically
   clears the previous block before accepting its replacement. While input is
   active, the VT owns a compact copy of only those prompt rows. After each PTY
-  batch it repairs a delayed line-editor clear from that copy, reflowing through
+  batch it repairs a delayed screen or line erase from that copy, reflowing through
   the normal grid path; rows which cannot fit stay in scrollback until the
   viewport grows. Completed command history is never copied or replaced.
 - Adjacent PTY resize messages coalesce to the newest effective dimensions.
@@ -62,8 +70,10 @@ Automexia IDs or path policy.
   rail, and 54 at the 300×200 minimum where the secondary surface folds away.
   One viewport policy drives paint geometry, pointer hit-testing and grid
   margins, and live resize/DPI changes recompute every grid before layout. The
-  secondary surface exposes Find, Split Right, Split Down, and Next Pane and
-  never duplicates session facts that already belong to prompts. Every shell
+  secondary surface exposes Find, Split Right, Split Down, and Next Pane when
+  the pane has one local tab. With multiple local tabs it becomes that pane's
+  scoped tab rail with direct select/close/add targets and an active outline;
+  it never duplicates session facts that already belong to prompts. Every shell
   prompt reserves a semantic,
   blank `Prompt` row, a complete-path `PromptContinuation` row, and a short
   editable `PromptContinuation` row. The renderer paints operational context
@@ -72,6 +82,14 @@ Automexia IDs or path policy.
   history. Stable `aid` identity reconnects all three rows after scrollback and
   reflow, so typing, command output, and resize cannot erase, duplicate, or
   attach them to the wrong command.
+- Each pane also owns a renderer-only operational footer (ADR 0008). Layout
+  subtracts its 32 logical pixels before resizing the PTY; text, images,
+  scrollbars, mouse hit-testing, and prompt overlays therefore share one
+  terminal-grid boundary. The footer reads only the frame snapshot and pane
+  topology, never locks external workers or writes status bytes into terminal
+  history. Its search and return-to-live actions are routed to the exact pane.
+  Panes below 112 logical pixels hide the footer and recover the space
+  automatically when they grow.
 - OSC 133 `C`/`D` records exit code and elapsed time on the stable prompt row.
   This metadata is copied, recycled, merged and split with the row and marks
   metadata-only snapshots dirty.
@@ -82,8 +100,9 @@ Automexia IDs or path policy.
   record protocol. The window backend retains the native virtual key, scan
   code, modifier/toggle state, and enhanced-key bit; the screen forwards that
   record only after Automexia-owned bindings have had an opportunity to handle
-  it. Bare Up Arrow, `Ctrl+R`, and `Ctrl+D` therefore remain shell-owned while
-  configured frontend shortcuts remain local.
+  it. Up Arrow remains shell-owned. Bare `Ctrl+R`/`Ctrl+D` clone the active
+  session right/down, while `Ctrl+Alt+R`/`Ctrl+Alt+D` explicitly forward the
+  displaced history-search and EOF control bytes to the shell.
 - Windows PTY ring-buffer producers and consumers check, mutate, wait, and
   notify under the same predicate mutex. This prevents the first input or
   output after an idle transition from losing its wakeup.
@@ -144,6 +163,15 @@ exit removes that directory regardless of gate outcome. Windows launches copy
 the verified debug executable to a unique runtime generation, preventing a
 running image from locking the canonical Cargo output. Path containment and
 reparse-point checks guard every workflow-owned recursive cleanup.
+
+The two launch workflows also own shell provisioning as a fail-fast phase
+immediately before process creation. A repository-source fingerprint and
+installed-file/profile-marker checks make unchanged launches a no-op. Windows
+prepares PowerShell, CMD, and WSL; Unix prepares Bash, Zsh, and user-local
+terminfo. Verification-only commands never mutate a contributor profile. The
+ordering and platform command specifications are unit-tested, while isolated
+installer tests cover repeat runs and repair. See
+[ADR 0009](adr/0009-launch-time-shell-provisioning.md).
 
 CI caches downloaded dependencies but not compiled target trees. The rationale,
 safety invariants, failure behavior, and tradeoffs are recorded in

@@ -9,8 +9,10 @@ its commands. Repeating selected-pane facts in the header consumed scarce
 space, could be mistaken for the identity of another split, and added no new
 information.
 
-The reserved secondary chrome row instead exposes four frequent, reversible
-workspace actions: Find, Split Right, Split Down, and Next Pane. One responsive
+The reserved secondary chrome row normally exposes four frequent, reversible
+workspace actions: Find, Split Right, Split Down, and Next Pane. When the
+selected pane has multiple local tabs, ADR 0007 assigns the row to that pane's
+tab rail instead. One responsive
 geometry function drives drawing and hit-testing. Comfortable layouts include
 text labels; compact and minimal layouts retain vector icons; viewports below
 260 logical pixels hide the rail while keeping all actions available through

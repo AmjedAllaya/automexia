@@ -83,6 +83,29 @@ moves focus without reaching for the keyboard. All four buttons share their
 responsive geometry with pointer hit-testing, use no font-dependent icon, and
 perform no heap allocation during frame rendering or mouse movement.
 
+## Per-pane session footer
+
+Every usable pane ends with a 32 logical-pixel operational footer. It is a
+renderer-owned surface with a real grid reservation, so PTY output, the cursor,
+images, prompt rows, selections, and the scrollbar stop above it rather than
+being covered by it. The selected pane receives a cyan outline; inactive panes
+retain a quiet slate outline, matching the pane-focus contract used around the
+terminal surface.
+
+The footer reports the pane number, local-tab position when the pane owns more
+than one tab, effective terminal columns and rows, selection state, and whether
+the richer Automexia shell integration is active. Its live-state control turns
+amber and reports the exact scrollback offset while history is visible; clicking
+it returns that independent PTY to the live edge. `FIND` opens search in that
+footer's pane. Clicking a non-action area focuses the pane without creating a
+terminal selection or writing input.
+
+Footer drawing and hit-testing use the same geometry. Labels progressively
+collapse into compact vector controls as a pane narrows. Below 112 logical
+pixels of pane height the footer yields all 32 pixels back to the terminal, so
+an extreme split always retains a usable PTY row. The footer returns
+automatically when the pane grows and requires no user-facing configuration.
+
 ## Per-pane operational context
 
 Every semantic prompt owns a session-scoped live snapshot, not a static list
@@ -187,7 +210,9 @@ available whenever the active shell is PowerShell, Bash, or Zsh.
 
 The complete path uses a restrained hierarchy shared by PowerShell, Bash, and
 Zsh: separators are muted slate, the root or first component is light blue,
-parent components remain Automexia blue, and the active directory is mint. ANSI style
+intermediate components cycle through cyan, violet, and Automexia blue, and the
+active directory is lime. This produces visible segment boundaries even in a
+long WSL mount path without assigning a random color to each name. ANSI style
 changes never alter the copied path, OSC 7 directory, Unicode components, or
 reflow text. The PowerShell formatter caches an unchanged path, and the POSIX
 formatters use shell builtins only, so styling adds no process to prompt input
@@ -195,11 +220,14 @@ or history navigation. CMD keeps the complete path in the same blue family as
 one dynamic `$P` token because its prompt language cannot style individual path
 components without changing the literal directory.
 
-Use `Ctrl`+`Alt`+`R` or `Ctrl`+`Alt`+`D` to create an independent clone of the
-active session to the right or below. The clone preserves the current
+Use `Ctrl`+`R` or `Ctrl`+`D` to create an independent clone of the active
+session to the right or below. The clone preserves the current
 PowerShell/pwsh, Command Prompt, Bash, Zsh, or WSL launch identity and directory while keeping
 its process, input, scrollback, and DevOps discovery state isolated. Existing
 `Ctrl`+`Shift`+`R`/`D` shortcuts continue to open the configured default shell.
+The displaced shell controls remain available through `Ctrl`+`Alt`+`R` for
+history search and `Ctrl`+`Alt`+`D` for EOF/logout. Both clone actions are also
+discoverable in the command palette with distinct duplicated-pane icons.
 
 ## File and folder icons
 
@@ -223,27 +251,37 @@ POSIX function. Set `AUTOMEXIA_PLAIN_LS=1` before the integration is sourced to
 disable the icon presentation. Machines without `eza` retain their original
 POSIX commands.
 
+Automexia supports both current eza releases and the eza 0.18.x packages still
+shipped by common Ubuntu/WSL installations. Because eza before 0.19.2 cannot
+override a directory icon by basename, the integration applies a small
+TTY-only compatibility filter to eza's own generic folder token. It swaps that
+one cell for the corresponding composite folder badge and category color. The
+filter never changes a filename, never runs on a pipe or redirect, and never
+examines unrelated command output, so scripts and machine-readable listings
+remain native eza output. The wrapper forwards the live viewport width while
+eza writes through the filter, preserving responsive grid and table layouts.
+
 Folder and file names also receive a name-based visual category. Icons remain
 the primary signal and colors are secondary, so the categories remain readable
 with color-vision differences and customized themes:
 
 | Category | Common names and files | Default identity |
 |---|---|---|
-| Sensitive | `secret`, `private`, `credentials`, `vault`, `.env*`, keys and certificates | lock, coral red |
-| Configuration | `config`, `settings`, `profiles`, JSON/TOML/YAML/config files | controls, amber |
-| Logs and traces | `log`, `logs`, telemetry, `.log`, `.trace` | log document, gold |
-| Source and engines | `apps`, `src`, `lib*`, `rio-*`, `corcovado`, `sugarloaf` | code, cyan |
-| Documentation | `docs`, `documentation`, `guides`, Markdown and text | book/document, green |
-| Tests and quality | `test*`, `specs`, `fixtures`, `fuzz`, benchmarks | flask, violet |
-| Build output | `target`, `build`, `dist`, `out`, `coverage`, `changes` | cubes, coral |
-| Media and assets | `assets`, `public`, `static`, images, icons and fonts | image, pink |
-| Packages | `.cargo`, `node_modules`, `vendor`, `packages`, dependencies | package, purple |
-| Repository | `.git`, `.github`, `.gitlab`, Git control files | branch, violet |
-| Tools | `scripts`, `tools`, `shell-integration`, `ci` | wrench, mint |
-| Data | `data`, `db`, `database`, migrations, SQL/SQLite | database, indigo |
-| Ephemeral | `cache`, `tmp`, `temp`, sessions and backups | clock, slate |
-| Infrastructure | `infra`, Terraform, Kubernetes, Helm, Docker and cloud | cloud/provider blue |
-| Packaging | `packaging`, installers and archives | package/archive, amber |
+| Sensitive | `secret`, `private`, `credentials`, `vault`, `.env*`, keys and certificates | folder + lock, coral red |
+| Configuration | `config`, `settings`, `profiles`, JSON/TOML/YAML/config files | folder + cog, amber |
+| Logs and traces | `log`, `logs`, telemetry, `.log`, `.trace` | folder + text, gold |
+| Source and engines | `apps`, `src`, `lib*`, `rio-*`, `corcovado`, `sugarloaf` | folder + source file, cyan |
+| Documentation | `docs`, `documentation`, `guides`, Markdown and text | folder + information, green |
+| Tests and quality | `test*`, `specs`, `fixtures`, `fuzz`, benchmarks | folder + check, violet |
+| Build output | `target`, `build`, `dist`, `out`, `coverage`, `changes` | folder + sync, coral |
+| Media and assets | `assets`, `public`, `static`, images, icons and fonts | folder + image, pink |
+| Packages | `.cargo`, `node_modules`, `vendor`, `packages`, dependencies | multiple folders, purple |
+| Repository | `.git`, `.github`, `.gitlab`, Git control files | folder + Git branch, violet |
+| Tools | `scripts`, `tools`, `shell-integration`, `ci` | folder + wrench, mint |
+| Data | `data`, `db`, `database`, migrations, SQL/SQLite | folder + table, indigo |
+| Ephemeral | `cache`, `tmp`, `temp`, sessions and backups | folder + clock, slate |
+| Infrastructure | `infra`, Terraform, Kubernetes, Helm, Docker and cloud | folder + network, provider blue |
+| Packaging | `packaging`, installers and archives | folder + archive, amber |
 
 Classification uses only the displayed basename and extension; it never opens
 or scans file contents and is not a security verdict. A lock icon means “this
@@ -253,6 +291,8 @@ permission-protected.
 Native Windows PowerShell does not require `eza`. Automexia installs a native
 PowerShell format view for `DirectoryInfo` and `FileInfo`, so the existing
 `ls` alias and `Get-ChildItem` display folder and file-type icons automatically.
+Recognized directories use the same single-cell folder-with-badge vocabulary as
+Bash and Zsh; a category symbol never replaces the folder silhouette.
 The native metadata columns are `Mode`, `Last Modified`, `Size`, and `Name`;
 each glyph is kept together with its filename in the final `Name` column, and
 directories keep their trailing `\`. Narrow windows shorten only the displayed
@@ -262,11 +302,13 @@ The command still returns the original filesystem objects: `Where-Object`,
 PowerShell behavior. `AUTOMEXIA_PLAIN_LS=1` disables this presentation layer
 before the integration is loaded on every supported shell.
 
-PowerShell 7 applies the category color to the icon and basename because its
-formatter understands ANSI display width. Windows PowerShell 5 retains the
-same differentiated category icons but omits injected name colors: its legacy
-formatter counts invisible ANSI bytes as table cells, which would otherwise
-damage narrow filenames. This compatibility rule preserves complete names.
+PowerShell 7 applies full RGB category color to the icon and basename because
+its formatter understands ANSI display width. Windows PowerShell 5 uses a
+short 8-bit category palette in a direct VT window at 96 columns or wider. Its
+legacy formatter counts invisible ANSI bytes as table cells, so narrow windows
+and redirected output automatically retain the same composite badges without
+injected color. This adaptive rule adds color at normal working sizes while
+preserving complete names in the unsafe cases.
 
 Command Prompt has a dedicated integration rather than inheriting PowerShell
 state. Typing `cmd` or `cmd.exe` with no arguments from an integrated
@@ -294,18 +336,17 @@ roles: read permissions are cyan, write permissions gold, execute permissions
 green, owners violet, groups blue, sizes orange, and dates muted teal. File and
 directory names retain their type colors and icons. DrvFs executable filenames
 remain neutral so a Windows mount does not turn every filename green. A
-user-defined `EZA_COLORS` value is never replaced.
+user-defined `EZA_COLORS` value is never replaced; the TTY-only folder badge
+layer owns only recognized directory icons and their matching basename color.
 
-Install or refresh the integrations on Windows (including WSL) with:
-
-```powershell
-.\shell-integration\install-windows.ps1
-```
-
-Restart Automexia after installation. The installer is idempotent, generates
-CMD clone metadata for the current Windows account without storing plaintext
-credentials, and the matching uninstall script removes only marked Automexia
-blocks.
+`cargo dev` and `cargo automexia` automatically install or refresh all of these
+integrations before they launch. On Windows this includes PowerShell, CMD, and
+WSL Bash/Zsh; on Unix it includes Bash/Zsh and user-local terminfo. The
+source-aware fast path avoids rewriting current files or starting WSL, so no
+manual install command or post-install restart is part of normal use. The
+Windows installer generates CMD clone metadata for the current account without
+storing plaintext credentials, and the matching uninstall script removes only
+marked Automexia blocks.
 
 ## Semantic output
 
@@ -317,13 +358,14 @@ only and never rewrites terminal cells or copied text.
 
 ## Interaction map
 
-- Click a tab to select it; drag to reorder it.
-- Click `+` to open another terminal with the configured shell.
-- On Windows and Linux, press `Ctrl`+`T` to create an independent window with
-  its initial tab, or `Ctrl`+`Shift`+`T` to add a global tab to the current
-  window. `Ctrl`+`Shift`+`N` remains a compatible new-window alias.
-- On macOS, use the native `Cmd`+`N` new-window and `Cmd`+`T` current-window tab
-  shortcuts.
+- Click a top-row tab to select or drag a window-level workspace.
+- Click the top-row `+`, or press `Ctrl`+`T`, to add a window-level tab.
+- Press `Ctrl`+`Shift`+`T` to create an independent tab inside the selected
+  split/session. When a pane has siblings, its second-row local tab rail exposes
+  direct selection, an exact per-tab close target, and a local `+` button.
+- Press `Ctrl`+`Shift`+`N` to create a separate OS window.
+- On macOS, use `Cmd`+`N`, `Cmd`+`T`, and `Cmd`+`Shift`+`T` for the equivalent
+  new-window, window-tab, and selected-session-tab scopes.
 - Click the three-line command button to open the searchable command palette.
 - Right-click a tab to rename it or choose its accent.
 - Use the custom minimize, maximize/restore and close controls on Windows.
