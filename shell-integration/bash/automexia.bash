@@ -67,6 +67,24 @@ if [[ ${AUTOMEXIA_PLAIN_LS:-0} != 1 ]] && command -v eza >/dev/null 2>&1; then
   # block. Bash expands an alias while parsing a same-named `ls()` function,
   # producing invalid syntax, so clear only the shortcuts Automexia replaces.
   unalias ls l ll la lA tree 2>/dev/null || true
+  __automexia_integration_dir=${BASH_SOURCE[0]%/*}
+  [[ $__automexia_integration_dir != "${BASH_SOURCE[0]}" ]] || __automexia_integration_dir=.
+  __automexia_eza_filter_path="$__automexia_integration_dir/../posix/automexia-eza-filter.pl"
+  [[ -r $__automexia_eza_filter_path ]] || \
+    __automexia_eza_filter_path="$__automexia_integration_dir/automexia-eza-filter.pl"
+
+  __automexia_run_eza() {
+    if [[ -t 1 && -r $__automexia_eza_filter_path ]] && command -v perl >/dev/null 2>&1; then
+      # Force presentation while eza writes into the badge filter. The wrapper
+      # itself is still TTY-gated, so pipes and redirects retain plain output.
+      command eza --icons=always --color=always --width="${COLUMNS:-80}" "$@" |
+        perl -CS "$__automexia_eza_filter_path"
+      local eza_status=${PIPESTATUS[0]}
+      return "$eza_status"
+    fi
+    command eza --icons=auto --color=auto "$@"
+  }
+
   __automexia_eza() {
     local long_view=0 argument
     for argument in "$@"; do
@@ -79,10 +97,10 @@ if [[ ${AUTOMEXIA_PLAIN_LS:-0} != 1 ]] && command -v eza >/dev/null 2>&1; then
     done
 
     if (( long_view )); then
-      command eza --icons=auto --color=auto --group-directories-first \
+      __automexia_run_eza --group-directories-first \
         --header --group --time-style=long-iso "$@"
     else
-      command eza --icons=auto --color=auto --group-directories-first "$@"
+      __automexia_run_eza --group-directories-first "$@"
     fi
   }
   function ls { __automexia_eza "$@"; }
@@ -90,7 +108,7 @@ if [[ ${AUTOMEXIA_PLAIN_LS:-0} != 1 ]] && command -v eza >/dev/null 2>&1; then
   function ll { __automexia_eza -lah --git "$@"; }
   function la { __automexia_eza -la "$@"; }
   function lA { __automexia_eza -lA "$@"; }
-  function tree { command eza --tree --icons=auto --color=auto "$@"; }
+  function tree { __automexia_run_eza --tree "$@"; }
 fi
 
 __automexia_osc7() {
@@ -104,11 +122,13 @@ __automexia_title() {
 }
 
 __automexia_print_colored_path() {
-  local remaining=$1 component separators color
+  local remaining=$1 component separators color parent_index=0
   local first_component=1
   local root_color=$'\e[38;2;98;176;255m'
-  local parent_color=$'\e[38;2;72;167;255m'
-  local leaf_color=$'\e[38;2;45;212;191m'
+  local parent_cyan=$'\e[38;2;80;213;255m'
+  local parent_violet=$'\e[38;2;167;139;250m'
+  local parent_blue=$'\e[38;2;72;167;255m'
+  local leaf_color=$'\e[38;2;184;243;107m'
   local separator_color=$'\e[38;2;88;113;141m'
   local reset_color=$'\e[0m'
 
@@ -127,7 +147,12 @@ __automexia_print_colored_path() {
       if (( first_component )); then
         color=$root_color
       else
-        color=$parent_color
+        case $((parent_index % 3)) in
+          0) color=$parent_cyan ;;
+          1) color=$parent_violet ;;
+          *) color=$parent_blue ;;
+        esac
+        ((parent_index += 1))
       fi
     else
       component=$remaining
@@ -166,6 +191,7 @@ __automexia_pre_prompt() {
 # Preserve a user's PROMPT_COMMAND rather than replacing it. Bash 5 may expose
 # it as either a string or array; normalize only the common string case and do
 # no external work on the prompt hot path.
+# shellcheck disable=SC2178 # The two runtime variants are handled explicitly.
 case "$(declare -p PROMPT_COMMAND 2>/dev/null)" in
   'declare -a'*)
   __automexia_has_pc=0
@@ -195,4 +221,5 @@ esac
 # Readline owns only the short lambda/input row. The path was already emitted
 # by `__automexia_pre_prompt` as terminal-owned content.
 PS1='\[\e[38;2;97;231;255m\]'$'\xCE\xBB''\[\e[0m\] \[\e]133;B\a\]\[\e[38;2;238;247;242m\]'
+# shellcheck disable=SC2016 # Readline evaluates the arithmetic at prompt time.
 PS0='\[\e[0;$((__automexia_prompt_is_active=0))m\]\[\e]1337;SetUserVar=automexia_prompt_active=MA==\a\]\[\e]133;C\a\]'

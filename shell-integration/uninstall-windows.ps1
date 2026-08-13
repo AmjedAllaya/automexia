@@ -32,6 +32,10 @@ for f in "$HOME/.bashrc" "$HOME/.zshrc"; do
   awk 'BEGIN{skip=0} /# >>> AUTOMEXIA SHELL INTEGRATION >>>/{skip=1;next} /# <<< AUTOMEXIA SHELL INTEGRATION <<</{skip=0;next} !skip{print}' "$f" > "$f.automexia.tmp"
   mv "$f.automexia.tmp" "$f"
 done
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}/automexia"
+rm -f "$cfg/shell-integration.bash" "$cfg/shell-integration.zsh" \
+  "$cfg/automexia-eza-filter.pl"
+rmdir "$cfg" 2>/dev/null || true
 '@
     $cleanup | & wsl.exe --exec sh
 }

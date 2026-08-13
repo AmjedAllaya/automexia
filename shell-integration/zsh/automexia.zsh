@@ -60,6 +60,23 @@ if [[ ${AUTOMEXIA_PLAIN_LS:-0} != 1 ]] && (( $+commands[eza] )); then
   # only the shortcuts Automexia intentionally replaces before functions are
   # parsed, avoiding alias expansion of the function names.
   unalias ls l ll la lA tree 2>/dev/null || true
+  typeset -g __automexia_integration_dir=${${(%):-%N}:A:h}
+  typeset -g __automexia_eza_filter_path="$__automexia_integration_dir/../posix/automexia-eza-filter.pl"
+  [[ -r $__automexia_eza_filter_path ]] || \
+    __automexia_eza_filter_path="$__automexia_integration_dir/automexia-eza-filter.pl"
+
+  __automexia_run_eza() {
+    if [[ -t 1 && -r $__automexia_eza_filter_path ]] && (( $+commands[perl] )); then
+      # eza writes presentation bytes into the badge filter only for a real
+      # terminal. Piped and redirected listings keep eza's plain semantics.
+      command eza --icons=always --color=always --width="${COLUMNS:-80}" "$@" |
+        perl -CS "$__automexia_eza_filter_path"
+      local eza_status=${pipestatus[1]}
+      return $eza_status
+    fi
+    command eza --icons=auto --color=auto "$@"
+  }
+
   __automexia_eza() {
     local long_view=0 argument
     for argument in "$@"; do
@@ -72,10 +89,10 @@ if [[ ${AUTOMEXIA_PLAIN_LS:-0} != 1 ]] && (( $+commands[eza] )); then
     done
 
     if (( long_view )); then
-      command eza --icons=auto --color=auto --group-directories-first \
+      __automexia_run_eza --group-directories-first \
         --header --group --time-style=long-iso "$@"
     else
-      command eza --icons=auto --color=auto --group-directories-first "$@"
+      __automexia_run_eza --group-directories-first "$@"
     fi
   }
   function ls { __automexia_eza "$@"; }
@@ -83,15 +100,17 @@ if [[ ${AUTOMEXIA_PLAIN_LS:-0} != 1 ]] && (( $+commands[eza] )); then
   function ll { __automexia_eza -lah --git "$@"; }
   function la { __automexia_eza -la "$@"; }
   function lA { __automexia_eza -lA "$@"; }
-  function tree { command eza --tree --icons=auto --color=auto "$@"; }
+  function tree { __automexia_run_eza --tree "$@"; }
 fi
 
 __automexia_print_colored_path() {
-  local remaining=$1 component separators color
+  local remaining=$1 component separators color parent_index=0
   local first_component=1
   local root_color=$'\e[38;2;98;176;255m'
-  local parent_color=$'\e[38;2;72;167;255m'
-  local leaf_color=$'\e[38;2;45;212;191m'
+  local parent_cyan=$'\e[38;2;80;213;255m'
+  local parent_violet=$'\e[38;2;167;139;250m'
+  local parent_blue=$'\e[38;2;72;167;255m'
+  local leaf_color=$'\e[38;2;184;243;107m'
   local separator_color=$'\e[38;2;88;113;141m'
   local reset_color=$'\e[0m'
 
@@ -109,7 +128,12 @@ __automexia_print_colored_path() {
       if (( first_component )); then
         color=$root_color
       else
-        color=$parent_color
+        case $((parent_index % 3)) in
+          0) color=$parent_cyan ;;
+          1) color=$parent_violet ;;
+          *) color=$parent_blue ;;
+        esac
+        ((parent_index += 1))
       fi
     else
       component=$remaining

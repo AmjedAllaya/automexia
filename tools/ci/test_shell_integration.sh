@@ -40,16 +40,17 @@ grep -qF "AUTOMEXIA_SHELL_INTEGRATION" "$root/shell-integration/bash/automexia.b
 grep -qF '\xCE\xBB' "$root/shell-integration/bash/automexia.bash"
 [[ $PS1 == *$'\u03BB'* ]]
 [[ $PS1 != *'\w'* ]]
-! grep -qF 'PROMPT_DIRTRIM' "$root/shell-integration/bash/automexia.bash"
-! grep -qF '__automexia_git_segment' "$root/shell-integration/bash/automexia.bash"
+if grep -qF 'PROMPT_DIRTRIM' "$root/shell-integration/bash/automexia.bash"; then exit 1; fi
+if grep -qF '__automexia_git_segment' "$root/shell-integration/bash/automexia.bash"; then exit 1; fi
 grep -qF '133;A;aid=%s\a \n' "$root/shell-integration/bash/automexia.bash"
 grep -qF '133;P;k=c;aid=%s\a' "$root/shell-integration/bash/automexia.bash"
+# shellcheck disable=SC2016 # Search for the literal integration contract.
 grep -qF '__automexia_print_colored_path "$PWD"' "$root/shell-integration/bash/automexia.bash"
 [[ $PS1 != *'PWD'* ]]
 grep -qF '__automexia_prompt_is_active=0' "$root/shell-integration/bash/automexia.bash"
-! grep -Eiq 'alias (docker|kubectl)=|function (ax|kgp)' "$root/shell-integration/bash/automexia.bash"
-sample_path='/srv/cloud project/production'
-expected_path=$'\e[38;2;88;113;141m/\e[38;2;98;176;255msrv\e[38;2;88;113;141m/\e[38;2;72;167;255mcloud project\e[38;2;88;113;141m/\e[38;2;45;212;191mproduction\e[0m'
+if grep -Eiq 'alias (docker|kubectl)=|function (ax|kgp)' "$root/shell-integration/bash/automexia.bash"; then exit 1; fi
+sample_path='/srv/cloud project/region/production'
+expected_path=$'\e[38;2;88;113;141m/\e[38;2;98;176;255msrv\e[38;2;88;113;141m/\e[38;2;80;213;255mcloud project\e[38;2;88;113;141m/\e[38;2;167;139;250mregion\e[38;2;88;113;141m/\e[38;2;184;243;107mproduction\e[0m'
 [[ $(__automexia_print_colored_path "$sample_path") == "$expected_path" ]]
 [[ $(type -t ls) == function ]]
 [[ $(type -t ll) == function ]]
@@ -70,10 +71,20 @@ for category_color in \
   [[ $EZA_COLORS == *"$category_color"* ]]
 done
 
-unset -f ls l ll la lA tree __automexia_eza
-AUTOMEXIA_PLAIN_LS=1
+badge_filter="$root/shell-integration/posix/automexia-eza-filter.pl"
+[[ -r $badge_filter ]]
+badge_input=$'\e[38;5;39m\uE5FF \e[1mconfig\e[0m  \e[38;5;39m\uE5FF \e[1mrio-vt\e[0m  \e[38;5;39m\uE5FF \e[1mordinary\e[0m'
+badge_output=$(printf '%s\n' "$badge_input" | perl -CS "$badge_filter")
+[[ $badge_output == *$'\U000F107F \e[1mconfig'* ]]
+[[ $badge_output == *$'\U000F19F6 \e[1mrio-vt'* ]]
+[[ $badge_output == *$'\uE5FF \e[1mordinary'* ]]
+[[ $badge_output == *$'\e[38;2;255;176;32m'* ]]
+[[ $badge_output == *$'\e[38;2;80;213;255m'* ]]
+
+unset -f ls l ll la lA tree __automexia_eza __automexia_run_eza
+export AUTOMEXIA_PLAIN_LS=1
 # shellcheck source=/dev/null
 source "$root/shell-integration/bash/automexia.bash" >/dev/null
 [[ $(type -t ls) != function ]]
 
-echo 'PASS: Bash integration is active, idempotent, status-preserving, UTF-8-safe, semantically path-colored, three-row prompt-identified, full-path, resize-safe, command-neutral, and readable icon-listing aware'
+echo 'PASS: Bash integration is active, idempotent, status-preserving, UTF-8-safe, semantically path-colored, composite-folder-aware, three-row prompt-identified, full-path, resize-safe, command-neutral, and readable icon-listing aware'

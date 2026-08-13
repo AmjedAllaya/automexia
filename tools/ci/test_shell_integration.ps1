@@ -59,11 +59,11 @@ if ($plainStyledPath -cne $samplePath) {
 $expectedStyledPath =
     "$escape[38;2;98;176;255mD:" +
     "$escape[38;2;88;113;141m\" +
-    "$escape[38;2;72;167;255mcloud project" +
+    "$escape[38;2;80;213;255mcloud project" +
     "$escape[38;2;88;113;141m\" +
-    "$escape[38;2;72;167;255m$([char]0x00E9)" +
+    "$escape[38;2;167;139;250m$([char]0x00E9)" +
     "$escape[38;2;88;113;141m\" +
-    "$escape[38;2;45;212;191mautomexia-terminal" +
+    "$escape[38;2;184;243;107mautomexia-terminal" +
     "$escape[0m"
 if ($styledPath -cne $expectedStyledPath) {
     throw 'PowerShell path roles are not root/parent/separator/current-directory ordered'
@@ -79,14 +79,14 @@ if ($formatSource -notmatch 'ReparsePoint' -or $formatSource -notmatch '0xF481')
     throw 'PowerShell filesystem view has no differentiated symlink icon'
 }
 foreach ($categoryContract in @(
-    @{ Pattern = 'secret\|secrets\|private'; Glyph = '0xF023'; Color = '255;92;122' },
-    @{ Pattern = 'config\|configs\|configuration'; Glyph = '0xF013'; Color = '255;176;32' },
-    @{ Pattern = 'logs\?\|logfiles'; Glyph = '0xF15C'; Color = '242;201;76' },
-    @{ Pattern = 'apps\?\|src\|source'; Glyph = '0xF121'; Color = '80;213;255' },
-    @{ Pattern = 'docs\?\|documentation'; Glyph = '0xF02D'; Color = '96;211;148' },
-    @{ Pattern = 'tests\?\|specs'; Glyph = '0xF0C3'; Color = '220;120;255' },
-    @{ Pattern = 'target\|build\|dist'; Glyph = '0xF1B2'; Color = '244;111;97' },
-    @{ Pattern = 'data\|db\|database'; Glyph = '0xF1C0'; Color = '129;140;248' }
+    @{ Pattern = 'secret\|secrets\|private'; Glyph = '0xF0250'; Color = '255;92;122' },
+    @{ Pattern = 'config\|configs\|configuration'; Glyph = '0xF107F'; Color = '255;176;32' },
+    @{ Pattern = 'logs\?\|logfiles'; Glyph = '0xF0C82'; Color = '242;201;76' },
+    @{ Pattern = 'apps\?\|src\|source'; Glyph = '0xF19F6'; Color = '80;213;255' },
+    @{ Pattern = 'docs\?\|documentation'; Glyph = '0xF10B7'; Color = '96;211;148' },
+    @{ Pattern = 'tests\?\|specs'; Glyph = '0xF197E'; Color = '220;120;255' },
+    @{ Pattern = 'target\|build\|dist'; Glyph = '0xF0D0B'; Color = '244;111;97' },
+    @{ Pattern = 'data\|db\|database'; Glyph = '0xF12E3'; Color = '129;140;248' }
 )) {
     if ($formatSource -notmatch $categoryContract.Pattern -or
         $formatSource -notmatch $categoryContract.Glyph -or
@@ -96,6 +96,11 @@ foreach ($categoryContract in @(
 }
 if ($formatSource -notmatch 'PSVersionTable\.PSVersion\.Major -ge 7') {
     throw 'PowerShell category colors do not protect Windows PowerShell 5 table width'
+}
+if ($formatSource -notmatch '\[Console\]::IsOutputRedirected' -or
+    $formatSource -notmatch 'WindowSize\.Width -ge 96' -or
+    $formatSource -notmatch '38;5;\$\{legacyColor\}') {
+    throw 'Windows PowerShell 5 does not use the width-safe direct-VT category palette'
 }
 $formatDeadline = [DateTime]::UtcNow.AddSeconds(2)
 do {
@@ -117,7 +122,7 @@ if ($filesystemObjects[0] -isnot [System.IO.DirectoryInfo] -or $filesystemObject
 }
 $formattedFilesystem = $filesystemObjects | Format-Table | Out-String -Width 180
 $folderGlyph = [char]0xF07B
-$sourceFolderGlyph = [char]0xF121
+$sourceFolderGlyph = [char]::ConvertFromUtf32(0xF19F6)
 $rustGlyph = [char]0xE7A8
 $dockerGlyph = [char]0xF308
 $kubernetesGlyph = [char]::ConvertFromUtf32(0xF10FE)
@@ -133,6 +138,11 @@ if ($formattedFilesystem -notmatch [regex]::Escape("$sourceFolderGlyph apps\")) 
 }
 if ($formattedFilesystem -notmatch [regex]::Escape("$rustGlyph lib.rs")) {
     throw 'PowerShell Rust icon is not immediately before lib.rs in the Name column'
+}
+if ($PSVersionTable.PSVersion.Major -lt 7 -and
+    [Console]::IsOutputRedirected -and
+    $formattedFilesystem.Contains([string][char]27)) {
+    throw 'Redirected Windows PowerShell output unexpectedly contains category ANSI bytes'
 }
 
 $fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ("automexia-listing-{0}" -f [Guid]::NewGuid().ToString('N'))
@@ -191,7 +201,7 @@ try {
     }
 
     $cmdListing = & $cmdListingPath -la $fixtureRoot | Out-String -Width 240
-    if ($cmdListing -notmatch [regex]::Escape("$([char]0xF023) secret\") -or
+    if ($cmdListing -notmatch [regex]::Escape("$([char]::ConvertFromUtf32(0xF0250)) secret\") -or
         $cmdListing -notmatch [regex]::Escape("$rustGlyph $unicodeRustName")) {
         throw 'CMD ls helper does not retain Automexia category/file icons beside names'
     }
@@ -240,20 +250,20 @@ try {
         Where-Object Name -in $categoryFolders | Sort-Object Name |
         Format-Table | Out-String -Width 240
     foreach ($expectation in @(
-        @{ Glyph = [char]0xF023; Name = 'secret' },
-        @{ Glyph = [char]0xF013; Name = 'config' },
-        @{ Glyph = [char]0xF15C; Name = 'logs' },
-        @{ Glyph = [char]0xF121; Name = 'src' },
-        @{ Glyph = [char]0xF02D; Name = 'docs' },
-        @{ Glyph = [char]0xF0C3; Name = 'tests' },
-        @{ Glyph = [char]0xF1B2; Name = 'target' },
-        @{ Glyph = [char]0xF1C5; Name = 'assets' },
-        @{ Glyph = [char]0xF487; Name = 'packages' },
-        @{ Glyph = [char]0xF0AD; Name = 'tools' },
-        @{ Glyph = [char]0xF1C0; Name = 'data' },
-        @{ Glyph = [char]0xF017; Name = 'cache' },
-        @{ Glyph = [char]0xF0C2; Name = 'infra' },
-        @{ Glyph = [char]0xF487; Name = 'packaging' }
+        @{ Glyph = [char]::ConvertFromUtf32(0xF0250); Name = 'secret' },
+        @{ Glyph = [char]::ConvertFromUtf32(0xF107F); Name = 'config' },
+        @{ Glyph = [char]::ConvertFromUtf32(0xF0C82); Name = 'logs' },
+        @{ Glyph = [char]::ConvertFromUtf32(0xF19F6); Name = 'src' },
+        @{ Glyph = [char]::ConvertFromUtf32(0xF10B7); Name = 'docs' },
+        @{ Glyph = [char]::ConvertFromUtf32(0xF197E); Name = 'tests' },
+        @{ Glyph = [char]::ConvertFromUtf32(0xF0D0B); Name = 'target' },
+        @{ Glyph = [char]::ConvertFromUtf32(0xF024F); Name = 'assets' },
+        @{ Glyph = [char]::ConvertFromUtf32(0xF0253); Name = 'packages' },
+        @{ Glyph = [char]::ConvertFromUtf32(0xF19FC); Name = 'tools' },
+        @{ Glyph = [char]::ConvertFromUtf32(0xF12E3); Name = 'data' },
+        @{ Glyph = [char]::ConvertFromUtf32(0xF0ABA); Name = 'cache' },
+        @{ Glyph = [char]::ConvertFromUtf32(0xF0870); Name = 'infra' },
+        @{ Glyph = [char]::ConvertFromUtf32(0xF06EB); Name = 'packaging' }
     )) {
         if ($categoryListing -notmatch [regex]::Escape("$($expectation.Glyph) $($expectation.Name)\")) {
             throw "PowerShell listing did not categorize the $($expectation.Name) folder"
@@ -330,7 +340,10 @@ if ($bashIntegration -notmatch '"\$PWD"' -or $bashIntegration -match 'PROMPT_DIR
 if ($zshIntegration -notmatch '"\$PWD"' -or $zshIntegration -match '%[0-9]*~') { throw 'Zsh integration does not emit the complete current path' }
 if ($bashIntegration -match '__automexia_git_segment' -or $zshIntegration -match '__automexia_git_segment') { throw 'POSIX prompts still duplicate Git context on the editable path row' }
 foreach ($source in @($bashIntegration, $zshIntegration)) {
-    foreach ($pathColor in @('98;176;255', '72;167;255', '45;212;191', '88;113;141')) {
+    foreach ($pathColor in @(
+        '98;176;255', '80;213;255', '167;139;250', '72;167;255',
+        '184;243;107', '88;113;141'
+    )) {
         if ($source -notmatch [regex]::Escape($pathColor)) { throw "POSIX prompt path is missing semantic color $pathColor" }
     }
     if ($source -notmatch 'function ls \{ __automexia_eza') { throw 'POSIX integration does not enable icon-aware ls through eza' }
@@ -338,6 +351,12 @@ foreach ($source in @($bashIntegration, $zshIntegration)) {
     if ($source -notmatch '--header --group --time-style=long-iso') { throw 'POSIX long listing does not provide separated labeled columns' }
     if ($source -notmatch 'AUTOMEXIA_PLAIN_LS') { throw 'POSIX icon listing has no explicit opt-out' }
     if ($source -notmatch 'EZA_COLORS') { throw 'POSIX icon listing does not define the mockup-aligned metadata palette' }
+    if ($source -notmatch '__automexia_run_eza' -or
+        $source -notmatch 'automexia-eza-filter\.pl' -or
+        $source -notmatch '-t 1' -or
+        $source -notmatch '--width="\$\{COLUMNS:-80\}"') {
+        throw 'POSIX icon listing does not apply category folder badges only on interactive output'
+    }
     if ($source -notmatch 'hd=1;38;5;117') { throw 'POSIX listing headers are not visually emphasized' }
     if ($source -notmatch 'ur=38;5;81' -or $source -notmatch 'uw=38;5;220' -or $source -notmatch 'ux=38;5;114') { throw 'POSIX permission roles are not color-separated' }
     if ($source -notmatch 'ex=38;5;252') { throw 'WSL executable metadata is not neutralized for DrvFs listings' }
@@ -358,15 +377,80 @@ if (-not $bashEzaPalette -or $bashEzaPalette -cne $zshEzaPalette) {
     throw 'Bash and Zsh folder/file category palettes have drifted apart'
 }
 
+$ezaFilterPath = Join-Path $root 'shell-integration\posix\automexia-eza-filter.pl'
+if (-not (Test-Path -LiteralPath $ezaFilterPath)) {
+    throw 'POSIX eza category-folder compatibility filter is missing'
+}
+$ezaFilter = Get-Content -LiteralPath $ezaFilterPath -Raw
+foreach ($folderBadge in @(
+    '0xF0250', '0xF107F', '0xF0C82', '0xF19F6', '0xF10B7',
+    '0xF197E', '0xF0D0B', '0xF024F', '0xF0253', '0xE5FB',
+    '0xF19FC', '0xF12E3', '0xF0ABA', '0xF0870', '0xF06EB'
+)) {
+    if ($ezaFilter -notmatch [regex]::Escape($folderBadge)) {
+        throw "POSIX eza filter is missing composite folder badge $folderBadge"
+    }
+}
+if ($ezaFilter -notmatch 'generic_folder' -or $ezaFilter -notmatch 'Filenames and non-interactive output') {
+    throw 'POSIX eza filter does not constrain rewriting to generic interactive folder presentation'
+}
+
 $installerSource = Get-Content (Join-Path $root 'shell-integration\install-windows.ps1') -Raw
 if ($installerSource -notmatch '\.TrimEnd\(\[char\[\]\]"`r`n"\)') { throw 'WSL installer does not normalize here-document terminators deterministically' }
 if ($installerSource -notmatch 'automexia\.format\.ps1xml') { throw 'Windows installer does not deploy the PowerShell icon view' }
+if ($installerSource -notmatch 'automexia-eza-filter\.pl' -or
+    $installerSource -notmatch 'AUTOMEXIA_EZA_FILTER_EOF') {
+    throw 'Windows installer does not deploy the POSIX composite-folder filter'
+}
+if ($installerSource -notmatch '--distribution \$distribution' -or
+    $installerSource -notmatch 'docker-desktop') {
+    throw 'Windows installer does not provision every detected user WSL distribution safely'
+}
 if ($installerSource -notmatch 'automexia\.cmd' -or
     $installerSource -notmatch '__AUTOMEXIA_CMD_USER_BASE64__' -or
     $installerSource -notmatch '__AUTOMEXIA_CMD_PATH_BASE64__') {
     throw 'Windows installer does not deploy account-specific CMD integration metadata'
 }
+if ($installerSource -notmatch '\[switch\]\$Quiet' -or
+    $installerSource -notmatch '\[switch\]\$Force' -or
+    $installerSource -notmatch 'install-state\.json' -or
+    $installerSource -notmatch 'Get-SourceFingerprint' -or
+    $installerSource -notmatch 'Test-StampedInstall') {
+    throw 'Windows launch-time installer is not source-aware, quiet, forceable, and idempotent'
+}
+if ($installerSource -notmatch 'Move-Item -LiteralPath .* -Destination .* -Force') {
+    throw 'Windows launch-time installer does not publish staged files atomically'
+}
+
+$installerFixture = Join-Path ([IO.Path]::GetTempPath()) ("automexia-installer-{0}" -f [Guid]::NewGuid().ToString('N'))
+$previousLocalAppData = $env:LOCALAPPDATA
+try {
+    $env:LOCALAPPDATA = $installerFixture
+    $installerPath = Join-Path $root 'shell-integration\install-windows.ps1'
+    & $installerPath -SkipPowerShell -SkipWsl -Quiet
+    $installedRoot = Join-Path $installerFixture 'Automexia\shell-integration'
+    $installedCmd = Join-Path $installedRoot 'automexia.cmd'
+    $installState = Join-Path $installedRoot 'install-state.json'
+    if (-not (Test-Path -LiteralPath $installedCmd) -or -not (Test-Path -LiteralPath $installState)) {
+        throw 'Windows automatic installer did not publish CMD integration and its state stamp'
+    }
+    $firstState = Get-Content -LiteralPath $installState -Raw
+    & $installerPath -SkipPowerShell -SkipWsl -Quiet
+    if ((Get-Content -LiteralPath $installState -Raw) -cne $firstState) {
+        throw 'Windows automatic installer rewrote a current installation'
+    }
+    Add-Content -LiteralPath $installedCmd -Value 'locally altered'
+    & $installerPath -SkipPowerShell -SkipWsl -Quiet
+    if ((Get-Content -LiteralPath $installedCmd -Raw) -match 'locally altered') {
+        throw 'Windows automatic installer did not repair an altered installed integration'
+    }
+} finally {
+    $env:LOCALAPPDATA = $previousLocalAppData
+    if (Test-Path -LiteralPath $installerFixture) {
+        Remove-Item -LiteralPath $installerFixture -Recurse -Force
+    }
+}
 
 $uninstall = Get-Content (Join-Path $root 'shell-integration\uninstall-windows.ps1') -Raw
 if ($uninstall -notmatch 'AUTOMEXIA SHELL INTEGRATION') { throw 'uninstall marker cleanup is missing' }
-Write-Output 'PASS: shell integration is idempotent, UTF-8-safe, WSL-isolated, icon-aware on PowerShell/CMD/Bash/Zsh, pipeline-safe, semantically path-colored, three-row prompt-identified, full-path, resize-safe, script-safe, and uninstallable'
+Write-Output 'PASS: shell integration is idempotent, UTF-8-safe, WSL-isolated, composite-folder-aware on PowerShell/CMD/Bash/Zsh, pipeline-safe, semantically path-colored, three-row prompt-identified, full-path, resize-safe, script-safe, and uninstallable'
