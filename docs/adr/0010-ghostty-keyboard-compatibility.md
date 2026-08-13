@@ -1,6 +1,6 @@
 # ADR 0010: Ghostty-compatible keyboard defaults
 
-Status: Accepted
+Status: Superseded by ADR 0011
 
 ## Context
 

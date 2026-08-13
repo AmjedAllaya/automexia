@@ -65,14 +65,18 @@ Automexia IDs or path policy.
   Input and shutdown are barriers, duplicate effective sizes are skipped, and
   a transient PTY resize failure is logged without terminating the session.
   Every effective grid resize forces one complete renderer snapshot.
-- The renderer owns a responsive top-chrome reservation: 148 logical pixels at
-  comfortable sizes, 115 in compact mode, 100 in minimal mode with an action
-  rail, and 54 at the 300×200 minimum where the secondary surface folds away.
-  One viewport policy drives paint geometry, pointer hit-testing and grid
+- The renderer owns a responsive top-chrome reservation. With no pane-local
+  tab rail, content begins after the header and trailing gap: 56 logical pixels
+  at comfortable sizes, 50 in compact mode, and 44 in minimal mode. A pane with
+  multiple local tabs expands the reservation to 102, 92, or 80 pixels.
+  One viewport policy drives the proportional size of the app control, tab
+  typography, profile icons, create/menu controls, local-tab rail, paint
+  geometry, pointer hit-testing and grid
   margins, and live resize/DPI changes recompute every grid before layout. The
-  secondary surface exposes Find, Split Right, Split Down, and Next Pane when
-  the pane has one local tab. With multiple local tabs it becomes that pane's
-  scoped tab rail with direct select/close/add targets and an active outline;
+  secondary surface exists only when the selected pane has multiple local tabs,
+  becoming that pane's scoped tab rail with direct select/close/add targets and
+  an active outline. Search, split, and focus commands remain available through
+  keyboard bindings and the command palette;
   it never duplicates session facts that already belong to prompts. Every shell
   prompt reserves a semantic,
   blank `Prompt` row, a complete-path `PromptContinuation` row, and a short
@@ -87,7 +91,16 @@ Automexia IDs or path policy.
   scrollbars, mouse hit-testing, and prompt overlays therefore share one
   terminal-grid boundary. The footer reads only the frame snapshot and pane
   topology, never locks external workers or writes status bytes into terminal
-  history. Its search and return-to-live actions are routed to the exact pane.
+  history. Its minimal status line reports UTF-8, shell-appropriate LF/CRLF,
+  effective grid size, and local time; topology, history, and selection labels
+  appear only when relevant and space permits. The existing focused-window
+  title tick requests the redraw that keeps the clock current. It has no
+  embedded action controls or hidden action hit targets; a click only focuses
+  the exact pane. Footer geometry absorbs only the outer horizontal terminal
+  margins: one pane spans the window edges, while multiple pane segments tile
+  their shared split seams exactly. The vertical top-chrome/root offset remains
+  part of the screen coordinate, keeping every footer at its pane bottom, and
+  the active segment extends the focus accent.
   Panes below 112 logical pixels hide the footer and recover the space
   automatically when they grow.
 - OSC 133 `C`/`D` records exit code and elapsed time on the stable prompt row.
@@ -100,8 +113,9 @@ Automexia IDs or path policy.
   record protocol. The window backend retains the native virtual key, scan
   code, modifier/toggle state, and enhanced-key bit; the screen forwards that
   record only after Automexia-owned bindings have had an opportunity to handle
-  it. Up Arrow, `Ctrl+R`, and `Ctrl+D` remain shell-owned. Independent session
-  clones use collision-free `Ctrl+Alt+R`/`Ctrl+Alt+D` application shortcuts.
+  it. Up Arrow remains shell-owned. The restored Automexia defaults use
+  `Ctrl+R`/`Ctrl+D` for independent session clones and reserve
+  `Ctrl+Alt+R`/`Ctrl+Alt+D` as explicit history-search/EOF passthroughs.
 - Windows PTY ring-buffer producers and consumers check, mutate, wait, and
   notify under the same predicate mutex. This prevents the first input or
   output after an idle transition from losing its wakeup.
@@ -148,7 +162,7 @@ Automexia IDs or path policy.
 
 The v0.4 frontend owns a flat list of typed runtime bindings. It scans that
 list for each key event, applies user entries by removing overlapping defaults,
-and maintains separate hard-coded macOS and Windows/Linux/BSD default tables.
+and maintains separate hard-coded macOS, Windows, and Linux/BSD default tables.
 Live reload rebuilds the list for existing windows. Command-palette labels are
 currently duplicated platform constants rather than registry-derived data.
 

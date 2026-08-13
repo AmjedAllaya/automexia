@@ -18,19 +18,19 @@ satisfy.
 | Repository structure | The frontend lives at `apps/automexia-terminal`; brand, documentation, packaging, shell integration, conformance fixtures, integration tests, and `tools/xtask` use the planned v0.4 layout. The v0.5 engine/crate regrouping remains deliberately deferred. |
 | Single-command workflow | `cargo ready`, `cargo dev`, `cargo automexia`, storage preflight, isolated verification targets, runtime launch copies, cleanup, and fail-fast automatic PowerShell/CMD/WSL or Bash/Zsh/terminfo provisioning are implemented and documented. Provisioning is source-aware, idempotent, tested in isolated homes, and occurs directly before every launch; verification-only commands remain non-mutating. The complete `cargo ready` gate passed. |
 | Prompt and resize resilience | Generation-scoped OSC prompt metadata, terminal-owned context/path rows, stable `aid`, Unicode-safe full-path reflow, visibly separated cyan/violet/blue/lime path roles that preserve literal text, screen/line-erase repair, snapshot rebuilding, resize deduplication/coalescing, input/shutdown barriers, and transient ConPTY error handling pass deterministic and native Windows tests. Deterministic storms include 2,000 grid transitions; native Linux X11/Wayland and macOS GUI storms remain required on their hosts. |
-| Session cloning | `SessionLaunchDescriptor`, `Ctrl+Alt+R`/`Ctrl+Alt+D` independent right/down clone actions, native bare shell controls, command-palette discovery, exact PowerShell/CMD/Unix/WSL shell/profile/user/distro/directory reconstruction, explicit failure without PowerShell fallback, shortcut compatibility, and route/PID isolation pass unit and native tests. |
-| Window and tab scope | Ghostty-compatible `Ctrl+Shift+T` creates a window-level tab, `Ctrl+Alt+T` creates an independent PTY tab inside the selected split/session, `Ctrl+T` remains an additional window-tab alias, and `Ctrl+Shift+N` creates a separate OS window. Pane-local tab order, route lookup, selected styling, direct hit targets, and close isolation have deterministic regressions. |
-| Ghostty-style keyboard defaults | Separate macOS and Windows/Linux/BSD tables implement the pinned defaults whose actions exist; Automexia extensions avoid those chords, shell controls remain native, and platform/collision/palette tests pass. This is a supported default subset, not a selectable exact Ghostty profile. The typed registry, versioned fixtures/profiles, atomic reload, consumption/fallthrough, sequences/tables/chains, generated tooling, and missing actions remain on the compatibility roadmap. |
-| Shell history responsiveness | The ConPTY input writer wake-up regression, real PowerShell Up Arrow recall, and raw `Ctrl+R` reverse search pass. The latest native gate measured 55 ms shell/VT latency for Up Arrow (110 ms end to end) and 0 ms shell/VT latency for raw `Ctrl+R` (64 ms end to end), within the 1.5-second test budget. Bare `Ctrl+R` and `Ctrl+D` remain shell-owned. |
-| Responsive UI | Extreme small/large/HiDPI layout, split ratios, tab/control collision, hidden hit targets, headerless palette containment, the allocation-free Find/Split Right/Split Down/Next Pane rail, DPI-independent vector action icons, prompt restoration, and 4K/8K-equivalent transitions are covered by renderer-neutral tests. A native run completed 590 resize/input operations without a blank surface, stale prompt, invalid grid, or crash. |
-| Pane-local footer | Every usable pane has an independently outlined renderer-owned footer with pane/local-tab position, grid dimensions, selection and integration state, exact history offset, Find, and return-to-live. Layout reserves the strip outside PTY rows and scrollbar hit targets, exact-route action tests pass, narrow panes collapse optional labels, and panes below 112 logical pixels recover the full terminal height. |
+| Session cloning | `SessionLaunchDescriptor`, classic `Ctrl+R`/`Ctrl+D` independent right/down clone actions, explicit `Ctrl+Alt+R`/`Ctrl+Alt+D` shell-control passthroughs, command-palette discovery, exact PowerShell/CMD/Unix/WSL shell/profile/user/distro/directory reconstruction, explicit failure without PowerShell fallback, and route/PID isolation pass unit and native tests. |
+| Window and tab scope | Classic `Ctrl+T` creates a window-level tab, `Ctrl+Shift+T` creates an independent PTY tab inside the selected split/session, and `Ctrl+Shift+N` creates a separate OS window. Pane-local tab order, route lookup, selected styling, direct hit targets, and close isolation have deterministic regressions. |
+| Keyboard defaults | Automexia's original platform defaults are restored and command-palette labels match them. Ghostty compatibility remains a planned, explicit opt-in profile rather than an implicit default. Classic shortcut tables, user overrides, intentional compound actions, and palette-label uniqueness are regression tested. |
+| Shell history responsiveness | The ConPTY input writer wake-up regression, real PowerShell Up Arrow recall, and raw `Ctrl+R` reverse search pass. The latest native gate measured 55 ms shell/VT latency for Up Arrow (110 ms end to end) and 0 ms shell/VT latency for raw `Ctrl+R` (64 ms end to end), within the 1.5-second test budget. Because classic `Ctrl+R` clones, users send history search explicitly with `Ctrl+Alt+R`. |
+| Responsive UI | Extreme small/large/HiDPI layout, split ratios, tab/control collision, hidden hit targets, headerless palette containment, conditional pane-local tab-rail reservation, prompt restoration, and 4K/8K-equivalent transitions are covered by renderer-neutral tests. The removed workspace action shelf has no paint path or hit targets. A native run completed 590 resize/input operations without a blank surface, stale prompt, invalid grid, or crash. These results do not capture or compare the final painted WGPU frame. |
+| Pane-local footer | Every usable pane has an independently outlined renderer-owned, read-only footer whose minimal status line shows UTF-8, session-aware LF/CRLF, grid dimensions, and a live local clock. Pane/local-tab position, selection, and history offset appear only when relevant and space permits. Layout reserves the strip outside PTY rows and scrollbar hit targets; idle refresh, exact-route focus, shell convention, clock formatting, and responsive geometry have regressions, there are no footer action controls or hidden action targets, and panes below 112 logical pixels recover the full terminal height. The corrected absolute geometry is locally proven, but automatic painted-frame evidence remains planned. |
 | Context and colors | Live Git, Docker, Kubernetes, cloud, Terraform, environment, OS/WSL, production, and user roles use distinct anchors with centralized contrast correction on every pane's live and historical prompt rows. Provider mapping, stale-WSL clearing, initial publication-before-wake, default distinction, and custom-theme contrast tests pass. Provider discovery is periodic/cached rather than a guaranteed event stream; external tool/config access may delay or omit facts and must be represented truthfully. |
 | PowerShell listings | The native formatting view keeps real `DirectoryInfo`/`FileInfo` objects and renders four metadata columns with the icon adjacent to the name. Name-only sensitive, configuration, log, source, documentation, test, build, asset, package, Git, tool, data, cache, infrastructure, and packaging categories use folder-shaped composite badges rather than stand-alone symbols; PowerShell 7 adds safe category colors while Windows PowerShell 5 preserves width without ANSI. Unicode, spaces, narrow views, sorting, filtering, piping, and the plain-listing opt-out pass the PowerShell contract suite. |
 | Shell integration | Every PowerShell source parses; the Windows contract covers isolated automatic install/no-op/repair passes, PowerShell plus an in-process native CMD prompt, identity, cloning, and icon-aware listing smoke while preserving explicit `cmd /c` and built-in `dir`. A TTY-only compatibility layer gives Ubuntu/WSL eza 0.18.x the same composite folder badges without changing redirected output. Bash/Zsh syntax, isolated automatic install/no-op/repair passes, live eza output, ShellCheck, and integration jobs are part of the Unix local/CI gate; a font parser proves every category glyph exists in the bundled Symbols Nerd Font. |
 | Correctness and policy | Locked metadata, rustfmt, all-target workspace check, warning-denied Clippy, workspace tests, conformance tests, migration tests, PTY tests, architecture, identity, provenance, package metadata, and `cargo deny` passed. |
 | Coverage | LLVM coverage on the exact working tree passed at 45.38% global line coverage versus the 43.52% Windows baseline and 100.00% changed Automexia-owned executable lines. The checker now supports explicit `WORKTREE` mode and includes untracked Rust files. |
 | Repository formats | TOML, YAML, JSON, XML, desktop metadata, Markdown documents and local links/anchors, and commit-pinned Actions passed repository validation. PowerShell and Unix shell validation have dedicated wrappers. |
-| Performance safeguards | History interaction and resize delivery are fixed and measured on Windows. No-damage snapshots, prompt repaint, cache access, worker submission, bulk parser paths, row rebuild, prompt resize/reflow, bounded queues/caches, and context seeding have focused tests or Criterion benchmarks, but broader renderer/parser/startup claims still need optimized before/after datasets and the 30-day baseline. |
+| Performance safeguards | History interaction and resize delivery are fixed and measured on Windows. No-damage snapshots, prompt repaint, cache access, worker submission, bulk parser paths, row rebuild, prompt resize/reflow, bounded queues/caches, and context seeding have focused tests or Criterion cases. The nightly benchmark job currently compiles those cases with `--no-run`; it does not yet execute or compare them. Broader renderer/parser/startup claims still need optimized before/after datasets and the 30-day baseline. |
 | Windows packaging | A real x86_64 release build produced a WiX MSI and portable ZIP. The ZIP executable reports `automexia 0.4.0`. This audit fixed package lookup under custom `CARGO_TARGET_DIR` and added Windows/Linux regression coverage for the resolved release path. |
 | Contributor alignment | Contributor, conduct, security, support, governance, release, upstream, changelog, ownership, issue-form, PR-template, Dependabot, Release Drafter, DCO, protected-path-review, dependency-review, CodeQL, nightly, and release definitions are present and repository-validated. |
 
@@ -49,7 +49,8 @@ not be described as complete:
 3. Runtime config reload applies `Config::default()` after a load/parse failure.
    It must instead keep the complete last known-good configuration and compiled
    bindings, surface diagnostics, and make no partial changes.
-4. Ghostty compatibility beyond the current shortcut subset remains planned.
+4. The explicit, versioned Ghostty compatibility profile remains planned; it
+   is not an implicit v0.4 default.
    The authoritative status and delivery order are in the
    [full compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md).
 
@@ -63,6 +64,25 @@ therefore: correctness is mostly solved on tested Windows paths; global
 performance proof and security assurance remain partial; stable delivery is
 not complete.
 
+## Remaining assurance infrastructure
+
+The following work is planned and must not be included in completed-test claims:
+
+| Phase | Required work | Completion evidence |
+|---|---|---|
+| v0.4 S1 | Pinned Nextest profiles, timeout/shared-resource/leak/flaky policy, JUnit, and retained Cargo doctests | Three-host reports with no silent retry success, hang, leaked child, or test-order dependency |
+| v0.4 S1 | Structured state plus controlled rendered-frame capture/diff | Reviewed expected/actual/diff artifacts across the representative viewport/theme/DPI matrix |
+| v0.4 S1 | `cargo xtask qa --full --bundle` | Redacted, bounded HTML/ZIP evidence identifying environment, commands, results, skips, visuals, benchmarks, and resources |
+| v0.4 S1 | Proptest state machines and initial finite Loom models | Persisted minimized cases covering layout/session/prompt invariants and reviewed concurrency interleavings |
+| v0.4 S1 | Executed Criterion and end-to-end/resource measurement | Named-runner reports and a complete 30-day baseline; compile-only jobs do not count |
+| v0.4 S1 | Windows AppVerifier/resource lifetime and wider GPU/native matrix | Clean heap/handle/lock lifecycle, no process/resource leak, and traceable adapter/driver/platform records |
+| v0.4 S1 | Accessibility baseline | Keyboard/focus/contrast/200%-scale automation plus documented Narrator/NVDA, VoiceOver, and Orca smoke/limitations |
+| v0.5 | Renderer-independent AccessKit model, broader Loom/Miri, scoped mutation testing, and maintainable cargo-vet policy | ADR-backed platform semantics, native assistive-technology evidence, mutation survivor triage, and named supply-chain audit ownership |
+
+The authoritative steps, command contract, CI tiers, dependencies, exclusions,
+and acceptance criteria are in the
+[stabilization roadmap](STABILIZATION-ROADMAP.md#verification-infrastructure-plan).
+
 ## Test evidence from this audit
 
 - Composite-folder/path follow-up: PowerShell/CMD formatter contracts, Bash and
@@ -73,7 +93,7 @@ not complete.
 - `cargo ready`: passed the complete local contributor gate and debug binary
   smoke test; its isolated artifacts were removed automatically.
 - `cargo xtask test conformance`: passed all selected application, VT, backend,
-  window, renderer, and PTY suites, including four pane-footer geometry/routing
+  window, renderer, and PTY suites, including four passive pane-footer geometry/routing
   regressions and the DPI-stable terminal-boundary check.
 - `cargo xtask test resize-stress`: passed deterministic parser/reflow and
   resize-ordering storms.
@@ -92,10 +112,12 @@ not complete.
 
 The workflows define Windows x86_64/ARM64, macOS x64/ARM64, Linux
 X11/Wayland/combined, CodeQL, dependency review, fuzz, Miri, sanitizer,
-benchmark, unsigned-package, SBOM, checksum, attestation, notarization, and
-clean package-install jobs. A Windows workstation cannot honestly certify the
-macOS, Linux package-manager, ARM64-native, notarization, or hosted GitHub jobs.
-Those jobs must pass on their declared runners before release.
+benchmark compilation, unsigned-package, SBOM, checksum, attestation,
+notarization, and clean package-install jobs. The benchmark job's `--no-run`
+invocation is only a compile check and must not be reported as performance
+measurement. A Windows workstation cannot honestly certify the macOS, Linux
+package-manager, ARM64-native, notarization, or hosted GitHub jobs. Those jobs
+must pass on their declared runners before release.
 
 ## External release blockers
 
@@ -123,6 +145,9 @@ These are not source defects and must not be bypassed:
 7. The required 30-day performance baseline and controlled-hardware release
    checklist are time- and infrastructure-dependent and cannot be declared
    complete by one local run.
+8. Controlled Windows AppVerifier/WPR, cross-platform GPU/render capture, and
+   native assistive-technology infrastructure have not been observed. Their
+   v0.4 baseline jobs and redacted artifacts must run on the declared hosts.
 
 Stable v0.4.0 remains blocked until every item above and every protected native
 release job is complete. Unsigned artifacts from this audit are verification

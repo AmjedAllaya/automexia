@@ -2,10 +2,10 @@
 
 ## Scope and status
 
-Automexia currently provides a tested subset of Ghostty-compatible default
-shortcuts. It does **not** yet provide Ghostty's complete keybinding language,
-a selectable compatibility profile, or every Ghostty action. The exact
-implemented shortcut matrix is maintained in
+Automexia currently ships its tested classic shortcuts. It does **not** yet
+provide a selectable Ghostty compatibility profile, Ghostty's complete
+keybinding language, or every Ghostty action. The current compatibility status
+and deliberate classic differences are maintained in
 [Ghostty keyboard compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md).
 
 This roadmap reconciles the proposed full-compatibility design with the
@@ -22,13 +22,35 @@ current source tree. It uses these status values:
 Full Ghostty compatibility is a separate compatibility track, not a v0.4.0
 release criterion. Stable v0.4 must not claim an exact Ghostty profile.
 
+## Shared assurance prerequisites
+
+Compatibility work inherits the versioned QA foundation in the
+[stabilization roadmap](STABILIZATION-ROADMAP.md#verification-infrastructure-plan).
+It does not create a second test runner, snapshot format, benchmark store, or
+evidence bundle. G0 may prepare fixtures while that foundation lands, but no
+Ghostty profile becomes user-facing until:
+
+- pinned Nextest profiles produce JUnit, timeout, leak, and flaky-test evidence;
+- renderer-state and controlled rendered-frame snapshots cover profile/palette
+  indicators, pending sequences, focus, and narrow layouts;
+- Proptest, fuzz, and applicable Loom models persist minimized regressions;
+- Criterion benchmarks execute on a named runner and compare with the accepted
+  baseline instead of stopping after `--no-run`; and
+- `cargo xtask qa --full --bundle` identifies the compiled profile, fixture
+  checksums, platform transform, native checks, skips, and redactions.
+
+The v0.5 AccessKit model owns accessibility semantics for profile controls and
+pending/table indicators. Until it lands, compatibility UI changes must still
+pass the v0.4 keyboard, focus, contrast, scaling, and recorded screen-reader
+baseline without claiming a complete accessibility tree.
+
 ## Current implementation audit
 
 | Roadmap capability | Status | Current evidence and remaining work |
 |---|---|---|
-| Platform-specific Ghostty-style defaults | Implemented | Separate macOS and Windows/Linux/BSD constructors cover every pinned default whose action exists. Host-independent collision tests build both tables. |
-| Shell ownership of `Ctrl+R` and `Ctrl+D` | Implemented | Both chords reach PowerShell/Readline/ZLE for history search and EOF/logout. Automexia cloning uses `Ctrl+Alt+R` and `Ctrl+Alt+D`. |
-| Automexia-specific non-colliding shortcuts | Implemented | Pane-local tabs, cloning, link hints, quake mode, appearance, and additional aliases are documented and collision-tested. |
+| Platform-specific Ghostty-style defaults | Planned | ADR 0011 restored Automexia's classic defaults. Ghostty mappings require an explicit versioned profile. |
+| Shell ownership of `Ctrl+R` and `Ctrl+D` | Profile-dependent, planned | Classic Automexia uses them for cloning and exposes history/EOF through `Ctrl+Alt+R`/`Ctrl+Alt+D`; a future strict Ghostty profile must forward the bare chords. |
+| Automexia classic shortcuts | Implemented | Pane-local tabs, cloning, fresh splits, shell passthroughs, link hints, quake mode, appearance, and palette labels are documented and tested. |
 | Logical and physical key triggers | Partial | Runtime bindings support logical keys, key location, and physical scancodes. The config schema exposes only string keys and does not provide Ghostty-compatible typed trigger atoms or portable physical-key serialization. |
 | Mode predicates | Partial | Application cursor/keypad, alternate screen, vi, search, and keyboard-protocol modes exist as bitflags. There are no named platform/profile predicates, scope objects, or compiled predicate diagnostics. |
 | User override precedence | Partial | A user binding removes matching default triggers and is then appended. There is no explicit `unbind`, origin metadata, precedence report, or profile-layer merge model. |
@@ -46,7 +68,7 @@ release criterion. Stable v0.4 must not claim an exact Ghostty profile.
 | Tab/window/split semantics | Partial | Automexia has explicit window, window-tab, pane-local-tab, split, clone, close, move, and sequential focus actions. Geometric split focus, zoom, and equalize are absent. |
 | Inspector | Deferred | There is no terminal inspector action or redacted inspector surface. Its privacy boundary must be designed first. |
 | Undo/redo closed surfaces | Deferred | Closed windows, tabs, and splits are destroyed; no bounded parked-PTY lifecycle exists. |
-| Exact generated platform profiles | Planned | Current tables are manually maintained against pinned Ghostty commit `d2c70a8c7b9b6893c13640c02d7b6f9a1624f3f0`. There is no generated Linux/macOS fixture or deterministic Windows transform. |
+| Exact generated platform profiles | Planned | The audited Ghostty commit is recorded for comparison only. There is no generated Linux/macOS fixture or deterministic Windows transform. |
 | Keybinding/action CLI | Planned | `automexia --list-keybinds`, `--list-actions`, explain/collision output, and config migration commands do not exist. |
 | Dedicated `xtask` compatibility commands | Planned | The contributor gate runs current collision and palette tests, but there are no `ghostty-sync`, `keybindings-check`, or generated-doc verification commands. |
 | Generated user documentation | Planned | The compatibility matrix is hand-maintained. Reference tables are not generated from an action registry or compiled profile. |
@@ -158,6 +180,13 @@ Before expanding shortcut coverage:
 - correct the XTGETTCAP terminal-name response from the inherited `rio` value;
 - bound OSC, APC/graphics, and XTGETTCAP control-string accumulation, discard
   oversized payloads safely, recover at the terminator, and fuzz the limits.
+- record the pinned Nextest, snapshot schema, fixture generator, benchmark
+  schema, and QA-bundle schema versions used to validate the compatibility
+  baseline; fixture generation remains offline during normal CI;
+- add Proptest strategies for normalized triggers/actions/platform transforms
+  and persist every minimized mismatch as a deterministic regression;
+- include fixture provenance/checksums and the effective classic Automexia
+  manifest in the redacted QA bundle without including user keybindings.
 
 The last two items are v0.4 identity/security hardening and have priority over
 new compatibility features.
@@ -322,6 +351,21 @@ it touches the filesystem or another process.
   dispatch regressions above 10%;
 - run native keyboard smoke tests for Windows, Linux/BSD, and macOS before a
   compatibility-profile release.
+- run compatibility unit/integration tests through the shared Nextest groups,
+  retain Cargo doctests, publish JUnit, and fail on timeout, process leak, or a
+  retry that reveals flakiness;
+- snapshot the typed registry, diagnostics, effective palette rows, profile
+  indicator, pending sequence/table indicator, and accessibility metadata;
+  capture controlled rendered frames for affected UI at compact, normal,
+  split, HiDPI, and 200% text-scale sizes with expected/actual/diff artifacts;
+- execute Criterion on stable runners, retain raw reports, compare only like
+  hardware, and include lookup/dispatch/startup deltas in the QA bundle;
+- add bounded Loom models where immutable-registry publication, concurrent
+  reload, global-hotkey preparation, or per-surface pending state crosses
+  threads; keep platform event/PTY/GPU FFI outside those models;
+- add native resource assertions proving failed reloads, sequences, tables,
+  repeated pane actions, and profile switches do not leak processes, handles,
+  threads, registrations, memory, or renderer state.
 
 Exit gate: generated artifacts are reproducible, the working tree stays clean,
 normal tests are offline, and profile claims are backed by native evidence.
@@ -357,6 +401,18 @@ Every compatibility change must include the smallest applicable set of:
 - deterministic property tests and fixed-seed fuzz regressions;
 - lookup/reload benchmarks with a recorded baseline and regression threshold;
 - native Windows, Linux/BSD, and macOS smoke evidence for affected defaults.
+- shrinking Proptest state machines for override/reload/sequence/table/action
+  transitions, with persisted minimal failure cases;
+- exact structured snapshots plus controlled rendered-frame diffs for visible
+  palette/profile/pending/focus behavior; image changes require explicit review;
+- Nextest ownership, timeout, leak, test-group, flaky-result, and JUnit output,
+  with Cargo documentation tests retained;
+- executed Criterion results and an environment-qualified comparison, not a
+  compile-only benchmark job;
+- a redacted QA bundle containing fixture/profile identity, commands, results,
+  visual evidence, resource measurements, and explicit unsupported/skipped work;
+- keyboard-only, focus, contrast, 200% scale, and native assistive-technology
+  evidence for every new visible compatibility control.
 
 Native coverage includes PowerShell, CMD, WSL, Windows-key interception,
 clipboard, and US/French/German layouts on Windows; X11/Wayland, primary
@@ -366,6 +422,19 @@ undo/redo on macOS. Synthetic tables remain mandatory on every host; real GUI
 injection belongs in nightly and release jobs.
 
 Normal CI must never depend on a Ghostty installation or network access.
+
+Execution tiers are mandatory:
+
+- pull requests run fixture parity, both synthetic platform tables, Nextest/
+  JUnit, Cargo doctests, bounded deterministic Proptest cases, exact state
+  snapshots, a small pinned offscreen visual set, and benchmark compilation;
+- nightly runs expanded Proptest seeds, compatibility fuzz campaigns, bounded
+  Loom models, executed Criterion, native rendered frames, resource lifetime,
+  and keyboard-layout/platform automation;
+- release runs the approved native Windows/Linux/macOS profile and visual
+  matrix on controlled hardware and stores the redacted QA evidence bundle;
+- manual review owns aesthetic approval and assistive-technology behavior that
+  cannot be represented honestly by a synthetic event table.
 
 ## Documentation contract
 
@@ -398,5 +467,16 @@ Full compatibility is complete only when:
 - every planned stateless action is implemented and tested;
 - palette, CLI, settings, and generated docs read one registry;
 - reload failure preserves the complete last valid config/registry;
+- deterministic registry snapshots and controlled rendered frames agree for
+  every visible profile, palette, focus, pending-sequence, and table state;
+- shrinking property tests, applicable Loom models, extended fuzz corpora,
+  Nextest/JUnit/timeouts/leak checks, and Cargo doctests pass;
+- executed benchmark comparisons satisfy the established lookup/dispatch
+  policy on named hardware, and native resource tests show no lifecycle leak;
+- keyboard/focus/contrast/scaling and the v0.5 accessibility-tree/native
+  assistive-technology contracts pass for compatibility controls;
+- the redacted QA bundle proves fixture, generator, profile, transform, native
+  platform, visual, performance, and resource evidence without exposing user
+  bindings or terminal data;
 - existing Automexia users remain backward compatible; and
 - unit, PTY, native GUI, layout, migration, fuzz, and performance gates pass.

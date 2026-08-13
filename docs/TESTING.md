@@ -56,8 +56,12 @@ cargo test -p automexia-terminal pane_footer_reservation
 ```
 
 These checks cover shortcut scope, local order and last-tab retention, distinct
-select/close/add hit targets, command-palette labels, footer action separation,
-DPI-stable grid reservation, and footer collapse at extreme pane heights. The
+select/close/add hit targets, command-palette labels, the absence of obsolete
+workspace/footer action hit targets, passive footer routing, session-aware
+LF/CRLF selection, fixed-width clock formatting, DPI-stable grid reservation,
+footer collapse at extreme pane heights, preservation of the vertical chrome
+origin, exact single-pane edge connection, and gap-free adjacent split-footer
+tiling. The
 full frontend and workspace gates additionally cover PTY route isolation and
 teardown behavior.
 
@@ -207,9 +211,11 @@ Unix lifecycle, resize, child exit, teardown, and throughput.
 Renderer-neutral goldens cover prompt anchors, clipping, segment truncation,
 selection/search precedence, stable OSC prompt identities, metadata-only
 incremental snapshots, repeated command transitions, and shrink/grow reflow.
-Pane-footer checks prove that its controls remain disjoint, its physical grid
+Pane-footer checks prove that it has no action regions, passive clicks route to
+the exact pane, PowerShell/CMD and Unix/WSL sessions report their expected line
+ending convention, clock formatting remains stable, its physical grid
 reservation is DPI-stable, tiny panes recover the reserved row space, and the
-terminal scrollbar never enters the footer action surface.
+terminal scrollbar never enters the footer.
 Extension tests cover unavailable,
 disconnected, busy, stale, malformed, and oversized inputs plus multi-window
 session isolation. Shell tests cover syntax, idempotency, exit status, history
@@ -263,7 +269,8 @@ cargo xtask test session-clone
 ```
 
 It covers action names, user overrides, Search/Vi exclusions,
-`Ctrl+Alt+R`/`Ctrl+Alt+D` cloning, bare shell-control ownership,
+classic `Ctrl+R`/`Ctrl+D` cloning, explicit `Ctrl+Alt+R`/`Ctrl+Alt+D`
+shell-control passthroughs,
 PowerShell/pwsh, nested/direct CMD, and native Bash/Zsh descriptors, direct
 and nested WSL descriptors, incomplete metadata, spaces/Unicode, environment
 overrides, unknown/invalid logical directories, safe profile fallback, and
@@ -277,8 +284,8 @@ cargo xtask test session-clone --native-windows
 That driver first executes a unique PowerShell command and requires both Up
 Arrow recall and raw `Ctrl+R` reverse search to repaint through ConPTY within
 the 1.5-second native budget. The raw control isolates shell/PTY latency and is
-also the user-facing shortcut because Ghostty-compatible defaults leave
-`Ctrl+R` with the shell.
+sent through the user-facing `Ctrl+Alt+R` passthrough because classic
+`Ctrl+R` is owned by session cloning.
 The workspace's Windows-only PTY regression also starts a clean real PowerShell
 process, negotiates Win32 input-record mode, and checks both operations without
 the renderer so protocol and shell latency stay separable. It then creates
@@ -339,8 +346,8 @@ tests also assert the deterministic root/cyan/violet/blue/lime path hierarchy.
 that every declared composite folder codepoint has a real glyph.
 
 These cover Windows-drive versus WSL title classification, custom chrome hit
-targets and resize edges, the responsive workspace-action rail and its exact
-Find/split/focus routing, bundled Nerd icon
+targets and resize edges, the absence of workspace-action paint and hit targets,
+conditional pane-local tab-rail reservation, bundled Nerd icon
 codepoints, explicit shell identity, terminal-owned full-path three-row prompts,
 per-command context snapshots, OSC command status/timing, and context/result
 survival through shrink/grow reflow.
@@ -362,8 +369,11 @@ cargo test -p automexia-terminal layout::compute_tests
 
 Nightly jobs fuzz VT, OSC metadata, configuration migration, semantic
 classification, and label sanitization. Suitable pure crates run Miri and
-ASan/TSan. Criterion tracks parser throughput, row rebuild, prompt layout, cache
-access, and worker submission.
+ASan/TSan. Criterion cases exist for parser throughput, row rebuild, prompt
+layout, cache access, and worker submission, but the current nightly command
+uses `--no-run` and therefore verifies compilation only. Run the commands below
+for measurements; the planned controlled execution/comparison pipeline is not
+yet implemented.
 
 The renderer-neutral application-service benchmarks are available with:
 
@@ -376,10 +386,12 @@ worker submission path. `rio-vt`'s `row_rebuild_full_snapshot` and
 `prompt_layout_resize_reflow` cases cover full visible-row materialization and
 repeated narrow/wide semantic-prompt reflow.
 
-Performance tracking includes startup, sustained PTY throughput, resize/reflow
-latency, idle/scrollback memory, and extension refresh latency. Results are
-informational for the first 30-day baseline; afterward, regressions above 5%
-latency or 10% memory need a recorded maintainer waiver.
+The performance roadmap includes startup, sustained PTY throughput,
+resize/reflow latency, idle/scrollback memory, and extension refresh latency.
+The complete 30-day controlled baseline has not yet been collected. Once the
+execution pipeline and baseline exist, results remain informational for 30 days;
+afterward, regressions above 5% latency or 10% memory need a recorded
+maintainer waiver.
 
 For a focused optimized measurement of the most common unchanged-frame fast
 path, run:
@@ -405,10 +417,10 @@ the clear/repaint pattern emitted by PSReadLine, Readline, and ZLE for Up Arrow
 and reverse-history search. Runtime must remain proportional to the live prompt
 block, not the configured scrollback depth.
 
-Current keybinding tests construct both macOS and Windows/Linux/BSD default
-tables on every host, reject trigger collisions, preserve shell-owned controls,
-and reject duplicate visible palette labels. They verify the shipped shortcut
-subset only. The planned compiled-profile suite—including fixture provenance,
+Current keybinding tests construct macOS, Windows, and Linux/BSD default
+tables on every host, verify classic tab/split/clone scopes and explicit shell
+passthroughs, exercise user overrides and intentional compound actions, and
+reject duplicate visible palette labels. The planned compiled-profile suite—including fixture provenance,
 origins and shadowing, atomic reload, fallthrough, sequences/tables/chains,
 generated docs, fuzzing, and hot-path latency—is specified in the
 [full Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md) and must
@@ -418,3 +430,27 @@ Nightly builds unsigned installers for every artifact target. Stable release
 requires WSL, real-GPU, clean-install, upgrade, uninstall, signature,
 notarization, URL handler, terminfo, and migration smoke tests on controlled
 hardware/self-hosted runners.
+
+## Planned assurance expansion
+
+The following capabilities are roadmap items, not currently available commands
+or completed evidence:
+
+- pinned Nextest profiles with JUnit, timeouts, shared-resource groups, leak
+  checks, and explicit flaky-test failure while retaining Cargo doctests;
+- deterministic structured snapshots plus controlled final-frame PNG capture
+  and expected/actual/diff artifacts;
+- `cargo xtask qa --full [--bundle]` with a redacted environment/result archive;
+- Proptest state machines, bounded Loom concurrency models, longer persisted
+  fuzz campaigns, and a separate Automexia-owned coverage baseline;
+- executed and compared Criterion plus startup/interaction/resource probes;
+- Windows Application Verifier/WPR and expanded controlled GPU/resource tests;
+- the v0.4 keyboard/focus/contrast/scaling screen-reader baseline followed by
+  the v0.5 AccessKit accessibility model; and
+- v0.5 scoped mutation testing and maintainable cargo-vet supply-chain audits.
+
+The authoritative ordering, dependencies, exclusions, CI tiers, and acceptance
+criteria are in the
+[stabilization roadmap](STABILIZATION-ROADMAP.md#verification-infrastructure-plan).
+Do not report these capabilities as implemented until their commands, workflows,
+artifacts, and native evidence exist and pass.

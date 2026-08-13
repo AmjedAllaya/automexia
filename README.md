@@ -92,8 +92,8 @@ Brand-source and platform-export rules are in
 The latest plan-by-plan implementation evidence and explicit external release
 blockers are recorded in [docs/READINESS-AUDIT.md](docs/READINESS-AUDIT.md).
 
-The native liquid-hacker interface, responsive workspace-action rail,
-pane-local session footers, per-command operational context, tab/window
+The native liquid-hacker interface, responsive pane-local tab rail,
+passive session footers, per-command operational context, tab/window
 interactions, shell prompt, command timing, semantic output styling, and focused regression commands are documented in
 [docs/LIQUID-HACKER-UX.md](docs/LIQUID-HACKER-UX.md).
 
@@ -118,23 +118,20 @@ the shortcuts, sensitive/config/log/source/test/build category vocabulary, and
 opt-out.
 
 Clone the active PowerShell, Command Prompt, Bash, Zsh, or WSL session into an
-independent right/lower split with `Ctrl`+`Alt`+`R` / `Ctrl`+`Alt`+`D`.
-Bare `Ctrl`+`R` and `Ctrl`+`D` remain native shell history-search and
-EOF/logout controls. Ghostty-compatible fresh splits use `Ctrl`+`Shift`+`O` /
-`Ctrl`+`Shift`+`E` on Windows/Linux/BSD and `Cmd`+`D` /
+independent right/lower split with the original Automexia shortcuts
+`Ctrl`+`R` / `Ctrl`+`D`. `Ctrl`+`Alt`+`R` sends history search to the shell and
+`Ctrl`+`Alt`+`D` sends EOF/logout. Fresh default-shell splits use
+`Ctrl`+`Shift`+`R` / `Ctrl`+`Shift`+`D` on Windows/Linux/BSD and `Cmd`+`D` /
 `Cmd`+`Shift`+`D` on macOS.
 
-On Windows, Linux, and BSD, `Ctrl`+`Shift`+`T` adds a window-level tab;
-`Ctrl`+`T` remains an Automexia alias and `Ctrl`+`Alt`+`T` adds an independent
-tab inside the selected split/session. macOS uses `Cmd`+`T` and
-`Cmd`+`Alt`+`T` for those two scopes. Pane-local tabs preserve the selected
+On Windows, Linux, and BSD, `Ctrl`+`T` adds a window-level tab and
+`Ctrl`+`Shift`+`T` adds an independent tab inside the selected split/session.
+macOS uses `Cmd`+`T` and `Cmd`+`Shift`+`T` for those two scopes. Pane-local tabs preserve the selected
 shell/profile, WSL identity, and working directory while owning independent
-PTYs. See the complete
-[Ghostty keyboard compatibility matrix](docs/GHOSTTY-KEYBOARD-COMPATIBILITY.md)
-[configuration](docs/CONFIGURATION.md), and the
-[full compatibility roadmap](docs/GHOSTTY-COMPATIBILITY-ROADMAP.md). The matrix
-describes the shipped default subset; it is not yet a selectable exact Ghostty
-profile.
+PTYs. See [configuration](docs/CONFIGURATION.md). Ghostty compatibility is a
+future opt-in profile tracked separately in the
+[compatibility roadmap](docs/GHOSTTY-COMPATIBILITY-ROADMAP.md); it is not the
+implicit Automexia default.
 
 ## Configuration
 
