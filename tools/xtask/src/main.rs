@@ -49,6 +49,18 @@ enum LaunchPhase {
     Launch,
 }
 
+impl LaunchPhase {
+    fn description(self) -> &'static str {
+        match self {
+            Self::Ready => "complete verification gate",
+            Self::Build => "incremental application build",
+            Self::Smoke => "executable identity smoke test",
+            Self::InstallShellIntegration => "shell integration provisioning",
+            Self::Launch => "Automexia process launch",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum HostShellPlatform {
     Windows,
@@ -582,7 +594,22 @@ fn launch_plan(mode: LaunchMode) -> &'static [LaunchPhase] {
 }
 
 fn execute_launch_plan(mode: LaunchMode, app_args: &[String]) -> TaskResult {
-    for phase in launch_plan(mode) {
+    let plan = launch_plan(mode);
+    println!(
+        "Automexia {} launch workflow: {} phases; the window opens only after every preceding phase passes",
+        match mode {
+            LaunchMode::Verified => "verified",
+            LaunchMode::Incremental => "incremental",
+        },
+        plan.len()
+    );
+    for (index, phase) in plan.iter().enumerate() {
+        println!(
+            "==> launch phase {}/{}: {}",
+            index + 1,
+            plan.len(),
+            phase.description()
+        );
         match phase {
             LaunchPhase::Ready => ready()?,
             LaunchPhase::Build => build_debug_app()?,
@@ -995,7 +1022,9 @@ fn validate_shell_integrations() -> TaskResult {
 }
 
 fn ci_in(target: &Path) -> TaskResult {
+    println!("==> verification phase 1/3: workspace checks");
     check_in(target)?;
+    println!("==> verification phase 2/3: warning-denied Clippy");
     run_cargo_in(
         target,
         &[
@@ -1008,6 +1037,9 @@ fn ci_in(target: &Path) -> TaskResult {
             "warnings",
         ],
     )?;
+    println!(
+        "==> verification phase 3/3: workspace tests (a cold isolated target can compile for several minutes)"
+    );
     run_cargo_summarized_in(
         target,
         &["test", "--workspace", "--locked"],
@@ -1248,6 +1280,11 @@ fn run_cargo_summarized_in(
         args.join(" ")
     );
     let output = cargo_command(target, args)
+        // Cargo writes compiler/build-script progress and diagnostics to
+        // stderr. Keep that stream attached to the contributor's terminal so
+        // a cold native dependency build never looks frozen. Test-harness
+        // stdout remains captured and summarized on success below.
+        .stderr(Stdio::inherit())
         .output()
         .map_err(|error| format!("could not start cargo: {error}"))?;
     if output.status.success() {
@@ -1257,7 +1294,6 @@ fn run_cargo_summarized_in(
 
     // Successful test output is intentionally summarized, but failures retain
     // the complete harness and compiler diagnostics needed for investigation.
-    eprint!("{}", String::from_utf8_lossy(&output.stderr));
     print!("{}", String::from_utf8_lossy(&output.stdout));
     Err(format!("cargo exited with {}", output.status))
 }
