@@ -104,8 +104,17 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
                 param($line)
                 [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_prompt_active=MA==$script:AutomexiaBel")
                 [Console]::Write("$script:AutomexiaEsc]133;C$script:AutomexiaBel")
-                if ($null -ne $script:AutomexiaPreviousHistoryHandler) {
-                    return [bool](& $script:AutomexiaPreviousHistoryHandler $line)
+                if ($script:AutomexiaPreviousHistoryHandler -is [scriptblock]) {
+                    return (& $script:AutomexiaPreviousHistoryHandler $line)
+                }
+                if ($script:AutomexiaPreviousHistoryHandler -is [System.Delegate]) {
+                    # PSReadLine 2.0 exposes its default predicate as a
+                    # Func<string, object> which returns AddToHistoryOption.
+                    # The call operator and Boolean coercion lose that contract
+                    # and can leave AcceptLine waiting indefinitely.
+                    return $script:AutomexiaPreviousHistoryHandler.DynamicInvoke(
+                        [object[]]@($line)
+                    )
                 }
                 return $true
             } -ErrorAction SilentlyContinue
@@ -201,61 +210,41 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         return $lambda + $input
     }
 
-    # Formatting and editor colors do not affect shell correctness. Apply them
-    # after the first prompt is visible so parsing the icon view and modern
-    # PSReadLine roles cannot delay a newly created tab or split.
-    if ($null -ne $formatPath -or $configureEditorColors) {
-        $deferredEnhancements = [pscustomobject]@{
-            FormatPath = $formatPath
-            ConfigureEditorColors = $configureEditorColors
+    # Formatting and editor colors mutate state owned by this PowerShell
+    # runspace. Apply them synchronously while the integration is being sourced,
+    # before PSReadLine owns the first editable prompt. Deferring either change
+    # through Timer or PowerShell.OnIdle callbacks can race an accepted command
+    # and leave ConPTY waiting inside the callback.
+    try {
+        if ($null -ne $formatPath) {
+            Update-FormatData -PrependPath $formatPath -ErrorAction Stop
         }
-        try {
-            $script:AutomexiaEnhancementTimer = [System.Timers.Timer]::new(250)
-            $script:AutomexiaEnhancementTimer.AutoReset = $false
-            $script:AutomexiaEnhancementSubscription = Register-ObjectEvent `
-                -InputObject $script:AutomexiaEnhancementTimer `
-                -EventName Elapsed `
-                -MaxTriggerCount 1 `
-                -MessageData $deferredEnhancements `
-                -Action {
-                    try {
-                        if ($null -ne $event.MessageData.FormatPath) {
-                            Update-FormatData -PrependPath $event.MessageData.FormatPath -ErrorAction Stop
-                        }
-                        if ($event.MessageData.ConfigureEditorColors) {
-                            Set-PSReadLineOption -Colors @{
-                                Default   = '#EEF7F2'
-                                Command   = '#B58CFF'
-                                Keyword   = '#FF6F91'
-                                String    = '#FFD166'
-                                Operator  = '#89AFA0'
-                                Parameter = '#B58CFF'
-                                Variable  = '#48A7FF'
-                                Number    = '#FFD166'
-                                Type      = '#A4FFD0'
-                                Member    = '#82C2FF'
-                                Comment   = '#5D7A70'
-                            } -ErrorAction SilentlyContinue
-                            foreach ($extra in @(
-                                @{ Error = '#FF6F91' },
-                                @{ InlinePrediction = '#456B5D' },
-                                @{ Selection = '#90AEBE' }
-                            )) {
-                                try { Set-PSReadLineOption -Colors $extra -ErrorAction SilentlyContinue } catch {}
-                            }
-                        }
-                    } catch {
-                        Write-Warning "Automexia deferred shell styling could not be loaded: $($_.Exception.Message)"
-                    } finally {
-                        $event.Sender.Dispose()
-                    }
-                }
-            $script:AutomexiaEnhancementTimer.Start()
-        } catch {
-            # Event registration is optional. Unusual constrained hosts retain
-            # the functional prompt and native shell behavior without styling.
-            Write-Warning "Automexia deferred shell styling could not be scheduled: $($_.Exception.Message)"
+        if ($configureEditorColors) {
+            Set-PSReadLineOption -Colors @{
+                Default   = '#EEF7F2'
+                Command   = '#B58CFF'
+                Keyword   = '#FF6F91'
+                String    = '#FFD166'
+                Operator  = '#89AFA0'
+                Parameter = '#B58CFF'
+                Variable  = '#48A7FF'
+                Number    = '#FFD166'
+                Type      = '#A4FFD0'
+                Member    = '#82C2FF'
+                Comment   = '#5D7A70'
+            } -ErrorAction SilentlyContinue
+            foreach ($extra in @(
+                @{ Error = '#FF6F91' },
+                @{ InlinePrediction = '#456B5D' },
+                @{ Selection = '#90AEBE' }
+            )) {
+                try { Set-PSReadLineOption -Colors $extra -ErrorAction SilentlyContinue } catch {}
+            }
         }
+    } catch {
+        # Presentation is optional. Unusual constrained hosts retain the
+        # functional prompt and native shell behavior without custom styling.
+        Write-Warning "Automexia shell styling could not be loaded: $($_.Exception.Message)"
     }
-    Remove-Variable psReadLineModule, configureEditorColors, candidateFormatPath, formatPath, deferredEnhancements, automexiaShellUser, automexiaShellExecutable, automexiaShellPath -ErrorAction SilentlyContinue
+    Remove-Variable psReadLineModule, configureEditorColors, candidateFormatPath, formatPath, automexiaShellUser, automexiaShellExecutable, automexiaShellPath -ErrorAction SilentlyContinue
 }
