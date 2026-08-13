@@ -220,13 +220,13 @@ or history navigation. CMD keeps the complete path in the same blue family as
 one dynamic `$P` token because its prompt language cannot style individual path
 components without changing the literal directory.
 
-Use `Ctrl`+`R` or `Ctrl`+`D` to create an independent clone of the active
+Use `Ctrl`+`Alt`+`R` or `Ctrl`+`Alt`+`D` to create an independent clone of the active
 session to the right or below. The clone preserves the current
 PowerShell/pwsh, Command Prompt, Bash, Zsh, or WSL launch identity and directory while keeping
-its process, input, scrollback, and DevOps discovery state isolated. Existing
-`Ctrl`+`Shift`+`R`/`D` shortcuts continue to open the configured default shell.
-The displaced shell controls remain available through `Ctrl`+`Alt`+`R` for
-history search and `Ctrl`+`Alt`+`D` for EOF/logout. Both clone actions are also
+its process, input, scrollback, and DevOps discovery state isolated.
+Ghostty-compatible `Ctrl`+`Shift`+`O`/`E` shortcuts open a configured default
+shell in a right/lower split. Bare `Ctrl`+`R` and `Ctrl`+`D` remain owned by
+the shell for history search and EOF/logout. Both clone actions are also
 discoverable in the command palette with distinct duplicated-pane icons.
 
 ## File and folder icons

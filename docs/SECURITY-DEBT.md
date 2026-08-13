@@ -15,6 +15,17 @@ The yanked `wide` 1.6.0 dependency was removed from the v0.4 lockfile by
 updating to compatible `wide` 1.6.1. Vulnerability, unsoundness, and yanked
 advisories have no standing exception policy.
 
+## Runtime hardening debt
+
+| Risk | Current protection | Required closure |
+|---|---|---|
+| Oversized or unterminated OSC/APC/DCS/XTGETTCAP input | Normal streams have optimized fixed/bulk paths and parser parity tests. | Add reviewed hard caps, discard-until-terminator states, deterministic recovery, rate-limited diagnostics, memory-bound tests, fuzzing, and normal-path benchmarks. A local, SSH, container, WSL, or multiplexer process is an untrusted PTY producer. |
+| Hosted assurance not yet observed | Local dependency policy, architecture, identity, provenance, focused security regressions, and feature-gated test surfaces pass. | Require hosted CodeQL, fuzz, sanitizers, Miri, cross-platform jobs, signed artifacts, SBOMs, checksums, and provenance attestations before stable release. |
+
+The control-string issue is a v0.4 source blocker, not an accepted advisory or
+performance-only concern. Its implementation and acceptance gate are defined
+in the [stabilization roadmap](STABILIZATION-ROADMAP.md#s0-bounded-control-strings).
+
 ## Duplicate dependency baseline
 
 The v0.4 renderer, windowing, font, PTY, and operating-system backends contain
