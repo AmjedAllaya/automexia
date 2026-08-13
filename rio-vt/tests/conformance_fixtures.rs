@@ -214,7 +214,9 @@ fn unicode_fixture_cursor_widths_are_stable() {
         ("combining", 1),
         ("emoji_zwj", 4),
         ("flag", 2),
-        ("variation_selector", 2),
+        // Legacy wcwidth is application-predictable: VS16 is zero-width and
+        // does not widen the preceding text-default heart cell.
+        ("variation_selector", 1),
         ("wide", 2),
     ]);
 

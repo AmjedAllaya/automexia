@@ -271,8 +271,10 @@ impl GridRenderer {
         buf_h: u32,
         uniforms: &GridUniforms,
     ) {
-        if let GridRenderer::Cpu(r) = self {
-            r.render_bg(buf, buf_w, buf_h, uniforms);
+        match self {
+            GridRenderer::Cpu(r) => r.render_bg(buf, buf_w, buf_h, uniforms),
+            #[cfg(any(target_os = "macos", target_os = "linux", feature = "wgpu"))]
+            _ => {}
         }
     }
 
@@ -284,8 +286,10 @@ impl GridRenderer {
         buf_h: u32,
         uniforms: &GridUniforms,
     ) {
-        if let GridRenderer::Cpu(r) = self {
-            r.render_text(buf, buf_w, buf_h, uniforms);
+        match self {
+            GridRenderer::Cpu(r) => r.render_text(buf, buf_w, buf_h, uniforms),
+            #[cfg(any(target_os = "macos", target_os = "linux", feature = "wgpu"))]
+            _ => {}
         }
     }
 

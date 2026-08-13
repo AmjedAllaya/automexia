@@ -740,6 +740,10 @@ enum ImageTexture {
 }
 
 /// Per-image texture entry stored in the renderer.
+#[cfg_attr(
+    not(any(feature = "wgpu", target_os = "macos", target_os = "linux")),
+    allow(dead_code)
+)]
 struct ImageTextureEntry {
     gpu: ImageTexture,
     transmit_time: std::time::Instant,
@@ -826,6 +830,10 @@ enum ImageLayer {
 pub(crate) const IMAGE_BG_LIMIT: i32 = i32::MIN / 2;
 
 /// A single image draw command for the image pipeline.
+#[cfg_attr(
+    not(any(feature = "wgpu", target_os = "macos", target_os = "linux")),
+    allow(dead_code)
+)]
 struct ImageDraw {
     image_id: u64,
     instance: ImageInstance,
@@ -2619,7 +2627,12 @@ impl Renderer {
                 // itself is rebuilt by `VulkanContext::resize`.
                 let _ = transform;
             }
-            RendererType::Cpu => {}
+            RendererType::Cpu => {
+                // CPU projection is read directly from the context during
+                // rasterization; consuming it here keeps CPU-only builds free
+                // of feature-dependent unused-variable warnings.
+                let _ = transform;
+            }
         }
     }
 }

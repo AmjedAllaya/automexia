@@ -32,8 +32,9 @@ impl Handler for TestHandler {
         self.graphics.push(data);
     }
 
-    fn place_graphic(&mut self, placement: PlacementRequest) {
+    fn place_graphic(&mut self, placement: PlacementRequest) -> bool {
         self.placements.push(placement);
+        true
     }
 
     fn delete_graphics(&mut self, delete: DeleteRequest) {
@@ -249,9 +250,12 @@ fn test_query_response() {
     let mut handler = TestHandler::default();
     let mut state = KittyGraphicsState::default();
 
-    // Parse query request
-    let params = vec![b"G".as_ref(), b"a=q,i=1".as_ref()];
-
+    // A decodable query reports support.
+    let params = vec![
+        b"G".as_ref(),
+        b"a=q,i=1,f=32,s=1,v=1".as_ref(),
+        b"AAAAAA==".as_ref(),
+    ];
     if let Some(response) = kitty_graphics_protocol::parse(&params, &mut state) {
         if let Some(response_str) = response.response {
             handler.kitty_graphics_response(response_str);
@@ -261,6 +265,16 @@ fn test_query_response() {
     // Verify response was generated
     assert_eq!(handler.responses.len(), 1, "Should generate one response");
     assert!(handler.responses[0].contains("Gi=1;OK"));
+
+    // An undecodable query must preserve the client's fallback path.
+    let params = vec![b"G".as_ref(), b"a=q,i=1".as_ref()];
+    if let Some(response) = kitty_graphics_protocol::parse(&params, &mut state) {
+        if let Some(response_str) = response.response {
+            handler.kitty_graphics_response(response_str);
+        }
+    }
+    assert_eq!(handler.responses.len(), 2);
+    assert!(!handler.responses[1].contains(";OK"));
 }
 
 #[test]

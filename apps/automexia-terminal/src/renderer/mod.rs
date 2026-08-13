@@ -21,8 +21,7 @@ use crate::context::ContextManager;
 use crate::crosswords::style::{Style as CellStyle, StyleFlags};
 use rio_backend::config::colors::term::TermColors;
 use rio_backend::config::colors::{
-    term::{List, DIM_FACTOR},
-    AnsiColor, ColorArray, Colors, NamedColor,
+    term::List, AnsiColor, ColorArray, Colors, NamedColor,
 };
 use rio_backend::config::navigation::Navigation;
 use rio_backend::config::Config;
@@ -665,23 +664,39 @@ impl Renderer {
         cell_style: &CellStyle,
         term_colors: &TermColors,
     ) -> ColorArray {
-        let dim = cell_style.flags.contains(StyleFlags::DIM);
-        let bold = cell_style.flags.contains(StyleFlags::BOLD);
+        // DIM and BOLD affect glyph intensity. They only affect this
+        // slot under INVERSE, where it contains the logical foreground.
+        let inverse = cell_style.flags.contains(StyleFlags::INVERSE);
+        let dim = inverse && cell_style.flags.contains(StyleFlags::DIM);
+        let bold = inverse && cell_style.flags.contains(StyleFlags::BOLD);
         match cell_style.bg {
-            AnsiColor::Named(ansi) => self.color(ansi as usize, term_colors),
+            AnsiColor::Named(ansi) => {
+                let index = match (self.draw_bold_text_with_light_colors, dim, bold) {
+                    (_, true, true)
+                        if ansi == NamedColor::Foreground
+                            && self.named_colors.light_foreground.is_none() =>
+                    {
+                        NamedColor::DimForeground as usize
+                    }
+                    (true, false, true) => ansi.to_light() as usize,
+                    (_, true, false) | (false, true, true) => ansi.to_dim() as usize,
+                    _ => ansi as usize,
+                };
+                self.color(index, term_colors)
+            }
             AnsiColor::Spec(rgb) => {
                 if dim {
-                    (&(rgb * DIM_FACTOR)).into()
+                    rgb.to_arr_with_dim()
                 } else {
                     (&rgb).into()
                 }
             }
             AnsiColor::Indexed(idx) => {
-                let idx = match (self.draw_bold_text_with_light_colors, dim, bold, idx) {
-                    (true, false, true, 0..=7) => idx as usize + 8,
-                    (false, true, false, 8..=15) => idx as usize - 8,
-                    (false, true, false, 0..=7) => {
-                        NamedColor::DimBlack as usize + idx as usize
+                let idx = match (dim, bold, idx) {
+                    (true, _, 8..=15) => idx as usize - 8,
+                    (true, _, 0..=7) => NamedColor::DimBlack as usize + idx as usize,
+                    (false, true, 0..=7) if self.draw_bold_text_with_light_colors => {
+                        idx as usize + 8
                     }
                     _ => idx as usize,
                 };
@@ -1793,7 +1808,73 @@ impl Renderer {
 #[cfg(test)]
 mod prompt_visual_anchor_tests {
     use super::*;
+    use rio_backend::config::colors::ColorRgb;
     use rio_backend::crosswords::pos::Column;
+
+    fn bg_style(bg: AnsiColor, flags: StyleFlags) -> CellStyle {
+        CellStyle {
+            bg,
+            flags,
+            ..CellStyle::default()
+        }
+    }
+
+    #[test]
+    fn dim_and_bold_leave_explicit_backgrounds_unchanged() {
+        let renderer = Renderer::new(&Config::default());
+        let term_colors = TermColors::default();
+        let rgb = ColorRgb {
+            r: 0x28,
+            g: 0x2c,
+            b: 0x34,
+        };
+        let expected: ColorArray = (&rgb).into();
+
+        for flags in [
+            StyleFlags::DIM,
+            StyleFlags::BOLD,
+            StyleFlags::DIM | StyleFlags::BOLD,
+        ] {
+            assert_eq!(
+                renderer.compute_bg_color(
+                    &bg_style(AnsiColor::Spec(rgb), flags),
+                    &term_colors
+                ),
+                expected
+            );
+            assert_eq!(
+                renderer.compute_bg_color(
+                    &bg_style(AnsiColor::Indexed(1), flags),
+                    &term_colors
+                ),
+                renderer.colors[1]
+            );
+        }
+    }
+
+    #[test]
+    fn inverse_preserves_foreground_intensity_rules() {
+        let renderer = Renderer::new(&Config {
+            draw_bold_text_with_light_colors: true,
+            ..Config::default()
+        });
+        let term_colors = TermColors::default();
+
+        let dimmed = renderer.compute_bg_color(
+            &bg_style(AnsiColor::Indexed(1), StyleFlags::DIM | StyleFlags::INVERSE),
+            &term_colors,
+        );
+        assert_eq!(dimmed, renderer.colors[NamedColor::DimBlack as usize + 1]);
+
+        let bold = renderer.compute_bg_color(
+            &bg_style(
+                AnsiColor::Indexed(1),
+                StyleFlags::BOLD | StyleFlags::INVERSE,
+            ),
+            &term_colors,
+        );
+        assert_eq!(bold, renderer.colors[9]);
+    }
 
     #[test]
     fn managed_prompt_repaint_recovers_reserved_blank_row() {
