@@ -59,6 +59,15 @@ fn custom_resize_direction(
     }
 }
 
+#[inline]
+fn should_report_terminal_mouse(
+    shift_key: bool,
+    mouse_mode: bool,
+    hint_click: bool,
+) -> bool {
+    !shift_key && mouse_mode && !hint_click
+}
+
 pub struct Application<'a> {
     config: rio_backend::config::Config,
     event_proxy: EventProxy,
@@ -987,10 +996,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     );
                 }
             }
-            #[cfg(target_os = "macos")]
             RioEventType::Rio(RioEvent::CloseWindow) => {
                 self.router.routes.remove(&window_id);
-                if self.router.routes.is_empty() && !self.config.confirm_before_quit {
+                if self.router.routes.is_empty() {
                     event_loop.exit();
                 }
             }
@@ -1195,6 +1203,29 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
 
             WindowEvent::ModifiersChanged(modifiers) => {
                 route.window.screen.set_modifiers(modifiers);
+
+                // The pointer is usually stationary when the user presses
+                // a hint modifier. Refresh now instead of waiting for a
+                // CursorMoved event; always clear outside the text grid.
+                let highlight_changed = route.path == RoutePath::Terminal
+                    && if route.window.screen.mouse.inside_text_area {
+                        route.window.screen.update_highlighted_hints()
+                    } else {
+                        route.window.screen.clear_highlighted_hint()
+                    };
+                if highlight_changed {
+                    let cursor = if route.window.screen.highlighted_hint().is_some() {
+                        CursorIcon::Pointer
+                    } else if !route.window.screen.modifiers.state().shift_key()
+                        && route.window.screen.mouse_mode()
+                    {
+                        CursorIcon::Default
+                    } else {
+                        CursorIcon::Text
+                    };
+                    route.window.winit_window.set_cursor(cursor);
+                    route.window.screen.context_manager.request_render();
+                }
             }
 
             WindowEvent::MouseInput { state, button, .. } => {
@@ -1219,6 +1250,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     {
                         route.window.screen.mouse.left_button_state =
                             ElementState::Released;
+                        route.window.screen.mouse.hint_click_latched = None;
                         if let Some(ref mut island) = route.window.screen.renderer.island
                         {
                             island.cancel_drag();
@@ -1244,6 +1276,13 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         route.window.screen.mouse.right_button_state = state
                     }
                     _ => (),
+                }
+
+                // A new primary press starts a new ownership decision. Clear
+                // any latch left behind by chrome/panel routing before one of
+                // those paths can return early.
+                if state == ElementState::Pressed && button == MouseButton::Left {
+                    route.window.screen.mouse.hint_click_latched = None;
                 }
 
                 if state == ElementState::Pressed
@@ -1396,14 +1435,29 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                             }
                         }
 
+                        // Capture the exact press-time hint. A modifier
+                        // change or pointer drag before release must not
+                        // split a mouse event pair or execute another hint.
+                        let latched_hint = if button == MouseButton::Left {
+                            route.window.screen.highlighted_hint().cloned()
+                        } else {
+                            None
+                        };
+                        let hint_click = latched_hint.is_some();
+                        if button == MouseButton::Left {
+                            route.window.screen.mouse.hint_click_latched = latched_hint;
+                        }
+
                         // Always try panel switching first: if the click
                         // targets a different panel, switch to it regardless
                         // of mouse mode (e.g. neovim capturing clicks).
                         if route.window.screen.select_current_based_on_mouse() {
                             route.request_redraw();
-                        } else if !route.window.screen.modifiers.state().shift_key()
-                            && route.window.screen.mouse_mode()
-                        {
+                        } else if should_report_terminal_mouse(
+                            route.window.screen.modifiers.state().shift_key(),
+                            route.window.screen.mouse_mode(),
+                            hint_click,
+                        ) {
                             // Process mouse press before bindings to update the `click_state`.
                             route.window.screen.mouse.click_state = ClickState::None;
 
@@ -1427,10 +1481,6 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                                 &mut self.router.clipboard,
                             );
                         } else {
-                            if route.window.screen.trigger_hyperlink() {
-                                return;
-                            }
-
                             // Load mouse point, treating message bar and padding as the closest square.
                             let display_offset = route.window.screen.display_offset();
 
@@ -1488,9 +1538,20 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                             return;
                         }
 
-                        if !route.window.screen.modifiers.state().shift_key()
-                            && route.window.screen.mouse_mode()
-                        {
+                        // Consume the press-time latch before deciding
+                        // whether to report this release to the terminal app.
+                        let latched_hint = if button == MouseButton::Left {
+                            route.window.screen.mouse.hint_click_latched.take()
+                        } else {
+                            None
+                        };
+                        let hint_click = latched_hint.is_some();
+
+                        if should_report_terminal_mouse(
+                            route.window.screen.modifiers.state().shift_key(),
+                            route.window.screen.mouse_mode(),
+                            hint_click,
+                        ) {
                             let code = match button {
                                 MouseButton::Left => 0,
                                 MouseButton::Middle => 1,
@@ -1513,10 +1574,23 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         // plain clicks only, when no selection exists.
                         if route.window.screen.selection_is_empty() {
                             if button == MouseButton::Left {
-                                route
-                                    .window
-                                    .screen
-                                    .trigger_hint(&mut self.router.clipboard);
+                                if let Some(latched) = latched_hint {
+                                    if route
+                                        .window
+                                        .screen
+                                        .latched_hint_still_highlighted(&latched)
+                                    {
+                                        route.window.screen.open_latched_hint(
+                                            latched,
+                                            &mut self.router.clipboard,
+                                        );
+                                        route
+                                            .window
+                                            .screen
+                                            .context_manager
+                                            .request_render();
+                                    }
+                                }
                             }
                         } else if matches!(button, MouseButton::Left | MouseButton::Right)
                             && self.config.copy_on_select
@@ -1887,7 +1961,12 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 } else if cell_changed && route.window.screen.has_mouse_motion_and_drag()
                 {
                     if lmb_pressed {
-                        route.window.screen.mouse_report(32, ElementState::Pressed);
+                        // A latched hint hides the complete click from the
+                        // application, including drag reports between press
+                        // and release.
+                        if route.window.screen.mouse.hint_click_latched.is_none() {
+                            route.window.screen.mouse_report(32, ElementState::Pressed);
+                        }
                     } else if route.window.screen.mouse.middle_button_state
                         == ElementState::Pressed
                     {
@@ -2408,5 +2487,13 @@ mod custom_chrome_tests {
             Some(ResizeDirection::South)
         );
         assert_eq!(custom_resize_direction(640.0, 380.0, 1_280.0, 760.0), None);
+    }
+
+    #[test]
+    fn hint_click_owns_both_halves_of_the_mouse_event() {
+        assert!(should_report_terminal_mouse(false, true, false));
+        assert!(!should_report_terminal_mouse(false, true, true));
+        assert!(!should_report_terminal_mouse(true, true, false));
+        assert!(!should_report_terminal_mouse(false, false, false));
     }
 }
