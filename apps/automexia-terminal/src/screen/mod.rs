@@ -27,7 +27,8 @@ use crate::crosswords::{
 use crate::hints::HintState;
 use crate::layout::ContextDimension;
 use crate::mouse::{calculate_mouse_position, Mouse};
-use crate::renderer::island::{self, ChromeAction, TabStripLayout};
+use crate::renderer::island::{self, ChromeAction, LocalTabAction, TabStripLayout};
+use crate::renderer::session_footer::{self, SessionFooterAction};
 use crate::renderer::{utils::padding_top_from_config, Renderer};
 use crate::screen::hint::HintMatches;
 use crate::selection::{Selection, SelectionType};
@@ -1170,9 +1171,9 @@ impl Screen<'_> {
             let logical_key = if cfg!(windows) && mods.control_key() && mods.alt_key() {
                 // Windows may expose Ctrl+Alt as AltGr and mangle the logical
                 // key into an unidentified/composed value. Normalize before
-                // character classification so application shortcuts such as
-                // Ctrl+Alt+R/D remain reachable. Exact modifier matching still
-                // prevents these actions from consuming bare Ctrl+R/Ctrl+D.
+                // character classification so Ctrl+Alt shell-control
+                // passthroughs and other application shortcuts remain
+                // reachable.
                 match key.key_without_modifiers() {
                     Key::Character(character) => {
                         Key::Character(character.to_lowercase().into())
@@ -1432,6 +1433,9 @@ impl Screen<'_> {
                     }
                     Act::TabCreateNew => {
                         self.create_tab(clipboard);
+                    }
+                    Act::LocalTabCreateNew => {
+                        self.create_local_tab(clipboard);
                     }
                     Act::TabCloseCurrent => {
                         self.close_tab(clipboard);
@@ -1865,18 +1869,53 @@ impl Screen<'_> {
         self.mark_dirty();
     }
 
+    pub fn create_local_tab(&mut self, clipboard: &mut Clipboard) {
+        let rich_text_id = next_rich_text_id();
+        if self
+            .context_manager
+            .clone_local_tab(rich_text_id, &mut self.sugarloaf)
+        {
+            self.clear_selection();
+            self.cancel_search(clipboard);
+            self.mark_dirty();
+        }
+    }
+
     pub fn close_split_or_tab(&mut self, clipboard: &mut Clipboard) {
-        if self.context_manager.current_grid_len() > 1 {
+        if self
+            .context_manager
+            .close_current_local_tab(&mut self.sugarloaf)
+        {
+            self.clear_selection();
+            self.cancel_search(clipboard);
+            self.mark_dirty();
+        } else if self.context_manager.current_grid_len() > 1 {
             self.clear_selection();
             self.context_manager
                 .remove_current_grid(&mut self.sugarloaf);
             self.mark_dirty();
         } else {
-            self.close_tab(clipboard);
+            self.close_window_tab(clipboard);
         }
     }
 
     pub fn close_tab(&mut self, clipboard: &mut Clipboard) {
+        if self
+            .context_manager
+            .close_current_local_tab(&mut self.sugarloaf)
+        {
+            self.clear_selection();
+            self.cancel_search(clipboard);
+            self.mark_dirty();
+            return;
+        }
+        self.close_window_tab(clipboard);
+    }
+
+    /// Close a top-level tab in the current OS window. This is intentionally
+    /// separate from pane-local tab closure so chrome hit-testing can never
+    /// close the wrong scope.
+    pub fn close_window_tab(&mut self, clipboard: &mut Clipboard) {
         self.clear_selection();
         self.context_manager
             .close_current_context(&mut self.sugarloaf);
@@ -2860,7 +2899,8 @@ impl Screen<'_> {
             None => return false,
         };
 
-        let panel_rect = item.layout_rect;
+        let panel_rect =
+            crate::layout::pane_terminal_rect(item.layout_rect, scale_factor);
         let rich_text_id = item.context().rich_text_id;
 
         let terminal = item.context().terminal.lock();
@@ -2941,7 +2981,8 @@ impl Screen<'_> {
             None => return false,
         };
 
-        let panel_rect = item.layout_rect;
+        let panel_rect =
+            crate::layout::pane_terminal_rect(item.layout_rect, scale_factor);
 
         let terminal = item.context().terminal.lock();
         let display_offset = terminal.display_offset();
@@ -3074,16 +3115,37 @@ impl Screen<'_> {
         let window_size = self.sugarloaf.window_size();
         let window_width = window_size.width;
         let num_tabs = self.context_manager.len();
-        let action = self.renderer.island.as_ref().and_then(|island| {
-            island.chrome_action_at(
+        let local_count = self.context_manager.local_tab_count();
+        let local_action = self.renderer.island.as_ref().and_then(|island| {
+            island.local_tab_action_at(
                 window_width,
                 window_size.height,
                 scale_factor,
-                num_tabs,
+                local_count,
                 mouse_x as f32 / scale_factor,
                 mouse_y as f32 / scale_factor,
             )
         });
+        let metrics =
+            island::chrome_metrics(window_width, window_size.height, scale_factor);
+        let logical_y = mouse_y as f32 / scale_factor;
+        let over_local_rail = local_count > 1
+            && logical_y >= metrics.context_top
+            && logical_y <= metrics.context_top + metrics.context_height;
+        let action = if local_action.is_some() || over_local_rail {
+            None
+        } else {
+            self.renderer.island.as_ref().and_then(|island| {
+                island.chrome_action_at(
+                    window_width,
+                    window_size.height,
+                    scale_factor,
+                    num_tabs,
+                    mouse_x as f32 / scale_factor,
+                    mouse_y as f32 / scale_factor,
+                )
+            })
+        };
         let changed = self
             .renderer
             .island
@@ -3105,6 +3167,86 @@ impl Screen<'_> {
             self.mark_dirty();
         }
         changed
+    }
+
+    pub fn update_session_footer_hover(&mut self, mouse_x: f64, mouse_y: f64) -> bool {
+        let scale = self.sugarloaf.scale_factor().max(f32::EPSILON);
+        let hit = session_footer::hit_test(
+            &self.context_manager,
+            mouse_x as f32 / scale,
+            mouse_y as f32 / scale,
+            scale,
+        );
+        let hovered = hit.and_then(|hit| hit.action.map(|action| (hit.route_id, action)));
+        let changed = self.renderer.session_footer.set_hovered(hovered);
+        if changed {
+            self.mark_dirty();
+        }
+        changed
+    }
+
+    #[inline]
+    pub fn clear_session_footer_hover(&mut self) -> bool {
+        let changed = self.renderer.session_footer.set_hovered(None);
+        if changed {
+            self.mark_dirty();
+        }
+        changed
+    }
+
+    #[inline]
+    pub fn is_hovering_session_footer(&self, mouse_x: f64, mouse_y: f64) -> bool {
+        let scale = self.sugarloaf.scale_factor().max(f32::EPSILON);
+        session_footer::hit_test(
+            &self.context_manager,
+            mouse_x as f32 / scale,
+            mouse_y as f32 / scale,
+            scale,
+        )
+        .is_some()
+    }
+
+    #[inline]
+    pub fn session_footer_action_hovered(&self) -> bool {
+        self.renderer.session_footer.hovered_action().is_some()
+    }
+
+    /// Handle a click in any pane-local footer. A passive footer click focuses
+    /// that pane without leaking into terminal selection. Action buttons then
+    /// operate on the newly focused independent PTY.
+    pub fn handle_session_footer_click(&mut self) -> bool {
+        let scale = self.sugarloaf.scale_factor().max(f32::EPSILON);
+        let Some(hit) = session_footer::hit_test(
+            &self.context_manager,
+            self.mouse.x as f32 / scale,
+            self.mouse.y as f32 / scale,
+            scale,
+        ) else {
+            return false;
+        };
+
+        if self.context_manager.current_route() != hit.route_id {
+            let _ = self.select_current_based_on_mouse();
+            self.context_manager.select_route_from_current_grid();
+        }
+
+        match hit.action {
+            Some(SessionFooterAction::JumpToLive) => {
+                let context = self.context_manager.current_mut();
+                context.terminal.lock().scroll_display(Scroll::Bottom);
+                context
+                    .renderable_content
+                    .pending_update
+                    .set_terminal_damage(rio_backend::event::TerminalDamage::Full);
+                self.renderer.scrollbar.notify_scroll(context.rich_text_id);
+            }
+            Some(SessionFooterAction::Search) => {
+                self.start_search(Direction::Right);
+            }
+            None => {}
+        }
+        self.mark_dirty();
+        true
     }
 
     pub fn handle_island_click(
@@ -3131,16 +3273,56 @@ impl Screen<'_> {
         let island_visible = self.renderer.navigation.island_visible(num_tabs);
 
         if !is_right_click {
-            let action = self.renderer.island.as_ref().and_then(|island| {
-                island.chrome_action_at(
+            let local_action = self.renderer.island.as_ref().and_then(|island| {
+                island.local_tab_action_at(
                     window_width,
                     window_size.height,
                     scale_factor,
-                    num_tabs,
+                    self.context_manager.local_tab_count(),
                     mouse_x as f32 / scale_factor,
                     mouse_y as f32 / scale_factor,
                 )
             });
+            if let Some(action) = local_action {
+                let changed = match action {
+                    LocalTabAction::Select(index) => self
+                        .context_manager
+                        .select_local_tab(index, &mut self.sugarloaf),
+                    LocalTabAction::Close(index) => self
+                        .context_manager
+                        .close_local_tab(index, &mut self.sugarloaf),
+                    LocalTabAction::New => {
+                        self.create_local_tab(clipboard);
+                        true
+                    }
+                };
+                if changed {
+                    self.clear_selection();
+                    self.cancel_search(clipboard);
+                    self.mark_dirty();
+                }
+                return true;
+            }
+            let metrics =
+                island::chrome_metrics(window_width, window_size.height, scale_factor);
+            let logical_y = mouse_y as f32 / scale_factor;
+            let over_local_rail = self.context_manager.local_tab_count() > 1
+                && logical_y >= metrics.context_top
+                && logical_y <= metrics.context_top + metrics.context_height;
+            let action = (!over_local_rail)
+                .then(|| {
+                    self.renderer.island.as_ref().and_then(|island| {
+                        island.chrome_action_at(
+                            window_width,
+                            window_size.height,
+                            scale_factor,
+                            num_tabs,
+                            mouse_x as f32 / scale_factor,
+                            logical_y,
+                        )
+                    })
+                })
+                .flatten();
             if let Some(action) = action {
                 match action {
                     ChromeAction::NewTab => self.create_tab(clipboard),
@@ -3285,7 +3467,7 @@ impl Screen<'_> {
         {
             self.stop_hint_mode_if_active();
             self.last_close_press = Some((std::time::Instant::now(), mouse_x_unscaled));
-            self.close_tab(clipboard);
+            self.close_window_tab(clipboard);
             return true;
         }
 
@@ -3994,6 +4176,7 @@ impl Screen<'_> {
         use crate::renderer::command_palette::PaletteAction;
         match action {
             PaletteAction::TabCreate => self.create_tab(clipboard),
+            PaletteAction::LocalTabCreate => self.create_local_tab(clipboard),
             PaletteAction::TabClose => self.close_tab(clipboard),
             PaletteAction::TabCloseUnfocused => {
                 if self.ctx().len() > 1 {
@@ -4028,6 +4211,8 @@ impl Screen<'_> {
             }
             PaletteAction::SplitRight => self.split_right(),
             PaletteAction::SplitDown => self.split_down(),
+            PaletteAction::CloneSplitRight => self.clone_split_right(),
+            PaletteAction::CloneSplitDown => self.clone_split_down(),
             PaletteAction::SelectNextSplit => {
                 self.context_manager.select_next_split();
             }
@@ -4915,6 +5100,33 @@ impl Screen<'_> {
             }
             "clone-right" => self.clone_split_right(),
             "clone-down" => self.clone_split_down(),
+            "local-tab" => {
+                let rich_text_id = next_rich_text_id();
+                if self
+                    .context_manager
+                    .clone_local_tab(rich_text_id, &mut self.sugarloaf)
+                {
+                    self.mark_dirty();
+                }
+            }
+            "select-local" => {
+                let index = fields.next().and_then(|value| value.parse::<usize>().ok());
+                if index.is_some_and(|index| {
+                    self.context_manager
+                        .select_local_tab(index, &mut self.sugarloaf)
+                }) {
+                    self.mark_dirty();
+                }
+            }
+            "close-local" => {
+                let index = fields.next().and_then(|value| value.parse::<usize>().ok());
+                if index.is_some_and(|index| {
+                    self.context_manager
+                        .close_local_tab(index, &mut self.sugarloaf)
+                }) {
+                    self.mark_dirty();
+                }
+            }
             "select-prev" => {
                 self.context_manager.select_prev_split();
                 self.mark_dirty();

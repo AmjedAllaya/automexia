@@ -17,6 +17,7 @@ use renderable::Cursor;
 use renderable::RenderableContent;
 use rio_backend::config::layout::Margin;
 use rio_backend::config::Shell;
+use rustc_hash::FxHashSet;
 use smallvec::{smallvec, SmallVec};
 
 use rio_backend::crosswords::{Crosswords, MIN_COLUMNS, MIN_LINES};
@@ -164,6 +165,9 @@ pub struct ContextManager<T: EventListener> {
     window_id: WindowId,
     pub config: ContextManagerConfig,
     last_title_update: Option<Instant>,
+    /// PTYs intentionally removed by UI actions. Their asynchronous shutdown
+    /// events are acknowledgements, not requests to close another tab.
+    closing_routes: FxHashSet<usize>,
 }
 
 pub fn create_dead_context<T: rio_backend::event::EventListener>(
@@ -228,6 +232,11 @@ pub fn create_mock_context<
 }
 
 impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
+    #[inline]
+    fn acknowledge_intentional_close(&mut self, route_id: usize) -> bool {
+        self.closing_routes.remove(&route_id)
+    }
+
     #[inline]
     fn create_context(
         cursor_state: (&Cursor, bool),
@@ -474,6 +483,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             window_id,
             config: ctx_config,
             last_title_update: None,
+            closing_routes: FxHashSet::default(),
         })
     }
 
@@ -512,6 +522,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             window_id,
             config,
             last_title_update: None,
+            closing_routes: FxHashSet::default(),
         })
     }
 
@@ -521,56 +532,54 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         route_id: usize,
         sugarloaf: &mut Sugarloaf,
     ) -> bool {
-        let requires_change_route = self.current_route == route_id;
-
-        // should_close_context_manager is only called when terminal.exit()
-        // is triggered. The terminal.exit() happens for any drop on context
-        // by tab removal or if the Pty is exited (e.g: exit/control+d)
-        //
-        // In the tab case we already have removed the context with the
-        // specified route_id so isn't gonna find anything. Then will be false.
-        //
-        // However if the tab is killed by Pty and not a tab action then
-        // it means we need to clean the context with the specified route_id.
-        // If there's no context then should return true and kill the window.
-        if !self.contexts.is_empty() {
-            // In case Grid has more than one item
-            if self.current_grid().len() > 1 {
-                if self.current().route_id == route_id {
-                    self.remove_current_grid(sugarloaf);
-                }
-
-                return false;
-            }
-
-            // In case Grid has only one item
-            if let Some(index_to_remove) = self
-                .contexts
-                .iter()
-                .position(|ctx| ctx.current().route_id == route_id)
-            {
-                let mut should_set_current = false;
-                if requires_change_route {
-                    if index_to_remove > 1 {
-                        self.set_current(index_to_remove - 1);
-                    } else {
-                        should_set_current = true;
-                    }
-                }
-                self.contexts[index_to_remove].remove_all_rich_text(sugarloaf);
-                self.contexts.remove(index_to_remove);
-
-                if should_set_current {
-                    self.set_current(0);
-                }
-
-                if !self.contexts.is_empty() {
-                    self.keep_only_active_context_visible(sugarloaf);
-                }
-            };
+        // Dropping an explicitly closed Context causes its IO worker to emit a
+        // delayed CloseTerminal. Consume that exact route once; never infer a
+        // close for whichever tab happens to be active by then.
+        if self.acknowledge_intentional_close(route_id) {
+            return false;
         }
 
-        self.contexts.is_empty()
+        let Some(grid_index) = self.contexts.iter().position(|grid| {
+            grid.contexts()
+                .values()
+                .any(|item| item.contains_route(route_id))
+        }) else {
+            return self.contexts.is_empty();
+        };
+
+        let local_tab_count = self.contexts[grid_index]
+            .tab_count_for_route(route_id)
+            .unwrap_or(0);
+        if local_tab_count > 1 {
+            self.contexts[grid_index].remove_local_route(route_id, sugarloaf);
+            if grid_index == self.current_index {
+                self.current_route = self.current().route_id;
+            }
+            return false;
+        }
+
+        if self.contexts[grid_index].len() > 1 {
+            self.contexts[grid_index].remove_pane_by_route(route_id, sugarloaf);
+            if grid_index == self.current_index {
+                self.current_route = self.current().route_id;
+            }
+            return false;
+        }
+
+        self.contexts[grid_index].remove_all_rich_text(sugarloaf);
+        self.contexts.remove(grid_index);
+        if self.contexts.is_empty() {
+            return true;
+        }
+
+        if grid_index < self.current_index {
+            self.current_index -= 1;
+        } else if self.current_index >= self.contexts.len() {
+            self.current_index = self.contexts.len() - 1;
+        }
+        self.current_route = self.current().route_id;
+        self.keep_only_active_context_visible(sugarloaf);
+        false
     }
 
     #[inline]
@@ -642,6 +651,13 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     #[inline]
     pub fn close_unfocused_tabs(&mut self) {
         let current_route_id = self.current().route_id;
+        let closing = self
+            .contexts
+            .iter()
+            .filter(|grid| grid.current().route_id != current_route_id)
+            .flat_map(ContextGrid::route_ids)
+            .collect::<Vec<_>>();
+        self.closing_routes.extend(closing);
         self.contexts
             .retain(|ctx| ctx.current().route_id == current_route_id);
         self.current_route = self.contexts[0].current().route_id;
@@ -869,10 +885,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
-    pub fn get_by_route_id(
-        &mut self,
-        route_id: usize,
-    ) -> Option<&mut ContextGridItem<T>> {
+    pub fn get_by_route_id(&mut self, route_id: usize) -> Option<&mut Context<T>> {
         // Search every tab, current first: per-route events (damage marks,
         // titles, color/size requests) must reach panes in background tabs,
         // otherwise their state is silently dropped until the pane's own
@@ -901,7 +914,105 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    pub fn local_tab_count(&self) -> usize {
+        self.current_grid()
+            .current_item()
+            .map_or(0, ContextGridItem::tab_count)
+    }
+
+    #[inline]
+    pub fn active_local_tab_index(&self) -> usize {
+        self.current_grid()
+            .current_item()
+            .map_or(0, ContextGridItem::active_tab_index)
+    }
+
+    pub fn local_tab_title(&self, index: usize) -> Option<String> {
+        let context = self.current_grid().current_item()?.context_at(index)?;
+        // Avoid locking every inactive terminal on every frame. An inactive
+        // tab retains the last cached title it received while active; only the
+        // selected tab needs a live terminal-title read.
+        if index == self.active_local_tab_index() {
+            let raw = context.terminal.lock().title.to_string();
+            if !raw.trim().is_empty() {
+                return Some(raw);
+            }
+        }
+        if !context.title.content.trim().is_empty() && context.title.content.trim() != "~"
+        {
+            return Some(context.title.content.clone());
+        }
+        context
+            .launch_descriptor
+            .profile_identity()
+            .or_else(|| context.launch_descriptor.program())
+            .map(ToOwned::to_owned)
+            .or_else(|| Some(format!("Session {}", index + 1)))
+    }
+
+    pub fn select_local_tab(&mut self, index: usize, sugarloaf: &mut Sugarloaf) -> bool {
+        let Some(item) = self.contexts[self.current_index].current_item_mut() else {
+            return false;
+        };
+        if !item.select_tab(index, sugarloaf) {
+            return false;
+        }
+        self.current_route = item.val.route_id;
+        true
+    }
+
+    /// Close only the selected pane's active local tab. The last local tab is
+    /// intentionally retained; callers can then close the pane or window tab
+    /// according to their explicit scope.
+    pub fn close_current_local_tab(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        if self.local_tab_count() <= 1 {
+            return false;
+        }
+        let route_id = self.current().route_id;
+        self.closing_routes.insert(route_id);
+        let Some(item) = self.contexts[self.current_index].current_item_mut() else {
+            self.closing_routes.remove(&route_id);
+            return false;
+        };
+        if item.close_active_tab(sugarloaf).is_none() {
+            self.closing_routes.remove(&route_id);
+            return false;
+        }
+        self.current_route = item.val.route_id;
+        true
+    }
+
+    pub fn close_local_tab(&mut self, index: usize, sugarloaf: &mut Sugarloaf) -> bool {
+        if index >= self.local_tab_count() || self.local_tab_count() <= 1 {
+            return false;
+        }
+        let Some(route_id) = self
+            .contexts
+            .get(self.current_index)
+            .and_then(ContextGrid::current_item)
+            .and_then(|item| item.context_at(index))
+            .map(|context| context.route_id)
+        else {
+            return false;
+        };
+        self.closing_routes.insert(route_id);
+        let Some(item) = self.contexts[self.current_index].current_item_mut() else {
+            self.closing_routes.remove(&route_id);
+            return false;
+        };
+        if item.close_tab(index, sugarloaf).is_none() {
+            self.closing_routes.remove(&route_id);
+            return false;
+        }
+        self.current_route = item.val.route_id;
+        true
+    }
+
+    #[inline]
     pub fn remove_current_grid(&mut self, sugarloaf: &mut Sugarloaf) {
+        if let Some(item) = self.contexts[self.current_index].current_item() {
+            self.closing_routes.extend(item.route_ids());
+        }
         self.contexts[self.current_index].remove_current(sugarloaf);
         self.current_route = self.contexts[self.current_index].current().route_id;
     }
@@ -953,6 +1064,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         }
 
         let index_to_remove = self.current_index;
+        self.closing_routes
+            .extend(self.contexts[index_to_remove].route_ids());
         let mut should_set_current = false;
         if index_to_remove > 1 {
             self.set_current(self.current_index - 1);
@@ -999,6 +1112,24 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             .values()
             .map(|item| {
                 let context = item.context();
+                let active_local_tab_index = item.active_tab_index();
+                let local_tabs = item
+                    .contexts()
+                    .enumerate()
+                    .map(|(index, tab)| {
+                        serde_json::json!({
+                            "index": index,
+                            "route_id": tab.route_id,
+                            "shell_pid": tab.shell_pid,
+                            "active": index == active_local_tab_index,
+                            "launch_program": tab.launch_descriptor.program(),
+                            "launch_args": tab.launch_descriptor.args(),
+                            "profile_identity": tab.launch_descriptor.profile_identity(),
+                            "starting_directory": tab.launch_descriptor.starting_directory(),
+                            "current_directory": tab.renderable_content.current_directory.as_ref().map(|path| path.to_string_lossy().into_owned()),
+                        })
+                    })
+                    .collect::<Vec<_>>();
                 let visible_text = context
                     .renderable_content
                     .visible_rows
@@ -1034,6 +1165,9 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                 serde_json::json!({
                     "route_id": context.route_id,
                     "active": context.route_id == active_route,
+                    "local_tab_count": item.tab_count(),
+                    "active_local_tab_index": active_local_tab_index,
+                    "local_tabs": local_tabs,
                     "shell_pid": context.shell_pid,
                     "launch_program": context.launch_descriptor.program(),
                     "launch_args": context.launch_descriptor.args(),
@@ -1197,6 +1331,59 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         split_down: bool,
         sugarloaf: &mut Sugarloaf,
     ) -> bool {
+        match self.create_cloned_context(rich_text_id) {
+            Ok(new_context) => {
+                let new_route_id = new_context.route_id;
+                if split_down {
+                    self.contexts[self.current_index].split_down(new_context, sugarloaf);
+                } else {
+                    self.contexts[self.current_index].split_right(new_context, sugarloaf);
+                }
+                self.current_route = new_route_id;
+                true
+            }
+            Err(error) => {
+                self.report_clone_error(error);
+                false
+            }
+        }
+    }
+
+    /// Add an independent tab to the selected pane. It starts from the same
+    /// shell/profile/distro/user/current-directory intent as the visible tab,
+    /// but owns a separate PTY, terminal grid, history and input queue.
+    pub fn clone_local_tab(
+        &mut self,
+        rich_text_id: usize,
+        sugarloaf: &mut Sugarloaf,
+    ) -> bool {
+        if self.local_tab_count() >= self.capacity {
+            self.report_clone_error(format!(
+                "The selected pane has reached its {}-tab safety limit.",
+                self.capacity
+            ));
+            return false;
+        }
+        match self.create_cloned_context(rich_text_id) {
+            Ok(new_context) => {
+                let new_route_id = new_context.route_id;
+                let Some(item) = self.contexts[self.current_index].current_item_mut()
+                else {
+                    self.report_clone_error("The selected pane no longer exists.".into());
+                    return false;
+                };
+                item.push_tab(new_context, sugarloaf);
+                self.current_route = new_route_id;
+                true
+            }
+            Err(error) => {
+                self.report_clone_error(error);
+                false
+            }
+        }
+    }
+
+    fn create_cloned_context(&self, rich_text_id: usize) -> Result<Context<T>, String> {
         let (launch, cursor, blinking, dimension, seed) = {
             let source = self.current();
             let live = LiveSessionMetadata {
@@ -1206,13 +1393,10 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                 shell_name: source.renderable_content.shell_name.clone(),
                 shell_path: source.renderable_content.shell_path.clone(),
             };
-            let launch = match source.launch_descriptor.fresh_clone(&live) {
-                Ok(launch) => launch,
-                Err(error) => {
-                    self.report_clone_error(error.to_string());
-                    return false;
-                }
-            };
+            let launch = source
+                .launch_descriptor
+                .fresh_clone(&live)
+                .map_err(|error| error.to_string())?;
             (
                 launch,
                 source.cursor_from_ref(),
@@ -1223,10 +1407,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         };
 
         #[cfg(all(target_os = "windows", not(test)))]
-        if let Err(error) = launch::validate_wsl_distribution(&launch) {
-            self.report_clone_error(error.to_string());
-            return false;
-        }
+        launch::validate_wsl_distribution(&launch).map_err(|error| error.to_string())?;
 
         let mut cloned_config = self.config.clone();
         cloned_config.shell = Shell {
@@ -1243,37 +1424,21 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             cloned_config.use_fork = false;
         }
 
-        match ContextManager::create_context(
+        let mut new_context = ContextManager::create_context(
             (&cursor, blinking),
             self.event_proxy.clone(),
             self.window_id,
             rich_text_id,
             dimension,
             &cloned_config,
-        ) {
-            Ok(mut new_context) => {
-                // The descriptor resolution above proves shell/profile/cwd
-                // equivalence. Seed chrome only; the fresh terminal grid,
-                // scrollback, input queue and extension route remain empty.
-                new_context
-                    .renderable_content
-                    .apply_session_metadata_seed(seed);
-                let new_route_id = new_context.route_id;
-                if split_down {
-                    self.contexts[self.current_index].split_down(new_context, sugarloaf);
-                } else {
-                    self.contexts[self.current_index].split_right(new_context, sugarloaf);
-                }
-                self.current_route = new_route_id;
-                true
-            }
-            Err(error) => {
-                self.report_clone_error(format!(
-                    "Could not create the independent session: {error}"
-                ));
-                false
-            }
-        }
+        )
+        .map_err(|error| format!("Could not create the independent session: {error}"))?;
+        // Seed chrome only; the terminal grid, scrollback and input queue stay
+        // empty and independent.
+        new_context
+            .renderable_content
+            .apply_session_metadata_seed(seed);
+        Ok(new_context)
     }
 
     fn report_clone_error(&self, message: String) {
@@ -1522,6 +1687,21 @@ pub mod test {
         context_manager.devops_refresh_completion(912)();
 
         assert_eq!(*listener.renders.lock().unwrap(), [(912, window_id)]);
+    }
+
+    #[test]
+    fn intentional_close_acknowledges_only_the_exact_route_once() {
+        let window_id = WindowId::from(74);
+        let mut context_manager =
+            ContextManager::start_with_capacity(3, VoidListener {}, window_id).unwrap();
+        let surviving_route = context_manager.current().route_id;
+        context_manager.closing_routes.insert(9_001);
+
+        assert!(context_manager.acknowledge_intentional_close(9_001));
+        assert!(!context_manager.acknowledge_intentional_close(9_001));
+        assert!(!context_manager.acknowledge_intentional_close(9_002));
+        assert_eq!(context_manager.len(), 1);
+        assert_eq!(context_manager.current().route_id, surviving_route);
     }
 
     #[test]

@@ -240,6 +240,7 @@ impl From<String> for Action {
             "scrolltoprevprompt" => Some(Action::ScrollToPrevPrompt),
             "scrolltonextprompt" => Some(Action::ScrollToNextPrompt),
             "createtab" => Some(Action::TabCreateNew),
+            "createlocaltab" => Some(Action::LocalTabCreateNew),
             "movecurrenttabtoprev" => Some(Action::MoveCurrentTabToPrev),
             "movecurrenttabtonext" => Some(Action::MoveCurrentTabToNext),
             "closetab" => Some(Action::TabCloseCurrent),
@@ -424,6 +425,9 @@ pub enum Action {
 
     /// Create a new Automexia tab.
     TabCreateNew,
+
+    /// Create an independent tab inside the selected split pane.
+    LocalTabCreateNew,
 
     /// Move current tab to previous slot.
     MoveCurrentTabToPrev,
@@ -1109,31 +1113,29 @@ pub fn create_hint_bindings(
 fn clone_split_key_bindings() -> Vec<KeyBinding> {
     bindings!(
         KeyBinding;
-        "r", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
-        "d", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown;
+        "r", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
+        "d", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown;
+        // Preserve access to the shell controls displaced by the clone keys.
+        "r", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x12".into());
+        "d", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x04".into());
     )
 }
 
 /// Non-macOS tab scopes deliberately use different modifier sets:
 ///
-/// - Ctrl+T creates a new independent window with its initial tab.
-/// - Ctrl+Shift+T adds a global tab to the current window's tab strip.
+/// - Ctrl+T adds a window-level tab to the current window's tab strip.
+/// - Ctrl+Shift+T adds a tab to the selected split/session only.
+/// - Ctrl+Shift+N remains the explicit new-window shortcut.
 ///
 /// Keeping this in one constructor makes it impossible for platform defaults
 /// to accidentally collapse both shortcuts onto the same action.
 #[cfg(any(not(target_os = "macos"), test))]
-fn scoped_tab_key_bindings(global_tabs_enabled: bool) -> Vec<KeyBinding> {
-    let mut key_bindings = bindings!(
+fn scoped_tab_key_bindings(_global_tabs_enabled: bool) -> Vec<KeyBinding> {
+    bindings!(
         KeyBinding;
-        "t", ModifiersState::CONTROL; Action::WindowCreateNew;
-    );
-    if global_tabs_enabled {
-        key_bindings.extend(bindings!(
-            KeyBinding;
-            "t", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::TabCreateNew;
-        ));
-    }
-    key_bindings
+        "t", ModifiersState::CONTROL; Action::TabCreateNew;
+        "t", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::LocalTabCreateNew;
+    )
 }
 
 // Macos
@@ -1183,6 +1185,7 @@ pub fn platform_key_bindings(
         key_bindings.extend(bindings!(
             KeyBinding;
             "t", ModifiersState::SUPER; Action::TabCreateNew;
+            "t", ModifiersState::SUPER | ModifiersState::SHIFT; Action::LocalTabCreateNew;
             Key::Named(Tab), ModifiersState::CONTROL; Action::SelectNextTab;
             Key::Named(Tab), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectPrevTab;
             "w", ModifiersState::SUPER; Action::CloseCurrentSplitOrTab;
@@ -1762,26 +1765,31 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_t_opens_a_window_tab_and_ctrl_shift_t_keeps_global_tabs() {
+    fn ctrl_t_creates_window_tab_and_ctrl_shift_t_creates_local_tab() {
+        assert_eq!(
+            Action::from("CreateLocalTab".to_string()),
+            Action::LocalTabCreateNew
+        );
         let bindings = scoped_tab_key_bindings(true);
         assert_eq!(bindings.len(), 2);
         assert_eq!(bindings[0].mods, ModifiersState::CONTROL);
-        assert_eq!(bindings[0].action, Action::WindowCreateNew);
+        assert_eq!(bindings[0].action, Action::TabCreateNew);
         assert_eq!(
             bindings[1].mods,
             ModifiersState::CONTROL | ModifiersState::SHIFT
         );
-        assert_eq!(bindings[1].action, Action::TabCreateNew);
+        assert_eq!(bindings[1].action, Action::LocalTabCreateNew);
         assert_eq!(bindings[0].trigger, bindings[1].trigger);
         assert_ne!(bindings[0].mods, bindings[1].mods);
 
         let without_global_tabs = scoped_tab_key_bindings(false);
-        assert_eq!(without_global_tabs.len(), 1);
-        assert_eq!(without_global_tabs[0].action, Action::WindowCreateNew);
+        assert_eq!(without_global_tabs.len(), 2);
+        assert_eq!(without_global_tabs[0].action, Action::TabCreateNew);
+        assert_eq!(without_global_tabs[1].action, Action::LocalTabCreateNew);
     }
 
     #[test]
-    fn user_binding_can_override_ctrl_t_without_changing_global_tab_shortcut() {
+    fn user_binding_can_override_ctrl_t_without_changing_local_tab_shortcut() {
         let updated = config_key_bindings(
             vec![ConfigKeyBinding {
                 key: "t".to_string(),
@@ -1798,22 +1806,22 @@ mod tests {
         }));
         assert!(updated.iter().any(|binding| {
             binding.mods == ModifiersState::CONTROL | ModifiersState::SHIFT
-                && binding.action == Action::TabCreateNew
+                && binding.action == Action::LocalTabCreateNew
         }));
         assert!(!updated.iter().any(|binding| {
             binding.mods == ModifiersState::CONTROL
-                && binding.action == Action::WindowCreateNew
+                && binding.action == Action::TabCreateNew
         }));
     }
 
     #[test]
-    fn clone_shortcuts_require_ctrl_alt_and_exclude_search_and_vi() {
+    fn bare_ctrl_clone_shortcuts_preserve_alt_shell_passthroughs() {
         let bindings = clone_split_key_bindings();
-        assert_eq!(bindings.len(), 2);
+        assert_eq!(bindings.len(), 4);
         assert_eq!(bindings[0].action, Action::CloneSplitRight);
         assert_eq!(bindings[1].action, Action::CloneSplitDown);
-        for binding in &bindings {
-            assert_eq!(binding.mods, ModifiersState::CONTROL | ModifiersState::ALT);
+        for binding in &bindings[..2] {
+            assert_eq!(binding.mods, ModifiersState::CONTROL);
             assert!(binding.notmode.contains(BindingMode::SEARCH));
             assert!(binding.notmode.contains(BindingMode::VI));
             assert!(!binding.is_triggered_by(
@@ -1826,19 +1834,22 @@ mod tests {
                 binding.mods,
                 &binding.trigger
             ));
-            assert!(!binding.is_triggered_by(
+            assert!(binding.is_triggered_by(
                 BindingMode::empty(),
                 ModifiersState::CONTROL,
                 &binding.trigger
             ));
         }
-        assert!(!bindings.iter().any(|binding| {
-            binding.mods == ModifiersState::CONTROL
-                && matches!(
-                    binding.action,
-                    Action::CloneSplitRight | Action::CloneSplitDown
-                )
-        }));
+        assert_eq!(
+            bindings[2].mods,
+            ModifiersState::CONTROL | ModifiersState::ALT
+        );
+        assert_eq!(
+            bindings[3].mods,
+            ModifiersState::CONTROL | ModifiersState::ALT
+        );
+        assert!(matches!(&bindings[2].action, Action::Esc(value) if value == "\x12"));
+        assert!(matches!(&bindings[3].action, Action::Esc(value) if value == "\x04"));
     }
 
     #[test]
@@ -1847,15 +1858,15 @@ mod tests {
             vec![ConfigKeyBinding {
                 key: "r".to_string(),
                 action: "receivechar".to_string(),
-                with: "control | alt".to_string(),
+                with: "control".to_string(),
                 esc: String::new(),
                 mode: String::new(),
             }],
             clone_split_key_bindings(),
         );
-        assert_eq!(updated.len(), 2);
+        assert_eq!(updated.len(), 4);
         assert!(updated.iter().any(|binding| {
-            binding.mods == ModifiersState::CONTROL | ModifiersState::ALT
+            binding.mods == ModifiersState::CONTROL
                 && binding.action == Action::ReceiveChar
         }));
         assert!(updated
@@ -1904,7 +1915,7 @@ mod tests {
     }
 
     #[test]
-    fn shell_history_keys_are_native_pty_input() {
+    fn up_arrow_remains_native_pty_input() {
         let config = rio_backend::config::Config::default();
         let bindings = default_key_bindings(&config);
         assert!(bindings.iter().any(|binding| {
@@ -1915,14 +1926,6 @@ mod tests {
                         location: KeyLocation::Standard,
                     }
                 && matches!(&binding.action, Action::Esc(value) if value == "\x1b[A")
-        }));
-        assert!(!bindings.iter().any(|binding| {
-            binding.mods == ModifiersState::CONTROL
-                && binding.trigger
-                    == BindingKey::Keycode {
-                        key: Key::Character("r".into()),
-                        location: KeyLocation::Standard,
-                    }
         }));
     }
 

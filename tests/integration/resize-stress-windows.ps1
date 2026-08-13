@@ -264,7 +264,67 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     Send-AutomexiaTestControl 'write-hex:history-cancel-search:03'
     $historyDone = Read-AutomexiaSnapshot -AfterSequence ([int64]$searchRecall.sequence)
 
-    # Deterministic binding tests prove Ctrl+Alt+R. This feature-gated,
+    # Create a tab inside the selected pane through the same implementation
+    # path as Ctrl+Shift+T. It must own a new ConPTY/route while preserving the
+    # selected PowerShell launch intent and must not add another split panel.
+    Send-AutomexiaTestControl 'local-tab:local-create'
+    $localCreated = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyDone.sequence)
+    $localDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    while (([int]$localCreated.panel_count -ne 1 -or
+            [int](Get-ActiveAutomexiaPanel $localCreated).local_tab_count -ne 2 -or
+            [int64](Get-ActiveAutomexiaPanel $localCreated).route_id -eq [int64]$initialPanel.route_id -or
+            -not [bool]$localCreated.full_path_visible) -and
+           [DateTime]::UtcNow -lt $localDeadline) {
+        $localCreated = Read-AutomexiaSnapshot -AfterSequence ([int64]$localCreated.sequence)
+    }
+    $localPanel = Get-ActiveAutomexiaPanel $localCreated
+    if ([int]$localCreated.panel_count -ne 1 -or [int]$localPanel.local_tab_count -ne 2) {
+        Write-Host ($localCreated | ConvertTo-Json -Depth 10)
+        throw 'Ctrl+Shift+T local-tab path did not create exactly one sibling in the selected pane'
+    }
+    $localRoutes = @($localPanel.local_tabs | ForEach-Object { [int64]$_.route_id } | Sort-Object -Unique)
+    $localPids = @($localPanel.local_tabs | ForEach-Object { [int64]$_.shell_pid } | Sort-Object -Unique)
+    if ($localRoutes.Count -ne 2 -or $localPids.Count -ne 2 -or $localPids[0] -le 0) {
+        throw 'Pane-local PowerShell tabs reused a route or ConPTY process'
+    }
+    if ($localPanel.current_directory -ne $initialPanel.current_directory -or
+        $localPanel.launch_program -ne $initialPanel.launch_program -or
+        $localPanel.profile_identity -ne $initialPanel.profile_identity -or
+        (($localPanel.launch_args | ConvertTo-Json -Compress) -ne
+         ($initialPanel.launch_args | ConvertTo-Json -Compress))) {
+        Write-Host ($localCreated | ConvertTo-Json -Depth 10)
+        throw 'Pane-local tab did not preserve the selected PowerShell profile and directory'
+    }
+
+    # Return to the source and close the inactive sibling by index. This is the
+    # native regression for the old cascade-close failure: the active source
+    # route/PID and the window must survive unchanged.
+    Send-AutomexiaTestControl 'select-local:local-source:0'
+    $localSource = Read-AutomexiaSnapshot -AfterSequence ([int64]$localCreated.sequence)
+    $localSourceDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ([int64](Get-ActiveAutomexiaPanel $localSource).route_id -ne
+           [int64]$initialPanel.route_id -and [DateTime]::UtcNow -lt $localSourceDeadline) {
+        $localSource = Read-AutomexiaSnapshot -AfterSequence ([int64]$localSource.sequence)
+    }
+    Send-AutomexiaTestControl 'close-local:local-close-inactive:1'
+    $localClosed = Read-AutomexiaSnapshot -AfterSequence ([int64]$localSource.sequence)
+    $localCloseDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    while (([int](Get-ActiveAutomexiaPanel $localClosed).local_tab_count -ne 1 -or
+            [int64](Get-ActiveAutomexiaPanel $localClosed).route_id -ne [int64]$initialPanel.route_id) -and
+           [DateTime]::UtcNow -lt $localCloseDeadline) {
+        $localClosed = Read-AutomexiaSnapshot -AfterSequence ([int64]$localClosed.sequence)
+    }
+    $survivingLocalPanel = Get-ActiveAutomexiaPanel $localClosed
+    if ([int]$localClosed.panel_count -ne 1 -or
+        [int]$survivingLocalPanel.local_tab_count -ne 1 -or
+        [int64]$survivingLocalPanel.route_id -ne [int64]$initialPanel.route_id -or
+        [int64]$survivingLocalPanel.shell_pid -ne [int64]$initialPanel.shell_pid) {
+        Write-Host ($localClosed | ConvertTo-Json -Depth 10)
+        throw 'Closing an inactive pane-local tab changed or closed the active source session'
+    }
+    $historyDone = $localClosed
+
+    # Deterministic binding tests prove bare Ctrl+R clones. This feature-gated,
     # renderer-neutral control invokes the same clone-right action path without
     # relying on focus-sensitive synthetic keyboard input.
     Send-AutomexiaTestControl 'clone-right:1'

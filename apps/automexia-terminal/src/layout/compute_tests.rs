@@ -192,6 +192,24 @@ fn extreme_large_viewport_uses_finite_cell_counts() {
 }
 
 #[test]
+fn pane_footer_reservation_is_dpi_stable_and_yields_to_tiny_panes() {
+    assert_eq!(pane_footer_reserved_height(900.0, 1.0), 32.0);
+    assert_eq!(pane_footer_reserved_height(1_800.0, 2.0), 64.0);
+    assert_eq!(pane_footer_reserved_height(111.0, 1.0), 0.0);
+    assert_eq!(pane_footer_reserved_height(220.0, 2.0), 0.0);
+    assert_eq!(pane_footer_reserved_height(f32::NAN, 1.0), 0.0);
+    assert_eq!(pane_footer_reserved_height(900.0, 0.0), 0.0);
+    assert_eq!(
+        pane_terminal_rect([10.0, 20.0, 800.0, 500.0], 1.0),
+        [10.0, 20.0, 800.0, 468.0]
+    );
+    assert_eq!(
+        pane_terminal_rect([10.0, 20.0, 800.0, 100.0], 1.0),
+        [10.0, 20.0, 800.0, 100.0]
+    );
+}
+
+#[test]
 fn test_rows_fit_zero_leading() {
     for height in (500..=2000).step_by(100) {
         assert_rows_fit(1600.0, height as f32, 16.0, 2.0, 1.0, 12.77, 3.50, 0.0);
