@@ -4474,7 +4474,13 @@ impl<U: EventListener> Handler for Crosswords<U> {
 
     #[inline]
     fn clear_line(&mut self, mode: LineClearMode) {
-        self.capture_active_prompt_snapshot();
+        // PSReadLine, Readline and ZLE commonly repaint with CR + EL after a
+        // resize. At narrow sizes the editable row can share a reflowed row
+        // with the terminal-owned path, so an apparently line-local erase can
+        // remove the entire semantic anchor. Arm repair from the last complete
+        // snapshot; reconciliation is a no-op when context/path rows remain
+        // complete and therefore never overwrites an ordinary editor repaint.
+        self.request_active_prompt_repair();
         let bg = self.grid.template_style().bg;
         let blank = self.grid.blank_with_bg(bg);
         let point = self.grid.cursor.pos;
@@ -6491,6 +6497,34 @@ mod tests {
         assert!(
             visible.contains(path),
             "saved logical prompt was not restored after tiny repaint: {visible:?}"
+        );
+    }
+
+    #[test]
+    fn resize_stress_line_editor_erase_restores_path_after_tiny_reflow() {
+        use crate::performer::handler::Processor;
+
+        let path = r"D:\workstation\projects\business-project\custom_terminal\automexia-terminal\standalone";
+        let mut cw = make_prompt_crosswords(140, 14);
+        let mut processor = Processor::default();
+        processor.advance(&mut cw, &automexia_prompt_stream(46, path, "git status"));
+
+        // PowerShell/PSReadLine uses CR + EL during its SIGWINCH repaint. At
+        // this geometry the cursor and path share a compact reflowed surface.
+        cw.resize(CrosswordsSize::new(3, 2));
+        processor.advance(&mut cw, b"\r\x1b[2K");
+        cw.resize(CrosswordsSize::new(140, 14));
+        processor.advance(&mut cw, b"\x1b[0K");
+
+        assert_resize_invariants(&cw, 46, path);
+        let visible = (0..cw.grid.screen_lines() as i32)
+            .map(Line)
+            .filter(|line| cw.grid[*line].semantic_prompt_id == Some(46))
+            .map(|line| semantic_row_text(&cw, line))
+            .collect::<String>();
+        assert!(
+            visible.contains(path),
+            "line-editor repaint lost the terminal-owned path: {visible:?}"
         );
     }
 
