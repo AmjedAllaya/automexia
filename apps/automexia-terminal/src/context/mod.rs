@@ -833,6 +833,29 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         })
     }
 
+    /// Stable launch/profile identity for the top-level tab strip.
+    ///
+    /// Shells may emit several transient OSC titles while loading profiles.
+    /// The tab must have a useful identity before that output arrives and must
+    /// not flicker through paths or environment setup commands. Live semantic
+    /// shell metadata wins once available (so entering CMD or WSL is reflected),
+    /// followed by the immutable launch descriptor used to create the PTY.
+    pub fn tab_profile_identity(&self, index: usize) -> Option<String> {
+        let context = self.contexts.get(index)?.current();
+        [
+            context.renderable_content.shell_distro.as_deref(),
+            context.renderable_content.shell_name.as_deref(),
+            context.launch_descriptor.wsl_distro(),
+            context.launch_descriptor.profile_identity(),
+            context.launch_descriptor.program(),
+        ]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+    }
+
     #[inline]
     pub fn custom_title(&self, index: usize) -> Option<&str> {
         self.contexts
@@ -1177,6 +1200,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                 serde_json::json!({
                     "route_id": context.route_id,
                     "active": context.route_id == active_route,
+                    "layout_rect": item.layout_rect,
                     "local_tab_count": item.tab_count(),
                     "active_local_tab_index": active_local_tab_index,
                     "local_tabs": local_tabs,
@@ -1564,6 +1588,14 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         let size = self.contexts.len();
         if size < self.capacity {
             let last_index = self.contexts.len();
+            // Context dimensions become pane-local after layout, whereas a
+            // ContextGrid root is window-local. Preserve the latter so Ctrl+T
+            // cannot inherit a shortened PTY height and place its footer in
+            // the middle of the window until another OS resize arrives.
+            let viewport = (
+                self.contexts[self.current_index].width,
+                self.contexts[self.current_index].height,
+            );
 
             let mut cloned_config = self.config.clone();
             if working_dir.is_some() {
@@ -1590,12 +1622,14 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                 Ok(new_context) => {
                     let previous_scaled_margin =
                         self.contexts[self.current_index].scaled_margin;
-                    self.contexts.push(ContextGrid::new(
+                    self.contexts.push(ContextGrid::new_with_viewport(
                         new_context,
                         previous_scaled_margin,
                         self.config.split_color,
                         self.config.split_active_color,
                         self.config.panel,
+                        viewport.0,
+                        viewport.1,
                     ));
                     if redirect {
                         self.current_index = last_index;
@@ -1770,6 +1804,66 @@ pub mod test {
 
         assert_eq!(context_manager.len(), 3);
         assert_eq!(context_manager.capacity, 3);
+    }
+
+    #[test]
+    fn top_level_tab_inherits_the_window_viewport_not_the_terminal_extent() {
+        let window_id = WindowId::from(81);
+        let mut context_manager =
+            ContextManager::start_with_capacity(3, VoidListener {}, window_id).unwrap();
+
+        // Reproduce a maximized window whose active ContextDimension has
+        // already been reduced to the terminal surface below chrome/footer.
+        context_manager.current_grid_mut().width = 1_919.0;
+        context_manager.current_grid_mut().height = 1_024.0;
+        context_manager.current_mut().dimension.width = 1_600.0;
+        context_manager.current_mut().dimension.height = 320.0;
+
+        context_manager.add_context(true, 99);
+
+        let grid = context_manager.current_grid();
+        assert_eq!((grid.width, grid.height), (1_919.0, 1_024.0));
+        assert_eq!(grid.current().dimension.height, 320.0);
+        let rect = grid.current_item().expect("new tab pane").layout_rect;
+        assert!(rect[2] > 1_850.0);
+        assert!(rect[3] > 950.0);
+        let configured_bottom_inset = grid.height - (rect[1] + rect[3]);
+        assert!((0.0..=32.0).contains(&configured_bottom_inset));
+    }
+
+    #[test]
+    fn top_level_tab_has_a_stable_profile_before_shell_output() {
+        let window_id = WindowId::from(82);
+        let mut context_manager =
+            ContextManager::start_with_capacity(2, VoidListener {}, window_id).unwrap();
+        context_manager.current_mut().launch_descriptor = SessionLaunchDescriptor::new(
+            Some("powershell.exe".to_string()),
+            vec!["-NoLogo".to_string()],
+            Vec::new(),
+            None,
+            None,
+        );
+
+        assert_eq!(
+            context_manager.tab_profile_identity(0).as_deref(),
+            Some("powershell.exe")
+        );
+
+        context_manager.current_mut().renderable_content.shell_name =
+            Some("CMD".to_string());
+        assert_eq!(
+            context_manager.tab_profile_identity(0).as_deref(),
+            Some("CMD")
+        );
+
+        context_manager
+            .current_mut()
+            .renderable_content
+            .shell_distro = Some("Ubuntu-24.04".to_string());
+        assert_eq!(
+            context_manager.tab_profile_identity(0).as_deref(),
+            Some("Ubuntu-24.04")
+        );
     }
 
     #[test]

@@ -201,6 +201,12 @@ fn write_native_resize_snapshot(
     panels: Vec<serde_json::Value>,
     window_width: f32,
     window_height: f32,
+    window_tab_count: usize,
+    active_window_tab_index: usize,
+    grid_width: f32,
+    grid_height: f32,
+    grid_margin: Margin,
+    active_tab_profile: Option<String>,
     last_control: &str,
     palette_enabled: bool,
 ) {
@@ -272,6 +278,17 @@ fn write_native_resize_snapshot(
         "rows": content.screen_lines,
         "window_width": window_width,
         "window_height": window_height,
+        "window_tab_count": window_tab_count,
+        "active_window_tab_index": active_window_tab_index,
+        "grid_width": grid_width,
+        "grid_height": grid_height,
+        "grid_margin": {
+            "top": grid_margin.top,
+            "right": grid_margin.right,
+            "bottom": grid_margin.bottom,
+            "left": grid_margin.left,
+        },
+        "active_tab_profile": active_tab_profile,
         "cursor_column": content.cursor.state.pos.col.0,
         "cursor_row": content.cursor.state.pos.row.0,
         "current_directory": current_directory,
@@ -1938,6 +1955,16 @@ impl Screen<'_> {
     }
 
     pub fn create_tab(&mut self, clipboard: &mut Clipboard) {
+        if !self.create_tab_context() {
+            return;
+        }
+        self.cancel_search(clipboard);
+        self.mark_dirty();
+    }
+
+    /// Create and select a top-level tab whose first layout generation already
+    /// matches the current window viewport.
+    fn create_tab_context(&mut self) -> bool {
         let redirect = true;
 
         // We resize the current tab ahead to prepare the
@@ -1955,7 +1982,11 @@ impl Screen<'_> {
         // `ContextDimension` once the new tab's grid is built.
         let _ = self.context_manager.current_grid().scaled_margin.left;
         let rich_text_id = next_rich_text_id();
+        let previous_len = self.context_manager.len();
         self.context_manager.add_context(redirect, rich_text_id);
+        if self.context_manager.len() == previous_len {
+            return false;
+        }
         let new_index = self.context_manager.current_index();
         self.context_manager.switch_context_visibility(
             &mut self.sugarloaf,
@@ -1965,9 +1996,7 @@ impl Screen<'_> {
         // The new window-level tab starts with one pane-local tab, so release
         // any secondary-rail reservation inherited from the previous tab.
         self.resize_top_or_bottom_line();
-
-        self.cancel_search(clipboard);
-        self.mark_dirty();
+        true
     }
 
     pub fn create_local_tab(&mut self, clipboard: &mut Clipboard) {
@@ -4393,6 +4422,13 @@ impl Screen<'_> {
                 panels,
                 window_size.width,
                 window_size.height,
+                self.context_manager.len(),
+                self.context_manager.current_index(),
+                self.context_manager.current_grid().width,
+                self.context_manager.current_grid().height,
+                self.context_manager.current_grid().scaled_margin,
+                self.context_manager
+                    .tab_profile_identity(self.context_manager.current_index()),
                 &self.native_test_last_control,
                 self.renderer.command_palette.is_enabled(),
             );
@@ -5139,6 +5175,11 @@ impl Screen<'_> {
             "open-palette" => {
                 self.renderer.command_palette.set_enabled(true);
                 self.mark_dirty();
+            }
+            "window-tab" => {
+                if self.create_tab_context() {
+                    self.mark_dirty();
+                }
             }
             "clone-right" => self.clone_split_right(),
             "clone-down" => self.clone_split_down(),

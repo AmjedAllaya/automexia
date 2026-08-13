@@ -171,6 +171,65 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         throw 'The initial ConPTY child process ID was not recorded'
     }
 
+    # Create a top-level tab through the exact Ctrl+T lifecycle. The renderer
+    # snapshot is taken immediately after the control is consumed, before any
+    # later OS resize can accidentally repair stale geometry.
+    $script:testStage = 'create top-level tab at current viewport'
+    $windowTabControl = 'window-tab:top-create'
+    Send-AutomexiaTestControl $windowTabControl
+    $topTab = Read-AutomexiaSnapshot -AfterSequence ([int64]$initial.sequence)
+    $topTabDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    while (([string]$topTab.last_control -ne $windowTabControl -or
+            [int]$topTab.window_tab_count -ne 2 -or
+            [int]$topTab.active_window_tab_index -ne 1 -or
+            [int]$topTab.panel_count -ne 1) -and
+           [DateTime]::UtcNow -lt $topTabDeadline) {
+        $topTab = Read-AutomexiaSnapshot -AfterSequence ([int64]$topTab.sequence)
+    }
+    if ([string]$topTab.last_control -ne $windowTabControl -or
+        [int]$topTab.window_tab_count -ne 2 -or
+        [int]$topTab.active_window_tab_index -ne 1 -or
+        [int]$topTab.panel_count -ne 1) {
+        Write-Host ($topTab | ConvertTo-Json -Depth 8)
+        throw 'Ctrl+T lifecycle did not create and select exactly one top-level tab'
+    }
+    if ([Math]::Abs([double]$topTab.grid_width - [double]$topTab.window_width) -gt 1.0 -or
+        [Math]::Abs([double]$topTab.grid_height - [double]$topTab.window_height) -gt 1.0) {
+        Write-Host ($topTab | ConvertTo-Json -Depth 8)
+        throw 'A new top-level tab inherited terminal dimensions instead of the current window viewport'
+    }
+    if ([string]$topTab.active_tab_profile -notmatch '(?i)powershell|pwsh') {
+        Write-Host ($topTab | ConvertTo-Json -Depth 8)
+        throw 'A new top-level tab did not expose its PowerShell launch identity before shell output'
+    }
+    $topPanel = Get-ActiveAutomexiaPanel $topTab
+    $topRect = @($topPanel.layout_rect)
+    $expectedBottom = [double]$topTab.grid_height - [double]$topTab.grid_margin.bottom
+    $actualBottom = [double]$topTab.grid_margin.top + [double]$topRect[1] + [double]$topRect[3]
+    $configuredBottomInset = $expectedBottom - $actualBottom
+    if ($topRect.Count -ne 4 -or $configuredBottomInset -lt -1.0 -or $configuredBottomInset -gt 32.0) {
+        Write-Host ($topTab | ConvertTo-Json -Depth 8)
+        throw 'The new-tab pane/footer boundary does not reach the current viewport bottom'
+    }
+
+    # Wait without input for the new shell too. This makes the following
+    # history checks use the newly created session and catches blank first-frame
+    # regressions independently of profile startup speed.
+    while (($null -eq $topTab.latest_prompt_id -or
+            [int]$topTab.latest_prompt_start_count -ne 1 -or
+            -not [bool]$topTab.full_path_visible) -and
+           [DateTime]::UtcNow -lt $topTabDeadline) {
+        $topTab = Read-AutomexiaSnapshot -AfterSequence ([int64]$topTab.sequence)
+    }
+    if ($null -eq $topTab.latest_prompt_id -or
+        [int]$topTab.latest_prompt_start_count -ne 1 -or
+        -not [bool]$topTab.full_path_visible) {
+        Write-Host ($topTab | ConvertTo-Json -Depth 8)
+        throw 'The new Ctrl+T session did not publish its complete prompt automatically'
+    }
+    $initial = $topTab
+    $initialPanel = Get-ActiveAutomexiaPanel $initial
+
     # Prove native PowerShell history navigation remains interactive after a
     # completed command. Unit tests cover the physical key mappings; raw bytes
     # here exercise the same ConPTY, PSReadLine, VT, and renderer path without

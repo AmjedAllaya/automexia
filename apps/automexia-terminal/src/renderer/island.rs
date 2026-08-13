@@ -1920,6 +1920,13 @@ impl Island {
             return custom.to_string();
         }
 
+        // Launch intent is available before the PTY can emit output. Prefer
+        // that stable profile identity (or newer semantic shell metadata) to
+        // transient PowerShell/profile OSC titles during session startup.
+        if let Some(profile) = context_manager.tab_profile_identity(tab_index) {
+            return profile;
+        }
+
         if let Some(raw_title) = context_manager.raw_terminal_title(tab_index) {
             return raw_title;
         }
@@ -1955,6 +1962,9 @@ fn normalized_profile_title(raw: &str) -> Cow<'_, str> {
             .is_some_and(|(_, path)| path.trim().get(1..2) == Some(":"))
     {
         return Cow::Borrowed("PowerShell");
+    }
+    if lower == "wsl" || lower == "wsl.exe" || lower.ends_with("\\wsl.exe") {
+        return Cow::Borrowed("WSL");
     }
     if lower == "cmd"
         || lower == "cmd.exe"
@@ -2623,6 +2633,11 @@ mod tests {
         assert_eq!(
             normalized_profile_title("CMD - D:\\workstation"),
             "Command Prompt"
+        );
+        assert_eq!(normalized_profile_title("wsl.exe"), "WSL");
+        assert_eq!(
+            normalized_profile_title(r"C:\Windows\System32\wsl.exe"),
+            "WSL"
         );
         assert_ne!(profile_icon("Command Prompt"), profile_icon("PowerShell"));
         assert_ne!(
