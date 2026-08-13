@@ -39,6 +39,16 @@ pub struct HintMatch {
     pub hint: Rc<Hint>,
 }
 
+impl HintMatch {
+    /// Identity used by the press/release hint latch. The action is allowed
+    /// only when the same visible match remains under the pointer; comparing
+    /// text and both endpoints prevents a repaint from activating a different
+    /// link that happens to reuse one screen position.
+    pub fn same_visible_match(&self, other: &Self) -> bool {
+        self.text == other.text && self.start == other.start && self.end == other.end
+    }
+}
+
 impl HintState {
     pub fn new(alphabet: String) -> Self {
         Self {
@@ -526,6 +536,34 @@ fn post_process_hyperlink_uri(uri: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn hint_match(text: &str, start_col: usize, end_col: usize) -> HintMatch {
+        HintMatch {
+            text: text.to_string(),
+            start: Pos::new(Line(0), Column(start_col)),
+            end: Pos::new(Line(0), Column(end_col)),
+            hint: Rc::new(Hint {
+                regex: None,
+                hyperlinks: true,
+                post_processing: false,
+                persist: false,
+                action: HintAction::Action {
+                    action: HintInternalAction::Open,
+                },
+                mouse: Default::default(),
+                binding: None,
+            }),
+        }
+    }
+
+    #[test]
+    fn click_latch_requires_the_exact_visible_hint() {
+        let latched = hint_match("https://automexia.dev", 4, 25);
+        assert!(latched.same_visible_match(&hint_match("https://automexia.dev", 4, 25)));
+        assert!(!latched.same_visible_match(&hint_match("https://example.com", 4, 25)));
+        assert!(!latched.same_visible_match(&hint_match("https://automexia.dev", 5, 25)));
+        assert!(!latched.same_visible_match(&hint_match("https://automexia.dev", 4, 26)));
+    }
     use rio_backend::config::hints::{HintAction, HintInternalAction};
 
     #[test]

@@ -87,106 +87,82 @@ const ORDER: u8 = 20;
 
 #[cfg(target_os = "macos")]
 const SHORTCUT_NEW_TAB: &str = "Cmd+T";
-#[cfg(target_os = "windows")]
-const SHORTCUT_NEW_TAB: &str = "Ctrl+T";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_NEW_TAB: &str = "Ctrl+T";
-#[cfg(target_os = "macos")]
-const SHORTCUT_NEW_LOCAL_TAB: &str = "Cmd+Shift+T";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_NEW_LOCAL_TAB: &str = "Ctrl+Shift+T";
+const SHORTCUT_NEW_TAB: &str = "Ctrl+Shift+T";
 #[cfg(target_os = "macos")]
-const SHORTCUT_CLOSE: &str = "Cmd+W";
-#[cfg(target_os = "windows")]
-const SHORTCUT_CLOSE: &str = "Ctrl+Shift+W";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_CLOSE: &str = "Ctrl+Shift+W";
+const SHORTCUT_NEW_LOCAL_TAB: &str = "Cmd+Alt+T";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_NEW_LOCAL_TAB: &str = "Ctrl+Alt+T";
+#[cfg(target_os = "macos")]
+const SHORTCUT_CLOSE_TAB: &str = "Cmd+Alt+W";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_CLOSE_TAB: &str = "Ctrl+Shift+W";
+#[cfg(target_os = "macos")]
+const SHORTCUT_CLOSE_SURFACE: &str = "Cmd+W";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_CLOSE_SURFACE: &str = "";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SPLIT_RIGHT: &str = "Cmd+D";
-#[cfg(target_os = "windows")]
-const SHORTCUT_SPLIT_RIGHT: &str = "Ctrl+Shift+R";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_SPLIT_RIGHT: &str = "Ctrl+Shift+R";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_SPLIT_RIGHT: &str = "Ctrl+Shift+O";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SPLIT_DOWN: &str = "Cmd+Shift+D";
-#[cfg(target_os = "windows")]
-const SHORTCUT_SPLIT_DOWN: &str = "Ctrl+Shift+D";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_SPLIT_DOWN: &str = "Ctrl+Shift+D";
-const SHORTCUT_CLONE_RIGHT: &str = "Ctrl+R";
-const SHORTCUT_CLONE_DOWN: &str = "Ctrl+D";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_SPLIT_DOWN: &str = "Ctrl+Shift+E";
+const SHORTCUT_CLONE_RIGHT: &str = "Ctrl+Alt+R";
+const SHORTCUT_CLONE_DOWN: &str = "Ctrl+Alt+D";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SETTINGS: &str = "Cmd+,";
-#[cfg(target_os = "windows")]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_SETTINGS: &str = "Ctrl+,";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_SETTINGS: &str = "Ctrl+Shift+,";
 #[cfg(target_os = "macos")]
 const SHORTCUT_NEW_WINDOW: &str = "Cmd+N";
-#[cfg(target_os = "windows")]
-const SHORTCUT_NEW_WINDOW: &str = "Ctrl+Shift+N";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_NEW_WINDOW: &str = "Ctrl+Shift+N";
 #[cfg(target_os = "macos")]
 const SHORTCUT_COPY: &str = "Cmd+C";
-#[cfg(target_os = "windows")]
-const SHORTCUT_COPY: &str = "Ctrl+Shift+C";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_COPY: &str = "Ctrl+Shift+C";
 #[cfg(target_os = "macos")]
 const SHORTCUT_PASTE: &str = "Cmd+V";
-#[cfg(target_os = "windows")]
-const SHORTCUT_PASTE: &str = "Ctrl+Shift+V";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_PASTE: &str = "Ctrl+Shift+V";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SEARCH: &str = "Cmd+F";
-#[cfg(target_os = "windows")]
-const SHORTCUT_SEARCH: &str = "Ctrl+Shift+F";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_SEARCH: &str = "Ctrl+Shift+F";
 #[cfg(target_os = "macos")]
 const SHORTCUT_FONT_UP: &str = "Cmd++";
-#[cfg(target_os = "windows")]
-const SHORTCUT_FONT_UP: &str = "Ctrl++";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_FONT_UP: &str = "Ctrl++";
 #[cfg(target_os = "macos")]
 const SHORTCUT_FONT_DOWN: &str = "Cmd+-";
-#[cfg(target_os = "windows")]
-const SHORTCUT_FONT_DOWN: &str = "Ctrl+-";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_FONT_DOWN: &str = "Ctrl+-";
 #[cfg(target_os = "macos")]
 const SHORTCUT_FONT_RESET: &str = "Cmd+0";
-#[cfg(target_os = "windows")]
-const SHORTCUT_FONT_RESET: &str = "Ctrl+0";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_FONT_RESET: &str = "Ctrl+0";
 #[cfg(target_os = "macos")]
 const SHORTCUT_VI_MODE: &str = "Alt+Shift+Space";
-#[cfg(target_os = "windows")]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_VI_MODE: &str = "Ctrl+Shift+Space";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_VI_MODE: &str = "Alt+Shift+Space";
 #[cfg(target_os = "macos")]
-const SHORTCUT_FULLSCREEN: &str = "Ctrl+Cmd+F";
-#[cfg(target_os = "windows")]
-const SHORTCUT_FULLSCREEN: &str = "F11";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_FULLSCREEN: &str = "";
+const SHORTCUT_FULLSCREEN: &str = "Cmd+Enter";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_FULLSCREEN: &str = "Ctrl+Enter";
 #[cfg(target_os = "macos")]
 const SHORTCUT_APPEARANCE: &str = "";
-#[cfg(target_os = "windows")]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_APPEARANCE: &str = "Alt+Shift+T";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_APPEARANCE: &str = "";
 #[cfg(target_os = "macos")]
-const SHORTCUT_CLEAR_HISTORY: &str = "Cmd+K";
-#[cfg(target_os = "windows")]
-const SHORTCUT_CLEAR_HISTORY: &str = "Ctrl+Shift+K";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_CLEAR_HISTORY: &str = "";
+const SHORTCUT_CLEAR_SCREEN: &str = "Cmd+K";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_CLEAR_SCREEN: &str = "Ctrl+Shift+K";
+#[cfg(target_os = "macos")]
+const SHORTCUT_QUIT: &str = "Cmd+Q";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_QUIT: &str = "Ctrl+Shift+Q";
 
 /// Actions that can be triggered from the command palette.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -215,7 +191,7 @@ pub enum PaletteAction {
     Paste,
     SearchForward,
     SearchBackward,
-    ClearHistory,
+    ClearScreen,
     CloseCurrentSplitOrTab,
     OpenMarket,
     /// Browse the family names of every registered font. Does NOT
@@ -367,7 +343,7 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             icon: CommandIcon::Search,
             accent: BRAND_BLUE,
         },
-        ClearHistory => RowPresentation {
+        ClearScreen => RowPresentation {
             icon: CommandIcon::History,
             accent: BRAND_AMBER,
         },
@@ -401,7 +377,7 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         title: "Close Tab",
-        shortcut: SHORTCUT_CLOSE,
+        shortcut: SHORTCUT_CLOSE_TAB,
         action: PaletteAction::TabClose,
     },
     Command {
@@ -451,7 +427,7 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         title: "Close Split or Tab",
-        shortcut: "",
+        shortcut: SHORTCUT_CLOSE_SURFACE,
         action: PaletteAction::CloseCurrentSplitOrTab,
     },
     Command {
@@ -515,9 +491,9 @@ const COMMANDS: &[Command] = &[
         action: PaletteAction::SearchBackward,
     },
     Command {
-        title: "Clear History",
-        shortcut: SHORTCUT_CLEAR_HISTORY,
-        action: PaletteAction::ClearHistory,
+        title: "Clear Screen and History",
+        shortcut: SHORTCUT_CLEAR_SCREEN,
+        action: PaletteAction::ClearScreen,
     },
     Command {
         title: "market",
@@ -531,7 +507,7 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         title: "Quit",
-        shortcut: "Cmd+Q",
+        shortcut: SHORTCUT_QUIT,
         action: PaletteAction::Quit,
     },
 ];
@@ -1956,8 +1932,8 @@ mod tests {
         #[cfg(not(target_os = "macos"))]
         {
             assert_eq!(new_window.shortcut, "Ctrl+Shift+N");
-            assert_eq!(window_tab.shortcut, "Ctrl+T");
-            assert_eq!(local_tab.shortcut, "Ctrl+Shift+T");
+            assert_eq!(window_tab.shortcut, "Ctrl+Shift+T");
+            assert_eq!(local_tab.shortcut, "Ctrl+Alt+T");
         }
     }
 
@@ -1980,8 +1956,8 @@ mod tests {
             .find(|command| command.action == PaletteAction::SplitDown)
             .expect("fresh split-down command should be present");
 
-        assert_eq!(clone_right.shortcut, "Ctrl+R");
-        assert_eq!(clone_down.shortcut, "Ctrl+D");
+        assert_eq!(clone_right.shortcut, "Ctrl+Alt+R");
+        assert_eq!(clone_down.shortcut, "Ctrl+Alt+D");
         assert_ne!(clone_right.action, split_right.action);
         assert_ne!(clone_down.action, split_down.action);
         assert_ne!(
@@ -1992,6 +1968,21 @@ mod tests {
             command_presentation(clone_down.action).icon,
             command_presentation(split_down.action).icon
         );
+    }
+
+    #[test]
+    fn visible_palette_shortcuts_are_unique() {
+        let mut shortcuts = std::collections::HashMap::new();
+        for command in COMMANDS
+            .iter()
+            .filter(|command| !command.shortcut.is_empty())
+        {
+            assert!(
+                shortcuts.insert(command.shortcut, command.title).is_none(),
+                "duplicate palette shortcut {}",
+                command.shortcut
+            );
+        }
     }
 
     #[test]

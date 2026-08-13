@@ -750,6 +750,18 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    pub fn reload_config(&mut self) {
+        self.event_proxy
+            .send_event(RioEvent::UpdateConfig, self.window_id);
+    }
+
+    #[inline]
+    pub fn close_window(&mut self) {
+        self.event_proxy
+            .send_event(RioEvent::CloseWindow, self.window_id);
+    }
+
+    #[inline]
     pub fn toggle_appearance_theme(&mut self) {
         self.event_proxy
             .send_event(RioEvent::ToggleAppearanceTheme, self.window_id);

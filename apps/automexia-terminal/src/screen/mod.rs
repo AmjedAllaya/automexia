@@ -20,7 +20,6 @@ use crate::context::{next_rich_text_id, process_open_url, ContextManager};
 use crate::crosswords::{
     grid::{Dimensions, Scroll},
     pos::{Column, Pos, Side},
-    square::Hyperlink,
     vi_mode::ViMotion,
     Mode,
 };
@@ -76,6 +75,63 @@ fn decode_native_test_hex(value: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
+#[cfg(any(test, feature = "native-gui-test-hooks"))]
+fn native_test_line_input(line: &str, win32_input: bool) -> Vec<u8> {
+    #[cfg(windows)]
+    if win32_input {
+        use windows_sys::Win32::System::Console::{
+            LEFT_ALT_PRESSED, LEFT_CTRL_PRESSED, SHIFT_PRESSED,
+        };
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+            MapVirtualKeyW, VkKeyScanW, MAPVK_VK_TO_VSC,
+        };
+
+        let mut bytes = Vec::with_capacity(line.len().saturating_mul(36) + 40);
+        for unicode in line.encode_utf16() {
+            // Use the active Windows keyboard layout so the test hook produces
+            // the same Vk/scan/modifier record as physical typing. Raw UTF-8
+            // mixed with DECSET 9001 records is not a valid ConsoleHost event
+            // stream and can leave PSReadLine waiting indefinitely.
+            let mapped = unsafe { VkKeyScanW(unicode) };
+            let (virtual_key, control_state) = if mapped == -1 {
+                (0_u16, 0_u32)
+            } else {
+                let mapped = mapped as u16;
+                let modifiers = (mapped >> 8) as u8;
+                let mut state = 0_u32;
+                if modifiers & 1 != 0 {
+                    state |= SHIFT_PRESSED;
+                }
+                if modifiers & 2 != 0 {
+                    state |= LEFT_CTRL_PRESSED;
+                }
+                if modifiers & 4 != 0 {
+                    state |= LEFT_ALT_PRESSED;
+                }
+                (mapped & 0xff, state)
+            };
+            let scan =
+                unsafe { MapVirtualKeyW(virtual_key as u32, MAPVK_VK_TO_VSC) } & 0xff;
+            bytes.extend_from_slice(
+                format!(
+                    "\x1b[{virtual_key};{scan};{unicode};1;{control_state};1_\
+                     \x1b[{virtual_key};{scan};0;0;{control_state};1_"
+                )
+                .as_bytes(),
+            );
+        }
+        // Enter uses VK_RETURN / scan 0x1c. Key-up carries no text, matching
+        // the normal winit Win32-input path.
+        bytes.extend_from_slice(b"\x1b[13;28;13;1;0;1_\x1b[13;28;0;0;0;1_");
+        return bytes;
+    }
+
+    let _ = win32_input;
+    let mut bytes = line.as_bytes().to_vec();
+    bytes.push(b'\r');
+    bytes
+}
+
 #[cfg(windows)]
 fn build_win32_key_sequence(key: &rio_window::event::KeyEvent) -> Option<Vec<u8>> {
     use rio_window::keyboard::NamedKey::{Alt, Control, Shift, Super};
@@ -122,6 +178,23 @@ fn encode_win32_key_sequence(
 /// Emit a renderer-neutral state snapshot for the opt-in native resize driver.
 /// The feature is absent from product builds, so normal rendering performs no
 /// filesystem access and exposes no test-only environment surface.
+#[cfg(feature = "native-gui-test-hooks")]
+fn publish_native_resize_snapshot(
+    path: &std::path::Path,
+    payload: &[u8],
+) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let mut staged = tempfile::NamedTempFile::new_in(parent)?;
+    staged.write_all(payload)?;
+    staged.flush()?;
+    staged
+        .persist(path)
+        .map(|_| ())
+        .map_err(|error| error.error)
+}
+
 #[cfg(feature = "native-gui-test-hooks")]
 fn write_native_resize_snapshot(
     content: &RenderableContent,
@@ -215,7 +288,10 @@ fn write_native_resize_snapshot(
         "panels": panels,
     });
 
-    if let Err(error) = std::fs::write(path, snapshot.to_string()) {
+    let payload = snapshot.to_string();
+    if let Err(error) =
+        publish_native_resize_snapshot(std::path::Path::new(&path), payload.as_bytes())
+    {
         tracing::warn!("could not write native resize snapshot: {error}");
     }
 }
@@ -1425,6 +1501,12 @@ impl Screen<'_> {
                     Act::WindowCreateNew => {
                         self.context_manager.create_new_window();
                     }
+                    Act::WindowClose => {
+                        self.context_manager.close_window();
+                    }
+                    Act::ReloadConfig => {
+                        self.context_manager.reload_config();
+                    }
                     Act::ToggleQuake => {
                         self.context_manager.toggle_quake();
                     }
@@ -1583,6 +1665,13 @@ impl Screen<'_> {
                         let mut terminal =
                             self.context_manager.current_mut().terminal.lock();
                         terminal.clear_saved_history();
+                        drop(terminal);
+                        self.mark_dirty();
+                    }
+                    Act::ClearScreen => {
+                        let mut terminal =
+                            self.context_manager.current_mut().terminal.lock();
+                        terminal.clear_screen_and_history();
                         drop(terminal);
                         self.mark_dirty();
                     }
@@ -2256,17 +2345,7 @@ impl Screen<'_> {
             .is_some();
 
         if !should_highlight {
-            let current = self.context_manager.current_mut();
-
-            // Clear any previous hint damage
-            if current.renderable_content.highlighted_hint.is_some() {
-                let mut terminal = current.terminal.lock();
-                let display_offset = terminal.display_offset();
-                terminal.update_selection_damage(None, display_offset);
-            }
-
-            current.renderable_content.highlighted_hint = None;
-            return had_highlight;
+            return self.clear_highlighted_hint();
         }
 
         let terminal = self.context_manager.current().terminal.lock();
@@ -2324,6 +2403,49 @@ impl Screen<'_> {
             current.renderable_content.highlighted_hint = None;
             had_highlight
         }
+    }
+
+    pub fn highlighted_hint(&self) -> Option<&crate::hints::HintMatch> {
+        self.context_manager
+            .current()
+            .renderable_content
+            .highlighted_hint
+            .as_ref()
+    }
+
+    /// Clear a hover highlight and explicitly damage its row so actions
+    /// such as Copy, which do not steal focus, repaint immediately.
+    pub fn clear_highlighted_hint(&mut self) -> bool {
+        let current = self.context_manager.current_mut();
+        let had_highlight = current.renderable_content.highlighted_hint.is_some();
+        if had_highlight {
+            let mut terminal = current.terminal.lock();
+            let display_offset = terminal.display_offset();
+            terminal.update_selection_damage(None, display_offset);
+            current
+                .renderable_content
+                .pending_update
+                .set_terminal_damage(rio_backend::event::TerminalDamage::Full);
+        }
+        current.renderable_content.highlighted_hint = None;
+        had_highlight
+    }
+
+    pub fn latched_hint_still_highlighted(
+        &self,
+        latched: &crate::hints::HintMatch,
+    ) -> bool {
+        self.highlighted_hint()
+            .is_some_and(|current| current.same_visible_match(latched))
+    }
+
+    pub fn open_latched_hint(
+        &mut self,
+        latched: crate::hints::HintMatch,
+        clipboard: &mut Clipboard,
+    ) {
+        self.clear_highlighted_hint();
+        self.execute_hint_action(&latched, clipboard);
     }
 
     /// Check if current modifiers match the required modifiers
@@ -2537,65 +2659,6 @@ impl Screen<'_> {
         }
 
         None
-    }
-
-    #[inline]
-    pub fn trigger_hyperlink(&self) -> bool {
-        // Check if any hyperlink hint configuration has the required modifiers active
-        let mut is_hyperlink_key_active = false;
-        for hint_config in &self.hints_config {
-            if hint_config.hyperlinks && self.modifiers_match(&hint_config.mouse.mods) {
-                is_hyperlink_key_active = true;
-                break;
-            }
-        }
-
-        if !is_hyperlink_key_active
-            || !self.context_manager.current().has_hyperlink_range()
-        {
-            return false;
-        }
-
-        // Look up the cell under the mouse and dispatch open_hyperlink
-        // if it carries an OSC 8 link.
-        let terminal = self.context_manager.current().terminal.lock();
-        let display_offset = terminal.display_offset();
-        let pos = self.mouse_position(display_offset);
-        let pos_hyperlink = terminal.cell_hyperlink(pos.row, pos.col);
-        drop(terminal);
-
-        if let Some(hyperlink) = pos_hyperlink {
-            self.open_hyperlink(hyperlink);
-            return true;
-        }
-
-        false
-    }
-
-    /// Trigger hint action at mouse position
-    #[inline]
-    pub fn trigger_hint(&mut self, clipboard: &mut Clipboard) -> bool {
-        // Take the highlighted hint
-        let hint_match = self
-            .context_manager
-            .current_mut()
-            .renderable_content
-            .highlighted_hint
-            .take();
-
-        if let Some(hint_match) = hint_match {
-            self.execute_hint_action(&hint_match, clipboard);
-            true
-        } else {
-            false
-        }
-    }
-
-    fn open_hyperlink(&self, hyperlink: Hyperlink) {
-        // Apply post-processing to remove trailing delimiters and handle uneven brackets
-        let processed_uri = post_process_hyperlink_uri(hyperlink.uri());
-
-        self.open_with_default_handler(&processed_uri);
     }
 
     /// Hand `target` to the platform's default handler.
@@ -4264,9 +4327,9 @@ impl Screen<'_> {
             PaletteAction::SearchBackward => {
                 self.start_search(Direction::Left);
             }
-            PaletteAction::ClearHistory => {
+            PaletteAction::ClearScreen => {
                 let mut terminal = self.context_manager.current_mut().terminal.lock();
-                terminal.clear_saved_history();
+                terminal.clear_screen_and_history();
             }
             PaletteAction::OpenMarket => {
                 // Handled by the router because it changes palette mode.
@@ -5135,8 +5198,8 @@ impl Screen<'_> {
                 let Some(line) = fields.next() else {
                     return;
                 };
-                let mut bytes = line.as_bytes().to_vec();
-                bytes.push(b'\r');
+                let win32_input = self.get_mode().contains(Mode::WIN32_INPUT);
+                let bytes = native_test_line_input(line, win32_input);
                 self.context_manager
                     .current_mut()
                     .messenger
@@ -5660,6 +5723,42 @@ mod tests {
         assert_eq!(decode_native_test_hex("03"), Some(vec![0x03]));
         assert_eq!(decode_native_test_hex("0"), None);
         assert_eq!(decode_native_test_hex("zz"), None);
+    }
+
+    #[test]
+    fn native_test_line_input_uses_the_active_terminal_protocol() {
+        assert_eq!(native_test_line_input("echo ok", false), b"echo ok\r");
+        #[cfg(windows)]
+        {
+            let native = native_test_line_input("echo ok", true);
+            assert!(native.starts_with(b"\x1b["));
+            assert!(native
+                .windows(b";101;1;".len())
+                .any(|part| part == b";101;1;"));
+            assert!(native.ends_with(b"\x1b[13;28;13;1;0;1_\x1b[13;28;0;0;0;1_"));
+            assert_eq!(
+                native_test_line_input("", true),
+                b"\x1b[13;28;13;1;0;1_\x1b[13;28;0;0;0;1_"
+            );
+        }
+    }
+
+    #[cfg(feature = "native-gui-test-hooks")]
+    #[test]
+    fn native_resize_snapshot_publication_replaces_only_complete_payloads() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("renderer.json");
+
+        publish_native_resize_snapshot(&path, br#"{"sequence":1}"#).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), br#"{"sequence":1}"#);
+
+        publish_native_resize_snapshot(&path, br#"{"sequence":279,"ready":true}"#)
+            .unwrap();
+        let payload = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&payload).unwrap(),
+            serde_json::json!({"sequence": 279, "ready": true})
+        );
     }
 
     #[cfg(windows)]

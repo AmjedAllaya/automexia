@@ -60,6 +60,8 @@ $previousControl = $env:AUTOMEXIA_NATIVE_TEST_CONTROL
 $previousConfigHome = $env:AUTOMEXIA_CONFIG_HOME
 $process = $null
 $window = [IntPtr]::Zero
+$lastSnapshot = $null
+$testStage = 'startup'
 
 function Read-AutomexiaSnapshot {
     param(
@@ -72,6 +74,7 @@ function Read-AutomexiaSnapshot {
         if (Test-Path -LiteralPath $snapshotPath -PathType Leaf) {
             try {
                 $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json
+                $script:lastSnapshot = $snapshot
                 if ([int64]$snapshot.sequence -gt $AfterSequence) {
                     return $snapshot
                 }
@@ -82,7 +85,18 @@ function Read-AutomexiaSnapshot {
         Start-Sleep -Milliseconds 20
     } while ([DateTime]::UtcNow -lt $deadline)
 
-    throw "Timed out waiting for an Automexia renderer snapshot after sequence $AfterSequence"
+    if ($null -ne $process) {
+        $process.Refresh()
+        Write-Host "Automexia process exited: $($process.HasExited)"
+    }
+    Write-Host "Native resize test stage: $script:testStage"
+    if ($null -ne $script:lastSnapshot) {
+        Write-Host ($script:lastSnapshot | ConvertTo-Json -Depth 8)
+    } elseif (Test-Path -LiteralPath $snapshotPath -PathType Leaf) {
+        Write-Host 'Last raw renderer snapshot:'
+        Write-Host (Get-Content -LiteralPath $snapshotPath -Raw)
+    }
+    throw "Timed out waiting for an Automexia renderer snapshot after sequence $AfterSequence during $script:testStage"
 }
 
 function Send-AutomexiaTestControl {
@@ -133,6 +147,7 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     # A native window can be drawable before PowerShell has emitted its first
     # prompt. Wait for the prompt without sending input so this test also proves
     # that startup metadata/path discovery is automatic rather than action-led.
+    $script:testStage = 'initial prompt'
     $initial = Read-AutomexiaSnapshot
     $promptDeadline = [DateTime]::UtcNow.AddSeconds(15)
     while (($null -eq $initial.latest_prompt_id -or
@@ -162,14 +177,26 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     # focus-sensitive synthetic keyboard automation.
     $historyToken = 'AMX_HISTORY_73491'
     $historyCommand = "Write-Output '$historyToken'"
-    Send-AutomexiaTestControl "write-line:history-seed:$historyCommand"
+    $historyControl = "write-line:history-seed:$historyCommand"
+    $script:testStage = 'history seed command'
+    Send-AutomexiaTestControl $historyControl
     $historyReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$initial.sequence)
+    $controlDeadline = [DateTime]::UtcNow.AddSeconds(3)
+    while ([string]$historyReady.last_control -ne $historyControl -and
+           [DateTime]::UtcNow -lt $controlDeadline) {
+        $historyReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyReady.sequence)
+    }
+    if ([string]$historyReady.last_control -ne $historyControl) {
+        Write-Host ($historyReady | ConvertTo-Json -Depth 8)
+        throw 'The native driver did not observe the history seed control input'
+    }
     $historyDeadline = [DateTime]::UtcNow.AddSeconds(10)
     while ([int64]$historyReady.latest_prompt_id -le [int64]$initial.latest_prompt_id -and
            [DateTime]::UtcNow -lt $historyDeadline) {
         $historyReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyReady.sequence)
     }
     if ([int64]$historyReady.latest_prompt_id -le [int64]$initial.latest_prompt_id) {
+        Write-Host ($historyReady | ConvertTo-Json -Depth 8)
         throw 'PowerShell did not complete the history seed command'
     }
 
@@ -178,6 +205,7 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     # transported as lossless KEY_EVENT_RECORD sequences rather than legacy
     # VT bytes. Up Arrow: VK_UP=38, scan=72, enhanced-key state=256.
     $upControl = 'write-hex:history-up:1b5b33383b37323b303b313b3235363b315f1b5b33383b37323b303b303b3235363b315f'
+    $script:testStage = 'Up Arrow recall'
     Send-AutomexiaTestControl $upControl
     $upRecall = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyReady.sequence)
     $upDeadline = [DateTime]::UtcNow.AddSeconds(3)
@@ -211,6 +239,7 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     # Cancel the recalled line, clear its old screen occurrence, then search by
     # a unique fragment. Seeing it afterward proves Ctrl+R produced a live
     # PSReadLine match instead of merely finding stale terminal output.
+    $script:testStage = 'cancel recalled history'
     Send-AutomexiaTestControl 'write-hex:history-cancel-up:03'
     $cancelled = Read-AutomexiaSnapshot -AfterSequence ([int64]$upRecall.sequence)
     $cancelDeadline = [DateTime]::UtcNow.AddSeconds(5)
@@ -218,6 +247,7 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
            [DateTime]::UtcNow -lt $cancelDeadline) {
         $cancelled = Read-AutomexiaSnapshot -AfterSequence ([int64]$cancelled.sequence)
     }
+    $script:testStage = 'clear history display'
     Send-AutomexiaTestControl 'write-line:history-clear:Clear-Host'
     $cleared = Read-AutomexiaSnapshot -AfterSequence ([int64]$cancelled.sequence)
     $clearDeadline = [DateTime]::UtcNow.AddSeconds(5)
@@ -232,6 +262,7 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     $searchHex = -join ($searchPayload | ForEach-Object { $_.ToString('x2') })
     $searchTimer = [Diagnostics.Stopwatch]::StartNew()
     $searchControl = "write-hex:history-search:$searchHex"
+    $script:testStage = 'Ctrl+R history search'
     Send-AutomexiaTestControl $searchControl
     $searchRecall = Read-AutomexiaSnapshot -AfterSequence ([int64]$cleared.sequence)
     $searchDeadline = [DateTime]::UtcNow.AddSeconds(3)
@@ -261,12 +292,14 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     if ($searchShellMilliseconds -gt 1500) {
         throw "Ctrl+R shell/VT search exceeded 1.5 seconds ($searchShellMilliseconds ms; $($searchTimer.ElapsedMilliseconds) ms including test-control delivery)"
     }
+    $script:testStage = 'cancel history search'
     Send-AutomexiaTestControl 'write-hex:history-cancel-search:03'
     $historyDone = Read-AutomexiaSnapshot -AfterSequence ([int64]$searchRecall.sequence)
 
     # Create a tab inside the selected pane through the same implementation
-    # path as Ctrl+Shift+T. It must own a new ConPTY/route while preserving the
+    # path as Ctrl+Alt+T. It must own a new ConPTY/route while preserving the
     # selected PowerShell launch intent and must not add another split panel.
+    $script:testStage = 'create pane-local tab'
     Send-AutomexiaTestControl 'local-tab:local-create'
     $localCreated = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyDone.sequence)
     $localDeadline = [DateTime]::UtcNow.AddSeconds(15)
@@ -280,7 +313,7 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     $localPanel = Get-ActiveAutomexiaPanel $localCreated
     if ([int]$localCreated.panel_count -ne 1 -or [int]$localPanel.local_tab_count -ne 2) {
         Write-Host ($localCreated | ConvertTo-Json -Depth 10)
-        throw 'Ctrl+Shift+T local-tab path did not create exactly one sibling in the selected pane'
+        throw 'Ctrl+Alt+T local-tab path did not create exactly one sibling in the selected pane'
     }
     $localRoutes = @($localPanel.local_tabs | ForEach-Object { [int64]$_.route_id } | Sort-Object -Unique)
     $localPids = @($localPanel.local_tabs | ForEach-Object { [int64]$_.shell_pid } | Sort-Object -Unique)
@@ -299,6 +332,7 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     # Return to the source and close the inactive sibling by index. This is the
     # native regression for the old cascade-close failure: the active source
     # route/PID and the window must survive unchanged.
+    $script:testStage = 'select pane-local source'
     Send-AutomexiaTestControl 'select-local:local-source:0'
     $localSource = Read-AutomexiaSnapshot -AfterSequence ([int64]$localCreated.sequence)
     $localSourceDeadline = [DateTime]::UtcNow.AddSeconds(10)
@@ -306,6 +340,7 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
            [int64]$initialPanel.route_id -and [DateTime]::UtcNow -lt $localSourceDeadline) {
         $localSource = Read-AutomexiaSnapshot -AfterSequence ([int64]$localSource.sequence)
     }
+    $script:testStage = 'close inactive pane-local tab'
     Send-AutomexiaTestControl 'close-local:local-close-inactive:1'
     $localClosed = Read-AutomexiaSnapshot -AfterSequence ([int64]$localSource.sequence)
     $localCloseDeadline = [DateTime]::UtcNow.AddSeconds(10)
@@ -324,9 +359,11 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     }
     $historyDone = $localClosed
 
-    # Deterministic binding tests prove bare Ctrl+R clones. This feature-gated,
+    # Deterministic binding tests prove Ctrl+Alt+R clones while bare Ctrl+R
+    # remains shell-owned. This feature-gated,
     # renderer-neutral control invokes the same clone-right action path without
     # relying on focus-sensitive synthetic keyboard input.
+    $script:testStage = 'clone split right'
     Send-AutomexiaTestControl 'clone-right:1'
     $rightClone = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyDone.sequence)
     $cloneDeadline = [DateTime]::UtcNow.AddSeconds(15)
@@ -359,6 +396,7 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     # the clone, then return to the source with the unchanged Shift+F6 split
     # navigation shortcut and prove the marker is absent there.
     $marker = 'AUTOMEXIA_CLONE_ONLY_73491'
+    $script:testStage = 'write to cloned split'
     Send-AutomexiaTestControl "write-line:2:Write-Output $marker"
     $cloneOutput = Read-AutomexiaSnapshot -AfterSequence ([int64]$rightClone.sequence)
     $outputDeadline = [DateTime]::UtcNow.AddSeconds(10)
@@ -370,6 +408,7 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         throw 'The cloned PowerShell PTY did not receive its independent input'
     }
 
+    $script:testStage = 'return to source split'
     Send-AutomexiaTestControl 'select-prev:3'
     $sourceAgain = Read-AutomexiaSnapshot -AfterSequence ([int64]$cloneOutput.sequence)
     $sourceDeadline = [DateTime]::UtcNow.AddSeconds(10)
@@ -387,6 +426,7 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
 
     # Add a lower independent clone before the storm so layout, prompt, PTY,
     # and session isolation are exercised together under rapid resizing.
+    $script:testStage = 'clone split down'
     Send-AutomexiaTestControl 'clone-down:4'
     $lowerClone = Read-AutomexiaSnapshot -AfterSequence ([int64]$sourceAgain.sequence)
     $lowerDeadline = [DateTime]::UtcNow.AddSeconds(15)
@@ -417,6 +457,7 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         @(280, 200),
         @(1280, 720)
     )
+    $script:testStage = 'resize storm'
     for ($iteration = 0; $iteration -lt 240; $iteration++) {
         $size = $sizes[$iteration % $sizes.Count]
         if (-not [AutomexiaResizeDriver]::MoveWindow(
@@ -447,6 +488,7 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
         throw "Final MoveWindow failed with Win32 error $code"
     }
+    $script:testStage = 'final restored size'
     $final = Read-AutomexiaSnapshot -AfterSequence ([int64]$storm.sequence)
     $deadline = [DateTime]::UtcNow.AddSeconds(10)
     while (([double]$final.window_width -lt 1200 -or
