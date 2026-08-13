@@ -553,7 +553,7 @@ impl Renderer {
             assistant: assistant::AssistantOverlay::default(),
             confirm_quit: confirm_quit::ConfirmQuit::default(),
             scrollbar: scrollbar::Scrollbar::new(config.enable_scroll_bar),
-            session_footer: session_footer::SessionFooter::default(),
+            session_footer: session_footer::SessionFooter,
             is_game_mode_enabled: config.renderer.strategy.is_game(),
             custom_mouse_cursor: config.effects.custom_mouse_cursor,
             trail_cursor_enabled: config.effects.trail_cursor,

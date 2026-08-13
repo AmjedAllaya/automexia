@@ -1443,24 +1443,22 @@ fn verify_architecture() -> TaskResult {
     let palette = read(&app.join("src/renderer/command_palette.rs"))?;
     require(
         bindings.contains(
-            r#""r", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight"#,
+            r#""r", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight"#,
         ) && bindings.contains(
-            r#""d", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown"#,
+            r#""d", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown"#,
         ) && bindings.contains(
-            r#""o", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight"#,
+            r#""r", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight"#,
         ) && bindings.contains(
-            r#""e", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown"#,
+            r#""d", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown"#,
+        ) && bindings.contains(
+            r#""r", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x12".into())"#,
+        ) && bindings.contains(
+            r#""d", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x04".into())"#,
         ) && palette.contains("Clone Active Session Right")
             && palette.contains("Clone Active Session Down")
             && palette.contains("shortcut: SHORTCUT_CLONE_RIGHT")
-            && palette.contains("shortcut: SHORTCUT_CLONE_DOWN")
-            && !bindings.contains(
-                r#""r", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight"#,
-            )
-            && !bindings.contains(
-                r#""d", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown"#,
-            ),
-        "Ghostty-compatible fresh splits, shell-owned controls, and Automexia clone extensions are not distinct",
+            && palette.contains("shortcut: SHORTCUT_CLONE_DOWN"),
+        "Automexia classic fresh-split, clone, and explicit shell-control shortcuts are not distinct",
     )?;
     let context_renderer = read(&app.join("src/renderer/devops_status.rs"))?;
     require(
@@ -1494,26 +1492,52 @@ fn verify_architecture() -> TaskResult {
     let island_renderer = read(&app.join("src/renderer/island.rs"))?;
     let screen = read(&app.join("src/screen/mod.rs"))?;
     require(
-        island_renderer.contains("const UTILITY_ACTIONS: [ChromeAction; 4]")
-            && island_renderer.contains("ChromeAction::Search")
-            && island_renderer.contains("ChromeAction::SplitRight")
-            && island_renderer.contains("ChromeAction::SplitDown")
-            && island_renderer.contains("ChromeAction::NextPane")
-            && island_renderer.contains(
-                "Option<[UtilityActionGeometry; UTILITY_ACTIONS.len()]>",
-            )
+        !island_renderer.contains("UTILITY_ACTIONS")
+            && !island_renderer.contains("UtilityActionGeometry")
+            && !island_renderer.contains("ChromeAction::Search")
+            && !island_renderer.contains("ChromeAction::SplitRight")
+            && !island_renderer.contains("ChromeAction::SplitDown")
+            && !island_renderer.contains("ChromeAction::NextPane")
+            && island_renderer
+                .contains("empty_secondary_chrome_has_no_workspace_action_hit_targets")
             && context_renderer.contains("pub fn refresh_session_context")
             && !context_renderer.contains("pub fn render_context_bar"),
-        "global session status was not replaced by the allocation-free workspace action rail",
+        "global session status or the removed workspace action shelf still leaks into chrome",
     )?;
     require(
-        screen.contains("ChromeAction::Search => self.start_search")
-            && screen.contains("ChromeAction::SplitRight => self.split_right()")
-            && screen.contains("ChromeAction::SplitDown => self.split_down()")
-            && screen.contains(
-                "ChromeAction::NextPane => self.context_manager.select_next_split()",
-            ),
-        "workspace action rail does not route every visible action to screen behavior",
+        !screen.contains("ChromeAction::Search =>")
+            && !screen.contains("ChromeAction::SplitRight =>")
+            && !screen.contains("ChromeAction::SplitDown =>")
+            && !screen.contains("ChromeAction::NextPane =>")
+            && screen.contains("Act::SearchForward =>")
+            && screen.contains("Act::SplitRight =>")
+            && screen.contains("Act::SplitDown =>")
+            && screen.contains("PaletteAction::SearchForward =>")
+            && screen.contains("PaletteAction::SplitRight =>")
+            && screen.contains("PaletteAction::SplitDown =>"),
+        "removed workspace buttons leaked back into screen routing or their commands became unreachable",
+    )?;
+    let session_footer = read(&app.join("src/renderer/session_footer.rs"))?;
+    let router = read(&app.join("src/router/mod.rs"))?;
+    require(
+        !session_footer.contains("SessionFooterAction")
+            && !session_footer.contains("draw_action_surface")
+            && !session_footer.contains("draw_search_icon")
+            && !session_footer.contains("draw_live_icon")
+            && session_footer.contains("Some(SessionFooterHit { route_id })")
+            && session_footer.contains("footer_is_a_passive_status_surface_without_action_regions")
+            && session_footer.contains("footer_preserves_vertical_chrome_origin_and_absorbs_outer_horizontal_margins")
+            && session_footer.contains("adjacent_split_footers_tile_the_split_seam_without_a_gap")
+            && !session_footer.contains("FOOTER_INSET_X")
+            && !session_footer.contains("FOOTER_INSET_Y")
+            && session_footer.contains("\"UTF-8\"")
+            && session_footer.contains("line_ending_for_shell")
+            && session_footer.contains("current_clock_label")
+            && router.contains("route.window.screen.context_manager.update_titles();")
+            && router.contains("route.request_redraw();")
+            && !screen.contains("session_footer_action_hovered")
+            && !screen.contains("SessionFooterAction"),
+        "pane footer must remain passive, useful, and live without visible or hidden action controls",
     )?;
     let powershell_view =
         read(&root().join("shell-integration/powershell/automexia.format.ps1xml"))?;

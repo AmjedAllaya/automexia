@@ -446,6 +446,7 @@ impl Router<'_> {
         for route in self.routes.values_mut() {
             if route.window.is_focused {
                 route.window.screen.context_manager.update_titles();
+                route.request_redraw();
             }
         }
     }

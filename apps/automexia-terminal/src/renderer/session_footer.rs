@@ -8,24 +8,12 @@ use crate::context::ContextManager;
 use crate::layout::pane_footer_reserved_height;
 use rio_backend::event::EventListener;
 use rio_backend::sugarloaf::text::DrawOpts;
+use rio_backend::sugarloaf::Attributes;
 use rio_backend::sugarloaf::Sugarloaf;
-
-const FOOTER_INSET_X: f32 = 6.0;
-const FOOTER_INSET_Y: f32 = 3.0;
-const FOOTER_GAP: f32 = 6.0;
-const ACTION_ICON_WIDTH: f32 = 32.0;
-const ACTION_LABEL_WIDTH: f32 = 74.0;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SessionFooterAction {
-    JumpToLive,
-    Search,
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SessionFooterHit {
     pub route_id: usize,
-    pub action: Option<SessionFooterAction>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -50,15 +38,20 @@ impl FooterRect {
 struct FooterGeometry {
     outer: FooterRect,
     surface: FooterRect,
-    live: Option<FooterRect>,
-    search: Option<FooterRect>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct FooterFrame {
+    viewport_width: f32,
+    top: f32,
+    right: f32,
+    left: f32,
 }
 
 fn footer_geometry(
     panel_rect: [f32; 4],
-    margin: (f32, f32),
+    frame: FooterFrame,
     scale: f32,
-    is_scrolled: bool,
 ) -> Option<FooterGeometry> {
     let scale = if scale.is_finite() && scale > f32::EPSILON {
         scale
@@ -70,82 +63,42 @@ fn footer_geometry(
         return None;
     }
 
+    let content_width =
+        (frame.viewport_width - frame.left.max(0.0) - frame.right.max(0.0)).max(0.0);
+    let panel_right = panel_rect[0] + panel_rect[2];
+    let touches_left = panel_rect[0] <= 0.5;
+    let touches_right = (panel_right - content_width).abs() <= 0.5;
+    let mut x = panel_rect[0] + frame.left;
+    let mut width = panel_rect[2].max(0.0);
+    if touches_left {
+        x = 0.0;
+        width += frame.left.max(0.0);
+    }
+    if touches_right {
+        width += frame.right.max(0.0);
+    }
+
     let outer = FooterRect {
-        x: (panel_rect[0] + margin.0) / scale,
-        y: (panel_rect[1] + margin.1 + panel_rect[3] - reserved) / scale,
-        width: panel_rect[2].max(0.0) / scale,
+        x: x / scale,
+        // Panel rectangles are relative to Taffy's content root. Preserve the
+        // root's vertical screen origin so the footer remains attached to the
+        // bottom of the visible pane beneath application chrome.
+        y: (frame.top + panel_rect[1] + panel_rect[3] - reserved) / scale,
+        width: width / scale,
         height: reserved / scale,
     };
-    let surface = FooterRect {
-        x: outer.x + FOOTER_INSET_X,
-        y: outer.y + FOOTER_INSET_Y,
-        width: (outer.width - FOOTER_INSET_X * 2.0).max(0.0),
-        height: (outer.height - FOOTER_INSET_Y * 2.0).max(0.0),
-    };
+    // The footer is pane chrome, not terminal content. Horizontal outer insets
+    // are absorbed by the first/last pane, while the vertical root offset is
+    // retained. Adjacent split footers therefore meet at the exact split seam.
+    let surface = outer;
 
-    let button_height = (surface.height - 4.0).max(1.0);
-    let button_y = surface.y + 2.0;
-    let labeled = surface.width >= 500.0;
-    let search_width = if labeled {
-        ACTION_LABEL_WIDTH
-    } else {
-        ACTION_ICON_WIDTH
-    };
-    let live_width = if labeled {
-        if is_scrolled {
-            112.0
-        } else {
-            70.0
-        }
-    } else {
-        ACTION_ICON_WIDTH
-    };
-
-    // At pathological widths the footer remains a focusable pane surface but
-    // sheds buttons before they can overlap the session identity.
-    let search = (surface.width >= 152.0).then_some(FooterRect {
-        x: surface.x + surface.width - search_width - 2.0,
-        y: button_y,
-        width: search_width,
-        height: button_height,
-    });
-    let live = search.and_then(|search| {
-        (surface.width >= 216.0).then_some(FooterRect {
-            x: search.x - FOOTER_GAP - live_width,
-            y: button_y,
-            width: live_width,
-            height: button_height,
-        })
-    });
-
-    Some(FooterGeometry {
-        outer,
-        surface,
-        live,
-        search,
-    })
+    Some(FooterGeometry { outer, surface })
 }
 
 #[derive(Default)]
-pub struct SessionFooter {
-    hovered: Option<(usize, SessionFooterAction)>,
-}
+pub struct SessionFooter;
 
 impl SessionFooter {
-    #[inline]
-    pub fn set_hovered(&mut self, hovered: Option<(usize, SessionFooterAction)>) -> bool {
-        if self.hovered == hovered {
-            return false;
-        }
-        self.hovered = hovered;
-        true
-    }
-
-    #[inline]
-    pub fn hovered_action(&self) -> Option<SessionFooterAction> {
-        self.hovered.map(|(_, action)| action)
-    }
-
     pub fn render<T>(
         &self,
         sugarloaf: &mut Sugarloaf,
@@ -156,9 +109,15 @@ impl SessionFooter {
     {
         let scale = sugarloaf.scale_factor().max(f32::EPSILON);
         let grid = context_manager.current_grid();
-        let margin = (grid.scaled_margin.left, grid.scaled_margin.top);
+        let frame = FooterFrame {
+            viewport_width: grid.width,
+            top: grid.scaled_margin.top,
+            right: grid.scaled_margin.right,
+            left: grid.scaled_margin.left,
+        };
         let ordered = grid.get_ordered_keys();
         let pane_count = ordered.len();
+        let clock = current_clock_label();
 
         for (pane_index, key) in ordered.into_iter().enumerate() {
             let Some(item) = grid.contexts().get(&key) else {
@@ -166,14 +125,11 @@ impl SessionFooter {
             };
             let context = item.context();
             let rc = &context.renderable_content;
-            let Some(geometry) =
-                footer_geometry(item.layout_rect, margin, scale, rc.display_offset > 0)
-            else {
+            let Some(geometry) = footer_geometry(item.layout_rect, frame, scale) else {
                 continue;
             };
             let is_active = key == grid.current;
             let state = FooterRenderState {
-                route_id: context.route_id,
                 pane_index: pane_index + 1,
                 pane_count,
                 local_tab_index: item.active_tab_index() + 1,
@@ -182,17 +138,17 @@ impl SessionFooter {
                 lines: context.dimension.lines,
                 display_offset: rc.display_offset,
                 has_selection: rc.selection_range.is_some(),
-                shell_integrated: rc.shell_integration,
+                line_ending: line_ending_for_shell(rc.shell_name.as_deref()),
+                clock: &clock,
                 is_active,
             };
-            draw_footer(sugarloaf, geometry, state, background, self.hovered);
+            draw_footer(sugarloaf, geometry, state, background);
         }
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-struct FooterRenderState {
-    route_id: usize,
+struct FooterRenderState<'a> {
     pane_index: usize,
     pane_count: usize,
     local_tab_index: usize,
@@ -201,7 +157,8 @@ struct FooterRenderState {
     lines: usize,
     display_offset: usize,
     has_selection: bool,
-    shell_integrated: bool,
+    line_ending: &'static str,
+    clock: &'a str,
     is_active: bool,
 }
 
@@ -215,48 +172,33 @@ where
     T: EventListener + Clone + Send + 'static,
 {
     let grid = context_manager.current_grid();
-    let margin = (grid.scaled_margin.left, grid.scaled_margin.top);
+    let frame = FooterFrame {
+        viewport_width: grid.width,
+        top: grid.scaled_margin.top,
+        right: grid.scaled_margin.right,
+        left: grid.scaled_margin.left,
+    };
     for key in grid.get_ordered_keys() {
         let item = grid.contexts().get(&key)?;
         let context = item.context();
-        let scrolled = context.renderable_content.display_offset > 0;
-        let Some(geometry) = footer_geometry(item.layout_rect, margin, scale, scrolled)
-        else {
+        let Some(geometry) = footer_geometry(item.layout_rect, frame, scale) else {
             continue;
         };
         if !geometry.outer.contains(x, y) {
             continue;
         }
-        let action = action_at(geometry, scrolled, x, y);
         return Some(SessionFooterHit {
             route_id: context.route_id,
-            action,
         });
     }
     None
 }
 
-fn action_at(
-    geometry: FooterGeometry,
-    scrolled: bool,
-    x: f32,
-    y: f32,
-) -> Option<SessionFooterAction> {
-    if geometry.search.is_some_and(|rect| rect.contains(x, y)) {
-        Some(SessionFooterAction::Search)
-    } else if scrolled && geometry.live.is_some_and(|rect| rect.contains(x, y)) {
-        Some(SessionFooterAction::JumpToLive)
-    } else {
-        None
-    }
-}
-
 fn draw_footer(
     sugarloaf: &mut Sugarloaf,
     geometry: FooterGeometry,
-    state: FooterRenderState,
+    state: FooterRenderState<'_>,
     background: [f32; 4],
-    hovered: Option<(usize, SessionFooterAction)>,
 ) {
     let outline = if state.is_active {
         [0.05, 0.62, 0.88, 0.72]
@@ -264,299 +206,333 @@ fn draw_footer(
         over(background, [0.10, 0.20, 0.28, 0.58])
     };
     let fill = over(background, [0.008, 0.035, 0.058, 0.95]);
-    sugarloaf.rounded_rect(
+    sugarloaf.rect(
         None,
         geometry.surface.x,
         geometry.surface.y,
         geometry.surface.width,
         geometry.surface.height,
-        outline,
-        0.03,
-        6.0,
+        fill,
+        0.0,
         27,
     );
-    sugarloaf.rounded_rect(
-        None,
-        geometry.surface.x + 1.0,
-        geometry.surface.y + 1.0,
-        (geometry.surface.width - 2.0).max(0.0),
-        (geometry.surface.height - 2.0).max(0.0),
-        fill,
-        0.03,
-        5.0,
+    sugarloaf.line(
+        geometry.surface.x,
+        geometry.surface.y,
+        geometry.surface.x + geometry.surface.width,
+        geometry.surface.y,
+        if state.is_active { 1.4 } else { 1.0 },
+        0.0,
+        outline,
         28,
     );
+    if state.pane_count > 1 && state.is_active {
+        let bottom = geometry.surface.y + geometry.surface.height;
+        sugarloaf.line(
+            geometry.surface.x,
+            geometry.surface.y,
+            geometry.surface.x,
+            bottom,
+            1.2,
+            0.0,
+            outline,
+            28,
+        );
+        sugarloaf.line(
+            geometry.surface.x + geometry.surface.width,
+            geometry.surface.y,
+            geometry.surface.x + geometry.surface.width,
+            bottom,
+            1.2,
+            0.0,
+            outline,
+            28,
+        );
+    }
 
-    let accent = if state.is_active {
-        [0.10, 0.82, 1.0, 1.0]
-    } else {
-        [0.34, 0.49, 0.60, 0.88]
-    };
     let center_y = geometry.surface.y + geometry.surface.height * 0.5;
-    sugarloaf.rounded_rect(
-        None,
-        geometry.surface.x + 10.0,
-        center_y - 3.0,
-        6.0,
-        6.0,
-        accent,
-        0.02,
-        4.0,
-        30,
-    );
-
-    let compact = geometry.surface.width < 500.0;
-    let mut text_x = geometry.surface.x + 23.0;
-    let text_y = center_y - 6.5;
-    let primary = DrawOpts {
-        font_size: 12.5,
+    let compact = geometry.surface.width < 300.0;
+    let value_font_size = if compact { 10.5 } else { 12.0 };
+    let quiet_font_size = if compact { 10.0 } else { 11.5 };
+    let horizontal_padding = if compact { 7.0 } else { 12.0 };
+    let text_y = center_y - value_font_size * 0.5 - 0.5;
+    let value_opts = DrawOpts {
+        font_size: value_font_size,
         color: if state.is_active {
-            [183, 231, 255, 255]
+            [190, 210, 224, 255]
         } else {
-            [117, 146, 166, 235]
+            [126, 147, 164, 220]
         },
-        bold: true,
         ..DrawOpts::default()
     };
-    let pane_label = if compact {
-        format!("P{}/{}", state.pane_index, state.pane_count)
+    let separator = if state.is_active {
+        [0.22, 0.34, 0.43, 0.72]
     } else {
-        format!("PANE {}/{}", state.pane_index, state.pane_count)
+        [0.15, 0.24, 0.31, 0.52]
     };
-    sugarloaf
-        .text_mut()
-        .draw(text_x, text_y, &pane_label, &primary);
-    text_x += if compact { 48.0 } else { 82.0 };
+    let min_x = geometry.surface.x + horizontal_padding;
+    let mut right_x = geometry.surface.x + geometry.surface.width - horizontal_padding;
+    let mut has_status = draw_right_status(
+        sugarloaf,
+        &mut right_x,
+        min_x,
+        text_y,
+        center_y,
+        state.clock,
+        value_opts,
+        separator,
+        false,
+    );
+    let grid = format!("{}x{}", state.columns, state.lines);
+    if draw_right_status(
+        sugarloaf,
+        &mut right_x,
+        min_x,
+        text_y,
+        center_y,
+        &grid,
+        value_opts,
+        separator,
+        has_status,
+    ) {
+        has_status = true;
+    }
+    if draw_right_status(
+        sugarloaf,
+        &mut right_x,
+        min_x,
+        text_y,
+        center_y,
+        state.line_ending,
+        value_opts,
+        separator,
+        has_status,
+    ) {
+        has_status = true;
+    }
+    let _ = draw_right_status(
+        sugarloaf,
+        &mut right_x,
+        min_x,
+        text_y,
+        center_y,
+        "UTF-8",
+        value_opts,
+        separator,
+        has_status,
+    );
 
-    let secondary = DrawOpts {
-        font_size: 12.0,
-        color: [119, 153, 177, if state.is_active { 245 } else { 190 }],
-        bold: true,
+    let mut left_x = geometry.surface.x + horizontal_padding;
+    let left_limit = right_x - 12.0;
+    let quiet_opts = DrawOpts {
+        font_size: quiet_font_size,
+        color: [105, 132, 151, if state.is_active { 235 } else { 185 }],
         ..DrawOpts::default()
     };
-    let action_start = geometry
-        .live
-        .or(geometry.search)
-        .map_or(geometry.surface.x + geometry.surface.width, |rect| rect.x);
-
-    if state.local_tab_count > 1 && action_start - text_x >= 76.0 {
-        let label = format!("TAB {}/{}", state.local_tab_index, state.local_tab_count);
-        sugarloaf
-            .text_mut()
-            .draw(text_x, text_y, &label, &secondary);
-        text_x += 76.0;
-    }
-    if geometry.surface.width >= 560.0 && action_start - text_x >= 82.0 {
-        let label = format!("{} × {}", state.columns, state.lines);
-        sugarloaf
-            .text_mut()
-            .draw(text_x, text_y, &label, &secondary);
-        text_x += 84.0;
-    }
-    if state.has_selection && action_start - text_x >= 92.0 {
-        let selected = DrawOpts {
-            color: [255, 208, 96, 255],
-            ..secondary
-        };
-        sugarloaf
-            .text_mut()
-            .draw(text_x, text_y, "SELECTED", &selected);
-        text_x += 88.0;
-    }
-    if geometry.surface.width >= 780.0 && action_start - text_x >= 96.0 {
-        let integration = if state.shell_integrated {
-            "ENRICHED"
-        } else {
-            "BASIC PTY"
-        };
-        sugarloaf
-            .text_mut()
-            .draw(text_x, text_y, integration, &secondary);
-    }
-
-    if let Some(rect) = geometry.live {
-        let action = SessionFooterAction::JumpToLive;
-        let is_hovered = hovered == Some((state.route_id, action));
-        let is_scrolled = state.display_offset > 0;
-        draw_action_surface(
+    if state.pane_count > 1 {
+        let pane = format!("PANE {}/{}", state.pane_index, state.pane_count);
+        let _ = draw_left_status(
             sugarloaf,
-            rect,
-            if is_scrolled {
-                [1.0, 0.70, 0.24, 1.0]
-            } else {
-                [0.28, 0.86, 0.56, 1.0]
-            },
-            is_hovered && is_scrolled,
+            &mut left_x,
+            left_limit,
+            text_y,
+            &pane,
+            quiet_opts,
         );
-        draw_live_icon(sugarloaf, rect, is_scrolled);
-        if rect.width > ACTION_ICON_WIDTH {
-            let label = if is_scrolled {
-                format!("HISTORY +{}", state.display_offset)
-            } else {
-                "LIVE".to_owned()
-            };
-            let opts = DrawOpts {
-                font_size: 11.5,
-                color: if is_scrolled {
-                    [255, 204, 112, 255]
-                } else {
-                    [145, 240, 190, 255]
-                },
-                bold: true,
-                ..DrawOpts::default()
-            };
-            sugarloaf.text_mut().draw(
-                rect.x + 28.0,
-                rect.y + (rect.height - 11.5) * 0.5 - 1.0,
-                &label,
-                &opts,
-            );
-        }
     }
-
-    if let Some(rect) = geometry.search {
-        let action = SessionFooterAction::Search;
-        let is_hovered = hovered == Some((state.route_id, action));
-        draw_action_surface(sugarloaf, rect, [0.18, 0.72, 1.0, 1.0], is_hovered);
-        draw_search_icon(sugarloaf, rect);
-        if rect.width > ACTION_ICON_WIDTH {
-            let opts = DrawOpts {
-                font_size: 11.5,
-                color: [172, 224, 255, 255],
-                bold: true,
-                ..DrawOpts::default()
-            };
-            sugarloaf.text_mut().draw(
-                rect.x + 29.0,
-                rect.y + (rect.height - 11.5) * 0.5 - 1.0,
-                "FIND",
-                &opts,
-            );
-        }
+    if state.local_tab_count > 1 {
+        let tab = format!("TAB {}/{}", state.local_tab_index, state.local_tab_count);
+        let _ = draw_left_status(
+            sugarloaf,
+            &mut left_x,
+            left_limit,
+            text_y,
+            &tab,
+            quiet_opts,
+        );
+    }
+    if state.display_offset > 0 {
+        let history_opts = DrawOpts {
+            color: [235, 181, 92, 255],
+            ..quiet_opts
+        };
+        let history = format!("HISTORY +{}", state.display_offset);
+        let _ = draw_left_status(
+            sugarloaf,
+            &mut left_x,
+            left_limit,
+            text_y,
+            &history,
+            history_opts,
+        );
+    } else if state.has_selection {
+        let selection_opts = DrawOpts {
+            color: [235, 181, 92, 255],
+            ..quiet_opts
+        };
+        let _ = draw_left_status(
+            sugarloaf,
+            &mut left_x,
+            left_limit,
+            text_y,
+            "SELECTED",
+            selection_opts,
+        );
     }
 }
 
-fn draw_action_surface(
+fn status_text_width(sugarloaf: &mut Sugarloaf, label: &str, font_size: f32) -> f32 {
+    label
+        .chars()
+        .map(|character| {
+            sugarloaf.char_advance(character, Attributes::default(), font_size)
+        })
+        .sum()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_right_status(
     sugarloaf: &mut Sugarloaf,
-    rect: FooterRect,
-    accent: [f32; 4],
-    hovered: bool,
-) {
-    let outline = if hovered {
-        accent
-    } else {
-        [accent[0], accent[1], accent[2], 0.30]
-    };
-    let fill = if hovered {
-        [accent[0] * 0.12, accent[1] * 0.12, accent[2] * 0.12, 0.98]
-    } else {
-        [0.012, 0.065, 0.105, 0.86]
-    };
-    sugarloaf.rounded_rect(
-        None,
-        rect.x,
-        rect.y,
-        rect.width,
-        rect.height,
-        outline,
-        0.025,
-        5.0,
-        29,
-    );
-    sugarloaf.rounded_rect(
-        None,
-        rect.x + 1.0,
-        rect.y + 1.0,
-        (rect.width - 2.0).max(0.0),
-        (rect.height - 2.0).max(0.0),
-        fill,
-        0.025,
-        4.0,
-        30,
-    );
-}
-
-fn draw_search_icon(sugarloaf: &mut Sugarloaf, rect: FooterRect) {
-    let color = [0.18, 0.72, 1.0, 1.0];
-    let x = rect.x + 9.0;
-    let y = rect.y + (rect.height - 12.0) * 0.5;
-    sugarloaf.rounded_rect(None, x, y, 8.0, 8.0, color, 0.02, 5.0, 31);
-    sugarloaf.rounded_rect(
-        None,
-        x + 2.0,
-        y + 2.0,
-        4.0,
-        4.0,
-        [0.01, 0.07, 0.11, 1.0],
-        0.02,
-        3.0,
-        32,
-    );
-    sugarloaf.line(x + 6.5, y + 6.5, x + 11.0, y + 11.0, 1.5, 0.0, color, 32);
-}
-
-fn draw_live_icon(sugarloaf: &mut Sugarloaf, rect: FooterRect, scrolled: bool) {
-    let color = if scrolled {
-        [1.0, 0.70, 0.24, 1.0]
-    } else {
-        [0.28, 0.86, 0.56, 1.0]
-    };
-    let x = rect.x + 9.0;
-    let center_y = rect.y + rect.height * 0.5;
-    if scrolled {
-        sugarloaf.line(
-            x + 5.0,
-            center_y - 5.0,
-            x + 5.0,
-            center_y + 4.0,
-            1.6,
-            0.0,
-            color,
-            32,
-        );
-        sugarloaf.line(
-            x + 1.0,
-            center_y,
-            x + 5.0,
-            center_y + 4.0,
-            1.6,
-            0.0,
-            color,
-            32,
-        );
-        sugarloaf.line(
-            x + 9.0,
-            center_y,
-            x + 5.0,
-            center_y + 4.0,
-            1.6,
-            0.0,
-            color,
-            32,
-        );
-        sugarloaf.line(
-            x,
-            center_y + 6.0,
-            x + 10.0,
-            center_y + 6.0,
-            1.4,
-            0.0,
-            color,
-            32,
-        );
-    } else {
-        sugarloaf.rounded_rect(
-            None,
-            x + 2.0,
-            center_y - 3.0,
-            6.0,
-            6.0,
-            color,
-            0.02,
-            4.0,
-            32,
-        );
+    right_x: &mut f32,
+    min_x: f32,
+    text_y: f32,
+    center_y: f32,
+    label: &str,
+    opts: DrawOpts,
+    separator: [f32; 4],
+    separate_from_right: bool,
+) -> bool {
+    const SEPARATOR_SPACE: f32 = 16.0;
+    let width = status_text_width(sugarloaf, label, opts.font_size);
+    let required = width
+        + if separate_from_right {
+            SEPARATOR_SPACE
+        } else {
+            0.0
+        };
+    if *right_x - required < min_x {
+        return false;
     }
+
+    if separate_from_right {
+        *right_x -= SEPARATOR_SPACE * 0.5;
+        sugarloaf.line(
+            *right_x,
+            center_y - 7.0,
+            *right_x,
+            center_y + 7.0,
+            1.0,
+            0.0,
+            separator,
+            30,
+        );
+        *right_x -= SEPARATOR_SPACE * 0.5;
+    }
+    *right_x -= width;
+    sugarloaf.text_mut().draw(*right_x, text_y, label, &opts);
+    true
+}
+
+fn draw_left_status(
+    sugarloaf: &mut Sugarloaf,
+    left_x: &mut f32,
+    max_x: f32,
+    text_y: f32,
+    label: &str,
+    opts: DrawOpts,
+) -> bool {
+    const GAP: f32 = 18.0;
+    let width = status_text_width(sugarloaf, label, opts.font_size);
+    if *left_x + width > max_x {
+        return false;
+    }
+    sugarloaf.text_mut().draw(*left_x, text_y, label, &opts);
+    *left_x += width + GAP;
+    true
+}
+
+fn line_ending_for_shell(shell: Option<&str>) -> &'static str {
+    let Some(shell) = shell.and_then(|value| {
+        value
+            .rsplit(['/', '\\'])
+            .find(|component| !component.is_empty())
+    }) else {
+        return if cfg!(target_os = "windows") {
+            "CRLF"
+        } else {
+            "LF"
+        };
+    };
+
+    if [
+        "powershell",
+        "powershell.exe",
+        "pwsh",
+        "pwsh.exe",
+        "cmd",
+        "cmd.exe",
+    ]
+    .iter()
+    .any(|candidate| shell.eq_ignore_ascii_case(candidate))
+    {
+        "CRLF"
+    } else if ["bash", "zsh", "fish", "sh", "dash", "ksh", "wsl", "wsl.exe"]
+        .iter()
+        .any(|candidate| shell.eq_ignore_ascii_case(candidate))
+    {
+        "LF"
+    } else if cfg!(target_os = "windows") {
+        "CRLF"
+    } else {
+        "LF"
+    }
+}
+
+fn format_clock(hour: u16, minute: u16) -> String {
+    format!("{:02}:{:02}", hour % 24, minute % 60)
+}
+
+#[cfg(target_os = "windows")]
+fn current_clock_label() -> String {
+    use windows_sys::Win32::Foundation::SYSTEMTIME;
+    use windows_sys::Win32::System::SystemInformation::GetLocalTime;
+
+    // SAFETY: SYSTEMTIME is a plain Windows ABI data structure whose all-zero
+    // state is valid before GetLocalTime initializes every field.
+    let mut local: SYSTEMTIME = unsafe { std::mem::zeroed() };
+    // SAFETY: `local` is a valid, uniquely borrowed SYSTEMTIME output buffer.
+    unsafe { GetLocalTime(&mut local) };
+    format_clock(local.wHour, local.wMinute)
+}
+
+#[cfg(all(not(target_os = "windows"), not(target_arch = "wasm32")))]
+fn current_clock_label() -> String {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs()) as libc::time_t;
+    // SAFETY: libc::tm is a C data structure and localtime_r initializes it
+    // through the valid output pointer supplied below.
+    let mut local: libc::tm = unsafe { std::mem::zeroed() };
+    // SAFETY: both pointers remain valid for the duration of this call.
+    let result = unsafe { libc::localtime_r(&seconds, &mut local) };
+    if result.is_null() {
+        return utc_clock_label(seconds as u64);
+    }
+    format_clock(local.tm_hour as u16, local.tm_min as u16)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn current_clock_label() -> String {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    utc_clock_label(seconds)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn utc_clock_label(seconds: u64) -> String {
+    let minutes = (seconds / 60) % (24 * 60);
+    format_clock((minutes / 60) as u16, (minutes % 60) as u16)
 }
 
 fn over(background: [f32; 4], foreground: [f32; 4]) -> [f32; 4] {
@@ -576,103 +552,136 @@ mod tests {
     use crate::event::VoidListener;
     use rio_backend::event::WindowId;
 
-    #[test]
-    fn footer_actions_are_disjoint_and_inside_the_reserved_surface() {
-        let geometry = footer_geometry([0.0, 0.0, 900.0, 500.0], (0.0, 0.0), 1.0, true)
-            .expect("footer");
-        let live = geometry.live.expect("live action");
-        let search = geometry.search.expect("search action");
-        assert!(geometry.outer.contains(live.x, live.y));
-        assert!(geometry.outer.contains(search.x + search.width, search.y));
-        assert!(live.x + live.width < search.x);
-        assert_eq!(geometry.outer.height, 32.0);
-        assert_eq!(
-            action_at(
-                geometry,
-                true,
-                live.x + live.width * 0.5,
-                live.y + live.height * 0.5
-            ),
-            Some(SessionFooterAction::JumpToLive)
-        );
-        assert_eq!(
-            action_at(
-                geometry,
-                true,
-                search.x + search.width * 0.5,
-                search.y + search.height * 0.5
-            ),
-            Some(SessionFooterAction::Search)
-        );
-        assert_eq!(
-            action_at(
-                geometry,
-                false,
-                live.x + live.width * 0.5,
-                live.y + live.height * 0.5
-            ),
-            None
-        );
+    fn test_frame(viewport_width: f32) -> FooterFrame {
+        FooterFrame {
+            viewport_width,
+            top: 0.0,
+            right: 0.0,
+            left: 0.0,
+        }
     }
 
     #[test]
-    fn footer_progressively_collapses_without_overlapping_actions() {
-        let compact = footer_geometry([0.0, 0.0, 240.0, 300.0], (0.0, 0.0), 1.0, false)
-            .expect("compact footer");
-        assert_eq!(compact.search.expect("search").width, ACTION_ICON_WIDTH);
-        assert_eq!(compact.live.expect("live").width, ACTION_ICON_WIDTH);
+    fn footer_is_a_passive_status_surface_without_action_regions() {
+        let geometry = footer_geometry([0.0, 0.0, 900.0, 500.0], test_frame(900.0), 1.0)
+            .expect("footer");
+        assert_eq!(geometry.outer.height, 32.0);
+        assert_eq!(geometry.surface, geometry.outer);
+    }
 
-        let tiny = footer_geometry([0.0, 0.0, 140.0, 300.0], (0.0, 0.0), 1.0, false)
-            .expect("tiny footer");
-        assert!(tiny.search.is_none());
-        assert!(tiny.live.is_none());
+    #[test]
+    fn footer_surface_remains_bounded_at_compact_widths() {
+        let compact = footer_geometry([0.0, 0.0, 140.0, 300.0], test_frame(140.0), 1.0)
+            .expect("compact footer");
+        assert!(compact.surface.width >= 0.0);
+        assert!(compact.surface.x >= compact.outer.x);
+        assert!(
+            compact.surface.x + compact.surface.width
+                <= compact.outer.x + compact.outer.width
+        );
     }
 
     #[test]
     fn footer_is_omitted_when_the_pane_cannot_spare_terminal_rows() {
         assert!(
-            footer_geometry([0.0, 0.0, 900.0, 100.0], (0.0, 0.0), 1.0, false).is_none()
+            footer_geometry([0.0, 0.0, 900.0, 100.0], test_frame(900.0), 1.0).is_none()
         );
     }
 
     #[test]
-    fn hit_test_routes_actions_to_the_exact_session() {
+    fn footer_preserves_vertical_chrome_origin_and_absorbs_outer_horizontal_margins() {
+        let frame = FooterFrame {
+            viewport_width: 760.0,
+            top: 80.0,
+            right: 16.0,
+            left: 24.0,
+        };
+        let geometry =
+            footer_geometry([0.0, 0.0, 720.0, 500.0], frame, 1.0).expect("footer");
+        assert_eq!(geometry.surface.x, 0.0);
+        assert_eq!(geometry.surface.width, 760.0);
+        assert_eq!(geometry.surface.y, 548.0);
+        assert_eq!(geometry.surface.y + geometry.surface.height, 580.0);
+
+        let hidpi = FooterFrame {
+            viewport_width: 1_520.0,
+            top: 160.0,
+            right: 32.0,
+            left: 48.0,
+        };
+        let hidpi_geometry = footer_geometry([0.0, 0.0, 1_440.0, 1_000.0], hidpi, 2.0)
+            .expect("HiDPI footer");
+        assert_eq!(hidpi_geometry.surface, geometry.surface);
+    }
+
+    #[test]
+    fn adjacent_split_footers_tile_the_split_seam_without_a_gap() {
+        let frame = FooterFrame {
+            viewport_width: 1_320.0,
+            top: 80.0,
+            right: 20.0,
+            left: 20.0,
+        };
+        let left =
+            footer_geometry([0.0, 0.0, 640.0, 500.0], frame, 1.0).expect("left footer");
+        let right = footer_geometry([640.0, 0.0, 640.0, 500.0], frame, 1.0)
+            .expect("right footer");
+        assert_eq!(left.surface.x, 0.0);
+        assert_eq!(right.surface.x + right.surface.width, 1_320.0);
+        assert_eq!(left.surface.x + left.surface.width, right.surface.x);
+        assert_eq!(left.surface.y, right.surface.y);
+        assert_eq!(left.surface.height, right.surface.height);
+    }
+
+    #[test]
+    fn shell_line_endings_follow_the_session_identity() {
+        assert_eq!(line_ending_for_shell(Some("PowerShell")), "CRLF");
+        assert_eq!(
+            line_ending_for_shell(Some(r"C:\Windows\System32\cmd.exe")),
+            "CRLF"
+        );
+        assert_eq!(line_ending_for_shell(Some("/usr/bin/bash")), "LF");
+        assert_eq!(line_ending_for_shell(Some("zsh")), "LF");
+        assert_eq!(line_ending_for_shell(Some("wsl.exe")), "LF");
+    }
+
+    #[test]
+    fn clock_format_is_fixed_width_and_bounded() {
+        assert_eq!(format_clock(7, 5), "07:05");
+        assert_eq!(format_clock(27, 61), "03:01");
+    }
+
+    #[test]
+    fn hit_test_routes_the_passive_footer_to_the_exact_session() {
         let mut manager =
             ContextManager::start_with_capacity(4, VoidListener {}, WindowId::from(29))
                 .expect("dead context manager");
-        let item = manager.current_grid_mut().current_item_mut().expect("pane");
-        let route_id = item.context().route_id;
-        item.layout_rect = [20.0, 30.0, 900.0, 500.0];
-        item.context_mut().renderable_content.display_offset = 42;
-
-        let geometry =
-            footer_geometry(item.layout_rect, (0.0, 0.0), 1.0, true).expect("footer");
-        let history = geometry.live.expect("history action");
-        let search = geometry.search.expect("search action");
+        let (route_id, layout_rect) = {
+            let item = manager.current_grid_mut().current_item_mut().expect("pane");
+            item.layout_rect = [20.0, 30.0, 900.0, 500.0];
+            (item.context().route_id, item.layout_rect)
+        };
+        let grid = manager.current_grid();
+        let frame = FooterFrame {
+            viewport_width: grid.width,
+            top: grid.scaled_margin.top,
+            right: grid.scaled_margin.right,
+            left: grid.scaled_margin.left,
+        };
+        let geometry = footer_geometry(layout_rect, frame, 1.0).expect("footer");
 
         assert_eq!(
             hit_test(
                 &manager,
-                history.x + history.width * 0.5,
-                history.y + history.height * 0.5,
+                geometry.surface.x + geometry.surface.width * 0.5,
+                geometry.surface.y + geometry.surface.height * 0.5,
                 1.0
             ),
-            Some(SessionFooterHit {
-                route_id,
-                action: Some(SessionFooterAction::JumpToLive),
-            })
+            Some(SessionFooterHit { route_id })
         );
         assert_eq!(
-            hit_test(
-                &manager,
-                search.x + search.width * 0.5,
-                search.y + search.height * 0.5,
-                1.0
-            ),
-            Some(SessionFooterHit {
-                route_id,
-                action: Some(SessionFooterAction::Search),
-            })
+            hit_test(&manager, geometry.outer.x - 1.0, geometry.outer.y, 1.0),
+            None
         );
     }
 }
