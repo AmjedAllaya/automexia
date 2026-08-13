@@ -17,6 +17,34 @@ use taffy::{
 const MIN_COLS: usize = 2;
 const MIN_LINES: usize = 1;
 
+/// Height reserved below every usable pane for Automexia's session footer.
+///
+/// The footer is renderer-owned rather than PTY-owned, so it must never share
+/// cells with terminal output.  Tiny panes keep all of their space for the PTY
+/// and omit the footer until there is enough room for both surfaces.
+pub const PANE_FOOTER_HEIGHT_LOGICAL: f32 = 32.0;
+const PANE_FOOTER_MIN_PANE_HEIGHT_LOGICAL: f32 = 112.0;
+
+#[inline]
+pub fn pane_footer_reserved_height(panel_height: f32, scale: f32) -> f32 {
+    if !panel_height.is_finite()
+        || !scale.is_finite()
+        || scale <= f32::EPSILON
+        || panel_height / scale < PANE_FOOTER_MIN_PANE_HEIGHT_LOGICAL
+    {
+        0.0
+    } else {
+        PANE_FOOTER_HEIGHT_LOGICAL * scale
+    }
+}
+
+#[inline]
+pub fn pane_terminal_rect(mut panel_rect: [f32; 4], scale: f32) -> [f32; 4] {
+    panel_rect[3] =
+        (panel_rect[3] - pane_footer_reserved_height(panel_rect[3], scale)).max(0.0);
+    panel_rect
+}
+
 /// Direction of a draggable panel border
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BorderDirection {
@@ -148,7 +176,12 @@ pub struct ContextGrid<T: EventListener> {
 }
 
 pub struct ContextGridItem<T: EventListener> {
+    /// The PTY currently presented by this pane.
     pub val: Context<T>,
+    /// Tabs before the active tab, in display order.
+    tabs_before: Vec<Context<T>>,
+    /// Tabs after the active tab, in display order.
+    tabs_after: Vec<Context<T>>,
     pub layout_rect: [f32; 4],
 }
 
@@ -156,6 +189,8 @@ impl<T: rio_backend::event::EventListener> ContextGridItem<T> {
     pub fn new(context: Context<T>) -> Self {
         Self {
             val: context,
+            tabs_before: Vec::new(),
+            tabs_after: Vec::new(),
             layout_rect: [0.0; 4],
         }
     }
@@ -170,11 +205,245 @@ impl<T: rio_backend::event::EventListener> ContextGridItem<T> {
         &mut self.val
     }
 
+    #[inline]
+    pub fn tab_count(&self) -> usize {
+        self.tabs_before.len() + 1 + self.tabs_after.len()
+    }
+
+    #[inline]
+    pub fn active_tab_index(&self) -> usize {
+        self.tabs_before.len()
+    }
+
+    pub fn context_at(&self, index: usize) -> Option<&Context<T>> {
+        if index < self.tabs_before.len() {
+            return self.tabs_before.get(index);
+        }
+        if index == self.tabs_before.len() {
+            return Some(&self.val);
+        }
+        self.tabs_after
+            .get(index.saturating_sub(self.tabs_before.len() + 1))
+    }
+
+    pub fn contexts(&self) -> impl Iterator<Item = &Context<T>> {
+        self.tabs_before
+            .iter()
+            .chain(std::iter::once(&self.val))
+            .chain(self.tabs_after.iter())
+    }
+
+    pub fn contexts_mut(&mut self) -> impl Iterator<Item = &mut Context<T>> {
+        self.tabs_before
+            .iter_mut()
+            .chain(std::iter::once(&mut self.val))
+            .chain(self.tabs_after.iter_mut())
+    }
+
+    pub fn context_by_route_id(&mut self, route_id: usize) -> Option<&mut Context<T>> {
+        if self.val.route_id == route_id {
+            return Some(&mut self.val);
+        }
+        self.tabs_before
+            .iter_mut()
+            .chain(self.tabs_after.iter_mut())
+            .find(|context| context.route_id == route_id)
+    }
+
+    pub fn contains_route(&self, route_id: usize) -> bool {
+        self.contexts().any(|context| context.route_id == route_id)
+    }
+
+    pub fn route_ids(&self) -> impl Iterator<Item = usize> + '_ {
+        self.contexts().map(|context| context.route_id)
+    }
+
+    /// Insert a new independent PTY immediately after the active tab and
+    /// activate it. Existing tabs to the right retain their relative order.
+    pub fn push_tab(&mut self, context: Context<T>, sugarloaf: &mut Sugarloaf) {
+        sugarloaf.clear_image_overlays_for(self.val.rich_text_id);
+        self.push_tab_core(context);
+    }
+
+    fn push_tab_core(&mut self, context: Context<T>) {
+        let previous = std::mem::replace(&mut self.val, context);
+        self.tabs_before.push(previous);
+    }
+
+    pub fn select_tab(&mut self, index: usize, sugarloaf: &mut Sugarloaf) -> bool {
+        if index >= self.tab_count() || index == self.active_tab_index() {
+            return false;
+        }
+
+        sugarloaf.clear_image_overlays_for(self.val.rich_text_id);
+        self.select_tab_core(index)
+    }
+
+    fn select_tab_core(&mut self, index: usize) -> bool {
+        while self.active_tab_index() > index {
+            let Some(previous) = self.tabs_before.pop() else {
+                return false;
+            };
+            let active = std::mem::replace(&mut self.val, previous);
+            self.tabs_after.insert(0, active);
+        }
+        while self.active_tab_index() < index {
+            if self.tabs_after.is_empty() {
+                return false;
+            }
+            let next = self.tabs_after.remove(0);
+            let active = std::mem::replace(&mut self.val, next);
+            self.tabs_before.push(active);
+        }
+        self.val.renderable_content.pending_update.set_dirty();
+        true
+    }
+
+    /// Close only the active pane-local tab. Returns its route id, or `None`
+    /// when the pane has no sibling tab and must therefore stay alive.
+    pub fn close_active_tab(&mut self, sugarloaf: &mut Sugarloaf) -> Option<usize> {
+        if self.tab_count() <= 1 {
+            return None;
+        }
+        sugarloaf.clear_image_overlays_for(self.val.rich_text_id);
+        self.close_active_tab_core()
+    }
+
+    pub fn close_tab(
+        &mut self,
+        index: usize,
+        sugarloaf: &mut Sugarloaf,
+    ) -> Option<usize> {
+        if self.tab_count() <= 1 || index >= self.tab_count() {
+            return None;
+        }
+        let active = self.active_tab_index();
+        if index == active {
+            return self.close_active_tab(sugarloaf);
+        }
+        let context = if index < active {
+            self.tabs_before.remove(index)
+        } else {
+            self.tabs_after.remove(index - active - 1)
+        };
+        let route_id = context.route_id;
+        sugarloaf.clear_image_overlays_for(context.rich_text_id);
+        drop(context);
+        Some(route_id)
+    }
+
+    fn close_active_tab_core(&mut self) -> Option<usize> {
+        if self.tab_count() <= 1 {
+            return None;
+        }
+        let closed_route = self.val.route_id;
+        let replacement = if self.tabs_after.is_empty() {
+            self.tabs_before.pop()?
+        } else {
+            self.tabs_after.remove(0)
+        };
+        let closed = std::mem::replace(&mut self.val, replacement);
+        drop(closed);
+        self.val.renderable_content.pending_update.set_dirty();
+        Some(closed_route)
+    }
+
+    /// Remove a PTY that exited. The active tab is replaced by its nearest
+    /// sibling; an inactive tab is removed without disturbing pane focus.
+    pub fn remove_route(&mut self, route_id: usize, sugarloaf: &mut Sugarloaf) -> bool {
+        if self.val.route_id == route_id {
+            return self.close_active_tab(sugarloaf).is_some();
+        }
+        if let Some(index) = self
+            .tabs_before
+            .iter()
+            .position(|context| context.route_id == route_id)
+        {
+            let context = self.tabs_before.remove(index);
+            sugarloaf.clear_image_overlays_for(context.rich_text_id);
+            return true;
+        }
+        if let Some(index) = self
+            .tabs_after
+            .iter()
+            .position(|context| context.route_id == route_id)
+        {
+            let context = self.tabs_after.remove(index);
+            sugarloaf.clear_image_overlays_for(context.rich_text_id);
+            return true;
+        }
+        false
+    }
+
     /// Previously stashed panel position into the rich-text object's
     /// render_data; that object tree is gone with the Content drop.
     /// The grid renderer reads panel positions directly from
     /// `layout_rect`.
     fn set_position(&mut self, _position: [f32; 2]) {}
+}
+
+#[cfg(test)]
+mod pane_tab_tests {
+    use super::*;
+    use crate::context::create_dead_context;
+    use crate::event::VoidListener;
+    use rio_backend::event::WindowId;
+
+    fn dead(route_id: usize) -> Context<VoidListener> {
+        create_dead_context(
+            VoidListener {},
+            WindowId::from(7),
+            route_id,
+            route_id,
+            ContextDimension::default(),
+        )
+    }
+
+    #[test]
+    fn pane_local_tabs_keep_stable_order_across_selection_and_close() {
+        let mut item = ContextGridItem::new(dead(11));
+        item.push_tab_core(dead(22));
+        item.push_tab_core(dead(33));
+        assert_eq!(item.route_ids().collect::<Vec<_>>(), [11, 22, 33]);
+        assert_eq!(item.active_tab_index(), 2);
+
+        assert!(item.select_tab_core(0));
+        assert_eq!(item.val.route_id, 11);
+        assert_eq!(item.route_ids().collect::<Vec<_>>(), [11, 22, 33]);
+
+        assert!(item.select_tab_core(1));
+        assert_eq!(item.val.route_id, 22);
+        assert_eq!(item.close_active_tab_core(), Some(22));
+        assert_eq!(item.route_ids().collect::<Vec<_>>(), [11, 33]);
+        assert_eq!(item.val.route_id, 33);
+
+        assert!(item.context_by_route_id(11).is_some());
+        assert!(item.context_by_route_id(22).is_none());
+    }
+
+    #[test]
+    fn closing_inactive_local_tab_preserves_the_active_pty() {
+        let mut item = ContextGridItem::new(dead(11));
+        item.push_tab_core(dead(22));
+        item.push_tab_core(dead(33));
+        assert!(item.select_tab_core(0));
+
+        // Exercise the core equivalent of `close_tab(1)` without a GPU
+        // surface: remove the inactive middle sibling directly.
+        let closed = item.tabs_after.remove(0);
+        assert_eq!(closed.route_id, 22);
+        drop(closed);
+        assert_eq!(item.val.route_id, 11);
+        assert_eq!(item.route_ids().collect::<Vec<_>>(), [11, 33]);
+    }
+
+    #[test]
+    fn pane_local_tab_never_closes_its_last_pty() {
+        let mut item = ContextGridItem::new(dead(44));
+        assert_eq!(item.close_active_tab_core(), None);
+        assert_eq!(item.tab_count(), 1);
+        assert_eq!(item.val.route_id, 44);
+    }
 }
 
 impl<T: rio_backend::event::EventListener> ContextGrid<T> {
@@ -283,13 +552,10 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
 
     /// Get item by route_id (used for event routing)
     #[inline]
-    pub fn get_by_route_id(
-        &mut self,
-        route_id: usize,
-    ) -> Option<&mut ContextGridItem<T>> {
+    pub fn get_by_route_id(&mut self, route_id: usize) -> Option<&mut Context<T>> {
         self.inner
             .values_mut()
-            .find(|item| item.val.route_id == route_id)
+            .find_map(|item| item.context_by_route_id(route_id))
     }
 
     #[inline]
@@ -948,42 +1214,41 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
 
         for item in self.inner.values_mut() {
             let [abs_x, abs_y, width, height] = item.layout_rect;
-            let previous_grid_size =
-                (item.val.dimension.columns, item.val.dimension.lines);
 
             let x = (abs_x + self.scaled_margin.left) / scale;
             let y = (abs_y + self.scaled_margin.top) / scale;
 
-            // Clear margin since Taffy layout already accounts for spacing
-            item.val.dimension.margin = Margin::all(0.0);
-            item.val.dimension.update_width(width);
-            item.val.dimension.update_height(height);
-            let grid_size_changed = previous_grid_size
-                != (item.val.dimension.columns, item.val.dimension.lines);
+            // Every pane-local tab shares the pane geometry. Resizing inactive
+            // PTYs prevents a stale-size flash when the user switches tabs and
+            // keeps ConPTY/Unix PTY state consistent while output is arriving.
+            for context in item.contexts_mut() {
+                let previous_grid_size =
+                    (context.dimension.columns, context.dimension.lines);
+                let footer_height = pane_footer_reserved_height(height, scale);
+                context.dimension.margin = Margin::all(0.0);
+                context.dimension.update_width(width);
+                context
+                    .dimension
+                    .update_height((height - footer_height).max(0.0));
+                let grid_size_changed = previous_grid_size
+                    != (context.dimension.columns, context.dimension.lines);
 
-            // Update terminal size
-            let mut terminal = item.val.terminal.lock();
-            terminal.resize::<ContextDimension>(item.val.dimension);
-            drop(terminal);
+                let mut terminal = context.terminal.lock();
+                terminal.resize::<ContextDimension>(context.dimension);
+                drop(terminal);
 
-            let winsize =
-                crate::renderer::utils::terminal_dimensions(&item.val.dimension);
-            let _ = item.val.messenger.send_resize(winsize);
+                let winsize =
+                    crate::renderer::utils::terminal_dimensions(&context.dimension);
+                let _ = context.messenger.send_resize(winsize);
 
-            // A columns/lines change reflows Crosswords and invalidates the
-            // resident GPU row buffers. The terminal's asynchronous damage
-            // event can arrive after the resize frame, so explicitly request
-            // one full rebuild here; otherwise rapid small/large transitions
-            // can briefly combine freshly positioned overlays with stale text
-            // rows. Pixel-only changes that preserve the grid stay on the
-            // cheaper dirty-only path.
-            if grid_size_changed {
-                item.val
-                    .renderable_content
-                    .pending_update
-                    .set_terminal_damage(rio_backend::event::TerminalDamage::Full);
-            } else {
-                item.val.renderable_content.pending_update.set_dirty();
+                if grid_size_changed {
+                    context
+                        .renderable_content
+                        .pending_update
+                        .set_terminal_damage(rio_backend::event::TerminalDamage::Full);
+                } else {
+                    context.renderable_content.pending_update.set_dirty();
+                }
             }
 
             // Panel position / clipping bounds are tracked rio-side
@@ -1099,6 +1364,18 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
     #[inline]
     pub fn current_item(&self) -> Option<&ContextGridItem<T>> {
         self.inner.get(&self.current)
+    }
+
+    #[inline]
+    pub fn current_item_mut(&mut self) -> Option<&mut ContextGridItem<T>> {
+        self.inner.get_mut(&self.current)
+    }
+
+    pub fn tab_count_for_route(&self, route_id: usize) -> Option<usize> {
+        self.inner
+            .values()
+            .find(|item| item.contains_route(route_id))
+            .map(ContextGridItem::tab_count)
     }
 
     pub fn current(&self) -> &Context<T> {
@@ -1292,8 +1569,10 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
     }
 
     pub fn update_line_height(&mut self, line_height: f32) {
-        for context in self.inner.values_mut() {
-            context.val.dimension.update_line_height(line_height);
+        for item in self.inner.values_mut() {
+            for context in item.contexts_mut() {
+                context.dimension.update_line_height(line_height);
+            }
         }
     }
 
@@ -1303,17 +1582,19 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
         // `dimension.font_size` / `line_height` / `dimension.scale`
         // drive the result, so panels with per-panel zoom keep
         // independent cell strides.
-        for context in self.inner.values_mut() {
-            let dim = &mut context.val.dimension;
-            if dim.font_size <= 0.0 {
-                continue;
+        for item in self.inner.values_mut() {
+            for context in item.contexts_mut() {
+                let dim = &mut context.dimension;
+                if dim.font_size <= 0.0 {
+                    continue;
+                }
+                let (text_dims, cell) = sugarloaf.compute_cell_metrics(
+                    dim.font_size,
+                    dim.line_height,
+                    dim.dimension.scale,
+                );
+                dim.update_dimensions(text_dims, cell);
             }
-            let (text_dims, cell) = sugarloaf.compute_cell_metrics(
-                dim.font_size,
-                dim.line_height,
-                dim.dimension.scale,
-            );
-            dim.update_dimensions(text_dims, cell);
         }
 
         // Always apply Taffy layout for consistent positioning
@@ -1371,7 +1652,15 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
         }
 
         // Get rich text ID before removing
-        let rich_text_id = self.inner.get(&to_remove).map(|item| item.val.rich_text_id);
+        let rich_text_ids = self
+            .inner
+            .get(&to_remove)
+            .map(|item| {
+                item.contexts()
+                    .map(|context| context.rich_text_id)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
 
         // Select next panel before removing (use visual ordering)
         let ordered_keys = self.get_ordered_keys();
@@ -1406,7 +1695,7 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
 
         // Drop image overlays for the removed panel — sugarloaf has
         // no other panel state to clean up post-Content removal.
-        if let Some(id) = rich_text_id {
+        for id in rich_text_ids {
             sugarloaf.clear_image_overlays_for(id);
         }
 
@@ -1429,6 +1718,50 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             }
             self.apply_taffy_layout(sugarloaf);
         }
+    }
+
+    /// Remove the pane containing `route_id`. Used when that pane's final PTY
+    /// exits while sibling panes remain.
+    pub fn remove_pane_by_route(
+        &mut self,
+        route_id: usize,
+        sugarloaf: &mut Sugarloaf,
+    ) -> bool {
+        let Some(node) = self
+            .inner
+            .iter()
+            .find_map(|(node, item)| item.contains_route(route_id).then_some(*node))
+        else {
+            return false;
+        };
+        if self.inner.len() <= 1 {
+            return false;
+        }
+        let previously_selected = self.current;
+        self.current = node;
+        self.remove_current(sugarloaf);
+        if previously_selected != node && self.inner.contains_key(&previously_selected) {
+            self.current = previously_selected;
+        }
+        true
+    }
+
+    pub fn remove_local_route(
+        &mut self,
+        route_id: usize,
+        sugarloaf: &mut Sugarloaf,
+    ) -> bool {
+        self.inner
+            .values_mut()
+            .find(|item| item.contains_route(route_id))
+            .is_some_and(|item| item.remove_route(route_id, sugarloaf))
+    }
+
+    pub fn route_ids(&self) -> Vec<usize> {
+        self.inner
+            .values()
+            .flat_map(ContextGridItem::route_ids)
+            .collect()
     }
 
     pub fn split_right(&mut self, context: Context<T>, sugarloaf: &mut Sugarloaf) {
@@ -1677,7 +2010,9 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             return;
         }
         for item in self.inner.values() {
-            sugarloaf.clear_image_overlays_for(item.val.rich_text_id);
+            for context in item.contexts() {
+                sugarloaf.clear_image_overlays_for(context.rich_text_id);
+            }
         }
     }
 
@@ -1688,7 +2023,9 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
     #[inline]
     pub fn remove_all_rich_text(&self, sugarloaf: &mut Sugarloaf) {
         for item in self.inner.values() {
-            sugarloaf.clear_image_overlays_for(item.val.rich_text_id);
+            for context in item.contexts() {
+                sugarloaf.clear_image_overlays_for(context.rich_text_id);
+            }
         }
     }
 }

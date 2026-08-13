@@ -8,6 +8,7 @@ pub mod island;
 pub mod responsive;
 pub mod scrollbar;
 pub mod search;
+pub mod session_footer;
 pub mod trail_cursor;
 pub mod utils;
 
@@ -453,6 +454,7 @@ pub struct Renderer {
     pub assistant: assistant::AssistantOverlay,
     pub confirm_quit: confirm_quit::ConfirmQuit,
     pub scrollbar: scrollbar::Scrollbar,
+    pub session_footer: session_footer::SessionFooter,
     #[allow(unused)]
     pub option_as_alt: String,
     #[allow(unused)]
@@ -552,6 +554,7 @@ impl Renderer {
             assistant: assistant::AssistantOverlay::default(),
             confirm_quit: confirm_quit::ConfirmQuit::default(),
             scrollbar: scrollbar::Scrollbar::new(config.enable_scroll_bar),
+            session_footer: session_footer::SessionFooter::default(),
             is_game_mode_enabled: config.renderer.strategy.is_game(),
             custom_mouse_cursor: config.effects.custom_mouse_cursor,
             trail_cursor_enabled: config.effects.trail_cursor,
@@ -1069,8 +1072,14 @@ impl Renderer {
         if self.scrollbar.is_enabled() {
             self.scrollbar.clear_panel_states();
             for grid_context in grid.contexts_mut().values() {
-                let panel_rect = grid_context.layout_rect;
+                let panel_rect = crate::layout::pane_terminal_rect(
+                    grid_context.layout_rect,
+                    grid_context.context().dimension.dimension.scale,
+                );
                 let ctx = grid_context.context();
+                // The pane footer owns the remaining bottom strip. Keep the
+                // terminal scrollbar on the PTY grid instead of letting its
+                // track cross into footer controls.
                 let rc = &ctx.renderable_content;
                 self.scrollbar
                     .push_panel_state(scrollbar::PanelScrollState {
@@ -1470,6 +1479,15 @@ impl Renderer {
                 );
             }
         }
+
+        // Every visible pane receives its own operational footer. Rendering
+        // it after terminal/prompt overlays but before modal overlays keeps it
+        // legible without ever entering PTY history or covering grid cells.
+        self.session_footer.render(
+            sugarloaf,
+            context_manager,
+            self.named_colors.background.0,
+        );
 
         self.command_palette.render(
             sugarloaf,

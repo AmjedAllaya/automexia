@@ -88,9 +88,13 @@ const ORDER: u8 = 20;
 #[cfg(target_os = "macos")]
 const SHORTCUT_NEW_TAB: &str = "Cmd+T";
 #[cfg(target_os = "windows")]
-const SHORTCUT_NEW_TAB: &str = "Ctrl+Shift+T";
+const SHORTCUT_NEW_TAB: &str = "Ctrl+T";
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_NEW_TAB: &str = "Ctrl+Shift+T";
+const SHORTCUT_NEW_TAB: &str = "Ctrl+T";
+#[cfg(target_os = "macos")]
+const SHORTCUT_NEW_LOCAL_TAB: &str = "Cmd+Shift+T";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_NEW_LOCAL_TAB: &str = "Ctrl+Shift+T";
 #[cfg(target_os = "macos")]
 const SHORTCUT_CLOSE: &str = "Cmd+W";
 #[cfg(target_os = "windows")]
@@ -109,6 +113,8 @@ const SHORTCUT_SPLIT_DOWN: &str = "Cmd+Shift+D";
 const SHORTCUT_SPLIT_DOWN: &str = "Ctrl+Shift+D";
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 const SHORTCUT_SPLIT_DOWN: &str = "Ctrl+Shift+D";
+const SHORTCUT_CLONE_RIGHT: &str = "Ctrl+R";
+const SHORTCUT_CLONE_DOWN: &str = "Ctrl+D";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SETTINGS: &str = "Cmd+,";
 #[cfg(target_os = "windows")]
@@ -118,9 +124,9 @@ const SHORTCUT_SETTINGS: &str = "Ctrl+Shift+,";
 #[cfg(target_os = "macos")]
 const SHORTCUT_NEW_WINDOW: &str = "Cmd+N";
 #[cfg(target_os = "windows")]
-const SHORTCUT_NEW_WINDOW: &str = "Ctrl+T";
+const SHORTCUT_NEW_WINDOW: &str = "Ctrl+Shift+N";
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_NEW_WINDOW: &str = "Ctrl+T";
+const SHORTCUT_NEW_WINDOW: &str = "Ctrl+Shift+N";
 #[cfg(target_os = "macos")]
 const SHORTCUT_COPY: &str = "Cmd+C";
 #[cfg(target_os = "windows")]
@@ -186,12 +192,15 @@ const SHORTCUT_CLEAR_HISTORY: &str = "";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaletteAction {
     TabCreate,
+    LocalTabCreate,
     TabClose,
     TabCloseUnfocused,
     SelectNextTab,
     SelectPrevTab,
     SplitRight,
     SplitDown,
+    CloneSplitRight,
+    CloneSplitDown,
     SelectNextSplit,
     SelectPrevSplit,
     ConfigEditor,
@@ -220,12 +229,15 @@ pub enum PaletteAction {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CommandIcon {
     TabAdd,
+    LocalTabAdd,
     TabClose,
     TabsClose,
     TabNext,
     TabPrevious,
     SplitRight,
     SplitDown,
+    CloneSplitRight,
+    CloneSplitDown,
     PaneNext,
     PanePrevious,
     Close,
@@ -259,6 +271,10 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             icon: CommandIcon::TabAdd,
             accent: BRAND_CYAN,
         },
+        LocalTabCreate => RowPresentation {
+            icon: CommandIcon::LocalTabAdd,
+            accent: BRAND_LIME,
+        },
         TabClose => RowPresentation {
             icon: CommandIcon::TabClose,
             accent: BRAND_CORAL,
@@ -286,6 +302,14 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
         SplitDown => RowPresentation {
             icon: CommandIcon::SplitDown,
             accent: BRAND_PURPLE,
+        },
+        CloneSplitRight => RowPresentation {
+            icon: CommandIcon::CloneSplitRight,
+            accent: BRAND_CYAN,
+        },
+        CloneSplitDown => RowPresentation {
+            icon: CommandIcon::CloneSplitDown,
+            accent: BRAND_CYAN,
         },
         SelectNextSplit => RowPresentation {
             icon: CommandIcon::PaneNext,
@@ -366,9 +390,14 @@ struct Command {
 
 const COMMANDS: &[Command] = &[
     Command {
-        title: "New Global Tab",
+        title: "New Window Tab",
         shortcut: SHORTCUT_NEW_TAB,
         action: PaletteAction::TabCreate,
+    },
+    Command {
+        title: "New Tab in Selected Session",
+        shortcut: SHORTCUT_NEW_LOCAL_TAB,
+        action: PaletteAction::LocalTabCreate,
     },
     Command {
         title: "Close Tab",
@@ -401,6 +430,16 @@ const COMMANDS: &[Command] = &[
         action: PaletteAction::SplitDown,
     },
     Command {
+        title: "Clone Active Session Right",
+        shortcut: SHORTCUT_CLONE_RIGHT,
+        action: PaletteAction::CloneSplitRight,
+    },
+    Command {
+        title: "Clone Active Session Down",
+        shortcut: SHORTCUT_CLONE_DOWN,
+        action: PaletteAction::CloneSplitDown,
+    },
+    Command {
         title: "Next Split",
         shortcut: "",
         action: PaletteAction::SelectNextSplit,
@@ -421,7 +460,7 @@ const COMMANDS: &[Command] = &[
         action: PaletteAction::ConfigEditor,
     },
     Command {
-        title: "New Window Tab",
+        title: "New Window",
         shortcut: SHORTCUT_NEW_WINDOW,
         action: PaletteAction::WindowCreateNew,
     },
@@ -790,6 +829,11 @@ fn draw_command_icon(
             canvas.tab_frame();
             canvas.plus(15.5, 12.5, 2.7);
         }
+        CommandIcon::LocalTabAdd => {
+            canvas.outline(1.5, 3.0, 19.0, 16.0, 3.5);
+            canvas.line(8.5, 3.5, 8.5, 18.5);
+            canvas.plus(15.0, 11.0, 2.8);
+        }
         CommandIcon::TabClose => {
             canvas.tab_frame();
             canvas.line(12.5, 12.5, 18.5, 12.5);
@@ -817,6 +861,19 @@ fn draw_command_icon(
             canvas.line(2.0, 11.0, 20.0, 11.0);
             canvas.line(8.5, 15.0, 11.0, 17.5);
             canvas.line(11.0, 17.5, 13.5, 15.0);
+        }
+        CommandIcon::CloneSplitRight => {
+            canvas.outline(1.5, 1.5, 15.0, 14.0, 3.0);
+            canvas.outline(5.5, 6.5, 15.0, 14.0, 3.0);
+            canvas.line(13.0, 7.0, 13.0, 20.0);
+            canvas.chevron_right(17.0, 13.5, 2.2);
+        }
+        CommandIcon::CloneSplitDown => {
+            canvas.outline(1.5, 1.5, 15.0, 14.0, 3.0);
+            canvas.outline(5.5, 6.5, 15.0, 14.0, 3.0);
+            canvas.line(6.0, 13.5, 20.0, 13.5);
+            canvas.line(10.5, 16.0, 13.0, 18.5);
+            canvas.line(13.0, 18.5, 15.5, 16.0);
         }
         CommandIcon::PaneNext => {
             canvas.outline(1.5, 2.0, 19.0, 18.0, 3.5);
@@ -1757,12 +1814,15 @@ mod tests {
         assert_eq!(RESULT_ICON_SIZE, 22.0);
         let icons = [
             PaletteAction::TabCreate,
+            PaletteAction::LocalTabCreate,
             PaletteAction::TabClose,
             PaletteAction::TabCloseUnfocused,
             PaletteAction::SelectNextTab,
             PaletteAction::SelectPrevTab,
             PaletteAction::SplitRight,
             PaletteAction::SplitDown,
+            PaletteAction::CloneSplitRight,
+            PaletteAction::CloneSplitDown,
             PaletteAction::SelectNextSplit,
             PaletteAction::SelectPrevSplit,
             PaletteAction::ConfigEditor,
@@ -1866,31 +1926,72 @@ mod tests {
         let palette = CommandPalette::new();
         let action = palette.get_selected_action();
         assert!(action.is_some());
-        // First command is "New Global Tab".
+        // First command is the current-window tab action.
         assert_eq!(action.unwrap(), PaletteAction::TabCreate);
     }
 
     #[test]
-    fn window_tab_and_global_tab_are_distinct_commands() {
-        let window_tab = COMMANDS
+    fn window_window_tab_and_session_tab_are_distinct_commands() {
+        let new_window = COMMANDS
             .iter()
             .find(|command| command.action == PaletteAction::WindowCreateNew)
             .expect("new-window command should be present");
-        let global_tab = COMMANDS
+        let window_tab = COMMANDS
             .iter()
             .find(|command| command.action == PaletteAction::TabCreate)
-            .expect("global-tab command should be present");
+            .expect("window-tab command should be present");
+        let local_tab = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::LocalTabCreate)
+            .expect("session-tab command should be present");
 
+        assert_eq!(new_window.title, "New Window");
         assert_eq!(window_tab.title, "New Window Tab");
-        assert_eq!(global_tab.title, "New Global Tab");
-        assert_ne!(window_tab.action, global_tab.action);
-        assert_ne!(window_tab.shortcut, global_tab.shortcut);
+        assert_eq!(local_tab.title, "New Tab in Selected Session");
+        assert_ne!(new_window.action, window_tab.action);
+        assert_ne!(window_tab.action, local_tab.action);
+        assert_ne!(new_window.shortcut, window_tab.shortcut);
+        assert_ne!(window_tab.shortcut, local_tab.shortcut);
 
         #[cfg(not(target_os = "macos"))]
         {
+            assert_eq!(new_window.shortcut, "Ctrl+Shift+N");
             assert_eq!(window_tab.shortcut, "Ctrl+T");
-            assert_eq!(global_tab.shortcut, "Ctrl+Shift+T");
+            assert_eq!(local_tab.shortcut, "Ctrl+Shift+T");
         }
+    }
+
+    #[test]
+    fn clone_and_default_split_commands_are_distinct_and_discoverable() {
+        let clone_right = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::CloneSplitRight)
+            .expect("clone-right command should be present");
+        let clone_down = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::CloneSplitDown)
+            .expect("clone-down command should be present");
+        let split_right = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::SplitRight)
+            .expect("fresh split-right command should be present");
+        let split_down = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::SplitDown)
+            .expect("fresh split-down command should be present");
+
+        assert_eq!(clone_right.shortcut, "Ctrl+R");
+        assert_eq!(clone_down.shortcut, "Ctrl+D");
+        assert_ne!(clone_right.action, split_right.action);
+        assert_ne!(clone_down.action, split_down.action);
+        assert_ne!(
+            command_presentation(clone_right.action).icon,
+            command_presentation(split_right.action).icon
+        );
+        assert_ne!(
+            command_presentation(clone_down.action).icon,
+            command_presentation(split_down.action).icon
+        );
     }
 
     #[test]
