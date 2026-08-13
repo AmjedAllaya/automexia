@@ -49,18 +49,23 @@ size = 20.0
 `Ctrl`+`+` and `Ctrl`+`-` adjust an individual terminal panel at runtime;
 `Ctrl`+`0` returns it to the configured size.
 
-On Windows and Linux, tab shortcuts have two deliberate scopes:
+Tab shortcuts have three deliberate scopes:
 
 | Shortcut | Result |
 |---|---|
-| `Ctrl`+`T` | create a separate Automexia window containing its initial tab |
-| `Ctrl`+`Shift`+`T` | add a global tab to the current window's tab strip |
-| `Ctrl`+`Shift`+`N` | create a separate window (compatibility alias) |
+| `Ctrl`+`T` | add a window-level tab to the current Automexia window |
+| `Ctrl`+`Shift`+`T` | add an independent tab inside the selected split/session |
+| `Ctrl`+`Shift`+`N` | create a separate OS window |
 
-The new window owns an independent route, terminal session, and tab strip.
-These are defaults, so an explicit user binding can override `Ctrl`+`T` without
-changing `Ctrl`+`Shift`+`T`. macOS retains the platform conventions `Cmd`+`N`
-for a new window and `Cmd`+`T` for a tab in the current window.
+The corresponding custom-binding action names are `CreateTab`,
+`CreateLocalTab`, and `CreateWindow`.
+
+Each pane-local tab owns an independent route, PTY, terminal grid, history, and
+input queue while inheriting the selected pane's launch descriptor. It does not
+share live process state with its sibling. Closing a pane-local tab closes only
+that tab; closing a window-level tab closes only its own grid. These are
+defaults, so explicit user bindings can override either scope independently.
+macOS uses `Cmd`+`N`, `Cmd`+`T`, and `Cmd`+`Shift`+`T` for the same scopes.
 
 Split shortcuts distinguish a clean default shell from an independent clone:
 
@@ -68,16 +73,18 @@ Split shortcuts distinguish a clean default shell from an independent clone:
 |---|---|
 | `Ctrl`+`Shift`+`R` | open the configured default shell in a right split |
 | `Ctrl`+`Shift`+`D` | open the configured default shell in a lower split |
-| `Ctrl`+`Alt`+`R` | clone the active shell/profile/directory into a right split |
-| `Ctrl`+`Alt`+`D` | clone the active shell/profile/directory into a lower split |
+| `Ctrl`+`R` | clone the active shell/profile/directory into a right split |
+| `Ctrl`+`D` | clone the active shell/profile/directory into a lower split |
+| `Ctrl`+`Alt`+`R` | forward native `Ctrl`+`R` to the shell for history search |
+| `Ctrl`+`Alt`+`D` | forward native `Ctrl`+`D` to the shell for EOF/logout |
 
 Clones are independent sessions: they receive a new PTY, process, route,
 scrollback, input queue, and extension state. PowerShell/pwsh, CMD, Bash, Zsh, and
 WSL retain their active executable/profile/current directory; WSL also retains
 its distro, user, and shell. Jobs, process memory, command history position,
-partially typed input, and scrollback are never copied. Bare `Ctrl`+`R` and
-`Ctrl`+`D` remain available to the shell for history search and EOF behavior.
-The actions can be rebound as `clonesplitright` and `clonesplitdown`.
+partially typed input, and scrollback are never copied. The clone actions can
+be rebound as `clonesplitright` and `clonesplitdown`; explicitly binding either
+bare key to `receivechar` restores its traditional direct-to-shell behavior.
 Only absolute, control-free OSC 7 directories can replace the stored launch
 directory. Missing or invalid metadata keeps the safe profile fallback. If the
 profile, WSL distribution, or PTY cannot be recreated, Automexia leaves the
