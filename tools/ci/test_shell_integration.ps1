@@ -109,8 +109,14 @@ do {
     if (-not $formatView) { Start-Sleep -Milliseconds 25 }
 } while (-not $formatView -and [DateTime]::UtcNow -lt $formatDeadline)
 if (-not $formatView) { throw 'PowerShell filesystem icon view was not loaded' }
-if ($integrationSource -notmatch 'System\.Timers\.Timer.*250' -or $integrationSource -notmatch 'Register-ObjectEvent') {
-    throw 'PowerShell icon formatting is not deferred beyond the first prompt'
+if ($integrationSource -match '(?m)^\s*Register-EngineEvent\b' -or
+    $integrationSource -match '\[System\.Timers\.Timer\]') {
+    throw 'PowerShell presentation setup must not run from an asynchronous event callback'
+}
+if ($integrationSource -notmatch 'AutomexiaPreviousHistoryHandler -is \[scriptblock\]' -or
+    $integrationSource -notmatch 'AutomexiaPreviousHistoryHandler -is \[System\.Delegate\]' -or
+    $integrationSource -notmatch 'DynamicInvoke') {
+    throw 'PowerShell history chaining does not preserve script-block and .NET delegate handlers'
 }
 $lsAlias = Get-Alias ls -ErrorAction SilentlyContinue
 if (-not $lsAlias -or $lsAlias.Definition -ne 'Get-ChildItem') { throw 'PowerShell ls no longer resolves to Get-ChildItem' }
