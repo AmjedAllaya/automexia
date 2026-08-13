@@ -25,7 +25,7 @@ explicitly documents a change. Generate a default file with
 `automexia --write-config`.
 
 Automexia's default liquid-hacker window is 1280x760 with a persistent tab row
-and responsive workspace-action rail. Operational context belongs to each
+and responsive pane-local tab rail. Operational context belongs to each
 semantic prompt instead of being duplicated in global chrome. Terminal text
 defaults to 20 points with 1.20 line spacing for readable long listings and
 structured output. The relevant overrides remain ordinary inherited settings:
@@ -40,7 +40,7 @@ height = 760
 [navigation]
 mode = "Tab"
 hide-if-single = false
-max-tab-width = 240
+max-tab-width = 200
 
 [fonts]
 size = 20.0
@@ -53,9 +53,8 @@ Tab shortcuts have three deliberate scopes. The non-macOS defaults are:
 
 | Shortcut | Result |
 |---|---|
-| `Ctrl`+`Shift`+`T` | add a window-level tab to the current Automexia window |
-| `Ctrl`+`T` | additional Automexia alias for a window-level tab |
-| `Ctrl`+`Alt`+`T` | add an independent tab inside the selected split/session |
+| `Ctrl`+`T` | add a window-level tab to the current Automexia window |
+| `Ctrl`+`Shift`+`T` | add an independent tab inside the selected split/session |
 | `Ctrl`+`Shift`+`N` | create a separate OS window |
 
 The corresponding custom-binding action names are `CreateTab`,
@@ -66,18 +65,18 @@ input queue while inheriting the selected pane's launch descriptor. It does not
 share live process state with its sibling. Closing a pane-local tab closes only
 that tab; closing a window-level tab closes only its own grid. These are
 defaults, so explicit user bindings can override either scope independently.
-macOS uses `Cmd`+`N`, `Cmd`+`T`, and `Cmd`+`Alt`+`T` for the same scopes.
+macOS uses `Cmd`+`N`, `Cmd`+`T`, and `Cmd`+`Shift`+`T` for the same scopes.
 
 Split shortcuts distinguish a clean default shell from an independent clone:
 
 | Shortcut | Result |
 |---|---|
-| `Ctrl`+`Shift`+`O` | open the configured default shell in a right split |
-| `Ctrl`+`Shift`+`E` | open the configured default shell in a lower split |
-| `Ctrl`+`Alt`+`R` | clone the active shell/profile/directory into a right split |
-| `Ctrl`+`Alt`+`D` | clone the active shell/profile/directory into a lower split |
-| `Ctrl`+`R` | shell-owned history search |
-| `Ctrl`+`D` | shell-owned EOF/logout |
+| `Ctrl`+`Shift`+`R` | open the configured default shell in a right split |
+| `Ctrl`+`Shift`+`D` | open the configured default shell in a lower split |
+| `Ctrl`+`R` | clone the active shell/profile/directory into a right split |
+| `Ctrl`+`D` | clone the active shell/profile/directory into a lower split |
+| `Ctrl`+`Alt`+`R` | send history search (`Ctrl+R`) to the shell |
+| `Ctrl`+`Alt`+`D` | send EOF/logout (`Ctrl+D`) to the shell |
 
 Clones are independent sessions: they receive a new PTY, process, route,
 scrollback, input queue, and extension state. PowerShell/pwsh, CMD, Bash, Zsh, and
@@ -91,9 +90,9 @@ profile, WSL distribution, or PTY cannot be recreated, Automexia leaves the
 layout unchanged and displays the concrete failure; it never opens PowerShell
 as a silent substitute for a failed WSL clone.
 
-The complete Windows/Linux/BSD and macOS defaults, collision policy,
-Automexia-only extensions, and unsupported Ghostty actions are maintained in
-[Ghostty keyboard compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md).
+These are Automexia's classic defaults. The separate
+[Ghostty keyboard compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md) document is
+a future opt-in compatibility contract, not the active default table.
 
 Automexia v0.4 does not expose `keyboard.profile`, versioned Ghostty profiles,
 multi-key tables, action chains, or explicit unbind directives. The existing

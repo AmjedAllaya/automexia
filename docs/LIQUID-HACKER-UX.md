@@ -6,30 +6,28 @@ styles, and renderer decoration never changes command output.
 
 ## Layout contract
 
-At comfortable sizes, the first 148 logical pixels are persistent application
-chrome and are never part of the terminal grid:
+At comfortable sizes, the persistent application chrome is never part of the
+terminal grid:
 
-- a 66 px profile/tab row with an application mark, draggable tabs, new-tab
+- a 48 px profile/tab row with an application mark, draggable tabs, new-tab
   button, command/profile menu, and native-looking window controls on Windows;
-- a 47 px workspace-action rail at y=82 with direct access to Find, Split
-  Right, Split Down, and Next Pane. It is one quiet glass surface with
-  DPI-independent vector icons, restrained semantic accents, and no repeated
-  shell, clock, OS, Git, Docker, cloud, environment, or user labels. Those
-  session-specific facts remain beside every command in the pane where they
-  belong.
+- a secondary pane-local tab rail only when the selected pane owns multiple
+  local tabs. A single-tab pane has no empty shelf or workspace-action buttons;
+  search, split, and focus commands remain available through keyboard bindings
+  and the command palette.
 
 Chrome has one shared responsive contract for drawing, hit-testing and terminal
 grid reservation:
 
-| Density | Trigger (logical viewport) | Header | Workspace tools |
+| Density | Trigger (logical viewport) | Header-only reservation | With local tabs |
 |---|---|---:|---|
-| comfortable | at least 840 px wide and 480 px high | 66 px | 47 px labeled action rail |
-| compact | below either comfortable threshold | 54 px | 41 px icon-only action rail |
-| minimal | below 480 px wide or 280 px high | 46 px | 38 px icon-only rail when height permits |
+| comfortable | at least 840 px wide and 480 px high | 56 px | 102 px |
+| compact | below either comfortable threshold | 50 px | 92 px |
+| minimal | below 480 px wide or 280 px high | 44 px | 80 px when height permits |
 
-Below 260 logical pixels of height, the action rail folds away and the
-minimal header reserves only 54 px, leaving 146 px for terminal content at the
-supported 300×200 minimum. Its commands remain available through shortcuts and
+Below 260 logical pixels of height, the pane-local tab rail folds away and the
+minimal header reserves only 44 px, leaving 156 px for terminal content at the
+supported 300×200 minimum. Tab commands remain available through shortcuts and
 the command palette, while prompt-level context remains available in the grid.
 As width contracts, controls fold in priority order: the product mark,
 command-center control, and then new-tab button hide before the active tab can
@@ -38,8 +36,8 @@ multi-tab strips use icon-only tabs when a readable title no longer fits.
 
 The terminal grid begins below the live reservation, which is recomputed on
 every viewport and DPI change. Typing, output, scrollback and resize/reflow
-therefore cannot erase the tabs or action rail, nor can a stale 148 px margin
-consume a compact window. Windows uses a 6 px renderer-owned resize frame and
+therefore cannot erase the tabs, nor can a stale 102 px margin consume a
+single-tab or compact window. Windows uses a 6 px renderer-owned resize frame and
 supports all edges and corners when native decorations are disabled.
 
 The per-command prompt uses a strict ownership boundary. Automexia writes the
@@ -77,34 +75,42 @@ semantic accents, outlined key badges, a slim active indicator, and generous
 spacing provide hierarchy without colored icon blocks or redundant category
 labels. Command behavior and keyboard navigation remain unchanged.
 
-The workspace rail is deliberately task-focused: Find opens terminal search,
-Split Right and Split Down create fresh configured-shell panes, and Next Pane
-moves focus without reaching for the keyboard. All four buttons share their
-responsive geometry with pointer hit-testing, use no font-dependent icon, and
-perform no heap allocation during frame rendering or mouse movement.
-
 ## Per-pane session footer
 
 Every usable pane ends with a 32 logical-pixel operational footer. It is a
 renderer-owned surface with a real grid reservation, so PTY output, the cursor,
 images, prompt rows, selections, and the scrollbar stop above it rather than
-being covered by it. The selected pane receives a cyan outline; inactive panes
-retain a quiet slate outline, matching the pane-focus contract used around the
-terminal surface.
+being covered by it. The rail reaches the exact left, right, and bottom pane
+edges instead of floating inside terminal padding. A single pane therefore reads
+as one continuous window footer. In a split, adjacent footer segments meet at
+the exact divider with no gap or overlap; the selected segment carries a cyan
+top and side accent while inactive segments retain a quiet slate keyline,
+matching the pane-focus contract used around the terminal surface.
 
-The footer reports the pane number, local-tab position when the pane owns more
-than one tab, effective terminal columns and rows, selection state, and whether
-the richer Automexia shell integration is active. Its live-state control turns
-amber and reports the exact scrollback offset while history is visible; clicking
-it returns that independent PTY to the live edge. `FIND` opens search in that
-footer's pane. Clicking a non-action area focuses the pane without creating a
-terminal selection or writing input.
+The normal footer is a minimal, right-aligned status line: `UTF-8`, the
+session-appropriate `LF` or `CRLF` convention, effective terminal columns and
+rows, and the local 24-hour clock. Hairline separators provide hierarchy
+without making any value look like a button. Pane and local-tab position appear
+on the left only when there is more than one, while selection and an exact
+scrollback offset appear only when relevant. It is deliberately read-only:
+there are no `LIVE`, `FIND`, icon-only, or invisible action targets. Clicking
+anywhere in it focuses the pane without creating a terminal selection or
+writing input. Search and scroll-to-bottom remain available through normal
+bindings, the scrollbar, and the command palette.
 
-Footer drawing and hit-testing use the same geometry. Labels progressively
-collapse into compact vector controls as a pane narrows. Below 112 logical
+Footer drawing and passive pane routing use the same edge-connected geometry.
+The first and last pane absorb horizontal terminal padding so the rail reaches
+the viewport sides, but every segment retains the top-chrome origin of Taffy's
+pane root; this keeps the footer attached to the real pane bottom instead of
+painting it partway through the terminal. Optional status labels progressively
+disappear as a pane narrows, with slightly smaller type and padding below 300 logical pixels.
+Below 112 logical
 pixels of pane height the footer yields all 32 pixels back to the terminal, so
 an extreme split always retains a usable PTY row. The footer returns
 automatically when the pane grows and requires no user-facing configuration.
+The clock reuses the focused-window maintenance tick and therefore advances
+while the terminal is idle without sending bytes to the PTY or adding another
+polling worker.
 
 ## Per-pane operational context
 
@@ -220,13 +226,13 @@ or history navigation. CMD keeps the complete path in the same blue family as
 one dynamic `$P` token because its prompt language cannot style individual path
 components without changing the literal directory.
 
-Use `Ctrl`+`Alt`+`R` or `Ctrl`+`Alt`+`D` to create an independent clone of the active
+Use `Ctrl`+`R` or `Ctrl`+`D` to create an independent clone of the active
 session to the right or below. The clone preserves the current
 PowerShell/pwsh, Command Prompt, Bash, Zsh, or WSL launch identity and directory while keeping
 its process, input, scrollback, and DevOps discovery state isolated.
-Ghostty-compatible `Ctrl`+`Shift`+`O`/`E` shortcuts open a configured default
-shell in a right/lower split. Bare `Ctrl`+`R` and `Ctrl`+`D` remain owned by
-the shell for history search and EOF/logout. Both clone actions are also
+Classic `Ctrl`+`Shift`+`R`/`D` shortcuts open a configured default shell in a
+right/lower split. `Ctrl`+`Alt`+`R` and `Ctrl`+`Alt`+`D` explicitly send history
+search and EOF/logout to the shell. Both clone actions are also
 discoverable in the command palette with distinct duplicated-pane icons.
 
 ## File and folder icons

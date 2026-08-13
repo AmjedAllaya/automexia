@@ -15,14 +15,13 @@ including PowerShell/CMD profile, Unix shell, WSL distribution/user, and the
 validated logical current directory. It never shares a PTY or silently falls
 back to another shell.
 
-Ghostty-compatible `Ctrl+Shift+T` creates a window-level tab,
-`Ctrl+Alt+T` creates a local tab in the selected pane, and
-`Ctrl+Shift+N` creates an OS window. `Ctrl+T` remains an additional
-Automexia window-tab alias. When a pane owns more
+Classic Automexia `Ctrl+T` creates a window-level tab,
+`Ctrl+Shift+T` creates a local tab in the selected pane, and
+`Ctrl+Shift+N` creates an OS window. When a pane owns more
 than one local tab, the secondary chrome row becomes its local tab rail with
-separate select, close, and add hit targets; otherwise the existing workspace
-action rail remains visible. Top-row close targets only window-level tabs, and
-local close targets only their exact pane tab.
+separate select, close, and add hit targets; otherwise the secondary row is
+omitted and its space returns to the terminal. Top-row close targets only
+window-level tabs, and local close targets only their exact pane tab.
 
 All local PTYs track their pane's effective dimensions so switching never
 reveals stale geometry. Route lookup searches active and inactive tabs.
