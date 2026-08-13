@@ -456,6 +456,27 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
     ) -> Self {
         let width = context.dimension.width;
         let height = context.dimension.height;
+        Self::new_with_viewport(
+            context,
+            scaled_margin,
+            border_color,
+            border_active_color,
+            panel_config,
+            width,
+            height,
+        )
+    }
+
+    /// Construct a grid whose layout root already matches the owning window.
+    pub fn new_with_viewport(
+        context: Context<T>,
+        scaled_margin: Margin,
+        border_color: [f32; 4],
+        border_active_color: [f32; 4],
+        panel_config: rio_backend::config::layout::Panel,
+        width: f32,
+        height: f32,
+    ) -> Self {
         let scale = context.dimension.dimension.scale;
 
         let mut tree: TaffyTree<()> = TaffyTree::new();
