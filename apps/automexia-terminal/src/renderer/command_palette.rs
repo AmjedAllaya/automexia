@@ -88,13 +88,13 @@ const ORDER: u8 = 20;
 #[cfg(target_os = "macos")]
 const SHORTCUT_NEW_TAB: &str = "Cmd+T";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_NEW_TAB: &str = "Ctrl+Shift+T";
+const SHORTCUT_NEW_TAB: &str = "Ctrl+T";
 #[cfg(target_os = "macos")]
-const SHORTCUT_NEW_LOCAL_TAB: &str = "Cmd+Alt+T";
+const SHORTCUT_NEW_LOCAL_TAB: &str = "Cmd+Shift+T";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_NEW_LOCAL_TAB: &str = "Ctrl+Alt+T";
+const SHORTCUT_NEW_LOCAL_TAB: &str = "Ctrl+Shift+T";
 #[cfg(target_os = "macos")]
-const SHORTCUT_CLOSE_TAB: &str = "Cmd+Alt+W";
+const SHORTCUT_CLOSE_TAB: &str = "Cmd+W";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_CLOSE_TAB: &str = "Ctrl+Shift+W";
 #[cfg(target_os = "macos")]
@@ -104,13 +104,13 @@ const SHORTCUT_CLOSE_SURFACE: &str = "";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SPLIT_RIGHT: &str = "Cmd+D";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_SPLIT_RIGHT: &str = "Ctrl+Shift+O";
+const SHORTCUT_SPLIT_RIGHT: &str = "Ctrl+Shift+R";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SPLIT_DOWN: &str = "Cmd+Shift+D";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_SPLIT_DOWN: &str = "Ctrl+Shift+E";
-const SHORTCUT_CLONE_RIGHT: &str = "Ctrl+Alt+R";
-const SHORTCUT_CLONE_DOWN: &str = "Ctrl+Alt+D";
+const SHORTCUT_SPLIT_DOWN: &str = "Ctrl+Shift+D";
+const SHORTCUT_CLONE_RIGHT: &str = "Ctrl+R";
+const SHORTCUT_CLONE_DOWN: &str = "Ctrl+D";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SETTINGS: &str = "Cmd+,";
 #[cfg(not(target_os = "macos"))]
@@ -148,9 +148,9 @@ const SHORTCUT_VI_MODE: &str = "Alt+Shift+Space";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_VI_MODE: &str = "Ctrl+Shift+Space";
 #[cfg(target_os = "macos")]
-const SHORTCUT_FULLSCREEN: &str = "Cmd+Enter";
+const SHORTCUT_FULLSCREEN: &str = "Ctrl+Cmd+F";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_FULLSCREEN: &str = "Ctrl+Enter";
+const SHORTCUT_FULLSCREEN: &str = "F11";
 #[cfg(target_os = "macos")]
 const SHORTCUT_APPEARANCE: &str = "";
 #[cfg(not(target_os = "macos"))]
@@ -1314,9 +1314,9 @@ impl CommandPalette {
         }
 
         // UI glyphs are submitted in one pass after every rounded rectangle.
-        // Without a modal boundary, labels emitted earlier by tabs and the
-        // workspace action rail therefore remain above even an opaque palette
-        // surface. The command center is the top-most modal owner:
+        // Without a modal boundary, labels emitted earlier by window tabs or a
+        // pane-local tab rail remain above even an opaque palette surface. The
+        // command center is the top-most modal owner:
         // discard earlier UI-label instances, then emit only palette labels.
         // Terminal grid text uses a separate pass and remains safely beneath
         // the palette's opaque blue-black surface.
@@ -1932,8 +1932,8 @@ mod tests {
         #[cfg(not(target_os = "macos"))]
         {
             assert_eq!(new_window.shortcut, "Ctrl+Shift+N");
-            assert_eq!(window_tab.shortcut, "Ctrl+Shift+T");
-            assert_eq!(local_tab.shortcut, "Ctrl+Alt+T");
+            assert_eq!(window_tab.shortcut, "Ctrl+T");
+            assert_eq!(local_tab.shortcut, "Ctrl+Shift+T");
         }
     }
 
@@ -1956,8 +1956,8 @@ mod tests {
             .find(|command| command.action == PaletteAction::SplitDown)
             .expect("fresh split-down command should be present");
 
-        assert_eq!(clone_right.shortcut, "Ctrl+Alt+R");
-        assert_eq!(clone_down.shortcut, "Ctrl+Alt+D");
+        assert_eq!(clone_right.shortcut, "Ctrl+R");
+        assert_eq!(clone_down.shortcut, "Ctrl+D");
         assert_ne!(clone_right.action, split_right.action);
         assert_ne!(clone_down.action, split_down.action);
         assert_ne!(
