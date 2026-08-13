@@ -13,6 +13,13 @@ Use `cargo dev` to run that same gate and launch Automexia when it passes. Use
 `cargo automexia` for a fast incremental build, version smoke, and launch when
 the full gate has already passed. These commands are Cargo aliases backed by
 `tools/xtask`, so they are identical on Windows, macOS, and Linux.
+
+`cargo dev` opens no application window until its complete verification phase
+passes. Its workspace-test phase uses a fresh isolated target and can spend
+several minutes compiling Rust, WGPU, and native shader dependencies on a cold
+run. Compiler progress remains visible; this is active verification, not a
+launch hang. Use `cargo automexia` for ordinary day-to-day launches.
+
 The launcher returns after a successful spawn, leaving Cargo available for the
 next command while Automexia continues running. Both launch paths run the
 cross-platform shell-provisioning phase immediately before the spawn:
@@ -53,6 +60,26 @@ select/close/add hit targets, command-palette labels, footer action separation,
 DPI-stable grid reservation, and footer collapse at extreme pane heights. The
 full frontend and workspace gates additionally cover PTY route isolation and
 teardown behavior.
+
+Focused regressions for the 2026-08 upstream correctness adaptation are:
+
+```text
+cargo test -p rio-vt --lib
+cargo test -p rio-backend --all-targets
+cargo test -p automexia-terminal --all-targets
+cargo check -p sugarloaf --no-default-features
+cargo check -p sugarloaf --features wgpu
+cargo clippy -p rio-vt -p rio-backend -p sugarloaf -p automexia-terminal --all-targets --all-features -- -D warnings
+cargo xtask test resize-stress
+```
+
+These cover Kitty query/placement honesty and memory release, explicit
+background intensity, combining-mark damage, bulk parser parity, synchronized
+updates, viewport/history invariants, modifier-driven link discovery, safe
+click latching, and both CPU-only and product GPU renderer configurations. The
+exact upstream hashes and Automexia-specific adaptations are recorded in
+`UPSTREAM.md`.
+
 On Windows, `cargo xtask test resize-stress --native-gui` creates a real
 pane-local PowerShell tab, proves independent route/PID and preserved launch
 intent, closes its inactive sibling without losing the source, then runs the
@@ -235,8 +262,8 @@ Session cloning has its own deterministic gate:
 cargo xtask test session-clone
 ```
 
-It covers action names, user overrides, Search/Vi exclusions, bare
-`Ctrl+R`/`Ctrl+D` cloning, alternate shell-control passthroughs,
+It covers action names, user overrides, Search/Vi exclusions,
+`Ctrl+Alt+R`/`Ctrl+Alt+D` cloning, bare shell-control ownership,
 PowerShell/pwsh, nested/direct CMD, and native Bash/Zsh descriptors, direct
 and nested WSL descriptors, incomplete metadata, spaces/Unicode, environment
 overrides, unknown/invalid logical directories, safe profile fallback, and
@@ -249,8 +276,9 @@ cargo xtask test session-clone --native-windows
 
 That driver first executes a unique PowerShell command and requires both Up
 Arrow recall and raw `Ctrl+R` reverse search to repaint through ConPTY within
-the 1.5-second native budget. The raw control isolates shell/PTY latency; the
-user-facing history shortcut is `Ctrl+Alt+R` because bare `Ctrl+R` now clones.
+the 1.5-second native budget. The raw control isolates shell/PTY latency and is
+also the user-facing shortcut because Ghostty-compatible defaults leave
+`Ctrl+R` with the shell.
 The workspace's Windows-only PTY regression also starts a clean real PowerShell
 process, negotiates Win32 input-record mode, and checks both operations without
 the renderer so protocol and shell latency stay separable. It then creates
@@ -291,11 +319,11 @@ Release smoke testing must additionally
 confirm a real WSL Docker context appears at initial launch and after switching
 shells without typing, opening a new prompt, or restarting the terminal.
 
-The Windows shell integration test also waits for the automatic deferred style
-event and proves that first-prompt deferral does not remove filesystem icons,
-change native `ls` object semantics, or require user input. Its listing fixtures
-cover the four native metadata columns, composite folder-badge/name adjacency,
-directory suffixes,
+The Windows shell integration test proves that synchronous first-prompt style
+installation does not remove filesystem icons, change native `ls` object
+semantics, block the first command/history repaint, or require user input. Its
+listing fixtures cover the four native metadata columns, composite
+folder-badge/name adjacency, directory suffixes,
 spaces and Unicode, narrow-width truncation, and real `DirectoryInfo`/`FileInfo`
 values after filtering and sorting. CMD coverage proves its interactive launcher
 uses the existing PTY rather than a detached process, direct configured CMD
@@ -376,6 +404,15 @@ It keeps 15,000 historical rows behind an active OSC 133 prompt and measures
 the clear/repaint pattern emitted by PSReadLine, Readline, and ZLE for Up Arrow
 and reverse-history search. Runtime must remain proportional to the live prompt
 block, not the configured scrollback depth.
+
+Current keybinding tests construct both macOS and Windows/Linux/BSD default
+tables on every host, reject trigger collisions, preserve shell-owned controls,
+and reject duplicate visible palette labels. They verify the shipped shortcut
+subset only. The planned compiled-profile suite—including fixture provenance,
+origins and shadowing, atomic reload, fallthrough, sequences/tables/chains,
+generated docs, fuzzing, and hot-path latency—is specified in the
+[full Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md) and must
+not be reported as implemented until those gates exist and pass.
 
 Nightly builds unsigned installers for every artifact target. Stable release
 requires WSL, real-GPU, clean-install, upgrade, uninstall, signature,

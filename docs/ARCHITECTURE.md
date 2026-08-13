@@ -100,9 +100,8 @@ Automexia IDs or path policy.
   record protocol. The window backend retains the native virtual key, scan
   code, modifier/toggle state, and enhanced-key bit; the screen forwards that
   record only after Automexia-owned bindings have had an opportunity to handle
-  it. Up Arrow remains shell-owned. Bare `Ctrl+R`/`Ctrl+D` clone the active
-  session right/down, while `Ctrl+Alt+R`/`Ctrl+Alt+D` explicitly forward the
-  displaced history-search and EOF control bytes to the shell.
+  it. Up Arrow, `Ctrl+R`, and `Ctrl+D` remain shell-owned. Independent session
+  clones use collision-free `Ctrl+Alt+R`/`Ctrl+Alt+D` application shortcuts.
 - Windows PTY ring-buffer producers and consumers check, mutate, wait, and
   notify under the same predicate mutex. This prevents the first input or
   output after an idle transition from losing its wakeup.
@@ -140,8 +139,28 @@ Automexia IDs or path policy.
   the new PTY replaces it and queues live discovery on its first frame.
 - The WSL probe reads Docker and Kubernetes configuration directly and invokes
   only CLIs whose live state cannot be obtained safely from bounded files.
-  PowerShell keeps prompt/command-lifecycle hooks synchronous but defers icon
-  format parsing and editor colors until after the first prompt is visible.
+  PowerShell installs prompt/command-lifecycle hooks, icon format data, and
+  editor colors synchronously before the first editable prompt. It does not
+  schedule a PowerShell event callback that could contend with PSReadLine's
+  first command or history repaint.
+
+## Keyboard compatibility boundary
+
+The v0.4 frontend owns a flat list of typed runtime bindings. It scans that
+list for each key event, applies user entries by removing overlapping defaults,
+and maintains separate hard-coded macOS and Windows/Linux/BSD default tables.
+Live reload rebuilds the list for existing windows. Command-palette labels are
+currently duplicated platform constants rather than registry-derived data.
+
+This is sufficient for the tested default subset but is not the final strict
+compatibility architecture. The
+[full Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md) places a
+future `automexia-keybindings` crate between configuration and the frontend.
+That private crate must remain renderer-, PTY-, and GPU-independent and own
+typed action IDs, triggers, predicates, origins, compilation, direct lookup,
+sequence tries, collision analysis, and reverse action lookup. Adoption starts
+with a behavior-preserving adapter; profiles, fallthrough, sequences, tables,
+and new actions follow only after equivalence tests pass.
 
 `cargo ready` includes the architecture gate. For focused diagnosis,
 `cargo xtask verify architecture` checks the Cargo graph and critical source

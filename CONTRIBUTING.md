@@ -31,6 +31,12 @@ domain checks but never remove the base policy suite.
   files are excluded from the untouched changed-line threshold.
 - Do not introduce network access, arbitrary process execution, or new extension
   capabilities without a security review and explicit least-privilege manifest.
+- For keyboard changes, update the shipped
+  [compatibility matrix](docs/GHOSTTY-KEYBOARD-COMPATIBILITY.md), collision tests,
+  action dispatch, palette discovery, and the
+  [full compatibility roadmap](docs/GHOSTTY-COMPATIBILITY-ROADMAP.md) in the
+  same pull request. Do not claim exact profile parity from a hand-maintained
+  default table.
 
 Documentation-only, tests-only, or internal-maintenance PRs may omit a changelog
 fragment only when the corresponding repository label is applied.

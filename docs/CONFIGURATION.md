@@ -49,12 +49,13 @@ size = 20.0
 `Ctrl`+`+` and `Ctrl`+`-` adjust an individual terminal panel at runtime;
 `Ctrl`+`0` returns it to the configured size.
 
-Tab shortcuts have three deliberate scopes:
+Tab shortcuts have three deliberate scopes. The non-macOS defaults are:
 
 | Shortcut | Result |
 |---|---|
-| `Ctrl`+`T` | add a window-level tab to the current Automexia window |
-| `Ctrl`+`Shift`+`T` | add an independent tab inside the selected split/session |
+| `Ctrl`+`Shift`+`T` | add a window-level tab to the current Automexia window |
+| `Ctrl`+`T` | additional Automexia alias for a window-level tab |
+| `Ctrl`+`Alt`+`T` | add an independent tab inside the selected split/session |
 | `Ctrl`+`Shift`+`N` | create a separate OS window |
 
 The corresponding custom-binding action names are `CreateTab`,
@@ -65,31 +66,42 @@ input queue while inheriting the selected pane's launch descriptor. It does not
 share live process state with its sibling. Closing a pane-local tab closes only
 that tab; closing a window-level tab closes only its own grid. These are
 defaults, so explicit user bindings can override either scope independently.
-macOS uses `Cmd`+`N`, `Cmd`+`T`, and `Cmd`+`Shift`+`T` for the same scopes.
+macOS uses `Cmd`+`N`, `Cmd`+`T`, and `Cmd`+`Alt`+`T` for the same scopes.
 
 Split shortcuts distinguish a clean default shell from an independent clone:
 
 | Shortcut | Result |
 |---|---|
-| `Ctrl`+`Shift`+`R` | open the configured default shell in a right split |
-| `Ctrl`+`Shift`+`D` | open the configured default shell in a lower split |
-| `Ctrl`+`R` | clone the active shell/profile/directory into a right split |
-| `Ctrl`+`D` | clone the active shell/profile/directory into a lower split |
-| `Ctrl`+`Alt`+`R` | forward native `Ctrl`+`R` to the shell for history search |
-| `Ctrl`+`Alt`+`D` | forward native `Ctrl`+`D` to the shell for EOF/logout |
+| `Ctrl`+`Shift`+`O` | open the configured default shell in a right split |
+| `Ctrl`+`Shift`+`E` | open the configured default shell in a lower split |
+| `Ctrl`+`Alt`+`R` | clone the active shell/profile/directory into a right split |
+| `Ctrl`+`Alt`+`D` | clone the active shell/profile/directory into a lower split |
+| `Ctrl`+`R` | shell-owned history search |
+| `Ctrl`+`D` | shell-owned EOF/logout |
 
 Clones are independent sessions: they receive a new PTY, process, route,
 scrollback, input queue, and extension state. PowerShell/pwsh, CMD, Bash, Zsh, and
 WSL retain their active executable/profile/current directory; WSL also retains
 its distro, user, and shell. Jobs, process memory, command history position,
 partially typed input, and scrollback are never copied. The clone actions can
-be rebound as `clonesplitright` and `clonesplitdown`; explicitly binding either
-bare key to `receivechar` restores its traditional direct-to-shell behavior.
+be rebound as `clonesplitright` and `clonesplitdown`.
 Only absolute, control-free OSC 7 directories can replace the stored launch
 directory. Missing or invalid metadata keeps the safe profile fallback. If the
 profile, WSL distribution, or PTY cannot be recreated, Automexia leaves the
 layout unchanged and displays the concrete failure; it never opens PowerShell
 as a silent substitute for a failed WSL clone.
+
+The complete Windows/Linux/BSD and macOS defaults, collision policy,
+Automexia-only extensions, and unsupported Ghostty actions are maintained in
+[Ghostty keyboard compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md).
+
+Automexia v0.4 does not expose `keyboard.profile`, versioned Ghostty profiles,
+multi-key tables, action chains, or explicit unbind directives. The existing
+`[bindings].keys` list remains the supported override mechanism: a valid user
+entry replaces a matching default trigger/mode scope. Compatibility profiles
+will be opt-in and migration will require an explicit apply step if the
+[full compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md) is implemented;
+startup and reload must never silently rewrite configuration.
 
 On Windows, disabled native decorations are the default so Automexia can draw
 coherent tabs and window controls. All edges and corners remain resizable. See

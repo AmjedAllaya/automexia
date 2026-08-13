@@ -33,6 +33,11 @@ non-incremental verification target that is removed whether the gate passes or
 returns an ordinary failure; only the reusable application build remains in the
 normal Cargo target.
 
+No Automexia window appears until those checks pass. The workflow prints its
+launch and verification phases and keeps compiler/build-script progress live,
+including long WGPU and native shader compilation. This distinguishes active
+work from a stalled process.
+
 The complete gate requires Python 3 with PyYAML and `cargo-deny`. If either is
 missing, `cargo dev` reports it before starting the expensive build. Install
 them with your platform package manager or:
@@ -50,6 +55,8 @@ cargo automexia
 
 It rebuilds only changed code, performs a version smoke, automatically prepares
 the same shell integrations, and launches Automexia.
+It does not repeat the exhaustive isolated gate and is the recommended command
+for normal launches after `cargo ready` or `cargo dev` has passed once.
 Both launch commands return after starting the Automexia process, so the
 terminal remains usable and Cargo's build output stays unlocked. Each launch
 uses a generation-specific copy under `target/automexia-runtime`; stale copies
@@ -110,18 +117,24 @@ PowerShell without changing filenames or piped output; see
 the shortcuts, sensitive/config/log/source/test/build category vocabulary, and
 opt-out.
 
-Clone the active PowerShell, Command Prompt, Bash, Zsh, or WSL session into an independent
-right/lower split with `Ctrl`+`R` / `Ctrl`+`D`. The existing `Ctrl`+`Shift`
-split shortcuts still open the configured default shell. Use `Ctrl`+`Alt`+`R`
-for shell history search or `Ctrl`+`Alt`+`D` for shell EOF/logout. See
-[configuration](docs/CONFIGURATION.md) for the exact isolation contract.
+Clone the active PowerShell, Command Prompt, Bash, Zsh, or WSL session into an
+independent right/lower split with `Ctrl`+`Alt`+`R` / `Ctrl`+`Alt`+`D`.
+Bare `Ctrl`+`R` and `Ctrl`+`D` remain native shell history-search and
+EOF/logout controls. Ghostty-compatible fresh splits use `Ctrl`+`Shift`+`O` /
+`Ctrl`+`Shift`+`E` on Windows/Linux/BSD and `Cmd`+`D` /
+`Cmd`+`Shift`+`D` on macOS.
 
-On Windows and Linux, `Ctrl`+`T` adds a window-level tab to the current
-Automexia window. `Ctrl`+`Shift`+`T` adds an independent tab to the selected
-split/session, preserving that pane's shell/profile, WSL identity, and working
-directory. `Ctrl`+`Shift`+`N` creates a separate OS window. Pane-local tabs have
-their own PTYs and close independently; their tab rail appears inside the
-selected session's workspace row.
+On Windows, Linux, and BSD, `Ctrl`+`Shift`+`T` adds a window-level tab;
+`Ctrl`+`T` remains an Automexia alias and `Ctrl`+`Alt`+`T` adds an independent
+tab inside the selected split/session. macOS uses `Cmd`+`T` and
+`Cmd`+`Alt`+`T` for those two scopes. Pane-local tabs preserve the selected
+shell/profile, WSL identity, and working directory while owning independent
+PTYs. See the complete
+[Ghostty keyboard compatibility matrix](docs/GHOSTTY-KEYBOARD-COMPATIBILITY.md)
+[configuration](docs/CONFIGURATION.md), and the
+[full compatibility roadmap](docs/GHOSTTY-COMPATIBILITY-ROADMAP.md). The matrix
+describes the shipped default subset; it is not yet a selectable exact Ghostty
+profile.
 
 ## Configuration
 
