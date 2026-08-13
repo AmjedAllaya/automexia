@@ -16,7 +16,7 @@ pub fn default_hide_if_single() -> bool {
 
 #[inline]
 pub fn default_max_tab_width() -> f32 {
-    240.0
+    200.0
 }
 
 /// Clamp `max_tab_width` to `[80.0, 280.0]`.
@@ -253,6 +253,13 @@ mod tests {
         assert!(Navigation::default().island_visible(1));
         // More than one tab always shows the strip.
         assert!(decoded.navigation.island_visible(2));
+    }
+
+    #[test]
+    fn default_tab_width_uses_compact_desktop_density() {
+        let decoded = toml::from_str::<Root>("[navigation]\nmode = 'Tab'\n").unwrap();
+        assert_eq!(decoded.navigation.max_tab_width, 200.0);
+        assert_eq!(Navigation::default().max_tab_width, 200.0);
     }
 
     /// Both explicit values must override the platform default.

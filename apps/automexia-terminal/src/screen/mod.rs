@@ -27,7 +27,7 @@ use crate::hints::HintState;
 use crate::layout::ContextDimension;
 use crate::mouse::{calculate_mouse_position, Mouse};
 use crate::renderer::island::{self, ChromeAction, LocalTabAction, TabStripLayout};
-use crate::renderer::session_footer::{self, SessionFooterAction};
+use crate::renderer::session_footer;
 use crate::renderer::{utils::padding_top_from_config, Renderer};
 use crate::screen::hint::HintMatches;
 use crate::selection::{Selection, SelectionType};
@@ -392,7 +392,7 @@ impl Screen<'_> {
         let padding_y_top = padding_top_from_config(
             &config.navigation,
             config.margin.top,
-            1,
+            false,
             config.window.macos_use_unified_titlebar,
             size.width as f32,
             size.height as f32,
@@ -654,6 +654,7 @@ impl Screen<'_> {
             .select_current_based_on_mouse(&self.mouse)
         {
             self.context_manager.select_route_from_current_grid();
+            self.resize_top_or_bottom_line();
             // The focusing click never reaches on_left_click, so a
             // selection left behind in the target panel would
             // drag-extend from its stale anchor; drop it on switch.
@@ -694,13 +695,12 @@ impl Screen<'_> {
         font_library: &rio_backend::sugarloaf::font::FontLibrary,
         should_update_font_library: bool,
     ) {
-        let num_tabs = self.ctx().len();
         let window_size = self.sugarloaf.window_size();
         let scale = self.sugarloaf.scale_factor();
         let padding_y_top = padding_top_from_config(
             &config.navigation,
             config.margin.top,
-            num_tabs,
+            self.context_manager.local_tab_count() > 1,
             config.window.macos_use_unified_titlebar,
             window_size.width,
             window_size.height,
@@ -841,7 +841,7 @@ impl Screen<'_> {
         }
         self.renderer.trail_cursor.snap_after_geometry_change();
         self.sugarloaf.resize(new_size.width, new_size.height);
-        self.resize_top_or_bottom_line(self.context_manager.len());
+        self.resize_top_or_bottom_line();
         let width = new_size.width as f32;
         let height = new_size.height as f32;
 
@@ -915,7 +915,7 @@ impl Screen<'_> {
         // Density can change independently of DPI. Recompute the logical top
         // reservation from the new viewport instead of preserving a stale
         // regular-height margin on a compact display.
-        self.resize_top_or_bottom_line(self.context_manager.len());
+        self.resize_top_or_bottom_line();
 
         let width = new_size.width as f32;
         let height = new_size.height as f32;
@@ -1307,40 +1307,40 @@ impl Screen<'_> {
                     }
                     Act::SearchForward => {
                         self.start_search(Direction::Right);
-                        self.resize_top_or_bottom_line(self.ctx().len());
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::SearchBackward => {
                         self.start_search(Direction::Left);
-                        self.resize_top_or_bottom_line(self.ctx().len());
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::Search(SearchAction::SearchConfirm) => {
                         self.confirm_search(clipboard);
-                        self.resize_top_or_bottom_line(self.ctx().len());
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::Search(SearchAction::SearchCancel) => {
                         self.cancel_search(clipboard);
-                        self.resize_top_or_bottom_line(self.ctx().len());
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::Search(SearchAction::SearchClear) => {
                         let direction = self.search_state.direction;
                         self.cancel_search(clipboard);
                         self.start_search(direction);
-                        self.resize_top_or_bottom_line(self.ctx().len());
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::Search(SearchAction::SearchFocusNext) => {
                         self.advance_search_origin(self.search_state.direction);
-                        self.resize_top_or_bottom_line(self.ctx().len());
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::Search(SearchAction::SearchFocusPrevious) => {
                         let direction = self.search_state.direction.opposite();
                         self.advance_search_origin(direction);
-                        self.resize_top_or_bottom_line(self.ctx().len());
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::Search(SearchAction::SearchDeleteWord) => {
@@ -1497,6 +1497,7 @@ impl Screen<'_> {
                     }
                     Act::ConfigEditor => {
                         self.context_manager.switch_to_settings();
+                        self.resize_top_or_bottom_line();
                     }
                     Act::WindowCreateNew => {
                         self.context_manager.create_new_window();
@@ -1532,7 +1533,7 @@ impl Screen<'_> {
                         if let Some(ref mut island) = self.renderer.island {
                             island.dismiss_color_picker();
                         }
-                        self.resize_top_or_bottom_line(1);
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::Quit => {
@@ -1704,11 +1705,13 @@ impl Screen<'_> {
                     Act::SelectNextSplit => {
                         self.cancel_search(clipboard);
                         self.context_manager.select_next_split();
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::SelectPrevSplit => {
                         self.cancel_search(clipboard);
                         self.context_manager.select_prev_split();
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::SelectNextSplitOrTab => {
@@ -1722,6 +1725,7 @@ impl Screen<'_> {
                             old_index,
                             new_index,
                         );
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::SelectPrevSplitOrTab => {
@@ -1735,6 +1739,7 @@ impl Screen<'_> {
                             old_index,
                             new_index,
                         );
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::SelectTab(tab_index) => {
@@ -1746,6 +1751,7 @@ impl Screen<'_> {
                             old_index,
                             new_index,
                         );
+                        self.resize_top_or_bottom_line();
                         self.cancel_search(clipboard);
                         self.mark_dirty();
                     }
@@ -1759,6 +1765,7 @@ impl Screen<'_> {
                             old_index,
                             new_index,
                         );
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::SelectNextTab => {
@@ -1772,6 +1779,7 @@ impl Screen<'_> {
                             old_index,
                             new_index,
                         );
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::MoveCurrentTabToPrev => {
@@ -1821,6 +1829,7 @@ impl Screen<'_> {
                             old_index,
                             new_index,
                         );
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::ReceiveChar | Act::None => (),
@@ -1835,8 +1844,6 @@ impl Screen<'_> {
     pub fn split_right_with_config(&mut self, config: rio_backend::config::Config) {
         // Allocate panel id; position lands on `ContextDimension`
         // through the Taffy layout pass (`apply_taffy_layout`).
-        let _ = self.renderer.margin.top
-            + self.renderer.island.as_ref().map_or(0.0, |i| i.height());
         let _ = config.margin.left;
         let rich_text_id = next_rich_text_id();
         self.context_manager.split_from_config(
@@ -1846,6 +1853,7 @@ impl Screen<'_> {
             &mut self.sugarloaf,
         );
 
+        self.resize_top_or_bottom_line();
         self.mark_dirty();
     }
 
@@ -1854,6 +1862,7 @@ impl Screen<'_> {
         self.context_manager
             .split(rich_text_id, false, &mut self.sugarloaf);
 
+        self.resize_top_or_bottom_line();
         self.mark_dirty();
     }
 
@@ -1862,6 +1871,7 @@ impl Screen<'_> {
         self.context_manager
             .split(rich_text_id, true, &mut self.sugarloaf);
 
+        self.resize_top_or_bottom_line();
         self.mark_dirty();
     }
 
@@ -1871,6 +1881,7 @@ impl Screen<'_> {
             .context_manager
             .clone_split(rich_text_id, false, &mut self.sugarloaf)
         {
+            self.resize_top_or_bottom_line();
             self.mark_dirty();
         }
     }
@@ -1881,6 +1892,7 @@ impl Screen<'_> {
             .context_manager
             .clone_split(rich_text_id, true, &mut self.sugarloaf)
         {
+            self.resize_top_or_bottom_line();
             self.mark_dirty();
         }
     }
@@ -1930,9 +1942,8 @@ impl Screen<'_> {
 
         // We resize the current tab ahead to prepare the
         // dimensions to be copied to next tab.
-        let num_tabs = self.ctx().len();
         let old_index = self.context_manager.current_index();
-        self.resize_top_or_bottom_line(num_tabs + 1);
+        self.resize_top_or_bottom_line();
 
         // Update the old tab's rich text positions to reflect the new margin
         // (on Linux/Windows when hide_if_single transitions from hidden to visible)
@@ -1943,8 +1954,6 @@ impl Screen<'_> {
         // Allocate panel id; the layout pass handles positioning via
         // `ContextDimension` once the new tab's grid is built.
         let _ = self.context_manager.current_grid().scaled_margin.left;
-        let _ = self.renderer.margin.top
-            + self.renderer.island.as_ref().map_or(0.0, |i| i.height());
         let rich_text_id = next_rich_text_id();
         self.context_manager.add_context(redirect, rich_text_id);
         let new_index = self.context_manager.current_index();
@@ -1953,6 +1962,9 @@ impl Screen<'_> {
             old_index,
             new_index,
         );
+        // The new window-level tab starts with one pane-local tab, so release
+        // any secondary-rail reservation inherited from the previous tab.
+        self.resize_top_or_bottom_line();
 
         self.cancel_search(clipboard);
         self.mark_dirty();
@@ -1964,6 +1976,7 @@ impl Screen<'_> {
             .context_manager
             .clone_local_tab(rich_text_id, &mut self.sugarloaf)
         {
+            self.resize_top_or_bottom_line();
             self.clear_selection();
             self.cancel_search(clipboard);
             self.mark_dirty();
@@ -1975,6 +1988,7 @@ impl Screen<'_> {
             .context_manager
             .close_current_local_tab(&mut self.sugarloaf)
         {
+            self.resize_top_or_bottom_line();
             self.clear_selection();
             self.cancel_search(clipboard);
             self.mark_dirty();
@@ -1982,6 +1996,7 @@ impl Screen<'_> {
             self.clear_selection();
             self.context_manager
                 .remove_current_grid(&mut self.sugarloaf);
+            self.resize_top_or_bottom_line();
             self.mark_dirty();
         } else {
             self.close_window_tab(clipboard);
@@ -1993,6 +2008,7 @@ impl Screen<'_> {
             .context_manager
             .close_current_local_tab(&mut self.sugarloaf)
         {
+            self.resize_top_or_bottom_line();
             self.clear_selection();
             self.cancel_search(clipboard);
             self.mark_dirty();
@@ -2018,7 +2034,7 @@ impl Screen<'_> {
             // (on Linux/Windows when hide_if_single transitions to hidden)
             #[cfg(not(target_os = "macos"))]
             {
-                self.resize_top_or_bottom_line(1);
+                self.resize_top_or_bottom_line();
                 self.context_manager
                     .current_grid_mut()
                     .update_dimensions(&mut self.sugarloaf);
@@ -2026,16 +2042,15 @@ impl Screen<'_> {
             }
             return;
         }
-        let num_tabs = self.ctx().len();
-        self.resize_top_or_bottom_line(num_tabs);
+        self.resize_top_or_bottom_line();
         self.mark_dirty();
     }
 
-    pub fn resize_top_or_bottom_line(&mut self, num_tabs: usize) {
+    pub fn resize_top_or_bottom_line(&mut self) {
         let padding_y_top = padding_top_from_config(
             &self.renderer.navigation,
             self.renderer.margin.top,
-            num_tabs,
+            self.context_manager.local_tab_count() > 1,
             self.renderer.macos_use_unified_titlebar,
             self.sugarloaf.window_size().width,
             self.sugarloaf.window_size().height,
@@ -2873,7 +2888,7 @@ impl Screen<'_> {
                     }
                     SearchOverlayAction::Close => {
                         self.cancel_search(clipboard);
-                        self.resize_top_or_bottom_line(self.ctx().len());
+                        self.resize_top_or_bottom_line();
                     }
                 }
                 self.mark_dirty();
@@ -3076,8 +3091,10 @@ impl Screen<'_> {
             .as_ref()
             .map(|island| island.max_tab_width)
             .unwrap_or_else(rio_backend::config::navigation::default_max_tab_width);
-        island::tab_strip_layout(
-            self.sugarloaf.window_size().width,
+        let window_size = self.sugarloaf.window_size();
+        island::tab_strip_layout_for_viewport(
+            window_size.width,
+            window_size.height,
             self.sugarloaf.scale_factor(),
             num_tabs,
             max_tab_width,
@@ -3232,31 +3249,6 @@ impl Screen<'_> {
         changed
     }
 
-    pub fn update_session_footer_hover(&mut self, mouse_x: f64, mouse_y: f64) -> bool {
-        let scale = self.sugarloaf.scale_factor().max(f32::EPSILON);
-        let hit = session_footer::hit_test(
-            &self.context_manager,
-            mouse_x as f32 / scale,
-            mouse_y as f32 / scale,
-            scale,
-        );
-        let hovered = hit.and_then(|hit| hit.action.map(|action| (hit.route_id, action)));
-        let changed = self.renderer.session_footer.set_hovered(hovered);
-        if changed {
-            self.mark_dirty();
-        }
-        changed
-    }
-
-    #[inline]
-    pub fn clear_session_footer_hover(&mut self) -> bool {
-        let changed = self.renderer.session_footer.set_hovered(None);
-        if changed {
-            self.mark_dirty();
-        }
-        changed
-    }
-
     #[inline]
     pub fn is_hovering_session_footer(&self, mouse_x: f64, mouse_y: f64) -> bool {
         let scale = self.sugarloaf.scale_factor().max(f32::EPSILON);
@@ -3269,14 +3261,8 @@ impl Screen<'_> {
         .is_some()
     }
 
-    #[inline]
-    pub fn session_footer_action_hovered(&self) -> bool {
-        self.renderer.session_footer.hovered_action().is_some()
-    }
-
-    /// Handle a click in any pane-local footer. A passive footer click focuses
-    /// that pane without leaking into terminal selection. Action buttons then
-    /// operate on the newly focused independent PTY.
+    /// A footer is passive session status. Clicking it only focuses its pane
+    /// and never triggers search, scrolling, or another terminal command.
     pub fn handle_session_footer_click(&mut self) -> bool {
         let scale = self.sugarloaf.scale_factor().max(f32::EPSILON);
         let Some(hit) = session_footer::hit_test(
@@ -3293,21 +3279,6 @@ impl Screen<'_> {
             self.context_manager.select_route_from_current_grid();
         }
 
-        match hit.action {
-            Some(SessionFooterAction::JumpToLive) => {
-                let context = self.context_manager.current_mut();
-                context.terminal.lock().scroll_display(Scroll::Bottom);
-                context
-                    .renderable_content
-                    .pending_update
-                    .set_terminal_damage(rio_backend::event::TerminalDamage::Full);
-                self.renderer.scrollbar.notify_scroll(context.rich_text_id);
-            }
-            Some(SessionFooterAction::Search) => {
-                self.start_search(Direction::Right);
-            }
-            None => {}
-        }
         self.mark_dirty();
         true
     }
@@ -3351,9 +3322,15 @@ impl Screen<'_> {
                     LocalTabAction::Select(index) => self
                         .context_manager
                         .select_local_tab(index, &mut self.sugarloaf),
-                    LocalTabAction::Close(index) => self
-                        .context_manager
-                        .close_local_tab(index, &mut self.sugarloaf),
+                    LocalTabAction::Close(index) => {
+                        let changed = self
+                            .context_manager
+                            .close_local_tab(index, &mut self.sugarloaf);
+                        if changed {
+                            self.resize_top_or_bottom_line();
+                        }
+                        changed
+                    }
                     LocalTabAction::New => {
                         self.create_local_tab(clipboard);
                         true
@@ -3392,10 +3369,6 @@ impl Screen<'_> {
                     ChromeAction::OpenPalette => {
                         self.renderer.command_palette.set_enabled(true)
                     }
-                    ChromeAction::Search => self.start_search(Direction::Right),
-                    ChromeAction::SplitRight => self.split_right(),
-                    ChromeAction::SplitDown => self.split_down(),
-                    ChromeAction::NextPane => self.context_manager.select_next_split(),
                     ChromeAction::Minimize => window.set_minimized(true),
                     ChromeAction::Maximize => {
                         window.set_maximized(!window.is_maximized())
@@ -3546,6 +3519,7 @@ impl Screen<'_> {
                 old_index,
                 new_index,
             );
+            self.resize_top_or_bottom_line();
 
             self.mark_dirty();
         }
@@ -4247,7 +4221,7 @@ impl Screen<'_> {
                     if let Some(ref mut island) = self.renderer.island {
                         island.dismiss_color_picker();
                     }
-                    self.resize_top_or_bottom_line(1);
+                    self.resize_top_or_bottom_line();
                 }
             }
             PaletteAction::SelectNextTab => {
@@ -4260,6 +4234,7 @@ impl Screen<'_> {
                     old,
                     new,
                 );
+                self.resize_top_or_bottom_line();
             }
             PaletteAction::SelectPrevTab => {
                 self.clear_selection();
@@ -4271,6 +4246,7 @@ impl Screen<'_> {
                     old,
                     new,
                 );
+                self.resize_top_or_bottom_line();
             }
             PaletteAction::SplitRight => self.split_right(),
             PaletteAction::SplitDown => self.split_down(),
@@ -4278,13 +4254,16 @@ impl Screen<'_> {
             PaletteAction::CloneSplitDown => self.clone_split_down(),
             PaletteAction::SelectNextSplit => {
                 self.context_manager.select_next_split();
+                self.resize_top_or_bottom_line();
             }
             PaletteAction::SelectPrevSplit => {
                 self.context_manager.select_prev_split();
+                self.resize_top_or_bottom_line();
             }
             PaletteAction::CloseCurrentSplitOrTab => self.close_split_or_tab(clipboard),
             PaletteAction::ConfigEditor => {
                 self.context_manager.switch_to_settings();
+                self.resize_top_or_bottom_line();
             }
             PaletteAction::WindowCreateNew => {
                 self.context_manager.create_new_window();
@@ -5169,6 +5148,7 @@ impl Screen<'_> {
                     .context_manager
                     .clone_local_tab(rich_text_id, &mut self.sugarloaf)
                 {
+                    self.resize_top_or_bottom_line();
                     self.mark_dirty();
                 }
             }
@@ -5187,11 +5167,13 @@ impl Screen<'_> {
                     self.context_manager
                         .close_local_tab(index, &mut self.sugarloaf)
                 }) {
+                    self.resize_top_or_bottom_line();
                     self.mark_dirty();
                 }
             }
             "select-prev" => {
                 self.context_manager.select_prev_split();
+                self.resize_top_or_bottom_line();
                 self.mark_dirty();
             }
             "write-line" => {

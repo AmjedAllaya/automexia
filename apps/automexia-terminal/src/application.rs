@@ -374,7 +374,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             self.setup_quake_hotkey();
         }
 
-        // Schedule title updates every 2s
+        // Refresh titles and the focused window's passive status clock every 2s.
         let timer_id = TimerId::new(Topic::UpdateTitles, 0);
         if !self.scheduler.scheduled(timer_id) {
             self.scheduler.schedule(
@@ -715,8 +715,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                             event_loop.exit();
                         }
                     } else {
-                        let size = route.window.screen.context_manager.len();
-                        route.window.screen.resize_top_or_bottom_line(size);
+                        route.window.screen.resize_top_or_bottom_line();
                     }
                 }
             }
@@ -1607,7 +1606,6 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             WindowEvent::CursorLeft { .. } => {
                 if route.window.screen.clear_close_button_hover()
                     | route.window.screen.clear_chrome_action_hover()
-                    | route.window.screen.clear_session_footer_hover()
                 {
                     route.request_redraw();
                 }
@@ -1760,17 +1758,8 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 if route.window.screen.update_chrome_action_hover(x, y) {
                     route.request_redraw();
                 }
-                if route.window.screen.update_session_footer_hover(x, y) {
-                    route.request_redraw();
-                }
-
                 if route.window.screen.is_hovering_session_footer(x, y) {
-                    let cursor = if route.window.screen.session_footer_action_hovered() {
-                        CursorIcon::Pointer
-                    } else {
-                        CursorIcon::Default
-                    };
-                    route.window.winit_window.set_cursor(cursor);
+                    route.window.winit_window.set_cursor(CursorIcon::Default);
                     return;
                 }
 

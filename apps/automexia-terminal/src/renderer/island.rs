@@ -8,7 +8,7 @@
 
 use crate::context::ContextManager;
 use crate::renderer::helpers::spring::Spring;
-use crate::renderer::responsive::{ChromeMetrics, Density, Viewport};
+use crate::renderer::responsive::{ChromeMetrics, Viewport};
 use rio_backend::event::{EventProxy, ProgressReport, ProgressState};
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::{Attributes, Sugarloaf};
@@ -17,16 +17,18 @@ use std::borrow::Cow;
 use std::time::Instant;
 
 /// Native liquid-hacker title/tab row height in logical pixels.
-pub const ISLAND_HEIGHT: f32 = 66.0;
+#[cfg(test)]
+pub const ISLAND_HEIGHT: f32 = 48.0;
 const PROGRESS_BAR_HEIGHT: f32 = 3.0;
 
 const PROGRESS_BAR_TIMEOUT_SECS: u64 = 15;
 
-const TAB_PADDING_X: f32 = 35.0;
+const TAB_PADDING_X: f32 = 20.0;
+const PROFILE_TITLE_OFFSET_X: f32 = 18.0;
 #[cfg(test)]
-const TAB_GAP: f32 = 8.0;
+const TAB_GAP: f32 = 6.0;
 #[cfg(test)]
-const TAB_INSET_Y: f32 = 15.0;
+const TAB_INSET_Y: f32 = 5.0;
 const TAB_RADIUS: f32 = 8.0;
 const TITLE_ELLIPSIS: char = '…';
 const DRAG_THRESHOLD: f32 = 4.0;
@@ -77,19 +79,10 @@ const CLOSE_ALPHA_IDLE: f32 = 0.55;
 const CLOSE_ALPHA_HOVER: f32 = 0.95;
 const CLOSE_STROKE_WIDTH: f32 = 1.5;
 const INACTIVE_CUSTOM_MUTE: f32 = 0.55;
-#[cfg(not(target_os = "macos"))]
-const APP_BUTTON_X: f32 = 18.0;
-#[cfg(not(target_os = "macos"))]
-const APP_BUTTON_SIZE: f32 = 34.0;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChromeAction {
     NewTab,
     OpenPalette,
-    Search,
-    SplitRight,
-    SplitDown,
-    NextPane,
     Minimize,
     Maximize,
     CloseWindow,
@@ -153,28 +146,16 @@ fn local_tab_strip_layout(
     if !metrics.show_context || count <= 1 {
         return None;
     }
-    let margin = match metrics.density {
-        Density::Minimal => 8.0,
-        Density::Compact => 12.0,
-        Density::Comfortable => 18.0,
-    };
-    let preferred_gap: f32 = if metrics.density == Density::Minimal {
-        4.0
-    } else {
-        7.0
-    };
-    let preferred_add_width: f32 = if metrics.density == Density::Minimal {
-        30.0
-    } else {
-        38.0
-    };
+    let margin = metrics.context_margin;
+    let preferred_gap = metrics.context_tab_gap;
+    let preferred_add_width = metrics.context_add_width;
     let usable = (logical_width - margin * 2.0).max(1.0);
     let add_width = preferred_add_width.min(usable * 0.20);
     let gap = preferred_gap.min(((usable - add_width) / (count as f32 * 3.0)).max(0.0));
     let available = (usable - add_width - gap * count as f32).max(0.0);
     let tab_width = (available / count as f32).clamp(0.0, 210.0);
-    let y = metrics.context_top + 4.0;
-    let height = (metrics.context_height - 8.0).max(1.0);
+    let y = metrics.context_top + metrics.context_inset_y;
+    let height = (metrics.context_height - metrics.context_inset_y * 2.0).max(1.0);
     let add_x = margin + count as f32 * (tab_width + gap);
     Some(LocalTabStripLayout {
         count,
@@ -186,65 +167,6 @@ fn local_tab_strip_layout(
         add_x,
         add_width,
     })
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct UtilityActionGeometry {
-    action: ChromeAction,
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-    show_label: bool,
-}
-
-const UTILITY_ACTIONS: [ChromeAction; 4] = [
-    ChromeAction::Search,
-    ChromeAction::SplitRight,
-    ChromeAction::SplitDown,
-    ChromeAction::NextPane,
-];
-
-fn utility_action_geometries(
-    metrics: ChromeMetrics,
-    logical_width: f32,
-) -> Option<[UtilityActionGeometry; UTILITY_ACTIONS.len()]> {
-    if !metrics.show_context {
-        return None;
-    }
-
-    let margin = match metrics.density {
-        Density::Minimal => 8.0,
-        Density::Compact => 12.0,
-        Density::Comfortable => 18.0,
-    };
-    let gap = if metrics.density == Density::Minimal {
-        5.0
-    } else {
-        8.0
-    };
-    let show_label = metrics.density == Density::Comfortable && logical_width >= 800.0;
-    let desired_width: f32 = if show_label { 132.0 } else { 44.0 };
-    let available = (logical_width - margin * 2.0).max(4.0);
-    let button_width = desired_width.min(
-        ((available - gap * (UTILITY_ACTIONS.len() - 1) as f32)
-            / UTILITY_ACTIONS.len() as f32)
-            .max(1.0),
-    );
-    let total = button_width * UTILITY_ACTIONS.len() as f32
-        + gap * (UTILITY_ACTIONS.len() - 1) as f32;
-    let start_x = (logical_width - margin - total).max(margin);
-    let y = metrics.context_top + 4.0;
-    let height = (metrics.context_height - 8.0).max(1.0);
-
-    Some(std::array::from_fn(|index| UtilityActionGeometry {
-        action: UTILITY_ACTIONS[index],
-        x: start_x + index as f32 * (button_width + gap),
-        y,
-        width: button_width,
-        height,
-        show_label,
-    }))
 }
 
 struct TabDrag {
@@ -333,13 +255,32 @@ pub fn chrome_metrics(
 
 /// Compute the tab strip layout from the physical window width.
 /// `max_tab_width` comes from `navigation.max-tab-width` (logical px).
+#[cfg(test)]
 pub fn tab_strip_layout(
     window_width: f32,
     scale_factor: f32,
     num_tabs: usize,
     max_tab_width: f32,
 ) -> TabStripLayout {
-    let viewport = Viewport::from_physical(window_width, f32::MAX, scale_factor);
+    tab_strip_layout_for_viewport(
+        window_width,
+        f32::MAX,
+        scale_factor,
+        num_tabs,
+        max_tab_width,
+    )
+}
+
+/// Runtime tab geometry uses both viewport axes so a very wide, very short
+/// window cannot draw minimal controls while retaining comfortable hit boxes.
+pub fn tab_strip_layout_for_viewport(
+    window_width: f32,
+    window_height: f32,
+    scale_factor: f32,
+    num_tabs: usize,
+    max_tab_width: f32,
+) -> TabStripLayout {
+    let viewport = Viewport::from_physical(window_width, window_height, scale_factor);
     let metrics = ChromeMetrics::for_viewport(viewport);
     #[cfg(target_os = "macos")]
     let left_margin = ISLAND_MARGIN_LEFT_MACOS;
@@ -507,6 +448,31 @@ fn close_button_center_x(layout: &TabStripLayout, tab_index: usize) -> Option<f3
 }
 
 #[inline]
+fn tab_close_hit_left(layout: &TabStripLayout) -> Option<f32> {
+    let island_x = layout.tab_gap / 2.0;
+    let island_width = (layout.tab_width - layout.tab_gap).max(0.0);
+    close_button_center(island_x, island_width)
+        .map(|center| center - CLOSE_HIT_HALF_WIDTH)
+}
+
+#[inline]
+fn tab_title_budget(layout: &TabStripLayout) -> f32 {
+    let title_start = layout.tab_padding_x + PROFILE_TITLE_OFFSET_X;
+    let title_end = tab_close_hit_left(layout)
+        .map(|close_left| close_left - 1.0)
+        .unwrap_or(layout.tab_width - layout.tab_padding_x);
+    (title_end - title_start).max(0.0)
+}
+
+#[inline]
+fn centered_tab_title_budget(layout: &TabStripLayout) -> f32 {
+    let side_guard = tab_close_hit_left(layout)
+        .map(|close_left| layout.tab_width - close_left + 1.0)
+        .unwrap_or(layout.tab_padding_x);
+    (layout.tab_width - side_guard * 2.0).max(0.0)
+}
+
+#[inline]
 pub fn close_button_hit(
     layout: &TabStripLayout,
     tab_index: usize,
@@ -639,27 +605,25 @@ impl Island {
         y: f32,
     ) -> Option<ChromeAction> {
         let metrics = chrome_metrics(window_width, window_height, scale_factor);
-        let logical_width = window_width / scale_factor.max(f32::EPSILON);
-        if let Some(items) = utility_action_geometries(metrics, logical_width) {
-            if let Some(item) = items.into_iter().find(|item| {
-                x >= item.x
-                    && x <= item.x + item.width
-                    && y >= item.y
-                    && y <= item.y + item.height
-            }) {
-                return Some(item.action);
-            }
-        }
         if !(0.0..=metrics.header_height).contains(&y) {
             return None;
         }
-        let layout =
-            tab_strip_layout(window_width, scale_factor, num_tabs, self.max_tab_width);
+        let layout = tab_strip_layout_for_viewport(
+            window_width,
+            window_height,
+            scale_factor,
+            num_tabs,
+            self.max_tab_width,
+        );
         let plus_x = layout.actions_x;
-        if layout.show_new_tab && x >= plus_x && x <= plus_x + 30.0 {
+        if layout.show_new_tab && x >= plus_x && x <= plus_x + metrics.action_button_size
+        {
             return Some(ChromeAction::NewTab);
         }
-        if layout.show_palette && x > plus_x + 30.0 && x <= plus_x + 64.0 {
+        if layout.show_palette
+            && x > plus_x + metrics.action_button_size
+            && x <= plus_x + metrics.action_button_size * 2.0
+        {
             return Some(ChromeAction::OpenPalette);
         }
         if !self.custom_chrome {
@@ -1048,6 +1012,7 @@ impl Island {
     }
 
     /// Get the height of the island
+    #[cfg(test)]
     #[inline]
     pub fn height(&self) -> f32 {
         ISLAND_HEIGHT
@@ -1099,27 +1064,11 @@ impl Island {
                 context_manager,
                 bg_color,
             );
-        } else {
-            draw_utility_rail(
-                sugarloaf,
-                metrics,
-                logical_width,
-                bg_color,
-                self.chrome_hover,
-            );
         }
         #[cfg(not(target_os = "macos"))]
         if metrics.show_app_button {
-            let app_size = if metrics.density == Density::Comfortable {
-                APP_BUTTON_SIZE
-            } else {
-                30.0
-            };
-            let app_x = if metrics.density == Density::Comfortable {
-                APP_BUTTON_X
-            } else {
-                10.0
-            };
+            let app_size = metrics.app_button_size;
+            let app_x = metrics.app_button_x;
             let app_y = (metrics.header_height - app_size) / 2.0;
             sugarloaf.rounded_rect(
                 None,
@@ -1188,8 +1137,13 @@ impl Island {
         self.slide_springs
             .retain(|_, s| s.update(dt, DRAG_ANIMATION_LENGTH));
 
-        let layout =
-            tab_strip_layout(window_width, scale_factor, num_tabs, self.max_tab_width);
+        let layout = tab_strip_layout_for_viewport(
+            window_width,
+            window_height,
+            scale_factor,
+            num_tabs,
+            self.max_tab_width,
+        );
         let TabStripLayout {
             left_margin,
             tab_width,
@@ -1246,7 +1200,7 @@ impl Island {
             let max_text_width = if single {
                 single_title_budget(window_width, scale_factor, left_margin)
             } else {
-                (tab_width - layout.tab_padding_x * 2.0 - 22.0).max(0.0)
+                tab_title_budget(&layout)
             };
             let title = fit_title_to_width(
                 sugarloaf,
@@ -1293,7 +1247,7 @@ impl Island {
                 let text_x = if single {
                     single_title_x(window_width, scale_factor, text_width, left_margin)
                 } else {
-                    tab_x + layout.tab_padding_x + 18.0
+                    tab_x + layout.tab_padding_x + PROFILE_TITLE_OFFSET_X
                 };
                 let text_y = (metrics.header_height - layout.title_font_size) / 2.0;
                 if max_text_width > 0.0 {
@@ -1408,7 +1362,7 @@ impl Island {
                 None,
                 actions_x,
                 layout.tab_inset_y,
-                30.0,
+                metrics.action_button_size,
                 metrics.header_height - layout.tab_inset_y * 2.0,
                 [0.12, 0.22, 0.32, 0.72],
                 0.05,
@@ -1417,14 +1371,15 @@ impl Island {
             );
         }
         let action_opts = DrawOpts {
-            font_size: 25.0,
+            font_size: metrics.action_glyph_size,
             color: [230, 238, 245, 242],
             ..DrawOpts::default()
         };
         if layout.show_new_tab {
+            let plus_width = sugarloaf.text_mut().measure("+", &action_opts);
             sugarloaf.text_mut().draw(
-                actions_x + 6.0,
-                (metrics.header_height - 22.0) / 2.0 - 1.0,
+                actions_x + (metrics.action_button_size - plus_width) * 0.5,
+                (metrics.header_height - metrics.action_glyph_size) * 0.5 - 1.0,
                 "+",
                 &action_opts,
             );
@@ -1432,9 +1387,9 @@ impl Island {
         if layout.show_palette {
             draw_command_center_button(
                 sugarloaf,
-                actions_x + 30.0,
+                actions_x + metrics.action_button_size,
                 layout.tab_inset_y,
-                34.0,
+                metrics.action_button_size,
                 metrics.header_height - layout.tab_inset_y * 2.0,
                 matches!(self.chrome_hover, Some(ChromeAction::OpenPalette)),
             );
@@ -1513,7 +1468,7 @@ impl Island {
 
             let raw_title = self.get_title_for_tab(context_manager, drag_idx);
             if !raw_title.is_empty() {
-                let max_text_width = (tab_width - layout.tab_padding_x * 2.0).max(0.0);
+                let max_text_width = centered_tab_title_budget(&layout);
                 let title = fit_title_to_width(
                     sugarloaf,
                     &raw_title,
@@ -1678,7 +1633,13 @@ impl Island {
             left_margin,
             tab_width,
             ..
-        } = tab_strip_layout(window_width, scale_factor, num_tabs, self.max_tab_width);
+        } = tab_strip_layout_for_viewport(
+            window_width,
+            window_height,
+            scale_factor,
+            num_tabs,
+            self.max_tab_width,
+        );
         let tab_x = left_margin + picker_tab as f32 * tab_width;
         let logical_width = window_width / scale_factor.max(f32::EPSILON);
         let metrics = chrome_metrics(window_width, window_height, scale_factor);
@@ -2071,6 +2032,14 @@ fn draw_command_center_button(
     height: f32,
     hovered: bool,
 ) {
+    // Preserve a 40 px interaction slot while matching the quieter optical
+    // weight of the adjacent tab with a smaller visible plate.
+    let visual_width = width.min(32.0);
+    let visual_height = height.min(32.0);
+    let x = x + (width - visual_width) * 0.5;
+    let y = y + (height - visual_height) * 0.5;
+    let width = visual_width;
+    let height = visual_height;
     let outline = if hovered {
         [0.08, 0.72, 0.96, 0.94]
     } else {
@@ -2122,26 +2091,6 @@ fn draw_command_center_button(
     }
 }
 
-fn utility_action_label(action: ChromeAction) -> &'static str {
-    match action {
-        ChromeAction::Search => "FIND",
-        ChromeAction::SplitRight => "SPLIT RIGHT",
-        ChromeAction::SplitDown => "SPLIT DOWN",
-        ChromeAction::NextPane => "NEXT PANE",
-        _ => "",
-    }
-}
-
-fn utility_action_accent(action: ChromeAction) -> [f32; 4] {
-    match action {
-        ChromeAction::Search => [0.20, 0.82, 1.0, 1.0],
-        ChromeAction::SplitRight => [0.68, 0.48, 1.0, 1.0],
-        ChromeAction::SplitDown => [0.86, 0.47, 1.0, 1.0],
-        ChromeAction::NextPane => [0.45, 0.95, 0.42, 1.0],
-        _ => [0.72, 0.80, 0.88, 1.0],
-    }
-}
-
 fn draw_local_tab_rail(
     sugarloaf: &mut Sugarloaf,
     metrics: ChromeMetrics,
@@ -2154,11 +2103,7 @@ fn draw_local_tab_rail(
     let Some(layout) = local_tab_strip_layout(metrics, logical_width, count) else {
         return;
     };
-    let margin = match metrics.density {
-        Density::Minimal => 8.0,
-        Density::Compact => 12.0,
-        Density::Comfortable => 18.0,
-    };
+    let margin = metrics.context_margin;
     let rail_outline = over(bg_color, [0.06, 0.22, 0.34, 0.78]);
     let rail_fill = over(bg_color, [0.01, 0.045, 0.075, 0.90]);
     sugarloaf.rounded_rect(
@@ -2222,11 +2167,7 @@ fn draw_local_tab_rail(
 
         if tab.width >= 46.0 {
             let icon = profile_icon(&title);
-            let icon_size = if metrics.density == Density::Minimal {
-                15.0
-            } else {
-                18.0
-            };
+            let icon_size = metrics.context_icon_size;
             let icon_opts = DrawOpts {
                 font_size: icon_size,
                 color: color_u8(accent),
@@ -2240,12 +2181,13 @@ fn draw_local_tab_rail(
             );
         }
 
-        let font_size = if metrics.density == Density::Minimal {
-            12.5
-        } else {
-            14.0
-        };
-        let text_x = tab.x + if tab.width >= 46.0 { 34.0 } else { 6.0 };
+        let font_size = metrics.context_font_size;
+        let text_x = tab.x
+            + if tab.width >= 46.0 {
+                10.0 + metrics.context_icon_size + 8.0
+            } else {
+                6.0
+            };
         let close_budget = 30.0;
         let title_width = (tab.x + tab.width - close_budget - text_x).max(0.0);
         if title_width > 4.0 {
@@ -2301,191 +2243,6 @@ fn draw_local_tab_rail(
         let accent = [0.20, 0.82, 1.0, 1.0];
         sugarloaf.line(cx - 5.0, cy, cx + 5.0, cy, 1.8, 0.0, accent, 24);
         sugarloaf.line(cx, cy - 5.0, cx, cy + 5.0, 1.8, 0.0, accent, 24);
-    }
-}
-
-fn draw_utility_rail(
-    sugarloaf: &mut Sugarloaf,
-    metrics: ChromeMetrics,
-    logical_width: f32,
-    bg_color: [f32; 4],
-    hovered: Option<ChromeAction>,
-) {
-    let Some(items) = utility_action_geometries(metrics, logical_width) else {
-        return;
-    };
-    let first = &items[0];
-    let margin = match metrics.density {
-        Density::Minimal => 8.0,
-        Density::Compact => 12.0,
-        Density::Comfortable => 18.0,
-    };
-    let rail_fill = over(bg_color, [0.01, 0.045, 0.075, 0.88]);
-    let rail_outline = over(bg_color, [0.06, 0.22, 0.34, 0.78]);
-    sugarloaf.rounded_rect(
-        None,
-        margin,
-        metrics.context_top,
-        (logical_width - margin * 2.0).max(1.0),
-        metrics.context_height,
-        rail_outline,
-        0.05,
-        9.0,
-        19,
-    );
-    sugarloaf.rounded_rect(
-        None,
-        margin + 1.0,
-        metrics.context_top + 1.0,
-        (logical_width - margin * 2.0 - 2.0).max(0.0),
-        (metrics.context_height - 2.0).max(0.0),
-        rail_fill,
-        0.05,
-        8.0,
-        20,
-    );
-
-    if first.x - margin >= 145.0 {
-        let label_opts = DrawOpts {
-            font_size: 12.5,
-            color: [116, 151, 178, 230],
-            bold: true,
-            ..DrawOpts::default()
-        };
-        sugarloaf.text_mut().draw(
-            margin + 18.0,
-            metrics.context_top + (metrics.context_height - 12.5) * 0.5 - 1.0,
-            "WORKSPACE TOOLS",
-            &label_opts,
-        );
-    }
-
-    for item in items {
-        let is_hovered = hovered == Some(item.action);
-        let accent = utility_action_accent(item.action);
-        let outline = if is_hovered {
-            accent
-        } else {
-            [accent[0], accent[1], accent[2], 0.34]
-        };
-        let fill = if is_hovered {
-            [accent[0] * 0.12, accent[1] * 0.12, accent[2] * 0.12, 0.98]
-        } else {
-            [0.018, 0.064, 0.10, 0.80]
-        };
-        sugarloaf.rounded_rect(
-            None,
-            item.x,
-            item.y,
-            item.width,
-            item.height,
-            outline,
-            0.05,
-            7.0,
-            21,
-        );
-        sugarloaf.rounded_rect(
-            None,
-            item.x + 1.0,
-            item.y + 1.0,
-            (item.width - 2.0).max(0.0),
-            (item.height - 2.0).max(0.0),
-            fill,
-            0.05,
-            6.0,
-            22,
-        );
-
-        let icon_x = if item.show_label {
-            item.x + 12.0
-        } else {
-            item.x + (item.width - 18.0) * 0.5
-        };
-        let icon_y = item.y + (item.height - 18.0) * 0.5;
-        draw_utility_icon(sugarloaf, item.action, icon_x, icon_y, accent, fill);
-
-        if item.show_label {
-            let opts = DrawOpts {
-                font_size: 13.0,
-                color: color_u8(if is_hovered {
-                    [0.92, 0.97, 1.0, 1.0]
-                } else {
-                    [0.70, 0.82, 0.91, 1.0]
-                }),
-                bold: true,
-                ..DrawOpts::default()
-            };
-            sugarloaf.text_mut().draw(
-                item.x + 39.0,
-                item.y + (item.height - 13.0) * 0.5 - 1.0,
-                utility_action_label(item.action),
-                &opts,
-            );
-        }
-    }
-}
-
-fn draw_utility_icon(
-    sugarloaf: &mut Sugarloaf,
-    action: ChromeAction,
-    x: f32,
-    y: f32,
-    color: [f32; 4],
-    inner: [f32; 4],
-) {
-    match action {
-        ChromeAction::Search => {
-            sugarloaf.rounded_rect(None, x, y, 11.0, 11.0, color, 0.04, 6.0, 23);
-            sugarloaf.rounded_rect(
-                None,
-                x + 2.0,
-                y + 2.0,
-                7.0,
-                7.0,
-                inner,
-                0.04,
-                4.0,
-                24,
-            );
-            sugarloaf.line(x + 9.5, y + 9.5, x + 15.5, y + 15.5, 2.0, 0.0, color, 24);
-        }
-        ChromeAction::SplitRight | ChromeAction::SplitDown => {
-            sugarloaf.rounded_rect(None, x, y + 1.0, 18.0, 15.0, color, 0.04, 3.0, 23);
-            sugarloaf.rounded_rect(
-                None,
-                x + 1.7,
-                y + 2.7,
-                14.6,
-                11.6,
-                inner,
-                0.04,
-                2.0,
-                24,
-            );
-            if action == ChromeAction::SplitRight {
-                sugarloaf.line(x + 9.0, y + 2.0, x + 9.0, y + 15.0, 1.5, 0.0, color, 25);
-            } else {
-                sugarloaf.line(x + 1.5, y + 8.5, x + 16.5, y + 8.5, 1.5, 0.0, color, 25);
-            }
-        }
-        ChromeAction::NextPane => {
-            sugarloaf.rounded_rect(None, x, y + 2.0, 11.0, 11.0, color, 0.04, 3.0, 23);
-            sugarloaf.rounded_rect(
-                None,
-                x + 2.0,
-                y + 4.0,
-                7.0,
-                7.0,
-                inner,
-                0.04,
-                2.0,
-                24,
-            );
-            sugarloaf.line(x + 9.0, y + 14.0, x + 16.0, y + 14.0, 1.5, 0.0, color, 24);
-            sugarloaf.line(x + 13.0, y + 11.0, x + 16.0, y + 14.0, 1.5, 0.0, color, 24);
-            sugarloaf.line(x + 13.0, y + 17.0, x + 16.0, y + 14.0, 1.5, 0.0, color, 24);
-        }
-        _ => {}
     }
 }
 
@@ -2833,44 +2590,20 @@ mod tests {
     }
 
     #[test]
-    fn workspace_utility_actions_are_disjoint_and_clickable() {
+    fn empty_secondary_chrome_has_no_workspace_action_hit_targets() {
         let island = Island::new([1.0; 4], [1.0; 4], false, 240.0, true);
         let metrics = chrome_metrics(1_280.0, 760.0, 1.0);
-        let items = utility_action_geometries(metrics, 1_280.0).unwrap();
-        assert_eq!(items.len(), UTILITY_ACTIONS.len());
-        for (index, item) in items.iter().enumerate() {
-            assert_eq!(item.action, UTILITY_ACTIONS[index]);
-            assert!(item.x >= 0.0 && item.x + item.width <= 1_280.0);
-            assert!(item.y >= metrics.context_top);
-            assert!(item.y + item.height <= metrics.context_top + metrics.context_height);
-            if let Some(next) = items.get(index + 1) {
-                assert!(item.x + item.width < next.x);
-            }
-            assert_eq!(
-                island.chrome_action_at(
-                    1_280.0,
-                    760.0,
-                    1.0,
-                    2,
-                    item.x + item.width * 0.5,
-                    item.y + item.height * 0.5,
-                ),
-                Some(item.action)
-            );
-        }
-    }
-
-    #[test]
-    fn workspace_tools_fit_extreme_widths_and_hide_on_short_viewports() {
-        let minimal = chrome_metrics(300.0, 320.0, 1.0);
-        let items = utility_action_geometries(minimal, 300.0).unwrap();
-        assert_eq!(items.len(), UTILITY_ACTIONS.len());
-        assert!(items.iter().all(|item| !item.show_label));
-        assert!(items.last().unwrap().x + items.last().unwrap().width <= 292.0);
-
-        let short = chrome_metrics(1_280.0, 220.0, 1.0);
-        assert!(!short.show_context);
-        assert!(utility_action_geometries(short, 1_280.0).is_none());
+        assert_eq!(
+            island.chrome_action_at(
+                1_280.0,
+                760.0,
+                1.0,
+                2,
+                640.0,
+                metrics.context_top + metrics.context_height * 0.5,
+            ),
+            None
+        );
     }
 
     #[test]
@@ -3172,10 +2905,24 @@ mod tests {
     }
 
     #[test]
+    fn short_wide_viewport_uses_identical_minimal_draw_and_hit_geometry() {
+        let layout = tab_strip_layout_for_viewport(1_600.0, 200.0, 1.0, 2, 240.0);
+        let metrics = chrome_metrics(1_600.0, 200.0, 1.0);
+        assert_eq!(
+            metrics.density,
+            crate::renderer::responsive::Density::Minimal
+        );
+        assert_eq!(layout.window_button_width, metrics.window_button_width);
+        assert_eq!(layout.tab_inset_y, metrics.tab_inset_y);
+        assert_eq!(layout.title_font_size, metrics.title_font_size);
+        assert_eq!(layout.profile_icon_size, metrics.profile_icon_size);
+    }
+
+    #[test]
     fn hidden_compact_actions_have_no_hit_targets() {
         let island = Island::new([1.0; 4], [1.0; 4], false, 240.0, true);
         assert_eq!(
-            island.chrome_action_at(300.0, 200.0, 1.0, 1, 185.0, 23.0),
+            island.chrome_action_at(300.0, 200.0, 1.0, 1, 170.0, 23.0),
             None
         );
         assert_eq!(
@@ -3273,14 +3020,14 @@ mod tests {
 
     #[test]
     fn close_hit_box_clears_the_title_budget() {
-        // A max-width centered title on slot 0 ends at
-        // slot_right - TAB_PADDING_X; the close hit box must start at
-        // or after that point, or clicking visible title glyphs would
-        // close the tab.
+        // The title budget is derived from the rendered close hit box, so
+        // compact padding cannot make visible glyphs clickable as Close.
         let layout = layout_for_test(0.0, 180.0, 360.0);
         let cx = close_button_center_x(&layout, 0).unwrap();
-        let title_max_right = layout.tab_width - TAB_PADDING_X;
-        assert!(cx - CLOSE_HIT_HALF_WIDTH >= title_max_right);
+        let title_start = layout.tab_padding_x + PROFILE_TITLE_OFFSET_X;
+        let title_max_right = title_start + tab_title_budget(&layout);
+        assert!(cx - CLOSE_HIT_HALF_WIDTH > title_max_right);
+        assert!(centered_tab_title_budget(&layout) <= layout.tab_width);
     }
 
     #[test]
