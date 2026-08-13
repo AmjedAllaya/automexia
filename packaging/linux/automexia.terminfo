@@ -1,4 +1,5 @@
 automexia|Automexia Terminal,
+    Sync=\E[?2026%?%p1%{1}%-%tl%eh%;,
     use=xterm-256color,
 
 xterm-automexia|Automexia Terminal with xterm compatibility,

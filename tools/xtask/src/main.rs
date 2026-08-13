@@ -1407,22 +1407,24 @@ fn verify_architecture() -> TaskResult {
     let palette = read(&app.join("src/renderer/command_palette.rs"))?;
     require(
         bindings.contains(
-            r#""r", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight"#,
+            r#""r", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight"#,
         ) && bindings.contains(
-            r#""d", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown"#,
+            r#""d", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown"#,
         ) && bindings.contains(
-            r#""r", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x12".into())"#,
+            r#""o", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight"#,
         ) && bindings.contains(
-            r#""d", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x04".into())"#,
-        ) && bindings.contains(
-            r#""r", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight"#,
-        ) && bindings.contains(
-            r#""d", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown"#,
+            r#""e", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown"#,
         ) && palette.contains("Clone Active Session Right")
             && palette.contains("Clone Active Session Down")
             && palette.contains("shortcut: SHORTCUT_CLONE_RIGHT")
-            && palette.contains("shortcut: SHORTCUT_CLONE_DOWN"),
-        "clone shortcuts do not distinguish active-session clones from fresh default splits",
+            && palette.contains("shortcut: SHORTCUT_CLONE_DOWN")
+            && !bindings.contains(
+                r#""r", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight"#,
+            )
+            && !bindings.contains(
+                r#""d", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown"#,
+            ),
+        "Ghostty-compatible fresh splits, shell-owned controls, and Automexia clone extensions are not distinct",
     )?;
     let context_renderer = read(&app.join("src/renderer/devops_status.rs"))?;
     require(
@@ -1854,8 +1856,10 @@ fn package_check() -> TaskResult {
     )?;
     let terminfo = read(&root.join("packaging/linux/automexia.terminfo"))?;
     require(
-        terminfo.contains("automexia|") && terminfo.contains("xterm-automexia|"),
-        "terminfo must define both automexia and xterm-automexia",
+        terminfo.contains("automexia|")
+            && terminfo.contains("xterm-automexia|")
+            && terminfo.contains(r"Sync=\E[?2026%?%p1%{1}%-%tl%eh%;"),
+        "terminfo must define both Automexia names and advertise synchronized updates",
     )?;
     let linux_package = read(&root.join("packaging/linux/nfpm.yaml"))?;
     for size in [16, 32, 48, 64, 128, 256, 512] {

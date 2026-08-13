@@ -61,8 +61,11 @@ impl Grid<Square> {
         self.saved_cursor.pos.row += from_history;
         self.cursor.pos.row += from_history;
 
-        self.display_offset = self.display_offset.saturating_sub(lines_added);
+        // The viewport absorbs the rows actually pulled from history,
+        // which can be fewer than the requested viewport growth.
+        self.display_offset = self.display_offset.saturating_sub(from_history);
         self.decrease_scroll_limit(lines_added);
+        self.display_offset = min(self.display_offset, self.history_size());
     }
 
     /// Remove lines from the visible area.
@@ -90,6 +93,7 @@ impl Grid<Square> {
         self.raw.rotate((self.lines - target) as isize);
         self.raw.shrink_visible_lines(target);
         self.lines = target;
+        self.display_offset = min(self.display_offset, self.history_size());
     }
 
     /// Grow number of columns in each row, reflowing if necessary.

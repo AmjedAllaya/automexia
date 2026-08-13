@@ -342,8 +342,12 @@ pub fn render_cpu(
         h.write(inst_bytes);
         for (grid, uniforms) in grids.iter() {
             h.write(bytemuck::bytes_of(uniforms));
-            if let crate::grid::GridRenderer::Cpu(cpu_grid) = &**grid {
-                cpu_grid.hash_state(&mut h);
+            match &**grid {
+                crate::grid::GridRenderer::Cpu(cpu_grid) => {
+                    cpu_grid.hash_state(&mut h);
+                }
+                #[cfg(any(target_os = "macos", target_os = "linux", feature = "wgpu"))]
+                _ => {}
             }
         }
         // Image overlays: geometry plus the pixel store identity (a

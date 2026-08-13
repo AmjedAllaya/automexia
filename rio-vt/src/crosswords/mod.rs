@@ -414,6 +414,17 @@ fn vs_is_valid_base(base: char, vs: char) -> bool {
     Presentation::for_grapheme(s).1.is_some()
 }
 
+/// Whether a codepoint is an emoji base in the Unicode data available to the
+/// retained v0.4 terminal engine. This accepts both default emoji codepoints
+/// and text-default codepoints with an explicit emoji variation sequence.
+fn is_emoji_base(base: char) -> bool {
+    use rio_grapheme_width::emoji::Presentation;
+
+    Presentation::for_char(base) == Presentation::Emoji
+        || vs_is_valid_base(base, '\u{FE0F}')
+        || vs_is_valid_base(base, '\u{FE0E}')
+}
+
 // Max size of the window title stack.
 const TITLE_STACK_MAX_DEPTH: usize = 4096;
 
@@ -652,6 +663,9 @@ impl<U: EventListener> Crosswords<U> {
     #[inline]
     pub fn reset_damage(&mut self) {
         self.damage.reset();
+        // A consumed frame includes the cursor snapshot. Record it here
+        // so quiet PTY drains do not emit CursorOnly forever.
+        self.damage.last_cursor = self.grid.cursor.pos;
     }
 
     #[inline]
@@ -661,6 +675,13 @@ impl<U: EventListener> Crosswords<U> {
 
     #[inline]
     pub fn clear_saved_history(&mut self) {
+        self.clear_screen(ClearMode::Saved);
+    }
+
+    /// Clear the visible screen and all scrollback as one terminal action.
+    #[inline]
+    pub fn clear_screen_and_history(&mut self) {
+        self.clear_screen(ClearMode::All);
         self.clear_screen(ClearMode::Saved);
     }
 
@@ -1284,7 +1305,18 @@ impl<U: EventListener> Crosswords<U> {
         }
 
         self.grid.sync_template_style();
+        let pinned_offset = self.grid.display_offset();
         self.grid.scroll_up(&region, lines);
+
+        // At the history cap a pinned viewport cannot absorb a new row;
+        // the entire historical view slides and therefore needs a full
+        // repaint, not only active scroll-region damage.
+        if region.start == 0
+            && pinned_offset != 0
+            && self.grid.display_offset() != pinned_offset.saturating_add(lines)
+        {
+            self.mark_fully_damaged();
+        }
 
         // Scroll vi mode cursor.
         let viewport_top = Line(-(self.grid.display_offset() as i32));
@@ -1791,145 +1823,6 @@ impl<U: EventListener> Crosswords<U> {
         t
     }
 
-    /// If the previous cell is a narrow, text-presentation emoji base whose
-    /// (base, U+FE0F) sequence is listed in emoji-variation-sequences.txt,
-    /// promote it to Wide and write a Spacer into the next column, advancing
-    /// the cursor past it. No-op otherwise.
-    ///
-    /// Mirrors kitty's `draw_combining_char` / ghostty's VS16 branch: font
-    /// shaping will return a wide emoji glyph for the (base, VS16) cluster
-    /// via cmap format 14, so the grid must budget two cells for it.
-    #[inline(never)]
-    fn apply_emoji_vs16(&mut self) {
-        let columns = self.grid.columns();
-        // No wide pair fits on one column, so leave the base narrow: the
-        // wrap branch below would place the trailing Spacer at column 1 of
-        // the new row, off the end of it.
-        if columns < 2 {
-            return;
-        }
-        let row = self.grid.cursor.pos.row;
-        let cursor_col = self.grid.cursor.pos.col.0;
-        let should_wrap = self.grid.cursor.should_wrap;
-
-        let base_col = if should_wrap {
-            cursor_col
-        } else if cursor_col == 0 {
-            return;
-        } else {
-            cursor_col - 1
-        };
-
-        let base_cell = &self.grid[row][Column(base_col)];
-        if !matches!(base_cell.wide(), Wide::Narrow) {
-            return;
-        }
-        let base_char = base_cell.c();
-        if !vs_is_valid_base(base_char, '\u{FE0F}') {
-            return;
-        }
-
-        let spacer_col = base_col + 1;
-        if spacer_col >= columns {
-            // Base is at the final column → no room for a Spacer on this
-            // row. Mirror kitty's `move_widened_char_past_multiline_chars`
-            // (screen.c) and ghostty's wrap branch (Terminal.zig:414): turn
-            // the trailing cell into a `LeadingSpacer` (signals "wide char
-            // continues on next line"), wrap, and re-place the wide base
-            // on the new row, preserving the original cell's style and
-            // any extras (zerowidth combining chars attached before VS16).
-            if !self.mode.contains(Mode::LINE_WRAP) {
-                return;
-            }
-
-            // Snapshot the base cell — `write_at_cursor` below replaces
-            // it with a fresh `Square` and would otherwise lose the
-            // codepoint, style, and extras_id we want to move.
-            let base_snapshot = self.grid[row][Column(base_col)];
-
-            self.grid.cursor.pos.col = Column(base_col);
-            self.grid.cursor.should_wrap = false;
-            self.write_at_cursor(' ');
-            self.grid.cursor_cell().set_wide(Wide::LeadingSpacer);
-
-            self.wrapline();
-
-            let new_row = self.grid.cursor.pos.row;
-            let mut moved = base_snapshot;
-            moved.set_wide(Wide::Wide);
-            self.grid[new_row][Column(0)] = moved;
-
-            self.grid.cursor.pos.col = Column(1);
-            self.write_at_cursor(' ');
-            self.grid.cursor_cell().set_wide(Wide::Spacer);
-
-            if 2 < columns {
-                self.grid.cursor.pos.col = Column(2);
-            } else {
-                self.grid.cursor.should_wrap = true;
-            }
-
-            self.damage.damage_line(row.0 as usize);
-            self.damage.damage_line(new_row.0 as usize);
-            return;
-        }
-
-        self.grid[row][Column(base_col)].set_wide(Wide::Wide);
-
-        self.grid.cursor.pos.col = Column(spacer_col);
-        self.grid.cursor.should_wrap = false;
-        self.write_at_cursor(' ');
-        self.grid.cursor_cell().set_wide(Wide::Spacer);
-
-        if spacer_col + 1 < columns {
-            self.grid.cursor.pos.col = Column(spacer_col + 1);
-        } else {
-            self.grid.cursor.should_wrap = true;
-        }
-
-        self.damage.damage_line(row.0 as usize);
-    }
-
-    /// Inverse of `apply_emoji_vs16`: if the previous cell is a Wide emoji
-    /// base whose (base, U+FE0E) sequence is listed in the variation map,
-    /// narrow it back to a single cell, clear the trailing Spacer, and
-    /// retreat the cursor.
-    #[inline(never)]
-    fn apply_emoji_vs15(&mut self) {
-        let row = self.grid.cursor.pos.row;
-        let cursor_col = self.grid.cursor.pos.col.0;
-        let should_wrap = self.grid.cursor.should_wrap;
-
-        let (base_col, spacer_col) = if should_wrap {
-            if cursor_col == 0 {
-                return;
-            }
-            (cursor_col - 1, cursor_col)
-        } else {
-            if cursor_col < 2 {
-                return;
-            }
-            (cursor_col - 2, cursor_col - 1)
-        };
-
-        let base_cell = &self.grid[row][Column(base_col)];
-        if !matches!(base_cell.wide(), Wide::Wide) {
-            return;
-        }
-        let base_char = base_cell.c();
-        if !vs_is_valid_base(base_char, '\u{FE0E}') {
-            return;
-        }
-
-        self.grid[row][Column(base_col)].set_wide(Wide::Narrow);
-        self.grid[row][Column(spacer_col)] = Square::default();
-
-        self.grid.cursor.pos.col = Column(spacer_col);
-        self.grid.cursor.should_wrap = false;
-
-        self.damage.damage_line(row.0 as usize);
-    }
-
     /// Read the hyperlink (if any) for the cell at `(line, col)`.
     /// Looks up the cell's `extras_id` in the per-grid extras table.
     /// Used by hint matching (`find_hyperlink_matches`) to locate
@@ -2195,13 +2088,14 @@ impl<U: EventListener> Crosswords<U> {
             // intentionally persists per screen).
             let stale = &mut self.graphics.kitty_inactive_screen;
             if !stale.atlas_placements.is_empty() {
-                let mut removals = self.graphics.texture_operations.lock();
-                for key in stale.atlas_key_refs.keys() {
-                    removals.push(*key);
+                let keys: Vec<u64> = stale.atlas_key_refs.keys().copied().collect();
+                {
+                    let mut removals = self.graphics.texture_operations.lock();
+                    removals.extend(keys.iter().copied());
                 }
-                drop(removals);
                 stale.atlas_placements.clear();
                 stale.atlas_key_refs.clear();
+                self.graphics.untrack_atlas_keys(&keys);
                 self.send_graphics_updates();
             }
         }
@@ -3683,18 +3577,6 @@ impl<U: EventListener> Handler for Crosswords<U> {
 
         // Handle zero-width characters.
         if width == 0 {
-            // Emoji presentation variation selectors flip the *width* of
-            // the preceding cell before being attached as combining data.
-            // Matches kitty/ghostty; see emoji-variation-sequences.txt.
-            // Without this, a text-presentation emoji like U+1F39F picks up
-            // a wide emoji glyph from the font shaper but stays in a single
-            // grid cell, overflowing into the neighbour on render.
-            match c {
-                '\u{FE0F}' => self.apply_emoji_vs16(),
-                '\u{FE0E}' => self.apply_emoji_vs15(),
-                _ => {}
-            }
-
             let mut column = self.grid.cursor.pos.col;
             if !self.grid.cursor.should_wrap {
                 column.0 = column.saturating_sub(1);
@@ -3703,6 +3585,23 @@ impl<U: EventListener> Handler for Crosswords<U> {
             let row = self.grid.cursor.pos.row;
             if matches!(self.grid[row][column].wide(), Wide::Spacer) {
                 column.0 = column.saturating_sub(1);
+            }
+
+            // Legacy wcwidth semantics never let presentation selectors
+            // change a cell's logical width. Shells, tmux, and line editors
+            // position their cursors with per-codepoint widths; changing the
+            // width here makes their redraw math diverge from the grid.
+            // Selectors outside an emoji cluster are presentation noise and
+            // are dropped instead of polluting copied/serialized extras.
+            if matches!(c, '\u{FE0F}' | '\u{FE0E}') {
+                let cell = self.grid[row][column];
+                if !matches!(
+                    cell.content_tag(),
+                    crate::crosswords::square::ContentTag::Codepoint
+                ) || !is_emoji_base(cell.c())
+                {
+                    return;
+                }
             }
 
             let cell = &mut self.grid[row][column];
@@ -3720,6 +3619,10 @@ impl<U: EventListener> Handler for Crosswords<U> {
                 cell.insert_cell_flag(CellFlags::GRAPHEME);
                 self.grid[row].has_extras = true;
             }
+            // This mutates a previously painted cell and returns before
+            // the ordinary write-path damage bookkeeping. Repaint the
+            // row immediately so late combining marks never stay stale.
+            self.damage.damage_line(row.0 as usize);
             return;
         }
 
@@ -5066,7 +4969,7 @@ impl<U: EventListener> Handler for Crosswords<U> {
     fn place_graphic(
         &mut self,
         placement: crate::ansi::kitty_graphics_protocol::PlacementRequest,
-    ) {
+    ) -> bool {
         debug!(
             "Kitty graphics placement: image_id={}, x={}, y={}, columns={}, rows={}, virtual={}",
             placement.image_id,
@@ -5077,24 +4980,26 @@ impl<U: EventListener> Handler for Crosswords<U> {
             placement.virtual_placement,
         );
 
+        // `a=p` references an already transmitted image. Refuse a
+        // missing image before recording placement metadata so the
+        // dispatcher can return ENOENT and clients may retransmit it.
+        let image_id = placement.image_id;
+        if self.graphics.get_kitty_image(image_id).is_none() {
+            warn!("Attempted to place non-existent kitty graphic: id={image_id}");
+            return false;
+        }
+
         // `U=1` → virtual placement: store metadata, the application
         // emits U+10EEEE placeholder cells itself. The renderer scans
         // visible cells and composites the image at those positions.
         if placement.virtual_placement {
             self.place_virtual_graphic(placement);
-            return;
+            return true;
         }
 
         // Direct placement: use overlay path
-        let image_id = placement.image_id;
-        if self.graphics.get_kitty_image(image_id).is_some() {
-            self.place_kitty_overlay(image_id, &placement);
-        } else {
-            warn!(
-                "Attempted to place non-existent kitty graphic: id={}",
-                placement.image_id
-            );
-        }
+        self.place_kitty_overlay(image_id, &placement);
+        true
     }
 
     #[inline]
@@ -5111,8 +5016,10 @@ impl<U: EventListener> Handler for Crosswords<U> {
 
         match delete.action {
             b'a' | b'A' => {
-                // Delete all overlay placements
+                // Delete overlay and virtual placements. Placeholder
+                // cells must not keep rendering deleted virtual images.
                 self.graphics.kitty_placements.clear();
+                self.graphics.kitty_virtual_placements.clear();
                 overlay_changed = true;
 
                 if delete.delete_data {
@@ -5122,18 +5029,26 @@ impl<U: EventListener> Handler for Crosswords<U> {
             }
             b'i' | b'I' => {
                 let image_id_to_match = delete.image_id;
-                // Delete overlay placements for this image
-                let before = self.graphics.kitty_placements.len();
+                let before = self.graphics.kitty_placements.len()
+                    + self.graphics.kitty_virtual_placements.len();
                 if delete.placement_id != 0 {
                     self.graphics
                         .kitty_placements
+                        .remove(&(image_id_to_match, delete.placement_id));
+                    self.graphics
+                        .kitty_virtual_placements
                         .remove(&(image_id_to_match, delete.placement_id));
                 } else {
                     self.graphics
                         .kitty_placements
                         .retain(|k, _| k.0 != image_id_to_match);
+                    self.graphics
+                        .kitty_virtual_placements
+                        .retain(|k, _| k.0 != image_id_to_match);
                 }
-                overlay_changed = self.graphics.kitty_placements.len() != before;
+                overlay_changed = self.graphics.kitty_placements.len()
+                    + self.graphics.kitty_virtual_placements.len()
+                    != before;
 
                 if delete.delete_data {
                     self.graphics
@@ -5238,17 +5153,26 @@ impl<U: EventListener> Handler for Crosswords<U> {
                 if let Some(&image_id) =
                     self.graphics.kitty_image_numbers.get(&lookup_number)
                 {
-                    let before = self.graphics.kitty_placements.len();
+                    let before = self.graphics.kitty_placements.len()
+                        + self.graphics.kitty_virtual_placements.len();
                     if delete.placement_id != 0 {
                         self.graphics
                             .kitty_placements
+                            .remove(&(image_id, delete.placement_id));
+                        self.graphics
+                            .kitty_virtual_placements
                             .remove(&(image_id, delete.placement_id));
                     } else {
                         self.graphics
                             .kitty_placements
                             .retain(|k, _| k.0 != image_id);
+                        self.graphics
+                            .kitty_virtual_placements
+                            .retain(|k, _| k.0 != image_id);
                     }
-                    overlay_changed = self.graphics.kitty_placements.len() != before;
+                    overlay_changed = self.graphics.kitty_placements.len()
+                        + self.graphics.kitty_virtual_placements.len()
+                        != before;
 
                     if delete.delete_data {
                         self.graphics.delete_kitty_images(|id, _| *id == image_id);
@@ -7682,6 +7606,22 @@ mod tests {
     }
 
     #[test]
+    fn clear_screen_and_history_removes_visible_and_saved_content() {
+        let mut term = make_crosswords();
+        term.grid[Line(0)][Column(0)].set_c('x');
+        term.grid.scroll_up(&(Line(0)..Line(4)), 2);
+        term.grid[Line(1)][Column(1)].set_c('y');
+        assert!(term.history_size() > 0);
+
+        term.clear_screen_and_history();
+
+        assert_eq!(term.history_size(), 0);
+        for row in 0..4 {
+            assert_eq!(term.grid[Line(row)].occ, 0);
+        }
+    }
+
+    #[test]
     fn test_cursor_damage_after_clear() {
         use crate::ansi::CursorShape;
         use crate::crosswords::CrosswordsSize;
@@ -7763,6 +7703,133 @@ mod tests {
         // Verify final cursor position
         assert_eq!(term.grid.cursor.pos.row, Line(0));
         assert_eq!(term.grid.cursor.pos.col, Column(2)); // After typing "aa"
+    }
+
+    #[test]
+    fn combining_mark_attachment_damages_painted_row() {
+        use crate::performer::handler::Handler;
+
+        let mut term = make_crosswords();
+        term.input('e');
+        term.reset_damage();
+
+        term.input('\u{0301}');
+        let extras = term.grid[Line(0)][Column(0)]
+            .extras_id()
+            .and_then(|id| term.grid.extras_table.get(id))
+            .expect("combining mark extras");
+        assert_eq!(extras.zerowidth, ['\u{0301}']);
+
+        match term.damage() {
+            TermDamage::Full => {}
+            TermDamage::Partial(mut lines) => assert!(lines.any(|line| line.line == 0)),
+        }
+    }
+
+    fn scrolled_back_term() -> Crosswords<VoidListener> {
+        use crate::crosswords::grid::Scroll;
+        use crate::performer::handler::Handler;
+
+        let mut term = Crosswords::new(
+            CrosswordsSize::new(10, 6),
+            CursorShape::Block,
+            VoidListener,
+            crate::event::WindowId::from(0),
+            0,
+            40,
+        );
+        for index in 0..300 {
+            term.input((b'a' + (index % 26) as u8) as char);
+            term.linefeed();
+            term.carriage_return();
+        }
+        term.scroll_display(Scroll::Top);
+        assert!(term.display_offset() > 0);
+        term.reset_damage();
+        term
+    }
+
+    #[test]
+    fn sub_region_scroll_does_not_drift_history_viewport() {
+        use crate::performer::handler::Handler;
+        let mut term = scrolled_back_term();
+        let offset = term.display_offset();
+
+        term.grid.cursor.pos = Pos::new(Line(2), Column(0));
+        term.delete_lines(2);
+        assert_eq!(term.display_offset(), offset);
+        term.insert_blank_lines(2);
+        assert_eq!(term.display_offset(), offset);
+        assert!(term.display_offset() <= term.history_size());
+    }
+
+    #[test]
+    fn pinned_viewport_absorbs_top_anchored_history_scroll() {
+        use crate::performer::handler::Handler;
+        let mut term = new_term(10, 6);
+        for _ in 0..20 {
+            term.linefeed();
+        }
+        term.scroll_display(crate::crosswords::grid::Scroll::Delta(5));
+        assert_eq!(term.display_offset(), 5);
+        term.reset_damage();
+
+        term.set_scrolling_region(1, Some(5));
+        term.grid.cursor.pos = Pos::new(Line(4), Column(0));
+        term.linefeed();
+        assert_eq!(term.display_offset(), 6);
+        assert!(term.display_offset() <= term.history_size());
+        assert!(!matches!(
+            term.peek_damage_event(),
+            Some(TerminalDamage::Full)
+        ));
+    }
+
+    #[test]
+    fn pinned_viewport_slide_at_history_cap_is_full_damage() {
+        use crate::performer::handler::Handler;
+        let mut term = scrolled_back_term();
+        let cap = term.history_size();
+        assert_eq!(term.display_offset(), cap);
+
+        term.set_scrolling_region(1, Some(5));
+        term.grid.cursor.pos = Pos::new(Line(4), Column(0));
+        term.linefeed();
+        assert_eq!(term.history_size(), cap);
+        assert_eq!(term.display_offset(), cap);
+        assert!(matches!(
+            term.peek_damage_event(),
+            Some(TerminalDamage::Full)
+        ));
+    }
+
+    #[test]
+    fn resize_keeps_pinned_offset_within_available_history() {
+        let mut term = scrolled_back_term();
+        for size in [(10, 9), (10, 4), (7, 8), (160, 2), (2, 80), (10, 6)] {
+            term.resize(CrosswordsSize::new(size.0, size.1));
+            assert!(
+                term.display_offset() <= term.history_size(),
+                "{}x{} left offset {} beyond history {}",
+                size.0,
+                size.1,
+                term.display_offset(),
+                term.history_size()
+            );
+        }
+    }
+
+    #[test]
+    fn consuming_damage_quiesces_cursor_only_events() {
+        use crate::performer::handler::Handler;
+        let mut term = new_term(10, 4);
+        term.reset_damage();
+        assert!(term.peek_damage_event().is_none());
+
+        term.input('x');
+        assert!(term.peek_damage_event().is_some());
+        term.reset_damage();
+        assert!(term.peek_damage_event().is_none());
     }
 
     #[test]
@@ -8418,8 +8485,7 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // Emoji presentation variation selectors (VS15 / VS16).
-    // See `input()` + `apply_emoji_vs16` / `apply_emoji_vs15`.
+    // Legacy emoji presentation variation selectors (VS15 / VS16).
     // ------------------------------------------------------------------
 
     fn new_term(cols: usize, rows: usize) -> Crosswords<VoidListener> {
@@ -8436,7 +8502,7 @@ mod tests {
     }
 
     #[test]
-    fn vs16_widens_text_presentation_emoji() {
+    fn legacy_text_emoji_vs16_keeps_width() {
         use crate::performer::handler::Handler;
         let mut cw = new_term(10, 3);
         // 🎟 (U+1F39F, EAW=N, default text presentation) then VS16.
@@ -8445,17 +8511,20 @@ mod tests {
 
         let row = Line(0);
         assert_eq!(cw.grid[row][Column(0)].c(), '\u{1F39F}');
-        assert_eq!(cw.grid[row][Column(0)].wide(), Wide::Wide);
-        assert_eq!(cw.grid[row][Column(1)].wide(), Wide::Spacer);
-        assert_eq!(cw.grid.cursor.pos.col, Column(2));
+        assert_eq!(cw.grid[row][Column(0)].wide(), Wide::Narrow);
+        assert_eq!(cw.grid[row][Column(1)].wide(), Wide::Narrow);
+        assert_eq!(cw.grid.cursor.pos.col, Column(1));
         assert!(!cw.grid.cursor.should_wrap);
-        // VS16 still attached as combining mark to the base cell.
-        let extras_id = cw.grid[row][Column(0)].extras_id();
-        assert!(extras_id.is_some());
+        // VS16 is retained as combining data without affecting layout.
+        let extras_id = cw.grid[row][Column(0)].extras_id().unwrap();
+        assert_eq!(
+            cw.grid.extras_table.get(extras_id).unwrap().zerowidth,
+            ['\u{FE0F}']
+        );
     }
 
     #[test]
-    fn vs16_on_non_emoji_base_leaves_cell_narrow() {
+    fn legacy_variation_selector_dropped_off_emoji_base() {
         use crate::performer::handler::Handler;
         let mut cw = new_term(10, 3);
         cw.input('a');
@@ -8466,6 +8535,15 @@ mod tests {
         assert_eq!(cw.grid[row][Column(0)].wide(), Wide::Narrow);
         assert_eq!(cw.grid[row][Column(1)].wide(), Wide::Narrow);
         assert_eq!(cw.grid.cursor.pos.col, Column(1));
+        assert!(cw.grid[row][Column(0)].extras_id().is_none());
+
+        // Ordinary combining marks continue to attach to non-emoji bases.
+        cw.input('\u{0301}');
+        let extras_id = cw.grid[row][Column(0)].extras_id().unwrap();
+        assert_eq!(
+            cw.grid.extras_table.get(extras_id).unwrap().zerowidth,
+            ['\u{0301}']
+        );
     }
 
     #[test]
@@ -8483,7 +8561,7 @@ mod tests {
     }
 
     #[test]
-    fn vs15_narrows_default_emoji() {
+    fn vs15_keeps_default_emoji_width() {
         use crate::performer::handler::Handler;
         let mut cw = new_term(10, 3);
         // 👍 (U+1F44D THUMBS UP) defaults to emoji presentation. It is
@@ -8494,9 +8572,9 @@ mod tests {
 
         let row = Line(0);
         assert_eq!(cw.grid[row][Column(0)].c(), '\u{1F44D}');
-        assert_eq!(cw.grid[row][Column(0)].wide(), Wide::Narrow);
-        assert_eq!(cw.grid[row][Column(1)].wide(), Wide::Narrow);
-        assert_eq!(cw.grid.cursor.pos.col, Column(1));
+        assert_eq!(cw.grid[row][Column(0)].wide(), Wide::Wide);
+        assert_eq!(cw.grid[row][Column(1)].wide(), Wide::Spacer);
+        assert_eq!(cw.grid.cursor.pos.col, Column(2));
         assert!(!cw.grid.cursor.should_wrap);
     }
 
@@ -8527,7 +8605,7 @@ mod tests {
     }
 
     #[test]
-    fn vs16_at_last_column_wraps_base_to_next_row() {
+    fn vs16_at_last_column_preserves_pending_wrap() {
         use crate::performer::handler::Handler;
         // Width 3 so that a 1-cell base at col 2 has no room for a spacer.
         let mut cw = new_term(3, 3);
@@ -8538,28 +8616,23 @@ mod tests {
         assert!(cw.grid.cursor.should_wrap);
         cw.input('\u{FE0F}');
 
-        // Old row's last cell is now a LeadingSpacer signalling that a wide
-        // glyph continues on the wrapped line. The base char itself moves to
-        // (1, 0) marked Wide, with a Spacer at (1, 1).
+        // Selector attachment does not consume the pending wrap or move the
+        // base; the next width-bearing character owns that transition.
         assert_eq!(cw.grid[Line(0)][Column(0)].c(), 'a');
         assert_eq!(cw.grid[Line(0)][Column(1)].c(), 'a');
-        assert_eq!(cw.grid[Line(0)][Column(2)].wide(), Wide::LeadingSpacer);
-
-        assert_eq!(cw.grid[Line(1)][Column(0)].c(), '\u{1F39F}');
-        assert_eq!(cw.grid[Line(1)][Column(0)].wide(), Wide::Wide);
-        assert_eq!(cw.grid[Line(1)][Column(1)].wide(), Wide::Spacer);
-
-        assert_eq!(cw.grid.cursor.pos.row, Line(1));
+        assert_eq!(cw.grid[Line(0)][Column(2)].c(), '\u{1F39F}');
+        assert_eq!(cw.grid[Line(0)][Column(2)].wide(), Wide::Narrow);
+        assert_eq!(cw.grid[Line(1)][Column(0)].c(), '\0');
+        assert_eq!(cw.grid.cursor.pos.row, Line(0));
         assert_eq!(cw.grid.cursor.pos.col, Column(2));
-        assert!(!cw.grid.cursor.should_wrap);
+        assert!(cw.grid.cursor.should_wrap);
     }
 
     #[test]
-    fn vs16_at_last_column_preserves_base_extras() {
+    fn vs16_at_last_column_preserves_and_extends_base_extras() {
         use crate::performer::handler::Handler;
-        // Attach a combining mark to the base BEFORE VS16 arrives, then
-        // trigger the right-edge wrap and confirm the extras follow the
-        // base to the new row (matches ghostty's grapheme transfer block).
+        // Attach a combining mark before VS16 and confirm the existing data
+        // remains on the same final-column cell while the selector joins it.
         let mut cw = new_term(3, 3);
         cw.input('a');
         cw.input('a');
@@ -8571,21 +8644,22 @@ mod tests {
 
         cw.input('\u{FE0F}');
 
-        // The wide base on the new row should still carry the same extras
-        // entry (the ZWJ we attached earlier).
-        let moved_extras = cw.grid[Line(1)][Column(0)].extras_id();
-        assert_eq!(moved_extras, original_extras);
-        assert_eq!(cw.grid[Line(1)][Column(0)].wide(), Wide::Wide);
-        assert_eq!(cw.grid[Line(0)][Column(2)].wide(), Wide::LeadingSpacer);
+        let final_extras = cw.grid[Line(0)][Column(2)].extras_id().unwrap();
+        assert_eq!(final_extras, original_extras.unwrap());
+        assert_eq!(
+            cw.grid.extras_table.get(final_extras).unwrap().zerowidth,
+            ['\u{200D}', '\u{FE0F}']
+        );
+        assert_eq!(cw.grid[Line(0)][Column(2)].wide(), Wide::Narrow);
+        assert_eq!(cw.grid.cursor.pos.row, Line(0));
+        assert!(cw.grid.cursor.should_wrap);
     }
 
     #[test]
-    fn vs16_then_vs15_round_trip_narrows() {
+    fn sequential_selectors_leave_legacy_width_unchanged() {
         use crate::performer::handler::Handler;
-        // Text-default 🎟 widened by VS16, then VS15 must narrow it back.
-        // The (🎟, VS15) entry in the variation map is (Text, Text) — our
-        // predicate matches any listed (base, vs) pair, not just the
-        // "changes presentation" ones, so round-tripping works.
+        // Both selectors attach, but neither changes the width chosen for the
+        // base by legacy per-codepoint wcwidth semantics.
         let mut cw = new_term(10, 3);
         cw.input('\u{1F39F}');
         cw.input('\u{FE0F}');
@@ -8598,11 +8672,10 @@ mod tests {
     }
 
     #[test]
-    fn vs16_then_following_char_does_not_overlap() {
+    fn following_char_uses_legacy_selector_width() {
         use crate::performer::handler::Handler;
-        // Reproduces the original vim-split-misalignment scenario: after
-        // widening the text-presentation emoji, the next character must
-        // land *past* the spacer, not on top of it.
+        // The next character follows the width the application can predict;
+        // the selector itself consumes no cell.
         let mut cw = new_term(10, 3);
         cw.input('"');
         cw.input('\u{1F39F}');
@@ -8612,10 +8685,9 @@ mod tests {
         let row = Line(0);
         assert_eq!(cw.grid[row][Column(0)].c(), '"');
         assert_eq!(cw.grid[row][Column(1)].c(), '\u{1F39F}');
-        assert_eq!(cw.grid[row][Column(1)].wide(), Wide::Wide);
-        assert_eq!(cw.grid[row][Column(2)].wide(), Wide::Spacer);
-        assert_eq!(cw.grid[row][Column(3)].c(), '"');
-        assert_eq!(cw.grid.cursor.pos.col, Column(4));
+        assert_eq!(cw.grid[row][Column(1)].wide(), Wide::Narrow);
+        assert_eq!(cw.grid[row][Column(2)].c(), '"');
+        assert_eq!(cw.grid.cursor.pos.col, Column(3));
     }
 
     /// End-to-end: feed rio the exact byte sequence `kitten icat
@@ -8891,6 +8963,23 @@ mod tests {
             10_000,
         );
 
+        cw.graphics.store_kitty_image(
+            1234,
+            None,
+            GraphicData {
+                id: rio_graphics::GraphicId::new(1234),
+                width: 1,
+                height: 1,
+                pixels: vec![0; 4],
+                color_type: rio_graphics::ColorType::Rgba,
+                is_opaque: true,
+                display_width: None,
+                display_height: None,
+                resize: None,
+                transmit_time: crate::time::Instant::now(),
+            },
+        );
+
         let cursor_before = cw.grid.cursor.pos;
         let placement = PlacementRequest {
             image_id: 1234,
@@ -8909,7 +8998,7 @@ mod tests {
             cell_y_offset: 0,
         };
 
-        cw.place_graphic(placement);
+        assert!(cw.place_graphic(placement));
 
         // Metadata stored …
         let vp = cw
@@ -8937,6 +9026,128 @@ mod tests {
 
         // Cursor must be untouched.
         assert_eq!(cw.grid.cursor.pos, cursor_before);
+
+        cw.delete_graphics(crate::ansi::kitty_graphics_protocol::DeleteRequest {
+            action: b'i',
+            image_id: 1234,
+            image_number: 0,
+            placement_id: 0,
+            x: 0,
+            y: 0,
+            z_index: 0,
+            delete_data: false,
+        });
+        assert!(
+            cw.graphics.kitty_virtual_placements.is_empty(),
+            "delete-by-image must remove virtual placement metadata"
+        );
+    }
+
+    #[test]
+    fn delete_selectors_remove_matching_virtual_placements() {
+        use crate::ansi::kitty_graphics_protocol::{DeleteRequest, PlacementRequest};
+
+        let mut cw = new_term(20, 8);
+        for (image_id, image_number) in [(11, 111), (22, 222)] {
+            cw.graphics.store_kitty_image(
+                image_id,
+                Some(image_number),
+                GraphicData {
+                    id: rio_graphics::GraphicId::new(image_id as u64),
+                    width: 1,
+                    height: 1,
+                    pixels: vec![0; 4],
+                    color_type: rio_graphics::ColorType::Rgba,
+                    is_opaque: true,
+                    display_width: None,
+                    display_height: None,
+                    resize: None,
+                    transmit_time: crate::time::Instant::now(),
+                },
+            );
+        }
+
+        let placement = |image_id, placement_id| PlacementRequest {
+            image_id,
+            placement_id,
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            columns: 2,
+            rows: 1,
+            z_index: 0,
+            virtual_placement: true,
+            unicode_placeholder: 0,
+            cursor_movement: 1,
+            cell_x_offset: 0,
+            cell_y_offset: 0,
+        };
+        assert!(cw.place_graphic(placement(11, 5)));
+        assert!(cw.place_graphic(placement(11, 6)));
+        assert!(cw.place_graphic(placement(22, 7)));
+        assert_eq!(cw.graphics.kitty_virtual_placements.len(), 3);
+
+        // Exact image/placement selection removes only that registration.
+        cw.delete_graphics(DeleteRequest {
+            action: b'i',
+            image_id: 11,
+            image_number: 0,
+            placement_id: 5,
+            x: 0,
+            y: 0,
+            z_index: 0,
+            delete_data: false,
+        });
+        assert!(!cw.graphics.kitty_virtual_placements.contains_key(&(11, 5)));
+        assert!(cw.graphics.kitty_virtual_placements.contains_key(&(11, 6)));
+        assert!(cw.graphics.kitty_virtual_placements.contains_key(&(22, 7)));
+
+        // Image-number selection resolves I= through the stored number map.
+        cw.delete_graphics(DeleteRequest {
+            action: b'n',
+            image_id: 0,
+            image_number: 222,
+            placement_id: 7,
+            x: 0,
+            y: 0,
+            z_index: 0,
+            delete_data: false,
+        });
+        assert!(!cw.graphics.kitty_virtual_placements.contains_key(&(22, 7)));
+        assert!(cw.graphics.kitty_virtual_placements.contains_key(&(11, 6)));
+
+        // A zero placement id means every placement for the selected image.
+        assert!(cw.place_graphic(placement(22, 7)));
+        cw.delete_graphics(DeleteRequest {
+            action: b'i',
+            image_id: 11,
+            image_number: 0,
+            placement_id: 0,
+            x: 0,
+            y: 0,
+            z_index: 0,
+            delete_data: false,
+        });
+        assert!(!cw
+            .graphics
+            .kitty_virtual_placements
+            .keys()
+            .any(|key| key.0 == 11));
+        assert!(cw.graphics.kitty_virtual_placements.contains_key(&(22, 7)));
+
+        // Delete-all clears any remaining virtual metadata.
+        cw.delete_graphics(DeleteRequest {
+            action: b'a',
+            image_id: 0,
+            image_number: 0,
+            placement_id: 0,
+            x: 0,
+            y: 0,
+            z_index: 0,
+            delete_data: false,
+        });
+        assert!(cw.graphics.kitty_virtual_placements.is_empty());
     }
 
     /// DECSTBM bounds where scrolling happens, not what is on screen. Both
