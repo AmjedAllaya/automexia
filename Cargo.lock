@@ -3799,6 +3799,9 @@ dependencies = [
 [[package]]
 name = "rio-fonts"
 version = "0.4.0"
+dependencies = [
+ "ttf-parser",
+]
 
 [[package]]
 name = "rio-grapheme-width"

@@ -125,12 +125,17 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
             return $script:AutomexiaCachedStyledPromptPath
         }
 
-        # A quiet four-role hierarchy makes long paths scannable without
-        # turning them into a rainbow. ANSI changes presentation only: copied
-        # text and VT semantic-path matching still receive the exact path.
+        # A restrained semantic hierarchy makes every component of a long path
+        # independently scannable. The three parent hues repeat predictably;
+        # the root and active leaf remain unique anchors. ANSI changes only
+        # presentation, so copied text and VT path matching stay exact.
         $rootColor = "$script:AutomexiaEsc[38;2;98;176;255m"
-        $parentColor = "$script:AutomexiaEsc[38;2;72;167;255m"
-        $leafColor = "$script:AutomexiaEsc[38;2;45;212;191m"
+        $parentColors = @(
+            "$script:AutomexiaEsc[38;2;80;213;255m",
+            "$script:AutomexiaEsc[38;2;167;139;250m",
+            "$script:AutomexiaEsc[38;2;72;167;255m"
+        )
+        $leafColor = "$script:AutomexiaEsc[38;2;184;243;107m"
         $separatorColor = "$script:AutomexiaEsc[38;2;88;113;141m"
         $resetColor = "$script:AutomexiaEsc[0m"
         $tokens = [regex]::Split($Path, '([\\/]+)')
@@ -156,7 +161,7 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
             } elseif ($componentIndex -eq 1) {
                 $rootColor
             } else {
-                $parentColor
+                $parentColors[($componentIndex - 2) % $parentColors.Count]
             }
             [void]$styled.Append($color).Append($token)
         }

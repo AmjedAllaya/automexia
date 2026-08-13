@@ -34,6 +34,27 @@ struct ProductIdentity {
     shell_integration_environment: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LaunchMode {
+    Verified,
+    Incremental,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LaunchPhase {
+    Ready,
+    Build,
+    Smoke,
+    InstallShellIntegration,
+    Launch,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HostShellPlatform {
+    Windows,
+    Unix,
+}
+
 fn main() {
     if let Err(error) = dispatch(env::args().skip(1).collect()) {
         eprintln!("xtask: {error}");
@@ -537,14 +558,76 @@ fn ready() -> TaskResult {
 }
 
 fn dev(app_args: &[String]) -> TaskResult {
-    ready()?;
-    launch_debug_app(app_args)
+    execute_launch_plan(LaunchMode::Verified, app_args)
 }
 
 fn run_app(app_args: &[String]) -> TaskResult {
-    build_debug_app()?;
-    smoke_debug_app()?;
-    launch_debug_app(app_args)
+    execute_launch_plan(LaunchMode::Incremental, app_args)
+}
+
+fn launch_plan(mode: LaunchMode) -> &'static [LaunchPhase] {
+    match mode {
+        LaunchMode::Verified => &[
+            LaunchPhase::Ready,
+            LaunchPhase::InstallShellIntegration,
+            LaunchPhase::Launch,
+        ],
+        LaunchMode::Incremental => &[
+            LaunchPhase::Build,
+            LaunchPhase::Smoke,
+            LaunchPhase::InstallShellIntegration,
+            LaunchPhase::Launch,
+        ],
+    }
+}
+
+fn execute_launch_plan(mode: LaunchMode, app_args: &[String]) -> TaskResult {
+    for phase in launch_plan(mode) {
+        match phase {
+            LaunchPhase::Ready => ready()?,
+            LaunchPhase::Build => build_debug_app()?,
+            LaunchPhase::Smoke => smoke_debug_app()?,
+            LaunchPhase::InstallShellIntegration => install_shell_integration()?,
+            LaunchPhase::Launch => launch_debug_app(app_args)?,
+        }
+    }
+    Ok(())
+}
+
+fn shell_integration_command(
+    platform: HostShellPlatform,
+) -> (&'static str, &'static [&'static str]) {
+    match platform {
+        HostShellPlatform::Windows => (
+            "powershell",
+            &[
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "shell-integration/install-windows.ps1",
+                "-Quiet",
+            ],
+        ),
+        HostShellPlatform::Unix => {
+            ("sh", &["shell-integration/install-unix.sh", "--quiet"])
+        }
+    }
+}
+
+fn install_shell_integration() -> TaskResult {
+    let platform = if cfg!(windows) {
+        HostShellPlatform::Windows
+    } else {
+        HostShellPlatform::Unix
+    };
+    let (program, args) = shell_integration_command(platform);
+    println!("Preparing Automexia shell integration (source-aware and idempotent)");
+    run(program, args)?;
+    println!("PASS: shell integration is ready for this launch");
+    Ok(())
 }
 
 fn build_debug_app() -> TaskResult {
@@ -946,6 +1029,8 @@ fn test_conformance() -> TaskResult {
             "-p",
             "rio-window",
             "-p",
+            "rio-fonts",
+            "-p",
             "sugarloaf",
             "-p",
             "teletypewriter",
@@ -1318,6 +1403,27 @@ fn verify_architecture() -> TaskResult {
             && context.contains("return false"),
         "session clone failures do not preserve layout and report a user-visible error",
     )?;
+    let bindings = read(&app.join("src/bindings/mod.rs"))?;
+    let palette = read(&app.join("src/renderer/command_palette.rs"))?;
+    require(
+        bindings.contains(
+            r#""r", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight"#,
+        ) && bindings.contains(
+            r#""d", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown"#,
+        ) && bindings.contains(
+            r#""r", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x12".into())"#,
+        ) && bindings.contains(
+            r#""d", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x04".into())"#,
+        ) && bindings.contains(
+            r#""r", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight"#,
+        ) && bindings.contains(
+            r#""d", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown"#,
+        ) && palette.contains("Clone Active Session Right")
+            && palette.contains("Clone Active Session Down")
+            && palette.contains("shortcut: SHORTCUT_CLONE_RIGHT")
+            && palette.contains("shortcut: SHORTCUT_CLONE_DOWN"),
+        "clone shortcuts do not distinguish active-session clones from fresh default splits",
+    )?;
     let context_renderer = read(&app.join("src/renderer/devops_status.rs"))?;
     require(
         context_renderer.contains("enum SegmentRole")
@@ -1382,13 +1488,26 @@ fn verify_architecture() -> TaskResult {
             && powershell_view.contains("$glyph $displayName")
             && powershell_view.contains("ReparsePoint")
             && powershell_view.contains("ConvertFromUtf32")
-            && powershell_view.contains("0xF023")
-            && powershell_view.contains("0xF013")
-            && powershell_view.contains("0xF15C")
-            && powershell_view.contains("0xF121")
+            && powershell_view.contains("0xF0250")
+            && powershell_view.contains("0xF107F")
+            && powershell_view.contains("0xF0C82")
+            && powershell_view.contains("0xF19F6")
             && powershell_view.contains("255;92;122")
-            && powershell_view.contains("PSVersionTable.PSVersion.Major -ge 7"),
-        "PowerShell filesystem view does not keep category icons and width-safe colors beside native object names",
+            && powershell_view.contains("PSVersionTable.PSVersion.Major -ge 7")
+            && powershell_view.contains("[Console]::IsOutputRedirected")
+            && powershell_view.contains("WindowSize.Width -ge 96")
+            && powershell_view.contains("38;5;${legacyColor}"),
+        "PowerShell filesystem view does not keep composite folder badges and width-safe colors beside native object names",
+    )?;
+    let posix_folder_filter =
+        read(&root().join("shell-integration/posix/automexia-eza-filter.pl"))?;
+    require(
+        posix_folder_filter.contains("generic_folder")
+            && posix_folder_filter.contains("0xF0250")
+            && posix_folder_filter.contains("0xF107F")
+            && posix_folder_filter.contains("0xF19F6")
+            && posix_folder_filter.contains("0xF0870"),
+        "POSIX eza compatibility path does not provide composite folder badges",
     )?;
     let cmd_integration = read(&root().join("shell-integration/cmd/automexia.cmd"))?;
     let cmd_listing = read(&root().join("shell-integration/cmd/automexia-ls.ps1"))?;
@@ -2292,6 +2411,50 @@ mod tests {
         assert!(usage().contains("test session-clone [--native-windows|--native-wsl]"));
         assert!(usage().contains("release --version"));
         assert!(usage().contains("verify all"));
+    }
+
+    #[test]
+    fn every_launch_plan_provisions_shells_immediately_before_spawn() {
+        assert_eq!(
+            launch_plan(LaunchMode::Verified),
+            &[
+                LaunchPhase::Ready,
+                LaunchPhase::InstallShellIntegration,
+                LaunchPhase::Launch,
+            ]
+        );
+        assert_eq!(
+            launch_plan(LaunchMode::Incremental),
+            &[
+                LaunchPhase::Build,
+                LaunchPhase::Smoke,
+                LaunchPhase::InstallShellIntegration,
+                LaunchPhase::Launch,
+            ]
+        );
+        for mode in [LaunchMode::Verified, LaunchMode::Incremental] {
+            let phases = launch_plan(mode);
+            assert_eq!(phases.last(), Some(&LaunchPhase::Launch));
+            assert_eq!(
+                phases.get(phases.len() - 2),
+                Some(&LaunchPhase::InstallShellIntegration)
+            );
+        }
+    }
+
+    #[test]
+    fn automatic_installers_are_quiet_and_repository_owned() {
+        let (windows_program, windows_args) =
+            shell_integration_command(HostShellPlatform::Windows);
+        assert_eq!(windows_program, "powershell");
+        assert!(windows_args.contains(&"shell-integration/install-windows.ps1"));
+        assert!(windows_args.contains(&"-Quiet"));
+        assert!(windows_args.contains(&"-NonInteractive"));
+
+        let (unix_program, unix_args) =
+            shell_integration_command(HostShellPlatform::Unix);
+        assert_eq!(unix_program, "sh");
+        assert_eq!(unix_args, &["shell-integration/install-unix.sh", "--quiet"]);
     }
 
     #[test]
