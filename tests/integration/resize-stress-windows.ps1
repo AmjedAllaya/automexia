@@ -1,5 +1,19 @@
 param(
-    [string]$Binary
+    [string]$Binary,
+    [ValidateRange(100, 10000)]
+    [int]$PowerShellHistoryBudgetMilliseconds = 1500,
+    [string]$ResourceReport,
+    [string]$FrameCapture,
+    [ValidateRange(32, 4096)]
+    [int64]$MaximumHandleGrowth = 384,
+    [ValidateRange(8, 512)]
+    [int64]$MaximumThreadGrowth = 48,
+    [ValidateRange(67108864, 4294967296)]
+    [int64]$MaximumPrivateBytesGrowth = 536870912,
+    [ValidateRange(67108864, 4294967296)]
+    [int64]$MaximumWorkingSetGrowth = 536870912,
+    [ValidateRange(2, 128)]
+    [int64]$MaximumDescendantProcessGrowth = 16
 )
 
 $ErrorActionPreference = 'Stop'
@@ -11,8 +25,12 @@ if (-not (Test-Path -LiteralPath $Binary -PathType Leaf)) {
     throw "Automexia test binary was not found at $Binary"
 }
 
-Add-Type @'
+Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'
 using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
 using System.Runtime.InteropServices;
 public static class AutomexiaResizeDriver {
     [DllImport("user32.dll", SetLastError = true)]
@@ -20,10 +38,192 @@ public static class AutomexiaResizeDriver {
     public static extern bool MoveWindow(
         IntPtr hWnd, int x, int y, int width, int height, bool repaint);
 
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool PostMessage(
         IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd,
+        uint message,
+        IntPtr wParam,
+        IntPtr lParam,
+        uint flags,
+        uint timeoutMilliseconds,
+        out IntPtr result);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Rect {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+
+    private delegate bool EnumWindowsCallback(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetClientRect(IntPtr hWnd, out Rect rect);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Point {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ClientToScreen(IntPtr hWnd, ref Point point);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetDC(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool BitBlt(
+        IntPtr destination, int x, int y, int width, int height,
+        IntPtr source, int sourceX, int sourceY, uint operation);
+
+    public sealed class FrameStats {
+        public int Width;
+        public int Height;
+        public int SampleCount;
+        public int DistinctColorBuckets;
+        public int LuminanceSpread;
+    }
+
+    public static FrameStats CaptureClientFrame(IntPtr hWnd, string outputPath) {
+        Rect rect;
+        if (!GetClientRect(hWnd, out rect)) {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+        int width = rect.Right - rect.Left;
+        int height = rect.Bottom - rect.Top;
+        if (width < 1 || height < 1) {
+            throw new InvalidOperationException("Automexia client frame has no drawable area");
+        }
+
+        Point origin = new Point { X = 0, Y = 0 };
+        if (!ClientToScreen(hWnd, ref origin)) {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        using (var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb)) {
+            using (var graphics = Graphics.FromImage(bitmap)) {
+                IntPtr destination = graphics.GetHdc();
+                IntPtr screen = GetDC(IntPtr.Zero);
+                if (screen == IntPtr.Zero) {
+                    graphics.ReleaseHdc(destination);
+                    throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                }
+                try {
+                    const uint SourceCopy = 0x00CC0020;
+                    const uint CaptureLayered = 0x40000000;
+                    if (!BitBlt(
+                        destination, 0, 0, width, height,
+                        screen, origin.X, origin.Y, SourceCopy | CaptureLayered)) {
+                        throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                    }
+                } finally {
+                    ReleaseDC(IntPtr.Zero, screen);
+                    graphics.ReleaseHdc(destination);
+                }
+            }
+
+            var buckets = new HashSet<int>();
+            int minimumLuminance = 255;
+            int maximumLuminance = 0;
+            int samples = 0;
+            for (int y = 0; y < height; y += 8) {
+                for (int x = 0; x < width; x += 8) {
+                    Color color = bitmap.GetPixel(x, y);
+                    buckets.Add(((color.R >> 4) << 8) | ((color.G >> 4) << 4) | (color.B >> 4));
+                    int luminance = (color.R * 54 + color.G * 183 + color.B * 19) >> 8;
+                    minimumLuminance = Math.Min(minimumLuminance, luminance);
+                    maximumLuminance = Math.Max(maximumLuminance, luminance);
+                    samples++;
+                }
+            }
+            if (!String.IsNullOrWhiteSpace(outputPath)) {
+                string directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+                if (!String.IsNullOrWhiteSpace(directory)) {
+                    Directory.CreateDirectory(directory);
+                }
+                bitmap.Save(outputPath, ImageFormat.Png);
+            }
+            return new FrameStats {
+                Width = width,
+                Height = height,
+                SampleCount = samples,
+                DistinctColorBuckets = buckets.Count,
+                LuminanceSpread = maximumLuminance - minimumLuminance,
+            };
+        }
+    }
+
+    public static bool SetCaptureTopmost(IntPtr hWnd, bool topmost) {
+        IntPtr insertAfter = topmost ? new IntPtr(-1) : new IntPtr(-2);
+        const uint NoMove = 0x0002;
+        const uint NoSize = 0x0001;
+        const uint NoActivate = 0x0010;
+        const uint ShowWindow = 0x0040;
+        return SetWindowPos(
+            hWnd, insertAfter, 0, 0, 0, 0,
+            NoMove | NoSize | NoActivate | ShowWindow);
+    }
+
+    public static int PrimaryWidth() {
+        return GetSystemMetrics(0);
+    }
+
+    public static int PrimaryHeight() {
+        return GetSystemMetrics(1);
+    }
+
+    public static IntPtr[] VisibleWindowsForProcess(int expectedProcessId) {
+        var windows = new List<IntPtr>();
+        EnumWindows((hWnd, _) => {
+            uint processId;
+            GetWindowThreadProcessId(hWnd, out processId);
+            if (processId == (uint)expectedProcessId && IsWindowVisible(hWnd)) {
+                Rect rect;
+                if (GetClientRect(hWnd, out rect)
+                    && rect.Right - rect.Left >= 100
+                    && rect.Bottom - rect.Top >= 100) {
+                    windows.Add(hWnd);
+                }
+            }
+            return true;
+        }, IntPtr.Zero);
+        return windows.ToArray();
+    }
+
 
 }
 '@
@@ -47,6 +247,139 @@ function Test-AllAutomexiaPaneContexts {
         }
     }
     return $true
+}
+
+function Get-AutomexiaDescendantCount {
+    param([int]$RootProcessId)
+
+    $processes = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId)
+    $frontier = @($RootProcessId)
+    $seen = [Collections.Generic.HashSet[int]]::new()
+    while ($frontier.Count -gt 0) {
+        $parent = [int]$frontier[0]
+        if ($frontier.Count -eq 1) {
+            $frontier = @()
+        } else {
+            $frontier = @($frontier[1..($frontier.Count - 1)])
+        }
+        foreach ($child in @($processes | Where-Object { [int]$_.ParentProcessId -eq $parent })) {
+            $childId = [int]$child.ProcessId
+            if ($seen.Add($childId)) {
+                $frontier += $childId
+            }
+        }
+    }
+    return $seen.Count
+}
+
+function Get-AutomexiaResourceSample {
+    param([Diagnostics.Process]$AutomexiaProcess)
+
+    $AutomexiaProcess.Refresh()
+    if ($AutomexiaProcess.HasExited) {
+        throw "Automexia exited while collecting resources during $script:testStage"
+    }
+    return [ordered]@{
+        timestamp_utc = [DateTime]::UtcNow.ToString('o')
+        handle_count = [int64]$AutomexiaProcess.HandleCount
+        thread_count = [int64]$AutomexiaProcess.Threads.Count
+        private_bytes = [int64]$AutomexiaProcess.PrivateMemorySize64
+        working_set_bytes = [int64]$AutomexiaProcess.WorkingSet64
+        descendant_process_count = [int64](Get-AutomexiaDescendantCount $AutomexiaProcess.Id)
+    }
+}
+
+function Wait-AutomexiaWindowCount {
+    param(
+        [int]$Expected,
+        [int]$TimeoutMilliseconds = 15000
+    )
+
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+    do {
+        $process.Refresh()
+        if ($process.HasExited) {
+            throw "Automexia exited while waiting for $Expected visible windows during $script:testStage"
+        }
+        $windows = @([AutomexiaResizeDriver]::VisibleWindowsForProcess($process.Id))
+        if ($windows.Count -eq $Expected) {
+            return $windows
+        }
+        Start-Sleep -Milliseconds 25
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    $windows = @([AutomexiaResizeDriver]::VisibleWindowsForProcess($process.Id))
+    throw "Expected $Expected visible Automexia windows during $script:testStage, found $($windows.Count)"
+}
+
+function Invoke-AutomexiaCustomClose {
+    param([IntPtr]$Handle)
+
+    # An HWND becomes visible before the WGPU surface and Screen event route
+    # are necessarily ready. Prove that the target window has presented a
+    # non-blank frame before delivering the one-shot custom-chrome click; a
+    # click sent earlier can be valid Win32 input yet precede Automexia's hit
+    # testing state and is therefore not a meaningful close verification.
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($Handle, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not expose the secondary window for readiness capture (Win32 error $code)"
+    }
+    try {
+        $readyDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        do {
+            $readyFrame = [AutomexiaResizeDriver]::CaptureClientFrame($Handle, $null)
+            $isReady = (
+                $readyFrame.SampleCount -ge 100 -and
+                $readyFrame.DistinctColorBuckets -ge 8 -and
+                $readyFrame.LuminanceSpread -ge 32)
+            if (-not $isReady) {
+                Start-Sleep -Milliseconds 50
+            }
+        } while (-not $isReady -and [DateTime]::UtcNow -lt $readyDeadline)
+        if (-not $isReady) {
+            throw "Secondary Automexia window did not paint before its close check"
+        }
+
+    $rect = [AutomexiaResizeDriver+Rect]::new()
+    if (-not [AutomexiaResizeDriver]::GetClientRect($Handle, [ref]$rect)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "GetClientRect failed with Win32 error $code"
+    }
+    $width = $rect.Right - $rect.Left
+    $height = $rect.Bottom - $rect.Top
+    if ($width -lt 100 -or $height -lt 100) {
+        throw "The new window has an invalid client rect ${width}x${height}"
+    }
+
+    # Automexia owns the disabled-decoration header. Click the center of its
+    # rightmost close control, outside the six-pixel resize frame.
+    $x = $width - 24
+    $y = [Math]::Min(32, $height - 12)
+    $packed = (($y -band 0xffff) -shl 16) -bor ($x -band 0xffff)
+    $lParam = [IntPtr]::new([int]$packed)
+    # Dispatch movement, press, and release synchronously. Windows may coalesce
+    # posted mouse movement, while Automexia's release action depends on the
+    # CursorMoved -> Pressed -> Released order. Keeping the complete click in
+    # one ordered delivery prevents a queued release from racing the event loop.
+    foreach ($message in @(0x0200, 0x0201, 0x0202)) {
+        $result = [IntPtr]::Zero
+        $wParam = if ($message -eq 0x0201) { [IntPtr]::new(1) } else { [IntPtr]::Zero }
+        $sent = [AutomexiaResizeDriver]::SendMessageTimeout(
+            $Handle,
+            $message,
+            $wParam,
+            $lParam,
+            0x0003,
+            2000,
+            [ref]$result)
+        if ($sent -eq [IntPtr]::Zero) {
+            $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            throw "Could not synchronously deliver custom-close mouse message 0x$($message.ToString('X')) (Win32 $code)"
+        }
+    }
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($Handle, $false)
+    }
 }
 
 $snapshotPath = Join-Path ([System.IO.Path]::GetTempPath()) (
@@ -73,7 +406,9 @@ function Read-AutomexiaSnapshot {
     do {
         if (Test-Path -LiteralPath $snapshotPath -PathType Leaf) {
             try {
-                $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json
+                $snapshot = [IO.File]::ReadAllText(
+                    $snapshotPath,
+                    [Text.Encoding]::UTF8) | ConvertFrom-Json
                 $script:lastSnapshot = $snapshot
                 if ([int64]$snapshot.sequence -gt $AfterSequence) {
                     return $snapshot
@@ -94,7 +429,7 @@ function Read-AutomexiaSnapshot {
         Write-Host ($script:lastSnapshot | ConvertTo-Json -Depth 8)
     } elseif (Test-Path -LiteralPath $snapshotPath -PathType Leaf) {
         Write-Host 'Last raw renderer snapshot:'
-        Write-Host (Get-Content -LiteralPath $snapshotPath -Raw)
+        Write-Host ([IO.File]::ReadAllText($snapshotPath, [Text.Encoding]::UTF8))
     }
     throw "Timed out waiting for an Automexia renderer snapshot after sequence $AfterSequence during $script:testStage"
 }
@@ -115,7 +450,40 @@ function Send-AutomexiaTestControl {
 
 try {
     [void](New-Item -ItemType Directory -Path $configRoot)
-    $integration = (Join-Path $root 'shell-integration\powershell\automexia.ps1').Replace('\', '/')
+    # Exercise the installed flat layout, not repository-only relative fallbacks.
+    # CMD identity contains account-specific Base64 values generated by the
+    # installer, so the native test must reproduce that exact deployed contract.
+    $integrationRoot = Join-Path $configRoot 'shell-integration'
+    [void](New-Item -ItemType Directory -Path $integrationRoot)
+    Copy-Item -LiteralPath (Join-Path $root 'shell-integration\powershell\automexia.ps1') -Destination $integrationRoot
+    Copy-Item -LiteralPath (Join-Path $root 'shell-integration\powershell\automexia.format.ps1xml') -Destination $integrationRoot
+    Copy-Item -LiteralPath (Join-Path $root 'shell-integration\cmd\automexia-ls.cmd') -Destination $integrationRoot
+    Copy-Item -LiteralPath (Join-Path $root 'shell-integration\cmd\automexia-ls.ps1') -Destination $integrationRoot
+
+    $cmdSource = [IO.File]::ReadAllText(
+        (Join-Path $root 'shell-integration\cmd\automexia.cmd'),
+        [Text.Encoding]::UTF8)
+    $cmdSource = $cmdSource.Replace(
+        '__AUTOMEXIA_CMD_USER_BASE64__',
+        [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([Environment]::UserName)))
+    $cmdSource = $cmdSource.Replace(
+        '__AUTOMEXIA_CMD_PATH_BASE64__',
+        [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:ComSpec)))
+    $cmdSource = [regex]::Replace($cmdSource, "\r?\n", [Environment]::NewLine)
+    [IO.File]::WriteAllText(
+        (Join-Path $integrationRoot 'automexia.cmd'),
+        $cmdSource,
+        [Text.Encoding]::ASCII)
+
+    $cmdListingFixture = Join-Path $configRoot 'cmd-listing-fixture'
+    [void](New-Item -ItemType Directory -Path $cmdListingFixture)
+    [void](New-Item -ItemType Directory -Path (Join-Path $cmdListingFixture 'apps'))
+    [IO.File]::WriteAllText(
+        (Join-Path $cmdListingFixture 'Cargo.toml'),
+        '[workspace]',
+        [Text.Encoding]::ASCII)
+
+    $integration = (Join-Path $integrationRoot 'automexia.ps1').Replace('\', '/')
     $config = @"
 [shell]
 program = "powershell.exe"
@@ -170,6 +538,8 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     if ([int64]$initialPanel.shell_pid -le 0) {
         throw 'The initial ConPTY child process ID was not recorded'
     }
+    $script:testStage = 'initial resource baseline'
+    $resourceBaseline = Get-AutomexiaResourceSample $process
 
     # Create a top-level tab through the exact Ctrl+T lifecycle. The renderer
     # snapshot is taken immediately after the control is consumed, before any
@@ -231,9 +601,9 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     $initialPanel = Get-ActiveAutomexiaPanel $initial
 
     # Prove native PowerShell history navigation remains interactive after a
-    # completed command. Unit tests cover the physical key mappings; raw bytes
-    # here exercise the same ConPTY, PSReadLine, VT, and renderer path without
-    # focus-sensitive synthetic keyboard automation.
+    # completed command. The recall path uses real window messages below; the
+    # feature-gated controls only seed/cancel deterministically and publish
+    # renderer-neutral snapshots without OCR.
     $historyToken = 'AMX_HISTORY_73491'
     $historyCommand = "Write-Output '$historyToken'"
     $historyControl = "write-line:history-seed:$historyCommand"
@@ -259,48 +629,93 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         throw 'PowerShell did not complete the history seed command'
     }
 
+    # Establish whether latency is in generic frontend -> PTY delivery or in a
+    # PSReadLine history action. A printable key uses the same channel, ConPTY,
+    # VT parser, damage, and renderer path as normal interactive typing.
+    $typingTimer = [Diagnostics.Stopwatch]::StartNew()
+    $typingControl = 'write-text:latency-printable:q'
+    Send-AutomexiaTestControl $typingControl
+    $typingSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyReady.sequence)
+    $typingDeadline = [DateTime]::UtcNow.AddSeconds(3)
+    $typingControlObservedMilliseconds = $null
+    while (([string](Get-ActiveAutomexiaPanel $typingSnapshot).cursor_line_text) -notlike '*q*' -and
+           [DateTime]::UtcNow -lt $typingDeadline) {
+        if ($null -eq $typingControlObservedMilliseconds -and
+            [string]$typingSnapshot.last_control -eq $typingControl) {
+            $typingControlObservedMilliseconds = $typingTimer.ElapsedMilliseconds
+        }
+        $typingSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$typingSnapshot.sequence)
+    }
+    $typingTimer.Stop()
+    if ($null -eq $typingControlObservedMilliseconds -and
+        [string]$typingSnapshot.last_control -eq $typingControl) {
+        $typingControlObservedMilliseconds = $typingTimer.ElapsedMilliseconds
+    }
+    if ($null -eq $typingControlObservedMilliseconds) {
+        throw 'The native driver did not observe the printable input control'
+    }
+    $typingShellMilliseconds = [Math]::Max(
+        0, $typingTimer.ElapsedMilliseconds - $typingControlObservedMilliseconds)
+    if (([string](Get-ActiveAutomexiaPanel $typingSnapshot).cursor_line_text) -notlike '*q*') {
+        throw 'Printable input did not reach PowerShell and the renderer'
+    }
+    if ($typingShellMilliseconds -gt 500) {
+        throw "PowerShell plain typed input exceeded 500 ms ($typingShellMilliseconds ms; $($typingTimer.ElapsedMilliseconds) ms total)"
+    }
+    $eraseControl = 'write-hex:latency-erase:1b5b383b31343b383b313b303b315f1b5b383b31343b303b303b303b315f'
+    Send-AutomexiaTestControl $eraseControl
+    $erased = Read-AutomexiaSnapshot -AfterSequence ([int64]$typingSnapshot.sequence)
+    $eraseDeadline = [DateTime]::UtcNow.AddSeconds(3)
+    while ((([string](Get-ActiveAutomexiaPanel $erased).cursor_line_text) -like '*q*' -or
+            [string]$erased.last_control -ne $eraseControl) -and
+           [DateTime]::UtcNow -lt $eraseDeadline) {
+        $erased = Read-AutomexiaSnapshot -AfterSequence ([int64]$erased.sequence)
+    }
+    if (([string](Get-ActiveAutomexiaPanel $erased).cursor_line_text) -like '*q*') {
+        throw 'Backspace did not clear the printable latency probe'
+    }
+
     $upTimer = [Diagnostics.Stopwatch]::StartNew()
-    # ConPTY requests DEC private mode 9001, so native Windows keys are
-    # transported as lossless KEY_EVENT_RECORD sequences rather than legacy
-    # VT bytes. Up Arrow: VK_UP=38, scan=72, enhanced-key state=256.
-    $upControl = 'write-hex:history-up:1b5b33383b37323b303b313b3235363b315f1b5b33383b37323b303b303b3235363b315f'
+    # The Windows key encoder is covered by Rust unit tests. Inject its CSI Up
+    # sequence through Automexia's input queue here so this headless native test
+    # deterministically covers ConPTY, PSReadLine, VT, damage, and rendering
+    # without depending on the desktop foreground-lock policy.
     $script:testStage = 'Up Arrow recall'
-    Send-AutomexiaTestControl $upControl
+    Send-AutomexiaTestControl 'write-hex:history-up:1b5b41'
     $upRecall = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyReady.sequence)
     $upDeadline = [DateTime]::UtcNow.AddSeconds(3)
-    $upControlObservedMilliseconds = $null
+    $upRawObservedMilliseconds = $null
     while (([string](Get-ActiveAutomexiaPanel $upRecall).cursor_line_text) -notlike "*$historyToken*" -and
            [DateTime]::UtcNow -lt $upDeadline) {
-        if ($null -eq $upControlObservedMilliseconds -and
-            [string]$upRecall.last_control -eq $upControl) {
-            $upControlObservedMilliseconds = $upTimer.ElapsedMilliseconds
+        if ($null -eq $upRawObservedMilliseconds -and
+            [string](Get-ActiveAutomexiaPanel $upRecall).raw_cursor_line_text -like "*$historyToken*") {
+            $upRawObservedMilliseconds = $upTimer.ElapsedMilliseconds
         }
         $upRecall = Read-AutomexiaSnapshot -AfterSequence ([int64]$upRecall.sequence)
     }
+    if ($null -eq $upRawObservedMilliseconds -and
+        [string](Get-ActiveAutomexiaPanel $upRecall).raw_cursor_line_text -like "*$historyToken*") {
+        $upRawObservedMilliseconds = $upTimer.ElapsedMilliseconds
+    }
     $upTimer.Stop()
-    if ($null -eq $upControlObservedMilliseconds -and
-        [string]$upRecall.last_control -eq $upControl) {
-        $upControlObservedMilliseconds = $upTimer.ElapsedMilliseconds
-    }
-    if ($null -eq $upControlObservedMilliseconds) {
-        throw 'The native driver did not observe the Up Arrow control input'
-    }
-    $upShellMilliseconds = [Math]::Max(
-        0, $upTimer.ElapsedMilliseconds - $upControlObservedMilliseconds)
+    $upShellMilliseconds = $upTimer.ElapsedMilliseconds
     if (([string](Get-ActiveAutomexiaPanel $upRecall).cursor_line_text) -notlike "*$historyToken*") {
         Write-Host ($upRecall | ConvertTo-Json -Depth 8)
         throw 'Up Arrow did not recall the latest PowerShell command'
     }
-    if ($upShellMilliseconds -gt 1500) {
-        throw "Up Arrow shell/VT recall exceeded 1.5 seconds ($upShellMilliseconds ms; $($upTimer.ElapsedMilliseconds) ms including test-control delivery)"
+    if ($upShellMilliseconds -gt $PowerShellHistoryBudgetMilliseconds) {
+        throw "Up Arrow recall exceeded the $PowerShellHistoryBudgetMilliseconds ms Windows PowerShell budget ($upShellMilliseconds ms; raw terminal observed at $upRawObservedMilliseconds ms)"
     }
+    # The control contains distinct down/up records back-to-back, matching a
+    # physical tap without holding the key through the repeat interval.
+    $upReleased = $upRecall
 
     # Cancel the recalled line, clear its old screen occurrence, then search by
     # a unique fragment. Seeing it afterward proves Ctrl+R produced a live
     # PSReadLine match instead of merely finding stale terminal output.
     $script:testStage = 'cancel recalled history'
-    Send-AutomexiaTestControl 'write-hex:history-cancel-up:03'
-    $cancelled = Read-AutomexiaSnapshot -AfterSequence ([int64]$upRecall.sequence)
+    Send-AutomexiaTestControl 'write-hex:history-cancel-up:1b5b36373b34363b333b313b383b315f1b5b36373b34363b303b303b383b315f'
+    $cancelled = Read-AutomexiaSnapshot -AfterSequence ([int64]$upReleased.sequence)
     $cancelDeadline = [DateTime]::UtcNow.AddSeconds(5)
     while ([int64]$cancelled.latest_prompt_id -le [int64]$historyReady.latest_prompt_id -and
            [DateTime]::UtcNow -lt $cancelDeadline) {
@@ -316,14 +731,27 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     }
 
     # Ctrl+R: VK_R=82, scan=19, Unicode Ctrl+R=18, left-control state=8.
-    $ctrlRRecord = [Text.Encoding]::ASCII.GetBytes("$([char]27)[82;19;18;1;8;1_")
-    $searchPayload = [byte[]]($ctrlRRecord + [Text.Encoding]::UTF8.GetBytes($historyToken))
-    $searchHex = -join ($searchPayload | ForEach-Object { $_.ToString('x2') })
+    # Send the physical key-down and the search text as separate controls. In
+    # DECSET 9001 mode every typed character must remain a Win32 input record;
+    # mixing raw UTF-8 into that stream is invalid and previously added a
+    # misleading ConsoleHost timeout to this latency measurement.
     $searchTimer = [Diagnostics.Stopwatch]::StartNew()
-    $searchControl = "write-hex:history-search:$searchHex"
-    $script:testStage = 'Ctrl+R history search'
+    $ctrlRControl = 'write-hex:history-search-open:1b5b38323b31393b31383b313b383b315f1b5b38323b31393b303b303b383b315f'
+    $script:testStage = 'Ctrl+R history search open'
+    Send-AutomexiaTestControl $ctrlRControl
+    $searchOpened = Read-AutomexiaSnapshot -AfterSequence ([int64]$cleared.sequence)
+    $searchOpenDeadline = [DateTime]::UtcNow.AddSeconds(3)
+    while ([string]$searchOpened.last_control -ne $ctrlRControl -and
+           [DateTime]::UtcNow -lt $searchOpenDeadline) {
+        $searchOpened = Read-AutomexiaSnapshot -AfterSequence ([int64]$searchOpened.sequence)
+    }
+    if ([string]$searchOpened.last_control -ne $ctrlRControl) {
+        throw 'The native driver did not observe the Ctrl+R key-down event'
+    }
+    $searchControl = "write-text:history-search-text:$historyToken"
+    $script:testStage = 'Ctrl+R history search text'
     Send-AutomexiaTestControl $searchControl
-    $searchRecall = Read-AutomexiaSnapshot -AfterSequence ([int64]$cleared.sequence)
+    $searchRecall = Read-AutomexiaSnapshot -AfterSequence ([int64]$searchOpened.sequence)
     $searchDeadline = [DateTime]::UtcNow.AddSeconds(3)
     $searchControlObservedMilliseconds = $null
     while (([string](Get-ActiveAutomexiaPanel $searchRecall).cursor_line_text) -notlike "*$historyToken*" -and
@@ -348,12 +776,13 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         Write-Host ($searchRecall | ConvertTo-Json -Depth 8)
         throw 'Ctrl+R did not find the seeded PowerShell history command'
     }
-    if ($searchShellMilliseconds -gt 1500) {
-        throw "Ctrl+R shell/VT search exceeded 1.5 seconds ($searchShellMilliseconds ms; $($searchTimer.ElapsedMilliseconds) ms including test-control delivery)"
+    if ($searchShellMilliseconds -gt $PowerShellHistoryBudgetMilliseconds) {
+        throw "Ctrl+R search exceeded the $PowerShellHistoryBudgetMilliseconds ms Windows PowerShell budget ($searchShellMilliseconds ms; $($searchTimer.ElapsedMilliseconds) ms including test-control delivery)"
     }
     $script:testStage = 'cancel history search'
-    Send-AutomexiaTestControl 'write-hex:history-cancel-search:03'
-    $historyDone = Read-AutomexiaSnapshot -AfterSequence ([int64]$searchRecall.sequence)
+    $searchReleased = $searchRecall
+    Send-AutomexiaTestControl 'write-hex:history-cancel-search:1b5b36373b34363b333b313b383b315f1b5b36373b34363b303b303b383b315f'
+    $historyDone = Read-AutomexiaSnapshot -AfterSequence ([int64]$searchReleased.sequence)
 
     # Create a tab inside the selected pane through the same implementation
     # path as Ctrl+Alt+T. It must own a new ConPTY/route while preserving the
@@ -417,6 +846,79 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         throw 'Closing an inactive pane-local tab changed or closed the active source session'
     }
     $historyDone = $localClosed
+
+    # Enter the real interactive CMD child through PowerShell's bare cmd alias.
+    # It must remain inside this ConPTY and publish the same renderer metadata
+    # without waiting for a second keypress.
+    $script:testStage = 'interactive CMD startup parity'
+    $cmdEnterControl = 'write-line:cmd-enter:cmd'
+    Send-AutomexiaTestControl $cmdEnterControl
+    $cmdReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyDone.sequence)
+    $cmdDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    while (((Get-ActiveAutomexiaPanel $cmdReady).shell_name -ne 'CMD' -or
+            -not [bool](Get-ActiveAutomexiaPanel $cmdReady).shell_integration -or
+            -not [bool](Get-ActiveAutomexiaPanel $cmdReady).shell_prompt_active -or
+            -not (@((Get-ActiveAutomexiaPanel $cmdReady).context_segments) -contains [Environment]::UserName) -or
+            [int]@((Get-ActiveAutomexiaPanel $cmdReady).context_segments).Count -lt 3 -or
+            -not [bool]$cmdReady.full_path_visible) -and
+           [DateTime]::UtcNow -lt $cmdDeadline) {
+        $cmdReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$cmdReady.sequence)
+    }
+    $cmdPanel = Get-ActiveAutomexiaPanel $cmdReady
+    if ($cmdPanel.shell_name -ne 'CMD' -or
+        -not [bool]$cmdPanel.shell_integration -or
+        -not [bool]$cmdPanel.shell_prompt_active -or
+        -not (@($cmdPanel.context_segments) -contains [Environment]::UserName) -or
+        [int]@($cmdPanel.context_segments).Count -lt 3 -or
+        -not [bool]$cmdReady.full_path_visible -or
+        [string]::IsNullOrWhiteSpace([string]$cmdPanel.shell_user) -or
+        [IO.Path]::GetFileName([string]$cmdPanel.shell_path) -ine 'cmd.exe' -or
+        -not ([string]$cmdPanel.cursor_line_text).Contains([char]0x03BB)) {
+        Write-Host ($cmdReady | ConvertTo-Json -Depth 10)
+        throw 'Interactive CMD did not publish its shell, user, path, prompt, and complete working directory automatically'
+    }
+
+    # Prove the display-only DOSKEY helper is active in the real pane and keeps
+    # category/file glyphs directly beside names.
+    $folderGlyph = [char]::ConvertFromUtf32(0xF19F6)
+    $rustGlyph = [char]0xE7A8
+    $script:testStage = 'interactive CMD icon listing'
+    Send-AutomexiaTestControl ('write-line:cmd-list:ls "{0}"' -f $cmdListingFixture)
+    $cmdListing = Read-AutomexiaSnapshot -AfterSequence ([int64]$cmdReady.sequence)
+    $cmdListingDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    while ((-not ((Get-ActiveAutomexiaPanel $cmdListing).visible_text.Contains("$folderGlyph apps\")) -or
+            -not ((Get-ActiveAutomexiaPanel $cmdListing).visible_text.Contains("$rustGlyph Cargo.toml")) -or
+            -not [bool](Get-ActiveAutomexiaPanel $cmdListing).shell_prompt_active) -and
+           [DateTime]::UtcNow -lt $cmdListingDeadline) {
+        $cmdListing = Read-AutomexiaSnapshot -AfterSequence ([int64]$cmdListing.sequence)
+    }
+    $cmdListingPanel = Get-ActiveAutomexiaPanel $cmdListing
+    if (-not $cmdListingPanel.visible_text.Contains("$folderGlyph apps\") -or
+        -not $cmdListingPanel.visible_text.Contains("$rustGlyph Cargo.toml")) {
+        Write-Host ($cmdListing | ConvertTo-Json -Depth 10)
+        throw 'Interactive CMD ls did not render category and Rust icons immediately beside names'
+    }
+
+    # Exit must restore the parent metadata on PowerShell's very next prompt;
+    # stale CMD identity is a failure even if another keystroke would repair it.
+    $script:testStage = 'restore PowerShell after CMD exit'
+    Send-AutomexiaTestControl 'write-line:cmd-exit:exit'
+    $powerShellRestored = Read-AutomexiaSnapshot -AfterSequence ([int64]$cmdListing.sequence)
+    $restoreDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    while (((Get-ActiveAutomexiaPanel $powerShellRestored).shell_name -ne 'PowerShell' -or
+            -not [bool](Get-ActiveAutomexiaPanel $powerShellRestored).shell_prompt_active -or
+            -not [bool]$powerShellRestored.full_path_visible) -and
+           [DateTime]::UtcNow -lt $restoreDeadline) {
+        $powerShellRestored = Read-AutomexiaSnapshot -AfterSequence ([int64]$powerShellRestored.sequence)
+    }
+    $restoredPanel = Get-ActiveAutomexiaPanel $powerShellRestored
+    if ($restoredPanel.shell_name -ne 'PowerShell' -or
+        -not [bool]$restoredPanel.shell_prompt_active -or
+        -not [bool]$powerShellRestored.full_path_visible) {
+        Write-Host ($powerShellRestored | ConvertTo-Json -Depth 10)
+        throw 'PowerShell metadata did not replace CMD identity immediately after exit'
+    }
+    $historyDone = $powerShellRestored
 
     # Deterministic binding tests prove Ctrl+Alt+R clones while bare Ctrl+R
     # remains shell-owned. This feature-gated,
@@ -543,7 +1045,12 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         $storm = Read-AutomexiaSnapshot -AfterSequence ([int64]$storm.sequence)
     }
 
-    if (-not [AutomexiaResizeDriver]::MoveWindow($window, 40, 40, 1400, 900, $true)) {
+    $finalWindowWidth = [Math]::Min(
+        1400, [AutomexiaResizeDriver]::PrimaryWidth())
+    $finalWindowHeight = [Math]::Min(
+        900, [AutomexiaResizeDriver]::PrimaryHeight())
+    if (-not [AutomexiaResizeDriver]::MoveWindow(
+        $window, 0, 0, $finalWindowWidth, $finalWindowHeight, $true)) {
         $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
         throw "Final MoveWindow failed with Win32 error $code"
     }
@@ -571,6 +1078,7 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         throw "Final cursor row $($final.cursor_row) is outside the grid"
     }
     if ([int]$final.latest_prompt_start_count -gt 1) {
+        Write-Host ($final | ConvertTo-Json -Depth 8)
         throw "The active prompt was duplicated $($final.latest_prompt_start_count) times"
     }
     if ($null -ne $final.active_prompt_gap_rows -and
@@ -595,8 +1103,137 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         throw 'A visible pane lost or inherited another route operational context during resize'
     }
 
+    $framePath = if ([string]::IsNullOrWhiteSpace($FrameCapture)) {
+        $null
+    } else {
+        [IO.Path]::GetFullPath($FrameCapture)
+    }
+    # The renderer snapshot is published before the GPU presentation is
+    # necessarily observable in the desktop compositor. Keep the visual
+    # threshold strict, but allow one bounded presentation-settle window
+    # instead of treating a transient single-color capture as the final frame.
+    $script:testStage = 'final painted frame settle'
+    $frameDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    $frameStopwatch = [Diagnostics.Stopwatch]::StartNew()
+    $frameAttempts = 0
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not expose Automexia for composited frame capture (Win32 error $code)"
+    }
+    try {
+        do {
+            $frameAttempts++
+            $frameStats = [AutomexiaResizeDriver]::CaptureClientFrame(
+                $window, $framePath)
+            $frameIsValid = (
+                $frameStats.Width -ge 100 -and
+                $frameStats.Height -ge 100 -and
+                $frameStats.SampleCount -ge 100 -and
+                $frameStats.DistinctColorBuckets -ge 8 -and
+                $frameStats.LuminanceSpread -ge 32)
+            if (-not $frameIsValid) {
+                Start-Sleep -Milliseconds 100
+            }
+        } while (-not $frameIsValid -and [DateTime]::UtcNow -lt $frameDeadline)
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+        $frameStopwatch.Stop()
+    }
+    if (-not $frameIsValid) {
+        throw "Final painted client frame did not settle within 5 seconds after $frameAttempts attempts: $($frameStats.Width)x$($frameStats.Height), samples=$($frameStats.SampleCount), buckets=$($frameStats.DistinctColorBuckets), luminance-spread=$($frameStats.LuminanceSpread)"
+    }
+
+    # Create a second OS window through the same action bound to Ctrl+Shift+N.
+    # A new screen checkpoints the current feature-gated control token so one
+    # request cannot recursively create additional windows.
+    $script:testStage = 'custom close isolates Ctrl+Shift+N window'
+    Send-AutomexiaTestControl 'new-window:9001'
+    $windows = Wait-AutomexiaWindowCount -Expected 2
+    $newWindow = @($windows | Where-Object { $_ -ne $window })[0]
+    if ($newWindow -eq [IntPtr]::Zero) {
+        throw 'Could not identify the separately created Automexia window'
+    }
+    Invoke-AutomexiaCustomClose $newWindow
+    $remaining = Wait-AutomexiaWindowCount -Expected 1
+    $process.Refresh()
+    if ($process.HasExited -or $remaining[0] -ne $window) {
+        throw 'The custom close control terminated or replaced the original Automexia window'
+    }
+    Start-Sleep -Milliseconds 250
+    $process.Refresh()
+    if ($process.HasExited) {
+        throw 'Automexia exited after closing only the secondary custom-chrome window'
+    }
+
+    # Exercise the independent native WM_CLOSE route too. It must use the same
+    # teardown policy and preserve the original process/window.
+    $script:testStage = 'native close isolates Ctrl+Shift+N window'
+    Send-AutomexiaTestControl 'new-window:9002'
+    $windows = Wait-AutomexiaWindowCount -Expected 2
+    $newWindow = @($windows | Where-Object { $_ -ne $window })[0]
+    if (-not [AutomexiaResizeDriver]::PostMessage(
+        $newWindow, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)) {
+        throw 'Could not post WM_CLOSE to the secondary Automexia window'
+    }
+    $remaining = Wait-AutomexiaWindowCount -Expected 1
+    $process.Refresh()
+    if ($process.HasExited -or $remaining[0] -ne $window) {
+        throw 'Native window close terminated or replaced the original Automexia window'
+    }
+
+    $script:testStage = 'post-storm resource ceiling'
+    Start-Sleep -Milliseconds 500
+    $resourceFinal = Get-AutomexiaResourceSample $process
+    $resourceLimits = [ordered]@{
+        handle_growth = $MaximumHandleGrowth
+        thread_growth = $MaximumThreadGrowth
+        private_bytes_growth = $MaximumPrivateBytesGrowth
+        working_set_growth = $MaximumWorkingSetGrowth
+        descendant_process_growth = $MaximumDescendantProcessGrowth
+    }
+    $resourceDelta = [ordered]@{
+        handle_growth = $resourceFinal.handle_count - $resourceBaseline.handle_count
+        thread_growth = $resourceFinal.thread_count - $resourceBaseline.thread_count
+        private_bytes_growth = $resourceFinal.private_bytes - $resourceBaseline.private_bytes
+        working_set_growth = $resourceFinal.working_set_bytes - $resourceBaseline.working_set_bytes
+        descendant_process_growth = $resourceFinal.descendant_process_count - $resourceBaseline.descendant_process_count
+    }
+    foreach ($name in $resourceLimits.Keys) {
+        if ([int64]$resourceDelta[$name] -gt [int64]$resourceLimits[$name]) {
+            throw "Native resource ceiling exceeded for $name`: $($resourceDelta[$name]) > $($resourceLimits[$name])"
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ResourceReport)) {
+        $reportPath = [IO.Path]::GetFullPath($ResourceReport)
+        $reportDirectory = [IO.Path]::GetDirectoryName($reportPath)
+        if (-not [string]::IsNullOrWhiteSpace($reportDirectory)) {
+            New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null
+        }
+        $report = [ordered]@{
+            schema_version = 1
+            panel_count_at_final_sample = [int]$final.panel_count
+            baseline = $resourceBaseline
+            final = $resourceFinal
+            delta = $resourceDelta
+            ceilings = $resourceLimits
+            painted_frame = [ordered]@{
+                width = $frameStats.Width
+                height = $frameStats.Height
+                sample_count = $frameStats.SampleCount
+                distinct_color_buckets = $frameStats.DistinctColorBuckets
+                luminance_spread = $frameStats.LuminanceSpread
+                attempts = $frameAttempts
+                settle_milliseconds = $frameStopwatch.ElapsedMilliseconds
+                artifact = if ($null -eq $framePath) { $null } else { [IO.Path]::GetFileName($framePath) }
+            }
+        } | ConvertTo-Json -Depth 5
+        $temporaryReport = "$reportPath.$PID.tmp"
+        [IO.File]::WriteAllText($temporaryReport, $report, [Text.UTF8Encoding]::new($false))
+        Move-Item -LiteralPath $temporaryReport -Destination $reportPath -Force
+    }
+
     Write-Host (
-        'Native resize/history stress passed: sequence {0}, grid {1}x{2}, prompt {3}, Up shell/VT {4}ms ({5}ms total), Ctrl+R shell/VT {6}ms ({7}ms total)' -f
+        'Native CMD/resize/history/multi-window stress passed: sequence {0}, grid {1}x{2}, prompt {3}, Up shell/VT {4}ms ({5}ms total), Ctrl+R shell/VT {6}ms ({7}ms total)' -f
         $final.sequence, $final.columns, $final.rows, $final.latest_prompt_id,
         $upShellMilliseconds, $upTimer.ElapsedMilliseconds,
         $searchShellMilliseconds, $searchTimer.ElapsedMilliseconds)

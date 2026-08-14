@@ -159,6 +159,7 @@ fn conpty_powershell_history_input_is_delivered_without_idle_stall() {
         output.contains(token)
     });
     let up_elapsed = up_started.elapsed();
+    println!("direct ConPTY PowerShell Up Arrow recall: {up_elapsed:?}");
     assert!(
         recalled.contains(token),
         "Up Arrow input stalled before reaching PSReadLine"
@@ -185,6 +186,7 @@ fn conpty_powershell_history_input_is_delivered_without_idle_stall() {
         |output| output.contains("AMX_CONPTY_HISTORY") && output.contains("_73491"),
     );
     let search_elapsed = search_started.elapsed();
+    println!("direct ConPTY PowerShell Ctrl+R search: {search_elapsed:?}");
     assert!(
         searched.contains("AMX_CONPTY_HISTORY") && searched.contains("_73491"),
         "Ctrl+R input stalled before reaching PSReadLine: {searched:?}"

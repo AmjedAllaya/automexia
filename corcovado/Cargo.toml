@@ -29,6 +29,7 @@ miow = "0.6.1"
 
 [dev-dependencies]
 criterion = { workspace = true }
+loom = { workspace = true }
 
 [[test]]
 name = "test"

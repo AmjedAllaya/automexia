@@ -37,6 +37,8 @@ jobs:
         run: cargo xtask verify all
       - name: Validate TOML, YAML, JSON, XML, and desktop metadata
         run: python tools/ci/validate_repository.py
+      - name: QA evidence runner contracts
+        run: python tools/ci/test_qa.py
       - name: Shell syntax
         run: bash tools/ci/test_shell_sources.sh
       - name: PowerShell syntax
@@ -81,9 +83,27 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
           key: native-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+        with:
+          tool: cargo-nextest@0.9.137
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - run: cargo test --workspace --locked
+      - name: Workspace unit and integration tests
+        run: cargo nextest run --workspace --locked --profile ci
+      - name: Workspace documentation tests
+        run: cargo test --workspace --doc --locked
+      - name: Finite channel readiness model
+        if: runner.os == 'Linux'
+        env:
+          RUSTFLAGS: --cfg loom --check-cfg=cfg(loom)
+        run: cargo test -p corcovado --test loom_channel_readiness --locked
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: nextest-junit-${{ runner.os }}
+          path: target/nextest/ci/junit.xml
+          if-no-files-found: error
+          retention-days: 14
       - name: Deterministic prompt resize and history-repaint stress
         if: runner.os == 'Windows'
         run: cargo xtask test resize-stress

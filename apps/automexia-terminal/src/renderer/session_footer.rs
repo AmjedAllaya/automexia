@@ -562,6 +562,48 @@ mod tests {
     }
 
     #[test]
+    fn geometry_matrix_is_reviewed_as_structured_state() {
+        let cases = [
+            ("single", [0.0, 0.0, 900.0, 500.0], test_frame(900.0), 1.0),
+            ("tiny", [0.0, 0.0, 140.0, 100.0], test_frame(140.0), 1.0),
+            (
+                "hidpi",
+                [0.0, 0.0, 1_440.0, 1_000.0],
+                FooterFrame {
+                    viewport_width: 1_520.0,
+                    top: 160.0,
+                    right: 32.0,
+                    left: 48.0,
+                },
+                2.0,
+            ),
+        ];
+        let matrix = cases
+            .into_iter()
+            .map(|(name, panel, frame, scale)| {
+                let geometry = footer_geometry(panel, frame, scale);
+                serde_json::json!({
+                    "case": name,
+                    "outer": geometry.map(|geometry| [
+                        geometry.outer.x,
+                        geometry.outer.y,
+                        geometry.outer.width,
+                        geometry.outer.height,
+                    ]),
+                    "surface": geometry.map(|geometry| [
+                        geometry.surface.x,
+                        geometry.surface.y,
+                        geometry.surface.width,
+                        geometry.surface.height,
+                    ]),
+                })
+            })
+            .collect::<Vec<_>>();
+
+        insta::assert_json_snapshot!("session_footer_geometry_matrix", matrix);
+    }
+
+    #[test]
     fn footer_is_a_passive_status_surface_without_action_regions() {
         let geometry = footer_geometry([0.0, 0.0, 900.0, 500.0], test_frame(900.0), 1.0)
             .expect("footer");

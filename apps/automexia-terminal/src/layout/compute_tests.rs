@@ -1,4 +1,5 @@
 use super::*;
+use proptest::prelude::*;
 
 // This file tests compute function on different layouts.
 // I've added some real scenarios so I can make sure it doesn't go off again.
@@ -732,4 +733,67 @@ fn test_split_inside_resized_panel_preserves_proportions() {
         (bottom_h - 400.0).abs() < 1.0,
         "Bottom (bottom half) should be ~400px tall, got {bottom_h}"
     );
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(512))]
+
+    #[test]
+    fn arbitrary_viewports_always_produce_a_valid_grid(
+        width in 0.0f32..32_768.0,
+        height in 0.0f32..18_432.0,
+        cell_width in 1u32..128,
+        cell_height in 1u32..256,
+        scale in 0.25f32..4.0,
+        left in 0.0f32..512.0,
+        right in 0.0f32..512.0,
+        top in 0.0f32..512.0,
+        bottom in 0.0f32..512.0,
+    ) {
+        let cell = rio_backend::sugarloaf::layout::CellMetrics {
+            cell_width,
+            cell_height,
+            cell_baseline: 0,
+            face_width: f64::from(cell_width),
+            face_height: f64::from(cell_height),
+            face_y: 0.0,
+        };
+        let margin = Margin::new(top, right, bottom, left);
+        let (columns, lines) = compute(width, height, cell, margin, scale);
+
+        prop_assert!(columns >= MIN_COLS);
+        prop_assert!(lines >= MIN_LINES);
+        prop_assert!(columns <= ((width / cell_width as f32) as usize).max(MIN_COLS));
+        prop_assert!(lines <= ((height / cell_height as f32) as usize).max(MIN_LINES));
+    }
+
+    #[test]
+    fn footer_reservation_and_terminal_rect_remain_bounded(
+        x in -1_024.0f32..1_024.0,
+        y in -1_024.0f32..1_024.0,
+        width in 0.0f32..32_768.0,
+        logical_height in 0.0f32..18_432.0,
+        scale in 0.25f32..4.0,
+    ) {
+        let physical_height = logical_height * scale;
+        let reserved = pane_footer_reserved_height(physical_height, scale);
+        let rect = pane_terminal_rect([x, y, width, physical_height], scale);
+
+        prop_assert_eq!(rect[0], x);
+        prop_assert_eq!(rect[1], y);
+        prop_assert_eq!(rect[2], width);
+        prop_assert!(rect[3].is_finite());
+        prop_assert!(rect[3] >= 0.0);
+        prop_assert!(rect[3] <= physical_height);
+        prop_assert!(reserved == 0.0 || reserved == PANE_FOOTER_HEIGHT_LOGICAL * scale);
+        if logical_height < PANE_FOOTER_MIN_PANE_HEIGHT_LOGICAL {
+            prop_assert_eq!(reserved, 0.0);
+        } else {
+            let rounding_tolerance =
+                (physical_height.abs() * f32::EPSILON * 4.0).max(0.000_1);
+            prop_assert!(
+                ((rect[3] + reserved) - physical_height).abs() <= rounding_tolerance
+            );
+        }
+    }
 }

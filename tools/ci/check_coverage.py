@@ -112,11 +112,40 @@ def main() -> int:
 
     print(f"global line coverage: {global_percent:.2f}% (baseline {baseline:.2f}%)")
     print(f"changed owned line coverage: {changed_percent:.2f}%")
+    failure = None
     if global_percent + 1e-9 < baseline:
-        print("global coverage regressed", file=sys.stderr)
-        return 1
-    if changed_percent + 1e-9 < 80.0:
-        print("changed Automexia-owned line coverage is below 80%", file=sys.stderr)
+        failure = "global coverage regressed"
+    elif changed_percent + 1e-9 < 80.0:
+        failure = "changed Automexia-owned line coverage is below 80%"
+    summary_path = os.environ.get("COVERAGE_SUMMARY")
+    if summary_path:
+        destination = Path(summary_path)
+        if not destination.is_absolute():
+            destination = REPO_ROOT / destination
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")
+        temporary.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "status": "pass" if failure is None else "fail",
+                    "platform": platform,
+                    "global_line_percent": round(global_percent, 4),
+                    "global_baseline_percent": baseline,
+                    "changed_owned_line_percent": round(changed_percent, 4),
+                    "executable_lines": found,
+                    "covered_lines": hit,
+                    "failure": failure,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary, destination)
+    if failure:
+        print(failure, file=sys.stderr)
         return 1
     return 0
 

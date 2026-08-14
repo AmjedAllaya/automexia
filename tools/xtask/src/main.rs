@@ -93,6 +93,12 @@ fn dispatch(args: Vec<String>) -> TaskResult {
         [command] if command == "storage" => storage_report(),
         [command] if command == "check" => check(),
         [command] if command == "ci" => ci(),
+        [command, flag] if command == "qa" && flag == "--full" => qa(false),
+        [command, first, second]
+            if command == "qa" && first == "--full" && second == "--bundle" =>
+        {
+            qa(true)
+        }
         [command, scope] if command == "verify" && scope == "architecture" => {
             verify_architecture()
         }
@@ -145,7 +151,7 @@ fn dispatch(args: Vec<String>) -> TaskResult {
 }
 
 fn usage() -> String {
-    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|storage|check|ci|verify architecture|verify identity|verify provenance|verify all|test conformance|test resize-stress [--native-gui]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
+    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|storage|check|ci|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify all|test conformance|test resize-stress [--native-gui]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
 }
 
 fn root() -> PathBuf {
@@ -158,6 +164,15 @@ fn root() -> PathBuf {
 fn command_available(program: &str) -> bool {
     Command::new(program)
         .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+fn cargo_subcommand_available(subcommand: &str) -> bool {
+    Command::new("cargo")
+        .args([subcommand, "--version"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
@@ -183,6 +198,86 @@ fn python_yaml_available(program: &str) -> bool {
         .is_ok_and(|status| status.success())
 }
 
+#[cfg(target_os = "windows")]
+#[derive(Debug, Eq, PartialEq)]
+struct WindowsShellHealth {
+    host_version: Option<String>,
+    psreadline_version: Option<String>,
+}
+
+#[cfg(target_os = "windows")]
+fn parse_windows_shell_health(output: &str) -> WindowsShellHealth {
+    let value = |prefix: &str| {
+        output
+            .lines()
+            .map(str::trim)
+            .find_map(|line| line.strip_prefix(prefix))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+    };
+    WindowsShellHealth {
+        host_version: value("host="),
+        psreadline_version: value("psreadline="),
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_shell_history_is_legacy(health: &WindowsShellHealth) -> bool {
+    health
+        .host_version
+        .as_deref()
+        .is_some_and(|version| version.starts_with("5.1."))
+        && health
+            .psreadline_version
+            .as_deref()
+            .is_some_and(|version| version == "2.0" || version.starts_with("2.0."))
+}
+
+#[cfg(target_os = "windows")]
+fn report_windows_shell_health() {
+    let output = Command::new("powershell")
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            r#"Write-Output ('host=' + $PSVersionTable.PSVersion.ToString()); $module = Get-Module PSReadLine -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1; if ($null -ne $module) { Write-Output ('psreadline=' + $module.Version.ToString()) }"#,
+        ])
+        .output();
+
+    match output {
+        Ok(output) if output.status.success() => {
+            let health =
+                parse_windows_shell_health(&String::from_utf8_lossy(&output.stdout));
+            println!(
+                "PowerShell host    {}",
+                health.host_version.as_deref().unwrap_or("unknown")
+            );
+            println!(
+                "PSReadLine         {}",
+                health.psreadline_version.as_deref().unwrap_or("not found")
+            );
+            if windows_shell_history_is_legacy(&health) {
+                println!(
+                    "shell history      advisory: Windows PowerShell 5.1 + PSReadLine 2.0 can add about 1 s to Up/Ctrl+R; prefer PowerShell 7 or a supported current stable PSReadLine"
+                );
+            }
+        }
+        Ok(output) => println!("PowerShell health  unavailable (exit {})", output.status),
+        Err(error) => println!("PowerShell health  unavailable ({error})"),
+    }
+
+    println!(
+        "PowerShell 7       {}",
+        if command_available("pwsh") {
+            "available"
+        } else {
+            "optional/missing"
+        }
+    );
+}
+
 fn doctor() -> TaskResult {
     #[cfg(target_os = "windows")]
     let required = ["cargo", "rustc", "rustfmt", "git", "cargo-deny"];
@@ -197,8 +292,16 @@ fn doctor() -> TaskResult {
         "zsh",
         "shellcheck",
     ];
-    let optional = ["cargo-llvm-cov", "cargo-packager", "nfpm"];
+    let qa_required = [("cargo-nextest", cargo_subcommand_available("nextest"))];
+    let optional = [
+        ("cargo-insta", cargo_subcommand_available("insta")),
+        ("cargo-fuzz", cargo_subcommand_available("fuzz")),
+        ("cargo-llvm-cov", cargo_subcommand_available("llvm-cov")),
+        ("cargo-packager", cargo_subcommand_available("packager")),
+        ("nfpm", command_available("nfpm")),
+    ];
     let mut missing = Vec::new();
+    let mut missing_qa = Vec::new();
     for program in required {
         let available = command_available(program);
         println!("{program:<18} {}", if available { "ok" } else { "missing" });
@@ -206,14 +309,32 @@ fn doctor() -> TaskResult {
             missing.push(program);
         }
     }
-    for program in optional {
+    for (program, available) in qa_required {
         println!(
             "{program:<18} {}",
-            if command_available(program) {
-                "ok"
+            if available {
+                "qa-required/ok"
+            } else {
+                "qa-required/missing"
+            }
+        );
+        if !available {
+            missing_qa.push(program);
+        }
+    }
+    for (program, available) in optional {
+        println!(
+            "{program:<18} {}",
+            if available {
+                "optional/ok"
             } else {
                 "optional/missing"
             }
+        );
+    }
+    if missing_qa.contains(&"cargo-nextest") {
+        println!(
+            "QA install         cargo install cargo-nextest --version 0.9.137 --locked"
         );
     }
     let python = python_program();
@@ -234,6 +355,8 @@ fn doctor() -> TaskResult {
     if !yaml_available {
         missing.push("Python PyYAML");
     }
+    #[cfg(target_os = "windows")]
+    report_windows_shell_health();
     #[cfg(target_os = "windows")]
     println!("platform           Windows: Visual Studio Build Tools and WiX are required for MSI builds");
     #[cfg(target_os = "macos")]
@@ -977,11 +1100,125 @@ fn verify_all() -> TaskResult {
     verify_identity()?;
     verify_provenance()?;
     verify_architecture()?;
+    verify_phase_zero_assurance()?;
     package_check()
+}
+
+fn verify_phase_zero_assurance() -> TaskResult {
+    let nextest = read(&root().join(".config/nextest.toml"))?;
+    require(
+        nextest.contains("required = \"0.9.137\"")
+            && nextest.contains("flaky-result = \"fail\"")
+            && nextest.contains("[profile.ci.junit]")
+            && nextest.contains("[test-groups.native-pty]"),
+        "Phase 0 Nextest version, flaky-result, JUnit, or resource-group policy is missing",
+    )?;
+
+    let qa = read(&root().join("tools/ci/qa.py"))?;
+    require(
+        qa.contains("MAX_LOG_BYTES = 2 * 1024 * 1024")
+            && qa.contains("MAX_BUNDLE_BYTES = 64 * 1024 * 1024")
+            && qa.contains("dirty_fingerprint_sha256")
+            && qa.contains("environment_dumped\": False")
+            && qa.contains("{\".etl\", \".png\", \".info\"}")
+            && qa.contains("timeout_seconds")
+            && qa.contains("[\"taskkill\", \"/PID\"")
+            && qa.contains("os.killpg(process.pid")
+            && qa.contains("collect_host_manifest()")
+            && qa.contains("AUTOMEXIA_NATIVE_RESOURCE_REPORT")
+            && qa.contains("JUnit report exceeds the 8 MiB artifact ceiling")
+            && root().join("tools/ci/test_qa.py").is_file(),
+        "Phase 0 QA evidence lacks bounds, deadlines, host identity, self-tests, or private-artifact safety",
+    )?;
+
+    let ci = read(&root().join(".github/workflows/ci.yml"))?;
+    require(
+        ci.contains("cargo-nextest@0.9.137")
+            && ci.contains("cargo nextest run --workspace --locked --profile ci")
+            && ci.contains("cargo test --workspace --doc --locked")
+            && ci.contains("loom_channel_readiness")
+            && ci.contains("python tools/ci/test_qa.py"),
+        "PR CI does not preserve QA self-tests, pinned Nextest/JUnit, Cargo doctests, and Loom coverage",
+    )?;
+
+    let app_manifest = read(&root().join("apps/automexia-terminal/Cargo.toml"))?;
+    let channel_manifest = read(&root().join("corcovado/Cargo.toml"))?;
+    require(
+        app_manifest.contains("insta = { workspace = true }")
+            && app_manifest.contains("proptest = { workspace = true }")
+            && channel_manifest.contains("loom = { workspace = true }")
+            && root()
+                .join("apps/automexia-terminal/proptest-regressions/layout/compute_tests.txt")
+                .is_file()
+            && root()
+                .join("corcovado/tests/loom_channel_readiness.rs")
+                .is_file(),
+        "Phase 0 property/snapshot/model dependencies or persisted regressions are missing",
+    )?;
+
+    let appverifier = read(&root().join("tests/integration/appverifier-windows.ps1"))?;
+    require(
+        appverifier.contains("IsInRole")
+            && appverifier.contains("refusing to overwrite maintainer-owned state")
+            && appverifier.contains("finally")
+            && appverifier.contains("-disable '*'")
+            && appverifier.contains("-delete settings")
+            && appverifier.contains("automexia.exe"),
+        "Application Verifier wrapper lacks preflight refusal, exact target, or guaranteed cleanup",
+    )?;
+    let wpr = read(&root().join("tests/integration/wpr-windows.ps1"))?;
+    require(
+        wpr.contains("IsInRole")
+            && wpr.contains("finally")
+            && wpr.contains("-cancel")
+            && wpr.contains("MaximumTraceBytes")
+            && wpr.contains("DeleteTraceAfterManifest")
+            && wpr.contains("automexia.exe"),
+        "WPR wrapper lacks elevation/exact-target checks, trace bounds, or guaranteed cancellation",
+    )?;
+    let native_resize =
+        read(&root().join("tests/integration/resize-stress-windows.ps1"))?;
+    require(
+        native_resize.contains("BitBlt(")
+            && native_resize.contains("ClientToScreen")
+            && native_resize.contains("SetCaptureTopmost")
+            && native_resize.contains("Secondary Automexia window did not paint")
+            && native_resize.contains("[string]$FrameCapture")
+            && native_resize.contains("$frameDeadline = [DateTime]::UtcNow.AddSeconds(5)")
+            && native_resize.contains("DistinctColorBuckets -ge 8")
+            && native_resize.contains("did not settle within 5 seconds")
+            && native_resize.contains("settle_milliseconds = $frameStopwatch.ElapsedMilliseconds")
+            && native_resize.contains("painted_frame = [ordered]@{"),
+        "Windows resize stress lacks strict bounded painted-frame settling or explicit private artifact control",
+    )?;
+    require(
+        root().join("docs/ACCESSIBILITY.md").is_file()
+            && root()
+                .join("docs/adr/0013-renderer-independent-accessibility-model.md")
+                .is_file(),
+        "Phase 0 accessibility baseline or v0.5 model ADR is missing",
+    )?;
+
+    println!("PASS: Phase 0 assurance tooling and evidence contracts are present");
+    Ok(())
 }
 
 fn ci() -> TaskResult {
     complete_ci_gate()
+}
+
+fn qa(bundle: bool) -> TaskResult {
+    let program =
+        python_program().ok_or("Python 3 is required for the QA evidence runner")?;
+    let mut command = Command::new(program);
+    command
+        .arg("tools/ci/qa.py")
+        .arg("--full")
+        .current_dir(root());
+    if bundle {
+        command.arg("--bundle");
+    }
+    run_command(command, "Phase 0 QA evidence runner")
 }
 
 fn complete_ci_gate() -> TaskResult {
@@ -1115,9 +1352,9 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
             binary.display()
         )
     })?;
-    run(
-        "powershell",
-        &[
+    let mut command = Command::new("powershell");
+    command
+        .args([
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
@@ -1125,8 +1362,15 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
             "tests/integration/resize-stress-windows.ps1",
             "-Binary",
             binary,
-        ],
-    )
+        ])
+        .current_dir(root());
+    if let Some(report) = env::var_os("AUTOMEXIA_NATIVE_RESOURCE_REPORT") {
+        if report.is_empty() {
+            return Err("AUTOMEXIA_NATIVE_RESOURCE_REPORT cannot be empty".into());
+        }
+        command.arg("-ResourceReport").arg(report);
+    }
+    run_command(command, "native Windows GUI resize stress")
 }
 
 fn test_session_clone(native: Option<&str>) -> TaskResult {
@@ -1574,7 +1818,11 @@ fn verify_architecture() -> TaskResult {
     let cmd_integration = read(&root().join("shell-integration/cmd/automexia.cmd"))?;
     let cmd_listing = read(&root().join("shell-integration/cmd/automexia-ls.ps1"))?;
     require(
-        cmd_integration.contains("SetUserVar=automexia_shell_name=Q01E")
+        cmd_integration.is_ascii()
+            && cmd_integration.contains("SetUserVar=automexia_shell_name=Q01E")
+            && cmd_integration.contains("set \"AUTOMEXIA_CMD_IDENTITY=")
+            && cmd_integration.contains("PROMPT=%AUTOMEXIA_CMD_IDENTITY%")
+            && cmd_integration.contains("AUTOMEXIA_CMD_PROMPT_GLYPH")
             && cmd_integration.contains("]7;file:///$P")
             && cmd_integration.contains("]133;A")
             && cmd_integration.contains("]133;P;k=c")
@@ -1585,6 +1833,56 @@ fn verify_architecture() -> TaskResult {
             && cmd_listing.contains("Get-ChildItem @parameters | Format-Table"),
         "CMD integration does not preserve shell identity, semantic prompts, native DIR, and icon-aware ls",
     )?;
+    let vt_handler = read(&root().join("rio-vt/src/performer/handler.rs"))?;
+    let vt_parser = read(&root().join("rio-vt/src/performer/parser/mod.rs"))?;
+    require(
+        vt_handler.contains(r#""TN" | "name" => Some("automexia".to_string())"#)
+            && vt_handler.contains("MAX_XTGETTCAP_REQUEST_LEN")
+            && vt_handler.contains("MAX_APC_SEQUENCE_LEN")
+            && vt_handler.contains("warn_control_string_discard")
+            && vt_handler.contains("further reports are exponentially rate-limited")
+            && !vt_handler.contains("[unhandled osc_dispatch]")
+            && vt_parser.contains("MAX_OSC_RAW_LEN")
+            && vt_parser.contains("osc_overflowed")
+            && vt_parser.contains("warn_oversized_osc")
+            && vt_parser.contains("oversized_osc_is_dropped_and_next_sequence_recovers")
+            && vt_parser.contains("cancelled_osc_is_not_dispatched_and_next_sequence_recovers")
+            && vt_handler.contains("cancelled_xtgettcap_is_not_dispatched_and_next_request_recovers")
+            && vt_handler.contains("cancelled_apc_is_not_dispatched_and_next_request_recovers"),
+        "PTY control-string identity, hard bounds, or discard/recovery contracts are missing",
+    )?;
+    let application = read(&app.join("src/application.rs"))?;
+    require(
+        application.contains("enum RuntimeConfigReload")
+            && application.contains("RuntimeConfigReload::KeepLastGood")
+            && application.contains("prepare_runtime_config_reload")
+            && application.contains("prepared_font_library")
+            && application.contains("prepare_runtime_font_reload")
+            && application.contains("missing_font_reload_is_rejected_before_live_state_mutation")
+            && application.contains("replace_quake_hotkeys")
+            && !application.contains(
+                "Err(error) => (rio_backend::config::Config::default(), Some(error))",
+            ),
+        "runtime configuration reload can replace last-known-good state after a load failure",
+    )?;
+    let global_hotkey = read(&app.join("src/global_hotkey.rs"))?;
+    require(
+        global_hotkey.contains("replace_registered_hotkeys")
+            && global_hotkey.contains("parse_quake_hotkeys")
+            && global_hotkey.contains("partial_hotkey_addition_is_rolled_back_before_removal")
+            && global_hotkey.contains("failed_hotkey_removal_rolls_back_new_registration"),
+        "runtime global-hotkey reload lacks validation, transactional replacement, or rollback tests",
+    )?;
+    let control_string_fuzz =
+        read(&root().join("fuzz/fuzz_targets/control_string_bounds.rs"))?;
+    let nightly = read(&root().join(".github/workflows/nightly.yml"))?;
+    require(
+        control_string_fuzz.contains("retained_limit + 257")
+            && control_string_fuzz.contains("Automexia recovered")
+            && nightly.contains("control_string_bounds"),
+        "hostile control-string fuzz coverage is missing from the nightly matrix",
+    )?;
+
     let devops_manifest = read(&app.join("src/automexia/builtins/devops/mod.rs"))?;
     for capability in [
         "Capability::FilesystemRead",
@@ -1722,6 +2020,22 @@ fn verify_identity() -> TaskResult {
             ),
         ),
         (
+            "rio-vt/src/performer/handler.rs",
+            r#""TN" | "name" => Some("automexia".to_string())"#.to_owned(),
+        ),
+        (
+            "rio-vt/src/error/mod.rs",
+            "Error initializing Automexia Terminal".to_owned(),
+        ),
+        (
+            "rio-window/src/platform_impl/windows/event_loop.rs",
+            "Close Automexia Terminal?".to_owned(),
+        ),
+        (
+            "rio-window/src/platform_impl/macos/app_delegate.rs",
+            "Quit Automexia Terminal?".to_owned(),
+        ),
+        (
             "packaging/windows/automexia.wxs",
             "AutomexiaContextMenuComponents".to_owned(),
         ),
@@ -1732,6 +2046,20 @@ fn verify_identity() -> TaskResult {
             content.contains(&needle),
             &format!("{path} is missing canonical identity {needle:?}"),
         )?;
+    }
+
+    for path in [
+        "rio-vt/src/error/mod.rs",
+        "rio-window/src/platform_impl/windows/event_loop.rs",
+        "rio-window/src/platform_impl/macos/app_delegate.rs",
+    ] {
+        let content = read(&root.join(path))?;
+        for stale in ["Rio terminal", "Rio will proceed", "Close Rio", "Quit Rio"] {
+            require(
+                !content.contains(stale),
+                &format!("{path} retains user-facing inherited identity {stale:?}"),
+            )?;
+        }
     }
 
     let scopes = [
@@ -2475,6 +2803,22 @@ mod tests {
         assert!(usage().contains("test session-clone [--native-windows|--native-wsl]"));
         assert!(usage().contains("release --version"));
         assert!(usage().contains("verify all"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_shell_health_parses_versions_and_flags_only_legacy_history_stack() {
+        let legacy = parse_windows_shell_health(
+            "noise\r\nhost=5.1.26100.7019\r\npsreadline=2.0.0\r\n",
+        );
+        assert_eq!(legacy.host_version.as_deref(), Some("5.1.26100.7019"));
+        assert_eq!(legacy.psreadline_version.as_deref(), Some("2.0.0"));
+        assert!(windows_shell_history_is_legacy(&legacy));
+
+        let current = parse_windows_shell_health("host=7.5.3\npsreadline=2.3.6\n");
+        assert!(!windows_shell_history_is_legacy(&current));
+        let missing = parse_windows_shell_health("host=5.1.26100.7019\n");
+        assert!(!windows_shell_history_is_legacy(&missing));
     }
 
     #[test]
