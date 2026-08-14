@@ -444,20 +444,40 @@ enum ActivePromptPhase {
 struct ActivePromptSnapshot {
     columns: usize,
     rows: Vec<Row<Square>>,
-    cursor_row: usize,
-    cursor_col: Column,
-    cursor_should_wrap: bool,
+    /// Number of leading rows owned by Automexia: spacer plus complete path.
+    /// Shell-editor rows after this boundary are never restored from a stale
+    /// snapshot; live repaint cells come from the current PTY batch.
+    context_rows: usize,
+    /// Renderer-neutral text of those terminal-owned context rows. OSC 7 is
+    /// preferred when available; this snapshot fallback keeps malformed or
+    /// missing working-directory metadata resize-safe as well.
+    context_text: String,
+    /// Shell-owned prompt prefix present when OSC 133 B began input (for
+    /// Automexia integration this is the styled lambda plus spacer). It is used
+    /// only to distinguish the newest editor repaint from archived copies.
+    editor_prefix_text: String,
 }
 
 #[derive(Debug)]
 struct ActiveSemanticPrompt {
     id: Option<u64>,
     phase: ActivePromptPhase,
+    /// Context bytes may claim an unmarked destination only while the latest
+    /// OSC 133 A/P row is open. A hard newline closes that row, preventing
+    /// command output from inheriting an aid when a legacy stream omits B/C.
+    context_row_open: bool,
     snapshot: Option<ActivePromptSnapshot>,
     /// Set only when terminal-owned prompt cells were explicitly erased.
     /// A resize or harmless ConPTY repaint batch must never trigger repair:
     /// the prompt can be logically complete while part of it is in history.
     repair_pending: bool,
+    /// A destructive erase touched the terminal-owned prompt start/context.
+    /// In that case a merely visible path is insufficient: the shell repaint
+    /// may have written its input at the homed context row.
+    force_repair: bool,
+    /// Whether printable shell-editor cells arrived after the most recent
+    /// destructive erase. Archived rows from before that erase are never live.
+    repair_input_written: bool,
 }
 
 #[derive(Debug)]
@@ -1017,11 +1037,11 @@ impl<U: EventListener> Crosswords<U> {
             self.grid.scroll_display(Scroll::Bottom);
         }
 
-        // Do not reconcile the prompt merely because it is partially outside
-        // the resized viewport. Repair is reserved for an explicit terminal
-        // erase and runs at the PTY batch boundary. Rebuilding here used to
-        // clear unrelated visible rows and insert the large blank band seen
-        // between PowerShell output and its cursor after a resize.
+        // Do not reconcile a prompt merely because it is partially outside the
+        // viewport. Repair only when the bounded logical block no longer owns
+        // its context; this also handles a resize being the last event in a
+        // fragmented shell-editor repaint without reintroducing blank bands.
+        self.repair_active_prompt_after_resize_if_missing();
 
         // Grid dimensions and every row position may have changed even when
         // no PTY bytes arrived. Force one complete renderer snapshot so a
@@ -1151,6 +1171,42 @@ impl<U: EventListener> Crosswords<U> {
         &self.semantic_escape_chars
     }
 
+    /// Attach a text destination row to the active OSC 133 generation. This is
+    /// shared by scalar and bulk writers: prompt/context markers can arrive in
+    /// a PTY chunk before their printable payload, with a resize in between.
+    #[inline]
+    fn tag_active_prompt_destination_row(&mut self) {
+        let Some((prompt_id, may_claim_unmarked_row)) =
+            self.active_semantic_prompt.as_ref().and_then(|active| {
+                active.id.map(|id| {
+                    (
+                        id,
+                        active.phase == ActivePromptPhase::Input
+                            || active.context_row_open
+                            || active.force_repair,
+                    )
+                })
+            })
+        else {
+            return;
+        };
+        if let Some(active) = self.active_semantic_prompt.as_mut() {
+            if active.repair_pending && active.force_repair {
+                active.repair_input_written = true;
+            }
+        }
+        let row = self.grid.cursor.pos.row;
+        if may_claim_unmarked_row
+            && self.grid[row].semantic_prompt
+                == crate::crosswords::grid::row::SemanticPrompt::None
+        {
+            self.grid[row].set_semantic_prompt(
+                crate::crosswords::grid::row::SemanticPrompt::PromptContinuation,
+                Some(prompt_id),
+            );
+        }
+    }
+
     #[inline]
     pub fn wrapline(&mut self) {
         if !self.mode.contains(Mode::LINE_WRAP) {
@@ -1163,7 +1219,7 @@ impl<U: EventListener> Crosswords<U> {
         self.grid.cursor_cell().set_wrapline(true);
 
         if self.grid.cursor.pos.row + 1 >= self.scroll_region.end {
-            self.linefeed();
+            self.linefeed_inner();
         } else {
             self.damage_cursor();
             self.grid.cursor.pos.row += 1;
@@ -1179,6 +1235,18 @@ impl<U: EventListener> Crosswords<U> {
             );
         }
         self.damage_cursor();
+    }
+
+    #[inline]
+    fn linefeed_inner(&mut self) {
+        let next = self.grid.cursor.pos.row + 1;
+        if next == self.scroll_region.end {
+            self.scroll_up_relative(self.scroll_region.start, 1);
+        } else if next < self.grid.screen_lines() {
+            self.damage_cursor();
+            self.grid.cursor.pos.row += 1;
+            self.damage_cursor();
+        }
     }
 
     pub fn history_size(&self) -> usize {
@@ -1604,6 +1672,7 @@ impl<U: EventListener> Crosswords<U> {
         if self.grid.cursor.should_wrap {
             self.wrapline();
         }
+        self.tag_active_prompt_destination_row();
 
         let columns = self.grid.columns();
 
@@ -1680,6 +1749,7 @@ impl<U: EventListener> Crosswords<U> {
             if self.grid.cursor.should_wrap {
                 self.wrapline();
             }
+            self.tag_active_prompt_destination_row();
 
             let columns = self.grid.columns();
             let cursor_col = self.grid.cursor.pos.col.0;
@@ -1753,6 +1823,7 @@ impl<U: EventListener> Crosswords<U> {
             if self.grid.cursor.should_wrap {
                 self.wrapline();
             }
+            self.tag_active_prompt_destination_row();
 
             let columns = self.grid.columns();
             let cursor_col = self.grid.cursor.pos.col.0;
@@ -2395,7 +2466,7 @@ impl<U: EventListener> Crosswords<U> {
     /// every row carrying the id avoids leaving wrapped path/lambda fragments
     /// behind when the replacement is shorter or arrives after a resize.
     fn clear_active_prompt_block(&mut self, prompt_id: u64) {
-        let lines = self.active_prompt_rows(prompt_id, false);
+        let lines = self.all_prompt_rows(prompt_id);
         let mut first_visible = None;
 
         for line in lines {
@@ -2414,6 +2485,19 @@ impl<U: EventListener> Crosswords<U> {
 
     fn active_prompt_rows(&self, prompt_id: u64, visible_only: bool) -> Vec<Line> {
         self.active_prompt_row_lookup(prompt_id, visible_only).0
+    }
+
+    /// Enumerate every physical remnant of one active generation. This is used
+    /// only by destructive atomic replacement/repair, never by ordinary input
+    /// or history navigation, so stale fragments separated by a reflowed blank
+    /// cannot survive without making the hot path proportional to scrollback.
+    fn all_prompt_rows(&self, prompt_id: u64) -> Vec<Line> {
+        let history = self.grid.history_size() as i32;
+        let screen_lines = self.grid.screen_lines() as i32;
+        (-history..screen_lines)
+            .map(Line)
+            .filter(|line| self.grid[*line].semantic_prompt_id == Some(prompt_id))
+            .collect()
     }
 
     /// Return the active block and the number of grid rows inspected. The
@@ -2492,17 +2576,35 @@ impl<U: EventListener> Crosswords<U> {
         ((first..=last).map(Line).collect(), inspected)
     }
 
-    fn prompt_rows_contain_current_path(&self, lines: &[Line]) -> bool {
-        let Some(current_directory) = self.current_directory.as_ref() else {
-            return true;
-        };
-        let expected = current_directory.to_string_lossy().replace('\\', "/");
+    fn prompt_text_end_row(&self, lines: &[Line], expected: &str) -> Option<usize> {
         if expected.is_empty() {
-            return true;
+            return None;
         }
         let mut text = String::new();
+        for (index, line) in lines.iter().enumerate() {
+            let occupied = self.grid[*line].occ.min(self.grid.columns());
+            for column in 0..occupied {
+                let position = Pos::new(*line, Column(column));
+                if matches!(
+                    self.grid[position].wide(),
+                    Wide::Spacer | Wide::LeadingSpacer
+                ) {
+                    continue;
+                }
+                text.extend(self.grid.cell_text(position));
+            }
+            if text.contains(expected) {
+                return Some(index);
+            }
+        }
+        None
+    }
+
+    fn prompt_lines_text(&self, lines: &[Line]) -> String {
+        let mut text = String::new();
         for line in lines {
-            for column in 0..self.grid.columns() {
+            let occupied = self.grid[*line].occ.min(self.grid.columns());
+            for column in 0..occupied {
                 let position = Pos::new(*line, Column(column));
                 if matches!(
                     self.grid[position].wide(),
@@ -2513,8 +2615,37 @@ impl<U: EventListener> Crosswords<U> {
                 text.extend(self.grid.cell_text(position));
             }
         }
-        let text = text.replace('\\', "/");
-        text.contains(&expected)
+        text
+    }
+
+    fn prompt_path_end_row(&self, lines: &[Line]) -> Option<usize> {
+        let current_directory = self.current_directory.as_ref()?;
+        let expected = current_directory.to_string_lossy().replace('\\', "/");
+        if expected.is_empty() {
+            return None;
+        }
+        let mut text = String::new();
+        for (index, line) in lines.iter().enumerate() {
+            text.push_str(&self.prompt_lines_text(std::slice::from_ref(line)));
+            if text.replace('\\', "/").contains(&expected) {
+                return Some(index);
+            }
+        }
+        None
+    }
+
+    fn prompt_context_end_row(
+        &self,
+        lines: &[Line],
+        snapshot: &ActivePromptSnapshot,
+    ) -> Option<usize> {
+        self.prompt_path_end_row(lines).or_else(|| {
+            // Reflow is allowed to discard the synthetic leading spacer row;
+            // match the owned path payload, not padding cells from its original
+            // wide-screen presentation.
+            let context = snapshot.context_text.trim_matches(['\0', ' ', '\r', '\n']);
+            self.prompt_text_end_row(lines, context)
+        })
     }
 
     /// Capture the complete active semantic block before grid reflow or a
@@ -2522,34 +2653,45 @@ impl<U: EventListener> Crosswords<U> {
     /// boundary: completed history stays in the main grid, while only the few
     /// in-flight prompt rows are retained for an automatic repaint repair.
     fn capture_active_prompt_snapshot(&mut self) {
-        let Some(prompt_id) = self
-            .active_semantic_prompt
-            .as_ref()
-            .and_then(|active| active.id)
-        else {
+        let Some(prompt_id) = self.active_semantic_prompt.as_ref().and_then(|active| {
+            // The terminal-owned context is frozen once per OSC 133 aid. A
+            // later resize must never absorb shell-owned lambda/input cells
+            // into this snapshot; those always come from the live grid.
+            (active.phase == ActivePromptPhase::Input && active.snapshot.is_none())
+                .then_some(active.id)?
+        }) else {
             return;
         };
-        let lines = self.active_prompt_rows(prompt_id, false);
+        // This happens once at OSC 133 B, so collect every row for the aid.
+        // Startup can be fragmented around a resize and temporarily separate
+        // the spacer/path rows from the lambda row.
+        let lines = self.all_prompt_rows(prompt_id);
         if lines.is_empty()
             || !lines.iter().any(|line| {
                 self.grid[*line].semantic_prompt
                     == crate::crosswords::grid::row::SemanticPrompt::Prompt
             })
-            || !self.prompt_rows_contain_current_path(&lines)
         {
             return;
         }
 
-        let cursor_row = lines
-            .iter()
-            .position(|line| *line == self.grid.cursor.pos.row)
-            .unwrap_or_else(|| lines.len().saturating_sub(1));
+        // OSC 7 gives the precise path boundary. If a shell omitted it, OSC
+        // 133 B still arrives after Automexia's context/path and shell-owned
+        // lambda row, so the row immediately before the final editor row is
+        // the stable protocol boundary at initial capture time.
+        let Some(path_end) = self
+            .prompt_path_end_row(&lines)
+            .or_else(|| lines.len().checked_sub(2))
+        else {
+            return;
+        };
+        let context_rows = path_end + 1;
         let snapshot = ActivePromptSnapshot {
             columns: self.grid.columns(),
             rows: lines.iter().map(|line| self.grid[*line].clone()).collect(),
-            cursor_row,
-            cursor_col: self.grid.cursor.pos.col,
-            cursor_should_wrap: self.grid.cursor.should_wrap,
+            context_rows,
+            context_text: self.prompt_lines_text(&lines[..context_rows]),
+            editor_prefix_text: self.prompt_lines_text(&lines[context_rows..]),
         };
         if let Some(active) = self.active_semantic_prompt.as_mut() {
             if active.id == Some(prompt_id) {
@@ -2562,19 +2704,84 @@ impl<U: EventListener> Crosswords<U> {
     /// prompt. Ordinary resize/reflow and cursor-only ConPTY updates do not set
     /// this flag, so a partially off-screen prompt is never mistaken for lost
     /// data.
-    fn request_active_prompt_repair(&mut self) {
-        self.capture_active_prompt_snapshot();
+    fn request_active_prompt_repair(&mut self, force: bool) {
+        // A full-screen erase is commonly followed by cursor-home and EL in a
+        // later PTY read. Once that destructive sequence starts, keep the last
+        // complete pre-home snapshot; recapturing at the temporary home row
+        // gives the restored prompt the wrong cursor anchor on the next reflow.
+        let preserve_complete_snapshot = force
+            && self
+                .active_semantic_prompt
+                .as_ref()
+                .is_some_and(|active| active.snapshot.is_some());
+        if !preserve_complete_snapshot {
+            self.capture_active_prompt_snapshot();
+        }
         if let Some(active) = self.active_semantic_prompt.as_mut() {
             active.repair_pending = active.snapshot.is_some();
+            if force && active.snapshot.is_some() {
+                active.force_repair = true;
+                active.repair_input_written = false;
+            }
         }
     }
 
-    fn active_prompt_is_complete_and_visible(&self, prompt_id: u64) -> bool {
+    fn active_prompt_is_complete_and_visible(
+        &self,
+        prompt_id: u64,
+        snapshot: &ActivePromptSnapshot,
+    ) -> bool {
         let lines = self.active_prompt_rows(prompt_id, true);
         lines.iter().any(|line| {
             self.grid[*line].semantic_prompt
                 == crate::crosswords::grid::row::SemanticPrompt::Prompt
-        }) && self.prompt_rows_contain_current_path(&lines)
+        }) && self.prompt_context_end_row(&lines, snapshot).is_some()
+    }
+
+    /// An effective resize can be the final event in a ConPTY repaint burst.
+    /// If reflow truly lost the active context from its logical prompt block,
+    /// no later PTY bytes exist to trigger the ordinary batch-end repair. Check
+    /// only the bounded block nearest the live edge and restore on absence;
+    /// context that merely moved into scrollback is left untouched.
+    fn repair_active_prompt_after_resize_if_missing(&mut self) {
+        let Some((prompt_id, snapshot)) =
+            self.active_semantic_prompt.as_ref().and_then(|active| {
+                active
+                    .id
+                    .zip(active.snapshot.as_ref())
+                    .map(|(id, snapshot)| (id, snapshot.clone()))
+            })
+        else {
+            return;
+        };
+        let lines = self.active_prompt_rows(prompt_id, false);
+        let owns_complete_context = |candidate: &[Line]| {
+            candidate.iter().any(|line| {
+                self.grid[*line].semantic_prompt
+                    == crate::crosswords::grid::row::SemanticPrompt::Prompt
+            }) && self.prompt_context_end_row(candidate, &snapshot).is_some()
+        };
+        if owns_complete_context(&lines) {
+            return;
+        }
+        // Fragmented startup/repaint bytes may leave same-aid rows separated by
+        // a temporary unmarked row. Pay for a full-ring scan only on this rare
+        // slow path before deciding data was truly lost.
+        let all_lines = self.all_prompt_rows(prompt_id);
+        if all_lines != lines && owns_complete_context(&all_lines) {
+            return;
+        }
+
+        if let Some(active) = self.active_semantic_prompt.as_mut() {
+            if active.id == Some(prompt_id) {
+                active.repair_pending = true;
+                active.force_repair = true;
+                // This is a post-reflow recovery, not a shell erase. Existing
+                // editor rows ending at the cursor are still the live repaint.
+                active.repair_input_written = true;
+            }
+        }
+        self.reconcile_active_prompt();
     }
 
     /// Restore a terminal-owned active prompt after a delayed Readline/ZLE/
@@ -2582,51 +2789,135 @@ impl<U: EventListener> Crosswords<U> {
     /// implementation as normal scrollback, so Unicode cells, styles, hard
     /// semantic rows, cursor offset, and the stable aid remain synchronized.
     fn reconcile_active_prompt(&mut self) {
-        let Some((prompt_id, snapshot)) =
+        let Some((prompt_id, snapshot, force_repair, repair_input_written)) =
             self.active_semantic_prompt.as_ref().and_then(|active| {
                 active.repair_pending.then(|| {
                     active
                         .id
                         .zip(active.snapshot.as_ref())
-                        .map(|(id, snapshot)| (id, snapshot.clone()))
+                        .map(|(id, snapshot)| {
+                            (
+                                id,
+                                snapshot.clone(),
+                                active.force_repair,
+                                active.repair_input_written,
+                            )
+                        })
                 })?
             })
         else {
             return;
         };
-        if self.active_prompt_is_complete_and_visible(prompt_id) {
+        if !force_repair
+            && self.active_prompt_is_complete_and_visible(prompt_id, &snapshot)
+        {
             if let Some(active) = self.active_semantic_prompt.as_mut() {
                 active.repair_pending = false;
+                active.force_repair = false;
+                active.repair_input_written = false;
             }
             return;
         }
 
-        let source_lines = snapshot.rows.len().max(1);
-        let mut prompt_grid = Grid::new(source_lines, snapshot.columns.max(1), 10_000);
-        for (index, row) in snapshot.rows.into_iter().enumerate() {
+        let active_lines = self.all_prompt_rows(prompt_id);
+        let path_end = self.prompt_context_end_row(&active_lines, &snapshot);
+
+        let live_cursor = self.grid.cursor.pos;
+
+        let mut editor_lines = path_end.map_or_else(Vec::new, |path_end| {
+            active_lines
+                .iter()
+                .skip(path_end + 1)
+                .copied()
+                .filter(|line| !self.grid[*line].is_clear())
+                .collect::<Vec<_>>()
+        });
+        if force_repair {
+            if !repair_input_written {
+                editor_lines.clear();
+            } else if editor_lines.contains(&live_cursor.row) {
+                let prefix = snapshot.editor_prefix_text.as_str();
+                if !prefix.is_empty() {
+                    let full_prefix_start = (0..editor_lines.len()).rev().find(|start| {
+                        self.prompt_lines_text(&editor_lines[*start..])
+                            .starts_with(prefix)
+                    });
+                    let partial_prefix_start = prefix.chars().next().and_then(|first| {
+                        (0..editor_lines.len()).rev().find(|start| {
+                            self.prompt_lines_text(&editor_lines[*start..])
+                                .starts_with(first)
+                        })
+                    });
+                    if let Some(start) = full_prefix_start.max(partial_prefix_start) {
+                        editor_lines.drain(..start);
+                    }
+                }
+            } else {
+                // Only archived pre-erase editor cells survived. Restoring them
+                // now would duplicate the repaint that arrives in the next PTY
+                // fragment, so retain no shell-owned rows from this batch.
+                editor_lines.clear();
+            }
+        }
+        if editor_lines.is_empty() && !self.grid[live_cursor.row].is_clear() {
+            // A legacy/unmarked repaint can still write the lambda outside the
+            // semantic block. Use that cursor row only when no OSC-133-owned
+            // editor rows survived; otherwise it is a stale duplicate cell
+            // left by ConPTY after the real wrapped repaint entered scrollback.
+            editor_lines.push(live_cursor.row);
+        }
+        let editor_cursor_index = editor_lines
+            .iter()
+            .position(|line| *line == live_cursor.row)
+            .unwrap_or_else(|| editor_lines.len().saturating_sub(1));
+        let mut editor_rows = editor_lines
+            .iter()
+            .map(|line| self.grid[*line].clone())
+            .collect::<Vec<_>>();
+        for row in &mut editor_rows {
+            row.set_semantic_prompt(
+                crate::crosswords::grid::row::SemanticPrompt::PromptContinuation,
+                Some(prompt_id),
+            );
+        }
+
+        let context_rows = snapshot.context_rows.min(snapshot.rows.len()).max(1);
+        let mut prompt_grid = Grid::new(context_rows, snapshot.columns.max(1), 10_000);
+        for (index, row) in snapshot.rows.into_iter().take(context_rows).enumerate() {
             prompt_grid[Line(index as i32)] = row;
         }
-        prompt_grid.cursor.pos = Pos::new(
-            Line(snapshot.cursor_row.min(source_lines - 1) as i32),
-            snapshot
-                .cursor_col
-                .min(Column(snapshot.columns.saturating_sub(1))),
-        );
-        prompt_grid.cursor.should_wrap = snapshot.cursor_should_wrap;
-        prompt_grid.resize(true, source_lines, self.grid.columns());
+        prompt_grid.cursor.pos = Pos::new(Line((context_rows - 1) as i32), Column(0));
+        prompt_grid.cursor.should_wrap = false;
+        prompt_grid.resize(true, context_rows, self.grid.columns());
 
-        let prompt_lines = (-(prompt_grid.history_size() as i32)
+        let mut restored_rows = (-(prompt_grid.history_size() as i32)
             ..prompt_grid.screen_lines() as i32)
             .map(Line)
             .filter(|line| prompt_grid[*line].semantic_prompt_id == Some(prompt_id))
+            .map(|line| prompt_grid[line].clone())
             .collect::<Vec<_>>();
-        if prompt_lines.is_empty() {
+        if restored_rows.is_empty() {
             return;
         }
-        let cursor_index = prompt_lines
-            .iter()
-            .position(|line| *line == prompt_grid.cursor.pos.row)
-            .unwrap_or_else(|| prompt_lines.len().saturating_sub(1));
+        let context_row_count = restored_rows.len();
+        if editor_rows.is_empty() {
+            let mut input_row = Row::new(self.grid.columns());
+            input_row.set_semantic_prompt(
+                crate::crosswords::grid::row::SemanticPrompt::PromptContinuation,
+                Some(prompt_id),
+            );
+            editor_rows.push(input_row);
+        }
+        let cursor_index =
+            context_row_count + editor_cursor_index.min(editor_rows.len() - 1);
+        let restored_cursor_col = if editor_lines.is_empty() {
+            Column(0)
+        } else {
+            live_cursor.col.min(self.grid.last_column())
+        };
+        let restored_cursor_should_wrap =
+            !editor_lines.is_empty() && self.grid.cursor.should_wrap;
+        restored_rows.extend(editor_rows);
         let screen_lines = self.grid.screen_lines();
 
         // Retire archived/repaint remnants without leaving holes next to the
@@ -2634,7 +2925,14 @@ impl<U: EventListener> Crosswords<U> {
         // prompt row and recycling it as the oldest blank row compacts real
         // command output toward the active prompt while keeping the ring size
         // and its allocation stable.
-        let old_prompt_lines = self.active_prompt_rows(prompt_id, false);
+        let old_prompt_lines = self.all_prompt_rows(prompt_id);
+        for line in editor_lines
+            .iter()
+            .copied()
+            .filter(|line| line.0 >= 0 && !old_prompt_lines.contains(line))
+        {
+            self.grid[line].reset(&Square::default());
+        }
         let mut history_indices = old_prompt_lines
             .iter()
             .filter(|line| line.0 < 0)
@@ -2662,16 +2960,16 @@ impl<U: EventListener> Crosswords<U> {
         // beside the editable command. In either case unrelated rows outside
         // the prompt range remain untouched.
         let cursor_row = self.grid.cursor.pos.row.0.max(0) as usize;
-        let prompt_fits = prompt_lines.len() <= screen_lines;
+        let prompt_fits = restored_rows.len() <= screen_lines;
         let target_start = if prompt_fits {
             cursor_row
                 .saturating_sub(cursor_index)
-                .min(screen_lines - prompt_lines.len())
+                .min(screen_lines - restored_rows.len())
         } else {
             0
         };
         let region = Line(0)..Line(screen_lines as i32);
-        for (index, source) in prompt_lines.iter().enumerate() {
+        for (index, source) in restored_rows.iter().enumerate() {
             let target_index = target_start + index;
             let target = if target_index < screen_lines {
                 target_index
@@ -2679,10 +2977,10 @@ impl<U: EventListener> Crosswords<U> {
                 self.grid.scroll_up(&region, 1);
                 screen_lines - 1
             };
-            self.grid[Line(target as i32)] = prompt_grid[*source].clone();
+            self.grid[Line(target as i32)] = source.clone();
         }
 
-        let history_rows = prompt_lines.len().saturating_sub(screen_lines);
+        let history_rows = restored_rows.len().saturating_sub(screen_lines);
         let visible_cursor_index = if prompt_fits {
             target_start + cursor_index
         } else {
@@ -2690,12 +2988,13 @@ impl<U: EventListener> Crosswords<U> {
         };
         self.grid.cursor.pos = Pos::new(
             Line(visible_cursor_index.min(screen_lines - 1) as i32),
-            prompt_grid.cursor.pos.col.min(self.grid.last_column()),
+            restored_cursor_col,
         );
-        self.grid.cursor.should_wrap = prompt_grid.cursor.should_wrap;
+        self.grid.cursor.should_wrap = restored_cursor_should_wrap;
         self.grid.scroll_display(Scroll::Bottom);
         if let Some(active) = self.active_semantic_prompt.as_mut() {
             active.repair_pending = false;
+            active.force_repair = false;
         }
         self.mark_fully_damaged();
     }
@@ -3434,9 +3733,16 @@ impl<U: EventListener> Handler for Crosswords<U> {
             self.active_semantic_prompt = Some(ActiveSemanticPrompt {
                 id: prompt_id,
                 phase: ActivePromptPhase::Context,
+                context_row_open: true,
                 snapshot: None,
                 repair_pending: false,
+                force_repair: false,
+                repair_input_written: false,
             });
+        } else if let Some(active) = self.active_semantic_prompt.as_mut() {
+            if active.id == prompt_id {
+                active.context_row_open = true;
+            }
         }
         self.damage_cursor_line();
     }
@@ -3629,6 +3935,11 @@ impl<U: EventListener> Handler for Crosswords<U> {
         if self.grid.cursor.should_wrap {
             self.wrapline();
         }
+
+        // A prompt/context marker and its printable payload can be split around
+        // a resize. Tag the actual post-wrap destination for both Context and
+        // Input phases so neither path nor editor text becomes orphaned.
+        self.tag_active_prompt_destination_row();
 
         let columns = self.grid.columns();
         if self.mode.contains(Mode::INSERT) && self.grid.cursor.pos.col + width < columns
@@ -3834,6 +4145,7 @@ impl<U: EventListener> Handler for Crosswords<U> {
                 }
                 self.wrapline();
             }
+            self.tag_active_prompt_destination_row();
 
             let columns = self.grid.columns();
             let cursor_col = self.grid.cursor.pos.col.0;
@@ -4035,7 +4347,10 @@ impl<U: EventListener> Handler for Crosswords<U> {
 
     #[inline]
     fn clear_screen(&mut self, mode: ClearMode) {
-        self.request_active_prompt_repair();
+        self.request_active_prompt_repair(matches!(
+            mode,
+            ClearMode::All | ClearMode::Saved
+        ));
         self.grid.sync_template_style();
         let bg = self.grid.template_style().bg;
         let blank = self.grid.blank_with_bg(bg);
@@ -4172,14 +4487,12 @@ impl<U: EventListener> Handler for Crosswords<U> {
 
     #[inline]
     fn linefeed(&mut self) {
-        let next = self.grid.cursor.pos.row + 1;
-        if next == self.scroll_region.end {
-            self.scroll_up_relative(self.scroll_region.start, 1);
-        } else if next < self.grid.screen_lines() {
-            self.damage_cursor();
-            self.grid.cursor.pos.row += 1;
-            self.damage_cursor();
+        if let Some(active) = self.active_semantic_prompt.as_mut() {
+            if active.phase == ActivePromptPhase::Context {
+                active.context_row_open = false;
+            }
         }
+        self.linefeed_inner();
     }
 
     #[inline]
@@ -4383,10 +4696,21 @@ impl<U: EventListener> Handler for Crosswords<U> {
         // remove the entire semantic anchor. Arm repair from the last complete
         // snapshot; reconciliation is a no-op when context/path rows remain
         // complete and therefore never overwrites an ordinary editor repaint.
-        self.request_active_prompt_repair();
+        let point = self.grid.cursor.pos;
+        let cursor_prompt_id = self.grid[point.row].semantic_prompt_id;
+        let active_prompt_id = self
+            .active_semantic_prompt
+            .as_ref()
+            .and_then(|active| active.id);
+        let displaced_from_active_prompt =
+            active_prompt_id.is_some_and(|prompt_id| cursor_prompt_id != Some(prompt_id));
+        let touches_prompt_start = self.grid[point.row].semantic_prompt
+            == crate::crosswords::grid::row::SemanticPrompt::Prompt;
+        self.request_active_prompt_repair(
+            touches_prompt_start || displaced_from_active_prompt,
+        );
         let bg = self.grid.template_style().bg;
         let blank = self.grid.blank_with_bg(bg);
-        let point = self.grid.cursor.pos;
         let should_wrap = self.grid.cursor.should_wrap;
 
         let (left, right) = match mode {
@@ -5892,7 +6216,7 @@ mod tests {
     fn semantic_path_palette_preserves_windows_and_posix_text() {
         for path in [
             "/srv/cloud project/production",
-            r"D:\workstation\cloud project\production",
+            r"D:\workspaces\cloud project\production",
             "/home/项目/automexia terminal",
         ] {
             let styled = automexia_styled_path(path);
@@ -5918,11 +6242,11 @@ mod tests {
             .collect()
     }
 
-    fn assert_resize_invariants(
+    fn assert_resize_context_invariants(
         cw: &Crosswords<VoidListener>,
         prompt_id: u64,
         path: &str,
-    ) {
+    ) -> String {
         use crate::crosswords::grid::row::SemanticPrompt;
 
         assert!(cw.grid.columns() >= 1);
@@ -5964,6 +6288,15 @@ mod tests {
             1,
             "the complete active path must exist logically exactly once: {text:?}"
         );
+        text
+    }
+
+    fn assert_resize_invariants(
+        cw: &Crosswords<VoidListener>,
+        prompt_id: u64,
+        path: &str,
+    ) {
+        let text = assert_resize_context_invariants(cw, prompt_id, path);
         assert_eq!(
             text.matches('λ').count(),
             1,
@@ -6103,7 +6436,7 @@ mod tests {
     fn resize_stress_raw_prompt_stream_survives_every_fragment_boundary() {
         use crate::performer::handler::Processor;
 
-        let path = r"D:\workstation\projects\équipe-🚀\automexia-terminal\standalone";
+        let path = r"D:\workspaces\projects\équipe-🚀\automexia-terminal\standalone";
         let stream = automexia_prompt_stream(73, path, "echo ready");
 
         for split in 0..=stream.len() {
@@ -6122,6 +6455,96 @@ mod tests {
         }
     }
 
+    #[test]
+    fn resize_stress_fragmented_startup_interleaved_with_resizes_has_one_prompt() {
+        use crate::performer::handler::Processor;
+
+        let path = r"D:\workspaces\organizations\example-team\terminal-project\automexia-terminal\standalone";
+        let stream = automexia_prompt_stream(74, path, "");
+        let sizes = [(29, 13), (3, 2), (220, 70), (17, 5), (120, 30)];
+
+        for split in 0..=stream.len() {
+            let mut cw = make_prompt_crosswords(120, 30);
+            let mut processor = Processor::default();
+            processor.advance(&mut cw, &stream[..split]);
+            for (columns, rows) in sizes {
+                cw.resize(CrosswordsSize::new(columns, rows));
+            }
+            processor.advance(&mut cw, &stream[split..]);
+            for (columns, rows) in sizes.into_iter().rev() {
+                cw.resize(CrosswordsSize::new(columns, rows));
+            }
+            assert!(
+                semantic_prompt_text(&cw, 74).contains(path),
+                "fragment split {split} lost path: {:?}; snapshot={:?}",
+                semantic_prompt_text(&cw, 74),
+                cw.active_semantic_prompt
+                    .as_ref()
+                    .and_then(|active| active.snapshot.as_ref())
+                    .map(|snapshot| (
+                        &snapshot.context_text,
+                        snapshot.context_rows,
+                        snapshot.rows.len()
+                    ))
+            );
+            assert_resize_invariants(&cw, 74, path);
+        }
+    }
+    #[test]
+    fn resize_stress_repeated_editor_repaints_never_leave_stale_prompt_fragments() {
+        use crate::performer::handler::Processor;
+
+        let path = r"D:\workspaces\organizations\example-team\terminal-project\automexia-terminal\standalone";
+        let mut cw = make_prompt_crosswords(120, 30);
+        let mut processor = Processor::default();
+        processor.advance(&mut cw, &automexia_prompt_stream(75, path, ""));
+        let sizes = [(29, 13), (3, 2), (220, 70), (17, 5), (120, 30)];
+
+        for iteration in 0..240 {
+            let (columns, rows) = sizes[iteration % sizes.len()];
+            cw.resize(CrosswordsSize::new(columns, rows));
+            let repaint = if iteration % 3 == 0 {
+                "\x1b[2J\x1b[H\x1b[2K\x1b[38;2;97;231;255mλ\x1b[0m "
+            } else {
+                "\r\x1b[2K\x1b[38;2;97;231;255mλ\x1b[0m "
+            };
+            processor.advance(&mut cw, repaint.as_bytes());
+            assert_resize_invariants(&cw, 75, path);
+        }
+    }
+    #[test]
+    fn resize_stress_fragmented_editor_repaint_interleaved_with_resize_has_one_prompt() {
+        use crate::performer::handler::Processor;
+
+        let path = r"D:\workspaces\organizations\example-team\terminal-project\automexia-terminal\standalone";
+        let repaint = "\x1b[2J\x1b[H\x1b[2K\x1b[38;2;97;231;255mλ\x1b[0m ";
+        let sizes = [(29, 13), (3, 2), (220, 70), (17, 5), (120, 30)];
+
+        for split in 0..=repaint.len() {
+            if !repaint.is_char_boundary(split) {
+                continue;
+            }
+            let mut cw = make_prompt_crosswords(120, 30);
+            let mut processor = Processor::default();
+            let repaint_bytes = repaint.as_bytes();
+            processor.advance(&mut cw, &automexia_prompt_stream(76, path, ""));
+            processor.advance(&mut cw, &repaint_bytes[..split]);
+            for (columns, rows) in sizes {
+                cw.resize(CrosswordsSize::new(columns, rows));
+            }
+            processor.advance(&mut cw, &repaint_bytes[split..]);
+            for (columns, rows) in sizes.into_iter().rev() {
+                cw.resize(CrosswordsSize::new(columns, rows));
+            }
+            let text = semantic_prompt_text(&cw, 76);
+            assert_eq!(
+                text.matches('λ').count(),
+                1,
+                "fragmented repaint split {split} duplicated the editor: {text:?}"
+            );
+            assert_resize_invariants(&cw, 76, path);
+        }
+    }
     #[test]
     fn resize_stress_repeated_active_aid_atomically_replaces_prompt_block() {
         use crate::performer::handler::Processor;
@@ -6150,7 +6573,7 @@ mod tests {
     fn resize_stress_realistic_prompt_remains_complete_through_two_thousand_resizes() {
         use crate::performer::handler::Processor;
 
-        let path = r"D:\workstation\projects\business-project\custom_terminal\automexia-terminal\standalone";
+        let path = r"D:\workspaces\organizations\example-team\terminal-project\automexia-terminal\standalone";
         let mut cw = make_prompt_crosswords(160, 24);
         let mut processor = Processor::default();
 
@@ -6211,7 +6634,7 @@ mod tests {
     fn resize_stress_preserves_non_prompt_output_while_active_prompt_reflows() {
         use crate::performer::handler::Processor;
 
-        let path = r"D:\workstation\projects\business-project\custom_terminal\automexia-terminal\standalone";
+        let path = r"D:\workspaces\organizations\example-team\terminal-project\automexia-terminal\standalone";
         let mut cw = make_prompt_crosswords(120, 10);
         let mut processor = Processor::default();
         let markers = (0..7)
@@ -6259,7 +6682,7 @@ mod tests {
     fn resize_stress_screen_repaint_compacts_prompt_without_blank_band() {
         use crate::performer::handler::Processor;
 
-        let path = r"D:\workstation\projects\business-project\custom_terminal\automexia-terminal\standalone";
+        let path = r"D:\workspaces\organizations\example-team\terminal-project\automexia-terminal\standalone";
         let mut cw = make_prompt_crosswords(120, 10);
         let mut processor = Processor::default();
         let markers = (0..7)
@@ -6302,7 +6725,9 @@ mod tests {
             prompt_start_row.saturating_sub(last_output_row) <= 2,
             "screen repaint left a blank band between output row {last_output_row} and prompt row {prompt_start_row}"
         );
-        assert_resize_invariants(&cw, 703, path);
+        // The stream intentionally stops after erase; Automexia owns/restores
+        // context and path, while the absent shell suffix owns the lambda.
+        assert_resize_context_invariants(&cw, 703, path);
     }
 
     #[test]
@@ -6326,7 +6751,7 @@ mod tests {
         use crate::performer::handler::Processor;
 
         let path =
-            "D:\\workstation\\e\u{301}quipe-\u{1f680}\\automexia-terminal\\standalone";
+            "D:\\workspaces\\e\u{301}quipe-\u{1f680}\\automexia-terminal\\standalone";
         let mut cw = make_prompt_crosswords(120, 12);
         let mut processor = Processor::default();
         processor.advance(&mut cw, &automexia_prompt_stream(44, path, "cargo test"));
@@ -6335,7 +6760,9 @@ mod tests {
         // SIGWINCH. It owns the editable row, but not Automexia's context/path.
         processor.advance(&mut cw, b"\x1b[2J\x1b[H\x1b[2K");
 
-        assert_resize_invariants(&cw, 44, path);
+        // This deliberately ends mid-repaint. The shell owns lambda/input;
+        // terminal-owned context must survive without reviving stale input.
+        assert_resize_context_invariants(&cw, 44, path);
         let visible = (0..cw.grid.screen_lines() as i32)
             .map(Line)
             .filter(|line| cw.grid[*line].semantic_prompt_id == Some(44))
@@ -6348,7 +6775,7 @@ mod tests {
     fn resize_stress_history_navigation_prompt_work_is_bounded_at_deep_scrollback() {
         use crate::performer::handler::Processor;
 
-        let path = r"D:\workstation\projects\automexia-terminal\standalone";
+        let path = r"D:\workspaces\projects\automexia-terminal\standalone";
         let mut cw = make_prompt_crosswords(120, 12);
         for _ in 0..15_000 {
             cw.linefeed();
@@ -6400,7 +6827,7 @@ mod tests {
         use crate::performer::handler::Processor;
 
         let path =
-            "D:\\workstation\\e\u{301}quipe-\u{1f680}\\automexia-terminal\\standalone";
+            "D:\\workspaces\\e\u{301}quipe-\u{1f680}\\automexia-terminal\\standalone";
         let mut cw = make_prompt_crosswords(140, 14);
         let mut processor = Processor::default();
         processor.advance(
@@ -6409,7 +6836,10 @@ mod tests {
         );
 
         cw.resize(CrosswordsSize::new(3, 2));
-        processor.advance(&mut cw, b"\x1b[2J\x1b[H\x1b[2K");
+        processor.advance(
+            &mut cw,
+            "\x1b[2J\x1b[H\x1b[2K\x1b[38;2;97;231;255mλ\x1b[0m echo resilient".as_bytes(),
+        );
         cw.resize(CrosswordsSize::new(140, 14));
 
         assert_resize_invariants(&cw, 45, path);
@@ -6425,10 +6855,37 @@ mod tests {
     }
 
     #[test]
+    fn resize_stress_final_resize_repairs_missing_context_without_more_pty_input() {
+        let path = r"D:\workspaces\organizations\example-team\terminal-project\automexia-terminal\standalone";
+        let mut cw = make_prompt_crosswords(140, 14);
+        let mut processor = crate::performer::handler::Processor::default();
+        processor.advance(&mut cw, &automexia_prompt_stream(451, path, "echo ready"));
+
+        let prompt_rows = cw.all_prompt_rows(451);
+        let context_end = cw
+            .active_semantic_prompt
+            .as_ref()
+            .and_then(|active| active.snapshot.as_ref())
+            .and_then(|snapshot| cw.prompt_context_end_row(&prompt_rows, snapshot))
+            .expect("initial terminal-owned context");
+        for line in prompt_rows.into_iter().take(context_end + 1) {
+            cw.grid[line].reset(&Square::default());
+        }
+        assert!(!semantic_prompt_text(&cw, 451).contains(path));
+
+        // No PTY bytes follow. The final effective resize must detect the lost
+        // logical block and restore it from the generation-scoped snapshot.
+        cw.resize(CrosswordsSize::new(29, 13));
+        assert_resize_invariants(&cw, 451, path);
+        cw.resize(CrosswordsSize::new(140, 14));
+        assert_resize_invariants(&cw, 451, path);
+    }
+
+    #[test]
     fn resize_stress_line_editor_erase_restores_path_after_tiny_reflow() {
         use crate::performer::handler::Processor;
 
-        let path = r"D:\workstation\projects\business-project\custom_terminal\automexia-terminal\standalone";
+        let path = r"D:\workspaces\organizations\example-team\terminal-project\automexia-terminal\standalone";
         let mut cw = make_prompt_crosswords(140, 14);
         let mut processor = Processor::default();
         processor.advance(&mut cw, &automexia_prompt_stream(46, path, "git status"));

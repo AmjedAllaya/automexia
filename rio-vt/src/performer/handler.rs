@@ -10,6 +10,7 @@ use crate::time::Instant;
 use cursor_icon::CursorIcon;
 use rio_graphics::GraphicData;
 use std::mem;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tracing::{debug, warn};
 
@@ -20,7 +21,6 @@ use crate::ansi::{
     mode::{Mode, NamedPrivateMode, PrivateMode},
     ClearMode, LineClearMode, TabulationClearMode,
 };
-use std::fmt::Write;
 
 // https://vt100.net/emu/dec_ansi_parser
 use super::osc;
@@ -31,6 +31,31 @@ const SYNC_UPDATE_TIMEOUT: Duration = Duration::from_millis(150);
 
 /// Maximum number of bytes read in one synchronized update (2MiB).
 const SYNC_BUFFER_SIZE: usize = 0x20_0000;
+
+/// A legitimate XTGETTCAP request contains short hexadecimal capability names.
+/// Bound the complete DCS so a child process cannot retain arbitrary input.
+const MAX_XTGETTCAP_REQUEST_LEN: usize = 4 * 1024;
+
+/// Kitty graphics requires at most 4096 payload bytes per APC. The larger cap
+/// also accommodates a base64-encoded 64 KiB Glyph Protocol registration plus
+/// control metadata while still bounding memory owned by an untrusted PTY.
+const MAX_APC_SEQUENCE_LEN: usize = 96 * 1024;
+
+static XTGETTCAP_OVERFLOW_COUNT: AtomicUsize = AtomicUsize::new(0);
+static APC_OVERFLOW_COUNT: AtomicUsize = AtomicUsize::new(0);
+static UNHANDLED_OSC_COUNT: AtomicUsize = AtomicUsize::new(0);
+static UNHANDLED_APC_COUNT: AtomicUsize = AtomicUsize::new(0);
+static MALFORMED_KITTY_APC_COUNT: AtomicUsize = AtomicUsize::new(0);
+static MALFORMED_GLYPH_APC_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+fn warn_control_string_discard(counter: &AtomicUsize, reason: &str) {
+    let occurrence = counter.fetch_add(1, Ordering::Relaxed) + 1;
+    if occurrence == 1 || occurrence.is_power_of_two() {
+        warn!(
+            "{reason} discarded (occurrence {occurrence}; further reports are exponentially rate-limited)"
+        );
+    }
+}
 
 /// Number of bytes in the BSU/ESU CSI sequences.
 const SYNC_ESCAPE_LEN: usize = 8;
@@ -537,6 +562,10 @@ struct XtgettcapState {
 
     /// Buffer for collecting hex-encoded capability names.
     buffer: Vec<u8>,
+
+    /// Set once the request exceeds its hard limit; bytes are discarded until
+    /// DCS unhook and the request produces no response.
+    overflowed: bool,
 }
 
 /// State for accumulating APC (Application Program Command) sequences.
@@ -549,6 +578,10 @@ struct ApcState {
     /// Buffer for accumulating APC data.
     /// Pre-allocated to a reasonable size for Kitty graphics chunks.
     buffer: Vec<u8>,
+
+    /// Set once the current APC exceeds its hard limit. The parser continues
+    /// to consume through the terminator without retaining or dispatching it.
+    overflowed: bool,
 }
 
 impl Default for SyncState {
@@ -908,14 +941,14 @@ impl<'a, H: Handler + 'a> Performer<'a, H> {
                     self.handler.kitty_graphics_response(response_str);
                 }
             } else {
-                warn!("[process_apc_buffer] Failed to parse kitty graphics protocol");
+                warn_control_string_discard(
+                    &MALFORMED_KITTY_APC_COUNT,
+                    "malformed Kitty graphics APC",
+                );
             }
         } else {
             // Unknown APC sequence
-            warn!(
-                "[process_apc_buffer] Unknown APC sequence: {}",
-                String::from_utf8_lossy(&buffer[..buffer.len().min(20)])
-            );
+            warn_control_string_discard(&UNHANDLED_APC_COUNT, "unhandled APC sequence");
         }
     }
 
@@ -977,7 +1010,11 @@ impl<'a, H: Handler + 'a> Performer<'a, H> {
                 self.handler.glyph_protocol_response(resp);
             }
             Err(glyph_protocol::ParseError::Malformed(why)) => {
-                warn!("[glyph_protocol] malformed APC: {why}");
+                let _ = why;
+                warn_control_string_discard(
+                    &MALFORMED_GLYPH_APC_COUNT,
+                    "malformed Glyph Protocol APC",
+                );
             }
         }
     }
@@ -1041,6 +1078,7 @@ impl<U: Handler> Perform for Performer<'_, U> {
                 // XTGETTCAP request: DCS + q <hex-encoded-names> ST
                 self.state.xtgettcap_state.active = true;
                 self.state.xtgettcap_state.buffer.clear();
+                self.state.xtgettcap_state.overflowed = false;
             }
             // Legacy iTerm2 synchronized updates. Existing terminfo and
             // tmux installations may emit this form instead of CSI ?2026.
@@ -1077,11 +1115,33 @@ impl<U: Handler> Perform for Performer<'_, U> {
                 self.handler.sixel_graphic_reset();
             }
         } else if self.state.xtgettcap_state.active {
-            // Collect hex-encoded capability names for XTGETTCAP
-            self.state.xtgettcap_state.buffer.push(byte);
+            // Collect hex-encoded capability names for XTGETTCAP. Once the
+            // request is too large, retain no more bytes until DCS unhook.
+            let state = &mut self.state.xtgettcap_state;
+            if !state.overflowed {
+                if state.buffer.len() < MAX_XTGETTCAP_REQUEST_LEN {
+                    state.buffer.push(byte);
+                } else {
+                    state.overflowed = true;
+                    warn_control_string_discard(
+                        &XTGETTCAP_OVERFLOW_COUNT,
+                        "oversized XTGETTCAP request",
+                    );
+                }
+            }
         } else {
             debug!("[unhandled put] byte={:?}", byte);
         }
+    }
+
+    #[inline]
+    fn dcs_cancel(&mut self) {
+        if self.handler.is_sixel_graphic_active() {
+            self.handler.sixel_graphic_reset();
+        }
+        self.state.xtgettcap_state.active = false;
+        self.state.xtgettcap_state.buffer.clear();
+        self.state.xtgettcap_state.overflowed = false;
     }
 
     #[inline]
@@ -1089,33 +1149,31 @@ impl<U: Handler> Perform for Performer<'_, U> {
         if self.handler.is_sixel_graphic_active() {
             self.handler.sixel_graphic_finish();
         } else if self.state.xtgettcap_state.active {
-            // Process XTGETTCAP request
-            let response = process_xtgettcap_request(&self.state.xtgettcap_state.buffer);
-            self.handler.xtgettcap_response(response);
+            if !self.state.xtgettcap_state.overflowed {
+                let response =
+                    process_xtgettcap_request(&self.state.xtgettcap_state.buffer);
+                self.handler.xtgettcap_response(response);
+            }
 
-            // Reset state
+            // Reset state so the next request recovers without retained data.
             self.state.xtgettcap_state.active = false;
             self.state.xtgettcap_state.buffer.clear();
+            self.state.xtgettcap_state.overflowed = false;
         } else {
             debug!("[unhandled dcs_unhook]");
         }
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
-        debug!("[osc_dispatch] params={params:?} bell_terminated={bell_terminated}");
+        debug!(
+            "[osc_dispatch] parameter_count={} bell_terminated={bell_terminated}",
+            params.len()
+        );
 
         let terminator = if bell_terminated { "\x07" } else { "\x1b\\" };
 
-        fn unhandled(params: &[&[u8]]) {
-            let mut buf = String::new();
-            for items in params {
-                buf.push('[');
-                for item in *items {
-                    let _ = write!(buf, "{:?}", *item as char);
-                }
-                buf.push_str("],");
-            }
-            warn!("[unhandled osc_dispatch]: [{}] at line {}", &buf, line!());
+        fn unhandled(_params: &[&[u8]]) {
+            warn_control_string_discard(&UNHANDLED_OSC_COUNT, "unhandled OSC sequence");
         }
 
         if params.is_empty() || params[0].is_empty() {
@@ -1619,6 +1677,7 @@ impl<U: Handler> Perform for Performer<'_, U> {
     fn apc_start(&mut self) {
         debug!("[apc_start] Beginning APC accumulation");
         self.state.apc_state.buffer.clear();
+        self.state.apc_state.overflowed = false;
         // Pre-allocate reasonable size for Kitty graphics chunks (typically 4KB)
         self.state.apc_state.buffer.reserve(4096);
     }
@@ -1628,11 +1687,31 @@ impl<U: Handler> Perform for Performer<'_, U> {
     /// We accumulate all bytes here to handle large sequences that exceed Copa's
     /// default OSC buffer size (1024 bytes).
     fn apc_put(&mut self, byte: u8) {
-        self.state.apc_state.buffer.push(byte);
+        let state = &mut self.state.apc_state;
+        if state.overflowed {
+            return;
+        }
+        if state.buffer.len() < MAX_APC_SEQUENCE_LEN {
+            state.buffer.push(byte);
+        } else {
+            state.overflowed = true;
+            warn_control_string_discard(&APC_OVERFLOW_COUNT, "oversized APC sequence");
+        }
     }
 
     fn apc_put_slice(&mut self, bytes: &[u8]) {
-        self.state.apc_state.buffer.extend_from_slice(bytes);
+        let state = &mut self.state.apc_state;
+        if state.overflowed {
+            return;
+        }
+
+        let remaining = MAX_APC_SEQUENCE_LEN.saturating_sub(state.buffer.len());
+        let accepted = remaining.min(bytes.len());
+        state.buffer.extend_from_slice(&bytes[..accepted]);
+        if accepted != bytes.len() {
+            state.overflowed = true;
+            warn_control_string_discard(&APC_OVERFLOW_COUNT, "oversized APC sequence");
+        }
     }
 
     /// Called when the APC sequence ends. Processes the accumulated APC data.
@@ -1642,8 +1721,15 @@ impl<U: Handler> Perform for Performer<'_, U> {
             self.state.apc_state.buffer.len()
         );
 
-        // Process the accumulated buffer
-        self.process_apc_buffer();
+        if !self.state.apc_state.overflowed {
+            self.process_apc_buffer();
+        }
+        self.state.apc_state.buffer.clear();
+        self.state.apc_state.overflowed = false;
+    }
+    fn apc_cancel(&mut self) {
+        self.state.apc_state.buffer.clear();
+        self.state.apc_state.overflowed = false;
     }
 }
 
@@ -1739,7 +1825,7 @@ fn attrs_from_sgr_parameters(
 /// Multiple capability queries can be separated by `;` in a single request.
 /// Each capability gets its own DCS response (like xterm).
 fn process_xtgettcap_request(buffer: &[u8]) -> String {
-    debug!("Processing XTGETTCAP request: {:?}", buffer);
+    debug!("Processing XTGETTCAP request ({} bytes)", buffer.len());
 
     let mut response = String::new();
 
@@ -1755,7 +1841,7 @@ fn process_xtgettcap_request(buffer: &[u8]) -> String {
                 continue;
             }
         };
-        debug!("XTGETTCAP query for: {}", capability_name);
+        debug!("XTGETTCAP query decoded ({} bytes)", capability_name.len());
 
         let hex_name = encode_hex_string(&capability_name);
         if let Some(value) = get_termcap_capability(&capability_name) {
@@ -1866,13 +1952,13 @@ fn encode_hex_string(s: &str) -> String {
     s.bytes().map(|b| format!("{b:02X}")).collect()
 }
 
-/// Get termcap/terminfo capability value for Rio terminal.
+/// Get termcap/terminfo capability value for Automexia Terminal.
 /// Based on misc/rio.termcap and misc/rio.terminfo files.
 fn get_termcap_capability(name: &str) -> Option<String> {
     debug!("XTGETTCAP query for capability: {}", name);
     match name {
         // Terminal name
-        "TN" | "name" => Some("rio".to_string()),
+        "TN" | "name" => Some("automexia".to_string()),
 
         // Colors capability - from terminfo: colors#0x100 (256), pairs#0x7FFF
         "Co" | "colors" => Some("256".to_string()),
@@ -2286,6 +2372,140 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct ProtocolBoundaryHandler {
+        xtgettcap_responses: Vec<String>,
+        glyph_responses: Vec<String>,
+    }
+
+    impl Handler for ProtocolBoundaryHandler {
+        fn xtgettcap_response(&mut self, response: String) {
+            self.xtgettcap_responses.push(response);
+        }
+
+        fn glyph_protocol_response(&mut self, response: String) {
+            self.glyph_responses.push(response);
+        }
+    }
+
+    #[test]
+    fn xtgettcap_limit_is_exact_and_cancellation_clears_state() {
+        let mut handler = ProtocolBoundaryHandler::default();
+        let mut processor = Processor::default();
+
+        processor.advance(&mut handler, b"\x1bP+q");
+        processor.advance(&mut handler, &vec![b'A'; MAX_XTGETTCAP_REQUEST_LEN]);
+        assert_eq!(
+            processor.state.xtgettcap_state.buffer.len(),
+            MAX_XTGETTCAP_REQUEST_LEN
+        );
+        assert!(!processor.state.xtgettcap_state.overflowed);
+
+        processor.advance(&mut handler, b"B");
+        assert!(processor.state.xtgettcap_state.overflowed);
+        assert_eq!(
+            processor.state.xtgettcap_state.buffer.len(),
+            MAX_XTGETTCAP_REQUEST_LEN
+        );
+        processor.advance(&mut handler, b"\x18");
+
+        assert!(handler.xtgettcap_responses.is_empty());
+        assert!(!processor.state.xtgettcap_state.active);
+        assert!(!processor.state.xtgettcap_state.overflowed);
+        assert!(processor.state.xtgettcap_state.buffer.is_empty());
+    }
+
+    #[test]
+    fn cancelled_xtgettcap_is_not_dispatched_and_next_request_recovers() {
+        let mut handler = ProtocolBoundaryHandler::default();
+        let mut processor = Processor::default();
+
+        processor.advance(&mut handler, b"\x1bP+q544E\x18\x1bP+q544E\x1b\\");
+
+        assert_eq!(handler.xtgettcap_responses.len(), 1);
+        assert_eq!(
+            handler.xtgettcap_responses[0],
+            "\x1bP1+r544E=6175746F6D65786961\x1b\\"
+        );
+    }
+
+    #[test]
+    fn oversized_xtgettcap_is_discarded_and_next_request_recovers() {
+        let mut handler = ProtocolBoundaryHandler::default();
+        let mut processor = Processor::default();
+        let mut oversized = Vec::with_capacity(MAX_XTGETTCAP_REQUEST_LEN + 16);
+        oversized.extend_from_slice(b"\x1bP+q");
+        oversized.extend(std::iter::repeat_n(b'A', MAX_XTGETTCAP_REQUEST_LEN + 1));
+        oversized.extend_from_slice(b"\x1b\\");
+        oversized.extend_from_slice(b"\x1bP+q544E\x1b\\");
+
+        processor.advance(&mut handler, &oversized);
+
+        assert_eq!(handler.xtgettcap_responses.len(), 1);
+        assert_eq!(
+            handler.xtgettcap_responses[0],
+            "\x1bP1+r544E=6175746F6D65786961\x1b\\"
+        );
+        assert!(!processor.state.xtgettcap_state.active);
+        assert!(!processor.state.xtgettcap_state.overflowed);
+        assert!(processor.state.xtgettcap_state.buffer.is_empty());
+    }
+
+    #[test]
+    fn apc_limit_is_exact_and_cancellation_clears_state() {
+        let mut handler = ProtocolBoundaryHandler::default();
+        let mut processor = Processor::default();
+
+        processor.advance(&mut handler, b"\x1b_");
+        processor.advance(&mut handler, &vec![b'A'; MAX_APC_SEQUENCE_LEN]);
+        assert_eq!(processor.state.apc_state.buffer.len(), MAX_APC_SEQUENCE_LEN);
+        assert!(!processor.state.apc_state.overflowed);
+
+        processor.advance(&mut handler, b"B");
+        assert!(processor.state.apc_state.overflowed);
+        assert_eq!(processor.state.apc_state.buffer.len(), MAX_APC_SEQUENCE_LEN);
+        processor.advance(&mut handler, b"\x1a");
+
+        assert!(handler.glyph_responses.is_empty());
+        assert!(!processor.state.apc_state.overflowed);
+        assert!(processor.state.apc_state.buffer.is_empty());
+    }
+
+    #[test]
+    fn cancelled_apc_is_not_dispatched_and_next_request_recovers() {
+        let mut handler = ProtocolBoundaryHandler::default();
+        let mut processor = Processor::default();
+
+        processor.advance(&mut handler, b"\x1b_25a1;s\x18\x1b_25a1;s\x1b\\");
+
+        assert_eq!(handler.glyph_responses.len(), 1);
+        assert_eq!(
+            handler.glyph_responses[0],
+            glyph_protocol::format_support_response(glyph_protocol::SUPPORTED_FORMATS)
+        );
+    }
+
+    #[test]
+    fn oversized_apc_is_discarded_and_next_glyph_request_recovers() {
+        let mut handler = ProtocolBoundaryHandler::default();
+        let mut processor = Processor::default();
+        let mut oversized = Vec::with_capacity(MAX_APC_SEQUENCE_LEN + 32);
+        oversized.extend_from_slice(b"\x1b_25a1;s;");
+        oversized.extend(std::iter::repeat_n(b'A', MAX_APC_SEQUENCE_LEN));
+        oversized.extend_from_slice(b"\x1b\\");
+        oversized.extend_from_slice(b"\x1b_25a1;s\x1b\\");
+
+        processor.advance(&mut handler, &oversized);
+
+        assert_eq!(handler.glyph_responses.len(), 1);
+        assert_eq!(
+            handler.glyph_responses[0],
+            glyph_protocol::format_support_response(glyph_protocol::SUPPORTED_FORMATS)
+        );
+        assert!(!processor.state.apc_state.overflowed);
+        assert!(processor.state.apc_state.buffer.is_empty());
+    }
+
     #[test]
     fn kitty_placement_reply_reflects_image_store_state() {
         let mut handler = KittyReplyHandler::default();
@@ -2571,7 +2791,7 @@ mod tests {
     fn test_single_capability_requests() {
         // Test terminal name
         let response = process_xtgettcap_request(b"544E"); // "TN"
-        assert_eq!(response, "\x1bP1+r544E=72696F\x1b\\");
+        assert_eq!(response, "\x1bP1+r544E=6175746F6D65786961\x1b\\");
 
         // Test colors capability
         let response = process_xtgettcap_request(b"436F"); // "Co"
@@ -2650,7 +2870,7 @@ mod tests {
 
     #[test]
     fn test_capability_lookup() {
-        assert_eq!(get_termcap_capability("TN"), Some("rio".to_string()));
+        assert_eq!(get_termcap_capability("TN"), Some("automexia".to_string()));
         assert_eq!(get_termcap_capability("Co"), Some("256".to_string()));
         assert_eq!(get_termcap_capability("RGB"), Some("8/8/8".to_string()));
         assert_eq!(get_termcap_capability("invalid"), None);

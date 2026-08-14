@@ -30,6 +30,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "control_string_bounds"
+path = "fuzz_targets/control_string_bounds.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "config_migration"
 path = "fuzz_targets/config_migration.rs"
 test = false

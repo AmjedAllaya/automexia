@@ -16,6 +16,8 @@
 #![deny(clippy::all, clippy::if_not_else, clippy::enum_glob_use)]
 
 use std::str;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use tracing::warn;
 
 mod params;
 
@@ -23,6 +25,22 @@ pub use params::{Params, ParamsIter};
 
 const MAX_INTERMEDIATES: usize = 4;
 const MAX_OSC_PARAMS: usize = 16;
+
+/// Maximum raw OSC payload retained for one control string. This is large
+/// enough for ordinary OSC 52 clipboard transfers while preventing a child
+/// process from growing the parser heap without bound. Oversized strings are
+/// discarded through their terminator and the next OSC starts cleanly.
+const MAX_OSC_RAW_LEN: usize = 1024 * 1024;
+static OSC_OVERFLOW_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+fn warn_oversized_osc() {
+    let occurrence = OSC_OVERFLOW_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+    if occurrence == 1 || occurrence.is_power_of_two() {
+        warn!(
+            "oversized OSC sequence discarded (occurrence {occurrence}; further reports are exponentially rate-limited)"
+        );
+    }
+}
 
 /// Inline OSC byte capacity. Sized to absorb common OSCs (titles, color
 /// queries, hyperlink URLs, kitty graphics control headers) without
@@ -39,6 +57,7 @@ pub struct Parser {
     params: Params,
     param: u16,
     osc_raw: OscBuffer,
+    osc_overflowed: bool,
     osc_params: [(usize, usize); MAX_OSC_PARAMS],
     osc_num_params: usize,
     ignoring: bool,
@@ -83,12 +102,16 @@ impl OscBuffer {
     }
 
     #[inline]
-    fn push(&mut self, byte: u8) {
+    fn push(&mut self, byte: u8) -> bool {
+        if self.len() >= MAX_OSC_RAW_LEN {
+            return false;
+        }
+
         if self.overflow.is_empty() {
             if self.fixed_len < OSC_FIXED_LEN {
                 self.fixed[self.fixed_len] = byte;
                 self.fixed_len += 1;
-                return;
+                return true;
             }
             // Spill: promote the current contents to the heap once, then
             // append. After this point, `overflow.len() >= OSC_FIXED_LEN`,
@@ -97,24 +120,30 @@ impl OscBuffer {
                 .extend_from_slice(&self.fixed[..self.fixed_len]);
         }
         self.overflow.push(byte);
+        true
     }
 
     /// Append a complete payload run while retaining the fixed-buffer
     /// fast path and spilling to the heap at most once.
     #[inline]
-    fn extend_from_slice(&mut self, bytes: &[u8]) {
+    fn extend_from_slice(&mut self, bytes: &[u8]) -> bool {
+        let available = MAX_OSC_RAW_LEN.saturating_sub(self.len());
+        let accepted = bytes.len().min(available);
+        let bytes_to_append = &bytes[..accepted];
+
         if self.overflow.is_empty() {
-            let available = OSC_FIXED_LEN - self.fixed_len;
-            if bytes.len() <= available {
-                self.fixed[self.fixed_len..self.fixed_len + bytes.len()]
-                    .copy_from_slice(bytes);
-                self.fixed_len += bytes.len();
-                return;
+            let inline_available = OSC_FIXED_LEN - self.fixed_len;
+            if bytes_to_append.len() <= inline_available {
+                self.fixed[self.fixed_len..self.fixed_len + bytes_to_append.len()]
+                    .copy_from_slice(bytes_to_append);
+                self.fixed_len += bytes_to_append.len();
+                return accepted == bytes.len();
             }
             self.overflow
                 .extend_from_slice(&self.fixed[..self.fixed_len]);
         }
-        self.overflow.extend_from_slice(bytes);
+        self.overflow.extend_from_slice(bytes_to_append);
+        accepted == bytes.len()
     }
 
     #[inline]
@@ -398,7 +427,7 @@ impl Parser {
         match byte {
             0x00..=0x17 | 0x19 | 0x1C..=0x7E => performer.put(byte),
             0x18 | 0x1A => {
-                performer.unhook();
+                performer.dcs_cancel();
                 performer.execute(byte);
                 self.state = State::Ground
             }
@@ -500,8 +529,12 @@ impl Parser {
         bytes: &[u8],
     ) -> usize {
         let count = find_osc_boundary(bytes);
-        if count != 0 {
-            self.osc_raw.extend_from_slice(&bytes[..count]);
+        if count != 0
+            && !self.osc_overflowed
+            && !self.osc_raw.extend_from_slice(&bytes[..count])
+        {
+            self.osc_overflowed = true;
+            warn_oversized_osc();
         }
         if count == bytes.len() {
             return count;
@@ -583,7 +616,7 @@ impl Parser {
                 self.state = State::Ground
             }
             0x18 | 0x1A => {
-                self.osc_end(performer, byte);
+                self.osc_cancel();
                 performer.execute(byte);
                 self.state = State::Ground
             }
@@ -610,9 +643,8 @@ impl Parser {
                 self.state = State::Ground;
             }
             0x18 | 0x1A => {
-                // C0 termination (CAN or SUB).
-                performer.apc_put(byte);
-                performer.apc_end();
+                // CAN and SUB abort an APC without dispatching its payload.
+                performer.apc_cancel();
                 performer.execute(byte);
                 self.state = State::Ground;
             }
@@ -764,6 +796,10 @@ impl Parser {
     /// Add OSC param separator.
     #[inline]
     fn action_osc_put_param(&mut self) {
+        if self.osc_overflowed {
+            return;
+        }
+
         let idx = self.osc_raw.len();
 
         let param_idx = self.osc_num_params;
@@ -787,14 +823,24 @@ impl Parser {
 
     #[inline(always)]
     fn action_osc_put(&mut self, byte: u8) {
-        self.osc_raw.push(byte);
+        if !self.osc_overflowed && !self.osc_raw.push(byte) {
+            self.osc_overflowed = true;
+            warn_oversized_osc();
+        }
     }
 
     fn osc_end<P: Perform>(&mut self, performer: &mut P, byte: u8) {
-        self.action_osc_put_param();
-        self.osc_dispatch(performer, byte);
+        if !self.osc_overflowed {
+            self.action_osc_put_param();
+            self.osc_dispatch(performer, byte);
+        }
+        self.osc_cancel();
+    }
+
+    fn osc_cancel(&mut self) {
         self.osc_raw.clear();
         self.osc_num_params = 0;
+        self.osc_overflowed = false;
     }
 
     /// Reset escape sequence parameters and intermediates.
@@ -1432,6 +1478,10 @@ pub trait Perform {
     /// terminated.
     fn unhook(&mut self) {}
 
+    /// Called when CAN or SUB aborts a device control string. Cancellation
+    /// must clear handler state without dispatching the partial payload.
+    fn dcs_cancel(&mut self) {}
+
     /// Dispatch an operating system command.
     fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {}
 
@@ -1508,6 +1558,10 @@ pub trait Perform {
     /// Invoked when the end of an APC (Application Program Command) sequence is
     /// encountered.
     fn apc_end(&mut self) {}
+
+    /// Called when CAN or SUB aborts an APC. Cancellation must not parse or
+    /// dispatch the accumulated payload.
+    fn apc_cancel(&mut self) {}
 }
 
 #[cfg(test)]
@@ -1936,6 +1990,70 @@ mod tests {
             }
             _ => panic!("expected osc sequence"),
         }
+    }
+
+    #[test]
+    fn osc_buffer_is_bounded_at_the_exact_limit_across_repeated_attacks() {
+        let mut buffer = OscBuffer::default();
+        let at_limit = vec![b'a'; MAX_OSC_RAW_LEN];
+
+        assert!(buffer.extend_from_slice(&at_limit));
+        assert_eq!(buffer.len(), MAX_OSC_RAW_LEN);
+        let bounded_capacity = buffer.overflow.capacity();
+        assert!(!buffer.push(b'b'));
+        assert_eq!(buffer.len(), MAX_OSC_RAW_LEN);
+
+        for _ in 0..3 {
+            buffer.clear();
+            assert!(!buffer.extend_from_slice(&vec![b'c'; MAX_OSC_RAW_LEN + 1]));
+            assert_eq!(buffer.len(), MAX_OSC_RAW_LEN);
+            assert_eq!(buffer.overflow.capacity(), bounded_capacity);
+        }
+    }
+
+    #[test]
+    fn cancelled_osc_is_not_dispatched_and_next_sequence_recovers() {
+        let mut dispatcher = Dispatcher::default();
+        let mut parser = Parser::default();
+
+        parser.advance(&mut dispatcher, b"\x1b]2;cancelled\x18\x1b]2;recovered\x07");
+
+        let osc: Vec<_> = dispatcher
+            .dispatched
+            .iter()
+            .filter(|sequence| matches!(sequence, Sequence::Osc(..)))
+            .collect();
+        assert_eq!(osc.len(), 1);
+        assert_eq!(
+            osc[0],
+            &Sequence::Osc(vec![b"2".to_vec(), b"recovered".to_vec()], true)
+        );
+        assert_eq!(parser.osc_raw.len(), 0);
+        assert!(!parser.osc_overflowed);
+    }
+
+    #[test]
+    fn oversized_osc_is_dropped_and_next_sequence_recovers() {
+        let mut dispatcher = Dispatcher::default();
+        let mut parser = Parser::default();
+
+        parser.advance(&mut dispatcher, b"\x1b]52;s;");
+        parser.advance(&mut dispatcher, &vec![b'a'; MAX_OSC_RAW_LEN + 64]);
+
+        assert!(parser.osc_overflowed);
+        assert_eq!(parser.osc_raw.len(), MAX_OSC_RAW_LEN);
+
+        // The oversized sequence is discarded at its terminator. A complete
+        // sequence arriving immediately afterward must still dispatch once.
+        parser.advance(&mut dispatcher, b"\x07\x1b]2;recovered\x07");
+
+        assert!(!parser.osc_overflowed);
+        assert_eq!(parser.osc_raw.len(), 0);
+        assert_eq!(dispatcher.dispatched.len(), 1);
+        assert_eq!(
+            dispatcher.dispatched[0],
+            Sequence::Osc(vec![b"2".to_vec(), b"recovered".to_vec()], true)
+        );
     }
 
     #[test]

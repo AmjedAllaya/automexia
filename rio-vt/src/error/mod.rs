@@ -81,15 +81,12 @@ impl std::fmt::Display for RioErrorType {
             RioErrorType::ConfigurationNotFound => {
                 write!(f, "Configuration file was not found")
             }
-            // RioErrorType::NavigationHasChanged => {
-            //     write!(f, "Navigation has changed\n\nPlease reopen Rio terminal.")
-            // }
             RioErrorType::InitializationError(message) => {
-                write!(f, "Error initializing Rio terminal:\n{message}")
+                write!(f, "Error initializing Automexia Terminal:\n{message}")
             }
             RioErrorType::IgnoredReport => write!(f, ""),
             RioErrorType::InvalidConfigurationFormat(message) => {
-                write!(f, "Found an issue loading the configuration file:\n\n{message}\n\nRio will proceed with the default configuration")
+                write!(f, "Found an issue loading the configuration file:\n\n{message}\n\nAutomexia kept the last known-good configuration; safe defaults are used only when no prior configuration exists")
             }
             RioErrorType::InvalidConfigurationTheme(message) => {
                 write!(f, "Found an issue in the configured theme:\n\n{message}")
@@ -101,5 +98,24 @@ impl std::fmt::Display for RioErrorType {
                 )
             }
         }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn configuration_errors_use_automexia_identity_and_reload_semantics() {
+        let initialization =
+            RioErrorType::InitializationError("test".to_string()).to_string();
+        let invalid =
+            RioErrorType::InvalidConfigurationFormat("invalid".to_string()).to_string();
+
+        assert!(initialization.contains("Automexia Terminal"));
+        let inherited_product_name = ["Rio", " terminal"].concat();
+        assert!(!initialization.contains(&inherited_product_name));
+        assert!(invalid.contains("last known-good configuration"));
+        let inherited_fallback_copy = ["Rio", " will proceed"].concat();
+        assert!(!invalid.contains(&inherited_fallback_copy));
     }
 }
