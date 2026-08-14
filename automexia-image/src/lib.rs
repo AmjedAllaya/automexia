@@ -1,6 +1,6 @@
 //! Renderer-neutral, resource-bounded local image decoding.
 //!
-//! Terminal output is untrusted. Only explicit local raster candidates are
+//! Terminal output is untrusted. Only validated local raster candidates are
 //! accepted. Final-path links are not followed, dimensions are checked before
 //! full decode, and cached thumbnails are invalidated by file version.
 
@@ -15,6 +15,7 @@ use std::time::{Instant, SystemTime};
 pub const MAX_FILE_BYTES: u64 = 20 * 1024 * 1024;
 pub const MAX_DECODED_PIXELS: u64 = 16_777_216;
 pub const MAX_DECODE_ALLOCATION_BYTES: u64 = 96 * 1024 * 1024;
+pub const MAX_DECODE_DIMENSION: u32 = 4_096;
 pub const MAX_UPLOAD_WIDTH: u32 = 1_280;
 pub const MAX_UPLOAD_HEIGHT: u32 = 960;
 pub const THUMBNAIL_CACHE_BYTES: usize = 32 * 1024 * 1024;
@@ -111,6 +112,14 @@ pub struct ThumbnailCache {
     entries: VecDeque<CacheEntry>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThumbnailCacheStats {
+    pub entries: usize,
+    pub used_bytes: usize,
+    pub max_entries: usize,
+    pub max_bytes: usize,
+}
+
 impl Default for ThumbnailCache {
     fn default() -> Self {
         Self::new(THUMBNAIL_CACHE_BYTES, THUMBNAIL_CACHE_ENTRIES)
@@ -124,6 +133,15 @@ impl ThumbnailCache {
             max_entries: max_entries.max(1),
             used_bytes: 0,
             entries: VecDeque::new(),
+        }
+    }
+
+    pub fn stats(&self) -> ThumbnailCacheStats {
+        ThumbnailCacheStats {
+            entries: self.entries.len(),
+            used_bytes: self.used_bytes,
+            max_entries: self.max_entries,
+            max_bytes: self.max_bytes,
         }
     }
 
@@ -236,8 +254,10 @@ pub fn decode_bounded_bytes(bytes: &[u8]) -> Result<DecodedThumbnail, ImagePrevi
             .into_dimensions()
             .map_err(|_| ImagePreviewError::DecodeFailed)?;
     let pixels = u64::from(original_width).saturating_mul(u64::from(original_height));
-    if original_width > 4_096
-        || original_height > 4_096
+    if original_width == 0
+        || original_height == 0
+        || original_width > MAX_DECODE_DIMENSION
+        || original_height > MAX_DECODE_DIMENSION
         || pixels > MAX_DECODED_PIXELS
         || pixels.saturating_mul(4) > MAX_DECODE_ALLOCATION_BYTES
     {
@@ -246,8 +266,8 @@ pub fn decode_bounded_bytes(bytes: &[u8]) -> Result<DecodedThumbnail, ImagePrevi
 
     let mut reader = ImageReader::with_format(Cursor::new(bytes), format);
     let mut limits = image_rs::Limits::default();
-    limits.max_image_width = Some(4_096);
-    limits.max_image_height = Some(4_096);
+    limits.max_image_width = Some(MAX_DECODE_DIMENSION);
+    limits.max_image_height = Some(MAX_DECODE_DIMENSION);
     limits.max_alloc = Some(MAX_DECODE_ALLOCATION_BYTES);
     reader.limits(limits);
     let image = reader
@@ -260,18 +280,29 @@ pub fn decode_bounded_bytes(bytes: &[u8]) -> Result<DecodedThumbnail, ImagePrevi
             image
         }
         .into_rgba8();
+    let width = image.width();
+    let height = image.height();
+    let expected_rgba_bytes = u64::from(width)
+        .checked_mul(u64::from(height))
+        .and_then(|pixels| pixels.checked_mul(4))
+        .and_then(|bytes| usize::try_from(bytes).ok())
+        .ok_or(ImagePreviewError::TooLarge)?;
+    let rgba = image.into_raw();
+    if rgba.len() != expected_rgba_bytes {
+        return Err(ImagePreviewError::DecodeFailed);
+    }
 
     static NEXT_RENDER_ID: AtomicU64 = AtomicU64::new(1);
 
     Ok(DecodedThumbnail {
         render_id: NEXT_RENDER_ID.fetch_add(1, Ordering::Relaxed),
         decoded_at: Instant::now(),
-        width: image.width(),
-        height: image.height(),
+        width,
+        height,
         original_width,
         original_height,
         file_bytes,
-        rgba: Arc::from(image.into_raw()),
+        rgba: Arc::from(rgba),
     })
 }
 
@@ -423,44 +454,92 @@ pub fn has_supported_extension(text: &str) -> bool {
         })
 }
 
-pub fn path_token_at_line(line: &str, column: usize) -> Option<String> {
-    let chars = line.chars().collect::<Vec<_>>();
-    if chars.is_empty() || column >= chars.len() {
-        return None;
-    }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImagePathToken {
+    pub text: String,
+    /// Inclusive character offset in the rendered terminal row.
+    pub start: usize,
+    /// Exclusive character offset in the rendered terminal row.
+    pub end: usize,
+}
 
-    for quote in ['\'', '"', '\u{60}'] {
-        let left = chars[..=column]
-            .iter()
-            .rposition(|character| *character == quote);
-        let right = chars[column..]
-            .iter()
-            .position(|character| *character == quote)
-            .map(|offset| column + offset);
-        if let (Some(left), Some(right)) = (left, right) {
-            if left < right {
-                let candidate = chars[left + 1..right].iter().collect::<String>();
-                if has_supported_extension(&candidate) {
-                    return Some(candidate);
-                }
+/// Find every local raster-looking path in one rendered terminal row.
+///
+/// This function is deliberately IO-free. It recognizes quoted paths with
+/// spaces and the private-use glyphs emitted by the Automexia `ls` formatters,
+/// but leaves existence and file-safety validation to the bounded decoder.
+pub fn image_path_tokens_in_line(line: &str) -> Vec<ImagePathToken> {
+    let chars = line.chars().collect::<Vec<_>>();
+    let mut tokens = Vec::new();
+    let mut index = 0usize;
+
+    while index < chars.len() {
+        if chars[index].is_whitespace() || matches!(chars[index], '|' | '<' | '>') {
+            index += 1;
+            continue;
+        }
+
+        if matches!(chars[index], '\'' | '"' | '\u{60}') {
+            let quote = chars[index];
+            let start = index;
+            index += 1;
+            let content_start = index;
+            while index < chars.len() && chars[index] != quote {
+                index += 1;
             }
+            if index < chars.len() {
+                let candidate = chars[content_start..index].iter().collect::<String>();
+                if has_supported_extension(&candidate) && !is_non_local_token(&candidate)
+                {
+                    tokens.push(ImagePathToken {
+                        text: candidate,
+                        start,
+                        end: index + 1,
+                    });
+                }
+                index += 1;
+                continue;
+            }
+            index = start;
+        }
+
+        let start = index;
+        while index < chars.len()
+            && !chars[index].is_whitespace()
+            && !matches!(chars[index], '|' | '<' | '>')
+        {
+            index += 1;
+        }
+        let raw = chars[start..index].iter().collect::<String>();
+        let candidate = strip_listing_icon(trim_path_token(&raw));
+        if has_supported_extension(candidate) && !is_non_local_token(candidate) {
+            tokens.push(ImagePathToken {
+                text: candidate.to_string(),
+                start,
+                end: index,
+            });
         }
     }
 
-    let is_boundary = |character: char| {
-        character.is_whitespace() || matches!(character, '|' | '<' | '>')
-    };
-    let mut start = column;
-    while start > 0 && !is_boundary(chars[start - 1]) {
-        start -= 1;
-    }
-    let mut end = column + 1;
-    while end < chars.len() && !is_boundary(chars[end]) {
-        end += 1;
-    }
-    let candidate =
-        trim_path_token(&chars[start..end].iter().collect::<String>()).to_string();
-    has_supported_extension(&candidate).then_some(candidate)
+    tokens
+}
+
+pub fn path_token_at_line(line: &str, column: usize) -> Option<String> {
+    image_path_tokens_in_line(line)
+        .into_iter()
+        .find(|token| column >= token.start && column < token.end)
+        .map(|token| token.text)
+}
+
+fn strip_listing_icon(text: &str) -> &str {
+    text.trim_start_matches(|character: char| {
+        let codepoint = character as u32;
+        (0xE000..=0xF8FF).contains(&codepoint)
+            || (0xF0000..=0xFFFFD).contains(&codepoint)
+            || (0x100000..=0x10FFFD).contains(&codepoint)
+            || (!character.is_alphanumeric()
+                && !matches!(character, '.' | '_' | '-' | '~' | '/' | '\\'))
+    })
 }
 
 fn trim_path_token(text: &str) -> &str {
@@ -480,6 +559,23 @@ mod tests {
         ImageCandidate::new(path.to_string_lossy(), None, None).unwrap()
     }
 
+    fn assert_thumbnail_invariants(thumbnail: &DecodedThumbnail) {
+        assert!(thumbnail.width > 0);
+        assert!(thumbnail.height > 0);
+        assert!(thumbnail.width <= MAX_UPLOAD_WIDTH);
+        assert!(thumbnail.height <= MAX_UPLOAD_HEIGHT);
+        assert!(thumbnail.original_width > 0);
+        assert!(thumbnail.original_height > 0);
+        assert!(thumbnail.original_width <= MAX_DECODE_DIMENSION);
+        assert!(thumbnail.original_height <= MAX_DECODE_DIMENSION);
+        assert_eq!(
+            thumbnail.rgba.len(),
+            thumbnail.width as usize * thumbnail.height as usize * 4
+        );
+        assert!(thumbnail.allocation_bytes() <= MAX_DECODE_ALLOCATION_BYTES as usize);
+        assert!(thumbnail.file_bytes <= MAX_FILE_BYTES);
+    }
+
     #[test]
     fn supported_extensions_and_path_tokens_are_safe_and_io_free() {
         assert!(has_supported_extension("photo.PNG"));
@@ -495,6 +591,33 @@ mod tests {
             Some("folder/my image.JPEG")
         );
         assert!(path_token_at_line("README.md", 4).is_none());
+    }
+
+    #[test]
+    fn row_tokenizer_supports_icons_quotes_unicode_and_multiple_images() {
+        let line = "\u{f1c5} photo.png  'folder/my image.JPEG'  données.webp README.md";
+        let tokens = image_path_tokens_in_line(line);
+        assert_eq!(
+            tokens
+                .iter()
+                .map(|token| token.text.as_str())
+                .collect::<Vec<_>>(),
+            ["photo.png", "folder/my image.JPEG", "données.webp"]
+        );
+        assert_eq!(
+            path_token_at_line(line, line.chars().position(|ch| ch == 'p').unwrap())
+                .as_deref(),
+            Some("photo.png")
+        );
+    }
+
+    #[test]
+    fn row_tokenizer_rejects_remote_paths_and_preserves_punctuation_in_names() {
+        let tokens = image_path_tokens_in_line(
+            "https://example.com/a.png file:///tmp/b.png ./screens/[final]-v2.png",
+        );
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].text, "./screens/[final]-v2.png");
     }
 
     #[test]
@@ -565,6 +688,183 @@ mod tests {
     }
 
     #[test]
+    fn png_and_jpeg_decode_to_visible_opaque_rgba_pixels() {
+        let dir = tempfile::tempdir().unwrap();
+        for (name, format) in [
+            ("bright.png", ImageFormat::Png),
+            ("bright.jpg", ImageFormat::Jpeg),
+        ] {
+            let path = dir.path().join(name);
+            let source = image_rs::RgbImage::from_fn(32, 24, |x, y| {
+                if (x / 8 + y / 8) % 2 == 0 {
+                    image_rs::Rgb([255, 244, 32])
+                } else {
+                    image_rs::Rgb([32, 220, 255])
+                }
+            });
+            source.save_with_format(&path, format).unwrap();
+
+            let decoded =
+                decode_candidate(&candidate(&path), &mut ThumbnailCache::default())
+                    .unwrap();
+            assert_thumbnail_invariants(&decoded.thumbnail);
+            assert_eq!(
+                (decoded.thumbnail.width, decoded.thumbnail.height),
+                (32, 24)
+            );
+            assert_eq!(decoded.thumbnail.rgba.len(), 32 * 24 * 4);
+            assert!(decoded
+                .thumbnail
+                .rgba
+                .chunks_exact(4)
+                .all(|pixel| pixel[3] == 255));
+            let mean_luminance = decoded
+                .thumbnail
+                .rgba
+                .chunks_exact(4)
+                .map(|pixel| {
+                    (u64::from(pixel[0]) * 54
+                        + u64::from(pixel[1]) * 183
+                        + u64::from(pixel[2]) * 19)
+                        >> 8
+                })
+                .sum::<u64>()
+                / (32 * 24);
+            assert!(
+                mean_luminance >= 160,
+                "{name} decoded unexpectedly dark: mean luminance {mean_luminance}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_enabled_raster_codec_decodes_with_exact_rgba_accounting() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = image_rs::RgbImage::from_fn(9, 7, |x, y| {
+            image_rs::Rgb([
+                32 + (x * 17) as u8,
+                48 + (y * 19) as u8,
+                220_u8.saturating_sub((x + y) as u8 * 5),
+            ])
+        });
+        for (extension, format) in [
+            ("bmp", ImageFormat::Bmp),
+            ("gif", ImageFormat::Gif),
+            ("ico", ImageFormat::Ico),
+            ("jpg", ImageFormat::Jpeg),
+            ("png", ImageFormat::Png),
+            ("pnm", ImageFormat::Pnm),
+            ("tiff", ImageFormat::Tiff),
+            ("webp", ImageFormat::WebP),
+        ] {
+            let path = dir.path().join(format!("codec.{extension}"));
+            if format == ImageFormat::Ico {
+                image_rs::DynamicImage::ImageRgba8(image_rs::RgbaImage::from_fn(
+                    9,
+                    7,
+                    |x, y| {
+                        let pixel = source.get_pixel(x, y);
+                        image_rs::Rgba([pixel[0], pixel[1], pixel[2], 255])
+                    },
+                ))
+                .save_with_format(&path, format)
+                .unwrap_or_else(|error| {
+                    panic!("{format:?} fixture encode failed: {error}")
+                });
+            } else {
+                source
+                    .save_with_format(&path, format)
+                    .unwrap_or_else(|error| {
+                        panic!("{format:?} fixture encode failed: {error}")
+                    });
+            }
+            let decoded =
+                decode_candidate(&candidate(&path), &mut ThumbnailCache::default())
+                    .unwrap_or_else(|error| {
+                        panic!("{format:?} decode failed: {error:?}")
+                    });
+            assert_eq!(
+                (
+                    decoded.thumbnail.original_width,
+                    decoded.thumbnail.original_height
+                ),
+                (9, 7),
+                "{format:?}"
+            );
+            assert_thumbnail_invariants(&decoded.thumbnail);
+            assert!(
+                decoded
+                    .thumbnail
+                    .rgba
+                    .chunks_exact(4)
+                    .any(|pixel| pixel[..3] != [0, 0, 0]),
+                "{format:?} unexpectedly decoded as an all-black image"
+            );
+        }
+    }
+
+    #[test]
+    fn transparent_png_preserves_straight_alpha_and_exact_channel_values() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("alpha.png");
+        let mut source = image_rs::RgbaImage::new(2, 1);
+        source.put_pixel(0, 0, image_rs::Rgba([250, 10, 20, 128]));
+        source.put_pixel(1, 0, image_rs::Rgba([30, 40, 240, 0]));
+        source.save_with_format(&path, ImageFormat::Png).unwrap();
+
+        let decoded =
+            decode_candidate(&candidate(&path), &mut ThumbnailCache::default()).unwrap();
+        assert_thumbnail_invariants(&decoded.thumbnail);
+        assert_eq!(
+            decoded.thumbnail.rgba.as_ref(),
+            &[250, 10, 20, 128, 30, 40, 240, 0]
+        );
+    }
+
+    #[test]
+    fn portrait_jpeg_downscale_preserves_visible_pixels() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("portrait.jpg");
+        image_rs::RgbImage::from_fn(1_080, 1_374, |x, y| {
+            if (x / 120 + y / 120) % 2 == 0 {
+                image_rs::Rgb([248, 248, 248])
+            } else {
+                image_rs::Rgb([40, 210, 250])
+            }
+        })
+        .save_with_format(&path, ImageFormat::Jpeg)
+        .unwrap();
+
+        let decoded =
+            decode_candidate(&candidate(&path), &mut ThumbnailCache::default()).unwrap();
+        assert_eq!(
+            (
+                decoded.thumbnail.original_width,
+                decoded.thumbnail.original_height
+            ),
+            (1_080, 1_374)
+        );
+        assert_eq!(decoded.thumbnail.height, MAX_UPLOAD_HEIGHT);
+        assert!(decoded.thumbnail.width <= MAX_UPLOAD_WIDTH);
+        let mean_luminance = decoded
+            .thumbnail
+            .rgba
+            .chunks_exact(4)
+            .map(|pixel| {
+                (u64::from(pixel[0]) * 54
+                    + u64::from(pixel[1]) * 183
+                    + u64::from(pixel[2]) * 19)
+                    >> 8
+            })
+            .sum::<u64>()
+            / u64::from(decoded.thumbnail.width * decoded.thumbnail.height);
+        assert!(
+            mean_luminance >= 150,
+            "downscaled portrait JPEG is unexpectedly dark: {mean_luminance}"
+        );
+    }
+
+    #[test]
     fn changed_file_version_invalidates_cached_pixels() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("changing.png");
@@ -611,6 +911,15 @@ mod tests {
         let c = key("c.png", 4);
         cache.insert(a.clone(), thumbnail(4));
         cache.insert(b.clone(), thumbnail(4));
+        assert_eq!(
+            cache.stats(),
+            ThumbnailCacheStats {
+                entries: 2,
+                used_bytes: 8,
+                max_entries: 2,
+                max_bytes: 8,
+            }
+        );
         assert!(cache.get(&a).is_some());
         cache.insert(c.clone(), thumbnail(4));
         assert!(cache.get(&b).is_none());
@@ -625,6 +934,55 @@ mod tests {
     }
 
     #[test]
+    fn cache_accounting_remains_bounded_under_replacement_storms() {
+        fn thumbnail(render_id: u64, bytes: usize) -> Arc<DecodedThumbnail> {
+            Arc::new(DecodedThumbnail {
+                render_id,
+                decoded_at: Instant::now(),
+                width: 1,
+                height: 1,
+                original_width: 1,
+                original_height: 1,
+                file_bytes: bytes as u64,
+                rgba: Arc::from(vec![0_u8; bytes]),
+            })
+        }
+
+        let mut cache = ThumbnailCache::new(4_096, 8);
+        for index in 0..10_000_u64 {
+            let bytes = ((index as usize % 17) + 1) * 64;
+            let key = ThumbnailCacheKey {
+                path: PathBuf::from(format!("{}.png", index % 23)),
+                file_bytes: index % 7,
+                modified: SystemTime::UNIX_EPOCH,
+            };
+            cache.insert(key, thumbnail(index, bytes));
+            let stats = cache.stats();
+            assert!(stats.entries <= stats.max_entries);
+            assert!(stats.used_bytes <= stats.max_bytes);
+            assert_eq!(
+                stats.used_bytes,
+                cache
+                    .entries
+                    .iter()
+                    .map(|entry| entry.thumbnail.allocation_bytes())
+                    .sum::<usize>()
+            );
+        }
+
+        cache.insert(
+            ThumbnailCacheKey {
+                path: PathBuf::from("too-large.png"),
+                file_bytes: 4_097,
+                modified: SystemTime::UNIX_EPOCH,
+            },
+            thumbnail(99_999, 4_097),
+        );
+        assert!(cache.stats().used_bytes <= 4_096);
+        assert!(cache.stats().entries <= 8);
+    }
+
+    #[test]
     fn malformed_inputs_never_escape_as_successful_images() {
         for bytes in [
             &b""[..],
@@ -635,6 +993,95 @@ mod tests {
         ] {
             assert!(decode_bounded_bytes(bytes).is_err());
         }
+    }
+
+    #[test]
+    fn deterministic_malformed_and_mutated_input_storm_preserves_all_bounds() {
+        use image_rs::ImageEncoder as _;
+
+        let mut valid_png = Vec::new();
+        image_rs::codecs::png::PngEncoder::new(&mut valid_png)
+            .write_image(
+                &[20, 40, 60, 255, 200, 180, 160, 128],
+                2,
+                1,
+                image_rs::ExtendedColorType::Rgba8,
+            )
+            .unwrap();
+
+        let mut inputs = Vec::new();
+        for end in 0..=valid_png.len() {
+            inputs.push(valid_png[..end].to_vec());
+        }
+        for index in 0..512_usize {
+            let mut mutated = valid_png.clone();
+            let byte = index % mutated.len();
+            mutated[byte] ^= 1 << (index % 8);
+            inputs.push(mutated);
+        }
+        let mut state = 0xC0FF_EE12_3456_789A_u64;
+        for length in 0..512_usize {
+            let mut bytes = vec![0_u8; length];
+            for byte in &mut bytes {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                *byte = state as u8;
+            }
+            inputs.push(bytes);
+        }
+
+        for bytes in inputs {
+            if let Ok(thumbnail) = decode_bounded_bytes(&bytes) {
+                assert_thumbnail_invariants(&thumbnail);
+            }
+        }
+    }
+
+    #[test]
+    fn repeated_decode_and_cache_hits_do_not_retain_file_handles_or_write_sidecars() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("reusable.png");
+        let moved = dir.path().join("moved.png");
+        image_rs::RgbaImage::from_pixel(64, 48, image_rs::Rgba([10, 80, 220, 255]))
+            .save(&path)
+            .unwrap();
+        let mut cache = ThumbnailCache::default();
+        for _ in 0..1_000 {
+            let outcome = decode_candidate(&candidate(&path), &mut cache).unwrap();
+            assert_thumbnail_invariants(&outcome.thumbnail);
+        }
+        assert_eq!(cache.stats().entries, 1);
+        assert_eq!(
+            std::fs::read_dir(dir.path()).unwrap().count(),
+            1,
+            "preview decoding must never create thumbnails or sidecar files"
+        );
+
+        std::fs::rename(&path, &moved)
+            .expect("the decoder must close every source handle after each lookup");
+        std::fs::remove_file(&moved)
+            .expect("cached pixels must not retain an operating-system file handle");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn missing_directories_and_non_files_are_rejected_without_cache_growth() {
+        let dir = tempfile::tempdir().unwrap();
+        let directory = dir.path().join("folder.png");
+        std::fs::create_dir(&directory).unwrap();
+        let missing = dir.path().join("missing.png");
+        let mut cache = ThumbnailCache::default();
+        assert_eq!(
+            decode_candidate(&candidate(&directory), &mut cache).unwrap_err(),
+            ImagePreviewError::NotRegularFile
+        );
+        assert_eq!(
+            decode_candidate(&candidate(&missing), &mut cache).unwrap_err(),
+            ImagePreviewError::NotFound
+        );
+        assert_eq!(cache.stats().entries, 0);
+        assert_eq!(cache.stats().used_bytes, 0);
     }
 
     #[cfg(windows)]

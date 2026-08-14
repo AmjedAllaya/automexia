@@ -45,6 +45,7 @@ path = "src/main.rs"
 automexia-extension-api = { workspace = true }
 automexia-extension-runtime = { workspace = true }
 automexia-devops = { workspace = true }
+automexia-image = { workspace = true }
 automexia-ui-model = { workspace = true }
 global-hotkey = "0.8.0"
 tracing = { workspace = true }
@@ -55,6 +56,7 @@ rio-backend = { workspace = true }
 [dev-dependencies]
 pretty_assertions = "1.4.1"
 criterion = { workspace = true }
+image_rs = { workspace = true }
 insta = { workspace = true }
 proptest = { workspace = true }
 
@@ -70,7 +72,6 @@ dirs = "6.0.0"
 notify = "8.2.0"
 rustc-hash = { workspace = true }
 rapidhash = { version = "4.4.1", default-features = false }
-image_rs = { workspace = true }
 libc = { workspace = true }
 parking_lot = { workspace = true }
 serde = { workspace = true }
@@ -134,7 +135,7 @@ features = ["wgpu"]
 
 [features]
 default = ["wayland", "x11"]
-native-gui-test-hooks = []
+native-gui-test-hooks = ["sugarloaf/native-gui-test-hooks"]
 audio = ["cpal"]
 x11 = [
     "rio-backend/x11",

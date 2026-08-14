@@ -112,6 +112,38 @@ const SHORTCUT_SPLIT_DOWN: &str = "Ctrl+Shift+D";
 const SHORTCUT_CLONE_RIGHT: &str = "Ctrl+R";
 const SHORTCUT_CLONE_DOWN: &str = "Ctrl+D";
 #[cfg(target_os = "macos")]
+const SHORTCUT_PREV_LOCAL_TAB: &str = "Cmd+Alt+[";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_PREV_LOCAL_TAB: &str = "Alt+PageUp";
+#[cfg(target_os = "macos")]
+const SHORTCUT_NEXT_LOCAL_TAB: &str = "Cmd+Alt+]";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_NEXT_LOCAL_TAB: &str = "Alt+PageDown";
+#[cfg(target_os = "macos")]
+const SHORTCUT_PANE_LEFT: &str = "Cmd+Alt+Left";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_PANE_LEFT: &str = "Alt+Left";
+#[cfg(target_os = "macos")]
+const SHORTCUT_PANE_RIGHT: &str = "Cmd+Alt+Right";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_PANE_RIGHT: &str = "Alt+Right";
+#[cfg(target_os = "macos")]
+const SHORTCUT_PANE_UP: &str = "Cmd+Alt+Up";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_PANE_UP: &str = "Alt+Up";
+#[cfg(target_os = "macos")]
+const SHORTCUT_PANE_DOWN: &str = "Cmd+Alt+Down";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_PANE_DOWN: &str = "Alt+Down";
+#[cfg(target_os = "macos")]
+const SHORTCUT_NEXT_PANE: &str = "Cmd+]";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_NEXT_PANE: &str = "F6";
+#[cfg(target_os = "macos")]
+const SHORTCUT_PREV_PANE: &str = "Cmd+[";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_PREV_PANE: &str = "Shift+F6";
+#[cfg(target_os = "macos")]
 const SHORTCUT_SETTINGS: &str = "Cmd+,";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_SETTINGS: &str = "Ctrl+,";
@@ -177,12 +209,18 @@ pub enum PaletteAction {
     TabCloseUnfocused,
     SelectNextTab,
     SelectPrevTab,
+    SelectNextLocalTab,
+    SelectPrevLocalTab,
     SplitRight,
     SplitDown,
     CloneSplitRight,
     CloneSplitDown,
     SelectNextSplit,
     SelectPrevSplit,
+    SelectPaneLeft,
+    SelectPaneRight,
+    SelectPaneUp,
+    SelectPaneDown,
     ConfigEditor,
     WindowCreateNew,
     IncreaseFontSize,
@@ -277,6 +315,14 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             icon: CommandIcon::TabPrevious,
             accent: BRAND_BLUE,
         },
+        SelectNextLocalTab => RowPresentation {
+            icon: CommandIcon::TabNext,
+            accent: BRAND_LIME,
+        },
+        SelectPrevLocalTab => RowPresentation {
+            icon: CommandIcon::TabPrevious,
+            accent: BRAND_LIME,
+        },
         SplitRight => RowPresentation {
             icon: CommandIcon::SplitRight,
             accent: BRAND_PURPLE,
@@ -300,6 +346,14 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
         SelectPrevSplit => RowPresentation {
             icon: CommandIcon::PanePrevious,
             accent: BRAND_PURPLE,
+        },
+        SelectPaneLeft | SelectPaneUp => RowPresentation {
+            icon: CommandIcon::PanePrevious,
+            accent: BRAND_CYAN,
+        },
+        SelectPaneRight | SelectPaneDown => RowPresentation {
+            icon: CommandIcon::PaneNext,
+            accent: BRAND_CYAN,
         },
         ConfigEditor => RowPresentation {
             icon: CommandIcon::Settings,
@@ -406,6 +460,16 @@ const COMMANDS: &[Command] = &[
         action: PaletteAction::SelectPrevTab,
     },
     Command {
+        title: "Next Tab in Selected Pane",
+        shortcut: SHORTCUT_NEXT_LOCAL_TAB,
+        action: PaletteAction::SelectNextLocalTab,
+    },
+    Command {
+        title: "Previous Tab in Selected Pane",
+        shortcut: SHORTCUT_PREV_LOCAL_TAB,
+        action: PaletteAction::SelectPrevLocalTab,
+    },
+    Command {
         title: "Split Right",
         shortcut: SHORTCUT_SPLIT_RIGHT,
         action: PaletteAction::SplitRight,
@@ -427,13 +491,33 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         title: "Next Split",
-        shortcut: "",
+        shortcut: SHORTCUT_NEXT_PANE,
         action: PaletteAction::SelectNextSplit,
     },
     Command {
         title: "Previous Split",
-        shortcut: "",
+        shortcut: SHORTCUT_PREV_PANE,
         action: PaletteAction::SelectPrevSplit,
+    },
+    Command {
+        title: "Focus Pane Left",
+        shortcut: SHORTCUT_PANE_LEFT,
+        action: PaletteAction::SelectPaneLeft,
+    },
+    Command {
+        title: "Focus Pane Right",
+        shortcut: SHORTCUT_PANE_RIGHT,
+        action: PaletteAction::SelectPaneRight,
+    },
+    Command {
+        title: "Focus Pane Up",
+        shortcut: SHORTCUT_PANE_UP,
+        action: PaletteAction::SelectPaneUp,
+    },
+    Command {
+        title: "Focus Pane Down",
+        shortcut: SHORTCUT_PANE_DOWN,
+        action: PaletteAction::SelectPaneDown,
     },
     Command {
         title: "Close Split or Tab",
@@ -2022,6 +2106,36 @@ mod tests {
                 command.shortcut
             );
         }
+    }
+
+    #[test]
+    fn pane_and_local_tab_navigation_are_scoped_and_discoverable() {
+        let command = |action| {
+            COMMANDS
+                .iter()
+                .find(|command| command.action == action)
+                .expect("navigation command")
+        };
+        assert_eq!(
+            command(PaletteAction::SelectNextLocalTab).title,
+            "Next Tab in Selected Pane"
+        );
+        assert_eq!(
+            command(PaletteAction::SelectPrevLocalTab).title,
+            "Previous Tab in Selected Pane"
+        );
+        assert!(!command(PaletteAction::SelectPaneLeft).shortcut.is_empty());
+        assert!(!command(PaletteAction::SelectPaneRight).shortcut.is_empty());
+        assert!(!command(PaletteAction::SelectPaneUp).shortcut.is_empty());
+        assert!(!command(PaletteAction::SelectPaneDown).shortcut.is_empty());
+        assert_eq!(
+            command(PaletteAction::SelectNextSplit).shortcut,
+            SHORTCUT_NEXT_PANE
+        );
+        assert_eq!(
+            command(PaletteAction::SelectPrevSplit).shortcut,
+            SHORTCUT_PREV_PANE
+        );
     }
 
     #[test]

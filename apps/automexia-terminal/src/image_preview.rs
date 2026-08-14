@@ -1,17 +1,17 @@
 //! Secure, asynchronous local-image quick look for terminal path hints.
 //!
-//! Terminal output is untrusted. A preview is therefore requested only after
-//! an explicit modifier-hover or keyboard action, is restricted to local
-//! raster files, and is decoded on one bounded worker away from the render
-//! and PTY threads.
+//! Terminal output is untrusted. Hover and click discovery is therefore
+//! IO-free, previews are restricted to local raster files, and decoding runs
+//! on one bounded worker away from the render and PTY threads.
 
-use crate::automexia::image::{
+use automexia_extension_runtime::{BoundedWorker, CompletionWake, RefreshSubmission};
+use automexia_image::{
     decode_candidate, DecodeOutcome, ImagePreviewError as PreviewError, ThumbnailCache,
 };
-pub use crate::automexia::image::{
-    has_supported_extension, path_token_at_line, ImageCandidate as PreviewCandidate,
+pub use automexia_image::{
+    has_supported_extension, image_path_tokens_in_line, path_token_at_line,
+    ImageCandidate as PreviewCandidate,
 };
-use automexia_extension_runtime::{BoundedWorker, CompletionWake, RefreshSubmission};
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::{GraphicDataEntry, GraphicOverlay, Sugarloaf};
 use std::collections::VecDeque;
@@ -20,13 +20,35 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-pub const HOVER_DELAY: Duration = Duration::from_millis(350);
+/// Short enough to feel immediate while preventing decode churn during a
+/// pointer fly-by. Clicking bypasses this delay.
+pub const HOVER_DELAY: Duration = Duration::from_millis(100);
 const WORK_QUEUE_CAPACITY: usize = 16;
 const PREVIEW_KEY_PREFIX: u64 = 0xFFFF_FFFE_0000_0000;
+#[cfg(feature = "native-gui-test-hooks")]
+const PREVIEW_KEY_NAMESPACE_MASK: u64 = 0xFFFF_FFFF_0000_0000;
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct PreviewAnchor {
     pub x: f32,
     pub y: f32,
+}
+
+#[cfg(feature = "native-gui-test-hooks")]
+pub(crate) struct NativeImagePreviewState {
+    pub visible: bool,
+    pub overlay_present: bool,
+    pub decoded_dimensions: Option<[u32; 2]>,
+    pub pinned: bool,
+    pub candidate: Option<String>,
+    pub overlay_rect: Option<[f32; 4]>,
+    pub pixel_entries: usize,
+    pub overlay_entries: usize,
+    pub texture_entries: usize,
+    pub texture_bytes: usize,
+    pub thumbnail_cache_entries: Option<usize>,
+    pub thumbnail_cache_bytes: Option<usize>,
+    pub queued_requests: Option<usize>,
+    pub completion_pending: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -92,6 +114,7 @@ pub struct ImagePreview {
     pending: Option<PendingPreview>,
     ready: Option<ReadyPreview>,
     failed: Option<FailedPreview>,
+    pinned: bool,
 }
 
 impl Default for ImagePreview {
@@ -105,6 +128,7 @@ impl Default for ImagePreview {
             pending: None,
             ready: None,
             failed: None,
+            pinned: false,
         }
     }
 }
@@ -124,6 +148,9 @@ impl ImagePreview {
         anchor: PreviewAnchor,
         sugarloaf: &mut Sugarloaf,
     ) -> bool {
+        if self.pinned {
+            return false;
+        }
         if candidate.is_none() && self.is_idle() {
             return false;
         }
@@ -148,6 +175,7 @@ impl ImagePreview {
             submitted: false,
             wake_scheduled: false,
         });
+        self.pinned = false;
         true
     }
 
@@ -169,6 +197,7 @@ impl ImagePreview {
             submitted: false,
             wake_scheduled: false,
         });
+        self.pinned = true;
     }
 
     fn is_idle(&self) -> bool {
@@ -192,6 +221,7 @@ impl ImagePreview {
         self.advance_generation();
         self.pending = None;
         self.failed = None;
+        self.pinned = false;
         if let Some(ready) = self.ready.take() {
             remove_preview_overlay(sugarloaf, ready.image_key);
         }
@@ -202,20 +232,89 @@ impl ImagePreview {
         self.ready.is_some()
     }
 
+    pub fn is_pinned(&self) -> bool {
+        self.pinned
+    }
+
+    pub fn has_candidate(&self) -> bool {
+        self.pending.is_some() || self.ready.is_some() || self.failed.is_some()
+    }
+
+    pub fn current_candidate(&self) -> Option<&PreviewCandidate> {
+        self.pending
+            .as_ref()
+            .map(|pending| &pending.candidate)
+            .or_else(|| self.ready.as_ref().map(|ready| &ready.candidate))
+            .or_else(|| self.failed.as_ref().map(|failed| &failed.candidate))
+    }
+
+    /// Pointer exit or hover invalidation must not close an explicitly pinned
+    /// preview. Escape, normal typing, or an outside click still dismisses it.
+    pub fn dismiss_hover(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        if self.pinned {
+            false
+        } else {
+            self.dismiss(sugarloaf)
+        }
+    }
+
     #[cfg(feature = "native-gui-test-hooks")]
-    pub fn native_test_state(
-        &self,
-        sugarloaf: &Sugarloaf,
-    ) -> (bool, bool, Option<[u32; 2]>) {
+    pub fn native_test_state(&self, sugarloaf: &Sugarloaf) -> NativeImagePreviewState {
+        let candidate = self
+            .current_candidate()
+            .map(|candidate| candidate.text.clone());
+        let resources = sugarloaf
+            .native_image_resource_stats(PREVIEW_KEY_PREFIX, PREVIEW_KEY_NAMESPACE_MASK);
+        let cache_stats = thumbnail_cache().try_lock().ok().map(|cache| cache.stats());
+        let queued_requests = work_queue()
+            .try_lock()
+            .ok()
+            .map(|queue| queue.pending.len());
+        let completion_pending = self
+            .completion
+            .try_lock()
+            .ok()
+            .map(|completion| completion.is_some());
         let Some(ready) = self.ready.as_ref() else {
-            return (false, false, None);
+            return NativeImagePreviewState {
+                visible: false,
+                overlay_present: false,
+                decoded_dimensions: None,
+                pinned: self.pinned,
+                candidate,
+                overlay_rect: None,
+                pixel_entries: resources.pixel_entries,
+                overlay_entries: resources.overlay_entries,
+                texture_entries: resources.texture_entries,
+                texture_bytes: resources.texture_bytes,
+                thumbnail_cache_entries: cache_stats.map(|stats| stats.entries),
+                thumbnail_cache_bytes: cache_stats.map(|stats| stats.used_bytes),
+                queued_requests,
+                completion_pending,
+            };
         };
-        let overlay_present = sugarloaf
+        let overlay = sugarloaf
             .image_overlays
             .values()
             .flatten()
-            .any(|overlay| overlay.image_id == ready.image_key);
-        (true, overlay_present, Some([ready.width, ready.height]))
+            .find(|overlay| overlay.image_id == ready.image_key);
+        NativeImagePreviewState {
+            visible: true,
+            overlay_present: overlay.is_some(),
+            decoded_dimensions: Some([ready.width, ready.height]),
+            pinned: self.pinned,
+            candidate,
+            overlay_rect: overlay
+                .map(|overlay| [overlay.x, overlay.y, overlay.width, overlay.height]),
+            pixel_entries: resources.pixel_entries,
+            overlay_entries: resources.overlay_entries,
+            texture_entries: resources.texture_entries,
+            texture_bytes: resources.texture_bytes,
+            thumbnail_cache_entries: cache_stats.map(|stats| stats.entries),
+            thumbnail_cache_bytes: cache_stats.map(|stats| stats.used_bytes),
+            queued_requests,
+            completion_pending,
+        }
     }
 
     pub fn take_wake_in(&mut self) -> Option<Duration> {
@@ -412,7 +511,6 @@ impl ImagePreview {
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("Image preview");
-        let title = elide_middle(title, 48);
         let details = format!(
             "{}x{}  {}",
             ready.original_width,
@@ -430,10 +528,12 @@ impl ImagePreview {
             color: [116, 155, 180, 255],
             ..DrawOpts::default()
         };
+        let detail_width = sugarloaf.text_mut().measure(&details, &detail_opts);
+        let title_width = (card[2] - detail_width - 36.0).max(0.0);
+        let title = elide_middle_to_width(sugarloaf, title, title_width, &title_opts);
         sugarloaf
             .text_mut()
             .draw(card[0] + 12.0, card[1] + 8.0, &title, &title_opts);
-        let detail_width = sugarloaf.text_mut().measure(&details, &detail_opts);
         sugarloaf.text_mut().draw(
             (card[0] + card[2] - detail_width - 12.0).max(card[0] + 12.0),
             card[1] + 10.0,
@@ -651,6 +751,33 @@ fn elide_middle(value: &str, max_chars: usize) -> String {
         .collect()
 }
 
+fn elide_middle_to_width(
+    sugarloaf: &mut Sugarloaf,
+    value: &str,
+    max_width: f32,
+    options: &DrawOpts,
+) -> String {
+    if max_width <= 0.0 {
+        return String::new();
+    }
+    let full_width = sugarloaf.text_mut().measure(value, options);
+    if full_width <= max_width {
+        return value.to_owned();
+    }
+
+    let character_count = value.chars().count();
+    let proportional = ((character_count as f32 * max_width / full_width).floor()
+        as usize)
+        .clamp(1, character_count.saturating_sub(1).max(1));
+    for max_chars in (1..=proportional).rev() {
+        let candidate = elide_middle(value, max_chars);
+        if sugarloaf.text_mut().measure(&candidate, options) <= max_width {
+            return candidate;
+        }
+    }
+    String::new()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -706,6 +833,14 @@ mod tests {
             1.0,
         )
         .is_none());
+    }
+
+    #[test]
+    fn middle_elision_never_exceeds_the_requested_character_budget() {
+        let value = "Screenshot_20260412_164127_CamScanner.jpg";
+        assert_eq!(elide_middle(value, 12).chars().count(), 12);
+        assert!(elide_middle(value, 12).starts_with("Scree"));
+        assert!(elide_middle(value, 12).ends_with("er.jpg"));
     }
 
     #[test]
@@ -776,6 +911,19 @@ mod tests {
             .submit(request(WORK_QUEUE_CAPACITY as u64 + 1, 1, 99))
             .is_none());
         assert_eq!(queue.pending.len(), WORK_QUEUE_CAPACITY);
+    }
+
+    #[test]
+    fn work_queue_removal_is_generation_scoped_and_never_disturbs_other_owners() {
+        let mut queue = PreviewWorkQueue::default();
+        assert_eq!(queue.submit(request(1, 1, 10)), Some(false));
+        assert_eq!(queue.submit(request(2, 1, 20)), Some(false));
+        queue.remove(1, 2);
+        assert_eq!(queue.pending.len(), 2);
+        queue.remove(1, 1);
+        assert_eq!(queue.pending.len(), 1);
+        let remaining = queue.take().unwrap();
+        assert_eq!((remaining.owner_id, remaining.generation), (2, 1));
     }
 
     #[test]

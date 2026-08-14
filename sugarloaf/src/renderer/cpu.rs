@@ -418,18 +418,16 @@ pub fn render_cpu(
 
     // Grid passes: paint each panel's terminal cells (bg + glyphs)
     // into the buffer before overlay vertices, so UI overlays
-    // composite on top. Image overlays interleave with the passes the
-    // same way the GPU backends layer them: below-bg images first,
-    // then cell backgrounds, below-text images, glyphs, above-text
-    // images.
+    // composite on top. Above-text images are intentionally deferred
+    // until after UI/card geometry below. Drawing them here let an
+    // opaque preview card cover its own image on the CPU fallback.
+    let split_below_bg =
+        image_overlays.partition_point(|o| o.z_index < crate::renderer::IMAGE_BG_LIMIT);
+    let split_below_text = image_overlays.partition_point(|o| o.z_index < 0);
     {
-        use crate::renderer::IMAGE_BG_LIMIT;
         let buf_slice: &mut [u32] = &mut buffer;
-        let split_below_bg =
-            image_overlays.partition_point(|o| o.z_index < IMAGE_BG_LIMIT);
-        let split_below_text = image_overlays.partition_point(|o| o.z_index < 0);
         let (below_bg, rest) = image_overlays.split_at(split_below_bg);
-        let (below_text, above_text) = rest.split_at(split_below_text - split_below_bg);
+        let (below_text, _) = rest.split_at(split_below_text - split_below_bg);
 
         draw_image_overlays(buf_slice, buf_w, buf_h, below_bg, images.data);
         for (grid, uniforms) in grids.iter() {
@@ -439,7 +437,6 @@ pub fn render_cpu(
         for (grid, uniforms) in grids.iter() {
             grid.render_text_cpu(buf_slice, ctx.width_px, ctx.height_px, uniforms);
         }
-        draw_image_overlays(buf_slice, buf_w, buf_h, above_text, images.data);
     }
 
     // QuadInstance pass: split borders, panel rects, scrollbar, dim
@@ -548,6 +545,17 @@ pub fn render_cpu(
     // UI text pass — tab labels, search, command palette, assistant,
     // island, etc. Sits on top of grids + UI quads so labels never
     // get hidden by panel borders or the cursor.
+    // Match WGPU/Metal/Vulkan: positive-z graphics are the final visual
+    // content pass, above terminal text and UI/card geometry but below the
+    // dedicated UI-label pass.
+    draw_image_overlays(
+        &mut buffer,
+        buf_w,
+        buf_h,
+        &image_overlays[split_below_text..],
+        images.data,
+    );
+
     text.render_cpu(&mut buffer, ctx.width_px, ctx.height_px);
 
     if let Err(e) = buffer.present() {

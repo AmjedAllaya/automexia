@@ -1,0 +1,19 @@
+[package]
+name = "automexia-image"
+description = "Private bounded local-image model and decoder for Automexia Terminal."
+publish = false
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+image_rs = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

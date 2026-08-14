@@ -1358,6 +1358,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         route.window.screen.mouse.left_button_state =
                             ElementState::Released;
                         route.window.screen.mouse.hint_click_latched = None;
+                        route.window.screen.mouse.image_preview_click_latched = false;
                         if let Some(ref mut island) = route.window.screen.renderer.island
                         {
                             island.cancel_drag();
@@ -1396,6 +1397,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 // those paths can return early.
                 if state == ElementState::Pressed && button == MouseButton::Left {
                     route.window.screen.mouse.hint_click_latched = None;
+                    route.window.screen.mouse.image_preview_click_latched = false;
                 }
 
                 if state == ElementState::Pressed
@@ -1548,6 +1550,25 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                             }
                         }
 
+                        // Switch panes before resolving an image path so a
+                        // click always uses the target pane's cwd and shell
+                        // metadata. The click still does not start a
+                        // selection merely because focus changed.
+                        let selected_new_panel = button == MouseButton::Left
+                            && route.window.screen.select_current_based_on_mouse();
+                        if selected_new_panel {
+                            route.request_redraw();
+                        }
+
+                        if button == MouseButton::Left
+                            && route.window.screen.activate_image_preview_at_pointer()
+                        {
+                            route.window.screen.mouse.image_preview_click_latched = true;
+                            route.window.winit_window.set_cursor(CursorIcon::Pointer);
+                            route.request_redraw();
+                            return;
+                        }
+
                         // Capture the exact press-time hint. A modifier
                         // change or pointer drag before release must not
                         // split a mouse event pair or execute another hint.
@@ -1564,8 +1585,8 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         // Always try panel switching first: if the click
                         // targets a different panel, switch to it regardless
                         // of mouse mode (e.g. neovim capturing clicks).
-                        if route.window.screen.select_current_based_on_mouse() {
-                            route.request_redraw();
+                        if selected_new_panel {
+                            // Focus change owns this click.
                         } else if should_report_terminal_mouse(
                             route.window.screen.modifiers.state().shift_key(),
                             route.window.screen.mouse_mode(),
@@ -1651,6 +1672,18 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                             return;
                         }
 
+                        if button == MouseButton::Left
+                            && std::mem::take(
+                                &mut route
+                                    .window
+                                    .screen
+                                    .mouse
+                                    .image_preview_click_latched,
+                            )
+                        {
+                            return;
+                        }
+
                         // Consume the press-time latch before deciding
                         // whether to report this release to the terminal app.
                         let latched_hint = if button == MouseButton::Left {
@@ -1720,7 +1753,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             WindowEvent::CursorLeft { .. } => {
                 if route.window.screen.clear_close_button_hover()
                     | route.window.screen.clear_chrome_action_hover()
-                    | route.window.screen.dismiss_image_preview()
+                    | route.window.screen.dismiss_image_preview_hover()
                 {
                     route.request_redraw();
                 }
@@ -2070,6 +2103,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 };
                 if preview_changed {
                     route.request_redraw();
+                }
+                if !is_selecting && route.window.screen.image_preview_pointer_targeted() {
+                    route.window.winit_window.set_cursor(CursorIcon::Pointer);
                 }
 
                 if is_selecting {
