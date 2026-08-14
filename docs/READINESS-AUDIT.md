@@ -28,12 +28,12 @@ satisfy.
 | PowerShell listings | The native formatting view keeps real `DirectoryInfo`/`FileInfo` objects and renders four metadata columns with the icon adjacent to the name. Name-only sensitive, configuration, log, source, documentation, test, build, asset, package, Git, tool, data, cache, infrastructure, and packaging categories use folder-shaped composite badges rather than stand-alone symbols; PowerShell 7 adds safe category colors while Windows PowerShell 5 preserves width without ANSI. Unicode, spaces, narrow views, sorting, filtering, piping, and the plain-listing opt-out pass the PowerShell contract suite. |
 | Shell integration | Every PowerShell source parses; the Windows contract covers isolated automatic install/no-op/repair passes, PowerShell plus an in-process native CMD prompt, identity, cloning, and icon-aware listing smoke while preserving explicit `cmd /c` and built-in `dir`. A TTY-only compatibility layer gives Ubuntu/WSL eza 0.18.x the same composite folder badges without changing redirected output. Bash/Zsh syntax, isolated automatic install/no-op/repair passes, live eza output, ShellCheck, and integration jobs are part of the Unix local/CI gate; a font parser proves every category glyph exists in the bundled Symbols Nerd Font. |
 | Correctness and policy | Locked metadata, rustfmt, all-target workspace check, warning-denied Clippy, workspace tests, conformance tests, migration tests, PTY tests, architecture, identity, provenance, package metadata, and `cargo deny` passed. |
-| Coverage | LLVM coverage on the exact working tree passed at 47.70% global line coverage versus the 43.52% Windows baseline and 100.00% changed Automexia-owned executable lines. The checker now supports explicit `WORKTREE` mode and includes untracked Rust files. |
+| Coverage | LLVM coverage on the exact working tree passed at 48.536% global line coverage versus the 43.52% Windows baseline and 100.00% changed Automexia-owned executable lines. The checker supports explicit `WORKTREE` mode and includes untracked Rust files. |
 | Repository formats | TOML, YAML, JSON, XML, desktop metadata, Markdown documents and local links/anchors, and commit-pinned Actions passed repository validation. PowerShell and Unix shell validation have dedicated wrappers. |
 | Performance safeguards | History interaction and resize delivery are fixed and measured on Windows. No-damage snapshots, prompt repaint, cache access, worker submission, parser/rebuild/reflow, and bounded queues/caches have focused tests or Criterion cases. Nightly keeps compile-only benchmark validation separate and now defines an opt-in named-runner job that executes and bundles Criterion evidence. No controlled benchmark run or 30-day baseline has yet been observed, so performance enforcement remains external. |
 | Phase 0 assurance tooling | Pinned Nextest 0.9.137 profiles, no-silent-flaky policy, timeouts, leak detection, serialized native PTY ownership, JUnit, separate Cargo doctests, 512-case shrinking layout/DPI properties with a persisted minimized seed, a reviewed footer geometry snapshot, finite Loom channel readiness models, and `cargo qa --bundle` are implemented. The final local QA bundle passed all 17 required checks, capped every log, included redacted JUnit, excluded ETL and live-terminal PNGs, and passed a local-root/token-prefix scan. |
 | Phase 1 provider-neutral foundation | Four private crates, versioned/bounded validated contracts, generic renderer projection, exact adapter golden, injected exact-route wakes, registration-before-dispatch ordering, bounded cache/worker/coalescing, per-session capsules, stale cancellation/invalidation, last-truth error state, Loom models, Miri CI, architecture rules, and Criterion cases are implemented. No process/network/clipboard authority or managed SSH path was enabled. |
-| Native resource evidence | Repeated full native Windows GUI/ConPTY storms passed after resource and frame sampling were added. The latest retained-visual four-pane delta was 80 handles, 12 threads, 50,184,192 private bytes, 17,031,168 working-set bytes, and 10 descendants, within the tightened normal ceilings; its 1400x864 final frame presented in one bounded attempt, contained 142 sampled color buckets, and had a luminance spread of 224. AppVerifier/WPR are installed but this process is not elevated; their guarded wrappers safely refused before state mutation, so elevated-runner results remain external. |
+| Native resource evidence | Repeated full native Windows GUI/ConPTY storms passed after resource and frame sampling were added. The latest four-pane delta was 80 handles, 12 threads, 49,823,744 private bytes, 16,568,320 working-set bytes, and 10 descendants, within the tightened normal ceilings; its 1400x864 final frame presented in one bounded attempt after 43 ms, contained 144 sampled color buckets, and had a luminance spread of 224. AppVerifier/WPR are installed but this process is not elevated, so elevated-runner results remain external. |
 | Windows packaging | A real x86_64 release build produced a WiX MSI and portable ZIP. The ZIP executable reports `automexia 0.4.0`. This audit fixed package lookup under custom `CARGO_TARGET_DIR` and added Windows/Linux regression coverage for the resolved release path. |
 | Contributor alignment | Contributor, conduct, security, support, governance, release, upstream, changelog, ownership, issue-form, PR-template, Dependabot, Release Drafter, DCO, protected-path-review, dependency-review, CodeQL, nightly, and release definitions are present and repository-validated. |
 
@@ -73,7 +73,7 @@ Source/tooling completion and remaining evidence are intentionally separate:
 | v0.4 S1 Nextest/JUnit/doctests | Implemented and passing locally | Retain successful Windows, Linux, and macOS CI reports with no silent retry success, hang, leaked child, or order dependency. |
 | v0.4 S1 structured/rendered visuals | Structured footer state snapshot plus topmost client-region Windows final-frame smoke implemented and reviewed | Add controlled expected/actual/diff goldens across the viewport/theme/DPI matrix and native Linux/macOS frame evidence. |
 | v0.4 S1 QA evidence | Bounded redacted HTML/JSON/ZIP runner implemented and passing locally; JUnit is included while private ETL and live-terminal PNGs are excluded | Retain bundles from every controlled release host. |
-| v0.4 S1 property/model coverage | Initial shrinking viewport/DPI properties, persisted regression, and finite publish/wake model implemented and passing | Expand pure resize queue, snapshot, cache/worker, and shutdown state machines. |
+| v0.4 S1 property/model coverage | Shrinking viewport/DPI properties, persisted regression, finite publish/wake models, and owned runtime cache/worker cancellation, coalescing, last-known-good, and shutdown models are implemented and passing | Expand pure resize-queue and atomic snapshot-replacement state machines. |
 | v0.4 S1 performance/resources | Native Windows process sample passes; controlled Criterion and WPR jobs are defined | Named-runner reports plus a complete 30-day baseline; compile-only results do not count. |
 | v0.4 S1 AppVerifier/native matrix | Safe exact-target wrappers and cleanup policy implemented; native Windows GUI/resource storm passes | Elevated clean heap/handle/lock run, Linux/macOS GPU storms, and reviewed adapter/driver records. |
 | v0.4 S1 accessibility | Keyboard/focus/contrast/scaling inventory, manual matrix, limitations, and v0.5 ADR implemented | Narrator/NVDA, VoiceOver, and Orca smoke evidence; final semantic tree remains v0.5. |
@@ -85,15 +85,32 @@ and acceptance criteria are in the
 
 ## Test evidence from this audit
 
-- Phase 0 QA evidence: `cargo qa --bundle` passed rustfmt, locked metadata,
-  repository contracts/formats, PowerShell contracts, warning-denied Clippy,
-  pinned Nextest, Cargo doctests, resize stress, session cloning, two finite
-  Loom models, cargo-deny, and validated redacted JUnit. The ZIP contains no
-  ETL or unredacted local root/token prefix.
-- Native resource evidence: the real Windows GUI/ConPTY storm passed twice with
-  four isolated panes, CMD/history/multi-window/resize coverage, and bounded
-  process resource growth. The optional JSON report was atomically written and
-  inspected.
+- Phase 0 QA evidence: `cargo qa --bundle` passed all 17 executed checks on
+  commit `dc6edb4686`, including rustfmt, locked metadata, repository
+  contracts/formats, PowerShell contracts, warning-denied Clippy, pinned
+  Nextest/JUnit, Cargo doctests, resize stress, session cloning, finite Loom
+  models, cargo-deny, native Windows GUI/ConPTY stress, LLVM coverage, and the
+  coverage policy. The 97,768-byte portable ZIP independently passed its
+  privacy check and contains no ETL, PNG, INFO, raw LCOV, unredacted local root,
+  or token prefix.
+- Native resource evidence: the real Windows GUI/ConPTY storm passed with four
+  isolated panes, CMD/history/multi-window/resize coverage, bounded process
+  growth, and a varied 1400x864 painted frame in one attempt. The atomic JSON
+  report was inspected against every configured ceiling.
+- Private visual review: the retained 1400x864 frame showed four distinct pane
+  regions, active-pane highlighting, context rows, color-segmented full paths,
+  prompt/cursor presence, and a footer attached to its pane boundary, with no
+  blank surface, floating footer, duplicate prompt, or overlapping top chrome.
+  The private PNG was not added to the portable bundle or repository.
+- Local Criterion execution smoke: both `automexia_services` and `vt_input`
+  executed successfully. Informational quick-mode samples measured context
+  projection at 315.81-317.79 ns, responsive layout at 891.85-915.64 ns,
+  bounded cache access at 65.605-66.816 ns, non-blocking worker submission at
+  808.37-829.23 ns, no-damage snapshots at 42.516-43.162 ns, full row rebuild
+  at 2.7171-2.7763 us, and prompt resize/reflow at 5.7175-5.7279 us. Plain VT
+  parser-only throughput was 1.9533-2.0386 GiB/s. These uncontrolled laptop
+  values prove harness execution only and do not satisfy the named-runner or
+  30-day baseline gates.
 
 - Composite-folder/path follow-up: PowerShell/CMD formatter contracts, Bash and
   Zsh integration tests, focused ShellCheck/Perl syntax, a real WSL pseudo-TTY
