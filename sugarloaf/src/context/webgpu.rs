@@ -6,6 +6,7 @@ pub struct WgpuContext<'a> {
     pub surface: wgpu::Surface<'a>,
     pub queue: wgpu::Queue,
     pub format: wgpu::TextureFormat,
+    surface_color_space: wgpu::SurfaceColorSpace,
     alpha_mode: wgpu::CompositeAlphaMode,
     pub adapter_info: wgpu::AdapterInfo,
     surface_caps: wgpu::SurfaceCapabilities,
@@ -83,6 +84,7 @@ impl<'a> WgpuContext<'a> {
             surface_caps.formats.as_slice(),
             renderer_config.colorspace,
         );
+        let surface_color_space = output_surface_color_space();
 
         let (device, queue) = {
             {
@@ -142,7 +144,7 @@ impl<'a> WgpuContext<'a> {
                 height: size.height as u32,
                 view_formats,
                 alpha_mode,
-                color_space: wgpu::SurfaceColorSpace::Auto,
+                color_space: surface_color_space,
                 present_mode: wgpu::PresentMode::Fifo,
                 desired_maximum_frame_latency: 2,
             },
@@ -158,6 +160,7 @@ impl<'a> WgpuContext<'a> {
             queue,
             surface,
             format,
+            surface_color_space,
             alpha_mode,
             size: SugarloafWindowSize {
                 width: size.width,
@@ -219,7 +222,7 @@ impl<'a> WgpuContext<'a> {
                 height,
                 view_formats,
                 alpha_mode: self.alpha_mode,
-                color_space: wgpu::SurfaceColorSpace::Auto,
+                color_space: self.surface_color_space,
                 present_mode: wgpu::PresentMode::Fifo,
                 desired_maximum_frame_latency: 2,
             },
@@ -339,5 +342,32 @@ fn get_macos_texture_format(colorspace: Colorspace) -> wgpu::TextureFormat {
     match colorspace {
         Colorspace::Srgb => wgpu::TextureFormat::Bgra8UnormSrgb,
         Colorspace::DisplayP3 | Colorspace::Rec2020 => wgpu::TextureFormat::Bgra8Unorm,
+    }
+}
+
+#[inline]
+fn output_surface_color_space() -> wgpu::SurfaceColorSpace {
+    #[cfg(windows)]
+    {
+        // Keep Windows in a deterministic SDR path across borderless
+        // fullscreen transitions. `Srgb` describes the encoded output while
+        // the selected non-*Srgb BGRA format stores already-encoded values.
+        wgpu::SurfaceColorSpace::Srgb
+    }
+    #[cfg(not(windows))]
+    {
+        wgpu::SurfaceColorSpace::Auto
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[cfg(windows)]
+    fn windows_output_is_explicit_sdr_srgb() {
+        assert_eq!(
+            super::output_surface_color_space(),
+            wgpu::SurfaceColorSpace::Srgb
+        );
     }
 }

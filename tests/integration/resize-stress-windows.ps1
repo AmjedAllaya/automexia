@@ -94,6 +94,7 @@ public static class AutomexiaResizeDriver {
         public int Height;
         public int SampleCount;
         public int DistinctColorBuckets;
+        public int DominantColorBucket;
         public int LuminanceSpread;
     }
 
@@ -136,13 +137,25 @@ public static class AutomexiaResizeDriver {
             }
 
             var buckets = new HashSet<int>();
+            var bucketCounts = new Dictionary<int, int>();
+            int dominantColorBucket = -1;
+            int dominantColorCount = 0;
             int minimumLuminance = 255;
             int maximumLuminance = 0;
             int samples = 0;
             for (int y = 0; y < height; y += 8) {
                 for (int x = 0; x < width; x += 8) {
                     Color color = bitmap.GetPixel(x, y);
-                    buckets.Add(((color.R >> 4) << 8) | ((color.G >> 4) << 4) | (color.B >> 4));
+                    int bucket = ((color.R >> 4) << 8) | ((color.G >> 4) << 4) | (color.B >> 4);
+                    buckets.Add(bucket);
+                    int count;
+                    bucketCounts.TryGetValue(bucket, out count);
+                    count++;
+                    bucketCounts[bucket] = count;
+                    if (count > dominantColorCount) {
+                        dominantColorCount = count;
+                        dominantColorBucket = bucket;
+                    }
                     int luminance = (color.R * 54 + color.G * 183 + color.B * 19) >> 8;
                     minimumLuminance = Math.Min(minimumLuminance, luminance);
                     maximumLuminance = Math.Max(maximumLuminance, luminance);
@@ -161,6 +174,7 @@ public static class AutomexiaResizeDriver {
                 Height = height,
                 SampleCount = samples,
                 DistinctColorBuckets = buckets.Count,
+                DominantColorBucket = dominantColorBucket,
                 LuminanceSpread = maximumLuminance - minimumLuminance,
             };
         }
@@ -1052,6 +1066,95 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         throw 'A visible pane lost or inherited another route operational context during resize'
     }
 
+    # Enter and leave the exact borderless-fullscreen path used by F11 and
+    # Alt+Enter. The renderer's dominant composited color must not change, the
+    # client must cover the display, and Windows must expose Automexia's scoped
+    # DisplayRequired request only for the fullscreen lifetime.
+    $script:testStage = 'fullscreen display brightness stability'
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not expose Automexia for the windowed brightness sample (Win32 error $code)"
+    }
+    try {
+        Start-Sleep -Milliseconds 100
+        $windowedBrightnessFrame = [AutomexiaResizeDriver]::CaptureClientFrame($window, $null)
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+    }
+
+    $fullscreenControl = 'toggle-fullscreen:9050'
+    Send-AutomexiaTestControl $fullscreenControl
+    $fullscreenSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$final.sequence)
+    $fullscreenDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        if ([string]$fullscreenSnapshot.last_control -ne $fullscreenControl -or
+            -not [bool]$fullscreenSnapshot.fullscreen_display_request_active) {
+            $fullscreenSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$fullscreenSnapshot.sequence)
+        }
+        $fullscreenBrightnessFrame = [AutomexiaResizeDriver]::CaptureClientFrame($window, $null)
+        $fullscreenSettled = (
+            [Math]::Abs($fullscreenBrightnessFrame.Width - [AutomexiaResizeDriver]::PrimaryWidth()) -le 2 -and
+            [Math]::Abs($fullscreenBrightnessFrame.Height - [AutomexiaResizeDriver]::PrimaryHeight()) -le 2)
+        $fullscreenReady = (
+            $fullscreenSettled -and
+            [string]$fullscreenSnapshot.last_control -eq $fullscreenControl -and
+            [bool]$fullscreenSnapshot.fullscreen_display_request_active)
+        if (-not $fullscreenReady) {
+            Start-Sleep -Milliseconds 50
+        }
+    } while (-not $fullscreenReady -and [DateTime]::UtcNow -lt $fullscreenDeadline)
+    if (-not $fullscreenSettled -or
+        [string]$fullscreenSnapshot.last_control -ne $fullscreenControl -or
+        -not [bool]$fullscreenSnapshot.fullscreen_display_request_active) {
+        throw "Fullscreen did not settle with an active DisplayRequired request at the display bounds: $($fullscreenBrightnessFrame.Width)x$($fullscreenBrightnessFrame.Height)"
+    }
+
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not expose Automexia for the fullscreen brightness sample (Win32 error $code)"
+    }
+    try {
+        Start-Sleep -Milliseconds 100
+        $fullscreenBrightnessFrame = [AutomexiaResizeDriver]::CaptureClientFrame($window, $null)
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+    }
+    if ($windowedBrightnessFrame.DominantColorBucket -lt 0 -or
+        $fullscreenBrightnessFrame.DominantColorBucket -ne $windowedBrightnessFrame.DominantColorBucket) {
+        throw "Fullscreen changed the rendered dominant color bucket from $($windowedBrightnessFrame.DominantColorBucket) to $($fullscreenBrightnessFrame.DominantColorBucket)"
+    }
+
+    $restoreControl = 'toggle-fullscreen:9051'
+    Send-AutomexiaTestControl $restoreControl
+    $restoredSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$fullscreenSnapshot.sequence)
+    $restoreDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        if ([string]$restoredSnapshot.last_control -ne $restoreControl -or
+            [bool]$restoredSnapshot.fullscreen_display_request_active) {
+            $restoredSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$restoredSnapshot.sequence)
+        }
+        $restoredBrightnessFrame = [AutomexiaResizeDriver]::CaptureClientFrame($window, $null)
+        $restoredSettled = (
+            [Math]::Abs($restoredBrightnessFrame.Width - $windowedBrightnessFrame.Width) -le 2 -and
+            [Math]::Abs($restoredBrightnessFrame.Height - $windowedBrightnessFrame.Height) -le 2)
+        $restoreReady = (
+            $restoredSettled -and
+            [string]$restoredSnapshot.last_control -eq $restoreControl -and
+            -not [bool]$restoredSnapshot.fullscreen_display_request_active)
+        if (-not $restoreReady) {
+            Start-Sleep -Milliseconds 50
+        }
+    } while (-not $restoreReady -and [DateTime]::UtcNow -lt $restoreDeadline)
+    if (-not $restoredSettled -or
+        [string]$restoredSnapshot.last_control -ne $restoreControl -or
+        [bool]$restoredSnapshot.fullscreen_display_request_active) {
+        throw "Fullscreen exit did not restore the windowed bounds and release DisplayRequired: $($restoredBrightnessFrame.Width)x$($restoredBrightnessFrame.Height)"
+    }
+    if ($restoredBrightnessFrame.DominantColorBucket -ne $windowedBrightnessFrame.DominantColorBucket) {
+        throw "Fullscreen exit did not restore the rendered dominant color bucket: $($restoredBrightnessFrame.DominantColorBucket)"
+    }
+
+    $requestReleased = -not [bool]$restoredSnapshot.fullscreen_display_request_active
     # Exercise the complete native quick-look path: feature-gated control,
     # bounded background decode, route-scoped overlay upload, split-relative
     # placement, renderer snapshot, and composited frame. The path is a
@@ -1184,11 +1287,19 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
             final = $resourceFinal
             delta = $resourceDelta
             ceilings = $resourceLimits
+            fullscreen_brightness = [ordered]@{
+                windowed_size = @($windowedBrightnessFrame.Width, $windowedBrightnessFrame.Height)
+                fullscreen_size = @($fullscreenBrightnessFrame.Width, $fullscreenBrightnessFrame.Height)
+                restored_size = @($restoredBrightnessFrame.Width, $restoredBrightnessFrame.Height)
+                dominant_color_bucket = $windowedBrightnessFrame.DominantColorBucket
+                display_request_released = $requestReleased
+            }
             painted_frame = [ordered]@{
                 width = $frameStats.Width
                 height = $frameStats.Height
                 sample_count = $frameStats.SampleCount
                 distinct_color_buckets = $frameStats.DistinctColorBuckets
+                dominant_color_bucket = $frameStats.DominantColorBucket
                 luminance_spread = $frameStats.LuminanceSpread
                 attempts = $frameAttempts
                 settle_milliseconds = $frameStopwatch.ElapsedMilliseconds
@@ -1201,7 +1312,7 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     }
 
     Write-Host (
-        'Native CMD/resize/history/multi-window stress passed: sequence {0}, grid {1}x{2}, prompt {3}, Up shell/VT {4}ms ({5}ms total), Ctrl+R shell/VT {6}ms ({7}ms total)' -f
+        'Native CMD/resize/history/fullscreen/multi-window stress passed: sequence {0}, grid {1}x{2}, prompt {3}, Up shell/VT {4}ms ({5}ms total), Ctrl+R shell/VT {6}ms ({7}ms total)' -f
         $final.sequence, $final.columns, $final.rows, $final.latest_prompt_id,
         $upShellMilliseconds, $upTimer.ElapsedMilliseconds,
         $searchShellMilliseconds, $searchTimer.ElapsedMilliseconds)

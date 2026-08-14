@@ -258,6 +258,12 @@ fn write_native_resize_snapshot(
 
     static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+    #[cfg(target_os = "windows")]
+    let fullscreen_display_request_active =
+        crate::platform::windows::active_fullscreen_display_requests() > 0;
+    #[cfg(not(target_os = "windows"))]
+    let fullscreen_display_request_active = false;
+
     let Some(path) = std::env::var_os("AUTOMEXIA_RESIZE_SNAPSHOT") else {
         return;
     };
@@ -344,6 +350,7 @@ fn write_native_resize_snapshot(
         "active_prompt_gap_rows": active_prompt_gap_rows,
         "last_control": last_control,
         "palette_enabled": palette_enabled,
+        "fullscreen_display_request_active": fullscreen_display_request_active,
         "image_preview": {
             "visible": image_preview.0,
             "overlay_present": image_preview.1,
@@ -5419,6 +5426,7 @@ impl Screen<'_> {
                 self.renderer.command_palette.set_enabled(true);
                 self.mark_dirty();
             }
+            "toggle-fullscreen" => self.context_manager.toggle_full_screen(),
             "new-window" => {
                 self.context_manager.create_new_window();
             }
