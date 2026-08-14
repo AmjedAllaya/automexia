@@ -151,6 +151,10 @@ impl Scheduler {
         self.timers.remove(index)
     }
 
+    fn remove_route_timers(timers: &mut VecDeque<Timer>, route_id: usize) {
+        timers.retain(|timer| timer.id.id != route_id);
+    }
+
     /// Check if a timer is already scheduled.
     pub fn scheduled(&mut self, id: TimerId) -> bool {
         self.timers.iter().any(|timer| timer.id == id)
@@ -161,7 +165,7 @@ impl Scheduler {
     /// This must be called when a tab is removed to ensure that timers on intervals do not
     /// stick around forever and cause a memory leak.
     pub fn unschedule_window(&mut self, id: usize) {
-        self.timers.retain(|timer| timer.id.id != id);
+        Self::remove_route_timers(&mut self.timers, id);
     }
 }
 
@@ -172,7 +176,8 @@ fn should_replace_timer(existing_deadline: Instant, requested_deadline: Instant)
 
 #[cfg(test)]
 mod tests {
-    use super::should_replace_timer;
+    use super::*;
+    use crate::event::{RioEventType, WindowId};
     use std::time::{Duration, Instant};
 
     #[test]
@@ -182,6 +187,37 @@ mod tests {
             now + Duration::from_secs(3),
             now + Duration::from_millis(10),
         ));
+    }
+
+    fn timer(topic: Topic, route_id: usize) -> Timer {
+        Timer {
+            deadline: Instant::now(),
+            event: EventPayload::new(RioEventType::Frame, WindowId::from(7)),
+            id: TimerId::new(topic, route_id),
+            interval: None,
+        }
+    }
+
+    #[test]
+    fn closing_one_window_removes_all_of_its_route_timers_only() {
+        let mut timers = VecDeque::from([
+            timer(Topic::Render, 11),
+            timer(Topic::CursorBlinking, 11),
+            timer(Topic::SelectionScrolling, 11),
+            timer(Topic::RenderRoute, 22),
+            timer(Topic::ScheduledRenderRoute, 22),
+        ]);
+
+        Scheduler::remove_route_timers(&mut timers, 11);
+
+        assert_eq!(timers.len(), 2);
+        assert!(timers.iter().all(|timer| timer.id.id == 22));
+        assert!(timers
+            .iter()
+            .any(|timer| timer.id.topic == Topic::RenderRoute));
+        assert!(timers
+            .iter()
+            .any(|timer| timer.id.topic == Topic::ScheduledRenderRoute));
     }
 
     #[test]

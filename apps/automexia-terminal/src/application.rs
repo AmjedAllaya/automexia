@@ -32,6 +32,40 @@ use std::time::{Duration, Instant};
 
 const CUSTOM_RESIZE_BORDER_PX: f64 = 6.0;
 
+enum RuntimeConfigReload {
+    Apply(Box<rio_backend::config::Config>),
+    KeepLastGood(rio_backend::config::ConfigError),
+}
+
+fn prepare_runtime_config_reload(
+    loaded: Result<rio_backend::config::Config, rio_backend::config::ConfigError>,
+) -> RuntimeConfigReload {
+    match loaded {
+        Ok(mut config) => {
+            config.overwrite_based_on_platform();
+            RuntimeConfigReload::Apply(Box::new(config))
+        }
+        Err(error) => RuntimeConfigReload::KeepLastGood(error),
+    }
+}
+fn prepare_runtime_font_reload(
+    has_font_updates: bool,
+    fonts: rio_backend::sugarloaf::font::SugarloafFonts,
+) -> Result<
+    Option<rio_backend::sugarloaf::font::FontLibrary>,
+    Vec<rio_backend::sugarloaf::font::SugarloafFont>,
+> {
+    if !has_font_updates {
+        return Ok(None);
+    }
+
+    let (font_library, errors) = rio_backend::sugarloaf::font::FontLibrary::new(fonts);
+    match errors {
+        Some(error) => Err(error.fonts_not_found),
+        None => Ok(Some(font_library)),
+    }
+}
+
 /// Hit-test the resize frame that is normally supplied by native window
 /// decorations. Automexia draws its own Windows/Linux chrome, so the client
 /// area must expose the same eight resize directions explicitly.
@@ -66,6 +100,15 @@ fn should_report_terminal_mouse(
     hint_click: bool,
 ) -> bool {
     !shift_key && mouse_mode && !hint_click
+}
+
+#[inline]
+fn should_confirm_window_close(
+    window_count: usize,
+    confirm_before_quit: bool,
+    already_confirmed_by_platform: bool,
+) -> bool {
+    window_count == 1 && confirm_before_quit && !already_confirmed_by_platform
 }
 
 pub struct Application<'a> {
@@ -197,19 +240,65 @@ impl Application<'_> {
 }
 
 impl Application<'_> {
+    /// Drop one window route and all route-scoped timers it owns. This is the
+    /// only application-level per-window destruction path; explicit Quit is
+    /// deliberately separate and remains process-wide.
+    fn close_window_route(&mut self, window_id: rio_backend::event::WindowId) -> bool {
+        let route_ids = self
+            .router
+            .routes
+            .get(&window_id)
+            .map(|route| route.window.screen.context_manager.route_ids())
+            .unwrap_or_default();
+        let Some(route) = self.router.remove_window(window_id) else {
+            return false;
+        };
+        for route_id in route_ids {
+            self.scheduler.unschedule_window(route_id);
+        }
+        drop(route);
+        true
+    }
+
+    fn close_window_and_maybe_exit(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: rio_backend::event::WindowId,
+    ) {
+        if self.close_window_route(window_id) && self.router.routes.is_empty() {
+            event_loop.exit();
+        }
+    }
+
     /// Register a system-wide hotkey for every `ToggleQuake` binding
     /// in the config, so the quake window opens while Automexia is
     /// unfocused. No-op when quake is not bound; pure Wayland has no
     /// global hotkey API, the compositor keybinding + a regular
     /// binding cover it there.
     fn setup_quake_hotkey(&mut self) {
-        // Drop any previous manager first: registering a chord the old
-        // manager still holds fails on Windows and X11.
-        self.global_hotkey = None;
-        self.global_hotkey = crate::global_hotkey::setup(
+        match crate::global_hotkey::setup(
             self.event_proxy.clone(),
             &self.config.bindings.keys,
-        );
+        ) {
+            Ok(hotkeys) => self.global_hotkey = hotkeys,
+            Err(error) => tracing::warn!("{error}"),
+        }
+    }
+
+    fn replace_quake_hotkeys(
+        &mut self,
+        keys: &[rio_backend::config::bindings::KeyBinding],
+    ) -> Result<(), String> {
+        if let Some(hotkeys) = self.global_hotkey.as_mut() {
+            hotkeys.try_replace(keys)?;
+            if hotkeys.is_empty() {
+                self.global_hotkey = None;
+            }
+        } else {
+            self.global_hotkey =
+                crate::global_hotkey::setup(self.event_proxy.clone(), keys)?;
+        }
+        Ok(())
     }
 
     /// The monitor the quake window should drop down on: the one
@@ -570,72 +659,85 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
             }
             RioEventType::Rio(RioEvent::UpdateConfig) => {
-                let (config, config_error) = match rio_backend::config::Config::try_load()
-                {
-                    Ok(config) => (config, None),
-                    Err(error) => (rio_backend::config::Config::default(), Some(error)),
+                let mut config = match prepare_runtime_config_reload(
+                    rio_backend::config::Config::try_load(),
+                ) {
+                    RuntimeConfigReload::Apply(config) => *config,
+                    RuntimeConfigReload::KeepLastGood(error) => {
+                        // A malformed config or theme is diagnostic-only. Keep
+                        // the complete live config, bindings, fonts, hotkeys,
+                        // windows, and PTYs unchanged until a valid file loads.
+                        for route in self.router.routes.values_mut() {
+                            route.report_error(&error.to_owned().into());
+                            route.request_redraw();
+                        }
+                        return;
+                    }
                 };
+
+                let system_theme = event_loop.system_theme();
+                let theme = config
+                    .force_theme
+                    .map(|theme| theme.to_window_theme())
+                    .or(system_theme);
+                update_colors_based_on_theme(&mut config, theme);
 
                 let has_font_updates = self.config.fonts != config.fonts;
                 let has_binding_updates = self.config.bindings != config.bindings;
 
-                let font_library_errors = if has_font_updates {
-                    let new_font_library = rio_backend::sugarloaf::font::FontLibrary::new(
-                        config.fonts.to_owned(),
-                    );
-                    *self.router.font_library = new_font_library.0;
-                    new_font_library.1
-                } else {
-                    None
-                };
-
-                self.config = config;
-
-                // Dropping the old manager unregisters its hotkeys, so
-                // ToggleQuake binding edits apply without restarting.
-                if has_binding_updates {
-                    self.setup_quake_hotkey();
-                }
-
-                let mut has_checked_adaptive_colors = false;
-                for (_id, route) in self.router.routes.iter_mut() {
-                    // Apply system theme to ensure colors are consistent
-                    if !has_checked_adaptive_colors {
-                        let system_theme = event_loop.system_theme();
-                        let theme = self
-                            .config
-                            .force_theme
-                            .map(|t| t.to_window_theme())
-                            .or(system_theme);
-                        update_colors_based_on_theme(&mut self.config, theme);
-                        has_checked_adaptive_colors = true;
-                    }
-
-                    if has_font_updates {
-                        if let Some(ref err) = font_library_errors {
+                let prepared_font_library = match prepare_runtime_font_reload(
+                    has_font_updates,
+                    config.fonts.to_owned(),
+                ) {
+                    Ok(font_library) => font_library,
+                    Err(fonts_not_found) => {
+                        // Font preparation is part of the candidate
+                        // transaction. A missing requested face must not swap
+                        // the live config or partially rebuild any window.
+                        for route in self.router.routes.values_mut() {
                             route
                                 .window
                                 .screen
                                 .context_manager
-                                .report_error_fonts_not_found(
-                                    err.fonts_not_found.clone(),
-                                );
+                                .report_error_fonts_not_found(fonts_not_found.clone());
+                            route.request_redraw();
                         }
+                        return;
                     }
+                };
 
+                if has_binding_updates {
+                    if let Err(error) = self.replace_quake_hotkeys(&config.bindings.keys)
+                    {
+                        let report = rio_backend::error::RioError {
+                            level: rio_backend::error::RioErrorLevel::Warning,
+                            report: rio_backend::error::RioErrorType::InvalidConfigurationFormat(
+                                format!(
+                                    "global hotkey preparation failed: {error}. The last known-good configuration remains active."
+                                ),
+                            ),
+                        };
+                        for route in self.router.routes.values_mut() {
+                            route.report_error(&report);
+                            route.request_redraw();
+                        }
+                        return;
+                    }
+                }
+
+                if let Some(font_library) = prepared_font_library {
+                    *self.router.font_library = font_library;
+                }
+                self.config = config;
+
+                for route in self.router.routes.values_mut() {
                     route.update_config(
                         &self.config,
                         &self.router.font_library,
                         has_font_updates,
                     );
                     route.window.configure_window(&self.config);
-
-                    if let Some(error) = &config_error {
-                        route.report_error(&error.to_owned().into());
-                    } else {
-                        route.clear_errors();
-                    }
-
+                    route.clear_errors();
                     route.request_redraw();
                 }
             }
@@ -689,34 +791,35 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
             }
             RioEventType::Rio(RioEvent::CloseTerminal(route_id)) => {
-                if let Some(route) = self.router.routes.get_mut(&window_id) {
-                    route
-                        .window
-                        .screen
-                        .sugarloaf
-                        .font_library()
-                        .remove_glyph_registry(route_id);
+                let should_close_window =
+                    self.router.routes.get_mut(&window_id).is_some_and(|route| {
+                        route
+                            .window
+                            .screen
+                            .sugarloaf
+                            .font_library()
+                            .remove_glyph_registry(route_id);
 
-                    if route
-                        .window
-                        .screen
-                        .context_manager
-                        .should_close_context_manager(
-                            route_id,
-                            &mut route.window.screen.sugarloaf,
-                        )
-                    {
-                        self.router.routes.remove(&window_id);
-
-                        // Unschedule pending events.
-                        self.scheduler.unschedule_window(route_id);
-
-                        if self.router.routes.is_empty() {
-                            event_loop.exit();
+                        let should_close = route
+                            .window
+                            .screen
+                            .context_manager
+                            .should_close_context_manager(
+                                route_id,
+                                &mut route.window.screen.sugarloaf,
+                            );
+                        if !should_close {
+                            route.window.screen.resize_top_or_bottom_line();
                         }
-                    } else {
-                        route.window.screen.resize_top_or_bottom_line();
-                    }
+                        should_close
+                    });
+
+                // The terminal route may already have been removed from the
+                // context manager, so cancel its timers explicitly before the
+                // centralized whole-window teardown handles remaining routes.
+                self.scheduler.unschedule_window(route_id);
+                if should_close_window {
+                    self.close_window_and_maybe_exit(event_loop, window_id);
                 }
             }
             RioEventType::Rio(RioEvent::CursorBlinkingChange) => {
@@ -996,9 +1099,16 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
             }
             RioEventType::Rio(RioEvent::CloseWindow) => {
-                self.router.routes.remove(&window_id);
-                if self.router.routes.is_empty() {
-                    event_loop.exit();
+                if should_confirm_window_close(
+                    self.router.routes.len(),
+                    self.config.confirm_before_quit,
+                    false,
+                ) {
+                    if let Some(route) = self.router.routes.get_mut(&window_id) {
+                        route.confirm_quit();
+                    }
+                } else {
+                    self.close_window_and_maybe_exit(event_loop, window_id);
                 }
             }
             #[cfg(target_os = "macos")]
@@ -1166,6 +1276,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
         // core's `WindowId`. Convert once at this boundary.
         let window_id: rio_backend::event::WindowId = window_id.into();
 
+        let window_count = self.router.routes.len();
         let route = match self.router.routes.get_mut(&window_id) {
             Some(window) => window,
             None => return,
@@ -1181,23 +1292,19 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 // Either way, by the time we see `CloseRequested`
                 // the user has already confirmed — just close.
                 if cfg!(any(target_os = "macos", target_os = "windows")) {
-                    self.router.routes.remove(&window_id);
-                    if self.router.routes.is_empty() {
-                        event_loop.exit();
-                    }
+                    self.close_window_and_maybe_exit(event_loop, window_id);
                     return;
                 }
 
-                if self.config.confirm_before_quit {
+                if should_confirm_window_close(
+                    window_count,
+                    self.config.confirm_before_quit,
+                    false,
+                ) {
                     route.confirm_quit();
                     return;
-                } else {
-                    self.router.routes.remove(&window_id);
                 }
-
-                if self.router.routes.is_empty() {
-                    event_loop.exit();
-                }
+                self.close_window_and_maybe_exit(event_loop, window_id);
             }
 
             WindowEvent::ModifiersChanged(modifiers) => {
@@ -2462,6 +2569,55 @@ mod custom_chrome_tests {
     use super::*;
 
     #[test]
+    fn every_runtime_load_failure_keeps_the_last_known_good_config() {
+        let errors = [
+            rio_backend::config::ConfigError::ErrLoadingConfig(
+                "invalid test config".to_string(),
+            ),
+            rio_backend::config::ConfigError::ErrLoadingTheme(
+                "invalid test theme".to_string(),
+            ),
+            rio_backend::config::ConfigError::PathNotFound,
+        ];
+
+        for error in errors {
+            let decision = prepare_runtime_config_reload(Err(error));
+            assert!(matches!(decision, RuntimeConfigReload::KeepLastGood(_)));
+        }
+    }
+
+    #[test]
+    fn valid_runtime_reload_preserves_loaded_values() {
+        let loaded = rio_backend::config::Config {
+            line_height: 1.375,
+            ..Default::default()
+        };
+
+        let RuntimeConfigReload::Apply(prepared) =
+            prepare_runtime_config_reload(Ok(loaded))
+        else {
+            panic!("valid config must be applied");
+        };
+
+        assert_eq!(prepared.line_height, 1.375);
+    }
+
+    #[test]
+    fn missing_font_reload_is_rejected_before_live_state_mutation() {
+        let mut fonts = rio_backend::sugarloaf::font::SugarloafFonts::default();
+        fonts.regular.family = "Automexia Definitely Missing Font 8f0ad83c".to_string();
+
+        let fonts_not_found = match prepare_runtime_font_reload(true, fonts) {
+            Err(fonts_not_found) => fonts_not_found,
+            Ok(_) => panic!("an explicitly missing font must reject the candidate"),
+        };
+
+        assert!(fonts_not_found
+            .iter()
+            .any(|font| { font.family == "Automexia Definitely Missing Font 8f0ad83c" }));
+    }
+
+    #[test]
     fn resize_frame_covers_edges_and_corners() {
         assert_eq!(
             custom_resize_direction(0.0, 0.0, 1_280.0, 760.0),
@@ -2484,5 +2640,26 @@ mod custom_chrome_tests {
         assert!(!should_report_terminal_mouse(false, true, true));
         assert!(!should_report_terminal_mouse(true, true, false));
         assert!(!should_report_terminal_mouse(false, false, false));
+    }
+
+    #[test]
+    fn intermediate_window_close_never_becomes_global_quit() {
+        assert!(!should_confirm_window_close(2, false, false));
+        assert!(!should_confirm_window_close(2, true, false));
+        assert!(!should_confirm_window_close(8, true, false));
+    }
+
+    #[test]
+    fn only_unconfirmed_last_window_close_uses_confirmation_overlay() {
+        assert!(!should_confirm_window_close(1, false, false));
+        assert!(should_confirm_window_close(1, true, false));
+        assert!(!should_confirm_window_close(1, true, true));
+    }
+
+    #[test]
+    fn zero_window_teardown_never_reopens_confirmation() {
+        assert!(!should_confirm_window_close(0, false, false));
+        assert!(!should_confirm_window_close(0, true, true));
+        assert!(!should_confirm_window_close(0, true, false));
     }
 }

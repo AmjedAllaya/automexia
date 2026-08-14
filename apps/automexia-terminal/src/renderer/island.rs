@@ -70,14 +70,12 @@ const PICKER_COLORS: [[f32; 4]; 6] = [
 const ISLAND_MARGIN_LEFT_MACOS: f32 = 76.0;
 
 const CLOSE_MARGIN_RIGHT: f32 = 14.0;
-const CLOSE_GLYPH_HALF: f32 = 6.5;
 const CLOSE_MIN_ISLAND_WIDTH: f32 = 96.0;
 const CLOSE_HOVER_HALF: f32 = 10.0;
 const CLOSE_HOVER_CORNER_RADIUS: f32 = 5.0;
 const CLOSE_HIT_HALF_WIDTH: f32 = 10.0;
 const CLOSE_ALPHA_IDLE: f32 = 0.55;
 const CLOSE_ALPHA_HOVER: f32 = 0.95;
-const CLOSE_STROKE_WIDTH: f32 = 1.5;
 const INACTIVE_CUSTOM_MUTE: f32 = 0.55;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChromeAction {
@@ -491,33 +489,32 @@ fn draw_close_button(
     order: u8,
 ) {
     let cy = center_y;
-    let r = CLOSE_GLYPH_HALF;
     let alpha = if hover {
         CLOSE_ALPHA_HOVER
     } else {
         CLOSE_ALPHA_IDLE
     };
     let color = [color[0], color[1], color[2], color[3] * alpha];
-    sugarloaf.line(
-        cx - r,
-        cy - r,
-        cx + r,
-        cy + r,
-        CLOSE_STROKE_WIDTH,
-        0.0,
-        color,
-        order,
+    // Diagonal quad-lines are not consistently rasterized by every GPU
+    // backend and can collapse into a filled square. A font-shaped multiply
+    // mark is not present in every configured terminal font, so use the
+    // universally available Latin X and let the glyph rasterizer antialias it.
+    let glyph = "X";
+    let font_size = 12.5;
+    let opts = DrawOpts {
+        font_size,
+        color: color_u8(color),
+        ..DrawOpts::default()
+    };
+    let ui = sugarloaf.text_mut();
+    let glyph_width = ui.measure(glyph, &opts);
+    ui.draw(
+        cx - glyph_width * 0.5,
+        cy - font_size * 0.5 - 1.0,
+        glyph,
+        &opts,
     );
-    sugarloaf.line(
-        cx - r,
-        cy + r,
-        cx + r,
-        cy - r,
-        CLOSE_STROKE_WIDTH,
-        0.0,
-        color,
-        order,
-    );
+    let _ = order;
 }
 
 pub struct Island {
@@ -2619,19 +2616,21 @@ mod tests {
     #[test]
     fn profile_title_distinguishes_windows_drives_from_posix_paths() {
         assert_eq!(
-            normalized_profile_title("lamjed@DESKTOP: D:/workstation/projects/automexia"),
+            normalized_profile_title(
+                "developer@DEVBOX: D:/workspaces/projects/automexia"
+            ),
             "PowerShell"
         );
         assert_eq!(
-            normalized_profile_title("lamjed@DESKTOP:/mnt/d/workstation"),
+            normalized_profile_title("developer@DEVBOX:/mnt/d/workspaces"),
             "Ubuntu"
         );
         assert_eq!(
-            normalized_profile_title("PowerShell - D:/workstation"),
+            normalized_profile_title("PowerShell - D:/workspaces"),
             "PowerShell"
         );
         assert_eq!(
-            normalized_profile_title("CMD - D:\\workstation"),
+            normalized_profile_title("CMD - D:\\workspaces"),
             "Command Prompt"
         );
         assert_eq!(normalized_profile_title("wsl.exe"), "WSL");

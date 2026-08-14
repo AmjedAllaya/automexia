@@ -8,59 +8,149 @@ use crate::event::EventProxy;
 use global_hotkey::{hotkey::HotKey, GlobalHotKeyManager};
 use rio_backend::event::{RioEvent, RioEventType};
 
-/// Keeps the OS hotkey registrations alive for the app's lifetime.
+/// Keeps the OS hotkey registrations alive for the app's lifetime and owns the
+/// exact set required for failure-safe runtime replacement.
 pub struct GlobalHotkeys {
-    _manager: GlobalHotKeyManager,
+    manager: GlobalHotKeyManager,
+    registered: Vec<(String, HotKey)>,
 }
 
-/// Register a system-wide hotkey for every `ToggleQuake` binding.
-/// Nothing is created when no binding exists or none of the triggers
-/// parse: the manager itself owns OS resources (a Carbon handler on
-/// macOS, a hidden window on Windows, an X connection thread on X11)
-/// that a quake-less config should never pay for.
+trait HotkeyRegistry {
+    fn register_hotkey(&self, hotkey: HotKey) -> Result<(), String>;
+    fn unregister_hotkey(&self, hotkey: HotKey) -> Result<(), String>;
+}
+
+impl HotkeyRegistry for GlobalHotKeyManager {
+    fn register_hotkey(&self, hotkey: HotKey) -> Result<(), String> {
+        self.register(hotkey).map_err(|error| error.to_string())
+    }
+
+    fn unregister_hotkey(&self, hotkey: HotKey) -> Result<(), String> {
+        self.unregister(hotkey).map_err(|error| error.to_string())
+    }
+}
+
+fn parse_quake_hotkeys(
+    keys: &[rio_backend::config::bindings::KeyBinding],
+) -> Result<Vec<(String, HotKey)>, String> {
+    let mut parsed = Vec::new();
+    for trigger in quake_triggers(keys) {
+        let hotkey = parse_hotkey(&trigger)
+            .map_err(|error| format!("quake hotkey '{trigger}': {error}"))?;
+        if !parsed.iter().any(|(_, existing)| *existing == hotkey) {
+            parsed.push((trigger, hotkey));
+        }
+    }
+    Ok(parsed)
+}
+
+fn same_hotkey_set(left: &[(String, HotKey)], right: &[(String, HotKey)]) -> bool {
+    left.len() == right.len()
+        && left
+            .iter()
+            .all(|(_, hotkey)| right.iter().any(|(_, other)| hotkey == other))
+}
+
+fn replace_registered_hotkeys<R: HotkeyRegistry>(
+    registry: &R,
+    current: &mut Vec<(String, HotKey)>,
+    next: Vec<(String, HotKey)>,
+) -> Result<(), String> {
+    if same_hotkey_set(current, &next) {
+        *current = next;
+        return Ok(());
+    }
+
+    let additions: Vec<_> = next
+        .iter()
+        .filter(|(_, hotkey)| !current.iter().any(|(_, old)| old == hotkey))
+        .cloned()
+        .collect();
+    let removals: Vec<_> = current
+        .iter()
+        .filter(|(_, hotkey)| !next.iter().any(|(_, new)| new == hotkey))
+        .cloned()
+        .collect();
+
+    let mut registered_additions = Vec::new();
+    for (trigger, hotkey) in &additions {
+        if let Err(error) = registry.register_hotkey(*hotkey) {
+            for (_, added) in registered_additions.iter().rev() {
+                let _ = registry.unregister_hotkey(*added);
+            }
+            return Err(format!(
+                "quake hotkey '{trigger}' could not be registered: {error}"
+            ));
+        }
+        registered_additions.push((trigger.clone(), *hotkey));
+    }
+
+    let mut removed = Vec::new();
+    for (trigger, hotkey) in &removals {
+        if let Err(error) = registry.unregister_hotkey(*hotkey) {
+            let mut rollback_errors = Vec::new();
+            for (old_trigger, old) in removed.iter().rev() {
+                if let Err(rollback) = registry.register_hotkey(*old) {
+                    rollback_errors.push(format!("restore '{old_trigger}': {rollback}"));
+                }
+            }
+            for (added_trigger, added) in registered_additions.iter().rev() {
+                if let Err(rollback) = registry.unregister_hotkey(*added) {
+                    rollback_errors.push(format!("remove '{added_trigger}': {rollback}"));
+                }
+            }
+            let rollback = if rollback_errors.is_empty() {
+                String::new()
+            } else {
+                format!("; rollback errors: {}", rollback_errors.join(", "))
+            };
+            return Err(format!(
+                "obsolete quake hotkey '{trigger}' could not be unregistered: {error}{rollback}"
+            ));
+        }
+        removed.push((trigger.clone(), *hotkey));
+    }
+
+    for (trigger, _) in &additions {
+        tracing::info!("registered global hotkey: {trigger}");
+    }
+    *current = next;
+    Ok(())
+}
+
+impl GlobalHotkeys {
+    pub fn try_replace(
+        &mut self,
+        keys: &[rio_backend::config::bindings::KeyBinding],
+    ) -> Result<(), String> {
+        let next = parse_quake_hotkeys(keys)?;
+        replace_registered_hotkeys(&self.manager, &mut self.registered, next)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.registered.is_empty()
+    }
+}
+
+/// Register every configured `ToggleQuake` chord as one transaction. Invalid
+/// triggers or OS registration failures return an error; partial registrations
+/// are rolled back instead of silently weakening the active configuration.
 pub fn setup(
     event_proxy: EventProxy,
     keys: &[rio_backend::config::bindings::KeyBinding],
-) -> Option<GlobalHotkeys> {
-    let hotkeys: Vec<(String, HotKey)> = quake_triggers(keys)
-        .into_iter()
-        .filter_map(|trigger| match parse_hotkey(&trigger) {
-            Ok(hotkey) => Some((trigger, hotkey)),
-            Err(err) => {
-                tracing::warn!("quake hotkey '{trigger}': {err}");
-                None
-            }
-        })
-        .collect();
+) -> Result<Option<GlobalHotkeys>, String> {
+    let hotkeys = parse_quake_hotkeys(keys)?;
     if hotkeys.is_empty() {
-        return None;
+        return Ok(None);
     }
 
-    let manager = match GlobalHotKeyManager::new() {
-        Ok(manager) => manager,
-        Err(err) => {
-            tracing::warn!("global hotkeys unavailable: {err}");
-            return None;
-        }
-    };
+    let manager = GlobalHotKeyManager::new()
+        .map_err(|error| format!("global hotkeys unavailable: {error}"))?;
+    let mut registered = Vec::new();
+    replace_registered_hotkeys(&manager, &mut registered, hotkeys)?;
 
-    let mut registered = false;
-    for (trigger, hotkey) in hotkeys {
-        match manager.register(hotkey) {
-            Ok(()) => {
-                registered = true;
-                tracing::info!("registered global hotkey: {trigger}");
-            }
-            Err(err) => tracing::warn!("quake hotkey '{trigger}': {err}"),
-        }
-    }
-    if !registered {
-        return None;
-    }
-
-    // The crate's event receiver is a process-wide channel; one
-    // listener serves every manager, including managers recreated on
-    // config reload.
+    // The crate's event receiver is a process-wide channel; one listener serves
+    // every manager, including managers updated after configuration reload.
     static LISTENER: std::sync::Once = std::sync::Once::new();
     LISTENER.call_once(move || {
         std::thread::spawn(move || {
@@ -76,7 +166,10 @@ pub fn setup(
         });
     });
 
-    Some(GlobalHotkeys { _manager: manager })
+    Ok(Some(GlobalHotkeys {
+        manager,
+        registered,
+    }))
 }
 
 /// Triggers for every `ToggleQuake` binding in the config, in the
@@ -264,16 +357,113 @@ mod tests {
         assert_eq!(hk, HotKey::new(Some(Modifiers::SHIFT), Code::Insert));
     }
 
-    #[test]
-    fn quake_triggers_from_bindings() {
-        use rio_backend::config::bindings::KeyBinding;
-        let binding = |key: &str, with: &str, action: &str| KeyBinding {
+    #[derive(Default)]
+    struct FakeRegistry {
+        active: std::cell::RefCell<Vec<HotKey>>,
+        fail_register: std::cell::Cell<Option<HotKey>>,
+        fail_unregister: std::cell::Cell<Option<HotKey>>,
+    }
+
+    impl HotkeyRegistry for FakeRegistry {
+        fn register_hotkey(&self, hotkey: HotKey) -> Result<(), String> {
+            if self.fail_register.get() == Some(hotkey) {
+                return Err("injected register failure".to_string());
+            }
+            let mut active = self.active.borrow_mut();
+            if active.contains(&hotkey) {
+                return Err("already registered".to_string());
+            }
+            active.push(hotkey);
+            Ok(())
+        }
+
+        fn unregister_hotkey(&self, hotkey: HotKey) -> Result<(), String> {
+            if self.fail_unregister.get() == Some(hotkey) {
+                return Err("injected unregister failure".to_string());
+            }
+            let mut active = self.active.borrow_mut();
+            let Some(index) = active.iter().position(|active| *active == hotkey) else {
+                return Err("not registered".to_string());
+            };
+            active.remove(index);
+            Ok(())
+        }
+    }
+
+    fn binding(
+        key: &str,
+        with: &str,
+        action: &str,
+    ) -> rio_backend::config::bindings::KeyBinding {
+        rio_backend::config::bindings::KeyBinding {
             key: key.into(),
             with: with.into(),
             action: action.into(),
             esc: String::new(),
             mode: String::new(),
-        };
+        }
+    }
+
+    #[test]
+    fn quake_hotkey_parse_is_all_or_nothing() {
+        let keys = vec![
+            binding("q", "control", "ToggleQuake"),
+            binding("banana", "super", "ToggleQuake"),
+        ];
+        assert!(parse_quake_hotkeys(&keys).is_err());
+    }
+
+    #[test]
+    fn failed_hotkey_addition_keeps_the_previous_registration() {
+        let old = HotKey::new(Some(Modifiers::CONTROL), Code::KeyA);
+        let replacement = HotKey::new(Some(Modifiers::CONTROL), Code::KeyB);
+        let registry = FakeRegistry::default();
+        registry.active.borrow_mut().push(old);
+        registry.fail_register.set(Some(replacement));
+        let mut current = vec![("control+a".to_string(), old)];
+        let next = vec![("control+b".to_string(), replacement)];
+
+        assert!(replace_registered_hotkeys(&registry, &mut current, next).is_err());
+        assert_eq!(current, vec![("control+a".to_string(), old)]);
+        assert_eq!(*registry.active.borrow(), vec![old]);
+    }
+
+    #[test]
+    fn partial_hotkey_addition_is_rolled_back_before_removal() {
+        let old = HotKey::new(Some(Modifiers::CONTROL), Code::KeyA);
+        let first = HotKey::new(Some(Modifiers::CONTROL), Code::KeyB);
+        let failing = HotKey::new(Some(Modifiers::CONTROL), Code::KeyC);
+        let registry = FakeRegistry::default();
+        registry.active.borrow_mut().push(old);
+        registry.fail_register.set(Some(failing));
+        let mut current = vec![("control+a".to_string(), old)];
+        let next = vec![
+            ("control+b".to_string(), first),
+            ("control+c".to_string(), failing),
+        ];
+
+        assert!(replace_registered_hotkeys(&registry, &mut current, next).is_err());
+        assert_eq!(current, vec![("control+a".to_string(), old)]);
+        assert_eq!(*registry.active.borrow(), vec![old]);
+    }
+
+    #[test]
+    fn failed_hotkey_removal_rolls_back_new_registration() {
+        let old = HotKey::new(Some(Modifiers::CONTROL), Code::KeyA);
+        let replacement = HotKey::new(Some(Modifiers::CONTROL), Code::KeyB);
+        let registry = FakeRegistry::default();
+        registry.active.borrow_mut().push(old);
+        registry.fail_unregister.set(Some(old));
+        let mut current = vec![("control+a".to_string(), old)];
+        let next = vec![("control+b".to_string(), replacement)];
+
+        assert!(replace_registered_hotkeys(&registry, &mut current, next).is_err());
+        assert_eq!(current, vec![("control+a".to_string(), old)]);
+        assert_eq!(*registry.active.borrow(), vec![old]);
+    }
+
+    #[test]
+    fn quake_triggers_from_bindings() {
         let keys = vec![
             binding("q", "super | shift", "ToggleQuake"),
             binding("f12", "", "togglequake"),
