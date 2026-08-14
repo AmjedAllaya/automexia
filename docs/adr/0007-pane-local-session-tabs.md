@@ -17,10 +17,12 @@ back to another shell.
 
 Classic Automexia `Ctrl+T` creates a window-level tab,
 `Ctrl+Shift+T` creates a local tab in the selected pane, and
-`Ctrl+Shift+N` creates an OS window. When a pane owns more
-than one local tab, the secondary chrome row becomes its local tab rail with
-separate select, close, and add hit targets; otherwise the secondary row is
-omitted and its space returns to the terminal. Top-row close targets only
+`Ctrl+Shift+N` creates an OS window. When a pane owns more than one local tab,
+a 36 logical-pixel rail is rendered inside that pane's top edge with separate
+select, close, and add hit targets. Every eligible pane can expose its own rail;
+sibling panes are neither shifted nor resized. The rail is omitted for one tab
+and for a pane below 96 logical pixels, returning its space to the terminal
+without discarding tab state. Top-row close targets only
 window-level tabs, and local close targets only their exact pane tab.
 
 All local PTYs track their pane's effective dimensions so switching never
@@ -31,5 +33,5 @@ sibling, pane, workspace tab, or window.
 
 Consequences: local tabs preserve layout while consuming one process and PTY
 per tab. They are independent sessions rather than multiple views of one PTY.
-Changes require binding, route-isolation, tab-order/close, responsive rail
-geometry, hit-target, and full frontend regressions.
+Changes require binding, route-isolation, tab-order/close, per-pane PTY sizing,
+responsive rail geometry, HiDPI hit-target, and full frontend regressions.

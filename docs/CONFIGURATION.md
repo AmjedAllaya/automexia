@@ -67,6 +67,12 @@ that tab; closing a window-level tab closes only its own grid. These are
 defaults, so explicit user bindings can override either scope independently.
 macOS uses `Cmd`+`N`, `Cmd`+`T`, and `Cmd`+`Shift`+`T` for the same scopes.
 
+When a pane contains multiple local tabs, Automexia renders their rail inside
+that pane. The rail uses 36 logical pixels, scales with DPI, does not affect
+sibling panes, and temporarily hides when that pane is below 96 logical pixels
+high. No configuration is required and hidden tabs remain active and reachable
+through their keyboard actions.
+
 Split shortcuts distinguish a clean default shell from an independent clone:
 
 | Shortcut | Result |

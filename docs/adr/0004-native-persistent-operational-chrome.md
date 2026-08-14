@@ -18,8 +18,9 @@ ANSI application styling, selection and search retain precedence over semantic
 decoration.
 
 Consequences: the current responsive policy reserves 56 logical pixels for the
-comfortable header-only state and 102 when pane-local tabs are present, plus
-three semantic rows for every prompt. Readline, ZLE, and
+comfortable window header. A pane with multiple local tabs separately reserves
+36 logical pixels inside its own bounds; no sibling or window-wide content root
+moves. Prompts retain their three semantic rows. Readline, ZLE, and
 PSReadLine own the complete-path and short command rows as one multiline
 prompt, while the renderer alone owns the context row. This makes the editor
 restore the complete path after SIGWINCH instead of stranding its head in

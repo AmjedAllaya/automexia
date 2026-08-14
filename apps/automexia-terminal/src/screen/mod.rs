@@ -465,7 +465,6 @@ impl Screen<'_> {
         let padding_y_top = padding_top_from_config(
             &config.navigation,
             config.margin.top,
-            false,
             config.window.macos_use_unified_titlebar,
             size.width as f32,
             size.height as f32,
@@ -927,7 +926,6 @@ impl Screen<'_> {
         let padding_y_top = padding_top_from_config(
             &config.navigation,
             config.margin.top,
-            self.context_manager.local_tab_count() > 1,
             config.window.macos_use_unified_titlebar,
             window_size.width,
             window_size.height,
@@ -2209,10 +2207,23 @@ impl Screen<'_> {
             old_index,
             new_index,
         );
-        // The new window-level tab starts with one pane-local tab, so release
-        // any secondary-rail reservation inherited from the previous tab.
+        // Reconcile global header margins for the new workspace tab. Pane
+        // rails are reserved independently inside their owning panes.
         self.resize_top_or_bottom_line();
         true
+    }
+
+    fn relayout_current_grid(&mut self) {
+        let current_dim = self.context_manager.current().dimension;
+        if current_dim.font_size <= 0.0 {
+            return;
+        }
+        let style = self.sugarloaf.style_mut();
+        style.font_size = current_dim.font_size;
+        style.line_height = current_dim.line_height;
+        self.context_manager
+            .current_grid_mut()
+            .update_dimensions(&mut self.sugarloaf);
     }
 
     pub fn create_local_tab(&mut self, clipboard: &mut Clipboard) {
@@ -2221,7 +2232,7 @@ impl Screen<'_> {
             .context_manager
             .clone_local_tab(rich_text_id, &mut self.sugarloaf)
         {
-            self.resize_top_or_bottom_line();
+            self.relayout_current_grid();
             self.clear_selection();
             self.cancel_search(clipboard);
             self.mark_dirty();
@@ -2233,7 +2244,7 @@ impl Screen<'_> {
             .context_manager
             .close_current_local_tab(&mut self.sugarloaf)
         {
-            self.resize_top_or_bottom_line();
+            self.relayout_current_grid();
             self.clear_selection();
             self.cancel_search(clipboard);
             self.mark_dirty();
@@ -2253,7 +2264,7 @@ impl Screen<'_> {
             .context_manager
             .close_current_local_tab(&mut self.sugarloaf)
         {
-            self.resize_top_or_bottom_line();
+            self.relayout_current_grid();
             self.clear_selection();
             self.cancel_search(clipboard);
             self.mark_dirty();
@@ -2295,7 +2306,6 @@ impl Screen<'_> {
         let padding_y_top = padding_top_from_config(
             &self.renderer.navigation,
             self.renderer.margin.top,
-            self.context_manager.local_tab_count() > 1,
             self.renderer.macos_use_unified_titlebar,
             self.sugarloaf.window_size().width,
             self.sugarloaf.window_size().height,
@@ -3222,8 +3232,11 @@ impl Screen<'_> {
             None => return false,
         };
 
-        let panel_rect =
-            crate::layout::pane_terminal_rect(item.layout_rect, scale_factor);
+        let panel_rect = crate::layout::pane_terminal_rect(
+            item.layout_rect,
+            scale_factor,
+            item.tab_count(),
+        );
         let rich_text_id = item.context().rich_text_id;
 
         let terminal = item.context().terminal.lock();
@@ -3304,8 +3317,11 @@ impl Screen<'_> {
             None => return false,
         };
 
-        let panel_rect =
-            crate::layout::pane_terminal_rect(item.layout_rect, scale_factor);
+        let panel_rect = crate::layout::pane_terminal_rect(
+            item.layout_rect,
+            scale_factor,
+            item.tab_count(),
+        );
 
         let terminal = item.context().terminal.lock();
         let display_offset = terminal.display_offset();
@@ -3435,29 +3451,54 @@ impl Screen<'_> {
         self.apply_close_hover(false)
     }
 
+    fn local_tab_action_at_pointer(
+        &self,
+        mouse_x: f32,
+        mouse_y: f32,
+    ) -> Option<LocalTabAction> {
+        let scale = self.sugarloaf.scale_factor();
+        let grid = self.context_manager.current_grid();
+        let key = grid.find_context_at_position(mouse_x, mouse_y)?;
+        let item = grid.contexts().get(&key)?;
+        self.renderer.island.as_ref()?.local_tab_action_at(
+            item.layout_rect,
+            [grid.scaled_margin.left, grid.scaled_margin.top],
+            scale,
+            item.tab_count(),
+            mouse_x,
+            mouse_y,
+        )
+    }
+
+    pub fn is_hovering_local_tab_rail(&self, mouse_x: f64, mouse_y: f64) -> bool {
+        let scale = self.sugarloaf.scale_factor();
+        let grid = self.context_manager.current_grid();
+        let Some(key) = grid.find_context_at_position(mouse_x as f32, mouse_y as f32)
+        else {
+            return false;
+        };
+        let Some(item) = grid.contexts().get(&key) else {
+            return false;
+        };
+        self.renderer.island.as_ref().is_some_and(|island| {
+            island.local_tab_rail_contains(
+                item.layout_rect,
+                [grid.scaled_margin.left, grid.scaled_margin.top],
+                scale,
+                item.tab_count(),
+                mouse_x as f32,
+                mouse_y as f32,
+            )
+        })
+    }
+
     pub fn update_chrome_action_hover(&mut self, mouse_x: f64, mouse_y: f64) -> bool {
         let scale_factor = self.sugarloaf.scale_factor();
         let window_size = self.sugarloaf.window_size();
         let window_width = window_size.width;
         let num_tabs = self.context_manager.len();
-        let local_count = self.context_manager.local_tab_count();
-        let local_action = self.renderer.island.as_ref().and_then(|island| {
-            island.local_tab_action_at(
-                window_width,
-                window_size.height,
-                scale_factor,
-                local_count,
-                mouse_x as f32 / scale_factor,
-                mouse_y as f32 / scale_factor,
-            )
-        });
-        let metrics =
-            island::chrome_metrics(window_width, window_size.height, scale_factor);
-        let logical_y = mouse_y as f32 / scale_factor;
-        let over_local_rail = local_count > 1
-            && logical_y >= metrics.context_top
-            && logical_y <= metrics.context_top + metrics.context_height;
-        let action = if local_action.is_some() || over_local_rail {
+        let over_local_rail = self.is_hovering_local_tab_rail(mouse_x, mouse_y);
+        let action = if over_local_rail {
             None
         } else {
             self.renderer.island.as_ref().and_then(|island| {
@@ -3550,19 +3591,15 @@ impl Screen<'_> {
         let window_width = window_size.width;
         let num_tabs = self.context_manager.len();
         let island_visible = self.renderer.navigation.island_visible(num_tabs);
+        let over_local_rail = self.is_hovering_local_tab_rail(mouse_x, mouse_y);
 
         if !is_right_click {
-            let local_action = self.renderer.island.as_ref().and_then(|island| {
-                island.local_tab_action_at(
-                    window_width,
-                    window_size.height,
-                    scale_factor,
-                    self.context_manager.local_tab_count(),
-                    mouse_x as f32 / scale_factor,
-                    mouse_y as f32 / scale_factor,
-                )
-            });
+            let local_action =
+                self.local_tab_action_at_pointer(mouse_x as f32, mouse_y as f32);
             if let Some(action) = local_action {
+                // The action belongs to the pane under the pointer, not
+                // necessarily the pane that was selected before this click.
+                let _ = self.select_current_based_on_mouse();
                 let changed = match action {
                     LocalTabAction::Select(index) => self
                         .context_manager
@@ -3572,7 +3609,7 @@ impl Screen<'_> {
                             .context_manager
                             .close_local_tab(index, &mut self.sugarloaf);
                         if changed {
-                            self.resize_top_or_bottom_line();
+                            self.relayout_current_grid();
                         }
                         changed
                     }
@@ -3588,12 +3625,7 @@ impl Screen<'_> {
                 }
                 return true;
             }
-            let metrics =
-                island::chrome_metrics(window_width, window_size.height, scale_factor);
             let logical_y = mouse_y as f32 / scale_factor;
-            let over_local_rail = self.context_manager.local_tab_count() > 1
-                && logical_y >= metrics.context_top
-                && logical_y <= metrics.context_top + metrics.context_height;
             let action = (!over_local_rail)
                 .then(|| {
                     self.renderer.island.as_ref().and_then(|island| {
@@ -3623,6 +3655,12 @@ impl Screen<'_> {
                 self.mark_dirty();
                 return true;
             }
+        }
+
+        // Empty space inside a pane tab rail is pane chrome, never terminal
+        // input or a window-drag target.
+        if over_local_rail {
+            return true;
         }
 
         if let Some(ref mut island) = self.renderer.island {
@@ -4677,9 +4715,17 @@ impl Screen<'_> {
         }
         let preview_panel = {
             let current_grid = self.context_manager.current_grid();
-            current_grid
-                .current_item()
-                .map(|item| (item.val.route_id, item.val.rich_text_id, item.layout_rect))
+            current_grid.current_item().map(|item| {
+                (
+                    item.val.route_id,
+                    item.val.rich_text_id,
+                    crate::layout::pane_terminal_rect(
+                        item.layout_rect,
+                        self.sugarloaf.scale_factor(),
+                        item.tab_count(),
+                    ),
+                )
+            })
         };
         if let Some((route_id, rich_text_id, pane)) = preview_panel {
             self.image_preview
@@ -4712,7 +4758,11 @@ impl Screen<'_> {
                 let cell_height = layout.cell.cell_height as f32;
                 let scale_factor = self.sugarloaf.scale_factor();
 
-                let panel_rect = current_item.layout_rect;
+                let panel_rect = crate::layout::pane_terminal_rect(
+                    current_item.layout_rect,
+                    scale_factor,
+                    current_item.tab_count(),
+                );
                 let origin_x = panel_rect[0] + scaled_margin.left;
                 let origin_y = panel_rect[1] + scaled_margin.top;
 
@@ -4852,6 +4902,11 @@ impl Screen<'_> {
                 .contexts_mut()
                 .iter_mut()
             {
+                let terminal_rect = crate::layout::pane_terminal_rect(
+                    item.layout_rect,
+                    item.val.dimension.dimension.scale,
+                    item.tab_count(),
+                );
                 let ctx = &mut item.val;
                 let dim = ctx.dimension;
                 // Canonical integer cell stride — single source of
@@ -4951,7 +5006,7 @@ impl Screen<'_> {
                     .unwrap_or(self.renderer.named_colors.cursor);
                 panels.push(PanelFrame {
                     route_id: ctx.route_id,
-                    layout_rect: item.layout_rect,
+                    layout_rect: terminal_rect,
                     cols: ctx.renderable_content.columns.max(1) as u32,
                     rows: ctx.renderable_content.screen_lines.max(1) as u32,
                     cell_w,
@@ -5443,7 +5498,7 @@ impl Screen<'_> {
                     .context_manager
                     .clone_local_tab(rich_text_id, &mut self.sugarloaf)
                 {
-                    self.resize_top_or_bottom_line();
+                    self.relayout_current_grid();
                     self.mark_dirty();
                 }
             }
@@ -5462,7 +5517,7 @@ impl Screen<'_> {
                     self.context_manager
                         .close_local_tab(index, &mut self.sugarloaf)
                 }) {
-                    self.resize_top_or_bottom_line();
+                    self.relayout_current_grid();
                     self.mark_dirty();
                 }
             }
@@ -5485,7 +5540,16 @@ impl Screen<'_> {
                     .context_manager
                     .current_grid()
                     .current_item()
-                    .map(|item| (item.val.route_id, item.layout_rect))
+                    .map(|item| {
+                        (
+                            item.val.route_id,
+                            crate::layout::pane_terminal_rect(
+                                item.layout_rect,
+                                self.sugarloaf.scale_factor(),
+                                item.tab_count(),
+                            ),
+                        )
+                    })
                 else {
                     return;
                 };
@@ -5582,7 +5646,11 @@ impl Screen<'_> {
 
         // Panel origin: layout_rect is relative to root container,
         // add scaled_margin to get absolute screen position
-        let panel_rect = current_item.layout_rect;
+        let panel_rect = crate::layout::pane_terminal_rect(
+            current_item.layout_rect,
+            self.sugarloaf.scale_factor(),
+            current_item.tab_count(),
+        );
         let origin_x = panel_rect[0] + scaled_margin.left;
         let origin_y = panel_rect[1] + scaled_margin.top;
 

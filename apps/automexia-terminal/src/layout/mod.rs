@@ -25,6 +25,13 @@ const MIN_LINES: usize = 1;
 pub const PANE_FOOTER_HEIGHT_LOGICAL: f32 = 32.0;
 const PANE_FOOTER_MIN_PANE_HEIGHT_LOGICAL: f32 = 112.0;
 
+/// Height reserved at the top of a pane that owns multiple local tabs.
+///
+/// This is deliberately pane chrome rather than window chrome: a sibling
+/// pane with one session must not lose rows because another pane has tabs.
+pub const PANE_TAB_RAIL_HEIGHT_LOGICAL: f32 = 36.0;
+const PANE_TAB_RAIL_MIN_PANE_HEIGHT_LOGICAL: f32 = 96.0;
+
 #[inline]
 pub fn pane_footer_reserved_height(panel_height: f32, scale: f32) -> f32 {
     if !panel_height.is_finite()
@@ -39,9 +46,45 @@ pub fn pane_footer_reserved_height(panel_height: f32, scale: f32) -> f32 {
 }
 
 #[inline]
-pub fn pane_terminal_rect(mut panel_rect: [f32; 4], scale: f32) -> [f32; 4] {
-    panel_rect[3] =
-        (panel_rect[3] - pane_footer_reserved_height(panel_rect[3], scale)).max(0.0);
+pub fn pane_tab_rail_reserved_height(
+    panel_height: f32,
+    scale: f32,
+    local_tab_count: usize,
+) -> f32 {
+    if local_tab_count <= 1
+        || !panel_height.is_finite()
+        || !scale.is_finite()
+        || scale <= f32::EPSILON
+        || panel_height / scale < PANE_TAB_RAIL_MIN_PANE_HEIGHT_LOGICAL
+    {
+        0.0
+    } else {
+        PANE_TAB_RAIL_HEIGHT_LOGICAL * scale
+    }
+}
+
+/// Full physical-pixel rectangle owned by a pane's local-tab rail.
+#[inline]
+pub fn pane_tab_rail_rect(
+    panel_rect: [f32; 4],
+    scale: f32,
+    local_tab_count: usize,
+) -> Option<[f32; 4]> {
+    let height = pane_tab_rail_reserved_height(panel_rect[3], scale, local_tab_count);
+    (height > 0.0).then_some([panel_rect[0], panel_rect[1], panel_rect[2], height])
+}
+
+/// Terminal-cell rectangle after subtracting pane-owned top and bottom chrome.
+#[inline]
+pub fn pane_terminal_rect(
+    mut panel_rect: [f32; 4],
+    scale: f32,
+    local_tab_count: usize,
+) -> [f32; 4] {
+    let rail = pane_tab_rail_reserved_height(panel_rect[3], scale, local_tab_count);
+    let footer = pane_footer_reserved_height(panel_rect[3], scale);
+    panel_rect[1] += rail;
+    panel_rect[3] = (panel_rect[3] - rail - footer).max(0.0);
     panel_rect
 }
 
@@ -213,6 +256,33 @@ impl<T: rio_backend::event::EventListener> ContextGridItem<T> {
     #[inline]
     pub fn active_tab_index(&self) -> usize {
         self.tabs_before.len()
+    }
+
+    /// Best available display title for a tab in this pane.
+    ///
+    /// Only the active tab attempts a non-blocking terminal-title read.
+    /// Inactive tabs retain the last title cached by their route, and a busy
+    /// PTY falls back to the same cache instead of stalling the render frame.
+    pub fn tab_title(&self, index: usize) -> Option<String> {
+        let context = self.context_at(index)?;
+        if index == self.active_tab_index() {
+            if let Some(terminal) = context.terminal.try_lock_unfair() {
+                let raw = terminal.title.to_string();
+                if !raw.trim().is_empty() {
+                    return Some(raw);
+                }
+            }
+        }
+        if !context.title.content.trim().is_empty()
+            && context.title.content.trim().chars().ne(['~'])
+        {
+            return Some(context.title.content.clone());
+        }
+        context
+            .launch_descriptor
+            .profile_identity()
+            .or_else(|| context.launch_descriptor.program())
+            .map(ToOwned::to_owned)
     }
 
     pub fn context_at(&self, index: usize) -> Option<&Context<T>> {
@@ -443,6 +513,15 @@ mod pane_tab_tests {
         assert_eq!(item.close_active_tab_core(), None);
         assert_eq!(item.tab_count(), 1);
         assert_eq!(item.val.route_id, 44);
+    }
+
+    #[test]
+    fn pane_tab_title_uses_cached_identity_when_the_terminal_is_busy() {
+        let mut item = ContextGridItem::new(dead(55));
+        item.val.title.content = "Cached PowerShell".to_string();
+        let _terminal_guard = item.val.terminal.lock_unfair();
+
+        assert_eq!(item.tab_title(0).as_deref(), Some("Cached PowerShell"));
     }
 }
 
@@ -1235,6 +1314,7 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
 
         for item in self.inner.values_mut() {
             let [abs_x, abs_y, width, height] = item.layout_rect;
+            let local_tab_count = item.tab_count();
 
             let x = (abs_x + self.scaled_margin.left) / scale;
             let y = (abs_y + self.scaled_margin.top) / scale;
@@ -1246,11 +1326,13 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
                 let previous_grid_size =
                     (context.dimension.columns, context.dimension.lines);
                 let footer_height = pane_footer_reserved_height(height, scale);
+                let tab_rail_height =
+                    pane_tab_rail_reserved_height(height, scale, local_tab_count);
                 context.dimension.margin = Margin::all(0.0);
                 context.dimension.update_width(width);
                 context
                     .dimension
-                    .update_height((height - footer_height).max(0.0));
+                    .update_height((height - footer_height - tab_rail_height).max(0.0));
                 let grid_size_changed = previous_grid_size
                     != (context.dimension.columns, context.dimension.lines);
 
@@ -1447,10 +1529,24 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
         let len = self.inner.len();
         if len <= 1 {
             if let Some(item) = self.inner.get(&self.current) {
-                return (&item.val, self.scaled_margin);
+                let rail = pane_tab_rail_reserved_height(
+                    item.layout_rect[3],
+                    self.scale,
+                    item.tab_count(),
+                );
+                let mut margin = self.scaled_margin;
+                margin.top += rail;
+                return (&item.val, margin);
             } else if let Some(root) = self.root {
                 if let Some(item) = self.inner.get(&root) {
-                    return (&item.val, self.scaled_margin);
+                    let rail = pane_tab_rail_reserved_height(
+                        item.layout_rect[3],
+                        self.scale,
+                        item.tab_count(),
+                    );
+                    let mut margin = self.scaled_margin;
+                    margin.top += rail;
+                    return (&item.val, margin);
                 }
             }
             panic!("Grid is in an invalid state - no contexts available");
@@ -1464,7 +1560,13 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             let [abs_x, abs_y, _, _] = current_item.layout_rect;
             let margin = Margin {
                 left: self.scaled_margin.left + abs_x,
-                top: self.scaled_margin.top + abs_y,
+                top: self.scaled_margin.top
+                    + abs_y
+                    + pane_tab_rail_reserved_height(
+                        current_item.layout_rect[3],
+                        self.scale,
+                        current_item.tab_count(),
+                    ),
                 right: self.scaled_margin.right,
                 bottom: self.scaled_margin.bottom,
             };
@@ -1473,7 +1575,15 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             tracing::error!("Current key {:?} not found in grid", self.current);
             if let Some(root) = self.root {
                 if let Some(item) = self.inner.get(&root) {
-                    return (&item.val, self.scaled_margin);
+                    let mut margin = self.scaled_margin;
+                    margin.left += item.layout_rect[0];
+                    margin.top += item.layout_rect[1]
+                        + pane_tab_rail_reserved_height(
+                            item.layout_rect[3],
+                            self.scale,
+                            item.tab_count(),
+                        );
+                    return (&item.val, margin);
                 }
             }
             panic!("Grid is in an invalid state - no contexts available");
