@@ -105,8 +105,9 @@ Consequently quick look:
   card/UI geometry first, image pixels second, then dedicated UI labels;
 - measures metadata before fitting the preview title, eliding long filenames
   into the remaining width so the title and dimensions never overlap;
-- removes the active overlay/data entry on dismissal while bounded CPU and
-  renderer texture caches may retain reusable content until normal eviction.
+- removes the active overlay, route pixels, and matching GPU texture immediately
+  on dismissal; only the separately bounded CPU thumbnail LRU retains reusable
+  decoded pixels, and cache replacement uses exact entry/byte accounting.
 
 The iTerm2 protocol decoder separately caps decoded input at 64 MiB, validates
 an optional declared `size`, and applies the same 4096x4096 and 96 MiB decoder
@@ -119,6 +120,8 @@ checks.
 Focused checks are:
 
 ```text
+cargo xtask test image-rendering
+cargo xtask test image-rendering --native-gui
 cargo test -p automexia-image --locked
 cargo test -p automexia-terminal image_preview --bin automexia --locked
 cargo test -p sugarloaf shared_rgba_preserves --locked
@@ -130,22 +133,42 @@ cargo xtask verify architecture
 cargo bench -p automexia-terminal --bench image_preview --locked -- --noplot
 ```
 
+The first command is the required PR gate. It runs the complete bounded decoder
+and cache suite, preview state-machine tests, Sugarloaf CPU and texture-budget
+tests, Rio VT/backend graphics regressions, and compiles the Criterion target.
+The decoder suite covers every enabled raster codec, exact RGBA byte accounting,
+straight-alpha transparency, portrait/landscape resize, malformed/truncated and
+deterministically mutated input, invalid paths, cache eviction/replacement storms,
+1,000 repeated warm hits, file-handle release, and absence of generated sidecar
+or thumbnail files.
+
 The release benchmark uses a 1600x1000 fixture and compares cold decode/resize
-with a file-version-validated warm lookup. On the 2026-08-14 Windows
-development host the medians were 24.683 ms and 48.984 us respectively
-(approximately 504x faster for reuse). This is a local observation, not the
+with a file-version-validated warm lookup. On the 2026-08-15 Windows
+development host the medians were 23.879 ms and 47.813 us respectively
+(approximately 499x faster for reuse); Criterion classified both changes
+against its saved local baseline as within the configured noise threshold.
+This is a local observation, not the
 controlled 30-day performance baseline or a cross-host guarantee.
 
-The full `cargo ready` gate remains required before merge. The Windows native
-GUI gate prints two relative filenames, drives a real hover and click from
-renderer-neutral cell geometry, browses with `Right`, dismisses with `Esc`, and
-checks the decoded route-scoped overlay. It samples the exact image-body region,
-rejects black/obscured pixels, and repeats the real-window contract on WGPU and
-the CPU fallback before accepting the final composited frame. Native
-visual review must additionally cover spaces/Unicode, WSL, pointer-edge
-flipping, extreme panes, split isolation, rapid resize, corrupt/oversized
-input, and a protocol client. A visual review does not replace deterministic
-route, geometry, memory, and decoder tests.
+The full `cargo ready` gate remains required before merge. On Windows,
+`cargo xtask test image-rendering --native-gui` prints two real relative image
+filenames, drives hover/click/arrow/Escape through renderer-neutral cell
+geometry, and repeats 16 open/dismiss cycles on both WGPU and the CPU fallback.
+Every active cycle requires one route pixel entry and overlay; WGPU additionally
+requires one exact `width * height * 4` texture allocation. Every dismissal
+requires zero active pixel, overlay, texture, queued-request, and pending-result
+state. The runner also applies strict process handle/thread/private-memory
+ceilings, verifies the exact bounded thumbnail-cache accounting, samples
+transparent and opaque image-body regions, rejects blank/obscured output, and
+compares WGPU/CPU dimensions and luminance distributions within controlled
+tolerances.
+
+This proves the local Windows paths covered by the automation; it is not a
+mathematical guarantee for every decoder input, GPU driver, compositor, remote
+filesystem, or third-party protocol client. Controlled Linux/macOS GPU runs,
+extended sanitizer/fuzz soak, multiplexer/client compatibility, and the 30-day
+performance baseline remain release evidence. Visual review complements but
+does not replace deterministic route, geometry, resource, and decoder tests.
 
 `cargo-fuzz`/libFuzzer is supported on Unix-like systems. The xtask command
 therefore installs/uses explicit nightly on Linux/macOS and automatically
@@ -157,9 +180,12 @@ fuzz execution.
 On 2026-08-14 the supported Windows-to-WSL command completed 544,609
 libFuzzer executions in 121 seconds with no crash or sanitizer finding. The
 run reached 2,504 covered edges and 5,383 features, retained 1,161 in-memory
-corpus entries, and peaked at 357 MiB RSS. Local generated corpus/build output
-is ignored and removed after a clean campaign; a failing crash artifact must
-be retained and attached to the security regression that fixes it.
+corpus entries, and peaked at 357 MiB RSS. The current target exercises both
+bounded decoding and path-token discovery. Local runs use disposable build and
+writable-corpus directories, cap libFuzzer at 768 MiB RSS and 15 seconds per
+input, and remove generated campaign state after completion so fuzzing cannot
+silently fill the repository drive. A failing crash artifact must be retained and attached
+to the security regression that fixes it.
 
 ## Primary references
 

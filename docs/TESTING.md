@@ -165,6 +165,8 @@ exact upstream hashes and Automexia-specific adaptations are recorded in
 Image protocol and local quick-look changes have a focused gate:
 
 ```text
+cargo xtask test image-rendering
+cargo xtask test image-rendering --native-gui
 cargo test -p automexia-image --locked
 cargo test -p automexia-terminal image_preview --locked -- --test-threads=1
 cargo test -p automexia-terminal bindings --locked
@@ -174,18 +176,33 @@ cargo xtask test image-decoder-fuzz --seconds 120
 cargo xtask verify architecture
 ```
 
-The suite covers supported/unsupported extensions, URL/control rejection,
-quoted and bare paths, WSL mapping, file/pixel/allocation limits, no small-image
-upscale, tiny/large/edge geometry, route-generation stale result rejection,
-platform shortcut collisions, palette discovery, and iTerm2 valid,
-size-mismatch, and oversized-dimension decoding. Native review follows the
-matrix in [image previews](IMAGE-PREVIEWS.md); protocol rendering and local
-quick look must be exercised separately.
+The required PR command covers every enabled raster codec, exact RGBA and
+straight-alpha behavior, supported/unsupported extensions, URL/control/symlink
+rejection, quoted and bare paths, WSL mapping, file/dimension/pixel/allocation
+limits, malformed/truncated/mutated input storms, no small-image upscale,
+tiny/large/edge geometry, route-generation stale-result rejection, bounded
+queue/cache replacement, exact cache byte accounting, 1,000 repeated warm
+lookups, source-handle release, and the absence of generated sidecar files. It
+also runs Sugarloaf CPU/GPU-resource accounting, VT/backend protocol regressions,
+and compiles the release benchmark.
+
+On Windows the `--native-gui` form adds real WGPU and CPU windows. Each backend
+runs 16 hover/open/dismiss cycles, proving active route pixels/overlay/texture
+counts and exact GPU bytes, zero active resources after dismissal, empty worker
+queue/mailbox state, bounded thumbnail retention, and bounded process
+handle/thread/private-memory growth. The native capture samples transparent and
+opaque fixture regions, rejects black or card-obscured pixels, and compares
+WGPU/CPU dimensions and luminance distributions. Protocol rendering and local
+quick look remain separate contracts; native Linux/macOS evidence follows the
+matrix in [image previews](IMAGE-PREVIEWS.md).
 
 The decoder fuzz command installs/uses explicit nightly on Unix. On Windows it
 uses WSL because cargo-fuzz/libFuzzer does not support native Windows; this
-avoids misleading `clang_rt.asan_dynamic` DLL failures. Nightly CI separately
-installs nightly and invokes every fuzz target with `cargo +nightly fuzz`.
+avoids misleading `clang_rt.asan_dynamic` DLL failures. It fuzzes both bounded
+decode and visible-path tokenization, builds outside the Windows repository in
+a disposable `/tmp` workspace with its own writable corpus, caps RSS/input time,
+and removes generated campaign state on exit. Nightly CI separately installs nightly, invokes every target with
+`cargo +nightly fuzz`, and runs the pure decoder tests under ASan and TSan.
 The 2026-08-14 Windows-to-WSL decoder campaign completed 544,609 executions
 over 121 seconds without a crash or sanitizer finding (2,504 coverage edges,
 5,383 features, 1,161 final corpus entries, and 357 MiB peak RSS). These are

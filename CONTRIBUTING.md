@@ -84,6 +84,9 @@ contributors do not need to assemble the normal gate manually. Platform-specific
 changes must also run on their native OS. See `docs/TESTING.md` for X11/Wayland,
 MSVC/ARM64, macOS universal, coverage, sanitizer, fuzz, benchmark, and package
 matrices.
+Image decoder, preview, renderer, or graphics-protocol changes must additionally
+run `cargo xtask test image-rendering`; Windows rendering/lifecycle changes run
+`cargo xtask test image-rendering --native-gui` before review.
 
 ## Reviews and merging
 
