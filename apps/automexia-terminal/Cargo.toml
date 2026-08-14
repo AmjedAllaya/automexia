@@ -42,6 +42,10 @@ name = "automexia"
 path = "src/main.rs"
 
 [dependencies]
+automexia-extension-api = { workspace = true }
+automexia-extension-runtime = { workspace = true }
+automexia-devops = { workspace = true }
+automexia-ui-model = { workspace = true }
 global-hotkey = "0.8.0"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "registry"] }

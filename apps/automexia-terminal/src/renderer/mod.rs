@@ -538,9 +538,7 @@ impl Renderer {
                 palette.has_adaptive_theme = config.adaptive_colors.is_some();
                 palette
             },
-            devops_enabled: crate::automexia::runtime::is_installed(
-                crate::automexia::builtins::devops::ID,
-            ),
+            devops_enabled: crate::automexia::runtime::context_status_enabled(),
             extension_generation: crate::automexia::runtime::generation(),
             devops_status: devops_status::DevOpsStatus::default(),
             devops_statuses: FxHashMap::default(),
@@ -569,9 +567,7 @@ impl Renderer {
             return false;
         }
         self.extension_generation = generation;
-        let enabled = crate::automexia::runtime::is_installed(
-            crate::automexia::builtins::devops::ID,
-        );
+        let enabled = crate::automexia::runtime::context_status_enabled();
         let changed = enabled != self.devops_enabled;
         self.devops_enabled = enabled;
         if !enabled {

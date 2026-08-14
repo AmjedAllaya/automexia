@@ -349,10 +349,40 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "automexia-devops"
+version = "0.4.0"
+dependencies = [
+ "automexia-extension-api",
+ "automexia-ui-model",
+ "dirs",
+ "serde_json",
+]
+
+[[package]]
+name = "automexia-extension-api"
+version = "0.4.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "automexia-extension-runtime"
+version = "0.4.0"
+dependencies = [
+ "automexia-extension-api",
+ "loom",
+]
+
+[[package]]
 name = "automexia-terminal"
 version = "0.4.0"
 dependencies = [
  "ahash",
+ "automexia-devops",
+ "automexia-extension-api",
+ "automexia-extension-runtime",
+ "automexia-ui-model",
  "bitflags 2.13.1",
  "clap",
  "corcovado",
@@ -394,6 +424,14 @@ dependencies = [
  "wgpu",
  "windows-sys 0.61.2",
  "winres",
+]
+
+[[package]]
+name = "automexia-ui-model"
+version = "0.4.0"
+dependencies = [
+ "automexia-extension-api",
+ "unicode-segmentation",
 ]
 
 [[package]]

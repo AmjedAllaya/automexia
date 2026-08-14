@@ -1,0 +1,16 @@
+[package]
+name = "automexia-extension-api"
+description = "Private, versioned Automexia extension contracts."
+publish = false
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

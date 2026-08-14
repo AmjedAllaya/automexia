@@ -2,6 +2,8 @@ pub mod launch;
 pub mod renderable;
 pub mod title;
 
+use automexia_extension_api::{EnvironmentCapsule, OperationId, SessionId};
+
 use crate::ansi::CursorShape;
 use crate::context::title::{
     create_title_extra_from_context, update_title, ContextTitle,
@@ -58,6 +60,9 @@ pub struct Context<T: EventListener> {
     pub shell_pid: u32,
     /// Immutable launch intent used to create independent session clones.
     pub launch_descriptor: SessionLaunchDescriptor,
+    /// Non-secret identity capsule owned by this route. Clones always receive
+    /// a new session ID and never share this object or extension cache state.
+    pub environment_capsule: EnvironmentCapsule,
     pub rich_text_id: usize,
     pub dimension: ContextDimension,
     pub title: ContextTitle,
@@ -178,6 +183,9 @@ pub fn create_dead_context<T: rio_backend::event::EventListener>(
     dimension: ContextDimension,
 ) -> Context<T> {
     let launch_descriptor = SessionLaunchDescriptor::default();
+    let environment_capsule = launch_descriptor
+        .environment_capsule(SessionId::new(route_id as u64), 1)
+        .expect("the default launch descriptor produces a valid capsule");
     let terminal = Crosswords::new(
         dimension,
         CursorShape::Block,
@@ -196,6 +204,7 @@ pub fn create_dead_context<T: rio_backend::event::EventListener>(
         main_fd: Arc::new(-1),
         shell_pid: 1,
         launch_descriptor,
+        environment_capsule,
         messenger: Messenger::new(sender),
         renderable_content: RenderableContent::new(Cursor::default()),
         terminal,
@@ -269,6 +278,12 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             config.profile_identity.clone(),
             config.working_dir.clone(),
         );
+        let environment_capsule =
+            launch_descriptor.environment_capsule(SessionId::new(route_id as u64), 1)?;
+        let _launch_contract = launch_descriptor.launch_contract(
+            OperationId::new(route_id as u64),
+            SessionId::new(route_id as u64),
+        );
 
         #[cfg(test)]
         if config.dead_pty {
@@ -280,6 +295,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                 dimension,
             );
             context.launch_descriptor = launch_descriptor;
+            context.environment_capsule = environment_capsule;
             return Ok(context);
         }
 
@@ -397,6 +413,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             main_fd,
             shell_pid,
             launch_descriptor,
+            environment_capsule,
             messenger,
             terminal,
             rich_text_id,
@@ -1447,7 +1464,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     fn create_cloned_context(&self, rich_text_id: usize) -> Result<Context<T>, String> {
-        let (launch, cursor, blinking, dimension, seed) = {
+        let (launch, cursor, blinking, dimension, seed, source_capsule_id) = {
             let source = self.current();
             let live = LiveSessionMetadata {
                 current_directory: source.renderable_content.current_directory.clone(),
@@ -1466,6 +1483,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                 source.renderable_content.has_blinking_enabled,
                 source.dimension,
                 source.renderable_content.session_metadata_seed(),
+                source.environment_capsule.session_id,
             )
         };
 
@@ -1501,6 +1519,10 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         new_context
             .renderable_content
             .apply_session_metadata_seed(seed);
+        debug_assert_ne!(
+            new_context.environment_capsule.session_id, source_capsule_id,
+            "independent session clones must never share an environment capsule"
+        );
         Ok(new_context)
     }
 
@@ -1757,7 +1779,7 @@ pub mod test {
         let context_manager =
             ContextManager::start_with_capacity(1, listener.clone(), window_id).unwrap();
 
-        context_manager.devops_refresh_completion(912)();
+        context_manager.devops_refresh_completion(912).wake();
 
         assert_eq!(*listener.renders.lock().unwrap(), [(912, window_id)]);
     }
@@ -2189,5 +2211,36 @@ pub mod test {
         context_manager.move_current_tab_to(5);
         assert_eq!(context_manager.current_index, 2);
         assert_eq!(order(&mut context_manager), vec![1, 0, 2, 3, 4]);
+    }
+}
+
+#[cfg(test)]
+mod capsule_contract_tests {
+    use super::*;
+    use crate::event::VoidListener;
+
+    #[test]
+    fn every_fresh_and_cloned_context_owns_a_distinct_capsule() {
+        let window_id = WindowId::from(9_991);
+        let manager =
+            ContextManager::start_with_capacity(4, VoidListener {}, window_id).unwrap();
+        let original = manager.current();
+        assert_eq!(
+            original.environment_capsule.session_id,
+            SessionId::new(original.route_id as u64)
+        );
+        assert_eq!(original.environment_capsule.revision, 1);
+
+        let cloned = manager.create_cloned_context(next_rich_text_id()).unwrap();
+        assert_ne!(cloned.route_id, original.route_id);
+        assert_ne!(
+            cloned.environment_capsule.session_id,
+            original.environment_capsule.session_id
+        );
+        assert_eq!(
+            cloned.environment_capsule.session_id,
+            SessionId::new(cloned.route_id as u64)
+        );
+        assert_eq!(cloned.environment_capsule.revision, 1);
     }
 }

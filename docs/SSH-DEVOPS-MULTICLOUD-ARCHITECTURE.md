@@ -995,6 +995,36 @@ remains bounded and recoverable.
 Exit criterion: the renderer has no provider-specific dependency and existing
 local context behavior is equivalent or better.
 
+Phase 1 implementation status (2026-08-14): source-complete and locally
+verified.
+
+- The four release-critical crates are private workspace members. The API and
+  UI-model crates have no frontend, renderer, GPU, PTY, window, or provider SDK
+  dependency; the runtime receives exact-route wake behavior through an injected
+  one-shot trait.
+- Version 1 contracts reject unsupported versions, unknown fields, NUL data,
+  invalid public controls, oversized text, oversized segment/provider/argument/
+  environment/reference collections, and session/capsule mismatches during both
+  construction and deserialization. Launch diagnostics redact arguments and
+  secret-reference identifiers; environment values never enter the serialized
+  launch contract.
+- The current local provider moved intact behind `LocalContextProvider` and a
+  golden pins every generic segment field. Its manifest adds no network,
+  clipboard, or process authority.
+- The renderer consumes generic `ContextContribution`/`StatusSegment` values;
+  shared UI policy owns priority, responsive hiding/restoration, grapheme-safe
+  labels, semantic colors, contrast, accessibility text, hit testing, and typed
+  details routing.
+- Per-session capsules, full cache keys, registration-before-dispatch ordering,
+  bounded non-blocking submission, stale-operation cancellation, rebind cache
+  invalidation, last-truth preservation, coalescing, and exact-route wakes have
+  deterministic and Loom regressions. Clone tests prove new session/capsule
+  identity and independent PTY ownership.
+- A validated rebind plan distinguishes metadata-only changes from changes that
+  require a fresh session. The user-facing capability broker and managed relaunch
+  action remain deliberately inactive until Phase 2; Phase 1 grants no new
+  process authority.
+
 ### Phase 2: v0.5.0 production first-party SSH
 
 - Accept the proposed replacement ADR required by ADR 0003.

@@ -1615,6 +1615,62 @@ fn verify_architecture() -> TaskResult {
         "frontend package is outside apps/automexia-terminal",
     )?;
 
+    let private_crates: [(&str, &[&str]); 4] = [
+        ("automexia-extension-api", &["serde", "serde_json"]),
+        (
+            "automexia-extension-runtime",
+            &["automexia-extension-api", "loom"],
+        ),
+        (
+            "automexia-devops",
+            &[
+                "automexia-extension-api",
+                "automexia-ui-model",
+                "dirs",
+                "serde_json",
+            ],
+        ),
+        (
+            "automexia-ui-model",
+            &["automexia-extension-api", "unicode-segmentation"],
+        ),
+    ];
+    for (name, allowed_dependencies) in private_crates {
+        let package = packages
+            .iter()
+            .find(|package| package["name"].as_str() == Some(name))
+            .ok_or_else(|| format!("private Phase 1 package {name} is missing"))?;
+        require(
+            package["publish"].as_array().is_some_and(Vec::is_empty),
+            &format!("{name} must remain publish = false"),
+        )?;
+        for dependency in package["dependencies"]
+            .as_array()
+            .ok_or_else(|| format!("{name} dependencies are missing"))?
+        {
+            let dependency_name = dependency["name"]
+                .as_str()
+                .ok_or_else(|| format!("{name} has an unnamed dependency"))?;
+            require(
+                allowed_dependencies.contains(&dependency_name),
+                &format!(
+                    "{name} has forbidden dependency {dependency_name}; allowed: {allowed_dependencies:?}"
+                ),
+            )?;
+        }
+    }
+
+    for manifest in ["rio-backend/Cargo.toml", "sugarloaf/Cargo.toml"] {
+        let source = read(&root().join(manifest))?;
+        require(
+            source.contains("crate-type = [\"rlib\"]")
+                && !source.contains("crate-type = [\"cdylib\", \"rlib\"]"),
+            &format!(
+                "{manifest} must remain rlib-only; duplicate cdylib outputs race in benchmark builds"
+            ),
+        )?;
+    }
+
     let app = root().join(&identity.frontend_path);
     for path in files_under(&app.join("src/renderer"))? {
         if path.extension().and_then(OsStr::to_str) != Some("rs") {
@@ -1632,15 +1688,27 @@ fn verify_architecture() -> TaskResult {
         }
     }
     let runtime = read(&app.join("src/automexia/runtime.rs"))?;
+    let extension_runtime = read(&root().join("automexia-extension-runtime/src/lib.rs"))?;
     require(
-        runtime.contains("sync_channel") && runtime.contains("try_send"),
-        "extension runtime does not expose a bounded non-blocking worker queue",
+        extension_runtime.contains("sync_channel")
+            && extension_runtime.contains("try_send")
+            && extension_runtime.contains("handle.is_finished()")
+            && extension_runtime.contains("pub trait WakeRoute")
+            && extension_runtime.contains("pub struct CoalescingSlot")
+            && extension_runtime.contains("pub fn try_submit_then")
+            && extension_runtime.contains("registration_ready")
+            && extension_runtime.contains("pub fn plan_rebind"),
+        "private extension runtime lacks bounded queue, restart, injected wake, registration ordering, coalescing, or rebind primitives",
     )?;
     require(
         runtime.contains("MAX_SESSION_TITLE_BYTES")
             && runtime.contains("shutdown_background_services")
-            && runtime.contains("handle.is_finished()"),
-        "extension worker lacks input bounds, restart detection, or joined shutdown",
+            && runtime.contains("CacheKey")
+            && runtime.contains("capsule_revision")
+            && runtime.contains("CancellationToken")
+            && runtime.contains("Freshness::Error")
+            && runtime.contains("preserving last truthful snapshot"),
+        "application extension adapter lacks bounds, joined shutdown, capsule-key isolation, cancellation, or last-known-good ownership",
     )?;
     let renderable = read(&app.join("src/context/renderable.rs"))?;
     let renderer = read(&app.join("src/renderer/mod.rs"))?;
@@ -1705,34 +1773,66 @@ fn verify_architecture() -> TaskResult {
         "Automexia classic fresh-split, clone, and explicit shell-control shortcuts are not distinct",
     )?;
     let context_renderer = read(&app.join("src/renderer/devops_status.rs"))?;
+    let renderer_root = read(&app.join("src/renderer/mod.rs"))?;
+    let api_model = read(&root().join("automexia-extension-api/src/lib.rs"))?;
+    let ui_model = read(&root().join("automexia-ui-model/src/lib.rs"))?;
     require(
-        context_renderer.contains("enum SegmentRole")
-            && context_renderer.contains("segment_anchor_rgb")
-            && context_renderer.contains("ensure_contrast")
-            && context_renderer.contains("MIN_SEGMENT_CONTRAST")
-            && !context_renderer.contains("enum SegmentColor"),
-        "operational context does not resolve semantic brand roles through the shared contrast gate",
+        context_renderer.contains("automexia_ui_model::project_status")
+            && context_renderer.contains("automexia_ui_model::segment_color")
+            && !context_renderer.contains("DevOpsSnapshot")
+            && !context_renderer.contains("CloudContext")
+            && !context_renderer.contains("builtins::devops")
+            && !renderer_root.contains("builtins::devops"),
+        "renderer depends on a provider implementation instead of generic status segments",
     )?;
-    for role in [
-        "Production",
-        "UbuntuWsl",
-        "Windows",
-        "Git",
-        "Kubernetes",
-        "Docker",
-        "Azure",
-        "Aws",
-        "Gcp",
-        "UnknownCloud",
-        "Terraform",
-        "Environment",
-        "User",
+    require(
+        api_model.contains("pub enum SegmentRole")
+            && api_model.contains("pub struct StatusSegment")
+            && api_model.contains("pub struct ContextContribution")
+            && api_model.contains("pub struct DetailsAction")
+            && api_model.contains("observed_at_ms")
+            && ui_model.contains("pub fn project_status")
+            && ui_model.contains("pub fn layout_segments")
+            && ui_model.contains("pub fn hit_test")
+            && ui_model.contains("pub fn details_action_at")
+            && ui_model.contains("pub fn segment_color")
+            && ui_model.contains("unicode_segmentation"),
+        "generic UI model lacks semantic roles, bounded timestamps/actions, responsive layout, hit testing, accessibility, contrast, or grapheme handling",
+    )?;
+    for contract in [
+        "ExtensionId",
+        "SessionId",
+        "OperationId",
+        "ExecutableId",
+        "LaunchRequest",
+        "EnvironmentCapsule",
+        "ContextContribution",
+        "StatusSegment",
+        "Freshness",
+        "CapabilityRequest",
+        "CapabilityDecision",
+        "SecretReference",
+        "PublicDiagnostic",
     ] {
         require(
-            context_renderer.contains(&format!("SegmentRole::{role}")),
-            &format!("operational context is missing semantic role {role}"),
+            api_model.contains(&format!("pub struct {contract}"))
+                || api_model.contains(&format!("pub enum {contract}"))
+                || api_model.contains(&format!("string_identifier!({contract},")),
+            &format!("extension API is missing versioned contract {contract}"),
         )?;
     }
+    require(
+        api_model.contains("deny_unknown_fields")
+            && api_model.contains("try_from = \"LaunchRequestWire\"")
+            && api_model.contains("MAX_SECRET_REFERENCES")
+            && api_model.contains("UnsupportedVersion")
+            && api_model.contains("SecretReference([REDACTED])")
+            && launch.contains("pub fn launch_contract")
+            && context.contains("pub environment_capsule: EnvironmentCapsule")
+            && context.contains("independent session clones must never share an environment capsule"),
+        "Phase 1 contracts lack schema rejection, secret redaction, launch adaptation, or per-session capsule ownership",
+    )?;
+
     let island_renderer = read(&app.join("src/renderer/island.rs"))?;
     let screen = read(&app.join("src/screen/mod.rs"))?;
     require(
@@ -1883,7 +1983,21 @@ fn verify_architecture() -> TaskResult {
         "hostile control-string fuzz coverage is missing from the nightly matrix",
     )?;
 
-    let devops_manifest = read(&app.join("src/automexia/builtins/devops/mod.rs"))?;
+    let devops_manifest = read(&root().join("automexia-devops/src/lib.rs"))?;
+    let devops_capabilities = devops_manifest
+        .split("pub const MANIFEST")
+        .nth(1)
+        .and_then(|manifest| manifest.split("};").next())
+        .ok_or("DevOps manifest block is missing")?;
+    require(
+        !app.join("src/automexia/builtins/devops/context.rs")
+            .exists()
+            && !app.join("src/automexia/builtins/devops/model.rs").exists()
+            && !app
+                .join("src/automexia/builtins/devops/semantics.rs")
+                .exists(),
+        "extracted DevOps implementation files still exist inside the frontend",
+    )?;
     for capability in [
         "Capability::FilesystemRead",
         "Capability::EnvironmentRead",
@@ -1891,7 +2005,7 @@ fn verify_architecture() -> TaskResult {
         "Capability::UiOverlay",
     ] {
         require(
-            devops_manifest.contains(capability),
+            devops_capabilities.contains(capability),
             &format!("DevOps manifest is missing {capability}"),
         )?;
     }
@@ -1901,7 +2015,7 @@ fn verify_architecture() -> TaskResult {
         "Capability::Clipboard",
     ] {
         require(
-            !devops_manifest.contains(excessive),
+            !devops_capabilities.contains(excessive),
             &format!("DevOps manifest declares excessive privilege {excessive}"),
         )?;
     }

@@ -1,12 +1,17 @@
 use std::fmt;
 use std::path::PathBuf;
 
+use automexia_extension_api::{
+    BoundedText, ContractError, EnvironmentCapsule, ExecutableId, LaunchKind,
+    LaunchRequest, OperationId, SessionId,
+};
+
 /// Immutable description of how a terminal session was launched.
 ///
 /// This intentionally contains launch intent only. Runtime process state,
 /// scrollback, editor buffers, jobs, and extension caches never cross the
 /// cloning boundary.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct SessionLaunchDescriptor {
     program: Option<String>,
     args: Vec<String>,
@@ -14,6 +19,27 @@ pub struct SessionLaunchDescriptor {
     profile_identity: Option<String>,
     starting_directory: Option<String>,
     kind: SessionKind,
+}
+
+impl fmt::Debug for SessionLaunchDescriptor {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SessionLaunchDescriptor")
+            .field("program", &self.program)
+            .field("argument_count", &self.args.len())
+            .field(
+                "environment_names",
+                &self
+                    .environment
+                    .iter()
+                    .map(|(name, _)| name.as_str())
+                    .collect::<Vec<_>>(),
+            )
+            .field("has_profile_identity", &self.profile_identity.is_some())
+            .field("has_starting_directory", &self.starting_directory.is_some())
+            .field("kind", &if self.is_wsl() { "wsl" } else { "native" })
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -119,6 +145,75 @@ impl SessionLaunchDescriptor {
             SessionKind::Wsl(wsl) => wsl.distro.as_deref(),
             SessionKind::Native => None,
         }
+    }
+
+    /// Produce the versioned extension contract from the existing launch path.
+    ///
+    /// Environment values remain private to the trusted PTY adapter; only
+    /// variable names cross this serializable boundary.
+    pub fn launch_contract(
+        &self,
+        operation_id: OperationId,
+        session_id: SessionId,
+    ) -> Result<LaunchRequest, ContractError> {
+        let executable = ExecutableId::new(
+            self.program
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or("default-shell"),
+        )?;
+        let arguments = self
+            .args
+            .iter()
+            .cloned()
+            .map(BoundedText::new)
+            .collect::<Result<Vec<_>, _>>()?;
+        let inherited_environment = self
+            .environment
+            .iter()
+            .map(|(name, _)| BoundedText::new(name.clone()))
+            .collect::<Result<Vec<_>, _>>()?;
+        let profile = bounded_optional(self.profile_identity.as_deref())?;
+        let working_directory = bounded_optional(self.starting_directory.as_deref())?;
+        let kind = match &self.kind {
+            SessionKind::Native => LaunchKind::Native,
+            SessionKind::Wsl(wsl) => LaunchKind::Wsl {
+                distribution: BoundedText::new(
+                    wsl.distro
+                        .as_deref()
+                        .filter(|value| !value.trim().is_empty())
+                        .unwrap_or("default"),
+                )?,
+                user: bounded_optional(wsl.user.as_deref())?,
+                shell: bounded_optional(wsl.shell_path.as_deref())?,
+            },
+        };
+        LaunchRequest::new(
+            operation_id,
+            session_id,
+            executable,
+            arguments,
+            profile,
+            working_directory,
+            inherited_environment,
+            Vec::new(),
+            kind,
+        )
+    }
+
+    pub fn environment_capsule(
+        &self,
+        session_id: SessionId,
+        revision: u64,
+    ) -> Result<EnvironmentCapsule, ContractError> {
+        let mut capsule = EnvironmentCapsule::new(session_id, revision, Vec::new())?;
+        capsule.cwd = bounded_optional(self.starting_directory.as_deref())?;
+        capsule.shell = bounded_optional(self.program.as_deref())?;
+        if let SessionKind::Wsl(wsl) = &self.kind {
+            capsule.distribution = bounded_optional(wsl.distro.as_deref())?;
+            capsule.user = bounded_optional(wsl.user.as_deref())?;
+        }
+        Ok(capsule)
     }
 
     /// Resolve a fresh launch using live facts without mutating the descriptor
@@ -339,6 +434,13 @@ fn decode_wsl_list(bytes: &[u8]) -> String {
     } else {
         String::from_utf8_lossy(bytes).into_owned()
     }
+}
+
+fn bounded_optional(value: Option<&str>) -> Result<Option<BoundedText>, ContractError> {
+    value
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| BoundedText::new(value.to_string()))
+        .transpose()
 }
 
 fn nonempty(value: Option<&str>) -> Option<&str> {
@@ -734,5 +836,81 @@ mod tests {
                 ("GREETING".to_string(), "hello 世界".to_string()),
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+
+    #[test]
+    fn launch_contract_reuses_descriptor_and_omits_environment_values() {
+        let descriptor = SessionLaunchDescriptor::new(
+            Some("pwsh.exe".to_string()),
+            vec!["-NoLogo".to_string()],
+            vec![
+                ("PATH".to_string(), "C:\\tools".to_string()),
+                ("TOKEN".to_string(), "plaintext-secret".to_string()),
+            ],
+            Some("work".to_string()),
+            Some("D:\\work tree\\项目".to_string()),
+        );
+        let contract = descriptor
+            .launch_contract(OperationId::new(8), SessionId::new(9))
+            .unwrap();
+        let encoded = serde_json::to_string(&contract).unwrap();
+        assert!(encoded.contains("PATH"));
+        assert!(encoded.contains("TOKEN"));
+        assert!(!encoded.contains("plaintext-secret"));
+        assert!(!format!("{descriptor:?}").contains("plaintext-secret"));
+        assert_eq!(contract.session_id, SessionId::new(9));
+    }
+
+    #[test]
+    fn wsl_descriptor_exports_one_matching_environment_capsule() {
+        let descriptor = SessionLaunchDescriptor::new(
+            Some("wsl.exe".to_string()),
+            vec![
+                "--distribution".to_string(),
+                "Ubuntu-24.04".to_string(),
+                "--user".to_string(),
+                "amjed".to_string(),
+                "--cd".to_string(),
+                "/srv/项目".to_string(),
+            ],
+            Vec::new(),
+            Some("Ubuntu".to_string()),
+            None,
+        );
+        let session_id = SessionId::new(44);
+        let capsule = descriptor.environment_capsule(session_id, 3).unwrap();
+        assert_eq!(capsule.session_id, session_id);
+        assert_eq!(capsule.revision, 3);
+        assert_eq!(
+            capsule.distribution.as_ref().map(BoundedText::as_str),
+            Some("Ubuntu-24.04")
+        );
+        assert_eq!(
+            capsule.user.as_ref().map(BoundedText::as_str),
+            Some("amjed")
+        );
+        let contract = descriptor
+            .launch_contract(OperationId::new(45), session_id)
+            .unwrap();
+        assert!(matches!(contract.kind, LaunchKind::Wsl { .. }));
+    }
+
+    #[test]
+    fn oversized_launch_arguments_fail_at_the_contract_boundary() {
+        let descriptor = SessionLaunchDescriptor::new(
+            Some("pwsh.exe".to_string()),
+            vec!["x".repeat(automexia_extension_api::MAX_CONTRACT_TEXT_BYTES + 1)],
+            Vec::new(),
+            None,
+            None,
+        );
+        assert!(descriptor
+            .launch_contract(OperationId::new(1), SessionId::new(1))
+            .is_err());
     }
 }

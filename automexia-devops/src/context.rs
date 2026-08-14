@@ -20,7 +20,7 @@ use std::{env, fs};
 use super::model::DevOpsSnapshot;
 #[cfg(not(target_arch = "wasm32"))]
 use super::model::{CloudContext, KubernetesContext, WslContext};
-use crate::automexia::api::SessionFacts;
+use automexia_extension_api::SessionFacts;
 
 const MAX_CONFIG_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_KUBECONFIG_FILES: usize = 16;

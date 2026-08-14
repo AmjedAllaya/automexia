@@ -1,7 +1,11 @@
 use std::hint::black_box;
 
-use automexia_terminal::automexia::api::SessionFacts;
+use automexia_terminal::automexia::api::{
+    ContextContribution, ExtensionId, Freshness, IconKind, SegmentRole, SessionFacts,
+    SessionId, StatusSegment,
+};
 use automexia_terminal::automexia::runtime;
+use automexia_ui_model::{layout_segments, project_status};
 use criterion::{criterion_group, criterion_main, Criterion};
 
 fn services(c: &mut Criterion) {
@@ -18,10 +22,60 @@ fn services(c: &mut Criterion) {
         shell_pid: 0,
     };
 
+    let contribution = ContextContribution::new(
+        ExtensionId::new("automexia.devops").unwrap(),
+        SessionId::new(session.session_id as u64),
+        1,
+        1,
+        Freshness::Current,
+        vec![
+            StatusSegment::new(
+                "docker",
+                "desktop-linux",
+                "Docker context desktop-linux",
+                SegmentRole::Docker,
+                IconKind::Docker,
+                60,
+                Freshness::Current,
+            )
+            .unwrap(),
+            StatusSegment::new(
+                "user",
+                "benchmark",
+                "User benchmark",
+                SegmentRole::User,
+                IconKind::User,
+                90,
+                Freshness::Current,
+            )
+            .unwrap(),
+        ],
+    )
+    .unwrap();
+    let projected = project_status(&session, &contribution);
+
     runtime::ensure_background_services();
 
+    c.bench_function("generic_context_projection", |b| {
+        b.iter(|| {
+            black_box(project_status(
+                black_box(&session),
+                black_box(&contribution),
+            ))
+        })
+    });
+    c.bench_function("generic_context_responsive_layout", |b| {
+        b.iter(|| {
+            black_box(layout_segments(
+                black_box(&projected),
+                black_box(120),
+                black_box(2),
+                black_box(1),
+            ))
+        })
+    });
     c.bench_function("extension_cache_access", |b| {
-        b.iter(|| black_box(runtime::devops_snapshot(black_box(session.session_id))))
+        b.iter(|| black_box(runtime::context_contribution(black_box(session.session_id))))
     });
     c.bench_function("extension_worker_submission_nonblocking", |b| {
         b.iter(|| black_box(runtime::request_devops_refresh(black_box(&session), None)))

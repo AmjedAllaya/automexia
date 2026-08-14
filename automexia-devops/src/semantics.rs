@@ -1,4 +1,4 @@
-use crate::automexia::api::SemanticSeverity;
+use automexia_extension_api::SemanticSeverity;
 
 /// Classify one visible terminal row without allocating and without mutating
 /// terminal bytes. Explicit application ANSI colors still win in grid_emit.

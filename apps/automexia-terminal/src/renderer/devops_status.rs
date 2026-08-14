@@ -12,8 +12,9 @@ use rio_backend::config::colors::Colors;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
 
-use crate::automexia::api::SessionFacts;
-use crate::automexia::builtins::devops::{CloudContext, DevOpsSnapshot};
+use automexia_extension_api::{ContextContribution, IconKind, SegmentRole, SessionFacts};
+use automexia_ui_model::{self, IconOptics, Segment};
+
 use crate::automexia::runtime;
 use crate::automexia::ui::{
     CommandResultAnchor, PromptAnchor, MAX_PROMPT_CONTEXT_HISTORY,
@@ -31,55 +32,10 @@ const PROMPT_CONTEXT_PAD_X: f32 = 4.0;
 const PROMPT_CONTEXT_ICON_GAP: f32 = 8.0;
 const PROMPT_CONTEXT_SEPARATOR_GAP: f32 = 9.0;
 const PROMPT_RESULT_RESERVE: f32 = 112.0;
-const MIN_SEGMENT_CONTRAST: f32 = 4.55;
 
 const _: () = {
     assert!(PROMPT_CONTEXT_ICON_SLOT >= PROMPT_CONTEXT_ICON_SIZE);
 };
-
-const MAX_WSL_CHARS: usize = 14;
-const MAX_CONTEXT_CHARS: usize = 22;
-const MAX_CLOUD_CHARS: usize = 22;
-const MAX_GIT_CHARS: usize = 24;
-const MAX_ENV_CHARS: usize = 16;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum SegmentRole {
-    Production,
-    UbuntuWsl,
-    Windows,
-    Git,
-    Kubernetes,
-    Docker,
-    Azure,
-    Aws,
-    Gcp,
-    UnknownCloud,
-    Terraform,
-    Environment,
-    User,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum IconKind {
-    Wsl,
-    Windows,
-    Docker,
-    Kubernetes,
-    Cloud,
-    Terraform,
-    Git,
-    Environment,
-    User,
-    Production,
-}
-
-#[derive(Clone)]
-struct Segment {
-    value: String,
-    role: SegmentRole,
-    icon: IconKind,
-}
 
 struct PromptSnapshot {
     session_id: usize,
@@ -96,16 +52,6 @@ struct ActivePrompt {
     segments_revision: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct IconOptics {
-    /// Compensates for the amount of unused space inside each icon's font
-    /// bounding box. The result is an equal perceived height, not an equal
-    /// nominal point size.
-    scale: f32,
-    /// Final optical nudge after point-size centering.
-    y_shift: f32,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SnapshotCandidate {
     Unchanged,
@@ -115,7 +61,7 @@ enum SnapshotCandidate {
 
 #[derive(Default)]
 pub struct DevOpsStatus {
-    snapshot: DevOpsSnapshot,
+    contribution: Option<ContextContribution>,
     /// Materialized segment labels shared by live and historical prompt rows.
     /// Rebuilt only when session facts or the async discovery revision change.
     live_segments: Vec<Segment>,
@@ -549,7 +495,7 @@ impl DevOpsStatus {
         }
 
         if session_changed {
-            self.snapshot = DevOpsSnapshot::default();
+            self.contribution = None;
             self.observed_global_generation = 0;
             self.snapshot_revision = 0;
             self.request_in_flight = false;
@@ -583,8 +529,8 @@ impl DevOpsStatus {
         }
         self.observed_global_generation = global_generation;
 
-        let (revision, cached_session, snapshot) =
-            runtime::devops_snapshot(session.session_id);
+        let (revision, cached_session, contribution) =
+            runtime::context_contribution(session.session_id);
         match snapshot_candidate(
             self.snapshot_revision,
             revision,
@@ -606,7 +552,7 @@ impl DevOpsStatus {
         self.snapshot_revision = revision;
         self.refresh_pending = false;
         self.request_in_flight = false;
-        self.snapshot = snapshot;
+        self.contribution = Some(contribution);
     }
 
     fn ensure_live_segments(&mut self, session: &SessionFacts) {
@@ -623,97 +569,10 @@ impl DevOpsStatus {
     }
 
     fn build_live_segments(&self, session: &SessionFacts) -> Vec<Segment> {
-        let mut segments = Vec::new();
-        if self.snapshot.production {
-            segments.push(Segment {
-                value: "PRODUCTION".to_string(),
-                role: SegmentRole::Production,
-                icon: IconKind::Production,
-            });
-        }
-        let immediate_os = immediate_os_value(session);
-        let detected_wsl = immediate_os.or_else(|| {
-            (!is_native_windows_shell(session))
-                .then(|| self.snapshot.wsl.as_ref().map(|wsl| wsl_value(&wsl.distro)))
-                .flatten()
-        });
-        if let Some(os) = detected_wsl {
-            segments.push(Segment {
-                value: compact_label(&os, MAX_WSL_CHARS),
-                role: SegmentRole::UbuntuWsl,
-                icon: IconKind::Wsl,
-            });
-        } else if is_native_windows_shell(session) {
-            segments.push(Segment {
-                value: "Windows".to_string(),
-                role: SegmentRole::Windows,
-                icon: IconKind::Windows,
-            });
-        }
-        if let Some(branch) = &self.snapshot.git_branch {
-            segments.push(Segment {
-                value: compact_middle(branch, MAX_GIT_CHARS),
-                role: SegmentRole::Git,
-                icon: IconKind::Git,
-            });
-        }
-        if let Some(kubernetes) = &self.snapshot.kubernetes {
-            let value =
-                if kubernetes.namespace.is_empty() || kubernetes.namespace == "default" {
-                    compact_label(&kubernetes.context, MAX_CONTEXT_CHARS)
-                } else {
-                    compact_label(
-                        &format!("{}/{}", kubernetes.context, kubernetes.namespace),
-                        MAX_CONTEXT_CHARS,
-                    )
-                };
-            segments.push(Segment {
-                value,
-                role: SegmentRole::Kubernetes,
-                icon: IconKind::Kubernetes,
-            });
-        }
-        for cloud in &self.snapshot.clouds {
-            segments.push(Segment {
-                value: cloud_value(cloud),
-                role: cloud_segment_role(cloud.provider),
-                icon: IconKind::Cloud,
-            });
-        }
-        if let Some(context) = &self.snapshot.docker {
-            segments.push(Segment {
-                value: docker_value(context),
-                role: SegmentRole::Docker,
-                icon: IconKind::Docker,
-            });
-        }
-        if let Some(workspace) = &self.snapshot.terraform {
-            segments.push(Segment {
-                value: compact_label(workspace, MAX_CONTEXT_CHARS),
-                role: SegmentRole::Terraform,
-                icon: IconKind::Terraform,
-            });
-        }
-        if let Some(environment) = &self.snapshot.environment {
-            segments.push(Segment {
-                value: compact_label(environment, MAX_ENV_CHARS),
-                role: SegmentRole::Environment,
-                icon: IconKind::Environment,
-            });
-        }
-        if let Some(user) = self
-            .snapshot
-            .user
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-        {
-            segments.push(Segment {
-                value: compact_label(user, MAX_ENV_CHARS),
-                role: SegmentRole::User,
-                icon: IconKind::User,
-            });
-        }
-        segments
+        self.contribution.as_ref().map_or_else(
+            || automexia_ui_model::immediate_session_segments(session),
+            |contribution| automexia_ui_model::project_status(session, contribution),
+        )
     }
 }
 
@@ -746,18 +605,7 @@ fn same_prompt_identity(
 
 /// Symbols from the Nerd Font vocabulary used by the reference project.
 fn icon_glyph(icon: IconKind) -> &'static str {
-    match icon {
-        IconKind::Wsl => "\u{f31b}",
-        IconKind::Windows => "\u{e70f}",
-        IconKind::Docker => "\u{f308}",
-        IconKind::Kubernetes => "\u{f10fe}",
-        IconKind::Cloud => "\u{f0c2}",
-        IconKind::Terraform => "\u{f1062}",
-        IconKind::Git => "\u{e725}",
-        IconKind::Environment => "\u{f1b2}",
-        IconKind::User => "\u{f007}",
-        IconKind::Production => "\u{f071}",
-    }
+    automexia_ui_model::icon_glyph(icon)
 }
 
 /// Optical corrections measured against the bundled Symbols Nerd Font.
@@ -766,48 +614,7 @@ fn icon_glyph(icon: IconKind) -> &'static str {
 /// environment marks are also deliberately compact.
 #[inline]
 fn icon_optics(icon: IconKind) -> IconOptics {
-    match icon {
-        IconKind::Wsl => IconOptics {
-            scale: 1.0,
-            y_shift: 0.0,
-        },
-        IconKind::Windows => IconOptics {
-            scale: 1.10,
-            y_shift: 0.0,
-        },
-        IconKind::Docker => IconOptics {
-            scale: 1.85,
-            y_shift: -0.5,
-        },
-        IconKind::Kubernetes => IconOptics {
-            scale: 0.94,
-            y_shift: 0.0,
-        },
-        IconKind::Cloud => IconOptics {
-            scale: 1.16,
-            y_shift: 0.5,
-        },
-        IconKind::Terraform => IconOptics {
-            scale: 1.10,
-            y_shift: 0.0,
-        },
-        IconKind::Git => IconOptics {
-            scale: 1.02,
-            y_shift: 0.0,
-        },
-        IconKind::Environment => IconOptics {
-            scale: 1.12,
-            y_shift: 0.0,
-        },
-        IconKind::User => IconOptics {
-            scale: 1.04,
-            y_shift: 0.0,
-        },
-        IconKind::Production => IconOptics {
-            scale: 1.08,
-            y_shift: 0.0,
-        },
-    }
+    automexia_ui_model::icon_optics(icon)
 }
 
 #[inline]
@@ -843,39 +650,6 @@ fn draw_icon_in_slot(
         .draw(x, icon_draw_y(base_y, base_size, icon), glyph, &opts);
 }
 
-fn shell_label(session: &SessionFacts) -> &'static str {
-    if let Some(name) = session.shell_name.as_deref() {
-        if name.eq_ignore_ascii_case("powershell") || name.eq_ignore_ascii_case("pwsh") {
-            return "PowerShell";
-        }
-        if name.eq_ignore_ascii_case("bash") {
-            return "bash";
-        }
-        if name.eq_ignore_ascii_case("zsh") {
-            return "zsh";
-        }
-        if name.eq_ignore_ascii_case("cmd") || name.eq_ignore_ascii_case("command prompt")
-        {
-            return "CMD";
-        }
-    }
-    if session
-        .distro
-        .as_ref()
-        .is_some_and(|value| !value.trim().is_empty())
-    {
-        return "zsh";
-    }
-    #[cfg(target_os = "windows")]
-    return "PowerShell";
-    #[cfg(not(target_os = "windows"))]
-    return "zsh";
-}
-
-fn is_native_windows_shell(session: &SessionFacts) -> bool {
-    matches!(shell_label(session), "PowerShell" | "CMD")
-}
-
 fn format_duration(elapsed_ms: u64) -> String {
     if elapsed_ms < 1_000 {
         format!("{elapsed_ms}ms")
@@ -890,66 +664,6 @@ fn format_duration(elapsed_ms: u64) -> String {
     }
 }
 
-fn immediate_os_value(session: &SessionFacts) -> Option<String> {
-    let distro = session
-        .distro
-        .as_ref()
-        .filter(|value| !value.trim().is_empty())?;
-    let (_, path) = parse_shell_title(&session.title)?;
-    path.starts_with('/').then(|| wsl_value(distro))
-}
-
-fn parse_shell_title(title: &str) -> Option<(String, String)> {
-    let (user, host_and_path) = title.trim().rsplit_once('@')?;
-    let (host, path) = host_and_path.split_once(':')?;
-    let user = user.split_whitespace().last()?.trim();
-    let path = path.trim();
-    if user.is_empty() || host.trim().is_empty() || path.is_empty() {
-        return None;
-    }
-    Some((user.to_string(), path.to_string()))
-}
-
-fn wsl_value(distro: &str) -> String {
-    let distro = distro.trim();
-    if distro.eq_ignore_ascii_case("Ubuntu") || distro.starts_with("Ubuntu-") {
-        "Ubuntu".to_string()
-    } else {
-        distro.to_string()
-    }
-}
-
-fn cloud_value(cloud: &CloudContext) -> String {
-    if !cloud.region.trim().is_empty() {
-        compact_label(&cloud.region, MAX_CLOUD_CHARS)
-    } else if !cloud.profile.trim().is_empty() {
-        compact_label(&cloud.profile, MAX_CLOUD_CHARS)
-    } else {
-        cloud.provider.to_string()
-    }
-}
-
-fn cloud_segment_role(provider: &str) -> SegmentRole {
-    match provider.trim().to_ascii_lowercase().as_str() {
-        "aws" | "amazon" | "amazon web services" => SegmentRole::Aws,
-        "azure" | "microsoft azure" => SegmentRole::Azure,
-        "gcp" | "google" | "google cloud" | "google cloud platform" => SegmentRole::Gcp,
-        _ => SegmentRole::UnknownCloud,
-    }
-}
-
-fn docker_value(context: &str) -> String {
-    let context = context.trim();
-    if context.is_empty()
-        || context.eq_ignore_ascii_case("default")
-        || context.eq_ignore_ascii_case("docker")
-    {
-        "docker".to_string()
-    } else {
-        compact_label(context, MAX_CONTEXT_CHARS)
-    }
-}
-
 pub(crate) fn next_context_wake_millis(refresh_pending: bool) -> u64 {
     if refresh_pending {
         100
@@ -958,36 +672,14 @@ pub(crate) fn next_context_wake_millis(refresh_pending: bool) -> u64 {
     }
 }
 
+#[cfg(test)]
 fn compact_label(value: &str, max_chars: usize) -> String {
-    let value = value.trim();
-    if value.chars().count() <= max_chars {
-        return value.to_string();
-    }
-    let mut out: String = value.chars().take(max_chars.saturating_sub(1)).collect();
-    out.push('…');
-    out
+    automexia_ui_model::compact_label(value, max_chars)
 }
 
+#[cfg(test)]
 fn compact_middle(value: &str, max_chars: usize) -> String {
-    let value = value.trim();
-    if value.chars().count() <= max_chars {
-        return value.to_string();
-    }
-    if max_chars < 5 {
-        return compact_label(value, max_chars);
-    }
-    let left = (max_chars - 1) / 2;
-    let right = max_chars - left - 1;
-    let head: String = value.chars().take(left).collect();
-    let tail: String = value
-        .chars()
-        .rev()
-        .take(right)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect();
-    format!("{head}…{tail}")
+    automexia_ui_model::compact_middle(value, max_chars)
 }
 
 fn muted(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
@@ -995,148 +687,23 @@ fn muted(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
     color
 }
 
+#[cfg(test)]
 fn segment_anchor_rgb(role: SegmentRole) -> [u8; 3] {
-    match role {
-        SegmentRole::Production => [0xff, 0x5c, 0x7a],
-        SegmentRole::UbuntuWsl => [0xff, 0x6a, 0x00],
-        SegmentRole::Windows => [0x62, 0xb0, 0xff],
-        SegmentRole::Git => [0xdc, 0x78, 0xff],
-        SegmentRole::Kubernetes => [0x50, 0xd5, 0xff],
-        SegmentRole::Docker => [0x24, 0x96, 0xed],
-        SegmentRole::Azure => [0x14, 0x7d, 0xdb],
-        SegmentRole::Aws => [0xff, 0xb0, 0x20],
-        SegmentRole::Gcp => [0xf4, 0x6f, 0x61],
-        SegmentRole::UnknownCloud => [0xff, 0xd1, 0x66],
-        SegmentRole::Terraform => [0xa7, 0x8b, 0xfa],
-        SegmentRole::Environment => [0x2d, 0xd4, 0xbf],
-        SegmentRole::User => [0xb8, 0xf3, 0x6b],
-    }
+    automexia_ui_model::segment_anchor_rgb(role)
 }
 
+#[cfg(test)]
 fn segment_anchor(role: SegmentRole) -> [f32; 4] {
-    let [red, green, blue] = segment_anchor_rgb(role);
-    [
-        f32::from(red) / 255.0,
-        f32::from(green) / 255.0,
-        f32::from(blue) / 255.0,
-        1.0,
-    ]
+    automexia_ui_model::segment_anchor(role)
 }
 
-/// Resolve every operational identity from one semantic source for live and
-/// historical prompt rows. Theme customization may move only HSL lightness;
-/// the identity's anchor hue and saturation remain stable while text contrast
-/// is brought up to WCAG AA.
 fn segment_color(colors: Colors, role: SegmentRole) -> [f32; 4] {
-    let anchor = segment_anchor(role);
-    let rendered_anchor = color_to_u8(anchor).map(|channel| f32::from(channel) / 255.0);
-    if contrast_ratio(rendered_anchor, colors.background.0) >= 4.5 {
-        return anchor;
-    }
-    // Keep a small margin so conversion to the renderer's 8-bit color does
-    // not pull the displayed result below the 4.5:1 contract.
-    ensure_contrast(anchor, colors.background.0, MIN_SEGMENT_CONTRAST)
+    automexia_ui_model::segment_color(colors.background.0, role)
 }
 
-fn ensure_contrast(anchor: [f32; 4], background: [f32; 4], minimum: f32) -> [f32; 4] {
-    if contrast_ratio(anchor, background) >= minimum {
-        return anchor;
-    }
-
-    let (hue, saturation, lightness) = rgb_to_hsl(anchor);
-    let black = hsl_to_rgb(hue, saturation, 0.0);
-    let white = hsl_to_rgb(hue, saturation, 1.0);
-    let lighten = contrast_ratio(white, background) >= contrast_ratio(black, background);
-
-    // Find the smallest lightness movement that satisfies the contrast floor.
-    // One of the black/white endpoints always reaches at least 4.5:1 for a
-    // finite sRGB background, so the search remains deterministic.
-    let resolved_lightness = if lighten {
-        let mut failing = lightness;
-        let mut passing = 1.0;
-        for _ in 0..24 {
-            let candidate = (failing + passing) * 0.5;
-            if contrast_ratio(hsl_to_rgb(hue, saturation, candidate), background)
-                >= minimum
-            {
-                passing = candidate;
-            } else {
-                failing = candidate;
-            }
-        }
-        passing
-    } else {
-        let mut passing = 0.0;
-        let mut failing = lightness;
-        for _ in 0..24 {
-            let candidate = (passing + failing) * 0.5;
-            if contrast_ratio(hsl_to_rgb(hue, saturation, candidate), background)
-                >= minimum
-            {
-                passing = candidate;
-            } else {
-                failing = candidate;
-            }
-        }
-        passing
-    };
-    hsl_to_rgb(hue, saturation, resolved_lightness)
-}
-
+#[cfg(test)]
 fn contrast_ratio(left: [f32; 4], right: [f32; 4]) -> f32 {
-    let left = relative_luminance(left);
-    let right = relative_luminance(right);
-    (left.max(right) + 0.05) / (left.min(right) + 0.05)
-}
-
-fn relative_luminance(color: [f32; 4]) -> f32 {
-    let channel = |value: f32| {
-        let value = value.clamp(0.0, 1.0);
-        if value <= 0.04045 {
-            value / 12.92
-        } else {
-            ((value + 0.055) / 1.055).powf(2.4)
-        }
-    };
-    0.2126 * channel(color[0]) + 0.7152 * channel(color[1]) + 0.0722 * channel(color[2])
-}
-
-fn rgb_to_hsl(color: [f32; 4]) -> (f32, f32, f32) {
-    let red = color[0].clamp(0.0, 1.0);
-    let green = color[1].clamp(0.0, 1.0);
-    let blue = color[2].clamp(0.0, 1.0);
-    let maximum = red.max(green).max(blue);
-    let minimum = red.min(green).min(blue);
-    let delta = maximum - minimum;
-    let lightness = (maximum + minimum) * 0.5;
-    if delta <= f32::EPSILON {
-        return (0.0, 0.0, lightness);
-    }
-    let saturation = delta / (1.0 - (2.0 * lightness - 1.0).abs());
-    let hue_sector = if maximum == red {
-        ((green - blue) / delta).rem_euclid(6.0)
-    } else if maximum == green {
-        (blue - red) / delta + 2.0
-    } else {
-        (red - green) / delta + 4.0
-    };
-    (hue_sector / 6.0, saturation, lightness)
-}
-
-fn hsl_to_rgb(hue: f32, saturation: f32, lightness: f32) -> [f32; 4] {
-    let chroma = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation;
-    let hue_sector = hue.rem_euclid(1.0) * 6.0;
-    let secondary = chroma * (1.0 - (hue_sector.rem_euclid(2.0) - 1.0).abs());
-    let (red, green, blue) = match hue_sector as u8 {
-        0 => (chroma, secondary, 0.0),
-        1 => (secondary, chroma, 0.0),
-        2 => (0.0, chroma, secondary),
-        3 => (0.0, secondary, chroma),
-        4 => (secondary, 0.0, chroma),
-        _ => (chroma, 0.0, secondary),
-    };
-    let offset = lightness - chroma * 0.5;
-    [red + offset, green + offset, blue + offset, 1.0]
+    automexia_ui_model::contrast_ratio(left, right)
 }
 
 fn color_to_u8(color: [f32; 4]) -> [u8; 4] {
@@ -1146,6 +713,7 @@ fn color_to_u8(color: [f32; 4]) -> [u8; 4] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use automexia_extension_api::{ExtensionId, Freshness, SessionId, StatusSegment};
 
     const ALL_SEGMENT_ROLES: [SegmentRole; 13] = [
         SegmentRole::Production,
@@ -1192,7 +760,14 @@ mod tests {
             title: title.to_string(),
             distro: distro.map(str::to_string),
             os_version: None,
-            shell_name: None,
+            shell_name: Some(
+                if distro.is_some() {
+                    "bash"
+                } else {
+                    "PowerShell"
+                }
+                .to_string(),
+            ),
             shell_user: None,
             shell_path: None,
             shell_integration: true,
@@ -1200,141 +775,59 @@ mod tests {
         }
     }
 
-    #[test]
-    fn every_semantic_role_has_the_exact_brand_anchor() {
-        let expected = [
-            (SegmentRole::Production, [0xff, 0x5c, 0x7a]),
-            (SegmentRole::UbuntuWsl, [0xff, 0x6a, 0x00]),
-            (SegmentRole::Windows, [0x62, 0xb0, 0xff]),
-            (SegmentRole::Git, [0xdc, 0x78, 0xff]),
-            (SegmentRole::Kubernetes, [0x50, 0xd5, 0xff]),
-            (SegmentRole::Docker, [0x24, 0x96, 0xed]),
-            (SegmentRole::Azure, [0x14, 0x7d, 0xdb]),
-            (SegmentRole::Aws, [0xff, 0xb0, 0x20]),
-            (SegmentRole::Gcp, [0xf4, 0x6f, 0x61]),
-            (SegmentRole::UnknownCloud, [0xff, 0xd1, 0x66]),
-            (SegmentRole::Terraform, [0xa7, 0x8b, 0xfa]),
-            (SegmentRole::Environment, [0x2d, 0xd4, 0xbf]),
-            (SegmentRole::User, [0xb8, 0xf3, 0x6b]),
-        ];
-        for (role, anchor) in expected {
-            assert_eq!(
-                segment_anchor_rgb(role),
-                anchor,
-                "wrong anchor for {role:?}"
-            );
-        }
+    fn contribution(segments: Vec<StatusSegment>) -> ContextContribution {
+        ContextContribution::new(
+            ExtensionId::new("automexia.devops").unwrap(),
+            SessionId::new(1),
+            1,
+            1,
+            Freshness::Current,
+            segments,
+        )
+        .unwrap()
+    }
+
+    fn status_segment(
+        id: &str,
+        value: &str,
+        role: SegmentRole,
+        icon: IconKind,
+        priority: u16,
+    ) -> StatusSegment {
+        StatusSegment::new(
+            id,
+            value,
+            format!("{id} {value}"),
+            role,
+            icon,
+            priority,
+            Freshness::Current,
+        )
+        .unwrap()
     }
 
     #[test]
-    fn semantic_colors_reach_contrast_on_dark_light_and_custom_themes() {
+    fn renderer_adapter_uses_the_shared_brand_anchors_and_contrast() {
         let backgrounds = [
             [0.01, 0.02, 0.03, 1.0],
             [0.98, 0.98, 0.96, 1.0],
             [0.32, 0.34, 0.37, 1.0],
-            [0.08, 0.31, 0.28, 1.0],
         ];
         for background in backgrounds {
             let colors = colors_with_background(background);
-            let mut distinct = std::collections::HashSet::new();
             for role in ALL_SEGMENT_ROLES {
-                let resolved = segment_color(colors, role);
-                let rendered = quantized(resolved);
-                assert!(
-                    contrast_ratio(rendered, background) >= 4.5,
-                    "{role:?} resolved to {rendered:?} below 4.5:1 on {background:?}"
+                assert_eq!(
+                    segment_anchor_rgb(role),
+                    automexia_ui_model::segment_anchor_rgb(role)
                 );
-                assert!(
-                    distinct.insert(color_to_u8(resolved)),
-                    "{role:?} duplicated another identity color on {background:?}"
-                );
+                let rendered = quantized(segment_color(colors, role));
+                assert!(contrast_ratio(rendered, background) >= 4.5);
             }
         }
-    }
-
-    #[test]
-    fn low_contrast_correction_preserves_anchor_hue() {
-        for role in ALL_SEGMENT_ROLES {
-            let anchor = segment_anchor(role);
-            let colors = colors_with_background(anchor);
-            let resolved = segment_color(colors, role);
-            let (anchor_hue, anchor_saturation, _) = rgb_to_hsl(anchor);
-            let (resolved_hue, resolved_saturation, _) = rgb_to_hsl(resolved);
-            assert!((anchor_hue - resolved_hue).abs() < 0.0001, "{role:?}");
-            assert!(
-                (anchor_saturation - resolved_saturation).abs() < 0.0001,
-                "{role:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn default_theme_keeps_every_identity_visibly_distinct() {
-        let colors = Colors::default();
-        let mut resolved = std::collections::HashSet::new();
-        for role in ALL_SEGMENT_ROLES {
-            assert!(
-                resolved.insert(color_to_u8(segment_color(colors, role))),
-                "{role:?} duplicated another default identity color"
-            );
-        }
-        assert_ne!(
-            segment_color(colors, SegmentRole::Windows),
-            segment_color(colors, SegmentRole::Docker)
-        );
-        assert_ne!(
-            segment_color(colors, SegmentRole::Docker),
-            segment_color(colors, SegmentRole::Azure)
-        );
-        assert_eq!(segment_anchor_rgb(SegmentRole::User), [0xb8, 0xf3, 0x6b]);
-    }
-
-    #[test]
-    fn live_and_historical_prompts_share_one_role_resolver() {
-        let colors = colors_with_background([0.92, 0.90, 0.86, 1.0]);
-        for role in ALL_SEGMENT_ROLES {
-            let live_prompt_color = segment_color(colors, role);
-            let historical_prompt_color = segment_color(colors, role);
-            assert_eq!(live_prompt_color, historical_prompt_color);
-        }
-    }
-
-    #[test]
-    fn cloud_providers_map_to_independent_roles() {
-        assert_eq!(cloud_segment_role("AWS"), SegmentRole::Aws);
-        assert_eq!(cloud_segment_role("azure"), SegmentRole::Azure);
-        assert_eq!(cloud_segment_role("Google Cloud"), SegmentRole::Gcp);
         assert_eq!(
-            cloud_segment_role("private-cloud"),
-            SegmentRole::UnknownCloud
+            segment_anchor(SegmentRole::User),
+            automexia_ui_model::segment_anchor(SegmentRole::User)
         );
-    }
-
-    #[test]
-    fn powershell_never_inherits_a_stale_wsl_badge() {
-        let mut native = session(
-            "lamjed@DESKTOP: D:/workstation/projects",
-            Some("Ubuntu-24.04"),
-        );
-        native.shell_name = Some("PowerShell".to_string());
-        assert_eq!(immediate_os_value(&native), None);
-        assert_eq!(shell_label(&native), "PowerShell");
-    }
-
-    #[test]
-    fn command_prompt_is_a_native_windows_shell() {
-        let mut native = session("CMD - D:/workstation/projects", Some("Ubuntu-24.04"));
-        native.shell_name = Some("CMD".to_string());
-        native.distro = None;
-        assert_eq!(shell_label(&native), "CMD");
-        assert!(is_native_windows_shell(&native));
-        assert_eq!(immediate_os_value(&native), None);
-    }
-
-    #[test]
-    fn wsl_title_and_distro_produce_the_real_distribution() {
-        let wsl = session("lamjed@DESKTOP:/mnt/d/workstation", Some("Ubuntu-24.04"));
-        assert_eq!(immediate_os_value(&wsl).as_deref(), Some("Ubuntu"));
     }
 
     #[test]
@@ -1345,33 +838,41 @@ mod tests {
     }
 
     #[test]
-    fn reference_icons_are_real_nerd_font_codepoints() {
+    fn renderer_icon_adapter_uses_shared_glyphs_and_optics() {
+        let docker = icon_optics(IconKind::Docker);
+        assert_eq!(docker.scale, 1.85);
         for kind in ALL_ICON_KINDS {
+            assert_eq!(icon_glyph(kind), automexia_ui_model::icon_glyph(kind));
             assert!(icon_glyph(kind)
                 .chars()
                 .all(|character| character as u32 >= 0xe000));
+            let optics = icon_optics(kind);
+            assert!((0.90..=1.90).contains(&optics.scale));
+            let prompt_size = icon_font_size(PROMPT_CONTEXT_ICON_SIZE, kind);
+            assert!(prompt_size > 0.0);
+            let prompt_center = icon_draw_y(20.0, PROMPT_CONTEXT_ICON_SIZE, kind)
+                + prompt_size * 0.5
+                - optics.y_shift;
+            assert!(
+                (prompt_center - (20.0 + PROMPT_CONTEXT_ICON_SIZE * 0.5)).abs() < 0.001
+            );
         }
     }
 
     #[test]
-    fn labels_truncate_on_unicode_boundaries() {
-        assert_eq!(compact_label("dev-😀-cluster-name", 10), "dev-😀-clu…");
+    fn renderer_compaction_delegates_to_grapheme_safe_ui_policy() {
         assert_eq!(
-            compact_middle("feature/very-long-branch", 12)
-                .chars()
-                .count(),
-            12
+            compact_label("dev-😀-cluster-name", 10),
+            automexia_ui_model::compact_label("dev-😀-cluster-name", 10)
+        );
+        assert_eq!(
+            compact_middle("feature/very-long-branch", 12),
+            automexia_ui_model::compact_middle("feature/very-long-branch", 12)
         );
     }
 
     #[test]
-    fn default_docker_context_uses_the_product_label() {
-        assert_eq!(docker_value("default"), "docker");
-        assert_eq!(docker_value("desktop-linux"), "desktop-linux");
-    }
-
-    #[test]
-    fn live_segments_rebuild_only_when_their_inputs_change() {
+    fn live_segments_rebuild_only_when_generic_inputs_change() {
         let session = session("amjed@host:/work", Some("Ubuntu"));
         let mut status = DevOpsStatus::default();
         status.ensure_live_segments(&session);
@@ -1380,7 +881,13 @@ mod tests {
         status.ensure_live_segments(&session);
         assert_eq!(status.live_segments_revision, initial_revision);
 
-        status.snapshot.docker = Some("default".to_string());
+        status.contribution = Some(contribution(vec![status_segment(
+            "docker",
+            "docker",
+            SegmentRole::Docker,
+            IconKind::Docker,
+            60,
+        )]));
         status.snapshot_revision = 1;
         status.ensure_live_segments(&session);
         assert_eq!(
@@ -1394,33 +901,32 @@ mod tests {
     }
 
     #[test]
-    fn every_prompt_icon_has_bounded_optical_metrics() {
-        let docker = icon_optics(IconKind::Docker);
-        assert_eq!(docker.scale, 1.85);
-        assert!(ALL_ICON_KINDS
-            .iter()
-            .all(|kind| docker.scale >= icon_optics(*kind).scale));
-
-        for kind in ALL_ICON_KINDS {
-            let optics = icon_optics(kind);
-            assert!(
-                (0.90..=1.90).contains(&optics.scale),
-                "unsafe optical scale for {kind:?}: {}",
-                optics.scale
-            );
-            let prompt_size = icon_font_size(PROMPT_CONTEXT_ICON_SIZE, kind);
-            assert!(prompt_size > 0.0);
-
-            // Point-size compensation keeps every glyph centered on the same
-            // nominal box before its small intentional optical nudge.
-            let prompt_center = icon_draw_y(20.0, PROMPT_CONTEXT_ICON_SIZE, kind)
-                + prompt_size * 0.5
-                - optics.y_shift;
-            assert!(
-                (prompt_center - (20.0 + PROMPT_CONTEXT_ICON_SIZE * 0.5)).abs() < 0.001,
-                "{kind:?}"
-            );
-        }
+    fn generic_projection_preserves_priority_and_user_is_final() {
+        let session = session("amjed@host:/work", Some("Ubuntu"));
+        let status = DevOpsStatus {
+            contribution: Some(contribution(vec![
+                status_segment(
+                    "docker",
+                    "docker",
+                    SegmentRole::Docker,
+                    IconKind::Docker,
+                    60,
+                ),
+                status_segment("user", "amjed", SegmentRole::User, IconKind::User, 90),
+            ])),
+            ..DevOpsStatus::default()
+        };
+        let segments = status.build_live_segments(&session);
+        assert_eq!(
+            segments.last().map(|segment| segment.icon),
+            Some(IconKind::User)
+        );
+        assert!(
+            segments
+                .iter()
+                .any(|segment| segment.icon == IconKind::Docker
+                    && segment.value == "docker")
+        );
     }
 
     #[test]
@@ -1430,7 +936,7 @@ mod tests {
     }
 
     #[test]
-    fn stale_startup_snapshot_is_retried_without_waiting_for_timeout() {
+    fn stale_startup_contribution_is_retried_without_timeout() {
         let current = session("amjed@host:/work/current", Some("Ubuntu"));
         let stale = session("Automexia", None);
         assert_eq!(
@@ -1444,30 +950,6 @@ mod tests {
         assert_eq!(
             snapshot_candidate(2, 2, Some(&current), &current),
             SnapshotCandidate::Unchanged
-        );
-    }
-
-    #[test]
-    fn live_user_is_the_final_context_segment() {
-        let session = session("amjed@host:/work", Some("Ubuntu"));
-        let status = DevOpsStatus {
-            snapshot: DevOpsSnapshot {
-                docker: Some("default".to_string()),
-                user: Some("amjed".to_string()),
-                ..DevOpsSnapshot::default()
-            },
-            ..DevOpsStatus::default()
-        };
-        let segments = status.build_live_segments(&session);
-        assert_eq!(
-            segments.last().map(|segment| segment.icon),
-            Some(IconKind::User)
-        );
-        assert!(
-            segments
-                .iter()
-                .any(|segment| segment.icon == IconKind::Docker
-                    && segment.value == "docker")
         );
     }
 

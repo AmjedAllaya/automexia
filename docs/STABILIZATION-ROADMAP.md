@@ -637,6 +637,30 @@ Exit gate: two panes can display different providers, identities, clusters, and
 risk classifications without sharing results; provider removal from renderer
 code is enforced by architecture tests.
 
+#### Phase 1 execution ledger (D1-D2, 2026-08-14)
+
+| Obligation | Status | Implemented evidence |
+|---|---|---|
+| D1.1 typed API extraction | Complete | `automexia-extension-api` is private and renderer/window/GPU/PTY/provider independent; the frontend API file is a compatibility re-export only. |
+| D1.2 runtime extraction | Complete | `automexia-extension-runtime` owns generation, cancellation, bounded FIFO cache, bounded non-blocking worker, coalescing, exact-route wake trait, registration latch, and rebind planning without frontend event types. |
+| D1.3 local DevOps extraction | Complete | Existing models, detection, sanitization, and semantics moved behind `LocalContextProvider`; the frontend contains only a compatibility facade. No network, clipboard, or process capability was added. |
+| D1.4 UI-model extraction | Complete | Generic projection, priority/deduplication, responsive layout, grapheme-safe compaction, icon policy, semantic color/contrast, accessibility summaries, hit testing, and details routing live in `automexia-ui-model`; GPU paint remains in the frontend renderer adapter. |
+| D1.5 single launch owner | Complete | `SessionLaunchDescriptor` remains the sole launch source. Its versioned view exports exact argument elements, public environment names, and non-secret capsule intent; the application remains the only route/PTY/process owner. |
+| D1.6-D1.7 versioning, bounds, and redaction | Complete | Required identifiers and schemas use version 1, size-checked constructors, validated deserialization, unknown-field rejection, collection ceilings, opaque secret references, and redacted secret-adjacent `Debug`. Environment values are absent from serialization. |
+| D1 verification | Complete locally | Exact adapter goldens, schema/Unicode/forward-version/adversarial-size tests, dependency graph enforcement, cancellation/coalescing/publish-before-wake/disable/shutdown Loom models, and pure-state Miri jobs are present. Hosted Miri remains CI evidence, not a Windows-native claim. |
+| D2.1 generic rendering | Complete | Renderer provider branches and provider types were removed. It consumes generic contributions and delegates model policy to `automexia-ui-model`. |
+| D2.2 immutable history | Complete | Prompt snapshots clone the generic projected segments once per prompt generation; live refresh cannot rewrite historical prompt context. |
+| D2.3 session capsule isolation | Complete | Every live/dead/cloned context owns a capsule matching its route/session ID. A clone receives a new capsule and independent PTY; no operation/cache identity is shared. |
+| D2.4 safe rebind transition | Complete at the provider-neutral boundary | `plan_rebind` validates monotonic revisions and requires a new session for shell/cwd/distro/user changes. The application cancels old-revision work and invalidates only the affected session cache. Managed environment-changing relaunch remains inactive until the Phase 2 broker supplies authority and UI. |
+| D2.5 complete cache identity | Complete | Keys contain extension, session, capsule revision, provider identity, source revision, and request kind. Results require an already-registered exact operation and current capsule before publication. |
+| D2.6 truthful failure state | Complete | Provider failure catches unwinds, retains the last known snapshot and original observation timestamp, publishes explicit error freshness, and wakes only after publication. |
+
+Phase 1 exit result: satisfied at the source boundary. Two-pane/session isolation,
+provider-neutral rendering, bounded lifecycle behavior, accessible generic UI
+policy, and behavior equivalence are automated. Phase 2 remains blocked from
+activation until its replacement ADR, exact executable broker, SSH security
+model, and native cross-platform evidence pass; Phase 1 does not weaken those
+gates.
 ### D3 — exact-argv first-party session launch
 
 1. Add a generic application-owned capability broker. The extension submits a

@@ -74,13 +74,13 @@ Unrelated engine-directory movement must not delay the SSH release.
 
 ### v0.5.0 foundation
 
-1. Remove Rio environment fallbacks and extract private
-   `automexia-extension-api`, `automexia-extension-runtime`,
+1. Extract private `automexia-extension-api`, `automexia-extension-runtime`,
    `automexia-devops`, and `automexia-ui-model` crates from the existing
-   `apps/automexia-terminal/src/automexia` and renderer seams. Extract
-   `automexia-app` only where ownership is already clear. Group inherited
-   engines beneath another directory only after the release-critical split is
-   stable.
+   application and renderer seams. Remove deprecated Rio environment fallbacks
+   only when the product version advances to v0.5; v0.4.x compatibility remains
+   intentional until that version transition. Extract `automexia-app` only
+   where ownership is already clear. Group inherited engines beneath another
+   directory only after the release-critical split is stable.
 2. Introduce versioned, renderer/PTY/GPU-independent contracts for
    `ExtensionId`, `SessionId`, `LaunchRequest`, `EnvironmentCapsule`,
    `ContextContribution`, `StatusSegment`, `Freshness`,
@@ -105,6 +105,27 @@ Unrelated engine-directory movement must not delay the SSH release.
    audited without secrets, and denied by default outside reviewed first-party
    extensions.
 
+#### Foundation implementation status (2026-08-14)
+
+The provider-neutral Phase 1 subset is complete at the source boundary:
+
+- all four private crates are extracted with an enforced dependency allowlist;
+- versioned bounded schemas, redacted launch/capsule adapters, generic status
+  projection, immutable prompt snapshots, session/capsule isolation, full cache
+  identity, cancellation, non-blocking saturation, and last-truth failure
+  behavior have focused regressions;
+- renderer and PTY paths contain no provider implementation dependency;
+- local Git/Docker/Kubernetes/cloud/Terraform/environment/OS/user behavior is
+  preserved behind a first-party local provider with no new authority.
+
+The following foundation work is intentionally not claimed by Phase 1:
+
+- deprecated Rio environment fallbacks remain until the v0.5 version transition;
+- `automexia-app` extraction and inherited engine directory grouping remain
+  deferred because neither is required for the release-critical boundary;
+- the capability decision UI, executable resolver, exact-argv broker, managed
+  environment-changing rebind/relaunch action, and `devops-ssh` activation begin
+  with Phase 2/D3 after the replacement ADR is accepted.
 ### v0.5.0 first-party SSH extension
 
 1. Ship `devops-ssh` as an optional, signed or compiled-in first-party

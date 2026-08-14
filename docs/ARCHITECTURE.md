@@ -2,13 +2,20 @@
 
 ## Layers
 
-Automexia v0.4 deliberately separates product policy from inherited terminal
-engines while postponing broad engine-directory churn until v0.5.
+Automexia v0.4 separates product policy from inherited terminal engines. The
+provider-neutral Phase 1 extraction is now implemented without moving inherited
+engine directories or creating a second PTY/process owner.
 
 ```text
 apps/automexia-terminal
-  product lifecycle, CLI, windows, renderer adapter, migration
-  automexia/api + builtins + runtime + state + UI model
+  product lifecycle, CLI, windows, PTY/session owner, renderer adapter
+                 |
+                 | compatibility facades and typed adapters
+                 v
+automexia-extension-api / automexia-extension-runtime
+  bounded versioned contracts, cache/queue/cancellation lifecycle
+automexia-devops / automexia-ui-model
+  local provider adapter, generic status/layout/accessibility policy
                  |
                  v
 rio-backend / rio-vt / teletypewriter / rio-window
@@ -23,7 +30,7 @@ sugarloaf / rio-graphics / rio-fonts
 product identifiers and configuration paths. Other crates must not duplicate
 Automexia IDs or path policy.
 
-## Target v0.5 DevOps composition
+## v0.5 DevOps composition
 
 v0.5 keeps the terminal core provider-neutral while delivering production SSH
 through an optional first-party extension. The release-critical composition is:
@@ -63,11 +70,14 @@ new Automexia PTY/session
 system OpenSSH or official provider CLI
 ```
 
-The current `apps/automexia-terminal/src/automexia/api.rs`,
-`automexia/runtime.rs`, `automexia/builtins/devops`, renderer DevOps status,
-and `context/launch.rs` seams are migration sources, not permanent places for
-provider policy. Extraction must be behavior preserving and ordered as defined
-in the [early DevOps/SSH delivery track](STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track).
+Phase 1 moved the pure contracts, bounded runtime primitives, current local
+DevOps implementation, and renderer-independent UI policy into the four private
+crates above. `apps/automexia-terminal/src/automexia/api.rs` and
+`automexia/builtins/devops/mod.rs` are compatibility facades;
+`automexia/runtime.rs`, renderer status paint, and `context/launch.rs` are
+application adapters. Provider detection and policy may not move back into the
+renderer or PTY path. The remaining capability broker and managed SSH work is
+ordered in the [early DevOps/SSH delivery track](STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track).
 
 ### Core and extension ownership
 
@@ -515,14 +525,14 @@ rollback, and redaction before it can write an external file.
 
 ## v0.5 boundary
 
-After v0.4 is stable, Automexia-owned modules will be extracted into private
-`automexia-extension-api`, `automexia-extension-runtime`,
-`automexia-devops`, and `automexia-ui-model` crates first, with
-`automexia-app` extracted only where ownership is already clear. This minimal
-ordering enables the production `devops-ssh` extension without coupling its
-release to unrelated engine-directory churn. Only after the release-critical
-split and behavior-equivalence adapters are stable may inherited engines move
-beneath `engine/`.
+The release-critical Phase 1 split into private `automexia-extension-api`,
+`automexia-extension-runtime`, `automexia-devops`, and `automexia-ui-model`
+crates is implemented. `automexia-app` remains deferred until ownership is
+clear, and inherited engines remain in their attributed directories. The
+production capability broker and `devops-ssh` implementation are later phases;
+this extraction does not grant new process, network, clipboard, PTY, or renderer
+authority. Engine grouping beneath `engine/` may happen only after these
+behavior-equivalence adapters remain stable through the release gates.
 
 The exact implementation order and acceptance evidence are in the
 [early DevOps and SSH delivery track](STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track).
