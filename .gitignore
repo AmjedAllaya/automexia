@@ -20,6 +20,11 @@ NOTES
 *.log
 lcov.info
 
+# Python QA/test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
 # for nix users
 .direnv/
 
