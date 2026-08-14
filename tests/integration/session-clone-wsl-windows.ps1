@@ -11,6 +11,8 @@ if ([string]::IsNullOrWhiteSpace($Binary)) {
 if (-not (Test-Path -LiteralPath $Binary -PathType Leaf)) {
     throw "Automexia test binary was not found at $Binary"
 }
+Add-Type -Path (Join-Path $PSScriptRoot 'windows-native-window-locator.cs')
+
 
 $installed = @(& wsl.exe --list --quiet | ForEach-Object {
     $_.Replace(([char]0).ToString(), [string]::Empty).Trim()
@@ -43,6 +45,23 @@ function Active-Panel {
     return @($Snapshot.panels | Where-Object { [bool]$_.active })[0]
 }
 
+function Send-AutomexiaTestControl {
+    param([string]$Control)
+    $stagedControl = Join-Path (
+        [IO.Path]::GetDirectoryName($controlPath)) (
+        '.automexia-wsl-control-{0}.tmp' -f [guid]::NewGuid().ToString('N'))
+    try {
+        [IO.File]::WriteAllText(
+            $stagedControl,
+            $Control,
+            [Text.UTF8Encoding]::new($false))
+        [IO.File]::Delete($controlPath)
+        [IO.File]::Move($stagedControl, $controlPath)
+    } finally {
+        [IO.File]::Delete($stagedControl)
+    }
+}
+
 $snapshotPath = Join-Path ([IO.Path]::GetTempPath()) ('automexia-wsl-clone-{0}.json' -f [guid]::NewGuid().ToString('N'))
 $controlPath = Join-Path ([IO.Path]::GetTempPath()) ('automexia-wsl-control-{0}.txt' -f [guid]::NewGuid().ToString('N'))
 $configRoot = Join-Path ([IO.Path]::GetTempPath()) ('automexia-wsl-config-{0}' -f [guid]::NewGuid().ToString('N'))
@@ -69,6 +88,8 @@ try {
     $tomlRoot = $wslRoot.Replace('"', '\"')
     $tomlRc = $bashRcWsl.Replace('"', '\"')
     $config = @"
+confirm-before-quit = false
+
 [shell]
 program = "wsl.exe"
 args = ["--distribution", "$tomlDistro", "--cd", "$tomlRoot", "--exec", "bash", "--noprofile", "--rcfile", "$tomlRc", "-i"]
@@ -84,14 +105,21 @@ args = ["--distribution", "$tomlDistro", "--cd", "$tomlRoot", "--exec", "bash", 
     $process = Start-Process -FilePath $Binary -WorkingDirectory $root -PassThru
 
     $deadline = [DateTime]::UtcNow.AddSeconds(20)
+    $applicationWindows = @()
     do {
         Start-Sleep -Milliseconds 50
         $process.Refresh()
-        $window = $process.MainWindowHandle
-    } while ($window -eq [IntPtr]::Zero -and -not $process.HasExited -and [DateTime]::UtcNow -lt $deadline)
-    if ($process.HasExited -or $window -eq [IntPtr]::Zero) {
-        throw 'Automexia did not expose a live WSL test window'
+        if (-not $process.HasExited) {
+            $applicationWindows = @(
+                [AutomexiaNativeWindowLocator]::VisibleApplicationWindows($process.Id))
+        }
+    } while ($applicationWindows.Count -eq 0 -and
+             -not $process.HasExited -and
+             [DateTime]::UtcNow -lt $deadline)
+    if ($process.HasExited -or $applicationWindows.Count -ne 1) {
+        throw "Automexia exposed $($applicationWindows.Count) live WSL application windows; expected 1"
     }
+    $window = $applicationWindows[0]
 
     $initial = Read-Snapshot
     $readyDeadline = [DateTime]::UtcNow.AddSeconds(20)
@@ -110,10 +138,7 @@ args = ["--distribution", "$tomlDistro", "--cd", "$tomlRoot", "--exec", "bash", 
         throw 'Initial WSL distro/user/shell/cwd metadata is incomplete'
     }
 
-    [IO.File]::WriteAllText(
-        $controlPath,
-        'clone-right:1',
-        [Text.UTF8Encoding]::new($false))
+    Send-AutomexiaTestControl 'clone-right:1'
     $cloneSnapshot = Read-Snapshot -After ([int64]$initial.sequence)
     $cloneDeadline = [DateTime]::UtcNow.AddSeconds(20)
     while (([int]$cloneSnapshot.panel_count -ne 2 -or
@@ -143,7 +168,8 @@ args = ["--distribution", "$tomlDistro", "--cd", "$tomlRoot", "--exec", "bash", 
     Write-Host "Native WSL clone passed for ${Distro}: routes $($source.route_id), $($clone.route_id)"
 } finally {
     if ($null -ne $process -and -not $process.HasExited) {
-        [void]$process.CloseMainWindow()
+        [void][AutomexiaNativeWindowLocator]::PostMessage(
+            $window, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
         if (-not $process.WaitForExit(5000)) { Stop-Process -Id $process.Id -Force }
     }
     if ($null -eq $previousSnapshot) {

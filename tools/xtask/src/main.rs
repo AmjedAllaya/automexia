@@ -1178,18 +1178,25 @@ fn verify_phase_zero_assurance() -> TaskResult {
     )?;
     let native_resize =
         read(&root().join("tests/integration/resize-stress-windows.ps1"))?;
+    let native_window_locator =
+        read(&root().join("tests/integration/windows-native-window-locator.cs"))?;
     require(
         native_resize.contains("BitBlt(")
             && native_resize.contains("ClientToScreen")
             && native_resize.contains("SetCaptureTopmost")
-            && native_resize.contains("Secondary Automexia window did not paint")
+            && native_resize.contains("VisibleApplicationWindows")
             && native_resize.contains("[string]$FrameCapture")
             && native_resize.contains("$frameDeadline = [DateTime]::UtcNow.AddSeconds(5)")
             && native_resize.contains("DistinctColorBuckets -ge 8")
             && native_resize.contains("did not settle within 5 seconds")
             && native_resize.contains("settle_milliseconds = $frameStopwatch.ElapsedMilliseconds")
-            && native_resize.contains("painted_frame = [ordered]@{"),
-        "Windows resize stress lacks strict bounded painted-frame settling or explicit private artifact control",
+            && native_resize.contains("painted_frame = [ordered]@{")
+            && native_window_locator.contains("EnumWindows")
+            && native_window_locator.contains("IsWindowVisible")
+            && native_window_locator.contains("Winit Thread Event Target")
+            && native_window_locator.contains("title.Length > 0")
+            && native_window_locator.contains("rect.Right - rect.Left >= 100"),
+        "Windows resize stress lacks reliable application-HWND discovery, strict bounded painted-frame settling, or explicit private artifact control",
     )?;
     require(
         root().join("docs/ACCESSIBILITY.md").is_file()
@@ -1981,6 +1988,14 @@ fn verify_architecture() -> TaskResult {
             && control_string_fuzz.contains("Automexia recovered")
             && nightly.contains("control_string_bounds"),
         "hostile control-string fuzz coverage is missing from the nightly matrix",
+    )?;
+    let image_decoder_fuzz = read(&root().join("fuzz/fuzz_targets/image_decoder.rs"))?;
+    require(
+        image_decoder_fuzz.contains("decode_bounded_bytes")
+            && read(&app.join("src/automexia/image.rs"))?
+                .contains("bytes.len() as u64 > MAX_FILE_BYTES")
+            && nightly.contains("image_decoder"),
+        "bounded image-decoder fuzz coverage is missing from the nightly matrix",
     )?;
 
     let devops_manifest = read(&root().join("automexia-devops/src/lib.rs"))?;

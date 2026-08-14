@@ -2594,6 +2594,22 @@ mod tests {
             island.chrome_action_at(1_280.0, 760.0, 1.0, 2, 1_265.0, 33.0),
             Some(ChromeAction::CloseWindow)
         );
+        for scale in [1.25_f32, 1.5, 2.0] {
+            let physical_width = 1_280.0 * scale;
+            let physical_height = 760.0 * scale;
+            assert_eq!(
+                island.chrome_action_at(
+                    physical_width,
+                    physical_height,
+                    scale,
+                    2,
+                    (physical_width - 24.0) / scale,
+                    32.0 / scale,
+                ),
+                Some(ChromeAction::CloseWindow),
+                "close target should survive {scale}x physical scaling",
+            );
+        }
     }
 
     #[test]
