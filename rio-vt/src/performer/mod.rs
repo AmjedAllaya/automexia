@@ -504,6 +504,22 @@ where
                     break;
                 }
 
+                // Opportunistically flush newly queued input before waiting for
+                // another writable-readiness notification. Anonymous ConPTY
+                // pipes are backed by a bounded nonblocking buffer, so this
+                // normally completes immediately. If the buffer is full,
+                // `pty_write` retains the remainder and writable interest below
+                // resumes it without blocking. This removes an avoidable poll
+                // cycle from every key press and is especially important on
+                // Windows, where re-registering an already-writable synthetic
+                // readiness source can otherwise defer delivery noticeably.
+                if state.needs_write() {
+                    if let Err(err) = self.pty_write(&mut state) {
+                        error!("Error writing queued input to PTY: {err}");
+                        break 'event_loop;
+                    }
+                }
+
                 for event in events.iter() {
                     match event.token() {
                         // Channel messages were already drained above.
