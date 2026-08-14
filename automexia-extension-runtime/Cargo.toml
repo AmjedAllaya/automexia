@@ -1,0 +1,16 @@
+[package]
+name = "automexia-extension-runtime"
+description = "Private bounded worker, cache, generation, cancellation, and wake primitives for Automexia."
+publish = false
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+automexia-extension-api = { workspace = true }
+
+[dev-dependencies]
+loom = { workspace = true }

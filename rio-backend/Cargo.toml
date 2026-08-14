@@ -12,7 +12,7 @@ description = "Backend infrastructure for Rio terminal"
 
 [lib]
 path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [dependencies]
 tracing = { workspace = true }

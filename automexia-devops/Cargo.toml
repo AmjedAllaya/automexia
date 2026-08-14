@@ -1,0 +1,16 @@
+[package]
+name = "automexia-devops"
+description = "Private local-only DevOps context providers and semantic classifiers for Automexia."
+publish = false
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+automexia-extension-api = { workspace = true }
+automexia-ui-model = { workspace = true }
+dirs = "6.0.0"
+serde_json = { workspace = true }

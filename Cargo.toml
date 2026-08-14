@@ -1,5 +1,9 @@
 [workspace]
 members = [
+    "automexia-extension-api",
+    "automexia-extension-runtime",
+    "automexia-devops",
+    "automexia-ui-model",
     "sugarloaf",
     "teletypewriter",
     "corcovado",
@@ -46,6 +50,11 @@ log-level-environment = "AUTOMEXIA_LOG_LEVEL"
 shell-integration-environment = "AUTOMEXIA_SHELL_INTEGRATION"
 
 [workspace.dependencies]
+automexia-extension-api = { path = "automexia-extension-api", version = "0.4.0" }
+automexia-extension-runtime = { path = "automexia-extension-runtime", version = "0.4.0" }
+automexia-devops = { path = "automexia-devops", version = "0.4.0" }
+automexia-ui-model = { path = "automexia-ui-model", version = "0.4.0" }
+
 # Note: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#multiple-locations
 # Sugarloaf example uses path when used locally, but uses
 # version from crates.io when published.
@@ -70,6 +79,7 @@ smallvec = { version = "1.15.2", default-features = false }
 
 # unicode-width = "0.2.0"
 unicode-width = { package = "unicode-width-16", version = "0.1.0" }
+unicode-segmentation = "1.13.3"
 simdutf = "0.7.0"
 base64 = "0.23.0"
 image_rs = { package = "image", version = "0.25.10", default-features = false, features = [

@@ -76,6 +76,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install nightly --profile minimal --component miri
       - run: cargo +nightly miri test -p rio-vt --lib --no-default-features
+      - name: Pure Phase 1 contracts, UI policy, and lifecycle state
+        run: |
+          cargo +nightly miri test -p automexia-extension-api -p automexia-ui-model --lib
+          cargo +nightly miri test -p automexia-extension-runtime --lib rebind
 
   sanitizers:
     runs-on: ubuntu-latest

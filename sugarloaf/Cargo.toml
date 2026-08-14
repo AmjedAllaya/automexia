@@ -25,7 +25,7 @@ documentation = "https://docs.rs/crate/sugarloaf/latest"
 repository = "https://github.com/raphamorim/sugarloaf"
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [package.metadata.docs.rs]
 all-features = true

@@ -97,6 +97,9 @@ jobs:
         env:
           RUSTFLAGS: --cfg loom --check-cfg=cfg(loom)
         run: cargo test -p corcovado --test loom_channel_readiness --locked
+      - name: Phase 1 extension lifecycle and isolation models
+        if: runner.os == 'Linux'
+        run: cargo test -p automexia-extension-runtime --lib --locked
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
