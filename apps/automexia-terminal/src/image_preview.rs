@@ -5,57 +5,24 @@
 //! raster files, and is decoded on one bounded worker away from the render
 //! and PTY threads.
 
+use crate::automexia::image::{
+    decode_candidate, DecodeOutcome, ImagePreviewError as PreviewError, ThumbnailCache,
+};
+pub use crate::automexia::image::{
+    has_supported_extension, path_token_at_line, ImageCandidate as PreviewCandidate,
+};
 use automexia_extension_runtime::{BoundedWorker, CompletionWake, RefreshSubmission};
-use image_rs::ImageReader;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::{GraphicDataEntry, GraphicOverlay, Sugarloaf};
 use std::collections::VecDeque;
-use std::io::{Cursor, Read};
-use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 pub const HOVER_DELAY: Duration = Duration::from_millis(350);
-pub const MAX_FILE_BYTES: u64 = 20 * 1024 * 1024;
-pub const MAX_DECODED_PIXELS: u64 = 16_777_216;
-const MAX_UPLOAD_WIDTH: u32 = 1_280;
-const MAX_UPLOAD_HEIGHT: u32 = 960;
-const RESULT_CAPACITY: usize = 8;
+const WORK_QUEUE_CAPACITY: usize = 16;
 const PREVIEW_KEY_PREFIX: u64 = 0xFFFF_FFFE_0000_0000;
-
-const EXTENSIONS: &[&str] = &[
-    "bmp", "gif", "ico", "jpeg", "jpg", "pbm", "pgm", "png", "pnm", "ppm", "tif", "tiff",
-    "webp",
-];
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PreviewCandidate {
-    pub text: String,
-    pub cwd: Option<PathBuf>,
-    pub wsl_distro: Option<String>,
-}
-
-impl PreviewCandidate {
-    pub fn new(
-        text: impl Into<String>,
-        cwd: Option<PathBuf>,
-        wsl_distro: Option<String>,
-    ) -> Option<Self> {
-        let text = trim_path_token(&text.into()).to_string();
-        if is_non_local_token(&text)
-            || text.chars().any(char::is_control)
-            || !has_supported_extension(&text)
-        {
-            return None;
-        }
-        Some(Self {
-            text,
-            cwd,
-            wsl_distro,
-        })
-    }
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct PreviewAnchor {
     pub x: f32,
@@ -74,38 +41,26 @@ struct PendingPreview {
 }
 
 struct PreviewRequest {
+    owner_id: u64,
     candidate: PreviewCandidate,
     route_id: usize,
     generation: u64,
+    current_generation: Arc<AtomicU64>,
+    completion: Arc<Mutex<Option<PreviewResult>>>,
     wake: CompletionWake,
 }
 
-#[derive(Debug)]
-struct PreviewPixels {
-    path: PathBuf,
-    width: u32,
-    height: u32,
-    original_width: u32,
-    original_height: u32,
-    file_bytes: u64,
-    rgba: Vec<u8>,
+impl PreviewRequest {
+    fn is_current(&self) -> bool {
+        self.current_generation.load(Ordering::Acquire) == self.generation
+    }
 }
 
 #[derive(Debug)]
 struct PreviewResult {
     route_id: usize,
     generation: u64,
-    result: Result<PreviewPixels, PreviewError>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PreviewError {
-    NotLocal,
-    NotFound,
-    NotRegularFile,
-    Symlink,
-    TooLarge,
-    DecodeFailed,
+    result: Result<DecodeOutcome, PreviewError>,
 }
 
 #[derive(Debug)]
@@ -128,15 +83,40 @@ struct FailedPreview {
     candidate: PreviewCandidate,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ImagePreview {
+    owner_id: u64,
     generation: u64,
+    current_generation: Arc<AtomicU64>,
+    completion: Arc<Mutex<Option<PreviewResult>>>,
     pending: Option<PendingPreview>,
     ready: Option<ReadyPreview>,
     failed: Option<FailedPreview>,
 }
 
+impl Default for ImagePreview {
+    fn default() -> Self {
+        static NEXT_OWNER_ID: AtomicU64 = AtomicU64::new(1);
+        Self {
+            owner_id: NEXT_OWNER_ID.fetch_add(1, Ordering::Relaxed),
+            generation: 0,
+            current_generation: Arc::new(AtomicU64::new(0)),
+            completion: Arc::new(Mutex::new(None)),
+            pending: None,
+            ready: None,
+            failed: None,
+        }
+    }
+}
+
 impl ImagePreview {
+    fn advance_generation(&mut self) -> u64 {
+        self.generation = self.generation.wrapping_add(1);
+        self.current_generation
+            .store(self.generation, Ordering::Release);
+        self.generation
+    }
+
     pub fn arm_hover(
         &mut self,
         candidate: Option<PreviewCandidate>,
@@ -158,11 +138,11 @@ impl ImagePreview {
         let Some(candidate) = candidate else {
             return dismissed;
         };
-        self.generation = self.generation.wrapping_add(1);
+        let generation = self.advance_generation();
         self.pending = Some(PendingPreview {
             candidate,
             route_id,
-            generation: self.generation,
+            generation,
             anchor,
             armed_at: Instant::now(),
             submitted: false,
@@ -179,11 +159,11 @@ impl ImagePreview {
         sugarloaf: &mut Sugarloaf,
     ) {
         let _ = self.dismiss(sugarloaf);
-        self.generation = self.generation.wrapping_add(1);
+        let generation = self.advance_generation();
         self.pending = Some(PendingPreview {
             candidate,
             route_id,
-            generation: self.generation,
+            generation,
             anchor,
             armed_at: Instant::now() - HOVER_DELAY,
             submitted: false,
@@ -209,7 +189,7 @@ impl ImagePreview {
         if self.is_idle() {
             return false;
         }
-        self.generation = self.generation.wrapping_add(1);
+        self.advance_generation();
         self.pending = None;
         self.failed = None;
         if let Some(ready) = self.ready.take() {
@@ -253,33 +233,29 @@ impl ImagePreview {
         completion: impl FnOnce(usize) -> CompletionWake,
     ) -> bool {
         let mut changed = false;
-        let completed = self
-            .pending
-            .as_ref()
-            .and_then(|pending| take_result(pending.route_id, pending.generation));
+        let completed = self.pending.as_ref().and_then(|pending| {
+            take_result(&self.completion, pending.route_id, pending.generation)
+        });
         if let Some(result) = completed {
             changed = true;
             if let Some(old) = self.ready.take() {
                 remove_preview_overlay(sugarloaf, old.image_key);
             }
             match result.result {
-                Ok(pixels) => {
-                    let image_key = preview_image_key(result.route_id, result.generation);
-                    let data = rio_backend::sugarloaf::GraphicData {
-                        id: rio_backend::sugarloaf::GraphicId::new(image_key),
-                        width: pixels.width as usize,
-                        height: pixels.height as usize,
-                        color_type: rio_backend::sugarloaf::ColorType::Rgba,
-                        pixels: pixels.rgba,
-                        is_opaque: false,
-                        resize: None,
-                        display_width: None,
-                        display_height: None,
-                        transmit_time: std::time::Instant::now(),
-                    };
-                    sugarloaf
-                        .image_data
-                        .insert(image_key, GraphicDataEntry::from_graphic_data(data));
+                Ok(outcome) => {
+                    let thumbnail = &outcome.thumbnail;
+                    let image_key = preview_image_key(thumbnail.render_id);
+                    sugarloaf.image_data.insert(
+                        image_key,
+                        GraphicDataEntry::from_shared_rgba(
+                            thumbnail.render_id,
+                            thumbnail.width,
+                            thumbnail.height,
+                            Arc::clone(&thumbnail.rgba),
+                            thumbnail.decoded_at,
+                        ),
+                    );
+                    let path = outcome.path;
                     let (anchor, candidate) = self
                         .pending
                         .as_ref()
@@ -288,7 +264,7 @@ impl ImagePreview {
                             (
                                 PreviewAnchor::default(),
                                 PreviewCandidate {
-                                    text: pixels.path.to_string_lossy().into_owned(),
+                                    text: path.to_string_lossy().into_owned(),
                                     cwd: None,
                                     wsl_distro: None,
                                 },
@@ -299,12 +275,12 @@ impl ImagePreview {
                         image_key,
                         candidate,
                         anchor,
-                        path: pixels.path,
-                        width: pixels.width,
-                        height: pixels.height,
-                        original_width: pixels.original_width,
-                        original_height: pixels.original_height,
-                        file_bytes: pixels.file_bytes,
+                        path,
+                        width: thumbnail.width,
+                        height: thumbnail.height,
+                        original_width: thumbnail.original_width,
+                        original_height: thumbnail.original_height,
+                        file_bytes: thumbnail.file_bytes,
                     });
                     self.pending = None;
                     self.failed = None;
@@ -332,12 +308,15 @@ impl ImagePreview {
         let route_id = pending.route_id;
         let generation = pending.generation;
         let request = PreviewRequest {
+            owner_id: self.owner_id,
             candidate: pending.candidate.clone(),
             route_id,
             generation,
+            current_generation: Arc::clone(&self.current_generation),
+            completion: Arc::clone(&self.completion),
             wake: completion(route_id),
         };
-        match worker().try_submit(request) {
+        match submit_request(request) {
             RefreshSubmission::Queued => pending.submitted = true,
             RefreshSubmission::Busy => {
                 pending.armed_at = Instant::now();
@@ -514,263 +493,131 @@ fn preview_geometry(
     })
 }
 
-fn worker() -> &'static BoundedWorker<PreviewRequest> {
-    static WORKER: OnceLock<BoundedWorker<PreviewRequest>> = OnceLock::new();
-    WORKER
-        .get_or_init(|| BoundedWorker::new("automexia-image-preview", 2, process_request))
+#[derive(Default)]
+struct PreviewWorkQueue {
+    pending: VecDeque<PreviewRequest>,
 }
 
-fn results() -> &'static Mutex<VecDeque<PreviewResult>> {
-    static RESULTS: OnceLock<Mutex<VecDeque<PreviewResult>>> = OnceLock::new();
-    RESULTS.get_or_init(|| Mutex::new(VecDeque::with_capacity(RESULT_CAPACITY)))
-}
-
-fn process_request(request: PreviewRequest) {
-    let result = decode_candidate(&request.candidate);
-    let mut results = results()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if results.len() >= RESULT_CAPACITY {
-        results.pop_front();
-    }
-    results.push_back(PreviewResult {
-        route_id: request.route_id,
-        generation: request.generation,
-        result,
-    });
-    drop(results);
-    request.wake.wake();
-}
-
-fn take_result(route_id: usize, generation: u64) -> Option<PreviewResult> {
-    let mut results = results()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    results
-        .retain(|result| result.route_id != route_id || result.generation >= generation);
-    let index = results.iter().position(|result| {
-        result.route_id == route_id && result.generation == generation
-    })?;
-    results.remove(index)
-}
-
-fn decode_candidate(candidate: &PreviewCandidate) -> Result<PreviewPixels, PreviewError> {
-    let path = resolve_candidate_path(candidate)?;
-    let (file, metadata) = open_regular_file_without_links(&path)?;
-    if metadata.len() == 0 || metadata.len() > MAX_FILE_BYTES {
-        return Err(PreviewError::TooLarge);
-    }
-
-    let mut bytes = Vec::with_capacity(metadata.len() as usize);
-    file.take(MAX_FILE_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| PreviewError::DecodeFailed)?;
-    if bytes.len() as u64 > MAX_FILE_BYTES {
-        return Err(PreviewError::TooLarge);
-    }
-
-    let mut reader = ImageReader::new(Cursor::new(bytes))
-        .with_guessed_format()
-        .map_err(|_| PreviewError::DecodeFailed)?;
-    let mut limits = image_rs::Limits::default();
-    limits.max_image_width = Some(4_096);
-    limits.max_image_height = Some(4_096);
-    limits.max_alloc = Some(96 * 1024 * 1024);
-    reader.limits(limits);
-    let image = reader.decode().map_err(|_| PreviewError::DecodeFailed)?;
-    let original_width = image.width();
-    let original_height = image.height();
-    if u64::from(original_width).saturating_mul(u64::from(original_height))
-        > MAX_DECODED_PIXELS
-    {
-        return Err(PreviewError::TooLarge);
-    }
-    let image =
-        if original_width > MAX_UPLOAD_WIDTH || original_height > MAX_UPLOAD_HEIGHT {
-            image.thumbnail(MAX_UPLOAD_WIDTH, MAX_UPLOAD_HEIGHT)
-        } else {
-            image
+impl PreviewWorkQueue {
+    fn submit(&mut self, request: PreviewRequest) -> Option<bool> {
+        if let Some(index) = self
+            .pending
+            .iter()
+            .position(|queued| queued.owner_id == request.owner_id)
+        {
+            self.pending.remove(index);
+            self.pending.push_back(request);
+            return Some(true);
         }
-        .into_rgba8();
-    Ok(PreviewPixels {
-        path,
-        width: image.width(),
-        height: image.height(),
-        original_width,
-        original_height,
-        file_bytes: metadata.len(),
-        rgba: image.into_raw(),
+        if self.pending.len() >= WORK_QUEUE_CAPACITY {
+            return None;
+        }
+        self.pending.push_back(request);
+        Some(false)
+    }
+
+    fn take(&mut self) -> Option<PreviewRequest> {
+        self.pending.pop_front()
+    }
+
+    fn remove(&mut self, owner_id: u64, generation: u64) {
+        self.pending.retain(|request| {
+            request.owner_id != owner_id || request.generation != generation
+        });
+    }
+}
+
+fn worker() -> &'static BoundedWorker<()> {
+    static WORKER: OnceLock<BoundedWorker<()>> = OnceLock::new();
+    WORKER.get_or_init(|| {
+        BoundedWorker::new("automexia-image-preview", 1, process_pending_requests)
     })
 }
 
-fn open_regular_file_without_links(
-    path: &Path,
-) -> Result<(std::fs::File, std::fs::Metadata), PreviewError> {
-    let metadata = std::fs::symlink_metadata(path).map_err(|_| PreviewError::NotFound)?;
-    if metadata.file_type().is_symlink() {
-        return Err(PreviewError::Symlink);
-    }
-    if !metadata.is_file() {
-        return Err(PreviewError::NotRegularFile);
-    }
-
-    let mut options = std::fs::OpenOptions::new();
-    options.read(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt as _;
-        options.custom_flags(libc::O_NOFOLLOW);
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::OpenOptionsExt as _;
-        // FILE_FLAG_OPEN_REPARSE_POINT keeps a last-moment symlink/junction
-        // swap from being followed between metadata validation and open.
-        options.custom_flags(0x0020_0000);
-    }
-    let file = options.open(path).map_err(|_| PreviewError::NotFound)?;
-    let opened_metadata = file.metadata().map_err(|_| PreviewError::NotFound)?;
-    if opened_metadata.file_type().is_symlink() {
-        return Err(PreviewError::Symlink);
-    }
-    if !opened_metadata.is_file() {
-        return Err(PreviewError::NotRegularFile);
-    }
-    Ok((file, opened_metadata))
+fn work_queue() -> &'static Mutex<PreviewWorkQueue> {
+    static QUEUE: OnceLock<Mutex<PreviewWorkQueue>> = OnceLock::new();
+    QUEUE.get_or_init(|| Mutex::new(PreviewWorkQueue::default()))
 }
 
-fn is_non_local_token(token: &str) -> bool {
-    token.contains("://")
-        || token
-            .get(..5)
-            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("file:"))
+fn thumbnail_cache() -> &'static Mutex<ThumbnailCache> {
+    static CACHE: OnceLock<Mutex<ThumbnailCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(ThumbnailCache::default()))
 }
 
-fn resolve_candidate_path(candidate: &PreviewCandidate) -> Result<PathBuf, PreviewError> {
-    let token = trim_path_token(&candidate.text);
-    if is_non_local_token(token) || token.chars().any(char::is_control) {
-        return Err(PreviewError::NotLocal);
-    }
-    #[cfg(windows)]
-    if token.starts_with("\\\\") || token.starts_with("//") {
-        return Err(PreviewError::NotLocal);
+fn submit_request(request: PreviewRequest) -> RefreshSubmission {
+    let owner_id = request.owner_id;
+    let generation = request.generation;
+    {
+        let mut queue = work_queue()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if queue.submit(request).is_none() {
+            return RefreshSubmission::Rejected;
+        }
     }
 
-    let raw = PathBuf::from(token);
-    let path = if raw.is_absolute() {
-        raw
-    } else {
-        candidate
-            .cwd
-            .as_ref()
-            .ok_or(PreviewError::NotLocal)?
-            .join(raw)
-    };
-    #[cfg(windows)]
-    let path =
-        if candidate.wsl_distro.is_some() || path.to_string_lossy().starts_with('/') {
-            map_wsl_path(&path, candidate.wsl_distro.as_deref())?
-        } else {
-            path
+    match worker().try_submit(()) {
+        RefreshSubmission::Queued | RefreshSubmission::Busy => RefreshSubmission::Queued,
+        failure => {
+            work_queue()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .remove(owner_id, generation);
+            failure
+        }
+    }
+}
+
+fn process_pending_requests(_: ()) {
+    loop {
+        let request = work_queue()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        let Some(request) = request else {
+            break;
         };
-    Ok(path)
-}
-
-#[cfg(windows)]
-fn map_wsl_path(path: &Path, distro: Option<&str>) -> Result<PathBuf, PreviewError> {
-    let text = path.to_string_lossy().replace('\\', "/");
-    if let Some(rest) = text.strip_prefix("/mnt/") {
-        let mut parts = rest.splitn(2, '/');
-        let drive = parts.next().unwrap_or_default();
-        if drive.len() == 1 && drive.as_bytes()[0].is_ascii_alphabetic() {
-            let tail = parts.next().unwrap_or_default().replace('/', "\\");
-            return Ok(PathBuf::from(format!(
-                "{}:\\{}",
-                drive.to_ascii_uppercase(),
-                tail
-            )));
+        if !request.is_current() {
+            continue;
         }
-    }
-    let distro = distro
-        .filter(|value| {
-            !value.is_empty()
-                && value.bytes().all(|byte| {
-                    byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-')
-                })
-        })
-        .ok_or(PreviewError::NotLocal)?;
-    Ok(PathBuf::from(format!(
-        "\\\\wsl.localhost\\{}\\{}",
-        distro,
-        text.trim_start_matches('/').replace('/', "\\")
-    )))
-}
 
-pub fn has_supported_extension(text: &str) -> bool {
-    Path::new(trim_path_token(text))
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| {
-            EXTENSIONS
-                .iter()
-                .any(|supported| ext.eq_ignore_ascii_case(supported))
-        })
-}
-
-/// Return the path-shaped token under `column`. Quoted names keep spaces;
-/// unquoted names follow normal shell whitespace boundaries. The filesystem
-/// is deliberately not touched here because this runs on pointer movement.
-pub fn path_token_at_line(line: &str, column: usize) -> Option<String> {
-    let chars = line.chars().collect::<Vec<_>>();
-    if chars.is_empty() || column >= chars.len() {
-        return None;
-    }
-
-    for quote in ['\'', '"', '`'] {
-        let left = chars[..=column]
-            .iter()
-            .rposition(|character| *character == quote);
-        let right = chars[column..]
-            .iter()
-            .position(|character| *character == quote)
-            .map(|offset| column + offset);
-        if let (Some(left), Some(right)) = (left, right) {
-            if left < right {
-                let candidate = chars[left + 1..right].iter().collect::<String>();
-                if has_supported_extension(&candidate) {
-                    return Some(candidate);
-                }
-            }
+        let result = {
+            let mut cache = thumbnail_cache()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            decode_candidate(&request.candidate, &mut cache)
+        };
+        if !request.is_current() {
+            continue;
         }
-    }
 
-    let is_boundary = |character: char| {
-        character.is_whitespace() || matches!(character, '|' | '<' | '>')
-    };
-    let mut start = column;
-    while start > 0 && !is_boundary(chars[start - 1]) {
-        start -= 1;
+        let mut completion = request
+            .completion
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *completion = Some(PreviewResult {
+            route_id: request.route_id,
+            generation: request.generation,
+            result,
+        });
+        drop(completion);
+        request.wake.wake();
     }
-    let mut end = column + 1;
-    while end < chars.len() && !is_boundary(chars[end]) {
-        end += 1;
-    }
-    let candidate =
-        trim_path_token(&chars[start..end].iter().collect::<String>()).to_string();
-    has_supported_extension(&candidate).then_some(candidate)
 }
 
-fn trim_path_token(text: &str) -> &str {
-    text.trim().trim_matches(|character| {
-        matches!(
-            character,
-            '\'' | '"' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';'
-        )
-    })
+fn take_result(
+    completion: &Mutex<Option<PreviewResult>>,
+    route_id: usize,
+    generation: u64,
+) -> Option<PreviewResult> {
+    let result = completion
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take()?;
+    (result.route_id == route_id && result.generation == generation).then_some(result)
 }
-
-fn preview_image_key(route_id: usize, generation: u64) -> u64 {
-    PREVIEW_KEY_PREFIX | ((route_id as u64 & 0xFFFF) << 16) | (generation & 0xFFFF)
+fn preview_image_key(render_id: u64) -> u64 {
+    PREVIEW_KEY_PREFIX | (render_id & 0xFFFF_FFFF)
 }
 
 fn remove_preview_overlay(sugarloaf: &mut Sugarloaf, image_key: u64) {
@@ -808,12 +655,22 @@ fn elide_middle(value: &str, max_chars: usize) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn supported_extensions_are_case_insensitive_and_svg_is_rejected() {
-        assert!(has_supported_extension("photo.PNG"));
-        assert!(has_supported_extension("'folder/a picture.webp'"));
-        assert!(!has_supported_extension("script.svg"));
-        assert!(!has_supported_extension("https://example.com/a.png?x=1"));
+    fn request(owner_id: u64, generation: u64, route_id: usize) -> PreviewRequest {
+        let current_generation = Arc::new(AtomicU64::new(generation));
+        PreviewRequest {
+            owner_id,
+            candidate: PreviewCandidate::new(
+                format!("owner-{owner_id}.png"),
+                Some(PathBuf::from("C:/preview")),
+                None,
+            )
+            .unwrap(),
+            route_id,
+            generation,
+            current_generation,
+            completion: Arc::new(Mutex::new(None)),
+            wake: Box::new(|| {}),
+        }
     }
 
     #[test]
@@ -870,99 +727,84 @@ mod tests {
     }
 
     #[test]
-    fn candidates_reject_remote_and_control_character_inputs() {
-        assert!(PreviewCandidate::new("https://example.com/a.png", None, None).is_none());
-        assert!(PreviewCandidate::new("file:///tmp/a.png", None, None).is_none());
-        assert!(PreviewCandidate::new("FILE:C:\\temp\\a.png", None, None).is_none());
-        assert!(PreviewCandidate::new("image.png\nnext-command", None, None).is_none());
-        assert!(PreviewCandidate::new("image.png\u{1b}", None, None).is_none());
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn wsl_paths_map_only_through_validated_local_routes() {
-        assert_eq!(
-            map_wsl_path(Path::new("/mnt/d/work/image.png"), Some("Ubuntu")).unwrap(),
-            PathBuf::from(r"D:\work\image.png")
-        );
-        assert_eq!(
-            map_wsl_path(Path::new("/home/user/image.png"), Some("Ubuntu-24.04"))
-                .unwrap(),
-            PathBuf::from(r"\\wsl.localhost\Ubuntu-24.04\home\user\image.png")
-        );
-        assert_eq!(
-            map_wsl_path(Path::new("/home/user/image.png"), Some("bad\\name")),
-            Err(PreviewError::NotLocal)
-        );
-    }
-    #[test]
-    fn decoder_rejects_oversized_files_before_image_parsing() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("huge.png");
-        let file = std::fs::File::create(&path).unwrap();
-        file.set_len(MAX_FILE_BYTES + 1).unwrap();
-        let candidate =
-            PreviewCandidate::new(path.to_string_lossy(), None, None).unwrap();
-        assert!(matches!(
-            decode_candidate(&candidate),
-            Err(PreviewError::TooLarge)
-        ));
+    fn generations_cancel_obsolete_work_without_sharing_between_owners() {
+        let mut first = ImagePreview::default();
+        let second = ImagePreview::default();
+        let first_generation = first.advance_generation();
+        let obsolete = PreviewRequest {
+            owner_id: first.owner_id,
+            candidate: PreviewCandidate::new(
+                "first.png",
+                Some(PathBuf::from("C:/preview")),
+                None,
+            )
+            .unwrap(),
+            route_id: 1,
+            generation: first_generation,
+            current_generation: Arc::clone(&first.current_generation),
+            completion: Arc::clone(&first.completion),
+            wake: Box::new(|| {}),
+        };
+        assert!(obsolete.is_current());
+        first.advance_generation();
+        assert!(!obsolete.is_current());
+        assert_eq!(second.current_generation.load(Ordering::Acquire), 0);
+        assert_ne!(first.owner_id, second.owner_id);
     }
 
     #[test]
-    fn decoder_keeps_small_png_at_native_size() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("sample.png");
-        image_rs::RgbaImage::from_pixel(4, 3, image_rs::Rgba([10, 20, 30, 255]))
-            .save(&path)
-            .unwrap();
-        let candidate =
-            PreviewCandidate::new(path.to_string_lossy(), None, None).unwrap();
-        let decoded = decode_candidate(&candidate).unwrap();
-        assert_eq!((decoded.width, decoded.height), (4, 3));
-        assert_eq!(decoded.rgba.len(), 4 * 3 * 4);
+    fn work_queue_keeps_only_latest_request_per_owner_and_preserves_fairness() {
+        let mut queue = PreviewWorkQueue::default();
+        assert!(matches!(queue.submit(request(1, 1, 10)), Some(false)));
+        assert!(matches!(queue.submit(request(2, 1, 20)), Some(false)));
+        assert!(matches!(queue.submit(request(1, 2, 11)), Some(true)));
+        assert_eq!(queue.pending.len(), 2);
+
+        let other = queue.take().unwrap();
+        let latest = queue.take().unwrap();
+        assert_eq!((other.owner_id, other.route_id), (2, 20));
+        assert_eq!((latest.owner_id, latest.generation), (1, 2));
     }
 
     #[test]
-    fn stale_results_are_discarded_by_generation() {
-        let mut queue = results()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        queue.clear();
-        queue.push_back(PreviewResult {
+    fn work_queue_rejects_new_owners_at_its_hard_capacity() {
+        let mut queue = PreviewWorkQueue::default();
+        for owner in 0..WORK_QUEUE_CAPACITY as u64 {
+            assert!(queue.submit(request(owner, 1, owner as usize)).is_some());
+        }
+        assert!(queue
+            .submit(request(WORK_QUEUE_CAPACITY as u64 + 1, 1, 99))
+            .is_none());
+        assert_eq!(queue.pending.len(), WORK_QUEUE_CAPACITY);
+    }
+
+    #[test]
+    fn completion_mailboxes_discard_stale_results_without_cross_owner_delivery() {
+        let first = Arc::new(Mutex::new(Some(PreviewResult {
             route_id: 1,
             generation: 3,
             result: Err(PreviewError::NotFound),
-        });
-        queue.push_back(PreviewResult {
+        })));
+        let second = Arc::new(Mutex::new(Some(PreviewResult {
             route_id: 1,
             generation: 4,
             result: Err(PreviewError::NotFound),
-        });
-        drop(queue);
-        let result = take_result(1, 4).unwrap();
+        })));
+
+        assert!(take_result(&first, 1, 4).is_none());
+        assert!(take_result(&first, 1, 3).is_none());
+        let result = take_result(&second, 1, 4).unwrap();
         assert_eq!(result.generation, 4);
-        assert!(take_result(1, 3).is_none());
+        assert!(take_result(&second, 1, 4).is_none());
     }
 
     #[test]
-    fn preview_keys_live_outside_terminal_protocol_namespaces() {
-        let key = preview_image_key(2, 9);
+    fn stable_preview_keys_live_outside_terminal_protocol_namespaces() {
+        let key = preview_image_key(9);
         assert!(key >= PREVIEW_KEY_PREFIX);
+        assert_eq!(key, preview_image_key(9));
+        assert_ne!(key, preview_image_key(10));
         assert_ne!(key, rio_backend::sugarloaf::kitty_image_key(9));
         assert_ne!(key, rio_backend::sugarloaf::atlas_image_key(9));
-    }
-
-    #[test]
-    fn path_token_supports_bare_paths_and_quoted_spaces_without_io() {
-        assert_eq!(
-            path_token_at_line("  photo.png  ", 4).as_deref(),
-            Some("photo.png")
-        );
-        assert_eq!(
-            path_token_at_line("open 'folder/my image.JPEG' now", 16).as_deref(),
-            Some("folder/my image.JPEG")
-        );
-        assert!(path_token_at_line("README.md", 4).is_none());
     }
 }

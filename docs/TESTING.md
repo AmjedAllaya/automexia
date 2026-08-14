@@ -534,13 +534,14 @@ cargo test -p automexia-terminal layout::compute_tests
 
 ## Nightly and release depth
 
-Nightly jobs fuzz VT, bounded OSC/APC/XTGETTCAP streams, OSC metadata,
+Nightly jobs fuzz VT, bounded OSC/APC/XTGETTCAP streams, bounded raster
+decoding, OSC metadata,
 configuration migration, semantic classification, and label sanitization. Suitable pure crates run Miri and
-ASan/TSan. Criterion cases exist for parser throughput, row rebuild, prompt
-layout, cache access, and worker submission, but the current nightly command
-uses `--no-run` and therefore verifies compilation only. Run the commands below
-for measurements; the planned controlled execution/comparison pipeline is not
-yet implemented.
+ASan/TSan. Criterion cases exist for parser throughput, row rebuild, prompt layout,
+cache access, worker submission, and cold/warm image quick look. Hosted nightly
+always compiles them; a named self-hosted runner executes and retains Criterion
+evidence when AUTOMEXIA_BENCHMARK_RUNNER=1. Run the commands below for local
+measurements. The controlled 30-day comparison baseline is not complete.
 
 The renderer-neutral application-service benchmarks are available with:
 
@@ -549,7 +550,18 @@ cargo bench -p automexia-terminal --bench automexia_services -- --noplot
 ```
 
 They measure the route-scoped extension snapshot cache and non-blocking bounded
-worker submission path. `rio-vt`'s `row_rebuild_full_snapshot` and
+worker submission path. The isolated production image decoder/cache benchmark
+avoids benchmark-time calls into those unrelated services:
+
+```text
+cargo bench -p automexia-terminal --bench image_preview --locked -- --noplot
+```
+
+It compares cold 1600x1000 decode/downscale with a warm file-version-validated
+lookup. Record both medians; the warm path must retain the same allocation and
+render identity, and cache memory remains capped independently of timing.
+
+The renderer-neutral row_rebuild_full_snapshot` and
 `prompt_layout_resize_reflow` cases cover full visible-row materialization and
 repeated narrow/wide semantic-prompt reflow.
 

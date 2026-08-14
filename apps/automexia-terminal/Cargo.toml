@@ -149,4 +149,8 @@ wgpu = ["sugarloaf/wgpu", "rio-backend/wgpu"]
 name = "automexia_services"
 harness = false
 
+[[bench]]
+name = "image_preview"
+harness = false
+
 # "rio-window/wayland-csd-adwaita-crossfont",

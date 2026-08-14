@@ -30,14 +30,18 @@ a separate Automexia-owned local quick-look overlay:
    current/launch directory metadata; WSL translation requires the current
    validated distro. URLs, arbitrary UNC paths, SVG/PDF, symlinks, pipes, and
    device files are rejected.
-4. File and decode bounds are fixed. Decode/downscale runs on a bounded worker;
-   the UI/PTY/render threads only resolve text, submit work, and upload an
-   accepted thumbnail.
-5. Requests/results carry route and generation identity. Stale completion can
-   wake its originating route but cannot replace another route's preview.
-6. The overlay is renderer-owned and responsive. It does not modify terminal
+4. File and decode bounds are fixed and dimensions are rejected before full
+   pixel decode. Decode/downscale runs on one worker behind a 16-owner
+   latest-request queue; the UI, PTY, and render threads never read or decode.
+5. Every window owns a generation token and one bounded completion mailbox. A
+   newer request replaces queued work for that owner; obsolete active completion
+   is discarded without a shared result queue, cross-window delivery, or eviction.
+6. Decoded thumbnails use an access-ordered 16-entry/32 MiB cache keyed by the
+   opened path, length, and modification time. Pixel storage is shared with
+   Sugarloaf and stable render identity permits normal GPU-texture reuse.
+7. The overlay is renderer-owned and responsive. It does not modify terminal
    cells, selection, scrollback, prompt semantics, PTY size, or shell state.
-7. Protocol decoders keep independent limits. iTerm2 now validates base64/file
+8. Protocol decoders keep independent limits. iTerm2 now validates base64/file
    size and bounded decode dimensions/allocation before creating graphics.
 
 No user-facing configuration is added in v0.4. Existing binding overrides can
@@ -46,7 +50,10 @@ replace the default action normally.
 ## Verification
 
 Acceptance requires unit tests for candidate parsing, quoted/Unicode paths,
-remote/control rejection, WSL mapping, file/dimension/allocation bounds, native
+remote/control rejection, WSL mapping, file/dimension/allocation bounds, magic
+format validation, changing-file invalidation, cache byte/count/LRU behavior,
+latest-request fairness/capacity/cancellation, zero-copy renderer ownership,
+native
 small-image sizing, edge/tiny/large geometry, route/generation stale-result
 rejection, action parsing, platform shortcut collisions, palette discovery,
 and iTerm2 declared-size/dimension rejection. Architecture, identity,
@@ -56,7 +63,9 @@ remain required gates.
 ## Consequences
 
 Users gain both common workflows: rich TUI/CLI protocol images and an explicit
-preview of a printed or selected local filename. Ordinary mouse movement stays
+preview of a printed or selected local filename. Warm validated previews avoid
+decode, resize, pixel copy/hash, and redundant GPU upload. Ordinary mouse
+movement stays
 cheap and non-authoritative. The first release deliberately excludes remote
 fetching, SVG/PDF rendering, directory galleries, editing, and animation UI;
 those require separate threat models and product decisions.

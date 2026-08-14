@@ -6,6 +6,7 @@
 
 pub mod api;
 pub mod builtins;
+pub mod image;
 pub mod marketplace;
 pub mod migration;
 pub mod runtime;
