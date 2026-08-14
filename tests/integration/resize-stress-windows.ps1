@@ -13,7 +13,16 @@ param(
     [ValidateRange(67108864, 4294967296)]
     [int64]$MaximumWorkingSetGrowth = 536870912,
     [ValidateRange(2, 128)]
-    [int64]$MaximumDescendantProcessGrowth = 16
+    [int64]$MaximumDescendantProcessGrowth = 16,
+    [ValidateRange(4, 256)]
+    [int]$ImagePreviewLifecycleCycles = 16,
+    [ValidateRange(0, 128)]
+    [int64]$MaximumImageHandleGrowth = 32,
+    [ValidateRange(0, 16)]
+    [int64]$MaximumImageThreadGrowth = 2,
+    [ValidateRange(8388608, 1073741824)]
+    [int64]$MaximumImageMemoryGrowth = 134217728,
+    [switch]$UseCpuRenderer
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,6 +53,22 @@ public static class AutomexiaResizeDriver {
     public static extern bool PostMessage(
         IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
 
+    [DllImport("user32.dll")]
+    private static extern uint MapVirtualKey(uint code, uint mapType);
+
+    public static bool PostKeyTap(IntPtr hWnd, uint virtualKey, bool extended) {
+        long scanCode = MapVirtualKey(virtualKey, 0);
+        long down = 1L | (scanCode << 16);
+        if (extended) {
+            down |= 1L << 24;
+        }
+        long up = down | (1L << 30) | (1L << 31);
+        return PostMessage(
+                   hWnd, 0x0100, new IntPtr(virtualKey), new IntPtr(down)) &&
+               PostMessage(
+                   hWnd, 0x0101, new IntPtr(virtualKey), new IntPtr(up));
+    }
+
 
     [StructLayout(LayoutKind.Sequential)]
     public struct Rect {
@@ -68,6 +93,49 @@ public static class AutomexiaResizeDriver {
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ClientToScreen(IntPtr hWnd, ref Point point);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetCursorPos(int x, int y);
+
+    public static bool MovePointerToClient(IntPtr hWnd, int x, int y) {
+        Point point = new Point { X = x, Y = y };
+        return ClientToScreen(hWnd, ref point) && SetCursorPos(point.X, point.Y);
+    }
+
+    public static void WritePreviewFixture(
+        string path, int width, int height, bool jpeg) {
+        using (var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb)) {
+            using (var graphics = Graphics.FromImage(bitmap)) {
+                graphics.Clear(Color.FromArgb(255, 255, 226, 28));
+                using (var cyan = new SolidBrush(Color.FromArgb(255, 25, 205, 255))) {
+                    graphics.FillRectangle(cyan, 0, 0, width / 2, height / 2);
+                    graphics.FillRectangle(
+                        cyan, width / 2, height / 2,
+                        width - width / 2, height - height / 2);
+                }
+                using (var magenta = new SolidBrush(Color.FromArgb(255, 236, 72, 153))) {
+                    graphics.FillEllipse(
+                        magenta, width / 4, height / 4,
+                        Math.Max(4, width / 2), Math.Max(4, height / 2));
+                }
+                if (!jpeg) {
+                    graphics.CompositingMode =
+                        System.Drawing.Drawing2D.CompositingMode.SourceCopy;
+                    using (var transparent = new SolidBrush(Color.FromArgb(0, 8, 24, 40))) {
+                        graphics.FillRectangle(
+                            transparent, 0, height / 2, width / 4, height - height / 2);
+                    }
+                    using (var translucent = new SolidBrush(Color.FromArgb(128, 255, 255, 255))) {
+                        graphics.FillRectangle(
+                            translucent, width / 4, height / 2,
+                            Math.Max(4, width / 4), height - height / 2);
+                    }
+                }
+            }
+            bitmap.Save(path, jpeg ? ImageFormat.Jpeg : ImageFormat.Png);
+        }
+    }
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr GetDC(IntPtr hWnd);
@@ -96,6 +164,8 @@ public static class AutomexiaResizeDriver {
         public int DistinctColorBuckets;
         public int DominantColorBucket;
         public int LuminanceSpread;
+        public int MeanLuminance;
+        public int BrightSampleCount;
     }
 
     public static FrameStats CaptureClientFrame(IntPtr hWnd, string outputPath) {
@@ -176,6 +246,91 @@ public static class AutomexiaResizeDriver {
                 DistinctColorBuckets = buckets.Count,
                 DominantColorBucket = dominantColorBucket,
                 LuminanceSpread = maximumLuminance - minimumLuminance,
+            };
+        }
+    }
+
+    public static FrameStats CaptureClientRegionStats(
+        IntPtr hWnd, int x, int y, int width, int height) {
+        Rect rect;
+        if (!GetClientRect(hWnd, out rect)) {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+        int clientWidth = rect.Right - rect.Left;
+        int clientHeight = rect.Bottom - rect.Top;
+        int left = Math.Max(0, x);
+        int top = Math.Max(0, y);
+        int right = Math.Min(clientWidth, x + width);
+        int bottom = Math.Min(clientHeight, y + height);
+        int clippedWidth = right - left;
+        int clippedHeight = bottom - top;
+        if (clippedWidth < 1 || clippedHeight < 1) {
+            throw new InvalidOperationException("Image preview region is outside the client area");
+        }
+
+        Point origin = new Point { X = 0, Y = 0 };
+        if (!ClientToScreen(hWnd, ref origin)) {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        using (var bitmap = new Bitmap(
+            clippedWidth, clippedHeight, PixelFormat.Format32bppArgb)) {
+            using (var graphics = Graphics.FromImage(bitmap)) {
+                IntPtr destination = graphics.GetHdc();
+                IntPtr screen = GetDC(IntPtr.Zero);
+                if (screen == IntPtr.Zero) {
+                    graphics.ReleaseHdc(destination);
+                    throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                }
+                try {
+                    const uint SourceCopy = 0x00CC0020;
+                    const uint CaptureLayered = 0x40000000;
+                    if (!BitBlt(
+                        destination, 0, 0, clippedWidth, clippedHeight,
+                        screen, origin.X + left, origin.Y + top,
+                        SourceCopy | CaptureLayered)) {
+                        throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                    }
+                } finally {
+                    ReleaseDC(IntPtr.Zero, screen);
+                    graphics.ReleaseHdc(destination);
+                }
+            }
+
+            var buckets = new HashSet<int>();
+            int minimumLuminance = 255;
+            int maximumLuminance = 0;
+            long luminanceTotal = 0;
+            int brightSamples = 0;
+            int samples = 0;
+            for (int py = 0; py < clippedHeight; py += 2) {
+                for (int px = 0; px < clippedWidth; px += 2) {
+                    Color color = bitmap.GetPixel(px, py);
+                    int bucket =
+                        ((color.R >> 4) << 8) |
+                        ((color.G >> 4) << 4) |
+                        (color.B >> 4);
+                    buckets.Add(bucket);
+                    int luminance =
+                        (color.R * 54 + color.G * 183 + color.B * 19) >> 8;
+                    minimumLuminance = Math.Min(minimumLuminance, luminance);
+                    maximumLuminance = Math.Max(maximumLuminance, luminance);
+                    luminanceTotal += luminance;
+                    if (luminance >= 32) {
+                        brightSamples++;
+                    }
+                    samples++;
+                }
+            }
+            return new FrameStats {
+                Width = clippedWidth,
+                Height = clippedHeight,
+                SampleCount = samples,
+                DistinctColorBuckets = buckets.Count,
+                DominantColorBucket = -1,
+                LuminanceSpread = maximumLuminance - minimumLuminance,
+                MeanLuminance = samples == 0 ? 0 : (int)(luminanceTotal / samples),
+                BrightSampleCount = brightSamples,
             };
         }
     }
@@ -264,6 +419,73 @@ function Get-AutomexiaResourceSample {
         working_set_bytes = [int64]$AutomexiaProcess.WorkingSet64
         descendant_process_count = [int64](Get-AutomexiaDescendantCount $AutomexiaProcess.Id)
     }
+}
+
+function Test-AutomexiaImageResources {
+    param(
+        [object]$Snapshot,
+        [bool]$Visible,
+        [bool]$CpuRenderer,
+        [int]$ExpectedCacheEntries,
+        [int64]$ExpectedCacheBytes
+    )
+
+    $previewState = $Snapshot.image_preview
+    if ($null -eq $previewState -or
+        $null -eq $previewState.pixel_entries -or
+        $null -eq $previewState.overlay_entries -or
+        $null -eq $previewState.texture_entries -or
+        $null -eq $previewState.texture_bytes -or
+        $null -eq $previewState.thumbnail_cache_entries -or
+        $null -eq $previewState.thumbnail_cache_bytes -or
+        $null -eq $previewState.queued_requests -or
+        $null -eq $previewState.completion_pending) {
+        return $false
+    }
+
+    if ([int]$previewState.thumbnail_cache_entries -ne $ExpectedCacheEntries -or
+        [int64]$previewState.thumbnail_cache_bytes -ne $ExpectedCacheBytes -or
+        [int]$previewState.queued_requests -ne 0 -or
+        [bool]$previewState.completion_pending) {
+        return $false
+    }
+
+    if (-not $Visible) {
+        return (
+            -not [bool]$previewState.visible -and
+            -not [bool]$previewState.overlay_present -and
+            [int]$previewState.pixel_entries -eq 0 -and
+            [int]$previewState.overlay_entries -eq 0 -and
+            [int]$previewState.texture_entries -eq 0 -and
+            [int64]$previewState.texture_bytes -eq 0)
+    }
+
+    if (-not [bool]$previewState.visible -or
+        -not [bool]$previewState.overlay_present -or
+        [int]$previewState.pixel_entries -ne 1 -or
+        [int]$previewState.overlay_entries -ne 1) {
+        return $false
+    }
+    if ($CpuRenderer) {
+        return (
+            [int]$previewState.texture_entries -eq 0 -and
+            [int64]$previewState.texture_bytes -eq 0)
+    }
+    $dimensions = @($previewState.decoded_dimensions)
+    if ($dimensions.Count -ne 2) {
+        return $false
+    }
+    $expectedTextureBytes =
+        [int64]$dimensions[0] * [int64]$dimensions[1] * 4
+    # Snapshots are published before this frame's renderer preparation. The
+    # initial pixel-fidelity check proves WGPU presentation; repeated lifecycle
+    # samples may therefore observe either the bounded pre-upload state or the
+    # exact settled texture, while dismissal still requires exact zero above.
+    return (
+        ([int]$previewState.texture_entries -eq 0 -and
+         [int64]$previewState.texture_bytes -eq 0) -or
+        ([int]$previewState.texture_entries -eq 1 -and
+         [int64]$previewState.texture_bytes -eq $expectedTextureBytes))
 }
 
 function Wait-AutomexiaWindowCount {
@@ -401,12 +623,18 @@ try {
         [Text.Encoding]::ASCII)
 
     $integration = (Join-Path $integrationRoot 'automexia.ps1').Replace('\', '/')
+    $rendererConfig = if ($UseCpuRenderer) {
+        "`n[renderer]`nuse-cpu = true`n"
+    } else {
+        ''
+    }
     $config = @"
 confirm-before-quit = false
 
 [shell]
 program = "powershell.exe"
 args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
+$rendererConfig
 "@
     [System.IO.File]::WriteAllText(
         (Join-Path $configRoot 'config.toml'),
@@ -780,12 +1008,46 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         throw 'Pane-local tab did not preserve the selected PowerShell profile and directory'
     }
 
+    # Exercise the same wraparound selection methods used by Alt+PageUp and
+    # Alt+PageDown. Binding-table tests independently prove those chords map to
+    # these actions; the native snapshot proves route focus changes only inside
+    # the owning pane and preserves both PTYs.
+    $createdLocalRoute = [int64]$localPanel.route_id
+    $script:testStage = 'previous pane-local tab navigation'
+    Send-AutomexiaTestControl 'select-local-prev:local-prev'
+    $localPrevious = Read-AutomexiaSnapshot -AfterSequence ([int64]$localCreated.sequence)
+    $localPreviousDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ([int64](Get-ActiveAutomexiaPanel $localPrevious).route_id -ne
+           [int64]$initialPanel.route_id -and
+           [DateTime]::UtcNow -lt $localPreviousDeadline) {
+        $localPrevious = Read-AutomexiaSnapshot -AfterSequence ([int64]$localPrevious.sequence)
+    }
+    if ([int64](Get-ActiveAutomexiaPanel $localPrevious).route_id -ne
+        [int64]$initialPanel.route_id) {
+        Write-Host ($localPrevious | ConvertTo-Json -Depth 10)
+        throw 'Previous pane-local tab navigation did not wrap to the source tab'
+    }
+
+    $script:testStage = 'next pane-local tab navigation'
+    Send-AutomexiaTestControl 'select-local-next:local-next'
+    $localNext = Read-AutomexiaSnapshot -AfterSequence ([int64]$localPrevious.sequence)
+    $localNextDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ([int64](Get-ActiveAutomexiaPanel $localNext).route_id -ne
+           $createdLocalRoute -and [DateTime]::UtcNow -lt $localNextDeadline) {
+        $localNext = Read-AutomexiaSnapshot -AfterSequence ([int64]$localNext.sequence)
+    }
+    if ([int64](Get-ActiveAutomexiaPanel $localNext).route_id -ne $createdLocalRoute -or
+        [int](Get-ActiveAutomexiaPanel $localNext).local_tab_count -ne 2) {
+        Write-Host ($localNext | ConvertTo-Json -Depth 10)
+        throw 'Next pane-local tab navigation escaped its pane or lost a sibling PTY'
+    }
+
     # Return to the source and close the inactive sibling by index. This is the
     # native regression for the old cascade-close failure: the active source
     # route/PID and the window must survive unchanged.
     $script:testStage = 'select pane-local source'
     Send-AutomexiaTestControl 'select-local:local-source:0'
-    $localSource = Read-AutomexiaSnapshot -AfterSequence ([int64]$localCreated.sequence)
+    $localSource = Read-AutomexiaSnapshot -AfterSequence ([int64]$localNext.sequence)
     $localSourceDeadline = [DateTime]::UtcNow.AddSeconds(10)
     while ([int64](Get-ActiveAutomexiaPanel $localSource).route_id -ne
            [int64]$initialPanel.route_id -and [DateTime]::UtcNow -lt $localSourceDeadline) {
@@ -906,8 +1168,8 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     }
     $historyDone = $powerShellRestored
 
-    # Deterministic binding tests prove Ctrl+Alt+R clones while bare Ctrl+R
-    # remains shell-owned. This feature-gated,
+    # Deterministic binding tests prove bare Ctrl+R clones while Ctrl+Alt+R
+    # sends shell history search. This feature-gated,
     # renderer-neutral control invokes the same clone-right action path without
     # relying on focus-sensitive synthetic keyboard input.
     $script:testStage = 'clone split right'
@@ -939,13 +1201,45 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         throw 'The right clone did not preserve PowerShell/profile/current-directory launch intent'
     }
 
+    # Validate the geometric focus path used by Alt+Left/Alt+Right. The
+    # movement must stop within this grid and select the visual neighbour,
+    # without replacing either independent route.
+    $rightRoute = [int64]$rightPanel.route_id
+    $script:testStage = 'geometric focus left'
+    Send-AutomexiaTestControl 'select-pane:focus-left:left'
+    $focusedLeft = Read-AutomexiaSnapshot -AfterSequence ([int64]$rightClone.sequence)
+    $focusLeftDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ([int64](Get-ActiveAutomexiaPanel $focusedLeft).route_id -ne
+           [int64]$initialPanel.route_id -and [DateTime]::UtcNow -lt $focusLeftDeadline) {
+        $focusedLeft = Read-AutomexiaSnapshot -AfterSequence ([int64]$focusedLeft.sequence)
+    }
+    if ([int64](Get-ActiveAutomexiaPanel $focusedLeft).route_id -ne
+        [int64]$initialPanel.route_id) {
+        Write-Host ($focusedLeft | ConvertTo-Json -Depth 10)
+        throw 'Geometric left navigation did not focus the source pane'
+    }
+
+    $script:testStage = 'geometric focus right'
+    Send-AutomexiaTestControl 'select-pane:focus-right:right'
+    $focusedRight = Read-AutomexiaSnapshot -AfterSequence ([int64]$focusedLeft.sequence)
+    $focusRightDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ([int64](Get-ActiveAutomexiaPanel $focusedRight).route_id -ne
+           $rightRoute -and [DateTime]::UtcNow -lt $focusRightDeadline) {
+        $focusedRight = Read-AutomexiaSnapshot -AfterSequence ([int64]$focusedRight.sequence)
+    }
+    if ([int64](Get-ActiveAutomexiaPanel $focusedRight).route_id -ne $rightRoute -or
+        @($focusedRight.panels | ForEach-Object { [int64]$_.route_id } | Sort-Object -Unique).Count -ne 2) {
+        Write-Host ($focusedRight | ConvertTo-Json -Depth 10)
+        throw 'Geometric right navigation escaped the grid or changed pane routes'
+    }
+
     # Input and visible history must remain isolated. Write a marker only to
     # the clone, then return to the source with the unchanged Shift+F6 split
     # navigation shortcut and prove the marker is absent there.
     $marker = 'AUTOMEXIA_CLONE_ONLY_73491'
     $script:testStage = 'write to cloned split'
     Send-AutomexiaTestControl "write-line:2:Write-Output $marker"
-    $cloneOutput = Read-AutomexiaSnapshot -AfterSequence ([int64]$rightClone.sequence)
+    $cloneOutput = Read-AutomexiaSnapshot -AfterSequence ([int64]$focusedRight.sequence)
     $outputDeadline = [DateTime]::UtcNow.AddSeconds(10)
     while (-not ((Get-ActiveAutomexiaPanel $cloneOutput).visible_text -like "*$marker*") -and
            [DateTime]::UtcNow -lt $outputDeadline) {
@@ -1178,28 +1472,227 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     }
 
     $requestReleased = -not [bool]$restoredSnapshot.fullscreen_display_request_active
-    # Exercise the complete native quick-look path: feature-gated control,
-    # bounded background decode, route-scoped overlay upload, split-relative
-    # placement, renderer snapshot, and composited frame. The path is a
-    # repository-owned public brand asset and contains no user content.
-    $script:testStage = 'native image quick look'
-    $previewAsset = Join-Path $root 'assets\brand\png\automexia-terminal-128.png'
-    $previewControl = "preview-image:9100:$previewAsset"
+    # Exercise the user-facing path rather than bypassing input through the
+    # feature-gated preview control: print two real filenames, hover the first,
+    # click it to pin, and use Right Arrow to browse to the second. Snapshot
+    # geometry drives Win32 pointer coordinates deterministically without OCR.
+    $script:testStage = 'native image hover click and arrow browsing'
+    # Generate privacy-safe, high-contrast fixtures at runtime. The odd-width
+    # JPEG exercises a non-256-aligned RGBA row on the real WGPU upload path;
+    # the PNG proves alpha-capable decoding through the same interaction.
+    $previewAssetSmall = Join-Path $configRoot 'preview-bright-64.png'
+    $previewAsset = Join-Path $configRoot 'preview-bright-127.jpg'
+    [AutomexiaResizeDriver]::WritePreviewFixture(
+        $previewAssetSmall, 64, 64, $false)
+    [AutomexiaResizeDriver]::WritePreviewFixture(
+        $previewAsset, 127, 93, $true)
+    $previewDirectory = Split-Path -Parent $previewAsset
+    $previewTokenSmall = Split-Path -Leaf $previewAssetSmall
+    $previewTokenLarge = Split-Path -Leaf $previewAsset
+    # Keep each target on its own logical output row. The 29-column stress
+    # pane can display either filename intact, so keyboard browsing tests real
+    # path discovery instead of a synthetic token split by terminal reflow.
+    $previewCwdControl = "write-line:preview-cwd:Set-Location '$previewDirectory'"
+    Send-AutomexiaTestControl $previewCwdControl
+    $previewCwd = Read-AutomexiaSnapshot -AfterSequence ([int64]$final.sequence)
+    $previewCwdDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    while (([string]$previewCwd.last_control -ne $previewCwdControl -or
+            [string](Get-ActiveAutomexiaPanel $previewCwd).current_directory -ne
+                $previewDirectory.Replace('\', '/') -or
+            -not [bool](Get-ActiveAutomexiaPanel $previewCwd).shell_prompt_active) -and
+           [DateTime]::UtcNow -lt $previewCwdDeadline) {
+        $previewCwd = Read-AutomexiaSnapshot -AfterSequence ([int64]$previewCwd.sequence)
+    }
+    if ([string]$previewCwd.last_control -ne $previewCwdControl -or
+        [string](Get-ActiveAutomexiaPanel $previewCwd).current_directory -ne
+            $previewDirectory.Replace('\', '/')) {
+        Write-Host ($previewCwd | ConvertTo-Json -Depth 10)
+        throw 'Native image preview fixture did not enter the image directory'
+    }
+
+    # Exercise the exact filesystem-listing workflow: PowerShell's native ls
+    # objects feed a display-only name projection, and both names fit within
+    # the intentionally narrow pane without inheriting stale command cells.
+    $previewControl = 'write-line:preview-list:ls preview-bright-* | % Name'
     Send-AutomexiaTestControl $previewControl
-    $preview = Read-AutomexiaSnapshot -AfterSequence ([int64]$final.sequence)
+    $preview = Read-AutomexiaSnapshot -AfterSequence ([int64]$previewCwd.sequence)
     $previewDeadline = [DateTime]::UtcNow.AddSeconds(10)
     while (([string]$preview.last_control -ne $previewControl -or
-            -not [bool]$preview.image_preview.visible -or
-            -not [bool]$preview.image_preview.overlay_present) -and
+            -not ([string](Get-ActiveAutomexiaPanel $preview).visible_text).Contains($previewTokenSmall) -or
+            -not ([string](Get-ActiveAutomexiaPanel $preview).visible_text).Contains($previewTokenLarge) -or
+            -not [bool](Get-ActiveAutomexiaPanel $preview).shell_prompt_active) -and
            [DateTime]::UtcNow -lt $previewDeadline) {
+        $preview = Read-AutomexiaSnapshot -AfterSequence ([int64]$preview.sequence)
+    }
+    $previewPanel = Get-ActiveAutomexiaPanel $preview
+    $previewRows = @(([string]$previewPanel.visible_text) -split [char]10)
+    $previewRow = -1
+    $previewColumn = -1
+    for ($row = 0; $row -lt $previewRows.Count; $row++) {
+        $column = $previewRows[$row].IndexOf(
+            $previewTokenSmall, [StringComparison]::OrdinalIgnoreCase)
+        if ($column -ge 0) {
+            $previewRow = $row
+            $previewColumn = $column
+            break
+        }
+    }
+    if ($previewRow -lt 0 -or $previewColumn -lt 0 -or
+        [int]$previewPanel.cell_width -le 0 -or
+        [int]$previewPanel.cell_height -le 0) {
+        Write-Host ($preview | ConvertTo-Json -Depth 10)
+        throw 'Native image filename did not produce usable renderer-neutral hit geometry'
+    }
+    $previewX = [int][Math]::Floor(
+        [double]$previewPanel.grid_origin[0] +
+        (($previewColumn + 1.5) * [double]$previewPanel.cell_width))
+    $previewY = [int][Math]::Floor(
+        [double]$previewPanel.grid_origin[1] +
+        (($previewRow + 0.5) * [double]$previewPanel.cell_height))
+    $previewScale = [double]$preview.scale_factor
+    if ($previewScale -le 0.0) {
+        throw 'Native snapshot did not publish a valid window scale factor'
+    }
+    # WM_MOUSEMOVE client coordinates are DPI-virtualized before winit emits
+    # its physical position. Convert the renderer's physical hit geometry
+    # back to message coordinates exactly once.
+    $messagePreviewX = [int][Math]::Round($previewX / $previewScale)
+    $messagePreviewY = [int][Math]::Round($previewY / $previewScale)
+    $mouseLParam = [IntPtr]((
+        [int64]($messagePreviewY -band 0xFFFF) -shl 16) -bor
+        [int64]($messagePreviewX -band 0xFFFF))
+    # Enter from a different grid row first. CursorMoved is deliberately
+    # coalesced within one terminal cell in production, so a native hover test
+    # must model an actual pointer transition instead of reposting whatever
+    # cell the previous stress stage happened to leave behind.
+    $preHoverY = [Math]::Max(
+        1, $previewY - [int]$previewPanel.cell_height)
+    $messagePreHoverY = [int][Math]::Round($preHoverY / $previewScale)
+    $preHoverLParam = [IntPtr]((
+        [int64]($messagePreHoverY -band 0xFFFF) -shl 16) -bor
+        [int64]($messagePreviewX -band 0xFFFF))
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        throw 'Could not expose Automexia for native image pointer input'
+    }
+    if (-not [AutomexiaResizeDriver]::MovePointerToClient(
+        $window, $messagePreviewX, $messagePreHoverY) -or
+        -not [AutomexiaResizeDriver]::PostMessage(
+        $window, 0x0200, [IntPtr]::Zero, $preHoverLParam)) {
+        throw 'Could not deliver the native pre-hover transition'
+    }
+    $preHovered = Read-AutomexiaSnapshot -AfterSequence ([int64]$preview.sequence)
+    $preHoverDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([Math]::Abs([double]$preHovered.pointer.x - $previewX) -gt 1.0 -or
+            [Math]::Abs([double]$preHovered.pointer.y - $preHoverY) -gt 1.0) -and
+           [DateTime]::UtcNow -lt $preHoverDeadline) {
+        $preHovered = Read-AutomexiaSnapshot -AfterSequence ([int64]$preHovered.sequence)
+    }
+    if ([Math]::Abs([double]$preHovered.pointer.x - $previewX) -gt 1.0 -or
+        [Math]::Abs([double]$preHovered.pointer.y - $preHoverY) -gt 1.0) {
+        Write-Host ($preHovered | ConvertTo-Json -Depth 10)
+        throw 'Native pre-hover transition did not reach the terminal grid'
+    }
+    if (-not [AutomexiaResizeDriver]::MovePointerToClient(
+        $window, $messagePreviewX, $messagePreviewY) -or
+        -not [AutomexiaResizeDriver]::PostMessage(
+        $window, 0x0200, [IntPtr]::Zero, $mouseLParam)) {
+        throw 'Could not deliver the native hover event to the rendered image filename'
+    }
+    $hovered = Read-AutomexiaSnapshot -AfterSequence ([int64]$preHovered.sequence)
+    $hoverDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ((-not [bool]$hovered.image_preview.visible -or
+            -not [bool]$hovered.image_preview.overlay_present) -and
+           [DateTime]::UtcNow -lt $hoverDeadline) {
+        $hovered = Read-AutomexiaSnapshot -AfterSequence ([int64]$hovered.sequence)
+    }
+    if (-not [bool]$hovered.image_preview.visible -or
+        -not [bool]$hovered.image_preview.overlay_present -or
+        [int]$hovered.image_preview.decoded_dimensions[0] -ne 64 -or
+        [int]$hovered.image_preview.decoded_dimensions[1] -ne 64) {
+        Write-Host ($hovered | ConvertTo-Json -Depth 10)
+        throw 'Plain hover did not decode and display the 64px image path'
+    }
+
+    if (-not [AutomexiaResizeDriver]::PostMessage(
+        $window, 0x0201, [IntPtr]1, $mouseLParam) -or
+        -not [AutomexiaResizeDriver]::PostMessage(
+        $window, 0x0202, [IntPtr]::Zero, $mouseLParam)) {
+        throw 'Could not post the native click pair used to pin image quick look'
+    }
+    $pinned = Read-AutomexiaSnapshot -AfterSequence ([int64]$hovered.sequence)
+    $pinDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ((-not [bool]$pinned.image_preview.pinned) -and
+           [DateTime]::UtcNow -lt $pinDeadline) {
+        $pinned = Read-AutomexiaSnapshot -AfterSequence ([int64]$pinned.sequence)
+    }
+    if (-not [bool]$pinned.image_preview.pinned -or
+        [string]$pinned.image_preview.candidate -notlike "*$previewTokenSmall*") {
+        Write-Host ($pinned | ConvertTo-Json -Depth 10)
+        throw 'Native click did not pin the image path before keyboard browsing'
+    }
+    if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x27, $true)) {
+        throw 'Could not post Right Arrow to browse the pinned image preview'
+    }
+    $preview = Read-AutomexiaSnapshot -AfterSequence ([int64]$pinned.sequence)
+    $browseDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ((-not [bool]$preview.image_preview.visible -or
+            -not [bool]$preview.image_preview.overlay_present -or
+            -not [bool]$preview.image_preview.pinned -or
+            [string]$preview.image_preview.candidate -notlike "*$previewTokenLarge*" -or
+            [int]$preview.image_preview.decoded_dimensions[0] -ne 127 -or
+            [int]$preview.image_preview.decoded_dimensions[1] -ne 93) -and
+           [DateTime]::UtcNow -lt $browseDeadline) {
         $preview = Read-AutomexiaSnapshot -AfterSequence ([int64]$preview.sequence)
     }
     if (-not [bool]$preview.image_preview.visible -or
         -not [bool]$preview.image_preview.overlay_present -or
-        [int]$preview.image_preview.decoded_dimensions[0] -ne 128 -or
-        [int]$preview.image_preview.decoded_dimensions[1] -ne 128) {
-        Write-Host ($preview | ConvertTo-Json -Depth 8)
-        throw 'Native image quick look did not publish its decoded route-scoped GPU overlay'
+        -not [bool]$preview.image_preview.pinned -or
+        [string]$preview.image_preview.candidate -notlike "*$previewTokenLarge*" -or
+        [int]$preview.image_preview.decoded_dimensions[0] -ne 127 -or
+        [int]$preview.image_preview.decoded_dimensions[1] -ne 93) {
+        Write-Host ($preview | ConvertTo-Json -Depth 10)
+        throw 'Click-to-pin and Right Arrow did not browse to the next visible image path'
+    }
+
+    $overlayRect = @($preview.image_preview.overlay_rect)
+    if ($overlayRect.Count -ne 4) {
+        Write-Host ($preview | ConvertTo-Json -Depth 10)
+        throw 'Native image quick look did not publish its painted image rectangle'
+    }
+    $overlayX = [int][Math]::Floor([double]$overlayRect[0])
+    $overlayY = [int][Math]::Floor([double]$overlayRect[1])
+    $overlayWidth = [int][Math]::Ceiling([double]$overlayRect[2])
+    $overlayHeight = [int][Math]::Ceiling([double]$overlayRect[3])
+    if ($overlayWidth -lt 8 -or $overlayHeight -lt 8) {
+        throw "Native image quick look published an unusable image rectangle: $overlayWidth x $overlayHeight"
+    }
+
+    # A visible overlay record is insufficient: the former CPU ordering bug
+    # painted the nearly opaque card after the image, leaving a technically
+    # present but black preview. Inspect only the image body and require real
+    # color/luminance variation from the checked-in Automexia mark.
+    $script:testStage = 'native image preview visible pixel fidelity'
+    $pixelDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $previewPixels = [AutomexiaResizeDriver]::CaptureClientRegionStats(
+            $window, $overlayX, $overlayY, $overlayWidth, $overlayHeight)
+        $brightRatio = if ($previewPixels.SampleCount -eq 0) {
+            0.0
+        } else {
+            [double]$previewPixels.BrightSampleCount / $previewPixels.SampleCount
+        }
+        $previewPixelsVisible = (
+            $previewPixels.SampleCount -ge 64 -and
+            $previewPixels.DistinctColorBuckets -ge 4 -and
+            $previewPixels.LuminanceSpread -ge 32 -and
+            $previewPixels.MeanLuminance -ge 20 -and
+            $brightRatio -ge 0.10)
+        if (-not $previewPixelsVisible) {
+            Start-Sleep -Milliseconds 100
+        }
+    } while (-not $previewPixelsVisible -and [DateTime]::UtcNow -lt $pixelDeadline)
+    if (-not $previewPixelsVisible) {
+        throw "Image preview body is blank or obscured: $($previewPixels.Width)x$($previewPixels.Height), samples=$($previewPixels.SampleCount), buckets=$($previewPixels.DistinctColorBuckets), mean-luminance=$($previewPixels.MeanLuminance), spread=$($previewPixels.LuminanceSpread), bright-ratio=$([Math]::Round($brightRatio, 3))"
     }
 
     $framePath = if ([string]::IsNullOrWhiteSpace($FrameCapture)) {
@@ -1242,13 +1735,13 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         throw "Final painted client frame did not settle within 5 seconds after $frameAttempts attempts: $($frameStats.Width)x$($frameStats.Height), samples=$($frameStats.SampleCount), buckets=$($frameStats.DistinctColorBuckets), luminance-spread=$($frameStats.LuminanceSpread)"
     }
 
-    $script:testStage = 'dismiss native image quick look'
-    $dismissControl = 'dismiss-preview:9101'
-    Send-AutomexiaTestControl $dismissControl
+    $script:testStage = 'dismiss native image quick look with Escape'
+    if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)) {
+        throw 'Could not post Escape to dismiss the pinned image preview'
+    }
     $dismissed = Read-AutomexiaSnapshot -AfterSequence ([int64]$preview.sequence)
     $dismissDeadline = [DateTime]::UtcNow.AddSeconds(5)
-    while (([string]$dismissed.last_control -ne $dismissControl -or
-            [bool]$dismissed.image_preview.visible -or
+    while (([bool]$dismissed.image_preview.visible -or
             [bool]$dismissed.image_preview.overlay_present) -and
            [DateTime]::UtcNow -lt $dismissDeadline) {
         $dismissed = Read-AutomexiaSnapshot -AfterSequence ([int64]$dismissed.sequence)
@@ -1256,6 +1749,95 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     if ([bool]$dismissed.image_preview.visible -or
         [bool]$dismissed.image_preview.overlay_present) {
         throw 'Native image quick look did not remove its GPU overlay after dismissal'
+    }
+
+    $expectedPreviewCacheEntries = 2
+    $expectedPreviewCacheBytes = (64 * 64 * 4) + (127 * 93 * 4)
+    $resourceReleaseDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (-not (Test-AutomexiaImageResources $dismissed $false ([bool]$UseCpuRenderer) $expectedPreviewCacheEntries $expectedPreviewCacheBytes) -and
+           [DateTime]::UtcNow -lt $resourceReleaseDeadline) {
+        $dismissed = Read-AutomexiaSnapshot -AfterSequence ([int64]$dismissed.sequence)
+    }
+    if (-not (Test-AutomexiaImageResources $dismissed $false ([bool]$UseCpuRenderer) $expectedPreviewCacheEntries $expectedPreviewCacheBytes)) {
+        Write-Host ($dismissed | ConvertTo-Json -Depth 10)
+        throw 'Image dismissal left preview pixels, overlays, GPU textures, queued work, or completion state alive'
+    }
+
+    $script:testStage = 'repeated native image preview resource lifecycle'
+    $imageResourceBaseline = Get-AutomexiaResourceSample $process
+    $imageLifecycleFinal = $dismissed
+    for ($cycle = 1; $cycle -le $ImagePreviewLifecycleCycles; $cycle++) {
+        if (-not [AutomexiaResizeDriver]::MovePointerToClient(
+            $window, $messagePreviewX, $messagePreHoverY) -or
+            -not [AutomexiaResizeDriver]::PostMessage(
+            $window, 0x0200, [IntPtr]::Zero, $preHoverLParam)) {
+            throw "Could not deliver preview lifecycle pre-hover for cycle $cycle"
+        }
+        $cyclePreHover =
+            Read-AutomexiaSnapshot -AfterSequence ([int64]$imageLifecycleFinal.sequence)
+        if (-not [AutomexiaResizeDriver]::MovePointerToClient(
+            $window, $messagePreviewX, $messagePreviewY) -or
+            -not [AutomexiaResizeDriver]::PostMessage(
+            $window, 0x0200, [IntPtr]::Zero, $mouseLParam)) {
+            throw "Could not deliver preview lifecycle hover for cycle $cycle"
+        }
+        $cycleVisible =
+            Read-AutomexiaSnapshot -AfterSequence ([int64]$cyclePreHover.sequence)
+        $cycleVisibleDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ((-not (Test-AutomexiaImageResources $cycleVisible $true ([bool]$UseCpuRenderer) $expectedPreviewCacheEntries $expectedPreviewCacheBytes) -or
+                [int]$cycleVisible.image_preview.decoded_dimensions[0] -ne 64 -or
+                [int]$cycleVisible.image_preview.decoded_dimensions[1] -ne 64) -and
+               [DateTime]::UtcNow -lt $cycleVisibleDeadline) {
+            $cycleVisible =
+                Read-AutomexiaSnapshot -AfterSequence ([int64]$cycleVisible.sequence)
+        }
+        if (-not (Test-AutomexiaImageResources $cycleVisible $true ([bool]$UseCpuRenderer) $expectedPreviewCacheEntries $expectedPreviewCacheBytes) -or
+            [int]$cycleVisible.image_preview.decoded_dimensions[0] -ne 64 -or
+            [int]$cycleVisible.image_preview.decoded_dimensions[1] -ne 64) {
+            Write-Host ($cycleVisible | ConvertTo-Json -Depth 10)
+            throw "Preview lifecycle cycle $cycle did not converge to one bounded live image resource"
+        }
+
+        if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)) {
+            throw "Could not dismiss preview lifecycle cycle $cycle"
+        }
+        $cycleDismissed =
+            Read-AutomexiaSnapshot -AfterSequence ([int64]$cycleVisible.sequence)
+        $cycleDismissDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while (-not (Test-AutomexiaImageResources $cycleDismissed $false ([bool]$UseCpuRenderer) $expectedPreviewCacheEntries $expectedPreviewCacheBytes) -and
+               [DateTime]::UtcNow -lt $cycleDismissDeadline) {
+            $cycleDismissed =
+                Read-AutomexiaSnapshot -AfterSequence ([int64]$cycleDismissed.sequence)
+        }
+        if (-not (Test-AutomexiaImageResources $cycleDismissed $false ([bool]$UseCpuRenderer) $expectedPreviewCacheEntries $expectedPreviewCacheBytes)) {
+            Write-Host ($cycleDismissed | ConvertTo-Json -Depth 10)
+            throw "Preview lifecycle cycle $cycle leaked pixels, overlays, textures, queue items, or completion state"
+        }
+        $imageLifecycleFinal = $cycleDismissed
+    }
+    Start-Sleep -Milliseconds 250
+    $imageResourceFinal = Get-AutomexiaResourceSample $process
+    $imageResourceLimits = [ordered]@{
+        handle_growth = $MaximumImageHandleGrowth
+        thread_growth = $MaximumImageThreadGrowth
+        private_bytes_growth = $MaximumImageMemoryGrowth
+        working_set_growth = $MaximumImageMemoryGrowth
+    }
+    $imageResourceDelta = [ordered]@{
+        handle_growth =
+            $imageResourceFinal.handle_count - $imageResourceBaseline.handle_count
+        thread_growth =
+            $imageResourceFinal.thread_count - $imageResourceBaseline.thread_count
+        private_bytes_growth =
+            $imageResourceFinal.private_bytes - $imageResourceBaseline.private_bytes
+        working_set_growth =
+            $imageResourceFinal.working_set_bytes - $imageResourceBaseline.working_set_bytes
+    }
+    foreach ($name in $imageResourceLimits.Keys) {
+        if ([int64]$imageResourceDelta[$name] -gt
+            [int64]$imageResourceLimits[$name]) {
+            throw "Repeated image preview resource ceiling exceeded for $name"
+        }
     }
 
     # Custom-chrome hit geometry is covered deterministically in Rust across
@@ -1276,8 +1858,15 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     }
 
     $script:testStage = 'post-storm resource ceiling'
-    Start-Sleep -Milliseconds 500
-    $resourceFinal = Get-AutomexiaResourceSample $process
+    $resourceSettleDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        Start-Sleep -Milliseconds 100
+        $resourceFinal = Get-AutomexiaResourceSample $process
+        $descendantProcessGrowth =
+            $resourceFinal.descendant_process_count -
+            $resourceBaseline.descendant_process_count
+    } while ($descendantProcessGrowth -gt $MaximumDescendantProcessGrowth -and
+             [DateTime]::UtcNow -lt $resourceSettleDeadline)
     $resourceLimits = [ordered]@{
         handle_growth = $MaximumHandleGrowth
         thread_growth = $MaximumThreadGrowth
@@ -1290,7 +1879,7 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         thread_growth = $resourceFinal.thread_count - $resourceBaseline.thread_count
         private_bytes_growth = $resourceFinal.private_bytes - $resourceBaseline.private_bytes
         working_set_growth = $resourceFinal.working_set_bytes - $resourceBaseline.working_set_bytes
-        descendant_process_growth = $resourceFinal.descendant_process_count - $resourceBaseline.descendant_process_count
+        descendant_process_growth = $descendantProcessGrowth
     }
     foreach ($name in $resourceLimits.Keys) {
         if ([int64]$resourceDelta[$name] -gt [int64]$resourceLimits[$name]) {
@@ -1327,6 +1916,25 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
                 attempts = $frameAttempts
                 settle_milliseconds = $frameStopwatch.ElapsedMilliseconds
                 artifact = if ($null -eq $framePath) { $null } else { [IO.Path]::GetFileName($framePath) }
+            }
+            image_preview_pixels = [ordered]@{
+                width = $previewPixels.Width
+                height = $previewPixels.Height
+                sample_count = $previewPixels.SampleCount
+                distinct_color_buckets = $previewPixels.DistinctColorBuckets
+                mean_luminance = $previewPixels.MeanLuminance
+                luminance_spread = $previewPixels.LuminanceSpread
+                bright_ratio = $brightRatio
+            }
+            image_preview_lifecycle = [ordered]@{
+                cycles = $ImagePreviewLifecycleCycles
+                renderer = if ($UseCpuRenderer) { 'cpu' } else { 'wgpu' }
+                cache_entries = $expectedPreviewCacheEntries
+                cache_bytes = $expectedPreviewCacheBytes
+                baseline = $imageResourceBaseline
+                final = $imageResourceFinal
+                delta = $imageResourceDelta
+                ceilings = $imageResourceLimits
             }
         } | ConvertTo-Json -Depth 5
         $temporaryReport = "$reportPath.$PID.tmp"
