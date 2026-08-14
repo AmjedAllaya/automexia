@@ -349,9 +349,11 @@ read authority does not imply command authority.
   prompt reserves a semantic,
   blank `Prompt` row, a complete-path `PromptContinuation` row, and a short
   editable `PromptContinuation` row. The renderer paints operational context
-  on the blank row without adding characters to PTY output. The shell line
-  editor owns only the lambda/command row, while the full path is durable grid
-  history. Stable `aid` identity reconnects all three rows after scrollback and
+  as compact, non-interactive semantic tags on the blank row without adding
+  characters to PTY output. Tag geometry derives from the pane's logical row
+  height, while the shared UI model resolves role tint and 4.5:1 text contrast.
+  The shell line editor owns only the lambda/command row, while the full path
+  is durable grid history. Stable `aid` identity reconnects all three rows after scrollback and
   reflow, so typing, command output, and resize cannot erase, duplicate, or
   attach them to the wrong command.
 - Each pane also owns a renderer-only operational footer (ADR 0008). Layout

@@ -142,6 +142,15 @@ a glance in multi-cloud workspaces. A four-sided `split_active` accent outline
 marks the selected pane without consuming terminal cells or changing PTY
 dimensions. Global chrome never substitutes one pane's facts for another.
 
+Each identity is presented as a compact, passive semantic tag. Tags use type
+derived from the current prompt-row height and capped below the default 20 pt
+path/command text, so metadata remains visibly secondary at normal zoom and
+scales down safely in narrow splits. A low-opacity role tint groups each icon
+with its label without resembling an action button; tags have no click target.
+Whole tags disappear by priority when horizontal space is exhausted and return
+automatically when the pane grows. The renderer never truncates a tag into an
+orphaned icon or label.
+
 | Segment | Appears when |
 |---|---|
 | OS/WSL | The active shell publishes a real distro, or the native host is known |
@@ -193,7 +202,7 @@ snapshots, and uses the color for both icon and label:
 
 Custom themes retain each anchor's hue and saturation. Automexia changes only
 HSL lightness when required to keep the rendered 8-bit color at or above 4.5:1
-contrast against the configured context background. Icons and labels remain
+contrast against the effective tinted tag surface. Icons and labels remain
 present together, so color is never the only identifier.
 
 ## Prompt and command lifecycle
@@ -203,7 +212,7 @@ for every prompt. The first is a renderer-owned context snapshot, the second
 stores the complete path, and the third is the short editable command row:
 
 ```text
-OS | git-branch | Kubernetes | cloud | Docker | environment | user
+[OS] [git-branch] [Kubernetes] [cloud] [Docker] [environment] [user]
 complete/current/path
 lambda command
 ```

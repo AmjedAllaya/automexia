@@ -25,17 +25,48 @@ const REFRESH_INTERVAL: Duration = Duration::from_millis(LIVE_REFRESH_MILLIS);
 const REFRESH_IN_FLIGHT_TIMEOUT: Duration = Duration::from_secs(10);
 const ORDER: u8 = 19;
 const CONTEXT_FONT_SIZE: f32 = 18.0;
-const PROMPT_CONTEXT_FONT_SIZE: f32 = 18.0;
-const PROMPT_CONTEXT_ICON_SIZE: f32 = 23.0;
-const PROMPT_CONTEXT_ICON_SLOT: f32 = 27.0;
-const PROMPT_CONTEXT_PAD_X: f32 = 4.0;
-const PROMPT_CONTEXT_ICON_GAP: f32 = 8.0;
-const PROMPT_CONTEXT_SEPARATOR_GAP: f32 = 9.0;
+const PROMPT_TAG_FONT_ROW_RATIO: f32 = 0.70;
+const PROMPT_TAG_MAX_FONT_SIZE: f32 = 17.0;
+const PROMPT_TAG_MIN_FONT_SIZE: f32 = 4.0;
+const PROMPT_TAG_LEFT_INSET: f32 = 2.0;
 const PROMPT_RESULT_RESERVE: f32 = 112.0;
 
-const _: () = {
-    assert!(PROMPT_CONTEXT_ICON_SLOT >= PROMPT_CONTEXT_ICON_SIZE);
-};
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PromptTagMetrics {
+    font_size: f32,
+    icon_size: f32,
+    icon_slot: f32,
+    height: f32,
+    padding_x: f32,
+    icon_gap: f32,
+    tag_gap: f32,
+    radius: f32,
+}
+
+fn prompt_tag_metrics(row_height: f32) -> PromptTagMetrics {
+    let row_height = row_height.max(1.0);
+    let font_size = (row_height * PROMPT_TAG_FONT_ROW_RATIO)
+        .clamp(PROMPT_TAG_MIN_FONT_SIZE, PROMPT_TAG_MAX_FONT_SIZE)
+        .min(row_height);
+    let vertical_padding = (row_height * 0.08).clamp(1.0, 2.0);
+    let height = (font_size + vertical_padding * 2.0).min(row_height);
+    let padding_x = (font_size * 0.35).clamp(3.0, 6.0);
+    let icon_gap = (font_size * 0.28).clamp(2.0, 5.0);
+    let tag_gap = (font_size * 0.35).clamp(3.0, 6.0);
+    let icon_size = font_size * 1.05;
+    let icon_slot = font_size * 1.20;
+    let radius = (height * 0.22).clamp(1.0, 5.0).min(height * 0.5);
+    PromptTagMetrics {
+        font_size,
+        icon_size,
+        icon_slot,
+        height,
+        padding_x,
+        icon_gap,
+        tag_gap,
+        radius,
+    }
+}
 
 struct PromptSnapshot {
     session_id: usize,
@@ -335,63 +366,55 @@ impl DevOpsStatus {
         anchor: &PromptAnchor,
         segments: &[Segment],
     ) {
-        let text_y = anchor.y
-            + (anchor.height.max(PROMPT_CONTEXT_FONT_SIZE) - PROMPT_CONTEXT_FONT_SIZE)
-                / 2.0
-            - 1.0;
-        let mut cursor_x = anchor.x + PROMPT_CONTEXT_PAD_X;
+        let metrics = prompt_tag_metrics(anchor.height);
+        let tag_y = anchor.y + (anchor.height - metrics.height) * 0.5;
+        let text_y = tag_y + (metrics.height - metrics.font_size) * 0.5 - 1.0;
+        let icon_y = tag_y + (metrics.height - metrics.icon_size) * 0.5;
+        let mut cursor_x = anchor.x + PROMPT_TAG_LEFT_INSET;
         let right_edge = anchor.x + (anchor.width - PROMPT_RESULT_RESERVE).max(80.0);
-        let separator = muted(colors.foreground, 0.32);
 
-        for (index, segment) in segments.iter().enumerate() {
+        for segment in segments {
             let color = segment_color(colors, segment.role);
             let text_opts = DrawOpts {
-                font_size: PROMPT_CONTEXT_FONT_SIZE,
+                font_size: metrics.font_size,
                 color: color_to_u8(color),
                 ..DrawOpts::default()
             };
             let text_width = sugarloaf.text_mut().measure(&segment.value, &text_opts);
-            let separator_width = if index == 0 {
-                0.0
-            } else {
-                PROMPT_CONTEXT_SEPARATOR_GAP * 2.0 + 1.0
-            };
-            let segment_width = PROMPT_CONTEXT_ICON_SLOT
-                + PROMPT_CONTEXT_ICON_GAP
-                + text_width
-                + PROMPT_CONTEXT_PAD_X;
-            if cursor_x + separator_width + segment_width > right_edge {
+            let segment_width = metrics.padding_x * 2.0
+                + metrics.icon_slot
+                + metrics.icon_gap
+                + text_width;
+            if cursor_x + segment_width > right_edge {
                 break;
             }
 
-            if index != 0 {
-                cursor_x += PROMPT_CONTEXT_SEPARATOR_GAP;
-                sugarloaf.line(
-                    cursor_x,
-                    anchor.y + 3.0,
-                    cursor_x,
-                    anchor.y + anchor.height - 3.0,
-                    1.0,
-                    0.0,
-                    separator,
-                    ORDER,
-                );
-                cursor_x += PROMPT_CONTEXT_SEPARATOR_GAP + 1.0;
-            }
+            sugarloaf.rounded_rect(
+                None,
+                cursor_x,
+                tag_y,
+                segment_width,
+                metrics.height,
+                segment_tag_background(segment.role),
+                0.0,
+                metrics.radius,
+                ORDER - 1,
+            );
+            let content_x = cursor_x + metrics.padding_x;
             draw_icon_in_slot(
                 sugarloaf,
                 segment.icon,
-                cursor_x,
-                text_y - 2.0,
-                PROMPT_CONTEXT_ICON_SLOT,
-                PROMPT_CONTEXT_ICON_SIZE,
+                content_x,
+                icon_y,
+                metrics.icon_slot,
+                metrics.icon_size,
                 color,
             );
-            cursor_x += PROMPT_CONTEXT_ICON_SLOT + PROMPT_CONTEXT_ICON_GAP;
+            let label_x = content_x + metrics.icon_slot + metrics.icon_gap;
             sugarloaf
                 .text_mut()
-                .draw(cursor_x, text_y, &segment.value, &text_opts);
-            cursor_x += text_width + PROMPT_CONTEXT_PAD_X;
+                .draw(label_x, text_y, &segment.value, &text_opts);
+            cursor_x += segment_width + metrics.tag_gap;
         }
     }
 
@@ -682,11 +705,6 @@ fn compact_middle(value: &str, max_chars: usize) -> String {
     automexia_ui_model::compact_middle(value, max_chars)
 }
 
-fn muted(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
-    color[3] = alpha;
-    color
-}
-
 #[cfg(test)]
 fn segment_anchor_rgb(role: SegmentRole) -> [u8; 3] {
     automexia_ui_model::segment_anchor_rgb(role)
@@ -698,7 +716,11 @@ fn segment_anchor(role: SegmentRole) -> [f32; 4] {
 }
 
 fn segment_color(colors: Colors, role: SegmentRole) -> [f32; 4] {
-    automexia_ui_model::segment_color(colors.background.0, role)
+    automexia_ui_model::segment_tag_color(colors.background.0, role)
+}
+
+fn segment_tag_background(role: SegmentRole) -> [f32; 4] {
+    automexia_ui_model::segment_tag_background(role)
 }
 
 #[cfg(test)]
@@ -821,13 +843,33 @@ mod tests {
                     automexia_ui_model::segment_anchor_rgb(role)
                 );
                 let rendered = quantized(segment_color(colors, role));
-                assert!(contrast_ratio(rendered, background) >= 4.5);
+                let surface =
+                    quantized(automexia_ui_model::segment_tag_surface(background, role));
+                assert!(contrast_ratio(rendered, surface) >= 4.5);
             }
         }
         assert_eq!(
             segment_anchor(SegmentRole::User),
             automexia_ui_model::segment_anchor(SegmentRole::User)
         );
+    }
+
+    #[test]
+    fn prompt_tags_are_secondary_compact_and_fit_their_rows() {
+        let comfortable = prompt_tag_metrics(24.0);
+        assert!((16.0..18.0).contains(&comfortable.font_size));
+        assert!(comfortable.height < 24.0);
+        assert!(comfortable.icon_slot >= comfortable.icon_size);
+        assert!(comfortable.tag_gap < comfortable.icon_slot);
+
+        for row_height in [2.0, 8.0, 16.0, 24.0, 48.0] {
+            let metrics = prompt_tag_metrics(row_height);
+            assert!(metrics.font_size <= row_height);
+            assert!(metrics.height <= row_height);
+            assert!(metrics.radius <= metrics.height * 0.5);
+            assert!(metrics.padding_x > 0.0);
+            assert!(metrics.icon_gap > 0.0);
+        }
     }
 
     #[test]
@@ -841,6 +883,7 @@ mod tests {
     fn renderer_icon_adapter_uses_shared_glyphs_and_optics() {
         let docker = icon_optics(IconKind::Docker);
         assert_eq!(docker.scale, 1.85);
+        let prompt_icon_size = prompt_tag_metrics(24.0).icon_size;
         for kind in ALL_ICON_KINDS {
             assert_eq!(icon_glyph(kind), automexia_ui_model::icon_glyph(kind));
             assert!(icon_glyph(kind)
@@ -848,14 +891,12 @@ mod tests {
                 .all(|character| character as u32 >= 0xe000));
             let optics = icon_optics(kind);
             assert!((0.90..=1.90).contains(&optics.scale));
-            let prompt_size = icon_font_size(PROMPT_CONTEXT_ICON_SIZE, kind);
+            let prompt_size = icon_font_size(prompt_icon_size, kind);
             assert!(prompt_size > 0.0);
-            let prompt_center = icon_draw_y(20.0, PROMPT_CONTEXT_ICON_SIZE, kind)
+            let prompt_center = icon_draw_y(20.0, prompt_icon_size, kind)
                 + prompt_size * 0.5
                 - optics.y_shift;
-            assert!(
-                (prompt_center - (20.0 + PROMPT_CONTEXT_ICON_SIZE * 0.5)).abs() < 0.001
-            );
+            assert!((prompt_center - (20.0 + prompt_icon_size * 0.5)).abs() < 0.001);
         }
     }
 

@@ -11,6 +11,9 @@ use automexia_extension_api::{
 use unicode_segmentation::UnicodeSegmentation;
 
 pub const MIN_TEXT_CONTRAST: f32 = 4.55;
+/// Context tags use a restrained semantic tint so they read as passive
+/// metadata instead of interactive controls.
+pub const CONTEXT_TAG_BACKGROUND_ALPHA: f32 = 0.12;
 const MAX_OS_CHARS: usize = 14;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -235,6 +238,50 @@ pub fn segment_color(background: [f32; 4], role: SegmentRole) -> [f32; 4] {
         return anchor;
     }
     ensure_contrast(anchor, background, MIN_TEXT_CONTRAST)
+}
+
+/// Translucent role tint painted behind a prompt-context tag.
+pub fn segment_tag_background(role: SegmentRole) -> [f32; 4] {
+    let mut color = segment_anchor(role);
+    color[3] = CONTEXT_TAG_BACKGROUND_ALPHA;
+    color
+}
+
+/// Effective tag surface after its translucent role tint is composited over
+/// the configured terminal background. This is public so renderer adapters and
+/// accessibility tests resolve text against the same surface that users see.
+pub fn segment_tag_surface(background: [f32; 4], role: SegmentRole) -> [f32; 4] {
+    composite_over(segment_tag_background(role), background)
+}
+
+/// Resolve semantic foreground color against the tag surface rather than the
+/// bare terminal canvas.
+pub fn segment_tag_color(background: [f32; 4], role: SegmentRole) -> [f32; 4] {
+    let surface = quantize(segment_tag_surface(background, role));
+    let anchor = segment_anchor(role);
+    let rendered_anchor = quantize(anchor);
+    if contrast_ratio(rendered_anchor, surface) >= 4.5 {
+        return anchor;
+    }
+    ensure_contrast(anchor, surface, MIN_TEXT_CONTRAST)
+}
+
+fn composite_over(foreground: [f32; 4], background: [f32; 4]) -> [f32; 4] {
+    let foreground_alpha = foreground[3].clamp(0.0, 1.0);
+    let background_alpha = background[3].clamp(0.0, 1.0);
+    let alpha = foreground_alpha + background_alpha * (1.0 - foreground_alpha);
+    if alpha <= f32::EPSILON {
+        return [0.0, 0.0, 0.0, 0.0];
+    }
+
+    let mut result = [0.0; 4];
+    for channel in 0..3 {
+        result[channel] = (foreground[channel] * foreground_alpha
+            + background[channel] * background_alpha * (1.0 - foreground_alpha))
+            / alpha;
+    }
+    result[3] = alpha;
+    result
 }
 
 pub fn ensure_contrast(anchor: [f32; 4], background: [f32; 4], minimum: f32) -> [f32; 4] {
@@ -545,6 +592,27 @@ mod tests {
                 assert!(
                     contrast_ratio(resolved, background) >= 4.5,
                     "{role:?} failed against {background:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn compact_tag_palette_keeps_subtle_tints_and_accessible_text() {
+        for background in [
+            [0.0, 0.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0, 1.0],
+            [0.13, 0.47, 0.73, 1.0],
+            [0.02, 0.04, 0.08, 0.82],
+        ] {
+            for role in ALL_ROLES {
+                let tint = segment_tag_background(role);
+                assert_eq!(tint[3], CONTEXT_TAG_BACKGROUND_ALPHA);
+                let surface = quantize(segment_tag_surface(background, role));
+                let foreground = quantize(segment_tag_color(background, role));
+                assert!(
+                    contrast_ratio(foreground, surface) >= 4.5,
+                    "{role:?} tag failed against {background:?}"
                 );
             }
         }

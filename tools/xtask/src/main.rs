@@ -1785,7 +1785,8 @@ fn verify_architecture() -> TaskResult {
     let ui_model = read(&root().join("automexia-ui-model/src/lib.rs"))?;
     require(
         context_renderer.contains("automexia_ui_model::project_status")
-            && context_renderer.contains("automexia_ui_model::segment_color")
+            && context_renderer.contains("automexia_ui_model::segment_tag_color")
+            && context_renderer.contains("automexia_ui_model::segment_tag_background")
             && !context_renderer.contains("DevOpsSnapshot")
             && !context_renderer.contains("CloudContext")
             && !context_renderer.contains("builtins::devops")
@@ -1803,6 +1804,10 @@ fn verify_architecture() -> TaskResult {
             && ui_model.contains("pub fn hit_test")
             && ui_model.contains("pub fn details_action_at")
             && ui_model.contains("pub fn segment_color")
+            && ui_model.contains("pub fn segment_tag_color")
+            && ui_model.contains("pub fn segment_tag_background")
+            && ui_model.contains("pub fn segment_tag_surface")
+            && ui_model.contains("CONTEXT_TAG_BACKGROUND_ALPHA")
             && ui_model.contains("unicode_segmentation"),
         "generic UI model lacks semantic roles, bounded timestamps/actions, responsive layout, hit testing, accessibility, contrast, or grapheme handling",
     )?;
