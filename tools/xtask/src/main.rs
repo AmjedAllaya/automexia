@@ -1422,6 +1422,28 @@ fn test_image_rendering(native_gui: bool) -> TaskResult {
 }
 
 #[cfg(target_os = "windows")]
+fn image_decoder_fuzz_wsl_script(seconds: u64) -> String {
+    format!(
+        concat!(
+            "set -eu; ",
+            "command -v rustup >/dev/null 2>&1 || ",
+            "{{ echo 'rustup is required inside WSL' >&2; exit 2; }}; ",
+            "rustup toolchain install nightly --profile minimal; ",
+            "if ! cargo +nightly fuzz --version >/dev/null 2>&1; then ",
+            "cargo install cargo-fuzz --version 0.13.1 --locked; ",
+            "fi; ",
+            "fuzz_workspace=$(mktemp -d /tmp/automexia-image-fuzz.XXXXXX); ",
+            "trap 'rm -rf -- \"$fuzz_workspace\"' EXIT INT TERM; ",
+            "mkdir -p \"$fuzz_workspace/target\" \"$fuzz_workspace/corpus\"; ",
+            "CARGO_TARGET_DIR=\"$fuzz_workspace/target\" cargo +nightly fuzz run ",
+            "image_decoder \"$fuzz_workspace/corpus\" -- ",
+            "-max_total_time={} -rss_limit_mb=768 -timeout=15"
+        ),
+        seconds
+    )
+}
+
+#[cfg(target_os = "windows")]
 fn test_image_decoder_fuzz(seconds: u64) -> TaskResult {
     // cargo-fuzz/libFuzzer is officially supported on Unix-like hosts, not
     // native Windows. Route Windows contributors through WSL instead of
@@ -1448,22 +1470,7 @@ fn test_image_decoder_fuzz(seconds: u64) -> TaskResult {
         return Err("wslpath returned an empty repository path".into());
     }
 
-    let script = format!(
-        concat!(
-            "set -eu; ",
-            "command -v rustup >/dev/null 2>&1 || ",
-            "{{ echo 'rustup is required inside WSL' >&2; exit 2; }}; ",
-            "rustup toolchain install nightly --profile minimal; ",
-            "if ! cargo +nightly fuzz --version >/dev/null 2>&1; then ",
-            "cargo install cargo-fuzz --version 0.13.1 --locked; ",
-            "fi; ",
-            "fuzz_target=$(mktemp -d /tmp/automexia-image-fuzz.XXXXXX); ",
-            "trap 'rm -rf -- \"$fuzz_target\"' EXIT INT TERM; ",
-            "CARGO_TARGET_DIR=\"$fuzz_target\" cargo +nightly fuzz run image_decoder -- ",
-            "-max_total_time={} -rss_limit_mb=768 -timeout=15"
-        ),
-        seconds
-    );
+    let script = image_decoder_fuzz_wsl_script(seconds);
     let mut command = Command::new("wsl.exe");
     command
         .arg("--cd")
@@ -1494,25 +1501,29 @@ fn test_image_decoder_fuzz(seconds: u64) -> TaskResult {
         run_command(install, "install pinned cargo-fuzz 0.13.1")?;
     }
 
-    let target = tempfile::Builder::new()
+    let workspace = tempfile::Builder::new()
         .prefix("automexia-image-fuzz-")
         .tempdir()
         .map_err(|error| {
-            format!("could not create disposable image-fuzz target directory: {error}")
+            format!("could not create disposable image-fuzz workspace: {error}")
         })?;
+    let target = workspace.path().join("target");
+    let corpus = workspace.path().join("corpus");
+    fs::create_dir_all(&target)
+        .map_err(|error| format!("could not create disposable fuzz target: {error}"))?;
+    fs::create_dir_all(&corpus)
+        .map_err(|error| format!("could not create disposable fuzz corpus: {error}"))?;
     let mut fuzz = Command::new("cargo");
-    fuzz.args([
-        "+nightly",
-        "fuzz",
-        "run",
-        "image_decoder",
-        "--",
-        &format!("-max_total_time={seconds}"),
-        "-rss_limit_mb=768",
-        "-timeout=15",
-    ])
-    .env("CARGO_TARGET_DIR", target.path())
-    .current_dir(root());
+    fuzz.args(["+nightly", "fuzz", "run", "image_decoder"])
+        .arg(&corpus)
+        .args([
+            "--",
+            &format!("-max_total_time={seconds}"),
+            "-rss_limit_mb=768",
+            "-timeout=15",
+        ])
+        .env("CARGO_TARGET_DIR", &target)
+        .current_dir(root());
     run_command(fuzz, "nightly image-decoder fuzz campaign")
 }
 
@@ -2324,6 +2335,9 @@ fn verify_architecture() -> TaskResult {
             && native_resize.contains("ImagePreviewLifecycleCycles")
             && native_resize.contains("Test-AutomexiaImageResources")
             && native_resize.contains("image_preview_lifecycle = [ordered]@{")
+            && native_resize.contains("CompositingMode.SourceCopy")
+            && native_resize.contains("image_preview_pixels = [ordered]@{")
+            && xtask_source.contains("verify_native_image_backend_equivalence")
             && ci_workflow.contains("cargo xtask test image-rendering")
             && usage().contains("test image-rendering [--native-gui]"),
         "local image quick look must preserve bounded discovery/decode, exact CPU/GPU lifecycle accounting, repeated leak checks, native pixels, and one required contributor gate",
@@ -2350,9 +2364,11 @@ fn verify_architecture() -> TaskResult {
             && nightly.contains("-rss_limit_mb=768 -timeout=15")
             && nightly.contains("cargo +nightly test -p automexia-image --lib")
             && xtask_source.contains("mktemp -d /tmp/automexia-image-fuzz.XXXXXX")
+            && xtask_source.contains("fuzz_workspace/corpus")
             && xtask_source.contains("tempfile::Builder::new()")
+            && xtask_source.contains("workspace.path().join(\"corpus\")")
             && usage().contains("test image-decoder-fuzz [--seconds N]"),
-        "bounded image decoder/token fuzzing must use explicit nightly, sanitizer/RSS/time limits, disposable build storage, and a supported local runner",
+        "bounded image decoder/token fuzzing must use explicit nightly, sanitizer/RSS/time limits, disposable build/corpus storage, and a supported local runner",
     )?;
 
     let devops_manifest = read(&root().join("automexia-devops/src/lib.rs"))?;
@@ -3300,6 +3316,25 @@ mod tests {
         assert!(parse_fuzz_seconds("0").is_err());
         assert!(parse_fuzz_seconds("86401").is_err());
         assert!(parse_fuzz_seconds("forever").is_err());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_fuzz_script_is_nightly_bounded_and_fully_disposable() {
+        let script = image_decoder_fuzz_wsl_script(37);
+        assert!(script.contains("cargo +nightly fuzz run image_decoder"));
+        assert!(script.contains("-max_total_time=37"));
+        assert!(script.contains("-rss_limit_mb=768 -timeout=15"));
+        assert!(script.contains("mktemp -d /tmp/automexia-image-fuzz.XXXXXX"));
+        assert!(script.contains("$fuzz_workspace/target"));
+        assert!(script.contains("$fuzz_workspace/corpus"));
+        assert!(script.contains("trap 'rm -rf -- \"$fuzz_workspace\"'"));
+        assert!(!script.contains("CARGO_TARGET_DIR=\"$fuzz_workspace\" cargo"));
+    }
+
+    #[test]
+    fn architecture_contract_self_verifies() {
+        verify_architecture().unwrap();
     }
 
     #[cfg(target_os = "windows")]
