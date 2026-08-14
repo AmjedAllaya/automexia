@@ -42,7 +42,7 @@ pub fn normalized_args(program: Option<&str>, args: &[String]) -> Vec<String> {
                 }
                 result.push("/K".to_string());
                 result.push(
-                    "if exist \"%LOCALAPPDATA%\\Automexia\\shell-integration\\automexia.cmd\" call \"%LOCALAPPDATA%\\Automexia\\shell-integration\\automexia.cmd\""
+                    "chcp 65001>nul & set \"AUTOMEXIA_CMD_PROMPT_GLYPH=λ\" & if exist \"%LOCALAPPDATA%\\Automexia\\shell-integration\\automexia.cmd\" call \"%LOCALAPPDATA%\\Automexia\\shell-integration\\automexia.cmd\""
                         .to_string(),
                 );
             }

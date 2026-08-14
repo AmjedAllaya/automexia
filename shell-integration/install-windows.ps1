@@ -194,7 +194,7 @@ if (-not $SkipCmd) {
     $cmdSource = $cmdSource.Replace('__AUTOMEXIA_CMD_USER_BASE64__', $cmdUser)
     $cmdSource = $cmdSource.Replace('__AUTOMEXIA_CMD_PATH_BASE64__', $cmdPath)
     $cmdSource = [regex]::Replace($cmdSource, "\r?\n", "`r`n")
-    Write-TextAtomically $cmdIntegration $cmdSource ([Text.UTF8Encoding]::new($true))
+    Write-TextAtomically $cmdIntegration $cmdSource ([Text.Encoding]::ASCII)
     $cmdListLauncher = [IO.File]::ReadAllText((Join-Path $cmdSourceRoot 'automexia-ls.cmd'), [Text.Encoding]::UTF8)
     $cmdListLauncher = [regex]::Replace($cmdListLauncher, "\r?\n", "`r`n")
     $cmdListPath = Join-Path $InstallRoot 'automexia-ls.cmd'

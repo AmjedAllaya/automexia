@@ -24,6 +24,10 @@ if ($integrationSource -notmatch 'SetUserVar=automexia_os_version=\$script:Autom
 if ($integrationSource -notmatch 'SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==') { throw 'PowerShell does not publish its real shell name' }
 if ($integrationSource -notmatch 'SetUserVar=automexia_shell_user=') { throw 'PowerShell does not publish its explicit user identity' }
 if ($integrationSource -notmatch 'SetUserVar=automexia_shell_path=') { throw 'PowerShell does not publish its executable path' }
+if ($integrationSource -notmatch 'function script:Publish-AutomexiaPowerShellIdentity' -or
+    $firstPrompt -notmatch 'Publish-AutomexiaPowerShellIdentity') {
+    throw 'PowerShell does not restore parent identity on every prompt after a nested shell exits'
+}
 if ($integrationSource -notmatch '133;P;k=c;aid=') { throw 'PowerShell prompt has no terminal-owned semantic-row marker' }
 if ($integrationSource -match 'Get-AutomexiaGitSegment|gitSegment') { throw 'PowerShell still duplicates Git context on the editable path row' }
 $global:LASTEXITCODE = 73
@@ -43,6 +47,26 @@ $cmdExeAlias = Get-Command cmd.exe -ErrorAction Stop
 if ($cmdAlias.CommandType -ne 'Alias' -or $cmdAlias.Definition -ne 'Invoke-AutomexiaCmd' -or
     $cmdExeAlias.CommandType -ne 'Alias' -or $cmdExeAlias.Definition -ne 'Invoke-AutomexiaCmd') {
     throw 'PowerShell cmd/cmd.exe entry points do not resolve to the in-pane launcher'
+}
+
+# Replace only the executable with a harmless command and prove a truly bare
+# invocation selects /D /K integration. This catches PowerShell's subtle null
+# pipeline behavior without opening an interactive CMD child.
+$previousCmdExecutable = $script:AutomexiaCmdExecutable
+$previousCmdIntegration = $script:AutomexiaCmdIntegration
+try {
+    $script:AutomexiaCmdExecutable = 'Write-Output'
+    $script:AutomexiaCmdIntegration = $integration
+    $bareCmdArguments = @(& Invoke-AutomexiaCmd)
+    if ($bareCmdArguments.Count -ne 3 -or
+        $bareCmdArguments[0] -ne '/D' -or
+        $bareCmdArguments[1] -ne '/K' -or
+        $bareCmdArguments[2] -notmatch '^chcp 65001>nul & set "AUTOMEXIA_CMD_PROMPT_GLYPH=.+?" & call "') {
+        throw 'Bare cmd was mistaken for an explicit empty argument and skipped integration'
+    }
+} finally {
+    $script:AutomexiaCmdExecutable = $previousCmdExecutable
+    $script:AutomexiaCmdIntegration = $previousCmdIntegration
 }
 $nativeCmdResult = (& cmd /D /C 'echo AUTOMEXIA_CMD_NATIVE_OK' | Out-String).Trim()
 if ($nativeCmdResult -ne 'AUTOMEXIA_CMD_NATIVE_OK') {
@@ -185,11 +209,17 @@ try {
         }
     }
     $cmdSource = [IO.File]::ReadAllText($cmdIntegrationPath, [Text.Encoding]::UTF8)
+    if ($cmdSource.ToCharArray() | Where-Object { [int]$_ -gt 127 } | Select-Object -First 1) {
+        throw 'CMD integration source is not ASCII-safe and can be corrupted by the active console code page'
+    }
     foreach ($contract in @(
         'SetUserVar=automexia_shell_name=Q01E',
         'SetUserVar=automexia_shell_user=__AUTOMEXIA_CMD_USER_BASE64__',
         'SetUserVar=automexia_shell_path=__AUTOMEXIA_CMD_PATH_BASE64__',
         'SetUserVar=automexia_distro=',
+        'set "AUTOMEXIA_CMD_IDENTITY=',
+        'PROMPT=%AUTOMEXIA_CMD_IDENTITY%',
+        'AUTOMEXIA_CMD_PROMPT_GLYPH',
         ']7;file:///$P',
         ']133;A',
         ']133;P;k=c',
@@ -227,15 +257,33 @@ try {
         [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:ComSpec))
     )
     $generatedSource = [regex]::Replace($generatedSource, "\r?\n", "`r`n")
-    [IO.File]::WriteAllText($generatedCmd, $generatedSource, [Text.UTF8Encoding]::new($true))
+    [IO.File]::WriteAllText($generatedCmd, $generatedSource, [Text.Encoding]::ASCII)
     $probePath = Join-Path $cmdProbeRoot 'probe.cmd'
     $probeSource = "@echo off`r`ncall `"$generatedCmd`"`r`necho AUTOMEXIA_CMD_LOADED=%AUTOMEXIA_CMD_INTEGRATION_LOADED%`r`necho AUTOMEXIA_CMD_PROMPT=%PROMPT%`r`n"
     [IO.File]::WriteAllText($probePath, $probeSource, [Text.Encoding]::ASCII)
-    $cmdProbe = & $env:ComSpec /D /C $probePath | Out-String
+    $previousCmdPromptGlyph = $env:AUTOMEXIA_CMD_PROMPT_GLYPH
+    try {
+        $env:AUTOMEXIA_CMD_PROMPT_GLYPH = [char]0x03BB
+        $cmdProbe = & $env:ComSpec /D /C $probePath | Out-String
+    } finally {
+        if ($null -eq $previousCmdPromptGlyph) {
+            Remove-Item Env:AUTOMEXIA_CMD_PROMPT_GLYPH -ErrorAction SilentlyContinue
+        } else {
+            $env:AUTOMEXIA_CMD_PROMPT_GLYPH = $previousCmdPromptGlyph
+        }
+    }
     if ($cmdProbe -notmatch 'AUTOMEXIA_CMD_LOADED=1' -or
+        $cmdProbe -notmatch [regex]::Escape('SetUserVar=automexia_shell_name=Q01E') -or
+        $cmdProbe -notmatch [regex]::Escape(
+            'SetUserVar=automexia_shell_user=' +
+            [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([Environment]::UserName))) -or
+        $cmdProbe -notmatch [regex]::Escape(
+            'SetUserVar=automexia_shell_path=' +
+            [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:ComSpec))) -or
         $cmdProbe -notmatch [regex]::Escape(']7;file:///$P') -or
-        $cmdProbe -notmatch [regex]::Escape('SetUserVar=automexia_prompt_active=MQ==')) {
-        throw 'Native CMD startup did not install the Automexia prompt and metadata in-process'
+        $cmdProbe -notmatch [regex]::Escape('SetUserVar=automexia_prompt_active=MQ==') -or
+        $cmdProbe -notmatch [regex]::Escape([char]0x03BB)) {
+        throw 'Native CMD startup did not install repeatable identity, prompt, and UTF-8 metadata in-process'
     }
 
     $pipelineObjects = @(Get-ChildItem -LiteralPath $fixtureRoot |
@@ -439,6 +487,14 @@ try {
     $installState = Join-Path $installedRoot 'install-state.json'
     if (-not (Test-Path -LiteralPath $installedCmd) -or -not (Test-Path -LiteralPath $installState)) {
         throw 'Windows automatic installer did not publish CMD integration and its state stamp'
+    }
+    $installedCmdBytes = [IO.File]::ReadAllBytes($installedCmd)
+    if (($installedCmdBytes | Where-Object { $_ -gt 127 } | Select-Object -First 1) -or
+        ($installedCmdBytes.Length -ge 3 -and
+         $installedCmdBytes[0] -eq 0xEF -and
+         $installedCmdBytes[1] -eq 0xBB -and
+         $installedCmdBytes[2] -eq 0xBF)) {
+        throw 'Windows installer did not deploy CMD integration as BOM-free ASCII'
     }
     $firstState = Get-Content -LiteralPath $installState -Raw
     & $installerPath -SkipPowerShell -SkipWsl -Quiet

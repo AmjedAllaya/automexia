@@ -32,7 +32,13 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
             [object[]]$ArgumentList
         )
 
-        $nativeArguments = @($ArgumentList | ForEach-Object { [string]$_ })
+        # PowerShell sends an explicit null through ForEach-Object as one empty
+        # string. Normalize no arguments before enumeration; otherwise bare
+        # cmd becomes cmd.exe with an empty argument and skips /K integration.
+        $nativeArguments = @()
+        if ($null -ne $ArgumentList) {
+            $nativeArguments = @($ArgumentList | ForEach-Object { [string]$_ })
+        }
         if ($nativeArguments.Count -gt 0 -or
             $env:AUTOMEXIA_PLAIN_CMD -eq '1' -or
             -not (Test-Path -LiteralPath $script:AutomexiaCmdIntegration)) {
@@ -42,7 +48,8 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
 
         # Invoke the executable directly: the child inherits this exact ConPTY
         # and returns to the existing PowerShell session when the user types exit.
-        $startup = 'call "{0}"' -f $script:AutomexiaCmdIntegration.Replace('"', '""')
+        $startup = 'chcp 65001>nul & set "AUTOMEXIA_CMD_PROMPT_GLYPH={0}" & call "{1}"' -f
+            ([char]0x03BB), $script:AutomexiaCmdIntegration.Replace('"', '""')
         & $script:AutomexiaCmdExecutable /D /K $startup
     }
     Set-Alias -Name cmd -Value Invoke-AutomexiaCmd -Scope Global -Force
@@ -60,13 +67,13 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         }
     }
 
-    # Publish identity first, then the integration-ready marker. This lets a
-    # newly cloned pane replace its equivalent seed in one atomic VT batch.
-    [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==$script:AutomexiaBel")
-    $automexiaShellUser = [Convert]::ToBase64String(
+    # Cache identity once, but publish it for every prompt. Reasserting the
+    # parent shell after a nested CMD/WSL session exits prevents stale child
+    # metadata from surviving until the user presses another key.
+    $script:AutomexiaShellUser = [Convert]::ToBase64String(
         [Text.Encoding]::UTF8.GetBytes([Environment]::UserName)
     )
-    $automexiaShellExecutable = try {
+    $script:AutomexiaShellExecutable = try {
         (Get-Process -Id $PID -ErrorAction Stop).Path
     } catch {
         if ($PSVersionTable.PSEdition -eq 'Core') {
@@ -75,17 +82,21 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
             Join-Path $PSHOME 'powershell.exe'
         }
     }
-    $automexiaShellPath = [Convert]::ToBase64String(
-        [Text.Encoding]::UTF8.GetBytes($automexiaShellExecutable)
+    $script:AutomexiaShellPath = [Convert]::ToBase64String(
+        [Text.Encoding]::UTF8.GetBytes($script:AutomexiaShellExecutable)
     )
-    [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell_user=$automexiaShellUser$script:AutomexiaBel")
-    [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell_path=$automexiaShellPath$script:AutomexiaBel")
-    # Clear WSL-only metadata that may remain after a nested wsl.exe session
-    # exits back into this native PowerShell terminal. Empty base64 payloads
-    # are valid OSC 1337 user-variable values.
-    [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_distro=$script:AutomexiaBel")
-    [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_os_version=$script:AutomexiaBel")
-    [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell=MQ==$script:AutomexiaBel")
+    function script:Publish-AutomexiaPowerShellIdentity {
+        [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==$script:AutomexiaBel")
+        [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell_user=$script:AutomexiaShellUser$script:AutomexiaBel")
+        [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell_path=$script:AutomexiaShellPath$script:AutomexiaBel")
+        # Empty payloads deliberately clear WSL-only metadata left by a nested
+        # wsl.exe session. The final marker is emitted only after identity is
+        # internally consistent, so the renderer never observes a mixed shell.
+        [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_distro=$script:AutomexiaBel")
+        [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_os_version=$script:AutomexiaBel")
+        [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell=MQ==$script:AutomexiaBel")
+    }
+    Publish-AutomexiaPowerShellIdentity
 
     # ConsoleHost normally imports PSReadLine before the first prompt. Use the
     # already-loaded module when available; otherwise one direct import is much
@@ -184,6 +195,7 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
     function global:prompt {
         $succeeded = $?
         $exitCode = if ($succeeded) { 0 } elseif ($null -ne $global:LASTEXITCODE) { $global:LASTEXITCODE } else { 1 }
+        Publish-AutomexiaPowerShellIdentity
         $script:AutomexiaPromptGeneration++
         $promptPath = Get-AutomexiaPromptPath
         $path = $promptPath.Replace('\', '/')
@@ -246,5 +258,5 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         # functional prompt and native shell behavior without custom styling.
         Write-Warning "Automexia shell styling could not be loaded: $($_.Exception.Message)"
     }
-    Remove-Variable psReadLineModule, configureEditorColors, candidateFormatPath, formatPath, automexiaShellUser, automexiaShellExecutable, automexiaShellPath -ErrorAction SilentlyContinue
+    Remove-Variable psReadLineModule, configureEditorColors, candidateFormatPath, formatPath -ErrorAction SilentlyContinue
 }
