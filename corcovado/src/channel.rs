@@ -410,3 +410,43 @@ fn format_try_send_error<T>(e: &TrySendError<T>, f: &mut fmt::Formatter) -> fmt:
         TrySendError::Disconnected(..) => write!(f, "Disconnected"),
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Events, Poll, PollOpt, Ready, Token};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn repeated_idle_transitions_wake_blocked_poll_promptly() {
+        let poll = Poll::new().unwrap();
+        let (sender, receiver) = channel::<usize>();
+        poll.register(&receiver, Token(17), Ready::readable(), PollOpt::edge())
+            .unwrap();
+        let mut events = Events::with_capacity(8);
+
+        for expected in 0..32 {
+            events.clear();
+            std::thread::scope(|scope| {
+                scope.spawn(|| {
+                    std::thread::sleep(Duration::from_millis(10));
+                    sender.send(expected).unwrap();
+                });
+
+                let started = Instant::now();
+                let count = poll
+                    .poll(&mut events, Some(Duration::from_millis(500)))
+                    .unwrap();
+                assert!(
+                    started.elapsed() < Duration::from_millis(250),
+                    "idle channel transition {expected} did not wake Poll promptly"
+                );
+                assert!(count > 0, "idle channel transition {expected} was lost");
+            });
+
+            assert!(events.iter().any(|event| {
+                event.token() == Token(17) && event.readiness().is_readable()
+            }));
+            assert_eq!(receiver.try_recv().unwrap(), expected);
+        }
+    }
+}

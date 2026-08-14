@@ -23,6 +23,28 @@ jobs:
         shell: pwsh
         run: cargo xtask test session-clone --native-windows
 
+  native-windows-deep:
+    name: Windows AppVerifier, WPR, and resource lifetime
+    if: vars.AUTOMEXIA_WINDOWS_DEEP_RUNNER == '1'
+    runs-on: [self-hosted, Windows, X64, automexia-gpu, automexia-elevated]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Application Verifier Basics and native lifecycle stress
+        shell: pwsh
+        run: tests/integration/appverifier-windows.ps1 -OutputDirectory target/native-deep/appverifier
+      - name: WPR resource trace and bounded manifest
+        shell: pwsh
+        run: tests/integration/wpr-windows.ps1 -OutputDirectory target/native-deep/wpr -DeleteTraceAfterManifest
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: automexia-windows-deep-evidence
+          path: |
+            target/native-deep/**/*.json
+            target/native-deep/**/*.xml
+          if-no-files-found: error
+          retention-days: 7
+
   native-wsl-session-clone:
     name: Native WSL session clone
     if: vars.AUTOMEXIA_WSL_RUNNER == '1'
@@ -40,7 +62,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [vt_parser, osc_metadata, config_migration, semantic_classification, label_sanitization]
+        target: [vt_parser, osc_metadata, control_string_bounds, config_migration, semantic_classification, label_sanitization]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
@@ -68,11 +90,34 @@ jobs:
           RUSTDOCFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
         run: cargo +nightly test -p rio-vt --lib --no-default-features -Zbuild-std --target x86_64-unknown-linux-gnu
 
-  benchmarks:
+  benchmark-build:
+    name: Benchmark targets compile
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: cargo bench -p automexia-terminal -p rio-vt -p corcovado --no-run --locked
+
+  benchmarks-controlled:
+    name: Execute benchmarks on named controlled hardware
+    if: vars.AUTOMEXIA_BENCHMARK_RUNNER == '1'
+    runs-on: [self-hosted, Linux, X64, automexia-benchmark]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+        with:
+          tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
+      - name: Execute and retain Criterion measurements
+        env:
+          AUTOMEXIA_QA_BENCHMARKS: '1'
+        run: cargo xtask qa --full --bundle
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: automexia-controlled-benchmark-evidence
+          path: |
+            target/criterion/**
+            target/qa/*.zip
+          if-no-files-found: error
+          retention-days: 30
 
   unsigned-windows:
     name: Unsigned Windows ${{ matrix.target }}

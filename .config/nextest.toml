@@ -1,0 +1,40 @@
+nextest-version = { required = "0.9.137" }
+
+[store]
+dir = "target/nextest"
+
+[profile.default]
+retries = 0
+flaky-result = "fail"
+slow-timeout = { period = "60s", terminate-after = 2, grace-period = "10s" }
+leak-timeout = { period = "500ms", result = "fail" }
+failure-output = "immediate-final"
+success-output = "never"
+
+[profile.ci]
+inherits = "default"
+retries = 1
+flaky-result = "fail"
+global-timeout = "45m"
+slow-timeout = { period = "90s", terminate-after = 2, grace-period = "15s" }
+
+[profile.ci.junit]
+path = "junit.xml"
+store-success-output = false
+store-failure-output = true
+
+[profile.deep]
+inherits = "ci"
+retries = 0
+global-timeout = "120m"
+slow-timeout = { period = "180s", terminate-after = 3, grace-period = "20s" }
+test-threads = "num-cpus"
+
+[test-groups.native-pty]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = 'binary(pty_lifecycle) | binary(test)'
+test-group = "native-pty"
+threads-required = 2
+slow-timeout = { period = "90s", terminate-after = 2, grace-period = "15s" }

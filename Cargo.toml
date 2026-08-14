@@ -105,6 +105,9 @@ objc = { package = "objc-rs", version = "0.3.2" }
 memmap2 = "0.9.11"
 url = "2.5.4"
 criterion = { version = "0.8.2", features = ["html_reports"] }
+insta = { version = "1.48.0", features = ["json", "redactions"] }
+loom = "0.7.2"
+proptest = "1.11.0"
 dashmap = "6.2.1"
 flate2 = "1.1.9"
 
