@@ -6,7 +6,10 @@ This roadmap tracks functional correctness, responsiveness, performance proof,
 runtime security, cross-platform verification, and stable-release readiness.
 It complements the [product roadmap](ROADMAP.md), the
 [readiness audit](READINESS-AUDIT.md), and the separate
-[Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md).
+[Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md). The v0.5
+first-party SSH and multi-cloud work is specified here as executable stages and
+uses the research and architecture in
+[SSH, DevOps, and multi-cloud extension architecture](SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md).
 
 Status terms are evidence-based:
 
@@ -18,6 +21,26 @@ Status terms are evidence-based:
 - **External gate** means completion depends on credentials, hosted policy,
   another operating system, controlled hardware, or elapsed baseline time.
 
+## Phase 0 execution ledger
+
+This ledger distinguishes source completion from evidence that requires a
+controlled host, another operating system, credentials, or elapsed time. A
+skipped external gate is never reported as a pass.
+
+| Phase 0 step | Audit before this pass | Implemented or preserved now | Remaining gate |
+|---|---|---|---|
+| Protocol identity and bounded hostile control strings | Complete locally | Existing hard caps, cancellation/discard/recovery, non-payload diagnostics, architecture checks, six fuzz targets, and exact-boundary regressions are preserved. | Hosted fuzz, sanitizer, Miri, and cross-platform hostile PTY evidence. |
+| Reviewed local-only v0.4 extension boundary | Complete locally | Capability manifest remains filesystem/environment/terminal-output/UI-overlay only; architecture policy continues to reject network, process-spawn, and clipboard grants. | Hosted policy/security checks must pass before release. |
+| Managed remote-session claims | Correctly absent | Documentation and release gates continue to forbid advertising managed remote sessions in v0.4. | v0.5 capability model plus hosted hostile-output and native evidence. |
+| Provider status behavior | Complete for current behavior | Existing provider mapping, session isolation, bounded cache, periodic refresh, and last-known-good behavior are preserved. | Provider-neutral age/source/error semantics remain planned; no false instantaneous-live claim. |
+| Deterministic test ownership | Partial | Pinned Nextest 0.9.137 profiles, JUnit, no silent flaky success, timeouts, leak policy, a serialized PTY group, separate Cargo doctests, QA-runner self-tests, and accurate QA-required/optional `doctor` classifications are now in PR CI. | Three-host CI evidence must be retained. |
+| Property, state, and concurrency coverage | Partial | 512-case shrinking viewport/DPI properties, a persisted minimized regression, reviewed footer state snapshot, and finite channel publish/wake Loom models are now present. | Broader resize queue, snapshot, cache/worker, and shutdown models move into pure owned crates. |
+| One-command evidence | Missing | `cargo qa` / `cargo xtask qa --full [--bundle]` now self-tests and enforces per-step deadlines, whole-process-tree cleanup, exact 2 MiB logs, 16 MiB files, a 64 MiB bundle, escaped-path/token redaction, allowlisted host identity, atomic JUnit/resource/coverage summaries, and explicit external skips. Private ETL, raw LCOV, and live-terminal PNG captures are excluded. | Run on every controlled release host and retain required evidence. |
+| Windows native resources | Partial | Native GUI stress samples handles, threads, private bytes, working set, descendants, and final painted-frame variation against explicit ceilings; QA retains the existing atomic structured report, while controlled AppVerifier and WPR wrappers guarantee cleanup. | Execute on the elevated GPU runner and review AppVerifier/WPR output. |
+| Benchmark execution | Compile-only | Compile-only coverage remains explicit; a separate named self-hosted job executes Criterion through the QA runner. | Complete and ratify the 30-day baseline before enforcement. |
+| Accessibility | Partial | The v0.4 inventory, automated baseline, manual matrix, limitations, and v0.5 renderer-independent model ADR are now documented. | Recorded Narrator/NVDA, VoiceOver, and Orca smoke; v0.5 native semantic tree. |
+| Rendered-frame evidence | Partial | Structured renderer-state snapshots are reviewable and CI-checked. The Windows native storm now uses a bounded, temporarily topmost `ClientToScreen`/`BitBlt` capture of the actual composited client region, with a five-second presentation deadline and a painted-readiness gate before custom-window clicks. It rejects blank/single-color final frames, restores z-order in `finally`, retains pixels only with explicit `-FrameCapture`, and excludes live-terminal PNGs from portable QA bundles. | Add pinned offscreen expected/actual/diff goldens plus Linux/macOS native frame evidence across viewport, theme, font, and DPI matrices. |
+
 ## Completed local correctness work
 
 These items are regressions to preserve, not open implementation tasks.
@@ -26,10 +49,10 @@ These items are regressions to preserve, not open implementation tasks.
 |---|---|---|
 | OSC metadata snapshot architecture | Complete locally | Shell/prompt readiness and semantic metadata are present in renderer snapshots; the architecture gate passes. |
 | PowerShell command submission | Complete locally | PSReadLine 2.0 delegate/script-block semantics are preserved instead of coercing the handler result to Boolean, so Enter does not hang. |
-| PowerShell history controls | Complete and measured locally | Up Arrow measured 55 ms shell/VT latency and 110 ms end to end; raw `Ctrl+R` measured effectively 0 ms shell/VT latency and 64 ms end to end. Classic defaults expose it through `Ctrl+Alt+R` because bare `Ctrl+R` clones. |
+| PowerShell history controls | Complete and measured locally | Repeated full native gates measured Up at 1.049-1.101 seconds and raw `Ctrl+R` at 0.972-1.024 seconds; a bare-ConPTY probe shows the same roughly one-second Windows PowerShell 5.1/PSReadLine 2.0 floor, while ordinary Automexia input remains below its separate 500 ms budget. `cargo xtask doctor` reports this advisory. Classic defaults expose history through `Ctrl+Alt+R` because bare `Ctrl+R` clones. |
 | ConPTY mode 9001 input | Complete locally | Native tests inject full Win32 keyboard records with virtual key, scan code, modifiers, Unicode, and key-down/key-up state. |
 | Resize delivery | Complete locally | Duplicate dimensions are discarded, adjacent resizes coalesce, and input/shutdown barriers preserve final-size ordering. |
-| Prompt/path resize recovery | Complete on Windows | Deterministic storms, 2,000 grid transitions, and native Windows GUI storms preserve and restore prompt context without user input. |
+| Prompt/path resize recovery | Complete on Windows | Immutable generation snapshots, scalar/ASCII/Unicode `aid` propagation, hard-newline prompt-ownership boundaries, stale repaint removal, final-resize repair without later PTY input, deterministic 2,000-transition storms, and repeated native Windows GUI storms preserve and restore prompt context without claiming later command output. |
 | Stress snapshot publication | Complete locally | Test snapshots are staged and atomically replaced; readers cannot observe a deliberately truncated intermediate file. |
 | Session cloning and tab isolation | Complete locally | Clones and pane-local tabs own independent PTYs, routes, PIDs, histories, input queues, directories, profiles, and WSL identity; close operations remain isolated. |
 | PowerShell listing icons | Complete locally | Icons are adjacent to names while native `DirectoryInfo`/`FileInfo` values, filtering, sorting, pipelines, Unicode, spaces, and special names are preserved. |
@@ -41,6 +64,9 @@ These items are regressions to preserve, not open implementation tasks.
 | v0.4 extension boundary | Complete for current scope | Only built-in reviewed extensions are enabled; downloaded/network-capable extension distribution remains outside v0.4. |
 | Native test control surface | Complete | The automation control surface is feature-gated and absent from production builds. |
 | Documentation correction | Complete | Architecture and testing docs now state that PowerShell formatting/colors are installed synchronously before the first editable prompt. |
+| Protocol identity | Complete locally | XTGETTCAP `TN`/name returns `automexia`; capability tests and `verify identity` cover protocol and native dialog/error surfaces. |
+| Bounded control strings | Complete locally | OSC, APC/graphics, and XTGETTCAP retain hard-capped payloads, discard oversized input through termination, cancel without dispatch on CAN/SUB, recover deterministically, and have exact-boundary, repeated-attack, memory-bound, recovery, and nightly-fuzz coverage. |
+| Atomic runtime reload | Complete locally | Invalid config/theme/font/hotkey candidates preserve the complete last-known-good live state; hotkey registration replacement has addition/removal rollback regressions. |
 
 ## Partially complete areas
 
@@ -50,74 +76,86 @@ These items are regressions to preserve, not open implementation tasks.
 | Docker/Kubernetes/cloud freshness | Discovery is asynchronous, session-scoped, cached, and refreshed automatically. | Keep bounded periodic refresh as the portable baseline. Add event/file watchers only where a reliable provider API exists, retain periodic reconciliation, expose truthful stale/unavailable state, and measure external CLI delays. Do not promise an instantaneous event stream that providers cannot supply. |
 | Ghostty compatibility | The audited comparison and roadmap are documented; Ghostty bindings are no longer implicit defaults. | Implement a typed, versioned, explicit opt-in profile and missing action families before claiming compatibility. |
 | Visual quality | Geometry, alignment, contrast, hit targets, narrow layouts, 4K/8K-equivalent sizes, and icon/font coverage have automated tests. | Perform recorded human review on Windows, macOS, Linux X11/Wayland, HiDPI, light/dark themes, and representative fallback fonts. “Premium” is a review outcome, not an automatable correctness claim. |
-| Product identity | Normal identity and package checks pass. | Remove the XTGETTCAP `TN`/name response `rio`, return the canonical Automexia terminal identity, and extend the identity verifier to cover the protocol response. |
 | Renderer and row-rebuild performance | No-damage frames return early; row/style/extras allocations are reused; dirty-row rebuilding is tested. | Record before/after frame-time, CPU, allocation, and memory results on representative small, split, 4K, and 8K workloads. |
 | OSC/APC/DCS parser performance | Bulk slice scanning has parity tests and Criterion coverage. | Record optimized native baselines and compare throughput/latency before declaring a measured improvement. Parser speed work does not replace the control-string memory limits below. |
 | Render-thread isolation | PTY parsing, context discovery, and extension work are off the render thread; queues/caches are bounded. | Keep architecture checks and add controlled saturation measurements proving input/render latency under worker and PTY pressure. |
 | New-session startup | Equivalent context can seed immediately and the originating route wakes directly. | Benchmark process launch, shell integration, first prompt, synchronous PowerShell formatting, first context, and first editable input separately on cold and warm starts. |
 | Build storage | `cargo ready` uses and removes an isolated verification target; `cargo storage` and `cargo purge` are available. | Document that arbitrary direct Cargo invocations own their persistent artifacts. Track target-size budgets and improve shared caches where safe, but do not claim Automexia can automatically clean artifacts created outside its workflow. |
-| Overall performance assurance | History and resize interaction have strong Windows measurements. | Accumulate the required 30-day baseline; afterward require a waiver for regressions above 5% latency or 10% memory. Include startup, sustained PTY throughput, reflow, idle/scrollback memory, and context refresh. |
+| Overall performance assurance | History and resize interaction have repeatable Windows measurements, and the shell/frontend latency boundary is now explicit. | Accumulate the required 30-day baseline; afterward require a waiver for regressions above 5% latency or 10% memory. Include startup, sustained PTY throughput, reflow, idle/scrollback memory, context refresh, and optimized PowerShell 7/current-PSReadLine measurements. |
 | Complete security assurance | Dependency policy and focused local protections pass. | Hosted CodeQL, fuzz, sanitizers, Miri, cross-platform jobs, signed artifacts, SBOMs, checksums, and provenance attestations must pass on their declared infrastructure. |
-| Rendered-frame assurance | Layout and renderer-neutral JSON invariants are strong, but no automated test captures and compares the final painted WGPU frame. | Add deterministic offscreen/native frame capture, semantic and raster goldens, reviewable diffs, and controlled-runner evidence. Until then, a visually misplaced element can pass logical tests. |
-| Test orchestration and evidence | Cargo runs the workspace tests successfully on three operating systems. | Add pinned Nextest profiles, explicit timeouts, shared-resource groups, child-process leak detection, JUnit output, and one redacted QA evidence bundle. Retain Cargo doctests separately. |
-| Benchmark enforcement | Criterion cases exist, but the nightly workflow currently invokes `cargo bench --no-run`; it proves compilation only. | Execute benchmarks on named controlled hardware, retain reports, compare against an accepted baseline, and apply the 30-day ratchet below. |
-| Property/concurrency assurance | Fixed-seed resize storms and ASan/TSan/Miri jobs cover important cases. | Add shrinking Proptest state machines and bounded Loom models for resize queues, snapshot publication, cache/worker ownership, and shutdown. Move broader models into pure v0.5 crates. |
-| Accessibility | Contrast, keyboard actions, responsive scaling, and visible labels have focused tests, but there is no accessibility tree or assistive-technology contract. | Complete the v0.4 keyboard/focus/contrast/scaling baseline and recorded screen-reader smoke; design the renderer-independent AccessKit model for v0.5 before claiming full accessibility. |
-| Native resource lifetime | PTY/PID isolation and process exit are tested. | Measure handles, threads, private bytes, working set, child processes, and GPU resources across repeated open/clone/close/resize cycles; run the Windows binary under Application Verifier on controlled infrastructure. |
+| Rendered-frame assurance | Renderer-neutral JSON invariants and a topmost, client-region composited Windows capture now prove that a varied WGPU frame is painted after the full resize/clone/history/window lifecycle storm. The retained private frame was reviewed against the same four-pane snapshot. | Add pinned offscreen semantic/raster goldens, focused expected/actual/diff artifacts, and Linux/macOS controlled-runner evidence. The Windows smoke rejects blank frames but does not replace element-level image diffs. |
+| Test orchestration and evidence | Pinned Nextest local/CI/deep profiles, explicit timeout/leak/flaky policy, serialized PTY ownership, JUnit, separate Cargo doctests, and a self-tested QA runner with subprocess deadlines, process-tree cleanup, privacy/size ceilings, allowlisted host identity, and structured native/coverage evidence are implemented. | Retain successful reports from Windows, Linux, and macOS and investigate every retry as a failure. |
+| Benchmark enforcement | Criterion compilation remains a distinct nightly check, and a gated named-runner job now executes and retains Criterion through `cargo xtask qa --full --bundle`. | Execute it for 30 complete days, approve the baseline, then apply the ratchet below. |
+| Property/concurrency assurance | Fixed-seed storms, shrinking viewport/DPI properties with persisted regressions, reviewed structured footer snapshots, finite channel readiness Loom models, and ASan/TSan/Miri jobs cover the first bounded invariants. | Add resize queue, snapshot replacement, cache/worker, and shutdown models after those state machines move into pure owned crates. |
+| Accessibility | Contrast, keyboard actions, responsive scaling, visible labels, the custom-surface inventory, manual matrix, and v0.5 renderer-independent model ADR are documented and tested where automatable. | Record screen-reader smoke on all supported hosts; the native semantic tree remains a v0.5 gate. |
+| Native resource lifetime | Native Windows stress records handles, threads, private bytes, working set, and descendant processes with ceilings; AppVerifier Basics and WPR wrappers target only staged `automexia.exe`, refuse conflicting state, and clean up in `finally`. | Execute and review these profiles on the elevated controlled GPU runner; retain only bounded/redacted reports and private trace manifests. |
 | Test strength and supply chain | Changed Automexia-owned lines require 80% coverage; cargo-deny, dependency review, CodeQL, SBOMs, and attestations are defined. | Add an owned-code baseline, longer persisted fuzz corpora, then scoped mutation testing and maintainable cargo-vet adoption in v0.5. Do not add redundant advisory scanners without a distinct contract. |
 
-## Required v0.4 source work
+## Completed v0.4 S0 source work (preserve)
+
+The following source gates passed locally on 2026-08-14. They remain mandatory
+regression contracts in `cargo ready`; hosted/native assurance is tracked under
+S1 and the external release gates.
 
 ### S0 — protocol identity
 
-1. Replace XTGETTCAP `TN`/name output `rio` with Automexia's canonical terminal
-   name.
-2. Add unit tests for both recognized capability names and unknown queries.
-3. Extend `cargo xtask verify identity` so a future inherited protocol name
-   fails the normal contributor gate.
-4. Confirm terminfo names, `TERM_PROGRAM`, executable identity, and XTGETTCAP
-   remain internally consistent.
+- XTGETTCAP `TN` and `name` return `automexia`; recognized and unknown
+  capability requests have unit coverage.
+- `cargo xtask verify identity` covers the protocol response, native close/quit
+  dialogs, initialization/config errors, terminfo, `TERM_PROGRAM`, executable,
+  package, desktop, and bundle identities.
+- Inherited Rio names remain only in the explicit provenance/private-engine
+  boundary.
 
-Exit gate: no user- or application-observable product identity returns Rio
-outside the explicit provenance/private-engine allowlist.
+Local exit: passed. No covered user- or application-observable identity returns
+Rio outside that boundary.
 
 ### S0 — bounded control strings
 
-Treat all PTY output as untrusted, including output from local programs, SSH,
-containers, multiplexers, and WSL.
+All PTY output remains untrusted, including local programs, SSH, containers,
+multiplexers, and WSL.
 
-1. Define reviewed hard limits for OSC raw accumulation, APC/graphics payloads,
-   XTGETTCAP requests, and any equivalent DCS accumulation path.
-2. On overflow, enter a bounded discard state until BEL/ST or the protocol's
-   terminator; do not retain or repeatedly reallocate the rejected payload.
-3. Recover parser state deterministically after termination, cancellation,
-   malformed UTF-8, split input, and EOF.
-4. Emit rate-limited diagnostics without echoing hostile payload contents.
-5. Add exact-limit, limit-plus-one, unterminated, fragmented, cancellation,
-   recovery, repeated-attack, and memory-bound tests.
-6. Fuzz each accumulator and mixed control-string streams; assert bounded
-   allocation, no panic, and correct parsing after recovery.
-7. Benchmark normal short sequences to prove the defensive checks do not cause
-   a meaningful hot-path regression.
+- Raw OSC retention is capped at 1 MiB, APC/graphics retention at 96 KiB, and
+  XTGETTCAP requests at 4 KiB. Sixel is streamed through its dimension-bounded
+  decoder rather than retained as one raw DCS; synchronized updates retain the
+  existing 2 MiB cap.
+- Limit overflow retains no additional bytes and consumes through BEL/ST or the
+  applicable terminator. CAN/SUB clears OSC, APC, DCS/XTGETTCAP, and Sixel state
+  without dispatching a partial payload.
+- Diagnostics never echo hostile payloads and use exponential rate limiting.
+- The deterministic suite covers exact limit, limit plus one, unterminated
+  state, fragmentation, cancellation, valid recovery, repeated attacks, and
+  retained-memory bounds. The dedicated `control_string_bounds` fuzz target is
+  routed through the nightly matrix.
+- Normal short streams retain the inline/bulk fast paths and the existing VT
+  Criterion cases. Executed controlled-hardware comparisons remain an S1
+  performance-evidence gate, not an open memory-safety implementation task.
 
-Exit gate: no unterminated or oversized OSC/APC/DCS/XTGETTCAP stream can cause
-unbounded memory growth, and valid text/control input following the discarded
-sequence is processed correctly.
+Local correctness/security exit: passed with 106 performer regressions. Hosted
+fuzz corpora, sanitizers, cross-platform native jobs, and performance baselines
+must still pass before stable release.
 
 ### S0 — atomic last-known-good reload
 
-1. Parse and validate the complete candidate configuration before mutation.
-2. Retain the current configuration, bindings, fonts, colors, global hotkeys,
-   and per-window state after any read, parse, validation, or preparation error.
-3. Prepare global registration changes before a single successful swap; never
-   leave partially modified registrations.
-4. Update all windows and palette metadata from the same accepted generation.
-5. Add invalid, partially invalid, repeated, concurrent, font-failure,
-   global-hotkey-failure, and recovery tests.
+- Read/parse/theme/platform validation produces a complete candidate before any
+  live mutation. Config, theme, and missing-path failures retain the active
+  generation and report diagnostics.
+- A replacement font library is prepared before config/window mutation; a
+  missing requested family retains the current fonts and live windows.
+- Global-hotkey triggers parse all-or-nothing. Additions register before
+  removals; failed additions and removals roll back in reverse order, retain the
+  logical last-known-good set, and report any operating-system rollback error.
+- Only after every fallible preparation succeeds are the font library, config,
+  bindings, palette metadata, and windows updated. PTYs are never recreated.
+- Focused tests cover every load-error class, valid value preservation,
+  deterministic missing-font rejection, duplicate/invalid hotkeys, failed and
+  partially failed additions, failed removals, rollback, and recovery. Reload
+  events are serialized by the application event loop, so two candidates cannot
+  mutate live state concurrently.
 
-Exit gate: a failed reload changes no active behavior and reports actionable
-diagnostics without recreating PTYs.
-
+Local exit: passed. An operating system that rejects both a hotkey operation and
+its compensating rollback is reported as an explicit degraded external state;
+no desktop hotkey API offers a true atomic transaction.
 ## Cross-platform and experiential gates
 
 ### S1 — native prompt and resize evidence
@@ -242,6 +280,11 @@ published with native smoke evidence. Full accessibility remains a v0.5 gate.
 | AccessKit and its winit adapter | v0.5 reviewed runtime dependencies | Renderer-independent roles/text/focus/actions, privacy and update rules, native adapters, and assistive-technology tests. |
 | `cargo-mutants` | v0.5 pinned weekly tool | Scoped Automexia-owned pure modules, survivor triage, time budgets, and informational rollout before any threshold. |
 | `cargo-vet` | v0.5 pinned governance tool | Named audit owner, imported-audit trust, criteria/exemptions/renewal policy; complements existing dependency controls. |
+| System OpenSSH client | v0.5.0 external runtime dependency for `devops-ssh` | Platform-detected and version-reported; exact-argv PTY launch; Automexia never silently downloads or substitutes an SSH engine. |
+| Mocked deterministic SSH server/fixtures | v0.5.0 test-only infrastructure | Hermetic host-key/auth/jump/tunnel/failure/control-string cases for PRs; controlled native OpenSSH/server evidence remains a release gate. |
+| AWS/Azure/Google/Kubernetes/OpenShift official CLIs | v0.5.1 optional provider runtime dependencies | Detected lazily, invoked visibly or through exact reviewed argv, never installed at terminal startup, and absent tools degrade only their extension. |
+| `keyring-rs`, `secrecy`, and `zeroize` | Deferred until a secret-reference/custody ADR proves a need | Defense in depth only; no dependency may turn Automexia into a plaintext or general-purpose credential vault. |
+| Cedar or OPA adapter | v0.5.1/v0.6 policy evaluation after ADR | Local typed policy and enterprise integration; provider IAM/RBAC/remote policy remains authoritative. |
 
 Every added crate/tool must have a pinned version, license/source/advisory
 review, lockfile or installer provenance, minimal enabled features, documented
@@ -269,6 +312,11 @@ Exit gate: every test has an owner, timeout, and report; mutually exclusive
 native resources cannot run concurrently; hangs, leaks, and flaky retries are
 visible failures rather than lost console output.
 
+Current source status: implemented. `cargo xtask doctor` probes Cargo
+subcommands through Cargo, distinguishes the pinned QA-required Nextest runner
+from optional review/deep tools, and prints its exact install command without
+installing or mutating the host.
+
 ### S1 — one-command QA evidence
 
 Add the proposed non-production commands:
@@ -285,19 +333,26 @@ security, and native checks for the current host. `--bundle` writes a bounded
 - commit, dirty-worktree hash, toolchain, OS, shell, WSL, display, DPI, GPU,
   driver, backend, and power-profile identity;
 - command lines, start/end times, durations, exit status, JUnit, coverage,
-  benchmark comparisons, renderer state, screenshots/diffs, resource counts,
-  and available sanitizer/AppVerifier summaries;
+  benchmark comparisons, renderer state, resource counts, and available
+  sanitizer/AppVerifier summaries;
 - an HTML index identifying passed, failed, skipped, unsupported, and
   externally required checks without calling skipped work successful.
 
 Allowlist diagnostic fields and redact tokens, environment values, clipboard,
 terminal contents outside explicit fixtures, user secrets, and private paths.
-Cap logs/artifacts, use atomic writes, clean temporary capture state, and keep
+Cap logs/artifacts, exclude live-terminal PNGs and private ETL from portable
+bundles, use atomic writes, clean temporary capture state, and keep
 the normal working tree unchanged. `cargo ready` remains the deterministic
 contributor gate and `cargo automexia` remains the fast launch path.
 
 Exit gate: a maintainer can reproduce a reported failure from one redacted
 bundle and verify exactly which host-specific checks did or did not run.
+
+Current source status: implemented and self-tested. Every child has a recorded
+start/end/duration/deadline; timeout terminates the Windows process tree or
+POSIX process group. The portable ZIP has per-log, per-file, and total ceilings,
+contains a bundle manifest, and retains path-free coverage plus native resource
+summaries while excluding raw/private captures.
 
 ### S1 — generated, property, model, and fuzz coverage
 
@@ -344,6 +399,12 @@ Measure optimized builds on named hardware and power settings:
 - idle, deep-scrollback, graphics, many-pane, and long-session memory;
 - context discovery cold/warm latency and refresh cost with provider tools
   present, slow, missing, or disconnected;
+- v0.5.0 OpenSSH detection, bounded config indexing, quick-connect search,
+  session/process creation, first remote prompt, jump/tunnel startup,
+  cancellation, and teardown at 1/10/50 concurrent sessions;
+- v0.5.1 capsule creation/rebind, provider CLI/config refresh, interactive login,
+  expiry recovery, Kubernetes exec-plugin decisions, cloud-native remote
+  transport startup, and mixed-provider 10/50/100-session cache/memory cost;
 - persistent and isolated build target growth for canonical workflows.
 
 History/resize results already provide a Windows baseline; do not generalize
@@ -404,6 +465,396 @@ regression or correctness failure appears. After the baseline period:
   platform/build/feature false-positive review, not an automatic manifest
   rewriter.
 
+## Early DevOps and SSH delivery track
+
+This track is the implementation authority for the first-party SSH and
+multi-cloud work described in the [product roadmap](ROADMAP.md) and the
+[consolidated architecture](SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md). The goal is
+to ship useful, production-quality SSH in v0.5.0 rather than waiting for the
+v0.6 public extension platform, while preserving Automexia as a generic
+terminal.
+
+### Ordering and parallelism
+
+| Stage | May start | Must finish before exposure | User-visible result |
+|---|---|---|---|
+| D0 design and threat model | During late v0.4 | Before a process-capable build | Reviewed contracts and replacement ADR; no SSH UI. |
+| D1 private contract extraction | After stable seams are identified | Before SSH implementation depends on them | No behavior change. |
+| D2 generic context/status adapter | In parallel with D1 after types compile | Before provider extensions | Existing context with no renderer provider branches. |
+| D3 exact-argv session launch | After D0/D1 | Before quick connect | Internal reviewed first-party capability only. |
+| D4 OpenSSH index and connection model | After D1; parser work may overlap D3 | Before SSH palette/host UI | Safe host inventory with no key custody. |
+| D5 production SSH UX | After D3/D4 and v0.4 control-string closure | v0.5.0 release | Quick connect, jumps, tunnels, agent/certificate visibility. |
+| D6 multi-cloud capsules/providers | After D2/D3 prove isolation | v0.5.1 release | AWS/Azure/GCP/Kubernetes/OpenShift/IaC session isolation. |
+| D7 direct provider APIs/public SDK | After D6 measurement and policy | v0.6 or later | Optional inventory and sandboxed ecosystem. |
+
+D0, pure D1 types, a non-executable D4 parser, fixtures, and tests may be built
+while v0.4 assurance is running. The S0 bounded-control-string source gate now
+passes locally, but D3/D5 exposure still requires hosted fuzz/sanitizer and
+native security evidence. Remote feature work never weakens or bypasses the
+remaining v0.4 native, packaging, hosted, signing, SBOM,
+provenance, visual, accessibility, or performance gates.
+
+### Implementation-agent protocol
+
+An AI or human implementation agent follows these rules:
+
+1. Execute D0 through D7 in dependency order. Parallelize only tasks explicitly
+   allowed by the table above and never merge an activated feature whose
+   prerequisite exit gate is open.
+2. Before each stage, read this complete track, the linked architecture, current
+   accepted/proposed ADRs, relevant source modules/tests, and current working
+   tree. Preserve unrelated user changes and do not mix their ownership into the
+   stage.
+3. Keep extraction, behavior migration, and new capability activation as
+   separate reviewable changes. First prove equivalence, then change contracts,
+   then add behavior. Do not rewrite provider discovery while moving it.
+4. Implement the smallest vertical slice that closes a numbered step with its
+   unit/property/integration/native tests and documentation. A compiling type or
+   visible UI without denial, failure, cancellation, cleanup, accessibility,
+   redaction, and performance behavior does not complete a step.
+5. Do not add a dependency, executable, endpoint, filesystem root, environment
+   variable, IPC message, persisted field, or capability outside those listed
+   for the current stage. If required, stop activation, update the threat model
+   and ADR, and obtain the prescribed review first.
+6. Treat every external file, CLI output, remote byte, label, path, manifest,
+   provider response, and extension message as untrusted and bounded. Never use
+   real user secrets in fixtures or diagnostics.
+7. Run the narrowest focused tests during development, then the architecture,
+   identity, conformance, security, and QA gates assigned to the stage. Native
+   claims require the declared OS/tool/hardware; a mock or unavailable provider
+   is reported as such and never recorded as a pass.
+8. Update roadmap status only with evidence: changed paths, contract satisfied,
+   exact commands/results, native environments, benchmark comparison, redaction
+   evidence, known limitations, skipped external gates, and rollback behavior.
+9. Do not mark v0.5.0 or v0.5.1 complete while a required exit criterion in this
+   document is partial. Do not compensate for a blocker by broadening core,
+   weakening host-key/authentication policy, storing credentials, enabling
+   shell evaluation, or granting direct network/process authority.
+
+### D0 — decision, threat model, and compatibility baseline
+
+1. Accept a replacement ADR for ADR 0003 that authorizes only the first-party
+   `session.launch` capability described below. Keep direct extension network,
+   raw secret access, downloaded extensions, arbitrary executable launch, and a
+   public SDK denied.
+2. Record the trust boundaries: extension model code, application capability
+   broker, PTY/process owner, renderer/VT parser, OpenSSH child, OpenSSH
+   configuration, agent/keychain/hardware, remote host, and later provider
+   helper. For each boundary list data accepted, data returned, size/time limit,
+   cancellation owner, log policy, and failure behavior.
+3. Preserve the manual baseline on every supported OS: a user typing
+   `ssh host` in PowerShell, CMD, Bash, Zsh, or WSL continues to use that
+   shell's normal executable lookup and behavior. Managed quick connect is an
+   additional path, never a replacement.
+4. Capture native fixtures before refactoring: independent sessions, first-use
+   host-key prompt, changed-key failure, agent success/failure, encrypted key
+   prompt, certificate authentication, ProxyJump, local/remote/dynamic forward,
+   cancellation during DNS/connect/authentication, remote exit, remote hostile
+   control strings, and child cleanup.
+5. Define platform support explicitly. v0.5.0 requires the supported Windows
+   OpenSSH client and system/user-installed OpenSSH on macOS/Linux. Missing or
+   unsupported clients produce installation guidance; Automexia does not
+   download a binary during launch or application startup.
+
+Exit gate: the ADR and threat model are accepted, the manual SSH baseline is
+recorded, and no proposed API requires provider-specific code or secret values
+inside the renderer, VT parser, or generic terminal model.
+
+### D1 — minimal private-crate extraction and stable types
+
+Perform behavior-preserving moves in this order:
+
+1. Move the pure types now in
+   `apps/automexia-terminal/src/automexia/api.rs` into a private
+   `automexia-extension-api` crate. It has no dependency on winit, WGPU,
+   Sugarloaf, PTY/ConPTY, the renderer, or provider SDKs.
+2. Move bounded queue, cache, generation, completion, and cancellation state
+   from `automexia/runtime.rs` into `automexia-extension-runtime`. Keep the
+   application callback that wakes an exact route behind an injected trait;
+   never import frontend event types into the runtime crate.
+3. Move current DevOps models/detection/semantics behind
+   `automexia-devops`. First preserve the existing `DevOpsSnapshot` behavior
+   through an adapter; split it into provider packages only after equivalence
+   tests pass.
+4. Move renderer-independent segment layout/accessibility data into
+   `automexia-ui-model`. GPU paint remains in
+   `apps/automexia-terminal/src/renderer`.
+5. Extend the existing `SessionLaunchDescriptor` seam in
+   `context/launch.rs`; do not create a parallel session/process owner. The
+   application remains the only component allowed to attach a launched process
+   to a route and PTY.
+6. Add versioned, serializable types with explicit size-checked constructors:
+   `ExtensionId`, `SessionId`, `OperationId`, `ExecutableId`,
+   `LaunchRequest`, `EnvironmentCapsule`, `ContextContribution`,
+   `StatusSegment`, `Freshness`, `CapabilityRequest`,
+   `CapabilityDecision`, `SecretReference`, and `PublicDiagnostic`.
+7. Make secret-bearing strings impossible in these public models. Capsules and
+   connection records contain public identifiers and opaque references only.
+   Redacted `Debug` implementations are mandatory for any secret-adjacent
+   internal wrapper.
+
+Required tests:
+
+- dependency/architecture checks reject frontend/renderer/PTY/provider imports
+  from the API and model crates;
+- behavior-equivalence tests compare every existing DevOps snapshot and segment
+  before and after the adapter;
+- serialization tests pin schema version, unknown-field behavior, maximum
+  lengths/counts, Unicode, and forward-compatible rejection;
+- Loom covers queue submission, coalescing, publish-before-wake, cancellation,
+  disable-while-running, shutdown, and last-known-good snapshot ownership;
+- Miri covers pure lifecycle and policy state; no platform FFI enters the model.
+
+Exit gate: the core behaves identically with existing extensions, disabling all
+extensions leaves a complete terminal, and the renderer consumes generic model
+types without depending on a provider implementation.
+
+### D2 — generic status and Environment Capsule plumbing
+
+1. Replace renderer-owned AWS/Azure/GCP/Kubernetes conditionals with a generic
+   `ContextContribution -> StatusSegment` projection. Core owns ordering,
+   width, ellipsis, semantic color role, contrast correction, accessibility,
+   hit testing, and details routing; extensions provide bounded labels, icon
+   tokens, semantic roles, freshness, timestamps, and a typed details action.
+2. Keep historical prompt context immutable. A prompt row retains the exact
+   contribution snapshot used by its command even after live context refreshes
+   or the session is explicitly rebound.
+3. Attach one immutable Environment Capsule reference to every new session.
+   Cloning copies only non-secret intent, assigns a new capsule/session ID,
+   starts a new PTY, and schedules fresh discovery. It does not share cached
+   tokens, plugin results, process memory, jobs, terminal cells, or operations.
+4. Add an explicit rebind transition: validate the new capsule, cancel work for
+   the old revision, atomically swap live intent, invalidate affected cache
+   keys, publish `refreshing`, and launch a new shell/session when environment
+   variables cannot safely change in place. Never mutate another pane.
+5. Cache keys include extension ID, session ID, capsule revision, provider
+   identity reference, source revision, and request kind. A result with a stale
+   key is discarded before publication.
+6. Preserve the last truthful snapshot after timeout/error and mark its
+   freshness. Empty/default state must not replace a known production identity.
+
+Exit gate: two panes can display different providers, identities, clusters, and
+risk classifications without sharing results; provider removal from renderer
+code is enforced by architecture tests.
+
+### D3 — exact-argv first-party session launch
+
+1. Add a generic application-owned capability broker. The extension submits a
+   typed `LaunchRequest`; the broker returns an operation/session ID or a typed
+   denial. The extension never receives a PTY handle, process handle, inherited
+   environment, agent protocol, or renderer object.
+2. Resolve an `ExecutableId` through platform policy to one canonical absolute
+   path. Search approved system locations and configured absolute paths; never
+   search the current directory. Record file identity/metadata and revalidate
+   immediately before spawn so a path swap cannot silently change authority.
+3. For v0.5.0, authorize only reviewed first-party executable IDs needed by the
+   extension, initially OpenSSH `ssh`, `ssh-add`, `ssh-keygen`, and only the
+   subset actually used by a shipped operation. An extension manifest cannot
+   use wildcard executable paths.
+4. Carry arguments as an ordered vector. Reject NUL, values above reviewed size
+   limits, ambiguous leading-dash destination data, unsupported encoding, and
+   a request that asks for shell evaluation. Preserve exact Windows and Unix
+   process argument semantics through platform-native tests.
+5. Core builds the child environment from the normal trusted session launch
+   environment. The extension may request only allowlisted public deltas; it
+   never reads the inherited environment. Agent variables such as
+   `SSH_AUTH_SOCK` are inherited by the child through core policy, not copied
+   into an extension snapshot or diagnostic.
+6. Validate the working directory through the existing launch path. Use a safe
+   default if the requested directory no longer exists; never fall back to a
+   different shell or remote target.
+7. Bind the process, PTY, route, capsule, operation, and optional tunnels before
+   publication. Cancellation sends the platform-appropriate graceful signal,
+   waits for a bounded interval, terminates the owned process tree if needed,
+   closes owned listeners, records a redacted result, and cannot target a reused
+   PID or another session.
+8. Audit only extension ID/version/publisher, capability decision, operation
+   kind, public connection ID, session ID, timestamp, duration, and result
+   class. Do not audit argv wholesale, environment, terminal contents,
+   usernames when policy classifies them as private, or credential/agent data.
+
+Exit gate: property and native tests prove command/argument injection is not
+possible, denial and revocation are deterministic, and launch/cancel/teardown
+cannot affect another route or leave a child/listener behind.
+
+### D4 — safe OpenSSH inventory and persistence
+
+1. Add `devops-ssh` as a separate manifest and package. During v0.5.0 it is a
+   repository-reviewed compiled-in or first-party signed extension; it is not a
+   downloaded third-party package and has no direct-network capability.
+2. Read user/system OpenSSH configuration only through exact filesystem grants.
+   Use a bounded static parser for inventory. Suggested initial ceilings are
+   1 MiB per file, 8 MiB total, 128 included files, include depth 8, 10,000
+   indexed aliases, and 4 KiB per displayed value; finalize them through review
+   and tests rather than silently increasing them.
+3. Resolve include paths with canonical-path, symlink, cycle, ownership, and
+   permission checks. An include outside already granted roots is excluded and
+   reported until separately approved. Parsing failure retains the previous
+   index and reports source plus line without echoing sensitive content.
+4. Parse only enough non-executable syntax to index concrete aliases and public
+   hints. Skip wildcard-only entries as connectable inventory records. Never
+   evaluate `Match exec`, `ProxyCommand`, `LocalCommand`, shell expansion,
+   command substitution, or `ssh -G` during background discovery. Actual
+   OpenSSH execution remains the authority for complete precedence/semantics.
+5. Store Automexia-owned metadata under a versioned extension directory, for
+   example `extensions/devops-ssh/connections.v1.json`, using atomic
+   last-known-good writes and user-only platform permissions. Records may hold
+   connection ID, display name, tags, favorite, recent-use time, source, host
+   alias, public host/port/user hints, jump references, transport, capsule
+   template, and opaque identity reference. Key bytes, passphrases, tokens, and
+   resolved secret values are forbidden by schema and tests.
+6. Watch only known configuration/metadata files. Debounce changes, retain
+   periodic reconciliation, coalesce identical refreshes, cancel obsolete
+   generations, and publish freshness/source/error. Indexing never runs in
+   renderer/input/PTY code and never starts a network connection.
+7. Prefer existing `ssh-agent`, OS agents/keychains, FIDO2/PIV/PKCS#11 devices,
+   encrypted key files referenced by OpenSSH, and short-lived certificates.
+   `keyring-rs`, `secrecy`, and `zeroize` may enter only after a separate
+   dependency and custody review; none justifies a new Automexia vault.
+
+Exit gate: malicious, recursive, oversized, changing, and permission-denied
+configuration stays bounded; disabling/removing the extension removes its UI
+and state without touching OpenSSH files or user keys.
+
+### D5.1 — production SSH UX and connection lifecycle
+
+Implement in this order so every slice is independently testable:
+
+1. Quick-connect search over alias, display name, tags, favorite, and recent
+   records. Every result shows transport and enough public destination intent
+   to avoid connecting to the wrong environment. Production risk uses text and
+   accessibility state, not color alone.
+2. Destination choice: new pane, pane-local tab, workspace tab, or OS window.
+   All choices create a fresh PTY/route/capsule; no mode attaches another view
+   to an existing PTY.
+3. Basic OpenSSH launch using a selected config alias. Reject untrusted
+   option-like aliases; never concatenate user data into option strings.
+4. Config-defined ProxyJump support, followed by an explicit reviewed `-J`
+   request model. Show the jump chain. Do not rewrite ProxyCommand or execute it
+   during preview/indexing; OpenSSH may execute user-configured behavior only
+   after the user starts the connection.
+5. Local, remote, and dynamic tunnels as typed models, not free-form options.
+   Validate host/port ranges; local/dynamic listeners bind loopback by default.
+   Show owner, endpoints, health, start time, and stop action. Session-owned
+   tunnels close with the session. A persistent background tunnel requires a
+   separate explicit mode, bounded restart policy, and visible lifetime.
+6. Agent and certificate public status using bounded official commands where
+   available. Do not parse private keys. Agent forwarding is off by default,
+   visible when enabled, scoped to one connection, and may be denied by policy.
+7. Preserve OpenSSH's strict host-key interaction in the PTY. Any Automexia
+   helper must show the full fingerprint/provenance, block a changed key, and
+   never delete, replace, or accept a `known_hosts` entry silently.
+8. Add SFTP only after v0.5.0 if required. It needs separate read/write,
+   overwrite, symlink, permission, path-traversal, transfer-size, cancellation,
+   resume, and partial-file contracts. It is not a blocker for secure SSH.
+9. Keep a native Rust SSH engine, embedded web UI, RDP/VNC/Telnet, shared
+   sessions, and Termix embedding outside v0.5.0. Termix remains a UX reference
+   or future optional metadata bridge.
+
+Exit gate for v0.5.0: quick connect, jumps, tunnels, authentication prompts,
+host-key behavior, cancellation, offline failure, remote exit, and cleanup pass
+on supported Windows/macOS/Linux OpenSSH clients; the terminal remains fully
+functional with `devops-ssh` disabled.
+
+### D5.2 — SSH security, native, and performance verification
+
+Add deterministic and native coverage for:
+
+- exact argv with Unicode, whitespace, quotes, leading dashes, long values,
+  metacharacters, config aliases, jump chains, and every forward type;
+- first use, accepted host, changed host key, revoked/expired certificate,
+  missing agent, locked agent, encrypted key prompt, FIDO/PIV interaction where
+  controlled hardware is available, and agent forwarding policy;
+- DNS failure, timeout, unreachable host, proxy failure, authentication failure,
+  server disconnect, user cancellation at every phase, and application close;
+- 1/10/50 parallel SSH sessions and tunnels with exact route/process/listener
+  ownership, no PID reuse race, no leaked handles/tasks/sockets, and bounded
+  queue/cache growth;
+- hostile remote OSC/APC/DCS/XTGETTCAP/graphics streams, paste/mouse modes,
+  high-throughput output, resize/reflow, scrollback, Unicode, and multiplexer
+  nesting under the same parser limits as local output;
+- config include cycles, symlink swaps, permission changes, atomic replacements,
+  oversized files/labels/counts, malformed encodings, watcher storms, extension
+  disable during refresh, and last-known-good recovery;
+- redaction canaries proving keys, passphrases, tokens, agent messages,
+  environment values, terminal contents, and private paths never reach logs,
+  snapshots, crash/QA bundles, telemetry, clipboard history, or AI surfaces;
+- cold/warm extension activation, config indexing, palette search, session
+  creation, connect start, first remote prompt, tunnel startup, cancellation,
+  idle CPU, and memory at 1/10/50 sessions while a provider worker is slow.
+
+Add these results to `cargo xtask qa --full --bundle` with private native logs
+kept out of public artifacts and a redacted summary identifying every skipped
+hardware/provider case. A mocked SSH server is useful for deterministic PR
+tests, but release evidence also requires real system OpenSSH clients and
+controlled native servers; neither layer replaces the other.
+
+### D6 — v0.5.1 multi-cloud and orchestrator delivery
+
+Implement provider extensions only after the D1-D3 contracts are stable:
+
+1. Split `devops-context`, `devops-kubernetes`, `devops-openshift`,
+   `devops-aws`, `devops-azure`, `devops-gcp`, and
+   `devops-infrastructure` into independently enabled manifests. The DevOps
+   Pack is only a meta-package; disabling one provider revokes only that
+   provider's capabilities and cancels its operations.
+2. Build a non-secret Environment Capsule per PTY. Pin public identity/profile,
+   account/subscription/project, tenant/organization, region/zone,
+   kubeconfig/context/cluster/namespace, infrastructure directory/backend/
+   workspace, remote transport, risk, provenance, source revision, freshness,
+   and policy references. Never include credentials or full inherited
+   environment.
+3. AWS: set only session intent such as `AWS_PROFILE`, `AWS_REGION`, and
+   `AWS_DEFAULT_REGION`; use IAM Identity Center/federation and short-lived STS
+   roles; run required `aws sso login --profile ...` visibly; keep access keys
+   out of capsules; use supported EKS exec authentication and prefer Session
+   Manager for eligible hosts.
+4. Azure: isolate identities with an identity-scoped `AZURE_CONFIG_DIR` where
+   required, pass `--subscription` explicitly for extension-launched sensitive
+   operations, use Entra/MFA or workload identity, use supported AKS/
+   `kubelogin` flows, and prefer Azure Bastion. Do not use a hidden global
+   `az account set` to change other panes.
+5. Google Cloud: set `CLOUDSDK_ACTIVE_CONFIG_NAME` and a reviewed config root
+   policy per session, use Workforce/Workload Identity Federation, supported
+   GKE authentication, and prefer IAP plus OS Login. Avoid service-account keys
+   and never import them into Automexia.
+6. Kubernetes: create a per-session `KUBECONFIG` overlay or explicit source
+   list; pin context and namespace; align Helm/tool variables; treat kubeconfig
+   as executable-capable untrusted input; deny or confirm unfamiliar exec
+   credential plugins through an executable allowlist; keep `ExecCredential`
+   results in memory or official caches and out of logs/config.
+7. OpenShift: build on the Kubernetes contract; pin API endpoint/context/project;
+   run `oc login` or `oc login --web` visibly; review loopback callbacks; and
+   use the same exec-plugin/certificate isolation. OpenShift domain actions get
+   their own later network grants.
+8. Infrastructure: pin tool, working directory, public backend identifier,
+   workspace, provider set, state/lock expectations, and production risk.
+   OpenTofu/Terraform workspaces are context, not a credential or authorization
+   boundary. Never inject `TF_WORKSPACE` into an unrelated directory.
+9. Provider-native remote transport adapters construct exact official CLI argv
+   for AWS SSM, Azure Bastion, and GCP IAP/OS Login and connect their interactive
+   stream to a normal PTY. They do not expose tokens to extensions or core UI.
+10. Add direct provider SDK/API access only for lazy inventory that cannot be
+    served by local config or official CLI state. Run SDKs outside renderer/VT
+    code in a bounded extension host over user-scoped named pipe/Unix socket,
+    with peer checks, typed schemas, deadlines, output caps, redaction,
+    cancellation, and no general TCP control port.
+
+Exit gate for v0.5.1: concurrent development/staging/production sessions across
+AWS, Azure, GCP, Kubernetes, and OpenShift preserve exact identity and capsule
+isolation; expired/offline/slow providers remain truthful and cannot affect
+terminal latency or another pane.
+
+### D7 — deferred ecosystem and AI gates
+
+Third-party downloads, a public SDK, direct arbitrary network, a native SSH
+engine, and AI command execution wait for the v0.6 sandbox, signing, revocation,
+quota, migration, and capability UX. AI extensions receive no ambient PTY
+environment, SSH agent, cloud cache, terminal history, capsule, connection, or
+production authority. Every tool call names a structured operation, exact
+environment/session, risk, and capability; read permission never implies
+command permission and destructive work requires policy plus explicit review.
+
 ## Tooling decisions and non-goals
 
 | Decision | Reason |
@@ -416,6 +867,12 @@ regression or correctness failure appears. After the baseline period:
 | Do not compare PNGs byte-for-byte across unrelated GPUs/font engines | Native rasterization differences are expected; exact semantic geometry and controlled-runner image tolerances remain authoritative. |
 | Do not hide flaky tests with retries | Diagnostic retries must still fail and report the test as flaky. |
 | Do not put full QA in `cargo automexia` or ordinary startup | Fast launches and non-mutating contributor checks remain separate from expensive/native QA. |
+| Use system OpenSSH for the first managed SSH release | It preserves mature config, known-host, agent, certificate, hardware-key, jump, forwarding, and organization policy while keeping protocol code out of core. |
+| Do not background-evaluate OpenSSH executable configuration | `Match exec`, `ProxyCommand`, `LocalCommand`, command substitution, and `ssh -G` can cross the process boundary; inventory parsing remains static and actual execution occurs only after user intent. |
+| Do not embed Termix or an Electron/Node SSH stack | Termix is a useful UX/reference or optional future metadata bridge, but embedding it duplicates the native renderer/session model and expands the web/credential attack surface. |
+| Defer a Rust-native SSH engine and structured SFTP | System OpenSSH is the compatibility/recovery authority; a later isolated transport must justify protocol, file-write, key, and resource risk independently. |
+| Prefer provider CLI/config before provider SDK/API | Official CLI paths maximize authentication compatibility and minimize dependency/binary cost; direct APIs remain lazy, permissioned, and isolated. |
+| Treat local policy as defense in depth | Cedar/OPA may gate local operations, but IAM, Entra, Google IAM, Kubernetes/OpenShift RBAC, SSH CA, network, and remote policy remain authoritative. |
 
 ## Release and delivery gates
 
@@ -444,9 +901,26 @@ documented keyboard/focus/contrast/scaling plus screen-reader baseline. A
 compile-only benchmark job or renderer-neutral JSON alone does not satisfy the
 corresponding performance or visual gate.
 
-Stable v0.4 remains blocked until all S0 work and applicable source gates pass,
-then every external release gate is satisfied. S1 native/visual/performance
+The S0 source gates pass locally, but stable v0.4 remains blocked until every
+applicable S1, hosted, native, and external release gate is satisfied. S1
+native/visual/performance
 evidence may run in parallel but cannot be replaced by Windows-only results.
+
+The v0.5.0 DevOps/SSH release additionally requires D0-D5.2 completion: accepted
+replacement capability ADR, generic extension/session/status contracts,
+provider-neutral renderer, exact-argv launch validation, safe bounded OpenSSH
+inventory, production quick-connect/jump/tunnel/host-key behavior, secret
+redaction, and controlled Windows/macOS/Linux native SSH evidence. A mocked
+server alone, a Windows-only run, or manual `ssh` success does not satisfy the
+managed-extension gate.
+
+The v0.5.1 multi-cloud release additionally requires D6 completion: per-PTY
+capsule isolation, official provider authentication and expiry/cancellation
+paths, Kubernetes/OpenShift exec-plugin controls, cloud-native remote
+transports, truthful offline/stale state, provider-specific native evidence,
+and performance/resource results under concurrent mixed-provider sessions.
+Direct provider SDK/API inventory is not a v0.5.1 blocker unless included in
+release claims.
 
 ## Stable acceptance criteria
 

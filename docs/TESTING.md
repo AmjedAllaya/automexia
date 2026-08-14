@@ -44,6 +44,83 @@ shell-integration suites.
 `cargo xtask ci` runs the same non-launching gate; neither command leaves its
 isolated exhaustive build artifacts behind.
 
+## Phase 0 evidence gate
+
+Use the deeper evidence gate before a release or when changing renderer layout,
+PTY ownership, concurrency, control-string parsing, or security boundaries:
+
+```text
+cargo qa
+cargo qa --bundle
+```
+
+These aliases run `cargo xtask qa --full [--bundle]`. The full profile first
+tests its own timeout, process-tree cleanup, redaction, log-cap, host-manifest,
+and bundle-privacy contracts. It then checks formatting, locked metadata,
+identity/provenance/architecture/packaging policy, repository formats, shell
+contracts, warning-denied Clippy, pinned Nextest/JUnit, separate Cargo doctests,
+deterministic resize/session suites, the finite Loom model, and cargo-deny. Every
+subprocess has a named hard deadline; timeout kills the complete Windows process
+tree or POSIX process group and is recorded as a required failure. The command
+writes an atomic report below `target/qa/<UTC-run-id>/`; `--bundle` adds a ZIP
+beside that directory.
+
+Install the pinned contributor runner once if `cargo xtask doctor` reports it
+missing:
+
+```text
+cargo install cargo-nextest --version 0.9.137 --locked
+```
+
+The product launcher never installs QA tools or changes machine-wide verifier
+state. AppVerifier/WPR and native GUI runs are opt-in because they require an
+interactive/elevated controlled host:
+
+```powershell
+$env:AUTOMEXIA_QA_NATIVE = '1'
+$env:AUTOMEXIA_QA_COVERAGE = '1'
+$env:AUTOMEXIA_QA_APPVERIFIER = '1'
+$env:AUTOMEXIA_QA_WPR = '1'
+cargo qa --bundle
+```
+
+Set `AUTOMEXIA_QA_COVERAGE=1` on Windows to build LLVM coverage in an isolated
+target, enforce the recorded global and changed-owned-line thresholds, retain
+only the path-free JSON summary, and delete both the raw LCOV and instrumented
+target. Set `AUTOMEXIA_QA_BENCHMARKS=1` only on named stable hardware. The
+report marks unavailable native, benchmark, 30-day, cross-platform GPU, and
+screen-reader work as `external`, never as passed.
+
+Logs are capped at exactly 2 MiB each; overlong untrusted lines are suppressed,
+and workspace/home roots, escaped Windows paths, and token-like values are
+redacted. Portable files are capped at 16 MiB and the uncompressed bundle at
+64 MiB with an included/excluded manifest. Reports never enumerate the
+environment or capture terminal content, clipboard data, credentials, or user
+configuration. WPR ETL, raw LCOV, and live-terminal PNG captures are private and
+excluded from the ZIP; only bounded structured summaries belong in portable
+evidence. The allowlisted host record contains OS/architecture, safe shell and
+WSL versions, primary display/DPI, GPU/driver, observed renderer status, and
+power-scheme GUID without host name, username, environment values, or paths.
+
+The Windows native stress writes an atomic resource report into QA evidence
+when `AUTOMEXIA_QA_NATIVE=1` and otherwise keeps direct focused runs
+non-mutating. It enforces explicit ceilings for handles, threads, private bytes,
+working set, and descendant processes. It always validates a topmost, client-region capture of the composited final
+frame for usable dimensions, sample count, color diversity, and luminance
+spread. `-FrameCapture <private-path>` explicitly retains a PNG for local human
+review; omission keeps terminal pixels in memory only. The portable QA bundler
+defensively excludes PNG and ETL files. The controlled wrappers are:
+
+```powershell
+tests/integration/appverifier-windows.ps1 -OutputDirectory target/native/appverifier
+tests/integration/wpr-windows.ps1 -OutputDirectory target/native/wpr -DeleteTraceAfterManifest
+```
+
+Both validate the exact `automexia.exe` target. AppVerifier refuses to overwrite
+pre-existing verifier state and always removes settings it created. WPR cancels
+a recording it started on failure and can delete the private ETL after hashing
+and recording its size/host manifest.
+
 Focused tab-scope regressions can be run while iterating:
 
 ```text
@@ -83,6 +160,30 @@ updates, viewport/history invariants, modifier-driven link discovery, safe
 click latching, and both CPU-only and product GPU renderer configurations. The
 exact upstream hashes and Automexia-specific adaptations are recorded in
 `UPSTREAM.md`.
+Control-string and reload hardening has a focused local gate:
+
+```text
+cargo test -p rio-vt performer:: --locked
+cargo test -p automexia-terminal application::custom_chrome_tests --locked
+cargo test -p automexia-terminal global_hotkey::tests --locked
+cargo xtask verify architecture
+cargo xtask verify identity
+```
+
+OSC retains at most 1 MiB, APC/graphics 96 KiB, and XTGETTCAP 4 KiB. Tests
+exercise exact-limit and limit-plus-one input, fragmented and unterminated
+state, repeated attacks, memory bounds, non-dispatching CAN/SUB cancellation,
+and valid recovery. `fuzz/fuzz_targets/control_string_bounds.rs` drives mixed,
+fragmented oversized streams and is part of the nightly fuzz matrix. Sixel data
+streams through its dimension-bounded decoder, and synchronized-update storage
+keeps its existing 2 MiB cap.
+
+Reload tests require malformed config, malformed theme, missing path, missing
+font, and global-hotkey registration failures to leave the logical
+last-known-good generation active. Hotkey tests inject addition/removal failures
+and verify reverse-order rollback. The application event loop serializes reload
+events; OS-level rollback failures are surfaced explicitly because desktop
+hotkey APIs do not provide an atomic transaction.
 
 On Windows, `cargo xtask test resize-stress --native-gui` creates a real
 pane-local PowerShell tab, proves independent route/PID and preserved launch
@@ -221,9 +322,11 @@ disconnected, busy, stale, malformed, and oversized inputs plus multi-window
 session isolation. Shell tests cover syntax, idempotency, exit status, history
 handlers, monotonic prompt identities, UTF-8 lambda handling, and uninstall
 behavior. The Windows contract additionally executes a generated native CMD
-integration in-process, verifies that `cmd /c` is untouched, validates CMD
-shell/user/executable and OSC 7/133 metadata, and runs the shared category-aware
-listing helper against Unicode and sensitive/source fixtures.
+integration in-process, proves a zero-argument wrapper cannot become one empty
+native argument, verifies that `cmd /c` is untouched, requires BOM-free ASCII
+batch deployment, validates repeatable CMD shell/user/executable and OSC 7/133
+metadata, and runs the explicitly UTF-8 category-aware listing helper against
+Unicode and sensitive/source fixtures.
 
 The conformance suite is included in `cargo ready`. For focused diagnosis only,
 run it directly with `cargo xtask test conformance`.
@@ -238,18 +341,23 @@ It feeds the real Automexia OSC 7/133/1337 byte stream through the parser at
 every fragmentation boundary, performs 2,000 fixed-seed one-column through
 8K-equivalent reflows, interleaves editing and command transitions, and checks
 cursor bounds, row widths, prompt ordering, stable `aid` ownership, completed
-history, and exact logical path/lambda counts after every resize. It also proves
-that 1,000 queued PTY resizes collapse to the final size while input and
-shutdown remain ordering barriers. A recording PTY sink verifies the exact
-delivered resize/input/shutdown order, duplicate suppression, final size, and
-retry behavior after an injected transient resize error.
-The same suite feeds full-screen clear/home/line-erase repaint sequences used
-by shell editors after SIGWINCH. It proves terminal-owned prompt rows repair at
-the end of the PTY batch and that combining-mark/emoji paths survive a tiny
-viewport, scrollback, and automatic restoration at a usable size.
+history, and exact logical path/lambda counts after every resize. The active
+prompt snapshot is immutable for one generation, every scalar/ASCII/Unicode
+writer path propagates its `aid`, and the final effective resize repairs a
+missing terminal-owned context even when no later PTY byte arrives. It also
+proves that a hard shell newline ends context-row ownership, so incomplete or
+legacy prompt markers cannot attach later command output to the active prompt.
+The same gate proves that 1,000 queued PTY resizes collapse to the final size while input and
+shutdown remain ordering barriers. A recording PTY sink verifies exact
+delivery order, duplicate suppression, final size, and retry behavior after a
+transient resize error. Full-screen clear/home/line-erase shell-editor repaints
+must remove stale cells without absorbing lambda/input into the context
+snapshot; combining-mark and emoji paths survive tiny viewports, scrollback,
+and automatic restoration at a usable size.
 
 On an interactive Windows machine with a working GPU, the native driver adds a
-real-window storm and validates renderer-neutral JSON snapshots:
+real-window storm, validates renderer-neutral JSON snapshots, and samples the
+actual composited pixels in Automexia's client region after the final repaint:
 
 ```text
 cargo xtask test resize-stress --native-gui
@@ -257,8 +365,43 @@ cargo xtask test resize-stress --native-gui
 
 The driver waits for one complete first prompt without sending input, executes
 240 real window moves, restores a usable viewport, and waits for a matching
-post-reflow snapshot before asserting. The opt-in `native-gui-test-hooks` build
-feature is enabled only by that command. Product builds perform no snapshot I/O.
+post-reflow snapshot before asserting. WGPU swap-chain pixels are not reliably
+available through `WM_PRINT`, so the driver converts the exact client origin to
+screen coordinates, temporarily places only the target window topmost, copies
+that bounded region with `BitBlt`, and restores normal z-order in `finally`. A
+strict five-second presentation deadline rejects a zero-sized, blank, or
+insufficiently varied frame. Newly visible secondary windows must also present
+a varied frame before the one-shot custom-close click is tested, preventing an
+HWND-visible/application-not-ready race. The opt-in `native-gui-test-hooks`
+build feature is enabled only by that command. Product builds perform no
+snapshot or capture I/O.
+
+Before the pane-local coverage, the native gate exercises the exact top-level
+tab lifecycle used by `Ctrl+T`. It requires the new tab to be selected exactly
+once, expose its launch profile before shell output, inherit the live window
+viewport rather than the reduced PTY extent, place its footer against the pane
+bottom, and publish one complete prompt without synthetic keyboard input.
+The same real ConPTY then enters bare `cmd`, requires CMD identity and the
+complete lambda/path prompt without a second keypress, renders folder and Rust
+icons directly beside fixture names, exits, and requires PowerShell identity to
+return on the first parent prompt. Native snapshots are decoded explicitly as
+UTF-8, so mojibake cannot satisfy the glyph assertions.
+The driver sends the already-tested CSI Up encoding through Automexia's input
+queue, avoiding nondeterministic desktop foreground-lock policy while retaining
+the real frontend queue, ConPTY, PSReadLine, VT, damage, and renderer path. Rust
+window-input tests separately prove the Windows physical-key metadata and CSI
+encoding.
+At the end of the same native gate, Automexia creates a second OS window through
+the action bound to `Ctrl+Shift+N`, clicks its real custom-chrome close target,
+and requires the original HWND, process, panes, and PTYs to survive. It repeats
+the assertion with a native Windows `WM_CLOSE` request. Unit coverage separately
+proves intermediate/last-window confirmation policy, the `Ctrl+Shift+N`
+binding, timer cleanup, and distinct window-close/process-quit actions. The
+native window-count assertion proves that test controls cannot recursively
+create additional windows. The native driver delivers the custom-close move,
+press, and release synchronously, eliminating posted-message reordering from
+the isolation assertion.
+
 CI runs the deterministic gate on every pull request; nightly runs the native driver when the protected
 `automexia-gpu` self-hosted runner is enabled.
 
@@ -283,13 +426,19 @@ cargo xtask test session-clone --native-windows
 
 That driver first executes a unique PowerShell command and requires both Up
 Arrow recall and raw `Ctrl+R` reverse search to repaint through ConPTY within
-the 1.5-second native budget. The raw control isolates shell/PTY latency and is
-sent through the user-facing `Ctrl+Alt+R` passthrough because classic
-`Ctrl+R` is owned by session cloning.
-The workspace's Windows-only PTY regression also starts a clean real PowerShell
-process, negotiates Win32 input-record mode, and checks both operations without
-the renderer so protocol and shell latency stay separable. It then creates
-three independent PowerShell clones (four panes total),
+the 1.5-second native budget. On the audited Windows host, three consecutive
+full native runs measured Up at 1.049-1.101 seconds and reverse search at
+0.972-0.981 seconds; a renderer-free ConPTY probe measured the same roughly
+one-second floor with Windows PowerShell 5.1 and PSReadLine 2.0. Ordinary
+printable input remains independently capped at 500 ms, so a slow shell action
+cannot be misreported as frontend/PTY input lag. `cargo xtask doctor` reports
+that legacy host/module combination and recommends PowerShell 7 or a supported
+current stable PSReadLine without modifying the machine. The raw control uses
+the user-facing `Ctrl+Alt+R` passthrough because classic `Ctrl+R` is owned by
+session cloning. The Windows-only PTY regression negotiates Win32 input-record
+mode and checks the same shell operations without the renderer, keeping
+protocol, shell, and render latency separable.
+It then creates three independent PowerShell clones (four panes total),
 verifies unique routes and ConPTY child PIDs, proves clone-only input/output
 cannot contaminate the source, and interleaves the final clone plus active-pane
 changes into 240 resize transitions before checking prompt/path restoration. A
@@ -367,8 +516,8 @@ cargo test -p automexia-terminal layout::compute_tests
 
 ## Nightly and release depth
 
-Nightly jobs fuzz VT, OSC metadata, configuration migration, semantic
-classification, and label sanitization. Suitable pure crates run Miri and
+Nightly jobs fuzz VT, bounded OSC/APC/XTGETTCAP streams, OSC metadata,
+configuration migration, semantic classification, and label sanitization. Suitable pure crates run Miri and
 ASan/TSan. Criterion cases exist for parser throughput, row rebuild, prompt
 layout, cache access, and worker submission, but the current nightly command
 uses `--no-run` and therefore verifies compilation only. Run the commands below
@@ -431,26 +580,33 @@ requires WSL, real-GPU, clean-install, upgrade, uninstall, signature,
 notarization, URL handler, terminfo, and migration smoke tests on controlled
 hardware/self-hosted runners.
 
-## Planned assurance expansion
+## Assurance status and remaining expansion
 
-The following capabilities are roadmap items, not currently available commands
-or completed evidence:
+The Phase 0 local baseline now includes pinned Nextest/JUnit/doctests, a
+self-tested deadline/process-tree-safe and privacy-bounded `cargo qa --bundle`,
+allowlisted host identity, isolated coverage summaries, shrinking viewport/DPI
+properties with a persisted regression, a reviewed structured footer snapshot,
+finite Loom models, Windows resource ceilings, and topmost client-region final-frame
+smoke validation.
+These are implemented commands and locally passing evidence, not release-host
+claims.
 
-- pinned Nextest profiles with JUnit, timeouts, shared-resource groups, leak
-  checks, and explicit flaky-test failure while retaining Cargo doctests;
-- deterministic structured snapshots plus controlled final-frame PNG capture
-  and expected/actual/diff artifacts;
-- `cargo xtask qa --full [--bundle]` with a redacted environment/result archive;
-- Proptest state machines, bounded Loom concurrency models, longer persisted
-  fuzz campaigns, and a separate Automexia-owned coverage baseline;
-- executed and compared Criterion plus startup/interaction/resource probes;
-- Windows Application Verifier/WPR and expanded controlled GPU/resource tests;
-- the v0.4 keyboard/focus/contrast/scaling screen-reader baseline followed by
-  the v0.5 AccessKit accessibility model; and
+The remaining roadmap work is deliberately separate:
+
+- controlled expected/actual/diff raster goldens across viewport, theme, font,
+  and DPI matrices plus native Linux/macOS frame evidence;
+- broader pure-state Proptest/Loom models, longer persisted fuzz campaigns, and
+  a separate Automexia-owned coverage baseline;
+- executed and compared Criterion/startup/interaction/resource evidence on named
+  stable hardware followed by the complete 30-day baseline;
+- elevated Windows Application Verifier/WPR evidence and expanded controlled GPU
+  resource tests on all supported operating systems;
+- recorded v0.4 Narrator/NVDA, VoiceOver, and Orca smoke followed by the v0.5
+  renderer-independent native accessibility model; and
 - v0.5 scoped mutation testing and maintainable cargo-vet supply-chain audits.
 
 The authoritative ordering, dependencies, exclusions, CI tiers, and acceptance
 criteria are in the
 [stabilization roadmap](STABILIZATION-ROADMAP.md#verification-infrastructure-plan).
-Do not report these capabilities as implemented until their commands, workflows,
-artifacts, and native evidence exist and pass.
+A source implementation never substitutes for the hosted, elevated, signed, or
+human-reviewed evidence named there.

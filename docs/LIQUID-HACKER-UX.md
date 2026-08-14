@@ -57,6 +57,21 @@ The default window is 1280x760. Tabs remain visible with one session; users may
 still explicitly set `navigation.hide-if-single = true` on platforms with
 native decorations.
 
+A new top-level tab displays its actual launch profile immediately: PowerShell,
+Command Prompt, a WSL distribution, or the configured shell. Semantic shell
+metadata may refine that identity after integration starts, but arbitrary OSC
+titles emitted while a profile loads never make the tab flicker through setup
+commands, paths, or a generic product persona. The close mark shared by window,
+top-level-tab, and pane-local-tab chrome is shaped through the text rasterizer
+for consistent antialiasing at every DPI and uses an always-available glyph.
+The renderer-owned window close control has window scope, not application
+scope. Closing a window created with `Ctrl+Shift+N` leaves every sibling OS
+window and its independent PTYs running. The native close button, custom
+button, and configured `WindowClose` action share that behavior; only the
+explicit `Quit` action exits all windows. Last-window confirmation remains
+available without interrupting intermediate window closes.
+
+
 Command palette, search, diagnostic and quit overlays fit to the logical
 viewport. The command palette reduces its visible result count with height,
 long labels are ellipsized on Unicode boundaries, and editable input keeps its
@@ -327,8 +342,13 @@ interactive wrapper.
 The CMD prompt publishes its real shell/user/executable identity, clears stale
 WSL identity, updates OSC 7 and its title from dynamic `$P` after every `cd`,
 and renders the same terminal-owned context spacer, complete path, and editable
-lambda rows. The installed `ls` and `ll` DOSKEY macros use the shared Automexia
-filesystem taxonomy and keep icons beside names. Built-in `dir` is deliberately
+lambda rows. Identity is embedded into every prompt repaint so a nested shell
+cannot leave stale metadata; the PowerShell parent likewise republishes itself
+on the first prompt after `exit`. The installed CMD batch is BOM-free ASCII and
+receives its Unicode lambda through the launch command, avoiding active-code-page
+parser corruption. The installed `ls` and `ll` DOSKEY macros explicitly emit
+UTF-8, use the shared Automexia filesystem taxonomy, and keep icons beside names.
+Built-in `dir` is deliberately
 not replaced, so batch files, redirection, native switches, and existing CMD
 automation retain Microsoft semantics. CMD itself has no supported pre/post
 command hook equivalent to PSReadLine, Readline, or ZLE; therefore the visual

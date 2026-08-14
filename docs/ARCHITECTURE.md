@@ -23,16 +23,242 @@ sugarloaf / rio-graphics / rio-fonts
 product identifiers and configuration paths. Other crates must not duplicate
 Automexia IDs or path policy.
 
+## Target v0.5 DevOps composition
+
+v0.5 keeps the terminal core provider-neutral while delivering production SSH
+through an optional first-party extension. The release-critical composition is:
+
+```text
+apps/automexia-terminal
+  window/session/PTY owner
+  renderer adapter
+  application capability broker
+  executable resolver and launch/cancel lifecycle
+          | typed, versioned contracts only
+          v
+automexia-extension-api
+  IDs, manifests, capabilities, launch requests, capsules, contributions
+
+automexia-extension-runtime
+  bounded work queues, immutable caches, cancellation, operation lifecycle
+
+automexia-devops
+  provider-neutral context model plus current behavior-preserving adapters
+
+automexia-ui-model
+  provider-neutral status/accessibility/action models
+
+first-party extensions
+  devops-context
+  devops-ssh
+  later: kubernetes, openshift, aws, azure, gcp, infrastructure
+          | exact approved process request; no PTY/renderer handle
+          v
+application capability broker
+          | canonical executable + argv + trusted environment + cwd
+          v
+new Automexia PTY/session
+          |
+          v
+system OpenSSH or official provider CLI
+```
+
+The current `apps/automexia-terminal/src/automexia/api.rs`,
+`automexia/runtime.rs`, `automexia/builtins/devops`, renderer DevOps status,
+and `context/launch.rs` seams are migration sources, not permanent places for
+provider policy. Extraction must be behavior preserving and ordered as defined
+in the [early DevOps/SSH delivery track](STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track).
+
+### Core and extension ownership
+
+Core owns:
+
+- terminal engines, PTYs, sessions, routes, grids, input, scrollback, and paint;
+- immutable launch descriptors and exact process/PTY/session teardown;
+- generic extension types, lifecycle, capability decisions, quotas, and audit
+  metadata;
+- executable resolution, exact-argv validation, trusted child environment
+  construction, working-directory validation, and cancellation;
+- generic status-segment layout, semantics, accessibility, and details routing;
+- hostile-output limits, redaction, and protected local IPC when a later
+  extension host is required.
+### VT control-string trust boundary
+
+Child-process output is untrusted. The VT parser caps retained OSC, APC, and
+XTGETTCAP payloads, discards overflow through a terminator, treats CAN/SUB as
+cancellation rather than successful dispatch, and never logs rejected payload
+contents. Sixel decoding is streamed and dimension-bounded; synchronized update
+storage is separately capped. The architecture gate requires deterministic
+boundary/recovery tests and the nightly mixed-control-string fuzz target.
+
+### Runtime configuration transaction
+
+A file-watch event builds a candidate config, applies platform/theme validation,
+prepares a replacement font library, validates all global hotkeys, and attempts
+registration changes before committing live config/window state. Any fallible
+preparation error retains the last-known-good application generation and does
+not recreate PTYs. Hotkey replacement registers additions before removals and
+uses compensating rollback with explicit diagnostics for an OS rollback failure.
+Reload events execute serially on the application event loop.
+
+Extensions own:
+
+- domain configuration parsing and inventory;
+- provider-specific commands and official authentication flows;
+- connection/capsule templates and bounded public metadata;
+- context contributions, freshness, errors, and typed user actions;
+- exact requests to launch OpenSSH/provider CLIs;
+- later, explicitly granted provider API adapters outside renderer/VT code.
+
+Core never depends on OpenSSH parsing libraries, cloud provider SDKs,
+Kubernetes/OpenShift clients, Termix, Electron/Node, or AI orchestration code.
+Typing `ssh`, `kubectl`, `oc`, `aws`, `az`, or `gcloud` manually
+remains ordinary shell/PTY behavior with every extension disabled.
+
+### Managed SSH data flow
+
+```text
+user selects connection
+  -> devops-ssh resolves one non-secret ConnectionRecord
+  -> extension submits typed LaunchRequest
+  -> capability broker validates publisher/grant/executable/argv/cwd/policy
+  -> application creates independent Context + route + PTY + capsule
+  -> application starts the canonical system OpenSSH executable
+  -> OpenSSH resolves full user configuration/agent/keys/host-key policy
+  -> remote bytes enter the normal untrusted PTY parser
+  -> immutable session-scoped context snapshot wakes only that route
+```
+
+The extension never receives the inherited environment, agent protocol, private
+key, passphrase, access token, PTY handle, process handle, renderer object, or
+terminal history. OpenSSH is execution authority; the extension's static index
+is discovery/UI metadata and cannot replace OpenSSH's complete configuration
+semantics.
+
+### Environment Capsule contract
+
+Every managed session has a non-secret, immutable `EnvironmentCapsule`:
+
+```text
+identity/profile/role reference
+account, subscription, project, tenant or organization
+region and zone
+kubeconfig source, context, cluster and namespace
+infrastructure directory, backend and workspace
+remote connection reference and transport
+risk classification and local policy reference
+creating extension, source revision, timestamps and freshness
+```
+
+Capsules contain opaque identity/secret references, never credential values.
+A clone copies intent into a new capsule ID, starts a new PTY and performs fresh
+resolution. An explicit rebind cancels old-revision work and creates/restarts a
+session when environment changes cannot be safely applied in place. A profile,
+subscription, project, context, or namespace switch in one session cannot
+mutate another session or its historical prompt snapshots.
+
+### Provider-neutral contribution contract
+
+Extensions publish bounded `ContextContribution` values containing extension
+and session IDs, a typed kind, bounded label/value, icon token, semantic role,
+`fresh|refreshing|stale|expired|unavailable|error` freshness, observation and
+expiry times, source revision, and a typed details action. Core projects these
+into `StatusSegment` values and exclusively owns visual order, truncation,
+contrast, accessibility, interaction geometry, and GPU drawing.
+
+An extension cannot publish arbitrary styled terminal bytes, GPU commands,
+fonts, escape sequences, hit targets, or unbounded text. Provider-specific
+color mapping leaves the renderer during the v0.5 adapter migration; semantic
+roles remain stable and core/theme policy chooses the final accessible color.
+
+### Capability and process-launch contract
+
+The v0.4 capability enum is descriptive and local-read-only in practice. The
+v0.5 broker replaces broad `ProcessSpawn` authority with a scoped request:
+
+```text
+CapabilityRequest
+  extension_id + publisher + version
+  operation_id + exact session/capsule scope
+  capability = process.launch
+  executable_id
+  ordered argv
+  allowlisted public environment deltas
+  validated working-directory reference
+  interactive PTY intent
+  reason and risk
+```
+
+The application maps `executable_id` to a canonical absolute path, never
+searches the current directory, revalidates file identity before spawn, rejects
+NUL/oversized/option-confused values, and never evaluates a shell command
+string. Core builds the normal child environment; the extension does not read
+it. A process, route, PTY, operation, capsule, and owned tunnels are bound before
+publication so cancellation cannot hit a reused PID or sibling session.
+
+v0.5.0 grants this capability only to reviewed first-party operations and only
+for the exact OpenSSH tools they use. The extension itself has no direct-network
+capability: the approved OpenSSH child connects exactly as it would when typed
+in a shell. Arbitrary process/network access and third-party use remain denied.
+
+### OpenSSH inventory and persistence boundary
+
+`devops-ssh` statically indexes a bounded subset of granted OpenSSH config
+files for concrete aliases and public display hints. It never evaluates
+`Match exec`, `ProxyCommand`, `LocalCommand`, command substitution, shell
+expansion, or `ssh -G` during background work. Includes have canonical-path,
+permission, symlink, cycle, count, depth, and byte limits. Parse/refresh failure
+retains the last known-good index and marks it stale/error.
+
+Automexia metadata is versioned and atomically stored below the extension's own
+state directory with user-only permissions. A connection record may contain ID,
+display name, tags, favorite/recent state, source, alias, public host/port/user
+hints, jump references, transport, capsule template, and an opaque identity
+reference. Private keys, passphrases, cloud tokens, agent messages, recovered
+secrets, and full inherited environments are forbidden.
+
+OpenSSH/OS facilities retain custody of `known_hosts`, agents, encrypted key
+files, FIDO2/PIV/PKCS#11 devices, and short-lived certificates. Strict host-key
+checking remains enabled; Automexia never silently accepts, deletes, or replaces
+a host key. Agent forwarding remains an explicit, visible, per-connection grant
+and is off by default.
+
+### Later provider-host boundary
+
+v0.5.1 uses official CLIs and local configuration first. If a later inventory
+feature needs direct SDK/API access, the adapter runs outside renderer/VT code
+in a bounded extension host over a user-scoped named pipe on Windows or
+Unix-domain socket. The host authenticates the local peer, accepts versioned
+typed messages, applies endpoint/size/time/concurrency limits, redacts results,
+and exposes no general TCP control port. It returns public structured metadata
+or an approved stream, never raw credentials.
+
+AI extensions use the same capability system but receive no ambient session
+environment, SSH agent, cloud cache, terminal history, capsule, connection, or
+production authority. Every tool call is a structured, exact-session request;
+read authority does not imply command authority.
+
 ## Dependency rules
 
 - Engine crates never depend on the desktop frontend.
 - VT parsing and PTY paths contain no extension or product-state logic.
 - Extension API/model code is renderer-, GPU-, and PTY-independent.
+- Core application/engine crates contain no SSH-, cloud-, Kubernetes-,
+  OpenShift-, infrastructure-, or AI-provider business logic or SDK dependency.
+- The application is the sole owner of process-to-PTY/session attachment.
+  Extensions submit typed capability requests and never receive PTY, process,
+  renderer, or mutable terminal-engine handles.
 - Extension I/O runs on a bounded worker; the render thread uses non-blocking
   submission and cached immutable snapshots.
+- Extension cache keys include extension, exact session/route, capsule/source
+  revision, and request kind. Obsolete results are discarded before publication.
 - GPU drawing stays in the frontend renderer adapter.
 - Session IDs key worker results, completion state, and cached context; one
   window or pane cannot observe another session's state.
+- Credentials and inherited environments never enter renderer snapshots,
+  extension context contributions, general configuration, diagnostics, or
+  terminal-history metadata. Only public identity and opaque references cross
+  the extension API.
 - Session ownership is explicit: an OS window owns window-level
   `ContextGrid` tabs; each grid owns split-pane `ContextGridItem` nodes; each
   pane owns an ordered local tab stack with exactly one active `Context`.
@@ -41,6 +267,14 @@ Automexia IDs or path policy.
   dimensions, and only the active context is painted. Deliberate teardown
   records exact route tombstones so delayed PTY-exit events cannot close a
   sibling pane, tab, grid, or window.
+  OS-window teardown is centralized: custom chrome, the `WindowClose` action,
+  native close requests, and final-PTY exit remove exactly the addressed
+  window route, cancel every timer owned by its top-level tabs/splits/local
+  tabs, and clear settings/quake window references. Explicit `Quit` remains
+  the only process-wide UI action. An intermediate close never exits the event
+  loop or opens a quit confirmation; confirmation is reserved for an
+  unconfirmed last-window close.
+
 - Selection and search styling take precedence over semantic decoration.
 - PowerShell, Bash, and Zsh integrations assign every prompt a monotonic OSC
   133 `aid`. Stock CMD publishes `A/B` semantic boundaries without inventing an
@@ -103,6 +337,13 @@ Automexia IDs or path policy.
   the active segment extends the focus accent.
   Panes below 112 logical pixels hide the footer and recover the space
   automatically when they grow.
+- A top-level tab has a window-local layout root even though each context
+  dimension becomes pane-local after layout. New tabs inherit the active
+  grid's current window viewport before their first drawable generation; they
+  never reuse the reduced PTY/footer extent as a new root. Their tab label is
+  available from semantic shell metadata or immutable launch intent before the
+  PTY emits OSC titles, preventing startup profile commands from becoming
+  transient visible identities.
 - OSC 133 `C`/`D` records exit code and elapsed time on the stable prompt row.
   This metadata is copied, recycled, merged and split with the row and marks
   metadata-only snapshots dirty.
@@ -134,6 +375,17 @@ Automexia IDs or path policy.
   window registry speculatively.
 - PTY parsing, DevOps discovery, and extension work stay off the render thread;
   the renderer consumes bounded cached snapshots without blocking on them.
+- OpenSSH/config discovery, capability decisions that need filesystem metadata,
+  provider CLI probes, authentication state, tunnel health, and later provider
+  API work also stay off render, input, VT parsing, and PTY-resize paths. A slow
+  or unavailable provider changes only the owning segment's freshness/error.
+- Identical file/provider lookups are coalesced, caches use stale-while-
+  revalidate, filesystem watchers are advisory and reconciled periodically,
+  obsolete capsule generations are cancelled, and provider-specific concurrency
+  limits prevent one extension from exhausting the shared worker budget.
+- Managed session creation may paint immutable launch/capsule identity on its
+  first frame, but live discovery is still queued immediately. Seed data is
+  never allowed to claim authenticated/connectivity state it has not observed.
 - A completed DevOps discovery publishes its session-scoped snapshot before it
   directly wakes the originating window and route. Initial PowerShell, CMD, or WSL
   context therefore appears without keyboard/mouse input; the short route timer
@@ -218,15 +470,62 @@ access, downloaded extensions, Wasm sandboxing, and a public SDK are outside the
 v0.4 boundary. New capabilities require security review, CODEOWNERS approval,
 two protected-path approvals, and an ADR.
 
+v0.5.0 adds only the replacement-ADR-approved first-party
+`process.launch`/session capability required by `devops-ssh`. A grant is
+scoped to publisher/extension/version, executable ID, operation kind, session
+and capsule, allowed public environment deltas, and interactive mode. It is
+checked at operation time, revocable, and audited without secrets. It is not a
+general `Command`, shell, scripting, or subprocess API.
+
+The first SSH release intentionally grants no direct extension network and no
+raw secret access. The system OpenSSH child owns network and credential-agent
+interaction under the user's existing OS/OpenSSH policy. v0.5.1 official CLI
+adapters reuse the same exact-argv path. Direct SDK network, browser callback,
+sealed secret-handle, third-party process, and AI tool capabilities require
+their own reviewed schemas, quotas, threat models, and ADR changes.
+
+## Accessibility boundary
+
+The v0.4 keyboard/focus/contrast/scaling contract, custom-surface inventory,
+manual assistive-technology matrix, and truthful limitations are in
+[`ACCESSIBILITY.md`](ACCESSIBILITY.md). The v0.5 platform semantic-tree design
+is isolated behind the renderer-independent model in
+[ADR 0013](adr/0013-renderer-independent-accessibility-model.md); PTY, provider,
+extension, and GPU code do not call platform accessibility APIs directly.
+
 ## Persistence
 
 Automexia owns `config.toml`, `themes/`, `extensions/`, and `logs/` under its
 platform configuration root. The one-release migration reads a narrow Rio
 allowlist and never modifies the source. See `docs/MIGRATION.md`.
 
+Extension state is versioned below its own directory, atomically replaced,
+bounded, and protected with user-only platform permissions. General config,
+extension state, logs, renderer snapshots, diagnostics, QA bundles, and
+telemetry may contain only public identifiers, policy decisions, freshness,
+result class, and opaque references. SSH keys/passphrases, cloud/Kubernetes
+credentials, provider tokens, agent messages, browser cookies, inherited
+environment values, and recovered secrets are forbidden.
+
+OpenSSH and provider-managed configuration/caches remain externally owned.
+Automexia reads only granted sources and never edits `known_hosts`, SSH config,
+provider credentials, kubeconfig, or CLI token caches as a hidden side effect.
+An explicit export/import/rebind operation must define atomicity, permissions,
+rollback, and redaction before it can write an external file.
+
 ## v0.5 boundary
 
 After v0.4 is stable, Automexia-owned modules will be extracted into private
-`automexia-app`, `automexia-extension-api`, `automexia-extension-runtime`,
-`automexia-devops`, and `automexia-ui-model` crates. Only after that split is
-stable may inherited engine directories move beneath `engine/`.
+`automexia-extension-api`, `automexia-extension-runtime`,
+`automexia-devops`, and `automexia-ui-model` crates first, with
+`automexia-app` extracted only where ownership is already clear. This minimal
+ordering enables the production `devops-ssh` extension without coupling its
+release to unrelated engine-directory churn. Only after the release-critical
+split and behavior-equivalence adapters are stable may inherited engines move
+beneath `engine/`.
+
+The exact implementation order and acceptance evidence are in the
+[early DevOps and SSH delivery track](STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track).
+The full research, provider mappings, Termix decision, library evaluation, and
+long-term extension model are in
+[SSH, DevOps, and multi-cloud extension architecture](SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md).

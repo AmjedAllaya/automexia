@@ -47,6 +47,10 @@ python -m pip install PyYAML
 cargo install --locked cargo-deny --version 0.20.2
 ```
 
+On Windows, `cargo xtask doctor` also reports the installed PowerShell host,
+newest available PSReadLine module, and PowerShell 7 availability. Its history
+advisory is informational: it never installs or updates shell software.
+
 For normal day-to-day launches after the repository is known to be healthy:
 
 ```text
@@ -78,6 +82,16 @@ window:
 cargo ready
 ```
 
+For the deeper Phase 0 evidence profile, including pinned Nextest/JUnit,
+property/model checks, hard subprocess deadlines with process-tree cleanup,
+privacy-bounded host/resource/coverage evidence, and explicit external-gate
+status, run:
+
+```text
+cargo qa
+cargo qa --bundle
+```
+
 The executable remains available at `target/debug/automexia`
 (`automexia.exe` on Windows). Advanced scoped `cargo xtask` commands are
 documented in [CONTRIBUTING.md](CONTRIBUTING.md) and
@@ -104,11 +118,13 @@ installer scripts remain available only for maintainer repair and uninstall
 diagnostics; they are not part of the normal user workflow.
 
 Native PowerShell gains icon-aware `ls` output through a bundled, pipeline-safe
-format view and does not require `eza`. Typing `cmd` or `cmd.exe` from an
-integrated PowerShell pane now opens Command Prompt inside that same Automexia
-pane; CMD receives the branded full-path prompt, live context metadata, and
-icon-aware `ls`/`ll` while its built-in `dir` and explicit `cmd /c` behavior stay
-native. In Bash and Zsh, the integration uses an
+format view and does not require `eza`. Typing bare `cmd` or `cmd.exe` from an
+integrated PowerShell pane opens Command Prompt inside that same Automexia pane;
+CMD receives the branded full-path/lambda prompt, live shell/user/path context,
+and icon-aware `ls`/`ll`. Identity is reasserted on every CMD prompt, and
+PowerShell restores its own metadata immediately after `exit`; built-in `dir`
+and explicit `cmd /c` behavior stay native. In Bash and Zsh, the integration
+uses an
 installed `eza` for icon-aware `ls`, `ll`, and `tree` output and falls back
 cleanly when `eza` is unavailable. A bundled compatibility layer gives older
 Ubuntu/WSL eza 0.18.x releases the same colored composite folder badges as
@@ -149,8 +165,15 @@ details.
 
 - v0.4 keeps attributed private `rio-*`, `librio`, Sugarloaf, and related
   engine crate names while all product-facing identity is Automexia.
-- v0.5 will extract Automexia-owned application modules and then consider
-  grouping inherited engines beneath `engine/`.
+- v0.5.0 will perform the smallest behavior-preserving API/runtime/UI-model
+  extraction required to ship an optional first-party `devops-ssh` extension
+  through the system OpenSSH client. v0.5.1 then adds separately enabled AWS,
+  Azure, Google Cloud, Kubernetes, OpenShift, and infrastructure extensions with
+  per-PTY environment isolation. These are planned, not current v0.4 features;
+  see the [roadmap](docs/ROADMAP.md) and
+  [SSH/DevOps/multi-cloud architecture](docs/SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md).
+- Grouping inherited engines beneath `engine/` remains lower priority than the
+  release-critical v0.5 extension/session boundary.
 - Third-party extension downloads, a public extension SDK, and Wasm sandboxing
   remain out of scope until the documented v0.6 milestone.
 

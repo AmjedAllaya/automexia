@@ -57,7 +57,7 @@ baseline without claiming a complete accessibility tree.
 | Typed action model | Partial | The frontend has a Rust `Action` enum, but configuration parses action strings at runtime and several parameterized actions use ad hoc regular expressions. There are no stable action IDs, schemas, aliases, capability metadata, or reverse lookup index. |
 | Compiled binding registry | Planned | Active bindings remain a flat `Vec` scanned for every key event. There is no direct lookup map, sequence trie, table stack, origin table, or reverse action index. |
 | Versioned profiles | Planned | There is no `automexia`, `ghostty`, or `ghostty-<version>` profile selector and no checked-in generated Ghostty fixture. |
-| Runtime configuration reload | Partial | Reload updates existing windows and rebuilds bindings. Invalid configuration currently substitutes defaults instead of retaining the last known-good registry, so reload is not atomic. |
+| Runtime configuration reload | Partial | Base configuration reload now validates candidates and retains the last-known-good config, fonts, windows, bindings, and transactionally replaced global hotkeys on failure. Full Ghostty-profile atomicity remains planned until the typed immutable registry/profile compiler exists. |
 | Performable/unconsumed dispatch | Planned | Matching bindings are executed during one list scan and the function returns only whether text input should be suppressed. It cannot distinguish handled, unavailable, unconsumed, or fallthrough outcomes. |
 | Multi-key sequences, tables, chains, and `catch_all` | Planned | Kitty keyboard escape-sequence encoding is unrelated to a user key-sequence language. No pending-prefix state, table stack, chained action, or catch-all binding model exists. |
 | Central action/shortcut registry | Planned | Command-palette shortcut labels are platform-specific constants duplicated from the binding tables. They are not generated from active bindings. |
@@ -176,10 +176,9 @@ Before expanding shortcut coverage:
 - add a golden manifest for Automexia's current effective defaults;
 - replace ADR 0010 only after a new ADR accepts profile precedence,
   compatibility versioning, the private crate boundary, and Windows adaptation;
-- fix invalid runtime reload so it retains the active configuration;
-- correct the XTGETTCAP terminal-name response from the inherited `rio` value;
-- bound OSC, APC/graphics, and XTGETTCAP control-string accumulation, discard
-  oversized payloads safely, recover at the terminator, and fuzz the limits.
+- preserve the completed v0.4 prerequisites: invalid reload retains the active
+  configuration; XTGETTCAP reports `automexia`; and OSC/APC/XTGETTCAP inputs
+  remain bounded, safely cancelled/discarded, recoverable, and fuzzed;
 - record the pinned Nextest, snapshot schema, fixture generator, benchmark
   schema, and QA-bundle schema versions used to validate the compatibility
   baseline; fixture generation remains offline during normal CI;
@@ -188,8 +187,8 @@ Before expanding shortcut coverage:
 - include fixture provenance/checksums and the effective classic Automexia
   manifest in the redacted QA bundle without including user keybindings.
 
-The last two items are v0.4 identity/security hardening and have priority over
-new compatibility features.
+The v0.4 identity/security prerequisites are complete locally and remain
+mandatory regression gates; they do not imply that the Ghostty profile exists.
 
 Exit gate: fixtures are reproducible and reviewable; invalid reloads do not
 change active behavior; hostile control strings cannot grow memory without a

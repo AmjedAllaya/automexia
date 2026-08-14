@@ -6,11 +6,11 @@ Complete product rebranding, configuration coexistence/migration, contributor
 automation, mandatory multi-platform CI, coverage/security policy, and signed
 desktop artifact production. Only the newest v0.4 patch is supported.
 
-Before stable release, close the remaining source-level identity and security
-hardening items: return the Automexia terminal name from XTGETTCAP, bound raw
-OSC/APC/XTGETTCAP accumulation with safe discard/recovery behavior, and keep
-the last known-good configuration when a runtime reload fails. These items
-take priority over adding more compatibility shortcuts.
+The v0.4 source-level identity, hostile-control-string, and atomic-reload S0
+gates are closed locally and protected by contributor checks. Stable release
+still requires the declared native Linux/macOS, hosted security, visual,
+performance, packaging, signing, asset-rights, and repository-policy evidence;
+local Windows success does not replace those gates.
 
 The detailed [stabilization roadmap](STABILIZATION-ROADMAP.md) records completed
 regressions, partially proven areas, the exact S0 implementation/test gates,
@@ -19,12 +19,14 @@ and external release requirements. Windows-only results never satisfy a
 cross-platform gate.
 
 The v0.4 assurance milestone also closes the gap between logical correctness
-and what a user actually sees. Before stable release, Automexia will add a
-pinned Nextest/JUnit execution profile with timeouts and process-leak reporting,
-deterministic renderer-state snapshots plus controlled rendered-frame captures,
-an executed (not compile-only) Criterion baseline, property/state-machine tests
-for resize and pane lifecycle invariants, Windows resource verification, and a
-redacted `cargo xtask qa --full --bundle` evidence archive. The existing
+and what a user actually sees. Automexia now has pinned Nextest/JUnit profiles
+with timeout, leak, resource-group, and flaky-failure policy; shrinking layout
+properties with persisted regressions; finite channel readiness models;
+structured renderer-state snapshots; Windows process-resource ceilings; a
+topmost client-region Windows final-frame smoke; and a bounded redacted
+`cargo xtask qa --full --bundle` evidence archive. Controlled cross-platform
+expected/actual/diff frame matrices, executed baseline history, AppVerifier/WPR
+results, and cross-platform native evidence remain release gates. The existing
 `cargo ready` contributor gate remains deterministic and `cargo automexia`
 remains the fast launch path; native GPU, screen-reader, profiler, and
 Application Verifier work belongs in explicit deep-test profiles rather than
@@ -37,14 +39,130 @@ smoke evidence. A complete cross-platform accessibility tree is staged with
 the v0.5 UI-model boundary below rather than being claimed from color and
 keyboard tests alone.
 
-## v0.5 — internal modularization
+### Release sequencing decision
 
-Remove Rio environment fallbacks. Extract private Automexia app, extension API,
-runtime, DevOps, UI-model, and keybinding crates. The keybinding crate will
-begin as a behavior-preserving typed registry before it adds profiles or
-sequences. Keep GPU drawing in the frontend adapter; keep UI model, extension,
-and keybinding crates independent of renderer, PTY, and GPU. Group inherited
-engine directories only after the split stabilizes.
+v0.4 remains the frozen terminal-core stabilization milestone. Manual
+`ssh host` already works through the user's shell and PTY, but v0.4 will not
+grow saved-host, credential, tunnel, or cloud-connection behavior while its
+release-assurance gates are open. The bounded-control-string source gate passed
+locally on 2026-08-14; managed remote-session exposure still waits for hosted
+fuzz/sanitizer and cross-platform native evidence plus its v0.5 capability and
+security gates. Design, threat modeling, pure data contracts, and non-activated
+tests may proceed in parallel.
+
+The first recommended DevOps-ready product release is v0.5.0, not v0.6. It
+ships the generic terminal core together with a separately enabled, first-party
+`devops-ssh` extension based on the system OpenSSH client. This is the earliest
+safe sequence because it reuses the terminal's mature PTY/session model and
+OpenSSH's configuration, host-key, agent, certificate, hardware-key, jump-host,
+and forwarding support without waiting for a public third-party SDK or adding a
+second SSH protocol implementation to core.
+
+The complete architecture, security rationale, provider strategy, dependency
+evaluation, and research sources are consolidated in
+[SSH, DevOps, and multi-cloud extension architecture](SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md).
+The [stabilization roadmap](STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track)
+is authoritative for the implementation order and exit gates.
+
+## v0.5 — DevOps foundation and production SSH
+
+v0.5 combines the smallest necessary internal modularization with the earliest
+production SSH extension. Work is ordered by dependency rather than by desired
+UI: secure output handling, provider-neutral data contracts, generic launch
+capability, and session isolation precede host management and quick connect.
+Unrelated engine-directory movement must not delay the SSH release.
+
+### v0.5.0 foundation
+
+1. Remove Rio environment fallbacks and extract private
+   `automexia-extension-api`, `automexia-extension-runtime`,
+   `automexia-devops`, and `automexia-ui-model` crates from the existing
+   `apps/automexia-terminal/src/automexia` and renderer seams. Extract
+   `automexia-app` only where ownership is already clear. Group inherited
+   engines beneath another directory only after the release-critical split is
+   stable.
+2. Introduce versioned, renderer/PTY/GPU-independent contracts for
+   `ExtensionId`, `SessionId`, `LaunchRequest`, `EnvironmentCapsule`,
+   `ContextContribution`, `StatusSegment`, `Freshness`,
+   `CapabilityRequest`, `CapabilityDecision`, `OperationId`, and typed
+   public diagnostics.
+3. Extend the immutable session launch descriptor rather than creating another
+   process path. It must carry an approved executable identity, exact argv,
+   bounded environment overrides, validated working directory, optional
+   capsule reference, and interactive-PTY intent. It must never carry a shell
+   command string or secret value.
+4. Convert the provider-specific renderer path into a generic status-segment
+   consumer. Existing local Git, Docker, Kubernetes, cloud, Terraform, OS, and
+   user discovery first moves behind an adapter with behavior-equivalence tests;
+   it must not be rewritten and extracted simultaneously.
+5. Partition extension queues, immutable snapshots, operations, cancellations,
+   and caches by extension plus exact session/route. Preserve publish-before-
+   wake ordering, bounded submission, last-known-good snapshots, and truthful
+   `fresh`, `refreshing`, `stale`, `expired`, `unavailable`, and
+   `error` states.
+6. Accept the replacement ADR required by ADR 0003 before enabling any new
+   process capability. Capability grants must be exact, visible, revocable,
+   audited without secrets, and denied by default outside reviewed first-party
+   extensions.
+
+### v0.5.0 first-party SSH extension
+
+1. Ship `devops-ssh` as an optional, signed or compiled-in first-party
+   extension. It may be included in the DevOps Pack but must be independently
+   disabled without changing PTY, shell, or terminal behavior.
+2. Use the system OpenSSH executable as the only initial SSH engine. Locate and
+   validate the executable through platform policy; launch it in a new normal
+   Automexia PTY using exact argv. Do not use `sh -c`, `cmd /c`, PowerShell
+   evaluation, an embedded Node/Electron application, or a Rust SSH protocol
+   engine for v0.5.0.
+3. Index a bounded, non-executable subset of OpenSSH configuration for aliases,
+   hostnames, ports, users, tags, favorites, recent connections, identity-file
+   references, and jump-host display. Preserve OpenSSH as execution authority.
+   Background indexing must never evaluate `Match exec`, `ProxyCommand`,
+   `LocalCommand`, or another configuration command.
+4. Provide quick connect into a new pane, pane-local tab, workspace tab, or
+   window; config-defined and explicit jump hosts; visible connection intent;
+   connection cancellation; and local, remote, and dynamic tunnels whose
+   listeners default to loopback and whose lifetime is owned visibly.
+5. Delegate private-key custody to `ssh-agent`, OS keychains/agents, hardware
+   tokens, encrypted OpenSSH files, or short-lived SSH certificates. Persist
+   only opaque references and public metadata. Never write key bytes,
+   passphrases, tokens, agent messages, or recovered secrets to Automexia
+   config, logs, telemetry, crash bundles, snapshots, clipboard history, or AI
+   prompts.
+6. Leave strict host-key checking enabled and let OpenSSH own its normal
+   interactive verification. Add Automexia explanations for first-use and
+   changed-key states only when they preserve the full fingerprint and cannot
+   silently edit `known_hosts`. Agent forwarding remains off by default.
+7. Keep extension direct-network capability disabled. The approved OpenSSH
+   child process owns its connection exactly as when the user types `ssh`.
+   Direct extension networking, structured SFTP, background sync, and an
+   embedded SSH engine are later, separately reviewed capabilities.
+
+### v0.5.0 release gate
+
+v0.5.0 is the preferred first broad DevOps release when all of the following
+are true:
+
+- every v0.4 security, parser, native, packaging, and hosted release gate still
+  passes;
+- the generic core runs completely with the DevOps Pack disabled;
+- OpenSSH is absent, supported, outdated, misconfigured, cancelled, offline,
+  and hostile-output cases fail truthfully without affecting another session;
+- exact-argv property/native tests cover spaces, Unicode, leading dashes,
+  hostile aliases, long values, and Windows/Unix argument semantics;
+- parallel connections own independent PTYs, routes, capsules, caches, host-key
+  prompts, tunnels, process trees, and teardown;
+- slow indexing and connection setup do not block input, parsing, rendering,
+  resizing, or unrelated panes;
+- no secret appears in persistent state or redacted QA evidence;
+- keyboard, screen-reader, contrast, production-risk, and error semantics are
+  tested on supported platforms.
+
+The v0.5 keybinding crate still begins as a behavior-preserving typed registry
+before profiles or sequences. GPU drawing stays in the frontend adapter;
+extension, policy, DevOps model, keybinding, and UI-model crates remain
+renderer-, PTY-, and GPU-independent.
 
 Move the v0.4 property and concurrency seams into those private crates so
 Loom can exhaustively model bounded queue/snapshot interleavings and Miri can
@@ -62,15 +180,58 @@ auditing must have a named maintainer and review policy before it becomes a
 required check; it complements rather than replaces `cargo deny`, dependency
 review, CodeQL, SBOMs, and release attestations.
 
-## v0.6 — extension platform
+## v0.5.1 — multi-cloud and orchestrator extensions
 
-Evaluate third-party extension distribution, a public SDK, capability UX, and a
-Wasm sandbox. None of these are part of v0.4 or v0.5 commitments.
+After v0.5.0 proves the generic launch/capability boundary, deliver separately
+enabled `devops-context`, `devops-kubernetes`, `devops-openshift`,
+`devops-aws`, `devops-azure`, `devops-gcp`, and
+`devops-infrastructure` extensions. A DevOps Pack meta-package enables the
+reviewed set but does not merge their authority.
+
+Each new PTY receives an immutable, non-secret Environment Capsule that pins
+identity/profile, account/subscription/project, region/zone, kubeconfig,
+cluster/context/namespace, infrastructure directory/backend/workspace, remote
+transport, provenance, freshness, risk, and policy references. Clones copy
+intent and perform fresh credential/context resolution; a provider switch in
+one pane never mutates another pane.
+
+Implementation order is:
+
+1. local configuration parsing and per-session environment isolation;
+2. provider-native interactive authentication through visible official CLIs;
+3. Kubernetes/OpenShift exec-plugin allowlisting and explicit kubeconfig
+   source/context/namespace selection;
+4. AWS IAM Identity Center/STS, Microsoft Entra MFA/workload identity, and
+   Google Workforce/Workload Identity integration without copying tokens;
+5. AWS SSM Session Manager, Azure Bastion, and GCP IAP plus OS Login as
+   preferred cloud-native remote transports;
+6. lazy, explicitly permitted provider API inventory only after CLI/config
+   flows, caching, cancellation, redaction, and resource budgets are proven.
+
+Provider SDKs remain isolated behind extension-host adapters. CLI-first
+delivery is intentional: it preserves official authentication, limits binary
+and dependency growth, and avoids binding the terminal core to unstable or
+provider-specific SDKs. OpenTofu/Terraform workspaces are displayed as context,
+never treated as credential or authorization boundaries.
+
+## v0.6 — sandboxed extension platform and AI tools
+
+Evaluate third-party extension distribution, a public SDK, package signatures
+and revocation, capability UX, quotas, and a Wasm or equivalent sandbox only
+after the first-party SSH and provider contracts are proven. First-party
+DevOps delivery does not wait for this public ecosystem.
 
 Extension-platform work inherits the established QA profiles. Capability,
 sandbox, migration, and distribution changes require property/fuzz corpora,
 resource ceilings, mutation-tested policy code, accessibility semantics, and
 redacted QA evidence before a public SDK or third-party download path ships.
+
+AI agent orchestration remains a separate extension family. An AI extension
+does not inherit a PTY environment, SSH agent, cloud cache, terminal history,
+capsule, or connection. Each tool call names the exact session/environment,
+structured operation, risk, and requested capability; read permission never
+implies command permission, staging permission never implies production
+permission, and destructive operations require policy plus explicit review.
 
 ## Compatibility track
 
@@ -88,14 +249,14 @@ a v0.4 release criterion.
 The [stabilization roadmap](STABILIZATION-ROADMAP.md) is authoritative for the
 detailed implementation and exit gates. The version assignment is:
 
-| Capability | v0.4 | v0.5 | v0.6 |
-|---|---|---|---|
-| Test orchestration and evidence | Pinned Nextest/JUnit, timeouts, leak reporting, and redacted QA bundle | Component-specific profiles after crate extraction | Extension SDK/profile evidence |
-| Visual verification | Deterministic renderer state, controlled offscreen/native frame capture, diff artifacts, and human platform review | Accessibility-aware UI-model goldens | Extension UI/capability visual contracts |
-| Property/concurrency testing | Proptest resize/session invariants and initial bounded Loom models | Loom/Miri coverage moves into pure private crates | Capability/sandbox state machines |
-| Performance | Execute Criterion, collect 30-day baselines, record startup/interaction/resource data | Enforce mature latency/memory ratchets | Add SDK/sandbox overhead budgets |
-| Native assurance | Windows AppVerifier/WPR and controlled Windows/Linux/macOS GPU/shell matrices | Full accessibility adapter and assistive-technology matrix | Sandboxed third-party extension isolation |
-| Test-strength/security ratchets | Longer fuzz corpora and Automexia-owned coverage baseline | Scoped mutation testing and maintainable cargo-vet adoption | Public extension supply-chain/capability audits |
+| Capability | v0.4 | v0.5.0 SSH | v0.5.1 multi-cloud | v0.6 ecosystem |
+|---|---|---|---|---|
+| Test orchestration and evidence | Pinned Nextest/JUnit, timeouts, leak reporting, and redacted QA bundle | Component profiles plus SSH/launch/broker evidence | Provider authentication, capsule, and remote-transport evidence | Public SDK/package/sandbox evidence |
+| Visual verification | Deterministic renderer state, controlled frame capture, diffs, and human platform review | Generic status, quick-connect, host-key, tunnel, grant, and error goldens | Multi-provider identity, risk, login, expiry, and stale-state goldens | Third-party and AI capability UX contracts |
+| Property/concurrency testing | Proptest resize/session invariants and initial bounded Loom models | Exact argv, operation/cancellation, queue/cache, tunnel, and teardown state machines | Capsule isolation, provider refresh, exec-plugin, and broker state machines | Capability/sandbox/package state machines |
+| Performance | Execute Criterion, collect 30-day baselines, record startup/interaction/resource data | Enforce ratchets and add SSH index/connect/tunnel/saturation budgets | Add CLI/config/API refresh and 10/50/100-session budgets | Add public SDK/sandbox overhead budgets |
+| Native assurance | AppVerifier/WPR and controlled Windows/Linux/macOS GPU/shell matrices | System OpenSSH, agents, certificates, host keys, jumps, tunnels, cancellation, and cleanup on each OS | Official provider CLIs, Kubernetes/OpenShift, SSM/Bastion/IAP, offline/expiry paths | Sandboxed third-party and AI extension isolation |
+| Test-strength/security ratchets | Longer fuzz corpora and Automexia-owned coverage baseline | Fuzz config/index/IPC/diagnostics; mutation-test policy and argv validation | Fuzz provider/config/exec-plugin adapters; audit SDK/CLI supply chain | Public extension supply-chain, signature, revocation, and capability audits |
 
 No single host or test layer may claim complete assurance. Pull requests prove
 deterministic contracts, nightly jobs explore expensive state and native
