@@ -42,6 +42,22 @@ impl GraphicDataEntry {
             transmit_time: data.transmit_time,
         }
     }
+
+    /// Create a cache-addressed RGBA entry without copying or re-hashing pixels.
+    pub fn from_shared_rgba(
+        content_id: u64,
+        width: u32,
+        height: u32,
+        pixels: std::sync::Arc<[u8]>,
+        transmit_time: std::time::Instant,
+    ) -> Self {
+        Self {
+            handle: Handle::from_pixels_with_id(content_id, width, height, pixels),
+            width: width as f32,
+            height: height as f32,
+            transmit_time,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -84,5 +100,33 @@ impl Graphics {
     #[inline]
     pub fn remove(&mut self, graphic_id: &GraphicId) {
         self.inner.remove(graphic_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_rgba_preserves_pixel_allocation_and_stable_identity() {
+        let pixels: std::sync::Arc<[u8]> = std::sync::Arc::from(vec![1_u8, 2, 3, 255]);
+        let address = pixels.as_ptr();
+        let now = std::time::Instant::now();
+        let entry =
+            GraphicDataEntry::from_shared_rgba(0xFFFF_FFFE_0000_002A, 1, 1, pixels, now);
+
+        assert_eq!(entry.handle.id(), 0xFFFF_FFFE_0000_002A);
+        assert_eq!(entry.transmit_time, now);
+        match entry.handle.data() {
+            crate::components::core::image::Data::Rgba {
+                width,
+                height,
+                pixels,
+            } => {
+                assert_eq!((*width, *height), (1, 1));
+                assert_eq!(pixels.as_ref().as_ptr(), address);
+            }
+            other => panic!("expected shared RGBA data, got {other:?}"),
+        }
     }
 }

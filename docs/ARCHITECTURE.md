@@ -112,13 +112,17 @@ texture-eviction semantics. iTerm2 decoding validates base64/declared size,
 graphic.
 
 Local filename quick look is a separate Automexia-owned overlay described by
-[ADR 0014](adr/0014-explicit-bounded-image-quick-look.md). Pointer hit testing
-and candidate normalization run on the application thread without filesystem
-access. A bounded worker performs local metadata/read/decode/downscale work and
-publishes only a route/generation-tagged result through an exact-route wake.
-The renderer uploads at most a 1280x960 thumbnail and positions it from the
-current pane rectangle after normal terminal overlays are rebuilt. Dismissal
-evicts its CPU/GPU image entry. It does not mutate terminal cells, PTY size,
+[ADR 0014](adr/0014-explicit-bounded-image-quick-look.md). Pointer hit testing and candidate normalization run on the application thread
+without filesystem access. A 16-owner latest-request queue coalesces obsolete
+work per window; one worker performs local metadata/read/header-gate/decode/
+downscale and publishes only a current generation to that window's single-result
+mailbox through an exact-route wake. There is no shared completion queue.
+A 16-entry/32 MiB access-ordered cache validates path, length, and modification
+version before returning a shared thumbnail. Sugarloaf receives the same pixel
+allocation with a stable preview key/time, uploads at most 1280x960, and
+positions it from the current pane rectangle. Dismissal removes the active
+overlay/data entry; bounded CPU/GPU caches retain reusable content only until
+normal eviction. It does not mutate terminal cells, PTY size,
 selection, scrollback, or prompt metadata.
 
 ### Runtime configuration transaction

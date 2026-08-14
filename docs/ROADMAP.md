@@ -35,7 +35,9 @@ ordinary application startup.
 v0.4 now preserves the inherited Sixel, Kitty Graphics, and iTerm2 renderer
 path while adding an explicit bounded local quick look for printed/selected
 raster paths. The source contract, security limits, keyboard/pointer UX, WSL
-mapping, and focused tests are complete locally. Controlled Windows visual
+mapping, strict header/file-version gates, latest-request coalescing,
+32 MiB thumbnail reuse, zero-copy renderer handoff, isolated benchmark, and
+focused tests are complete locally. Controlled Windows visual
 review plus Linux/macOS protocol/quick-look evidence remain part of the v0.4
 cross-platform release gate; remote fetching, SVG/PDF rendering, and image
 editing are not implied by this milestone. See

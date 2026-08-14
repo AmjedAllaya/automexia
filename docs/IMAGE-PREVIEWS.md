@@ -74,13 +74,21 @@ Consequently quick look:
 - requires an explicit modifier dwell or keyboard/palette action;
 - rejects URL schemes, arbitrary Windows UNC paths, control characters,
   symlinks, and non-regular files;
-- limits the source file to 20 MiB, dimensions to 4096x4096, decoded pixels to
-  16,777,216, and decoder allocation to 96 MiB;
-- decodes and downsizes on one bounded worker with a bounded result queue;
-- attaches every request/result to the exact route and generation, discarding
-  stale work after pointer, directory, tab, pane, or session changes;
-- uploads only the accepted thumbnail and removes its CPU/GPU cache entry on
-  dismissal.
+- limits the source file to 20 MiB and accepts only supported raster magic;
+- parses dimensions before full decode, then enforces 4096x4096, 16,777,216
+  decoded pixels, and a 96 MiB decoder-allocation ceiling;
+- verifies the opened file's length and modification version before and after
+  reading so a changing file is not cached as a stable thumbnail;
+- decodes and downsizes on one worker with a 16-owner latest-request queue;
+  a newer request replaces queued work from the same window;
+- gives every window one bounded completion mailbox and a generation token, so
+  replacement, dismissal, route changes, and window isolation reject obsolete
+  completion without a shared result queue or cross-window eviction;
+- retains at most 16 decoded thumbnails and 32 MiB in an access-ordered cache;
+  cache hits share the exact pixel allocation with Sugarloaf and use a stable
+  texture key/time rather than copying, hashing, decoding, or re-uploading;
+- removes the active overlay/data entry on dismissal while bounded CPU and
+  renderer texture caches may retain reusable content until normal eviction.
 
 The iTerm2 protocol decoder separately caps decoded input at 64 MiB, validates
 an optional declared `size`, and applies the same 4096x4096 and 96 MiB decoder
@@ -93,12 +101,22 @@ checks.
 Focused checks are:
 
 ```text
-cargo test -p automexia-terminal image_preview --locked -- --test-threads=1
+cargo test -p automexia-terminal automexia::image --lib --locked
+cargo test -p automexia-terminal image_preview --bin automexia --locked
+cargo test -p sugarloaf shared_rgba_preserves --locked
+cargo fuzz run image_decoder -- -max_total_time=120
 cargo test -p automexia-terminal bindings --locked
 cargo test -p automexia-terminal command_palette --locked
 cargo test -p rio-vt --features graphics bounded_decoder --locked
 cargo xtask verify architecture
+cargo bench -p automexia-terminal --bench image_preview --locked -- --noplot
 ```
+
+The release benchmark uses a 1600x1000 fixture and compares cold decode/resize
+with a file-version-validated warm lookup. On the 2026-08-14 Windows
+development host the medians were 24.683 ms and 48.984 us respectively
+(approximately 504x faster for reuse). This is a local observation, not the
+controlled 30-day performance baseline or a cross-host guarantee.
 
 The full `cargo ready` gate remains required before merge. Native visual review
 must cover a small and large PNG, a filename containing spaces/Unicode, a WSL
@@ -112,4 +130,6 @@ tests.
 - Kitty Graphics Protocol: <https://sw.kovidgoyal.net/kitty/graphics-protocol/>
 - iTerm2 inline image protocol: <https://iterm2.com/documentation-images.html>
 - WezTerm iTerm image support: <https://wezterm.org/imgcat.html>
-- Yazi image preview adapters: <https://yazi-rs.github.io/docs/image-preview/>>
+- Yazi image preview adapters: <https://yazi-rs.github.io/docs/image-preview/>
+- image crate ImageReader limits: <https://docs.rs/image/latest/image/struct.ImageReader.html>
+- image crate limit semantics: <https://docs.rs/image/latest/image/struct.Limits.html>

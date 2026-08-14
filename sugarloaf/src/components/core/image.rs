@@ -37,6 +37,22 @@ impl Handle {
         })
     }
 
+    pub(crate) fn from_pixels_with_id(
+        id: u64,
+        width: u32,
+        height: u32,
+        pixels: impl AsRef<[u8]> + Send + Sync + 'static,
+    ) -> Handle {
+        Handle {
+            id,
+            data: Data::Rgba {
+                width,
+                height,
+                pixels: Bytes::new(pixels),
+            },
+        }
+    }
+
     /// Creates an image [`Handle`] containing the image data directly.
     ///
     /// Makes an educated guess about the image format by examining the given data.
