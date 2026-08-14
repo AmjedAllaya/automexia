@@ -388,7 +388,13 @@ available through `WM_PRINT`, so the driver converts the exact client origin to
 screen coordinates, temporarily places only the target window topmost, copies
 that bounded region with `BitBlt`, and restores normal z-order in `finally`. A
 strict five-second presentation deadline rejects a zero-sized, blank, or
-insufficiently varied frame. Newly visible secondary windows must also present
+insufficiently varied frame. The same driver enters and exits the real F11/
+Alt+Enter borderless-fullscreen path, requires exact display coverage, proves a
+successful per-window Windows `DisplayRequired` request through non-privileged
+test-only state, and requires release on exit. It samples the composited frame
+before, during, and after the transition; the dominant color bucket must remain
+identical, which prevents application-side alpha, gamma, or HDR regressions.
+Newly visible secondary windows must also present
 a varied frame before the one-shot custom-close click is tested, preventing an
 HWND-visible/application-not-ready race. The opt-in `native-gui-test-hooks`
 build feature is enabled only by that command. Product builds perform no

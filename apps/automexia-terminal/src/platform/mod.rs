@@ -1,5 +1,7 @@
 #[cfg(target_os = "macos")]
 pub mod macos;
+#[cfg(target_os = "windows")]
+pub mod windows;
 
 /// Escape shell-sensitive characters in a string by prefixing each
 /// with a backslash. Suitable for inserting paths into a live

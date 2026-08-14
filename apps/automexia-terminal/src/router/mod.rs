@@ -673,12 +673,21 @@ pub struct RouteWindow<'a> {
     #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub vblank_interval: Duration,
     pub winit_window: Window,
+    #[cfg(target_os = "windows")]
+    fullscreen_display_request: crate::platform::windows::FullscreenDisplayRequest,
     pub screen: Screen<'a>,
 }
 
 impl<'a> RouteWindow<'a> {
     pub fn configure_window(&mut self, config: &rio_backend::config::Config) {
         configure_window(&self.winit_window, config);
+    }
+
+    pub fn set_fullscreen(&mut self, fullscreen: Option<rio_window::window::Fullscreen>) {
+        #[cfg(target_os = "windows")]
+        self.fullscreen_display_request
+            .set_required(fullscreen.is_some());
+        self.winit_window.set_fullscreen(fullscreen);
     }
 
     pub fn wait_until(&self) -> Option<Duration> {
@@ -805,6 +814,12 @@ impl<'a> RouteWindow<'a> {
         let screen = Screen::new(properties, config, event_proxy, font_library, open_url)
             .expect("Screen not created");
 
+        #[cfg(target_os = "windows")]
+        let fullscreen_display_request =
+            crate::platform::windows::FullscreenDisplayRequest::new(
+                winit_window.fullscreen().is_some(),
+            );
+
         if config.window.columns.is_some() || config.window.rows.is_some() {
             let (physical_width, physical_height) = compute_window_size_from_grid(
                 config.window.columns,
@@ -852,6 +867,8 @@ impl<'a> RouteWindow<'a> {
             #[cfg(target_os = "windows")]
             initial_frame_rendered: false,
             winit_window,
+            #[cfg(target_os = "windows")]
+            fullscreen_display_request,
             screen,
         }
     }

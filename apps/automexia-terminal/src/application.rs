@@ -1156,9 +1156,8 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     match route.window.winit_window.fullscreen() {
                         None => route
                             .window
-                            .winit_window
                             .set_fullscreen(Some(Fullscreen::Borderless(None))),
-                        _ => route.window.winit_window.set_fullscreen(None),
+                        _ => route.window.set_fullscreen(None),
                     }
                 }
             }
