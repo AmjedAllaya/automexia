@@ -59,16 +59,20 @@ jobs:
 
   fuzz:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         target: [vt_parser, osc_metadata, control_string_bounds, image_decoder, config_migration, semantic_classification, label_sanitization]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the nightly compiler required by libFuzzer
+        run: rustup toolchain install nightly --profile minimal
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:
           tool: cargo-fuzz@0.13.1
-      - run: cargo fuzz run ${{ matrix.target }} -- -max_total_time=120
+      - name: Fuzz ${{ matrix.target }} with nightly
+        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=120 -rss_limit_mb=768 -timeout=15
 
   miri:
     runs-on: ubuntu-latest
@@ -92,7 +96,9 @@ jobs:
       - env:
           RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
           RUSTDOCFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
-        run: cargo +nightly test -p rio-vt --lib --no-default-features -Zbuild-std --target x86_64-unknown-linux-gnu
+        run: |
+          cargo +nightly test -p rio-vt --lib --no-default-features -Zbuild-std --target x86_64-unknown-linux-gnu
+          cargo +nightly test -p automexia-image --lib -Zbuild-std --target x86_64-unknown-linux-gnu
 
   benchmark-build:
     name: Benchmark targets compile

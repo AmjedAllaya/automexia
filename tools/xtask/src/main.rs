@@ -115,6 +115,26 @@ fn dispatch(args: Vec<String>) -> TaskResult {
         [command, scope] if command == "test" && scope == "resize-stress" => {
             test_resize_stress(false)
         }
+        [command, scope] if command == "test" && scope == "image-rendering" => {
+            test_image_rendering(false)
+        }
+        [command, scope, flag]
+            if command == "test"
+                && scope == "image-rendering"
+                && flag == "--native-gui" =>
+        {
+            test_image_rendering(true)
+        }
+        [command, scope] if command == "test" && scope == "image-decoder-fuzz" => {
+            test_image_decoder_fuzz(120)
+        }
+        [command, scope, flag, seconds]
+            if command == "test"
+                && scope == "image-decoder-fuzz"
+                && flag == "--seconds" =>
+        {
+            test_image_decoder_fuzz(parse_fuzz_seconds(seconds)?)
+        }
         [command, scope] if command == "test" && scope == "session-clone" => {
             test_session_clone(None)
         }
@@ -151,7 +171,7 @@ fn dispatch(args: Vec<String>) -> TaskResult {
 }
 
 fn usage() -> String {
-    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|storage|check|ci|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify all|test conformance|test resize-stress [--native-gui]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
+    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|storage|check|ci|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify all|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
 }
 
 fn root() -> PathBuf {
@@ -1184,6 +1204,10 @@ fn verify_phase_zero_assurance() -> TaskResult {
         native_resize.contains("BitBlt(")
             && native_resize.contains("ClientToScreen")
             && native_resize.contains("SetCaptureTopmost")
+            && native_resize.contains("CaptureClientRegionStats")
+            && native_resize.contains("overlay_rect")
+            && native_resize.contains("MeanLuminance -ge 20")
+            && native_resize.contains("[switch]$UseCpuRenderer")
             && native_resize.contains("VisibleApplicationWindows")
             && native_resize.contains("[string]$FrameCapture")
             && native_resize.contains("$frameDeadline = [DateTime]::UtcNow.AddSeconds(5)")
@@ -1196,7 +1220,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && native_window_locator.contains("Winit Thread Event Target")
             && native_window_locator.contains("title.Length > 0")
             && native_window_locator.contains("rect.Right - rect.Left >= 100"),
-        "Windows resize stress lacks reliable application-HWND discovery, strict bounded painted-frame settling, or explicit private artifact control",
+        "Windows resize stress lacks reliable application-HWND discovery, GPU/CPU preview pixel fidelity, strict bounded painted-frame settling, or explicit private artifact control",
     )?;
     require(
         root().join("docs/ACCESSIBILITY.md").is_file()
@@ -1315,6 +1339,183 @@ fn test_conformance() -> TaskResult {
     )
 }
 
+fn parse_fuzz_seconds(value: &str) -> TaskResult<u64> {
+    let seconds = value
+        .parse::<u64>()
+        .map_err(|_| "--seconds must be an integer from 1 through 86400")?;
+    if !(1..=86_400).contains(&seconds) {
+        return Err("--seconds must be an integer from 1 through 86400".into());
+    }
+    Ok(seconds)
+}
+
+fn test_image_rendering(native_gui: bool) -> TaskResult {
+    run("cargo", &["test", "-p", "automexia-image", "--locked"])?;
+    run(
+        "cargo",
+        &[
+            "test",
+            "-p",
+            "sugarloaf",
+            "--lib",
+            "--locked",
+            "image_overlay_tests",
+        ],
+    )?;
+    run(
+        "cargo",
+        &[
+            "test",
+            "-p",
+            "sugarloaf",
+            "--lib",
+            "--locked",
+            "texture_budget_tests",
+        ],
+    )?;
+    run(
+        "cargo",
+        &[
+            "test",
+            "-p",
+            "automexia-terminal",
+            "--bin",
+            "automexia",
+            "--locked",
+            "image_preview",
+            "--",
+            "--test-threads=1",
+        ],
+    )?;
+    run(
+        "cargo",
+        &[
+            "test",
+            "-p",
+            "rio-vt",
+            "--lib",
+            "--features",
+            "graphics",
+            "--locked",
+        ],
+    )?;
+    run(
+        "cargo",
+        &["test", "-p", "rio-backend", "--lib", "--locked", "graphics"],
+    )?;
+    run(
+        "cargo",
+        &[
+            "check",
+            "-p",
+            "automexia-terminal",
+            "--bench",
+            "image_preview",
+            "--locked",
+        ],
+    )?;
+
+    if native_gui {
+        test_resize_stress(true)?;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn test_image_decoder_fuzz(seconds: u64) -> TaskResult {
+    // cargo-fuzz/libFuzzer is officially supported on Unix-like hosts, not
+    // native Windows. Route Windows contributors through WSL instead of
+    // relying on an unsupported clang_rt.asan_dynamic DLL search.
+    let output = Command::new("wsl.exe")
+        .args(["--exec", "wslpath", "-a", "-u"])
+        .arg(root())
+        .output()
+        .map_err(|error| {
+            format!(
+                "could not start WSL for the decoder fuzz campaign: {error}. Install WSL and a Linux distribution"
+            )
+        })?;
+    if !output.status.success() {
+        return Err(format!(
+            "WSL could not translate the repository path ({}). Install or repair a default WSL distribution",
+            output.status
+        ));
+    }
+    let wsl_root = String::from_utf8(output.stdout)
+        .map_err(|_| "wslpath returned a non-UTF-8 repository path")?;
+    let wsl_root = wsl_root.trim();
+    if wsl_root.is_empty() {
+        return Err("wslpath returned an empty repository path".into());
+    }
+
+    let script = format!(
+        concat!(
+            "set -eu; ",
+            "command -v rustup >/dev/null 2>&1 || ",
+            "{{ echo 'rustup is required inside WSL' >&2; exit 2; }}; ",
+            "rustup toolchain install nightly --profile minimal; ",
+            "if ! cargo +nightly fuzz --version >/dev/null 2>&1; then ",
+            "cargo install cargo-fuzz --version 0.13.1 --locked; ",
+            "fi; ",
+            "fuzz_target=$(mktemp -d /tmp/automexia-image-fuzz.XXXXXX); ",
+            "trap 'rm -rf -- \"$fuzz_target\"' EXIT INT TERM; ",
+            "CARGO_TARGET_DIR=\"$fuzz_target\" cargo +nightly fuzz run image_decoder -- ",
+            "-max_total_time={} -rss_limit_mb=768 -timeout=15"
+        ),
+        seconds
+    );
+    let mut command = Command::new("wsl.exe");
+    command
+        .arg("--cd")
+        .arg(wsl_root)
+        .args(["--exec", "bash", "-lc"])
+        .arg(script);
+    run_command(
+        command,
+        "nightly image-decoder fuzz campaign through supported WSL libFuzzer",
+    )
+}
+
+#[cfg(not(target_os = "windows"))]
+fn test_image_decoder_fuzz(seconds: u64) -> TaskResult {
+    let mut rustup = Command::new("rustup");
+    rustup.args(["toolchain", "install", "nightly", "--profile", "minimal"]);
+    run_command(rustup, "install/update the nightly fuzz toolchain")?;
+
+    let fuzz_available = Command::new("cargo")
+        .args(["+nightly", "fuzz", "--version"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    if !fuzz_available {
+        let mut install = Command::new("cargo");
+        install.args(["install", "cargo-fuzz", "--version", "0.13.1", "--locked"]);
+        run_command(install, "install pinned cargo-fuzz 0.13.1")?;
+    }
+
+    let target = tempfile::Builder::new()
+        .prefix("automexia-image-fuzz-")
+        .tempdir()
+        .map_err(|error| {
+            format!("could not create disposable image-fuzz target directory: {error}")
+        })?;
+    let mut fuzz = Command::new("cargo");
+    fuzz.args([
+        "+nightly",
+        "fuzz",
+        "run",
+        "image_decoder",
+        "--",
+        &format!("-max_total_time={seconds}"),
+        "-rss_limit_mb=768",
+        "-timeout=15",
+    ])
+    .env("CARGO_TARGET_DIR", target.path())
+    .current_dir(root());
+    run_command(fuzz, "nightly image-decoder fuzz campaign")
+}
+
 fn test_resize_stress(native_gui: bool) -> TaskResult {
     run(
         "cargo",
@@ -1359,6 +1560,23 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
             binary.display()
         )
     })?;
+    let report_directory = tempfile::Builder::new()
+        .prefix("automexia-native-image-")
+        .tempdir()
+        .map_err(|error| {
+            format!("could not create disposable native image evidence: {error}")
+        })?;
+    let requested_report = env::var_os("AUTOMEXIA_NATIVE_RESOURCE_REPORT");
+    if requested_report
+        .as_ref()
+        .is_some_and(|report| report.is_empty())
+    {
+        return Err("AUTOMEXIA_NATIVE_RESOURCE_REPORT cannot be empty".into());
+    }
+    let wgpu_report = requested_report
+        .map(PathBuf::from)
+        .unwrap_or_else(|| report_directory.path().join("wgpu.json"));
+    let cpu_report = report_directory.path().join("cpu.json");
     let mut command = Command::new("powershell");
     command
         .args([
@@ -1370,14 +1588,71 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
             "-Binary",
             binary,
         ])
+        .arg("-ResourceReport")
+        .arg(&wgpu_report)
         .current_dir(root());
-    if let Some(report) = env::var_os("AUTOMEXIA_NATIVE_RESOURCE_REPORT") {
-        if report.is_empty() {
-            return Err("AUTOMEXIA_NATIVE_RESOURCE_REPORT cannot be empty".into());
-        }
-        command.arg("-ResourceReport").arg(report);
+    run_command(command, "native Windows WGPU GUI resize stress")?;
+
+    // The CPU fallback has a separate compositor and pass ordering. Run the
+    // same real-window/pixel-fidelity contract there as well so a present but
+    // card-obscured preview cannot regress unnoticed.
+    let mut cpu_command = Command::new("powershell");
+    cpu_command
+        .args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "tests/integration/resize-stress-windows.ps1",
+            "-Binary",
+            binary,
+            "-UseCpuRenderer",
+        ])
+        .arg("-ResourceReport")
+        .arg(&cpu_report)
+        .current_dir(root());
+    run_command(cpu_command, "native Windows CPU GUI resize stress")?;
+    verify_native_image_backend_equivalence(&wgpu_report, &cpu_report)
+}
+
+fn verify_native_image_backend_equivalence(wgpu: &Path, cpu: &Path) -> TaskResult {
+    fn report(path: &Path) -> Result<serde_json::Value, String> {
+        let bytes = fs::read(path)
+            .map_err(|error| format!("could not read {}: {error}", path.display()))?;
+        serde_json::from_slice(&bytes)
+            .map_err(|error| format!("could not parse {}: {error}", path.display()))
     }
-    run_command(command, "native Windows GUI resize stress")
+    fn metric(value: &serde_json::Value, name: &str) -> Result<f64, String> {
+        value
+            .pointer(&format!("/image_preview_pixels/{name}"))
+            .and_then(serde_json::Value::as_f64)
+            .ok_or_else(|| format!("native image report is missing numeric {name}"))
+    }
+
+    let wgpu = report(wgpu)?;
+    let cpu = report(cpu)?;
+    for name in ["width", "height", "sample_count"] {
+        require(
+            metric(&wgpu, name)? == metric(&cpu, name)?,
+            &format!("WGPU and CPU preview {name} differ"),
+        )?;
+    }
+    let mean_delta =
+        (metric(&wgpu, "mean_luminance")? - metric(&cpu, "mean_luminance")?).abs();
+    let spread_delta =
+        (metric(&wgpu, "luminance_spread")? - metric(&cpu, "luminance_spread")?).abs();
+    let bright_delta =
+        (metric(&wgpu, "bright_ratio")? - metric(&cpu, "bright_ratio")?).abs();
+    require(
+        mean_delta <= 24.0 && spread_delta <= 40.0 && bright_delta <= 0.15,
+        &format!(
+            "WGPU/CPU preview pixels diverged: mean={mean_delta:.2}, spread={spread_delta:.2}, bright-ratio={bright_delta:.3}"
+        ),
+    )?;
+    println!(
+        "PASS: WGPU/CPU preview pixels agree within controlled tolerance (mean {mean_delta:.2}, spread {spread_delta:.2}, bright ratio {bright_delta:.3})"
+    );
+    Ok(())
 }
 
 fn test_session_clone(native: Option<&str>) -> TaskResult {
@@ -1622,7 +1897,7 @@ fn verify_architecture() -> TaskResult {
         "frontend package is outside apps/automexia-terminal",
     )?;
 
-    let private_crates: [(&str, &[&str]); 4] = [
+    let private_crates: [(&str, &[&str]); 5] = [
         ("automexia-extension-api", &["serde", "serde_json"]),
         (
             "automexia-extension-runtime",
@@ -1637,6 +1912,7 @@ fn verify_architecture() -> TaskResult {
                 "serde_json",
             ],
         ),
+        ("automexia-image", &["image", "libc", "tempfile"]),
         (
             "automexia-ui-model",
             &["automexia-extension-api", "unicode-segmentation"],
@@ -1778,6 +2054,23 @@ fn verify_architecture() -> TaskResult {
             && palette.contains("shortcut: SHORTCUT_CLONE_RIGHT")
             && palette.contains("shortcut: SHORTCUT_CLONE_DOWN"),
         "Automexia classic fresh-split, clone, and explicit shell-control shortcuts are not distinct",
+    )?;
+    let layout_source = read(&app.join("src/layout/mod.rs"))?;
+    require(
+        bindings.contains(
+            "Key::Named(ArrowLeft), ModifiersState::ALT; Action::SelectPaneLeft",
+        ) && bindings.contains(
+            "Key::Named(PageDown), ModifiersState::ALT; Action::SelectNextLocalTab",
+        ) && bindings.contains(
+            "Key::Named(ArrowLeft), ModifiersState::SUPER | ModifiersState::ALT; Action::SelectPaneLeft",
+        ) && bindings.contains(
+            "\"]\", ModifiersState::SUPER | ModifiersState::ALT; Action::SelectNextLocalTab",
+        ) && palette.contains("Focus Pane Left")
+            && palette.contains("Next Tab in Selected Pane")
+            && layout_source.contains("directional_pane_neighbor")
+            && layout_source.contains("outside_beam")
+            && layout_source.contains("adjacent_local_tab_index"),
+        "pane geometry and pane-local tab navigation are missing cross-platform bindings, discoverability, or deterministic selection",
     )?;
     let context_renderer = read(&app.join("src/renderer/devops_status.rs"))?;
     let renderer_root = read(&app.join("src/renderer/mod.rs"))?;
@@ -1995,6 +2288,46 @@ fn verify_architecture() -> TaskResult {
             && global_hotkey.contains("failed_hotkey_removal_rolls_back_new_registration"),
         "runtime global-hotkey reload lacks validation, transactional replacement, or rollback tests",
     )?;
+    let image_model = read(&root().join("automexia-image/src/lib.rs"))?;
+    let image_preview = read(&app.join("src/image_preview.rs"))?;
+    let image_renderer = read(&root().join("sugarloaf/src/renderer/mod.rs"))?;
+    let image_sugarloaf = read(&root().join("sugarloaf/src/sugarloaf.rs"))?;
+    let xtask_source = read(&root().join("tools/xtask/src/main.rs"))?;
+    let ci_workflow = read(&root().join(".github/workflows/ci.yml"))?;
+    let mouse = read(&app.join("src/mouse/mod.rs"))?;
+    let native_resize =
+        read(&root().join("tests/integration/resize-stress-windows.ps1"))?;
+    require(
+        image_model.contains("pub fn image_path_tokens_in_line")
+            && image_model.contains("row_tokenizer_supports_icons_quotes_unicode_and_multiple_images")
+            && image_preview.contains("Duration::from_millis(100)")
+            && image_preview.contains("pub fn dismiss_hover")
+            && image_preview.contains("pub fn is_pinned")
+            && screen.contains("pub fn activate_image_preview_at_pointer")
+            && screen.contains("fn navigate_image_preview")
+            && screen.contains("NamedKey::ArrowDown")
+            && screen.contains("NamedKey::Escape")
+            && application.contains("image_preview_click_latched")
+            && mouse.contains("pub image_preview_click_latched: bool")
+            && native_resize.contains("native image hover click and arrow browsing")
+            && native_resize.contains("Plain hover did not decode")
+            && native_resize.contains("Click-to-pin and Right Arrow")
+            && image_model.contains("every_enabled_raster_codec_decodes_with_exact_rgba_accounting")
+            && image_model.contains("deterministic_malformed_and_mutated_input_storm_preserves_all_bounds")
+            && image_model.contains("repeated_decode_and_cache_hits_do_not_retain_file_handles_or_write_sidecars")
+            && image_model.contains("cache_accounting_remains_bounded_under_replacement_storms")
+            && image_preview.contains("native_image_resource_stats")
+            && image_preview.contains("thumbnail_cache_entries")
+            && image_sugarloaf.contains("pub struct NativeImageResourceStats")
+            && image_renderer.contains("native_image_texture_usage")
+            && image_renderer.contains("saturating_sub(old.bytes)")
+            && native_resize.contains("ImagePreviewLifecycleCycles")
+            && native_resize.contains("Test-AutomexiaImageResources")
+            && native_resize.contains("image_preview_lifecycle = [ordered]@{")
+            && ci_workflow.contains("cargo xtask test image-rendering")
+            && usage().contains("test image-rendering [--native-gui]"),
+        "local image quick look must preserve bounded discovery/decode, exact CPU/GPU lifecycle accounting, repeated leak checks, native pixels, and one required contributor gate",
+    )?;
     let control_string_fuzz =
         read(&root().join("fuzz/fuzz_targets/control_string_bounds.rs"))?;
     let nightly = read(&root().join(".github/workflows/nightly.yml"))?;
@@ -2007,10 +2340,19 @@ fn verify_architecture() -> TaskResult {
     let image_decoder_fuzz = read(&root().join("fuzz/fuzz_targets/image_decoder.rs"))?;
     require(
         image_decoder_fuzz.contains("decode_bounded_bytes")
-            && read(&app.join("src/automexia/image.rs"))?
+            && image_decoder_fuzz.contains("image_path_tokens_in_line")
+            && image_decoder_fuzz.contains("path_token_at_line")
+            && read(&root().join("automexia-image/src/lib.rs"))?
                 .contains("bytes.len() as u64 > MAX_FILE_BYTES")
-            && nightly.contains("image_decoder"),
-        "bounded image-decoder fuzz coverage is missing from the nightly matrix",
+            && nightly.contains("image_decoder")
+            && nightly.contains("rustup toolchain install nightly --profile minimal")
+            && nightly.contains("cargo +nightly fuzz run")
+            && nightly.contains("-rss_limit_mb=768 -timeout=15")
+            && nightly.contains("cargo +nightly test -p automexia-image --lib")
+            && xtask_source.contains("mktemp -d /tmp/automexia-image-fuzz.XXXXXX")
+            && xtask_source.contains("tempfile::Builder::new()")
+            && usage().contains("test image-decoder-fuzz [--seconds N]"),
+        "bounded image decoder/token fuzzing must use explicit nightly, sanitizer/RSS/time limits, disposable build storage, and a supported local runner",
     )?;
 
     let devops_manifest = read(&root().join("automexia-devops/src/lib.rs"))?;
@@ -2944,9 +3286,20 @@ mod tests {
         assert!(usage().contains("verify architecture"));
         assert!(usage().contains("test conformance"));
         assert!(usage().contains("test resize-stress [--native-gui]"));
+        assert!(usage().contains("test image-rendering [--native-gui]"));
+        assert!(usage().contains("test image-decoder-fuzz [--seconds N]"));
         assert!(usage().contains("test session-clone [--native-windows|--native-wsl]"));
         assert!(usage().contains("release --version"));
         assert!(usage().contains("verify all"));
+    }
+
+    #[test]
+    fn fuzz_campaign_duration_is_strictly_bounded() {
+        assert_eq!(parse_fuzz_seconds("1").unwrap(), 1);
+        assert_eq!(parse_fuzz_seconds("86400").unwrap(), 86_400);
+        assert!(parse_fuzz_seconds("0").is_err());
+        assert!(parse_fuzz_seconds("86401").is_err());
+        assert!(parse_fuzz_seconds("forever").is_err());
     }
 
     #[cfg(target_os = "windows")]
