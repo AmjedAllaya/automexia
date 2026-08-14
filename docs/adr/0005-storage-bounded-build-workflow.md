@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-12
+- Updated: 2026-08-15
 
 ## Context
 
@@ -13,6 +14,12 @@ target trees even though runner, toolchain, feature, and compiler-flag changes
 make those caches expensive and fragile. On Windows, launching the canonical
 debug executable additionally prevented Cargo from replacing or cleaning it
 while Automexia was open.
+
+WSL adds a separate performance boundary. Linux tools operating on a checkout
+or Cargo target under `/mnt/<drive>` pay the Windows/WSL filesystem bridge
+cost for the workspace's many small files. Moving only `target` leaves source
+metadata traffic behind; sharing one checkout also risks incompatible
+Windows/Linux build artifacts.
 
 The project still requires the complete check, Clippy, and workspace test gate.
 Reducing coverage is not an acceptable storage optimization.
@@ -42,6 +49,16 @@ Reducing coverage is not an acceptable storage optimization.
    Cargo registry and Git downloads, never compiled `target` products.
 8. The test profile disables incremental compilation even when contributors
    invoke `cargo test` outside `xtask`.
+9. Windows and WSL use separate, host-native Git checkouts. Source changes move
+   between them through commits; Cargo targets and caches are never shared.
+10. `cargo xtask doctor` reports source and target filesystem health.
+    Compilation-heavy project workflows reject WSL source or target paths under
+    `/mnt/<drive>` before building. A named environment override exists only
+    for explicit, one-off diagnosis.
+11. Windows-triggered decoder fuzzing stages the current source tree once into a
+    disposable WSL-native `/tmp` directory. Cargo, libFuzzer, corpus, and
+    target activity remains native after staging; targets and Git metadata are
+    excluded and a trap removes all campaign state.
 
 ## Consequences
 
@@ -55,3 +72,8 @@ Reducing coverage is not an acceptable storage optimization.
   remove active runtime generations on Windows.
 - The repository retains every required verification and test; only artifact
   lifetime and caching policy change.
+- Contributors who validate both Windows and Linux maintain two checkouts, but
+  avoid the much larger recurring cross-filesystem compilation cost.
+- Raw Cargo commands retain standard behavior. Project-owned heavy workflows
+  provide the guard because they can give a clear remedy without intercepting
+  Cargo itself.

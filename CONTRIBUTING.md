@@ -79,6 +79,14 @@ remove it afterward with `cargo purge`. Threshold overrides
 `AUTOMEXIA_TARGET_WARN_GIB` accept integer GiB values, but lowering the safety
 minimums is not recommended.
 
+Windows and WSL builds use separate native checkouts. Windows Cargo/MSVC and
+native ConPTY/GPU/package work stays on NTFS; Linux Cargo and Unix PTY work runs
+from a WSL path such as `~/src/automexia-terminal`. The project commands
+reject source or target storage under `/mnt/<drive>` before expensive work.
+Run `cargo xtask doctor` to verify the mode and follow
+[Windows and WSL development](docs/WSL-DEVELOPMENT.md) to synchronize the two
+checkouts through Git without sharing build artifacts.
+
 Individual `cargo xtask` commands remain available for focused diagnosis, but
 contributors do not need to assemble the normal gate manually. Platform-specific
 changes must also run on their native OS. See `docs/TESTING.md` for X11/Wayland,

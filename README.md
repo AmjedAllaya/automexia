@@ -51,6 +51,15 @@ On Windows, `cargo xtask doctor` also reports the installed PowerShell host,
 newest available PSReadLine module, and PowerShell 7 availability. Its history
 advisory is informational: it never installs or updates shell software.
 
+When developing inside WSL, keep the Linux checkout and Cargo target under the
+WSL filesystem (for example `~/src/automexia-terminal`), not under
+`/mnt/c` or `/mnt/d`. Keep this NTFS checkout for Windows/MSVC,
+ConPTY, GPU, and packaging work. `cargo xtask doctor` reports the effective
+workspace I/O mode, and compilation-heavy project workflows fail early on a
+cross-filesystem WSL checkout instead of spending hours in avoidable metadata
+I/O. The supported two-checkout workflow and diagnostic override are documented
+in [Windows and WSL development](docs/WSL-DEVELOPMENT.md).
+
 For normal day-to-day launches after the repository is known to be healthy:
 
 ```text
