@@ -149,6 +149,17 @@ future opt-in profile tracked separately in the
 [compatibility roadmap](docs/GHOSTTY-COMPATIBILITY-ROADMAP.md); it is not the
 implicit Automexia default.
 
+## Image previews
+
+Automexia renders application-driven Sixel, Kitty Graphics (including Unicode
+placeholders), and iTerm2 inline images. It also provides a local quick look for
+paths printed by ordinary commands: hold `Alt` over an image path (`Cmd` on
+macOS), or select a path and press `Ctrl`+`Alt`+`I` (`Cmd`+`Alt`+`I` on macOS).
+The command palette exposes **Preview Selected Image**. Decoding is local-only,
+bounded, asynchronous, route-scoped, and responsive across pane sizes. See
+[image previews](docs/IMAGE-PREVIEWS.md) for supported tools, formats, security
+limits, and focused tests.
+
 ## Configuration
 
 Automexia uses these roots by default:

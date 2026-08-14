@@ -32,6 +32,16 @@ remains the fast launch path; native GPU, screen-reader, profiler, and
 Application Verifier work belongs in explicit deep-test profiles rather than
 ordinary application startup.
 
+v0.4 now preserves the inherited Sixel, Kitty Graphics, and iTerm2 renderer
+path while adding an explicit bounded local quick look for printed/selected
+raster paths. The source contract, security limits, keyboard/pointer UX, WSL
+mapping, and focused tests are complete locally. Controlled Windows visual
+review plus Linux/macOS protocol/quick-look evidence remain part of the v0.4
+cross-platform release gate; remote fetching, SVG/PDF rendering, and image
+editing are not implied by this milestone. See
+[image previews](IMAGE-PREVIEWS.md) and
+[ADR 0014](adr/0014-explicit-bounded-image-quick-look.md).
+
 v0.4 also establishes an accessibility baseline: every custom chrome action
 must remain keyboard-operable, focus-visible, contrast-checked, and usable at
 200% scaling, and supported platforms receive recorded manual screen-reader

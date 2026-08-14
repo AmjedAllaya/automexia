@@ -213,6 +213,25 @@ fn native_test_control_checkpoint() -> String {
         .unwrap_or_default()
 }
 
+/// Claim one feature-gated native test command once for the whole process.
+/// A per-window checkpoint alone cannot close the race where a new Screen is
+/// constructed while the creating window is still processing the same token.
+#[cfg(feature = "native-gui-test-hooks")]
+fn claim_native_test_control(control: &str) -> bool {
+    static LAST_CLAIMED: std::sync::OnceLock<std::sync::Mutex<String>> =
+        std::sync::OnceLock::new();
+    let mut last = LAST_CLAIMED
+        .get_or_init(|| std::sync::Mutex::new(String::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if *last == control {
+        return false;
+    }
+    last.clear();
+    last.push_str(control);
+    true
+}
+
 #[cfg(feature = "native-gui-test-hooks")]
 struct NativeWindowSnapshot {
     window_width: f32,
@@ -232,6 +251,7 @@ fn write_native_resize_snapshot(
     window: NativeWindowSnapshot,
     last_control: &str,
     palette_enabled: bool,
+    image_preview: (bool, bool, Option<[u32; 2]>),
 ) {
     use rio_backend::crosswords::grid::row::SemanticPrompt;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -324,6 +344,11 @@ fn write_native_resize_snapshot(
         "active_prompt_gap_rows": active_prompt_gap_rows,
         "last_control": last_control,
         "palette_enabled": palette_enabled,
+        "image_preview": {
+            "visible": image_preview.0,
+            "overlay_present": image_preview.1,
+            "decoded_dimensions": image_preview.2,
+        },
         "panel_count": panels.len(),
         "panels": panels,
     });
@@ -368,6 +393,7 @@ pub struct Screen<'screen> {
     pub touchpurpose: TouchPurpose,
     pub search_state: SearchState,
     pub hint_state: HintState,
+    image_preview: crate::image_preview::ImagePreview,
     pub renderer: Renderer,
     pub sugarloaf: Sugarloaf<'screen>,
     pub context_manager: context::ContextManager<EventProxy>,
@@ -605,6 +631,7 @@ impl Screen<'_> {
         Ok(Screen {
             search_state: SearchState::default(),
             hint_state: HintState::new(config.hints.alphabet.clone()),
+            image_preview: crate::image_preview::ImagePreview::default(),
             hints_config: config
                 .hints
                 .rules
@@ -676,6 +703,159 @@ impl Screen<'_> {
         self.modifiers = modifiers;
     }
 
+    #[inline]
+    fn image_preview_modifier_active(&self) -> bool {
+        #[cfg(target_os = "macos")]
+        {
+            self.modifiers.state().super_key()
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            self.modifiers.state().alt_key()
+        }
+    }
+
+    fn image_preview_candidate_at_pointer(
+        &self,
+    ) -> Option<crate::image_preview::PreviewCandidate> {
+        if !self.mouse.inside_text_area {
+            return None;
+        }
+
+        let point = self.mouse_position(self.display_offset());
+        let current = self.context_manager.current();
+        let mut cwd = current
+            .renderable_content
+            .current_directory
+            .clone()
+            .or_else(|| {
+                current
+                    .launch_descriptor
+                    .starting_directory()
+                    .map(Into::into)
+            });
+        let wsl_distro = current.renderable_content.shell_distro.clone().or_else(|| {
+            current
+                .launch_descriptor
+                .wsl_distro()
+                .map(ToOwned::to_owned)
+        });
+        let hinted = current
+            .renderable_content
+            .highlighted_hint
+            .as_ref()
+            .map(|hint| hint.text.clone());
+        let terminal = current.terminal.lock();
+        cwd = cwd.or_else(|| terminal.current_directory.clone());
+        if point.row >= terminal.grid.total_lines() as i32
+            || point.col.0 >= terminal.grid.columns()
+        {
+            return None;
+        }
+
+        let mut line = String::with_capacity(terminal.grid.columns());
+        let mut hovered_character = 0usize;
+        let mut character_index = 0usize;
+        for column in 0..terminal.grid.columns() {
+            if column == point.col.0 {
+                hovered_character = character_index;
+            }
+            let character = terminal.grid[point.row]
+                [rio_backend::crosswords::pos::Column(column)]
+            .c();
+            if character != '\0' {
+                line.push(character);
+                character_index += 1;
+            }
+        }
+        drop(terminal);
+
+        let text = hinted
+            .filter(|text| crate::image_preview::has_supported_extension(text))
+            .or_else(|| {
+                crate::image_preview::path_token_at_line(&line, hovered_character)
+            })?;
+        crate::image_preview::PreviewCandidate::new(text, cwd, wsl_distro)
+    }
+
+    /// Refresh modifier-hover quick look without touching the filesystem on
+    /// the UI thread. Returns true when the overlay lifecycle changed.
+    pub fn update_image_preview_hover(&mut self) -> bool {
+        let candidate = if self.image_preview_modifier_active() {
+            self.image_preview_candidate_at_pointer()
+        } else {
+            None
+        };
+        let route_id = self.context_manager.current().route_id;
+        let changed = self.image_preview.arm_hover(
+            candidate,
+            route_id,
+            crate::image_preview::PreviewAnchor {
+                x: self.mouse.x as f32,
+                y: self.mouse.y as f32,
+            },
+            &mut self.sugarloaf,
+        );
+        if changed {
+            self.mark_dirty();
+        }
+        changed
+    }
+
+    pub fn preview_selected_image(&mut self) {
+        let (selection, cwd, wsl_distro, route_id) = {
+            let current = self.context_manager.current();
+            let terminal = current.terminal.lock();
+            let selection = terminal.selection_to_string();
+            let cwd = current
+                .renderable_content
+                .current_directory
+                .clone()
+                .or_else(|| terminal.current_directory.clone())
+                .or_else(|| {
+                    current
+                        .launch_descriptor
+                        .starting_directory()
+                        .map(Into::into)
+                });
+            let wsl_distro =
+                current.renderable_content.shell_distro.clone().or_else(|| {
+                    current
+                        .launch_descriptor
+                        .wsl_distro()
+                        .map(ToOwned::to_owned)
+                });
+            (selection, cwd, wsl_distro, current.route_id)
+        };
+        let candidate = selection
+            .and_then(|text| {
+                crate::image_preview::PreviewCandidate::new(text, cwd, wsl_distro)
+            })
+            .or_else(|| self.image_preview_candidate_at_pointer());
+        let Some(candidate) = candidate else {
+            let _ = self.dismiss_image_preview();
+            return;
+        };
+        self.image_preview.show_selection(
+            candidate,
+            route_id,
+            crate::image_preview::PreviewAnchor {
+                x: self.mouse.x as f32,
+                y: self.mouse.y as f32,
+            },
+            &mut self.sugarloaf,
+        );
+        self.mark_dirty();
+        self.context_manager.request_render();
+    }
+
+    pub fn dismiss_image_preview(&mut self) -> bool {
+        let changed = self.image_preview.dismiss(&mut self.sugarloaf);
+        if changed {
+            self.mark_dirty();
+        }
+        changed
+    }
     #[inline]
     pub fn search_active(&self) -> bool {
         self.search_state.history_index.is_some()
@@ -1022,6 +1202,9 @@ impl Screen<'_> {
         key: &rio_window::event::KeyEvent,
         clipboard: &mut Clipboard,
     ) {
+        if key.state == ElementState::Pressed {
+            let _ = self.dismiss_image_preview();
+        }
         if self.context_manager.current().ime.preedit().is_some() {
             return;
         }
@@ -1719,6 +1902,9 @@ impl Screen<'_> {
                     Act::ToggleFullscreen => self.context_manager.toggle_full_screen(),
                     Act::ToggleAppearanceTheme => {
                         self.context_manager.toggle_appearance_theme();
+                    }
+                    Act::PreviewSelectedImage => {
+                        self.preview_selected_image();
                     }
                     Act::OpenCommandPalette => {
                         // One-way "open": the action never closes an
@@ -4358,6 +4544,9 @@ impl Screen<'_> {
             PaletteAction::SearchBackward => {
                 self.start_search(Direction::Left);
             }
+            PaletteAction::PreviewSelectedImage => {
+                self.preview_selected_image();
+            }
             PaletteAction::ClearScreen => {
                 let mut terminal = self.context_manager.current_mut().terminal.lock();
                 terminal.clear_screen_and_history();
@@ -4380,6 +4569,18 @@ impl Screen<'_> {
 
     pub(crate) fn render(&mut self) -> Option<crate::context::renderable::WindowUpdate> {
         self.update_close_button_hover(self.mouse.x, self.mouse.y);
+
+        let preview_route_id = self.context_manager.current().route_id;
+        let completion = self
+            .context_manager
+            .devops_refresh_completion(preview_route_id);
+        let preview_changed = self
+            .image_preview
+            .poll_and_submit(&mut self.sugarloaf, |_| completion);
+        if let Some(delay) = self.image_preview.take_wake_in() {
+            let millis = u64::try_from(delay.as_millis().max(1)).unwrap_or(u64::MAX);
+            self.context_manager.schedule_render_on_route(millis);
+        }
 
         let is_search_active = self.search_active();
         if is_search_active {
@@ -4457,6 +4658,7 @@ impl Screen<'_> {
                 },
                 &self.native_test_last_control,
                 self.renderer.command_palette.is_enabled(),
+                self.image_preview.native_test_state(&self.sugarloaf),
             );
             // The control file is intentionally not watched by product code.
             // Keep feature-gated automation responsive while the window is
@@ -4466,8 +4668,20 @@ impl Screen<'_> {
                 self.context_manager.schedule_render_on_route(10);
             }
         }
+        let preview_panel = {
+            let current_grid = self.context_manager.current_grid();
+            current_grid
+                .current_item()
+                .map(|item| (item.val.route_id, item.val.rich_text_id, item.layout_rect))
+        };
+        if let Some((route_id, rich_text_id, pane)) = preview_panel {
+            self.image_preview
+                .draw(&mut self.sugarloaf, route_id, rich_text_id, pane);
+        }
+        let preview_visible = self.image_preview.is_visible();
         let has_animation = self.renderer.needs_redraw();
-        let should_present = any_panel_dirty || has_animation;
+        let should_present =
+            any_panel_dirty || has_animation || preview_changed || preview_visible;
 
         if self.renderer.custom_mouse_cursor {
             let scale = self.sugarloaf.scale_factor();
@@ -5193,6 +5407,9 @@ impl Screen<'_> {
             return;
         }
         self.native_test_last_control.clone_from(&control);
+        if !claim_native_test_control(&control) {
+            return;
+        }
 
         let mut fields = control.splitn(3, ':');
         let action = fields.next().unwrap_or_default();
@@ -5245,6 +5462,40 @@ impl Screen<'_> {
                 self.context_manager.select_prev_split();
                 self.resize_top_or_bottom_line();
                 self.mark_dirty();
+            }
+            "preview-image" => {
+                let Some(path) = fields.next() else {
+                    return;
+                };
+                let Some(candidate) =
+                    crate::image_preview::PreviewCandidate::new(path, None, None)
+                else {
+                    tracing::warn!("ignored invalid native preview test path");
+                    return;
+                };
+                let Some((route_id, pane)) = self
+                    .context_manager
+                    .current_grid()
+                    .current_item()
+                    .map(|item| (item.val.route_id, item.layout_rect))
+                else {
+                    return;
+                };
+                self.image_preview.show_selection(
+                    candidate,
+                    route_id,
+                    crate::image_preview::PreviewAnchor {
+                        x: pane[0] + pane[2] * 0.5,
+                        y: pane[1] + pane[3] * 0.5,
+                    },
+                    &mut self.sugarloaf,
+                );
+                self.mark_dirty();
+            }
+            "dismiss-preview" => {
+                if self.dismiss_image_preview() {
+                    self.mark_dirty();
+                }
             }
             "write-line" => {
                 let Some(line) = fields.next() else {

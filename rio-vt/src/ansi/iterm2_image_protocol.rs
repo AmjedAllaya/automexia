@@ -9,9 +9,11 @@
 
 use rio_graphics::GraphicData;
 #[cfg(feature = "graphics")]
-use rio_graphics::{GraphicId, ResizeCommand, ResizeParameter};
+use rio_graphics::{GraphicId, ResizeCommand, ResizeParameter, MAX_GRAPHIC_DIMENSIONS};
 
 use rustc_hash::FxHashMap;
+#[cfg(feature = "graphics")]
+use std::io::Cursor;
 use std::str;
 
 use crate::simd_base64;
@@ -24,12 +26,27 @@ use crate::simd_utf8;
 pub const CURSOR_RIGHT_OF_IMAGE: u8 = 2;
 pub const CURSOR_DO_NOT_MOVE: u8 = 1;
 
+/// OSC output is untrusted. This cap and the decoder limits prevent a large
+/// base64 payload or a compressed image bomb from monopolizing memory.
+#[cfg(feature = "graphics")]
+const MAX_ENCODED_IMAGE_BYTES: usize = 64 * 1024 * 1024;
+#[cfg(feature = "graphics")]
+const MAX_BASE64_IMAGE_BYTES: usize = (MAX_ENCODED_IMAGE_BYTES / 3) * 4 + 4;
+#[cfg(feature = "graphics")]
+const MAX_IMAGE_ALLOCATION: u64 = 96 * 1024 * 1024;
+
 /// Parse the OSC 1337 parameters to add a graphic to the grid.
 /// Returns the graphic plus the cursor movement it requires.
 pub fn parse(params: &[&[u8]]) -> Option<(GraphicData, u8)> {
     let (params, contents) = param_values(params)?;
 
     if params.get("inline") != Some(&"1") {
+        return None;
+    }
+
+    #[cfg(feature = "graphics")]
+    if contents.len() > MAX_BASE64_IMAGE_BYTES {
+        tracing::warn!("Rejected oversized iTerm2 base64 payload");
         return None;
     }
 
@@ -50,7 +67,35 @@ pub fn parse(params: &[&[u8]]) -> Option<(GraphicData, u8)> {
     }
     #[cfg(feature = "graphics")]
     {
-        let image = match image_rs::load_from_memory(&buffer) {
+        if buffer.is_empty() || buffer.len() > MAX_ENCODED_IMAGE_BYTES {
+            tracing::warn!("Rejected oversized iTerm2 image payload");
+            return None;
+        }
+        if let Some(declared) = params.get("size") {
+            let Ok(declared) = declared.parse::<usize>() else {
+                tracing::warn!("Rejected malformed iTerm2 image size");
+                return None;
+            };
+            if declared != buffer.len() || declared > MAX_ENCODED_IMAGE_BYTES {
+                tracing::warn!("Rejected mismatched iTerm2 image size");
+                return None;
+            }
+        }
+
+        let mut reader =
+            match image_rs::ImageReader::new(Cursor::new(buffer)).with_guessed_format() {
+                Ok(reader) => reader,
+                Err(err) => {
+                    tracing::warn!("Can't detect iTerm2 image format: {}", err);
+                    return None;
+                }
+            };
+        let mut limits = image_rs::Limits::default();
+        limits.max_image_width = Some(MAX_GRAPHIC_DIMENSIONS[0] as u32);
+        limits.max_image_height = Some(MAX_GRAPHIC_DIMENSIONS[1] as u32);
+        limits.max_alloc = Some(MAX_IMAGE_ALLOCATION);
+        reader.limits(limits);
+        let image = match reader.decode() {
             Ok(image) => image,
             Err(err) => {
                 tracing::warn!("Can't load image: {}", err);
@@ -221,4 +266,52 @@ fn resize_params() {
     assert_resize!("auto", "50%", Auto, WindowPercent(50));
     assert_resize!("10", "20", Cells(10), Cells(20));
     assert_resize!("10%", "50px", WindowPercent(10), Pixels(50));
+}
+
+#[cfg(all(test, feature = "graphics"))]
+mod bounded_decode_tests {
+    use super::*;
+    use base64::engine::general_purpose::STANDARD as BASE64;
+    use base64::Engine as _;
+    use image_rs::ImageEncoder as _;
+
+    fn png(width: u32, height: u32) -> Vec<u8> {
+        let pixels = vec![0x80; width as usize * height as usize * 4];
+        let mut encoded = Vec::new();
+        image_rs::codecs::png::PngEncoder::new(&mut encoded)
+            .write_image(&pixels, width, height, image_rs::ExtendedColorType::Rgba8)
+            .unwrap();
+        encoded
+    }
+
+    fn parse_png(bytes: &[u8], declared_size: usize) -> Option<(GraphicData, u8)> {
+        let size = format!("size={declared_size}");
+        let payload = format!("inline=1:{}", BASE64.encode(bytes));
+        let params = [
+            b"1337".as_ref(),
+            b"File=name=cHJldmlldy5wbmc=".as_ref(),
+            size.as_bytes(),
+            payload.as_bytes(),
+        ];
+        parse(&params)
+    }
+
+    #[test]
+    fn bounded_decoder_accepts_a_small_declared_png() {
+        let bytes = png(2, 3);
+        let (graphic, _) = parse_png(&bytes, bytes.len()).expect("valid bounded image");
+        assert_eq!((graphic.width, graphic.height), (2, 3));
+    }
+
+    #[test]
+    fn bounded_decoder_rejects_declared_size_mismatch() {
+        let bytes = png(2, 3);
+        assert!(parse_png(&bytes, bytes.len() + 1).is_none());
+    }
+
+    #[test]
+    fn bounded_decoder_rejects_dimensions_above_graphics_limit() {
+        let bytes = png(MAX_GRAPHIC_DIMENSIONS[0] as u32 + 1, 1);
+        assert!(parse_png(&bytes, bytes.len()).is_none());
+    }
 }

@@ -1103,6 +1103,30 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         throw 'A visible pane lost or inherited another route operational context during resize'
     }
 
+    # Exercise the complete native quick-look path: feature-gated control,
+    # bounded background decode, route-scoped overlay upload, split-relative
+    # placement, renderer snapshot, and composited frame. The path is a
+    # repository-owned public brand asset and contains no user content.
+    $script:testStage = 'native image quick look'
+    $previewAsset = Join-Path $root 'assets\brand\png\automexia-terminal-128.png'
+    $previewControl = "preview-image:9100:$previewAsset"
+    Send-AutomexiaTestControl $previewControl
+    $preview = Read-AutomexiaSnapshot -AfterSequence ([int64]$final.sequence)
+    $previewDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    while (([string]$preview.last_control -ne $previewControl -or
+            -not [bool]$preview.image_preview.visible -or
+            -not [bool]$preview.image_preview.overlay_present) -and
+           [DateTime]::UtcNow -lt $previewDeadline) {
+        $preview = Read-AutomexiaSnapshot -AfterSequence ([int64]$preview.sequence)
+    }
+    if (-not [bool]$preview.image_preview.visible -or
+        -not [bool]$preview.image_preview.overlay_present -or
+        [int]$preview.image_preview.decoded_dimensions[0] -ne 128 -or
+        [int]$preview.image_preview.decoded_dimensions[1] -ne 128) {
+        Write-Host ($preview | ConvertTo-Json -Depth 8)
+        throw 'Native image quick look did not publish its decoded route-scoped GPU overlay'
+    }
+
     $framePath = if ([string]::IsNullOrWhiteSpace($FrameCapture)) {
         $null
     } else {
@@ -1141,6 +1165,22 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     }
     if (-not $frameIsValid) {
         throw "Final painted client frame did not settle within 5 seconds after $frameAttempts attempts: $($frameStats.Width)x$($frameStats.Height), samples=$($frameStats.SampleCount), buckets=$($frameStats.DistinctColorBuckets), luminance-spread=$($frameStats.LuminanceSpread)"
+    }
+
+    $script:testStage = 'dismiss native image quick look'
+    $dismissControl = 'dismiss-preview:9101'
+    Send-AutomexiaTestControl $dismissControl
+    $dismissed = Read-AutomexiaSnapshot -AfterSequence ([int64]$preview.sequence)
+    $dismissDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$dismissed.last_control -ne $dismissControl -or
+            [bool]$dismissed.image_preview.visible -or
+            [bool]$dismissed.image_preview.overlay_present) -and
+           [DateTime]::UtcNow -lt $dismissDeadline) {
+        $dismissed = Read-AutomexiaSnapshot -AfterSequence ([int64]$dismissed.sequence)
+    }
+    if ([bool]$dismissed.image_preview.visible -or
+        [bool]$dismissed.image_preview.overlay_present) {
+        throw 'Native image quick look did not remove its GPU overlay after dismissal'
     }
 
     # Create a second OS window through the same action bound to Ctrl+Shift+N.

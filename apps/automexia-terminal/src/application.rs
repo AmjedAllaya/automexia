@@ -1319,7 +1319,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     } else {
                         route.window.screen.clear_highlighted_hint()
                     };
-                if highlight_changed {
+                let preview_changed = route.path == RoutePath::Terminal
+                    && route.window.screen.update_image_preview_hover();
+                if highlight_changed || preview_changed {
                     let cursor = if route.window.screen.highlighted_hint().is_some() {
                         CursorIcon::Pointer
                     } else if !route.window.screen.modifiers.state().shift_key()
@@ -1365,6 +1367,12 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         route.window.screen.resize_state = None;
                     }
                     return;
+                }
+
+                if state == ElementState::Pressed
+                    && route.window.screen.dismiss_image_preview()
+                {
+                    route.request_redraw();
                 }
 
                 if self.config.hide_cursor_when_typing {
@@ -1713,6 +1721,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             WindowEvent::CursorLeft { .. } => {
                 if route.window.screen.clear_close_button_hover()
                     | route.window.screen.clear_chrome_action_hover()
+                    | route.window.screen.dismiss_image_preview()
                 {
                     route.request_redraw();
                 }
@@ -2051,6 +2060,15 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 route.window.screen.mouse.inside_text_area = inside_text_area;
                 route.window.screen.mouse.square_side = square_side;
 
+                let preview_changed = if is_selecting {
+                    route.window.screen.dismiss_image_preview()
+                } else {
+                    route.window.screen.update_image_preview_hover()
+                };
+                if preview_changed {
+                    route.request_redraw();
+                }
+
                 if is_selecting {
                     route.window.screen.update_selection(point, square_side);
                     route.window.screen.context_manager.request_render();
@@ -2083,6 +2101,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 {
                     return;
                 }
+                let _ = route.window.screen.dismiss_image_preview();
 
                 if self.config.hide_cursor_when_typing {
                     route.window.winit_window.set_cursor_visible(true);

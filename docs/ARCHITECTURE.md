@@ -101,6 +101,26 @@ contents. Sixel decoding is streamed and dimension-bounded; synchronized update
 storage is separately capped. The architecture gate requires deterministic
 boundary/recovery tests and the nightly mixed-control-string fuzz target.
 
+### Image protocol and quick-look boundaries
+
+Sixel, Kitty Graphics, and iTerm2 OSC 1337 remain VT/application protocols:
+untrusted PTY bytes are parsed into bounded graphics state, snapshotted by the
+owning route, and projected by the frontend renderer into Sugarloaf overlays.
+Placements retain pane clipping, scroll/history, alternate-screen, clear, and
+texture-eviction semantics. iTerm2 decoding validates base64/declared size,
+4096x4096 dimensions, and a 96 MiB decoder allocation before constructing a
+graphic.
+
+Local filename quick look is a separate Automexia-owned overlay described by
+[ADR 0014](adr/0014-explicit-bounded-image-quick-look.md). Pointer hit testing
+and candidate normalization run on the application thread without filesystem
+access. A bounded worker performs local metadata/read/decode/downscale work and
+publishes only a route/generation-tagged result through an exact-route wake.
+The renderer uploads at most a 1280x960 thumbnail and positions it from the
+current pane rectangle after normal terminal overlays are rebuilt. Dismissal
+evicts its CPU/GPU image entry. It does not mutate terminal cells, PTY size,
+selection, scrollback, or prompt metadata.
+
 ### Runtime configuration transaction
 
 A file-watch event builds a candidate config, applies platform/theme validation,

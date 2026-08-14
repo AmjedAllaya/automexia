@@ -276,6 +276,7 @@ impl From<String> for Action {
             "toggleappearancetheme" => Some(Action::ToggleAppearanceTheme),
             "togglefullscreen" => Some(Action::ToggleFullscreen),
             "opencommandpalette" => Some(Action::OpenCommandPalette),
+            "previewselectedimage" => Some(Action::PreviewSelectedImage),
             "none" => Some(Action::None),
             _ => None,
         };
@@ -543,6 +544,9 @@ pub enum Action {
 
     /// Move divider right
     MoveDividerRight,
+
+    /// Preview the selected or pointer-targeted local raster image.
+    PreviewSelectedImage,
 
     /// Toggle the command palette overlay.
     OpenCommandPalette,
@@ -1173,6 +1177,7 @@ fn automexia_macos_key_bindings(
         "n", ModifiersState::SUPER; Action::WindowCreateNew;
         ",", ModifiersState::SUPER; Action::ConfigEditor;
         "p", ModifiersState::SUPER | ModifiersState::SHIFT; Action::OpenCommandPalette;
+        "i", ModifiersState::SUPER | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::PreviewSelectedImage;
         // Search
         "f", ModifiersState::SUPER, ~BindingMode::SEARCH; Action::SearchForward;
         "b", ModifiersState::SUPER, ~BindingMode::SEARCH; Action::SearchBackward;
@@ -1254,6 +1259,7 @@ fn automexia_windows_key_bindings(
         "-", ModifiersState::CONTROL; Action::DecreaseFontSize;
         "n", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::WindowCreateNew;
         "p", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::OpenCommandPalette;
+        "i", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::PreviewSelectedImage;
         "a", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; Action::SelectAll;
         // Search
         "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchForward;
@@ -1337,6 +1343,7 @@ fn automexia_unix_key_bindings(
         "n", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::WindowCreateNew;
         ",", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::ConfigEditor;
         "p", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::OpenCommandPalette;
+        "i", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::PreviewSelectedImage;
 
         "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchForward;
         "b", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchBackward;
@@ -1805,6 +1812,10 @@ mod tests {
         );
         assert_eq!(Action::from("closewindow".to_string()), Action::WindowClose);
         assert_eq!(Action::from("clearscreen".to_string()), Action::ClearScreen);
+        assert_eq!(
+            Action::from("PreviewSelectedImage".to_string()),
+            Action::PreviewSelectedImage
+        );
     }
 
     #[test]
@@ -2011,6 +2022,12 @@ mod tests {
             ModifiersState::CONTROL | ModifiersState::SHIFT,
             Action::WindowCreateNew,
         );
+        assert_action_binding(
+            &bindings,
+            Key::Character("i".into()),
+            ModifiersState::CONTROL | ModifiersState::ALT,
+            Action::PreviewSelectedImage,
+        );
 
         assert_action_binding(
             &bindings,
@@ -2050,6 +2067,12 @@ mod tests {
         let inherited = default_key_bindings(&config);
         let bindings = automexia_unix_key_bindings(true, true);
         assert_no_cross_table_overlaps("Unix", &inherited, &bindings);
+        assert_action_binding(
+            &bindings,
+            Key::Character("i".into()),
+            ModifiersState::CONTROL | ModifiersState::ALT,
+            Action::PreviewSelectedImage,
+        );
         let copy_actions = bindings
             .iter()
             .filter(|binding| {
@@ -2098,6 +2121,12 @@ mod tests {
         let bindings =
             automexia_macos_key_bindings(true, true, ConfigKeyboard::default());
         assert_no_cross_table_overlaps("macOS", &inherited, &bindings);
+        assert_action_binding(
+            &bindings,
+            Key::Character("i".into()),
+            ModifiersState::SUPER | ModifiersState::ALT,
+            Action::PreviewSelectedImage,
+        );
         let command_k_actions = bindings
             .iter()
             .filter(|binding| {
