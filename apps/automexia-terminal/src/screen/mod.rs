@@ -76,7 +76,7 @@ fn decode_native_test_hex(value: &str) -> Option<Vec<u8>> {
 }
 
 #[cfg(any(test, feature = "native-gui-test-hooks"))]
-fn native_test_line_input(line: &str, win32_input: bool) -> Vec<u8> {
+fn native_test_text_input(text: &str, win32_input: bool) -> Vec<u8> {
     #[cfg(windows)]
     if win32_input {
         use windows_sys::Win32::System::Console::{
@@ -86,8 +86,8 @@ fn native_test_line_input(line: &str, win32_input: bool) -> Vec<u8> {
             MapVirtualKeyW, VkKeyScanW, MAPVK_VK_TO_VSC,
         };
 
-        let mut bytes = Vec::with_capacity(line.len().saturating_mul(36) + 40);
-        for unicode in line.encode_utf16() {
+        let mut bytes = Vec::with_capacity(text.len().saturating_mul(36));
+        for unicode in text.encode_utf16() {
             // Use the active Windows keyboard layout so the test hook produces
             // the same Vk/scan/modifier record as physical typing. Raw UTF-8
             // mixed with DECSET 9001 records is not a valid ConsoleHost event
@@ -120,14 +120,24 @@ fn native_test_line_input(line: &str, win32_input: bool) -> Vec<u8> {
                 .as_bytes(),
             );
         }
+        return bytes;
+    }
+
+    let _ = win32_input;
+    text.as_bytes().to_vec()
+}
+
+#[cfg(any(test, feature = "native-gui-test-hooks"))]
+fn native_test_line_input(line: &str, win32_input: bool) -> Vec<u8> {
+    let mut bytes = native_test_text_input(line, win32_input);
+    #[cfg(windows)]
+    if win32_input {
         // Enter uses VK_RETURN / scan 0x1c. Key-up carries no text, matching
         // the normal winit Win32-input path.
         bytes.extend_from_slice(b"\x1b[13;28;13;1;0;1_\x1b[13;28;0;0;0;1_");
         return bytes;
     }
-
     let _ = win32_input;
-    let mut bytes = line.as_bytes().to_vec();
     bytes.push(b'\r');
     bytes
 }
@@ -196,9 +206,15 @@ fn publish_native_resize_snapshot(
 }
 
 #[cfg(feature = "native-gui-test-hooks")]
-fn write_native_resize_snapshot(
-    content: &RenderableContent,
-    panels: Vec<serde_json::Value>,
+fn native_test_control_checkpoint() -> String {
+    std::env::var_os("AUTOMEXIA_NATIVE_TEST_CONTROL")
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .map(|control| control.trim().to_string())
+        .unwrap_or_default()
+}
+
+#[cfg(feature = "native-gui-test-hooks")]
+struct NativeWindowSnapshot {
     window_width: f32,
     window_height: f32,
     window_tab_count: usize,
@@ -207,6 +223,13 @@ fn write_native_resize_snapshot(
     grid_height: f32,
     grid_margin: Margin,
     active_tab_profile: Option<String>,
+}
+
+#[cfg(feature = "native-gui-test-hooks")]
+fn write_native_resize_snapshot(
+    content: &RenderableContent,
+    panels: Vec<serde_json::Value>,
+    window: NativeWindowSnapshot,
     last_control: &str,
     palette_enabled: bool,
 ) {
@@ -276,19 +299,19 @@ fn write_native_resize_snapshot(
         "sequence": sequence,
         "columns": content.columns,
         "rows": content.screen_lines,
-        "window_width": window_width,
-        "window_height": window_height,
-        "window_tab_count": window_tab_count,
-        "active_window_tab_index": active_window_tab_index,
-        "grid_width": grid_width,
-        "grid_height": grid_height,
+        "window_width": window.window_width,
+        "window_height": window.window_height,
+        "window_tab_count": window.window_tab_count,
+        "active_window_tab_index": window.active_window_tab_index,
+        "grid_width": window.grid_width,
+        "grid_height": window.grid_height,
         "grid_margin": {
-            "top": grid_margin.top,
-            "right": grid_margin.right,
-            "bottom": grid_margin.bottom,
-            "left": grid_margin.left,
+            "top": window.grid_margin.top,
+            "right": window.grid_margin.right,
+            "bottom": window.grid_margin.bottom,
+            "left": window.grid_margin.left,
         },
-        "active_tab_profile": active_tab_profile,
+        "active_tab_profile": window.active_tab_profile,
         "cursor_column": content.cursor.state.pos.col.0,
         "cursor_row": content.cursor.state.pos.row.0,
         "current_directory": current_directory,
@@ -610,7 +633,7 @@ impl Screen<'_> {
             grid_rasterizer: crate::grid_emit::GridGlyphRasterizer::new(),
             row_render_scratch: RowRenderScratch::default(),
             #[cfg(feature = "native-gui-test-hooks")]
-            native_test_last_control: String::new(),
+            native_test_last_control: native_test_control_checkpoint(),
         })
     }
 
@@ -3402,7 +3425,7 @@ impl Screen<'_> {
                     ChromeAction::Maximize => {
                         window.set_maximized(!window.is_maximized())
                     }
-                    ChromeAction::CloseWindow => self.context_manager.quit(),
+                    ChromeAction::CloseWindow => self.context_manager.close_window(),
                 }
                 self.mark_dirty();
                 return true;
@@ -4420,15 +4443,18 @@ impl Screen<'_> {
             write_native_resize_snapshot(
                 &self.context_manager.current().renderable_content,
                 panels,
-                window_size.width,
-                window_size.height,
-                self.context_manager.len(),
-                self.context_manager.current_index(),
-                self.context_manager.current_grid().width,
-                self.context_manager.current_grid().height,
-                self.context_manager.current_grid().scaled_margin,
-                self.context_manager
-                    .tab_profile_identity(self.context_manager.current_index()),
+                NativeWindowSnapshot {
+                    window_width: window_size.width,
+                    window_height: window_size.height,
+                    window_tab_count: self.context_manager.len(),
+                    active_window_tab_index: self.context_manager.current_index(),
+                    grid_width: self.context_manager.current_grid().width,
+                    grid_height: self.context_manager.current_grid().height,
+                    grid_margin: self.context_manager.current_grid().scaled_margin,
+                    active_tab_profile: self
+                        .context_manager
+                        .tab_profile_identity(self.context_manager.current_index()),
+                },
                 &self.native_test_last_control,
                 self.renderer.command_palette.is_enabled(),
             );
@@ -5176,6 +5202,9 @@ impl Screen<'_> {
                 self.renderer.command_palette.set_enabled(true);
                 self.mark_dirty();
             }
+            "new-window" => {
+                self.context_manager.create_new_window();
+            }
             "window-tab" => {
                 if self.create_tab_context() {
                     self.mark_dirty();
@@ -5223,6 +5252,17 @@ impl Screen<'_> {
                 };
                 let win32_input = self.get_mode().contains(Mode::WIN32_INPUT);
                 let bytes = native_test_line_input(line, win32_input);
+                self.context_manager
+                    .current_mut()
+                    .messenger
+                    .send_write(bytes);
+            }
+            "write-text" => {
+                let Some(text) = fields.next() else {
+                    return;
+                };
+                let win32_input = self.get_mode().contains(Mode::WIN32_INPUT);
+                let bytes = native_test_text_input(text, win32_input);
                 self.context_manager
                     .current_mut()
                     .messenger
@@ -5750,11 +5790,15 @@ mod tests {
 
     #[test]
     fn native_test_line_input_uses_the_active_terminal_protocol() {
+        assert_eq!(native_test_text_input("echo ok", false), b"echo ok");
         assert_eq!(native_test_line_input("echo ok", false), b"echo ok\r");
         #[cfg(windows)]
         {
+            let text = native_test_text_input("echo ok", true);
             let native = native_test_line_input("echo ok", true);
             assert!(native.starts_with(b"\x1b["));
+            assert!(native.starts_with(&text));
+            assert!(!text.ends_with(b"\x1b[13;28;13;1;0;1_\x1b[13;28;0;0;0;1_"));
             assert!(native
                 .windows(b";101;1;".len())
                 .any(|part| part == b";101;1;"));

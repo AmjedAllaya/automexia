@@ -817,6 +817,15 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         self.contexts.len()
     }
 
+    /// Every PTY route owned by this OS window, including background
+    /// top-level tabs, splits, and pane-local tabs.
+    pub fn route_ids(&self) -> Vec<usize> {
+        self.contexts
+            .iter()
+            .flat_map(ContextGrid::route_ids)
+            .collect()
+    }
+
     #[inline]
     pub fn title(&self, index: usize) -> Option<&ContextTitle> {
         self.contexts.get(index).map(|grid| &grid.current().title)
@@ -1165,6 +1174,18 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                         })
                     })
                     .collect::<Vec<_>>();
+                let (raw_cursor_line_text, raw_damage) = {
+                    let terminal = context.terminal.lock();
+                    let cursor_row = terminal.cursor().pos.row;
+                    let raw_cursor_line_text = terminal.grid[cursor_row]
+                        .inner
+                        .iter()
+                        .map(|square| square.c())
+                        .collect::<String>()
+                        .trim_end_matches(['\0', ' '])
+                        .to_string();
+                    (raw_cursor_line_text, format!("{:?}", terminal.peek_damage_event()))
+                };
                 let visible_text = context
                     .renderable_content
                     .visible_rows
@@ -1211,10 +1232,16 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                     "starting_directory": context.launch_descriptor.starting_directory(),
                     "current_directory": context.renderable_content.current_directory.as_ref().map(|path| path.to_string_lossy().into_owned()),
                     "shell_distro": context.renderable_content.shell_distro.as_deref(),
+                    "shell_os_version": context.renderable_content.shell_os_version.as_deref(),
+                    "shell_name": context.renderable_content.shell_name.as_deref(),
                     "shell_user": context.renderable_content.shell_user.as_deref(),
                     "shell_path": context.renderable_content.shell_path.as_deref(),
+                    "shell_integration": context.renderable_content.shell_integration,
+                    "shell_prompt_active": context.renderable_content.shell_prompt_active,
                     "cursor_row": cursor_row,
                     "cursor_line_text": cursor_line_text,
+                    "raw_cursor_line_text": raw_cursor_line_text,
+                    "raw_damage": raw_damage,
                     "visible_text": visible_text,
                 })
             })
@@ -1782,6 +1809,16 @@ pub mod test {
         context_manager.add_context(should_redirect, 0);
         assert_eq!(context_manager.capacity, 5);
         assert_eq!(context_manager.current_index, 2);
+        let route_ids = context_manager.route_ids();
+        assert_eq!(route_ids.len(), 3);
+        assert_eq!(
+            route_ids
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            3
+        );
     }
 
     #[test]

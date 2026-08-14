@@ -2005,6 +2005,12 @@ mod tests {
         let bindings = automexia_windows_key_bindings(true, true);
         assert_no_overlapping_shortcuts("Windows", &bindings);
         assert_no_cross_table_overlaps("Windows", &inherited, &bindings);
+        assert_action_binding(
+            &bindings,
+            Key::Character("n".into()),
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            Action::WindowCreateNew,
+        );
 
         assert_action_binding(
             &bindings,

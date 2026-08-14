@@ -31,6 +31,11 @@ use std::time::{Duration, Instant};
 // const DEFAULT_TAB_TITLE: &str = "𜱭𜱭";
 // #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 const DEFAULT_TAB_TITLE: &str = "▲";
+fn clear_window_reference(reference: &mut Option<WindowId>, closed: WindowId) {
+    if *reference == Some(closed) {
+        *reference = None;
+    }
+}
 
 pub struct Route<'a> {
     pub assistant: assistant::Assistant,
@@ -463,6 +468,14 @@ impl Router<'_> {
                 }
             })
             .copied()
+    }
+
+    /// Remove exactly one OS window and invalidate identities that point to
+    /// it. The caller owns application-level timer teardown.
+    pub fn remove_window(&mut self, window_id: WindowId) -> Option<Route<'_>> {
+        clear_window_reference(&mut self.config_route, window_id);
+        clear_window_reference(&mut self.quake_window_id, window_id);
+        self.routes.remove(&window_id)
     }
 
     pub fn open_config_window(
@@ -906,6 +919,20 @@ fn compute_window_size_from_grid(
 #[cfg(test)]
 mod grid_size_tests {
     use super::*;
+
+    #[test]
+    fn closing_special_window_clears_only_matching_router_references() {
+        let closed = WindowId::from(41);
+        let survivor = WindowId::from(42);
+        let mut config = Some(closed);
+        let mut quake = Some(survivor);
+
+        clear_window_reference(&mut config, closed);
+        clear_window_reference(&mut quake, closed);
+
+        assert_eq!(config, None);
+        assert_eq!(quake, Some(survivor));
+    }
     use rio_backend::config::layout::{Margin, Panel};
     use rio_backend::sugarloaf::layout::TextDimensions;
 
