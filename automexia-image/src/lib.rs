@@ -503,6 +503,44 @@ pub fn image_path_tokens_in_line(line: &str) -> Vec<ImagePathToken> {
             index = start;
         }
 
+        // Automexia's PowerShell/CMD formatter and eza put a private-use
+        // file-type glyph immediately before the display name. Treat the
+        // glyph-delimited field as one path token so an unquoted filename such
+        // as Screenshot-with-spaces-(1).jpg is not reduced to its final word.
+        // The scan stays IO-free; the decoder still owns existence, locality,
+        // regular-file, size, and codec validation.
+        if is_listing_icon(chars[index]) {
+            let mut content_start = index + 1;
+            while content_start < chars.len() && chars[content_start].is_whitespace() {
+                content_start += 1;
+            }
+
+            let mut field_end = content_start;
+            while field_end < chars.len()
+                && !is_listing_icon(chars[field_end])
+                && !matches!(chars[field_end], '|' | '<' | '>')
+            {
+                field_end += 1;
+            }
+            let mut content_end = field_end;
+            while content_end > content_start && chars[content_end - 1].is_whitespace() {
+                content_end -= 1;
+            }
+
+            if content_start < content_end {
+                let raw = chars[content_start..content_end].iter().collect::<String>();
+                let candidate = trim_path_token(&raw);
+                if has_supported_extension(candidate) && !is_non_local_token(candidate) {
+                    tokens.push(ImagePathToken {
+                        text: candidate.to_string(),
+                        start: content_start,
+                        end: content_end,
+                    });
+                    index = field_end;
+                    continue;
+                }
+            }
+        }
         let start = index;
         while index < chars.len()
             && !chars[index].is_whitespace()
@@ -540,6 +578,14 @@ fn strip_listing_icon(text: &str) -> &str {
             || (!character.is_alphanumeric()
                 && !matches!(character, '.' | '_' | '-' | '~' | '/' | '\\'))
     })
+}
+
+#[inline]
+fn is_listing_icon(character: char) -> bool {
+    let codepoint = character as u32;
+    (0xE000..=0xF8FF).contains(&codepoint)
+        || (0xF0000..=0xFFFFD).contains(&codepoint)
+        || (0x100000..=0x10FFFD).contains(&codepoint)
 }
 
 fn trim_path_token(text: &str) -> &str {
@@ -608,6 +654,38 @@ mod tests {
             path_token_at_line(line, line.chars().position(|ch| ch == 'p').unwrap())
                 .as_deref(),
             Some("photo.png")
+        );
+    }
+
+    #[test]
+    fn listing_tokenizer_preserves_unquoted_spaces_and_balanced_parentheses() {
+        let filename = "Screenshot_20260412_164127_CamScanner (1).jpg";
+        let line =
+            format!("-a----  2026-07-09 16:22:22       242314 \u{f1c5} {filename}");
+        let tokens = image_path_tokens_in_line(&line);
+
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].text, filename);
+        let name_start = line.find(filename).unwrap();
+        assert_eq!(tokens[0].start, line[..name_start].chars().count());
+        assert_eq!(tokens[0].end - tokens[0].start, filename.chars().count());
+        let parenthesis_column = line[..line.find("(1)").unwrap()].chars().count();
+        assert_eq!(
+            path_token_at_line(&line, parenthesis_column).as_deref(),
+            Some(filename)
+        );
+    }
+
+    #[test]
+    fn listing_tokenizer_keeps_multiple_glyph_delimited_names_independent() {
+        let line = "\u{f1c5} first scan (1).jpg  \u{f1c5} second image.png";
+        let tokens = image_path_tokens_in_line(line);
+        assert_eq!(
+            tokens
+                .iter()
+                .map(|token| token.text.as_str())
+                .collect::<Vec<_>>(),
+            ["first scan (1).jpg", "second image.png"]
         );
     }
 
@@ -735,6 +813,26 @@ mod tests {
                 "{name} decoded unexpectedly dark: mean luminance {mean_luminance}"
             );
         }
+    }
+
+    #[test]
+    fn jpeg_with_spaces_and_balanced_parentheses_resolves_and_decodes() {
+        let dir = tempfile::tempdir().unwrap();
+        let filename = "Screenshot_20260412_164127_CamScanner (1).jpg";
+        let path = dir.path().join(filename);
+        image_rs::RgbImage::from_pixel(32, 24, image_rs::Rgb([240, 180, 64]))
+            .save_with_format(&path, ImageFormat::Jpeg)
+            .unwrap();
+        let candidate =
+            ImageCandidate::new(filename, Some(dir.path().to_path_buf()), None).unwrap();
+
+        let decoded =
+            decode_candidate(&candidate, &mut ThumbnailCache::default()).unwrap();
+        assert_eq!(
+            (decoded.thumbnail.width, decoded.thumbnail.height),
+            (32, 24)
+        );
+        assert_thumbnail_invariants(&decoded.thumbnail);
     }
 
     #[test]

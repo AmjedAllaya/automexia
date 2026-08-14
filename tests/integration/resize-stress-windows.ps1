@@ -1480,8 +1480,8 @@ $rendererConfig
     # Generate privacy-safe, high-contrast fixtures at runtime. The odd-width
     # JPEG exercises a non-256-aligned RGBA row on the real WGPU upload path;
     # the PNG proves alpha-capable decoding through the same interaction.
-    $previewAssetSmall = Join-Path $configRoot 'preview-bright-64.png'
-    $previewAsset = Join-Path $configRoot 'preview-bright-127.jpg'
+    $previewAssetSmall = Join-Path $configRoot 'preview bright (64).png'
+    $previewAsset = Join-Path $configRoot 'preview bright (127).jpg'
     [AutomexiaResizeDriver]::WritePreviewFixture(
         $previewAssetSmall, 64, 64, $false)
     [AutomexiaResizeDriver]::WritePreviewFixture(
@@ -1513,7 +1513,7 @@ $rendererConfig
     # Exercise the exact filesystem-listing workflow: PowerShell's native ls
     # objects feed a display-only name projection, and both names fit within
     # the intentionally narrow pane without inheriting stale command cells.
-    $previewControl = 'write-line:preview-list:ls preview-bright-* | % Name'
+    $previewControl = 'write-line:preview-list:ls ''preview bright*'' | % { "$([char]0xF1C5) $($_.Name)" }'
     Send-AutomexiaTestControl $previewControl
     $preview = Read-AutomexiaSnapshot -AfterSequence ([int64]$previewCwd.sequence)
     $previewDeadline = [DateTime]::UtcNow.AddSeconds(10)
