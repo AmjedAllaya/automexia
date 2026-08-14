@@ -181,6 +181,83 @@ fn root() -> PathBuf {
         .expect("workspace root")
 }
 
+fn wsl_windows_drive(path: &Path, running_under_wsl: bool) -> Option<char> {
+    if !running_under_wsl {
+        return None;
+    }
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    let mounted = normalized.strip_prefix("/mnt/")?;
+    let mut characters = mounted.chars();
+    let drive = characters.next()?;
+    if !drive.is_ascii_alphabetic() || characters.next().is_some_and(|next| next != '/') {
+        return None;
+    }
+    Some(drive.to_ascii_uppercase())
+}
+
+#[cfg(target_os = "linux")]
+fn running_under_wsl() -> bool {
+    env::var_os("WSL_DISTRO_NAME").is_some()
+        || env::var_os("WSL_INTEROP").is_some()
+        || fs::read_to_string("/proc/sys/kernel/osrelease")
+            .is_ok_and(|release| release.to_ascii_lowercase().contains("microsoft"))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn running_under_wsl() -> bool {
+    false
+}
+
+fn workspace_io_issue() -> Option<String> {
+    let is_wsl = running_under_wsl();
+    let source_drive = wsl_windows_drive(&root(), is_wsl);
+    let target = cargo_target_dir();
+    let target_drive = wsl_windows_drive(&target, is_wsl);
+    if source_drive.is_none() && target_drive.is_none() {
+        return None;
+    }
+
+    let mut locations = Vec::new();
+    if let Some(drive) = source_drive {
+        locations.push(format!("source on /mnt/{}", drive.to_ascii_lowercase()));
+    }
+    if let Some(drive) = target_drive {
+        locations.push(format!(
+            "Cargo target on /mnt/{}",
+            drive.to_ascii_lowercase()
+        ));
+    }
+    Some(locations.join(" and "))
+}
+
+fn report_workspace_io_health() {
+    if let Some(issue) = workspace_io_issue() {
+        println!("workspace I/O      advisory/slow ({issue})");
+        println!(
+            "WSL workflow        keep Windows/MSVC builds in this Windows checkout; clone the same branch below ~/src/automexia-terminal for Linux Cargo work"
+        );
+    } else if running_under_wsl() {
+        println!("workspace I/O      WSL-native/ok");
+    } else {
+        println!("workspace I/O      host-native/ok");
+    }
+}
+
+fn require_native_wsl_workspace(purpose: &str) -> TaskResult {
+    let Some(issue) = workspace_io_issue() else {
+        return Ok(());
+    };
+    if environment_truthy("AUTOMEXIA_ALLOW_SLOW_WSL_MOUNT") {
+        println!(
+            "workspace I/O      override/slow ({issue}; AUTOMEXIA_ALLOW_SLOW_WSL_MOUNT is set)"
+        );
+        return Ok(());
+    }
+    Err(format!(
+        "{purpose} is I/O-heavy, but {issue}. Linux Cargo builds under /mnt/c or /mnt/d are substantially slower. Keep this checkout for Windows/MSVC commands in PowerShell and clone the same Git branch under ~/src/automexia-terminal for WSL/Linux commands. Set AUTOMEXIA_ALLOW_SLOW_WSL_MOUNT=1 only for a deliberate one-off diagnostic"
+    ))
+}
+
 fn command_available(program: &str) -> bool {
     Command::new(program)
         .arg("--version")
@@ -383,6 +460,7 @@ fn doctor() -> TaskResult {
     println!("platform           macOS: Xcode CLI tools and Apple signing credentials are required for releases");
     #[cfg(target_os = "linux")]
     println!("platform           Linux: X11, Wayland, fontconfig, and audio development packages are required");
+    report_workspace_io_health();
     if let Err(error) = storage_health_summary() {
         println!("storage            unavailable ({error})");
     }
@@ -580,6 +658,7 @@ struct VerificationTarget {
 
 impl VerificationTarget {
     fn prepare() -> TaskResult<Self> {
+        require_native_wsl_workspace("the exhaustive verification gate")?;
         let parent = canonical_target_dir()?;
         ensure_free_space(
             &parent,
@@ -801,6 +880,7 @@ fn install_shell_integration() -> TaskResult {
 }
 
 fn build_debug_app() -> TaskResult {
+    require_native_wsl_workspace("the persistent Automexia application build")?;
     let identity = product_identity()?;
     ensure_free_space(
         &cargo_target_dir(),
@@ -1239,6 +1319,7 @@ fn ci() -> TaskResult {
 }
 
 fn qa(bundle: bool) -> TaskResult {
+    require_native_wsl_workspace("the Phase 0 QA evidence gate")?;
     let program =
         python_program().ok_or("Python 3 is required for the QA evidence runner")?;
     let mut command = Command::new(program);
@@ -1425,16 +1506,26 @@ fn test_image_rendering(native_gui: bool) -> TaskResult {
 fn image_decoder_fuzz_wsl_script(seconds: u64) -> String {
     format!(
         concat!(
-            "set -eu; ",
+            "set -euo pipefail; ",
             "command -v rustup >/dev/null 2>&1 || ",
             "{{ echo 'rustup is required inside WSL' >&2; exit 2; }}; ",
+            "source_root=$1; ",
+            "test -d \"$source_root\" || ",
+            "{{ echo 'the translated Automexia source root is unavailable' >&2; exit 2; }}; ",
+            "command -v tar >/dev/null 2>&1 || ",
+            "{{ echo 'tar is required inside WSL' >&2; exit 2; }}; ",
             "rustup toolchain install nightly --profile minimal; ",
             "if ! cargo +nightly fuzz --version >/dev/null 2>&1; then ",
             "cargo install cargo-fuzz --version 0.13.1 --locked; ",
             "fi; ",
             "fuzz_workspace=$(mktemp -d /tmp/automexia-image-fuzz.XXXXXX); ",
             "trap 'rm -rf -- \"$fuzz_workspace\"' EXIT INT TERM; ",
-            "mkdir -p \"$fuzz_workspace/target\" \"$fuzz_workspace/corpus\"; ",
+            "mkdir -p \"$fuzz_workspace/source\" \"$fuzz_workspace/target\" \"$fuzz_workspace/corpus\"; ",
+            "tar -C \"$source_root\" --exclude='./.git' --exclude='./target' ",
+            "--exclude='./fuzz/target' --exclude='./fuzz/corpus' ",
+            "--exclude='./fuzz/artifacts' -cf - . | ",
+            "tar -C \"$fuzz_workspace/source\" -xf -; ",
+            "cd \"$fuzz_workspace/source\"; ",
             "CARGO_TARGET_DIR=\"$fuzz_workspace/target\" cargo +nightly fuzz run ",
             "image_decoder \"$fuzz_workspace/corpus\" -- ",
             "-max_total_time={} -rss_limit_mb=768 -timeout=15"
@@ -1476,7 +1567,9 @@ fn test_image_decoder_fuzz(seconds: u64) -> TaskResult {
         .arg("--cd")
         .arg(wsl_root)
         .args(["--exec", "bash", "-lc"])
-        .arg(script);
+        .arg(script)
+        .arg("automexia-image-fuzz")
+        .arg(wsl_root);
     run_command(
         command,
         "nightly image-decoder fuzz campaign through supported WSL libFuzzer",
@@ -2365,10 +2458,27 @@ fn verify_architecture() -> TaskResult {
             && nightly.contains("cargo +nightly test -p automexia-image --lib")
             && xtask_source.contains("mktemp -d /tmp/automexia-image-fuzz.XXXXXX")
             && xtask_source.contains("fuzz_workspace/corpus")
+            && xtask_source.contains("source_root=$1")
+            && xtask_source.contains(r#"tar -C \"$source_root\""#)
+            && xtask_source.contains(r#"cd \"$fuzz_workspace/source\""#)
             && xtask_source.contains("tempfile::Builder::new()")
             && xtask_source.contains("workspace.path().join(\"corpus\")")
             && usage().contains("test image-decoder-fuzz [--seconds N]"),
         "bounded image decoder/token fuzzing must use explicit nightly, sanitizer/RSS/time limits, disposable build/corpus storage, and a supported local runner",
+    )?;
+    let wsl_development = read(&root().join("docs/WSL-DEVELOPMENT.md"))?;
+    require(
+        xtask_source.contains("fn wsl_windows_drive")
+            && xtask_source.contains("fn report_workspace_io_health")
+            && xtask_source.contains("fn require_native_wsl_workspace")
+            && xtask_source.contains("AUTOMEXIA_ALLOW_SLOW_WSL_MOUNT")
+            && xtask_source.contains("require_native_wsl_workspace(\"the exhaustive verification gate\")")
+            && xtask_source.contains("require_native_wsl_workspace(\"the persistent Automexia application build\")")
+            && xtask_source.contains("require_native_wsl_workspace(\"the Phase 0 QA evidence gate\")")
+            && wsl_development.contains("## Supported dual-native layout")
+            && wsl_development.contains("## Workflow safeguards")
+            && wsl_development.contains("## Windows-triggered fuzzing"),
+        "WSL-native workspace detection, heavy-workflow preflight, or contributor guidance is incomplete",
     )?;
 
     let devops_manifest = read(&root().join("automexia-devops/src/lib.rs"))?;
@@ -3328,8 +3438,33 @@ mod tests {
         assert!(script.contains("mktemp -d /tmp/automexia-image-fuzz.XXXXXX"));
         assert!(script.contains("$fuzz_workspace/target"));
         assert!(script.contains("$fuzz_workspace/corpus"));
+        assert!(script.contains("source_root=$1"));
+        assert!(script.starts_with("set -euo pipefail;"));
+        assert!(script.contains("tar -C \"$source_root\""));
+        assert!(script.contains("--exclude='./fuzz/corpus'"));
+        assert!(script.contains("--exclude='./fuzz/artifacts'"));
+        assert!(script.contains("--exclude='./target'"));
+        assert!(script.contains("cd \"$fuzz_workspace/source\""));
         assert!(script.contains("trap 'rm -rf -- \"$fuzz_workspace\"'"));
         assert!(!script.contains("CARGO_TARGET_DIR=\"$fuzz_workspace\" cargo"));
+    }
+
+    #[test]
+    fn wsl_windows_drive_detection_rejects_cross_filesystem_build_roots() {
+        assert_eq!(
+            wsl_windows_drive(Path::new("/mnt/d/project"), true),
+            Some('D')
+        );
+        assert_eq!(wsl_windows_drive(Path::new("/mnt/c"), true), Some('C'));
+        assert_eq!(
+            wsl_windows_drive(Path::new("/home/user/project"), true),
+            None
+        );
+        assert_eq!(
+            wsl_windows_drive(Path::new("/mnt/wslg/project"), true),
+            None
+        );
+        assert_eq!(wsl_windows_drive(Path::new("/mnt/d/project"), false), None);
     }
 
     #[test]

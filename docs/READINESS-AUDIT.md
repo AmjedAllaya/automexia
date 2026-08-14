@@ -1,6 +1,6 @@
 # v0.4 implementation and readiness audit
 
-Audit date: 2026-08-14
+Audit date: 2026-08-15
 
 This document reconciles the standalone-rebrand plan and the later prompt,
 resize-storm, PowerShell-listing, responsive-layout, session-cloning, semantic
@@ -16,7 +16,7 @@ satisfy.
 | Standalone source and history | The checkout builds without an overlay or bootstrap step. `origin` and `rio-upstream` are configured, Rio base `7d595af583f6ef1ea6036a66b367ba1e5a84d4a2` is an ancestor, and local annotated tag `rio-base-0.5.20-7d595af` resolves to that base. |
 | Identity and coexistence | Central identity/path constants, Automexia executable/package/app IDs, environment variables, URL/desktop metadata, terminfo, identity allowlist, and migration/coexistence tests pass. Inherited private `rio-*`, `librio`, Sugarloaf, and engine type names remain intentionally attributed. XTGETTCAP `TN`/name now returns `automexia`; native error/dialog surfaces and the protocol response are enforced by identity regressions. |
 | Repository structure | The frontend lives at `apps/automexia-terminal`; brand, documentation, packaging, shell integration, conformance fixtures, integration tests, and `tools/xtask` use the planned v0.4 layout. The release-critical provider-neutral API, runtime, DevOps, and UI-model code is extracted into four private crates. `automexia-app` extraction and inherited engine-directory regrouping remain deliberately deferred. |
-| Single-command workflow | `cargo ready`, `cargo dev`, `cargo automexia`, storage preflight, isolated verification targets, runtime launch copies, cleanup, and fail-fast automatic PowerShell/CMD/WSL or Bash/Zsh/terminfo provisioning are implemented and documented. Provisioning is source-aware, idempotent, tested in isolated homes, and occurs directly before every launch; verification-only commands remain non-mutating. The complete `cargo ready` gate passed. |
+| Single-command workflow | `cargo ready`, `cargo dev`, `cargo automexia`, storage preflight, isolated verification targets, runtime launch copies, cleanup, and fail-fast automatic PowerShell/CMD/WSL or Bash/Zsh/terminfo provisioning are implemented and documented. Provisioning is source-aware, idempotent, tested in isolated homes, and occurs directly before every launch; verification-only commands remain non-mutating. Doctor reports host-native, WSL-native, or mounted-drive workspace I/O, and heavy workflows reject WSL source/targets under `/mnt/<drive>` with a dual-checkout remedy. The complete `cargo ready` gate passed. |
 | Prompt and resize resilience | Generation-scoped OSC metadata, terminal-owned context/path rows, stable `aid`, Unicode-safe full-path reflow, immutable once-per-generation prompt snapshots, writer-fast-path ownership, hard-newline context boundaries, stale-cell cleanup, and final-resize repair pass deterministic and native Windows tests. Deterministic storms include 2,000 grid transitions and restore the full path without a later PTY byte; incomplete prompt markers cannot claim subsequent command output; resize deduplication/coalescing, ordering barriers, and transient ConPTY errors are covered. Multiple consecutive full native Windows storms passed; Linux X11/Wayland and macOS native GUI storms remain required on those hosts. |
 | Session cloning | `SessionLaunchDescriptor`, classic `Ctrl+R`/`Ctrl+D` independent right/down clone actions, explicit `Ctrl+Alt+R`/`Ctrl+Alt+D` shell-control passthroughs, command-palette discovery, exact PowerShell/CMD/Unix/WSL shell/profile/user/distro/directory reconstruction, explicit failure without PowerShell fallback, and route/PID isolation pass unit and native tests. |
 | Window and tab scope | Classic `Ctrl+T` creates a window-level tab, `Ctrl+Shift+T` creates an independent PTY tab inside the selected split/session, and `Ctrl+Shift+N` creates a separate OS window. Each multi-tab pane owns an internal 36 logical-pixel rail; sibling panes keep their geometry, tiny panes recover space without losing tabs, and PTY/grid/image/scrollbar/cursor/IME consumers share its DPI-safe content rectangle. `Alt`+Arrow geometric pane focus, `F6` cycling, pane-local `Alt`+`PageUp`/`PageDown`, global `Ctrl`+`Tab`, macOS equivalents, command-palette discovery, edge stopping, local wraparound, route isolation, pane-local tab order, selected styling, direct hit targets, native resize restoration, and close isolation have deterministic regressions. |
@@ -38,6 +38,11 @@ satisfy.
 | Windows packaging | A real x86_64 release build produced a WiX MSI and portable ZIP. The ZIP executable reports `automexia 0.4.0`. This audit fixed package lookup under custom `CARGO_TARGET_DIR` and added Windows/Linux regression coverage for the resolved release path. |
 | Contributor alignment | Contributor, conduct, security, support, governance, release, upstream, changelog, ownership, issue-form, PR-template, Dependabot, Release Drafter, DCO, protected-path-review, dependency-review, CodeQL, nightly, and release definitions are present and repository-validated. |
 
+The 2026-08-15 post-hardening Windows-to-WSL decoder campaign compiled from a
+fully staged WSL-native `/tmp` source, completed 228,879 executions in six
+seconds with no crash or sanitizer finding, stayed within the 768 MiB RSS cap
+at 410 MiB, and left no temporary campaign directory or generated Windows-tree
+state.
 ## Closed source blockers and remaining product work
 
 The 2026-08-14 audit closed the three previously open v0.4 source blockers:

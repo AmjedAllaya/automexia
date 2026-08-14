@@ -199,15 +199,23 @@ matrix in [image previews](IMAGE-PREVIEWS.md).
 The decoder fuzz command installs/uses explicit nightly on Unix. On Windows it
 uses WSL because cargo-fuzz/libFuzzer does not support native Windows; this
 avoids misleading `clang_rt.asan_dynamic` DLL failures. It fuzzes both bounded
-decode and visible-path tokenization, builds outside the Windows repository in
-a disposable `/tmp` workspace with its own writable corpus, caps RSS/input time,
-and removes generated campaign state on exit. Nightly CI separately installs nightly, invokes every target with
-`cargo +nightly fuzz`, and runs the pure decoder tests under ASan and TSan.
+decode and visible-path tokenization. The runner copies the current source tree
+once from Windows into a disposable WSL-native `/tmp` workspace, excluding
+`.git`, the workspace target, and generated fuzz target, corpus, and
+artifact directories; all Cargo build, corpus, and target I/O then
+stays under `/tmp`. It caps RSS/input time and removes the complete staged
+campaign on exit. Nightly CI separately installs nightly, invokes every target
+with `cargo +nightly fuzz`, and runs pure decoder tests under ASan and TSan.
 The 2026-08-14 Windows-to-WSL decoder campaign completed 544,609 executions
 over 121 seconds without a crash or sanitizer finding (2,504 coverage edges,
 5,383 features, 1,161 final corpus entries, and 357 MiB peak RSS). These are
 local evidence for the corrected runner, not a substitute for recurring hosted
 nightly results.
+The 2026-08-15 post-hardening Windows-to-WSL campaign compiled exclusively from
+the staged `/tmp` source and completed 228,879 executions in six seconds
+without a crash or sanitizer finding (1,982 coverage edges, 4,227 features,
+1,049 final corpus entries, and 410 MiB peak RSS). The cleanup trap left no
+`automexia-image-fuzz.*` directory or generated Windows-tree state.
 
 Control-string and reload hardening has a focused local gate:
 
@@ -243,6 +251,24 @@ resize storm and requires automatic full-path restoration. Binding-table tests
 separately prove the platform chords dispatch those tested actions.
 
 ## Build-artifact lifecycle and storage
+
+### Keep every toolchain on its native filesystem
+
+Windows Cargo/MSVC, ConPTY, WGPU, and MSI work belongs in the NTFS checkout.
+Linux Cargo, Unix PTY, sanitizer, and Linux GUI work inside WSL belongs in a
+separate clone under the Linux filesystem, such as
+`~/src/automexia-terminal`. Building from `/mnt/c` or `/mnt/d`
+causes expensive cross-filesystem metadata traffic.
+
+`cargo xtask doctor` reports `host-native/ok`, `WSL-native/ok`,
+or an actionable mounted-drive advisory. The compilation-heavy project commands
+fail early when WSL source or `CARGO_TARGET_DIR` is on a mounted Windows
+drive. `AUTOMEXIA_ALLOW_SLOW_WSL_MOUNT=1` exists only for deliberate
+one-off diagnosis and is not valid CI, benchmark, fuzz, or release evidence.
+
+The complete setup, synchronization, target-placement, fuzz-staging, and
+troubleshooting procedure is in
+[Windows and WSL development](WSL-DEVELOPMENT.md).
 
 The workflow has three deliberately separate artifact classes:
 
