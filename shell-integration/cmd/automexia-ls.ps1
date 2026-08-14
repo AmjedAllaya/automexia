@@ -5,6 +5,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# This helper is a child console application, so set both .NET and PowerShell
+# native-output encodings explicitly before glyphs enter the shared ConPTY.
+$utf8 = [Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = $utf8
+$OutputEncoding = $utf8
 $showHidden = $false
 $paths = New-Object System.Collections.Generic.List[string]
 foreach ($argument in $Arguments) {
