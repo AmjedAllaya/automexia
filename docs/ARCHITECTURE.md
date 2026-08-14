@@ -112,18 +112,28 @@ texture-eviction semantics. iTerm2 decoding validates base64/declared size,
 graphic.
 
 Local filename quick look is a separate Automexia-owned overlay described by
-[ADR 0014](adr/0014-explicit-bounded-image-quick-look.md). Pointer hit testing and candidate normalization run on the application thread
-without filesystem access. A 16-owner latest-request queue coalesces obsolete
-work per window; one worker performs local metadata/read/header-gate/decode/
-downscale and publishes only a current generation to that window's single-result
-mailbox through an exact-route wake. There is no shared completion queue.
+[ADR 0014](adr/0014-explicit-bounded-image-quick-look.md). Pointer hit testing,
+listing-glyph removal, quoted/Unicode candidate normalization, bounded file
+opening/decoding, and the thumbnail cache live in the private, renderer-free
+`automexia-image` crate. Only its pure candidate/token functions run on the
+application thread; they perform no filesystem access. Stable plain hover
+submits after 100 ms; click pins the card; arrows browse only while pinned;
+Escape dismisses.
+Mouse-reporting children keep ownership unless Shift is held, and a pane-local
+latch consumes both halves of a preview click. A 16-owner latest-request queue
+coalesces obsolete work per window; one worker performs local
+metadata/read/header-gate/decode/downscale and publishes only a current
+generation to that window's single-result mailbox through an exact-route wake.
+There is no shared completion queue.
 A 16-entry/32 MiB access-ordered cache validates path, length, and modification
 version before returning a shared thumbnail. Sugarloaf receives the same pixel
 allocation with a stable preview key/time, uploads at most 1280x960, and
 positions it from the current pane rectangle. Dismissal removes the active
 overlay/data entry; bounded CPU/GPU caches retain reusable content only until
 normal eviction. It does not mutate terminal cells, PTY size,
-selection, scrollback, or prompt metadata.
+selection, scrollback, or prompt metadata. The decoder fuzz target depends on
+this pure crate rather than the GUI/frontend graph, keeping nightly sanitizer
+builds small and free of window-system dependencies.
 
 ### Runtime configuration transaction
 

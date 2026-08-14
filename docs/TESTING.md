@@ -128,6 +128,7 @@ cargo test -p automexia-terminal bindings::tests::ctrl_t
 cargo test -p automexia-terminal layout::pane_tab_tests
 cargo test -p automexia-terminal renderer::island::tests::local_tab_rail
 cargo test -p automexia-terminal renderer::command_palette::tests::window_window_tab
+cargo test -p automexia-terminal renderer::command_palette::tests::pane_and_local_tab_navigation
 cargo test -p automexia-terminal renderer::session_footer::tests
 cargo test -p automexia-terminal pane_footer_reservation
 ```
@@ -156,17 +157,20 @@ cargo xtask test resize-stress
 
 These cover Kitty query/placement honesty and memory release, explicit
 background intensity, combining-mark damage, bulk parser parity, synchronized
-updates, viewport/history invariants, modifier-driven link discovery, safe
-click latching, and both CPU-only and product GPU renderer configurations. The
+updates, viewport/history invariants, IO-free image-path discovery, safe
+link/preview click latching, pinned arrow navigation, and both CPU-only and
+product GPU renderer configurations. The
 exact upstream hashes and Automexia-specific adaptations are recorded in
 `UPSTREAM.md`.
 Image protocol and local quick-look changes have a focused gate:
 
 ```text
+cargo test -p automexia-image --locked
 cargo test -p automexia-terminal image_preview --locked -- --test-threads=1
 cargo test -p automexia-terminal bindings --locked
 cargo test -p automexia-terminal command_palette --locked
 cargo test -p rio-vt --features graphics bounded_decoder --locked
+cargo xtask test image-decoder-fuzz --seconds 120
 cargo xtask verify architecture
 ```
 
@@ -177,6 +181,16 @@ platform shortcut collisions, palette discovery, and iTerm2 valid,
 size-mismatch, and oversized-dimension decoding. Native review follows the
 matrix in [image previews](IMAGE-PREVIEWS.md); protocol rendering and local
 quick look must be exercised separately.
+
+The decoder fuzz command installs/uses explicit nightly on Unix. On Windows it
+uses WSL because cargo-fuzz/libFuzzer does not support native Windows; this
+avoids misleading `clang_rt.asan_dynamic` DLL failures. Nightly CI separately
+installs nightly and invokes every fuzz target with `cargo +nightly fuzz`.
+The 2026-08-14 Windows-to-WSL decoder campaign completed 544,609 executions
+over 121 seconds without a crash or sanitizer finding (2,504 coverage edges,
+5,383 features, 1,161 final corpus entries, and 357 MiB peak RSS). These are
+local evidence for the corrected runner, not a substitute for recurring hosted
+nightly results.
 
 Control-string and reload hardening has a focused local gate:
 
@@ -205,8 +219,11 @@ hotkey APIs do not provide an atomic transaction.
 
 On Windows, `cargo xtask test resize-stress --native-gui` creates a real
 pane-local PowerShell tab, proves independent route/PID and preserved launch
-intent, closes its inactive sibling without losing the source, then runs the
-multi-pane resize storm and requires automatic full-path restoration.
+intent, navigates previous/next within only that pane, closes its inactive
+sibling without losing the source, creates a right split, focuses left/right by
+rendered geometry without changing either route, then runs the multi-pane
+resize storm and requires automatic full-path restoration. Binding-table tests
+separately prove the platform chords dispatch those tested actions.
 
 ## Build-artifact lifecycle and storage
 
@@ -383,7 +400,11 @@ cargo xtask test resize-stress --native-gui
 
 The driver waits for one complete first prompt without sending input, executes
 240 real window moves, restores a usable viewport, and waits for a matching
-post-reflow snapshot before asserting. WGPU swap-chain pixels are not reliably
+post-reflow snapshot before asserting. It then opens local quick look through
+real hover/click/arrow input, samples only the published image rectangle, and
+rejects a present-but-black or card-obscured preview using color-bucket,
+luminance-spread, mean-luminance, and bright-pixel thresholds. The complete
+native contract runs once on WGPU and once on the CPU fallback. WGPU swap-chain pixels are not reliably
 available through `WM_PRINT`, so the driver converts the exact client origin to
 screen coordinates, temporarily places only the target window topmost, copies
 that bounded region with `BitBlt`, and restores normal z-order in `finally`. A
@@ -604,9 +625,13 @@ and reverse-history search. Runtime must remain proportional to the live prompt
 block, not the configured scrollback depth.
 
 Current keybinding tests construct macOS, Windows, and Linux/BSD default
-tables on every host, verify classic tab/split/clone scopes and explicit shell
+tables on every host, verify classic tab/split/clone scopes, geometric pane
+focus, pane-local tab cycling, global-tab separation, and explicit shell
 passthroughs, exercise user overrides and intentional compound actions, and
-reject duplicate visible palette labels. The planned compiled-profile suite—including fixture provenance,
+reject shortcut collisions and duplicate visible palette labels. Pure layout
+tests cover all four directions, uneven/nested grids, perpendicular-beam
+preference, deterministic ties, edge stopping, and local-tab wraparound. The
+planned compiled-profile suite—including fixture provenance,
 origins and shadowing, atomic reload, fallthrough, sequences/tables/chains,
 generated docs, fuzzing, and hot-path latency—is specified in the
 [full Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md) and must

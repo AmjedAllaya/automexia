@@ -65,7 +65,7 @@ baseline without claiming a complete accessibility tree.
 | Clear screen/history semantics | Partial | `ClearHistory` clears saved history. `ClearScreen` currently clears both the visible screen and saved history. Distinct visible-only `ClearScreen`, history-only `ClearHistory`, and combined `ClearScreenAndHistory` actions are still required. |
 | Selection and search actions | Partial | Select-all, copy, clear selection, terminal search, vi selection, and result navigation exist. Directional extension, boundary/page extension, scroll-to-selection, and search-from-selection do not. |
 | Screen export actions | Planned | Visible-screen export to a secure temporary file, paste/copy path, and explicit open are absent. |
-| Tab/window/split semantics | Partial | Automexia has explicit window, window-tab, pane-local-tab, split, clone, close, move, and sequential focus actions. Geometric split focus, zoom, and equalize are absent. |
+| Tab/window/split semantics | Partial | Automexia has explicit window, window-tab, pane-local-tab, split, clone, close, move, sequential focus, and non-wrapping geometric focus actions. Directional focus ranks rendered pane rectangles by perpendicular overlap, edge distance, centre alignment, and stable visual order. Split zoom and equalize remain absent. |
 | Inspector | Deferred | There is no terminal inspector action or redacted inspector surface. Its privacy boundary must be designed first. |
 | Undo/redo closed surfaces | Deferred | Closed windows, tabs, and splits are destroyed; no bounded parked-PTY lifecycle exists. |
 | Exact generated platform profiles | Planned | The audited Ghostty commit is recorded for comparison only. There is no generated Linux/macOS fixture or deterministic Windows transform. |
@@ -98,9 +98,10 @@ The following capabilities are needed for a maintainable compatibility layer:
    and fallthrough rules.
 7. A single action/shortcut registry used by dispatch, the command palette,
    CLI inspection, collision diagnostics, generated docs, and tests.
-8. The missing stateless actions: three clear variants, selection extension,
-   search/scroll from selection, geometric split focus, split zoom/equalize,
-   and secure visible-screen export.
+8. The remaining stateless actions: three clear variants, selection extension,
+   search/scroll from selection, split zoom/equalize, and secure visible-screen
+   export. Geometric split focus is already implemented by the Automexia
+   profile and will be reused by the compiled registry.
 9. CLI and contributor tooling to list/explain actions and effective bindings,
    verify fixtures, detect collisions, preview migration, and regenerate docs.
 10. Deterministic, property, fuzz, native-platform, and latency tests for the
@@ -294,10 +295,11 @@ Implement one focused action family per pull request:
 5. typed window/tab/pane-local-tab/split/close actions and an explicit split
    launch policy for a fresh default shell, inherited shell/profile/cwd, or a
    `SessionLaunchDescriptor` clone;
-6. geometric split focus, exact logical-pixel resize, split zoom/restore, and
-   recursive equalization. Directional focus uses pane rectangles, overlap,
-   distance, and stable route-ID tie-breaking; zoom preserves the split tree,
-   hidden PTYs, exact dimensions, and focus while showing an indicator;
+6. preserve the implemented geometric split-focus contract while adding exact
+   logical-pixel resize, split zoom/restore, and recursive equalization.
+   Directional focus uses pane rectangles, overlap, distance, centre alignment,
+   and stable visual-order tie-breaking; zoom preserves the split tree, hidden
+   PTYs, exact dimensions, and focus while showing an indicator;
 7. secure screen export with restrictive permissions, collision-safe temporary
    files, bounded UTF-8 output, normalized line endings, explicit open,
    paste-path, and copy-path variants. Capture a consistent visible snapshot

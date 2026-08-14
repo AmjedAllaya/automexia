@@ -145,7 +145,13 @@ On Windows, Linux, and BSD, `Ctrl`+`T` adds a window-level tab and
 macOS uses `Cmd`+`T` and `Cmd`+`Shift`+`T` for those two scopes. Pane-local tabs preserve the selected
 shell/profile, WSL identity, and working directory while owning independent
 PTYs. When a pane has multiple local tabs, their controls live inside that pane
-and do not resize its siblings. See [configuration](docs/CONFIGURATION.md). Ghostty compatibility is a
+and do not resize its siblings. Navigate panes geometrically with
+`Alt`+Arrow on Windows/Linux/BSD (`Cmd`+`Alt`+Arrow on macOS), or cycle them
+with `F6` / `Shift`+`F6` (`Cmd`+`]` / `Cmd`+`[` on macOS).
+`Alt`+`PageDown` / `Alt`+`PageUp` switches tabs only inside the selected pane;
+macOS uses `Cmd`+`Alt`+`]` / `Cmd`+`Alt`+`[`.
+`Ctrl`+`Tab` remains reserved for window-level tabs. See
+[configuration](docs/CONFIGURATION.md). Ghostty compatibility is a
 future opt-in profile tracked separately in the
 [compatibility roadmap](docs/GHOSTTY-COMPATIBILITY-ROADMAP.md); it is not the
 implicit Automexia default.
@@ -153,11 +159,13 @@ implicit Automexia default.
 ## Image previews
 
 Automexia renders application-driven Sixel, Kitty Graphics (including Unicode
-placeholders), and iTerm2 inline images. It also provides a local quick look for
-paths printed by ordinary commands: hold `Alt` over an image path (`Cmd` on
-macOS), or select a path and press `Ctrl`+`Alt`+`I` (`Cmd`+`Alt`+`I` on macOS).
-The command palette exposes **Preview Selected Image**. Decoding is local-only,
-bounded, asynchronous, route-scoped, and responsive across pane sizes. See
+placeholders), and iTerm2 inline images. It also provides local quick look for
+paths printed by ordinary commands: hover a filename, click it to pin, then use
+the arrow keys to browse other visible images. `Esc` closes the card. Selecting
+a path and pressing `Ctrl`+`Alt`+`I` (`Cmd`+`Alt`+`I` on macOS) and the
+**Preview Selected Image** palette action remain keyboard alternatives.
+Decoding is local-only, bounded, asynchronous, route-scoped, and responsive
+across pane sizes. See
 [image previews](docs/IMAGE-PREVIEWS.md) for supported tools, formats, security
 limits, and focused tests.
 

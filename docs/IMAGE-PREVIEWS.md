@@ -38,26 +38,39 @@ Automexia also previews a local raster path already visible in terminal output.
 This is an emulator-owned overlay; it does not write escape sequences into the
 PTY or alter scrollback.
 
-- Windows, Linux, and BSD: hold `Alt` over a supported image path for 350 ms.
-- macOS: hold `Cmd` over a supported image path for 350 ms.
+- Hover a supported image filename or path. A 100 ms stability delay avoids
+  decoding every cell crossed during fast pointer movement.
+- Click the filename/path to pin its preview.
+- While pinned, `Down`/`Right` selects the next visible image path and
+  `Up`/`Left` selects the previous one. Navigation wraps at both ends.
+- Press `Esc` to close a pinned preview. Typing another key or clicking outside
+  it also returns input ownership to the shell.
 - Keyboard: select a path and press `Ctrl`+`Alt`+`I` on Windows/Linux/BSD or
   `Cmd`+`Alt`+`I` on macOS.
 - Command palette: run **Preview Selected Image**. With no selection, the
   command uses the supported path under the pointer.
 
 Bare filenames from ordinary `ls`, quoted names containing spaces, rooted
-paths, and explicit relative paths are supported. Relative paths resolve
+paths, explicit relative paths, Unicode names, and Automexia's file-listing
+glyph prefixes are supported. Relative paths resolve
 against validated OSC 7 current-directory metadata, then the immutable launch
 directory while the first prompt is still starting. On Windows, a known WSL
 session may translate `/mnt/<drive>/...` to the local drive or another absolute
 Linux path through `\\wsl.localhost\\<validated-distro>\\...`.
 
+When a full-screen terminal application enables mouse reporting, Automexia
+does not steal its mouse events. Hold `Shift` while hovering or clicking to use
+quick look through the terminal's standard host-UI override. Hover previews do
+not capture arrow keys; only an explicit click or keyboard/palette action pins
+the card and enables image navigation.
+
 The card keeps the source aspect ratio, never enlarges a small image, limits a
 large GPU upload to 1280x960, flips at pane edges, and disappears instead of
-overlapping the terminal when the pane is physically unusable. It is dismissed
-by typing, clicking, scrolling, selecting, leaving the window, releasing the
-modifier, switching routes, or replacing the target. Resizing recomputes its
-position from the current pane rectangle.
+overlapping the terminal when the pane is physically unusable. An unpinned
+hover card disappears when the pointer leaves the candidate or window. A
+pinned card survives pointer movement and is dismissed by `Esc`, ordinary
+typing, an outside click, scrolling, selection, route replacement, or explicit
+dismissal. Resizing recomputes its position from the current pane rectangle.
 
 Quick look supports BMP, GIF, ICO, JPEG, PNG/PNM, TIFF, and WebP raster files.
 It intentionally does not open SVG, PDF, URLs, remote hosts, directories,
@@ -70,8 +83,9 @@ clients own richer playback behavior.
 Terminal text is attacker-controlled, even when it comes from a local command.
 Consequently quick look:
 
-- performs no filesystem access during ordinary pointer movement;
-- requires an explicit modifier dwell or keyboard/palette action;
+- performs candidate discovery and hit testing without filesystem access;
+- waits for a stable 100 ms hover target or explicit click before submitting
+  work, and never reads or decodes on the UI, renderer, or PTY threads;
 - rejects URL schemes, arbitrary Windows UNC paths, control characters,
   symlinks, and non-regular files;
 - limits the source file to 20 MiB and accepts only supported raster magic;
@@ -87,6 +101,10 @@ Consequently quick look:
 - retains at most 16 decoded thumbnails and 32 MiB in an access-ordered cache;
   cache hits share the exact pixel allocation with Sugarloaf and use a stable
   texture key/time rather than copying, hashing, decoding, or re-uploading;
+- uses the same positive-z paint contract on WGPU, Metal, Vulkan, and CPU:
+  card/UI geometry first, image pixels second, then dedicated UI labels;
+- measures metadata before fitting the preview title, eliding long filenames
+  into the remaining width so the title and dimensions never overlap;
 - removes the active overlay/data entry on dismissal while bounded CPU and
   renderer texture caches may retain reusable content until normal eviction.
 
@@ -101,10 +119,10 @@ checks.
 Focused checks are:
 
 ```text
-cargo test -p automexia-terminal automexia::image --lib --locked
+cargo test -p automexia-image --locked
 cargo test -p automexia-terminal image_preview --bin automexia --locked
 cargo test -p sugarloaf shared_rgba_preserves --locked
-cargo fuzz run image_decoder -- -max_total_time=120
+cargo xtask test image-decoder-fuzz --seconds 120
 cargo test -p automexia-terminal bindings --locked
 cargo test -p automexia-terminal command_palette --locked
 cargo test -p rio-vt --features graphics bounded_decoder --locked
@@ -118,12 +136,30 @@ development host the medians were 24.683 ms and 48.984 us respectively
 (approximately 504x faster for reuse). This is a local observation, not the
 controlled 30-day performance baseline or a cross-host guarantee.
 
-The full `cargo ready` gate remains required before merge. Native visual review
-must cover a small and large PNG, a filename containing spaces/Unicode, a WSL
-path, pointer-edge flipping, extreme pane sizes, split isolation, rapid resize,
-keyboard dismissal, corrupt/oversized input, and a protocol client. A visual
-review does not replace the deterministic route, geometry, memory, and decoder
-tests.
+The full `cargo ready` gate remains required before merge. The Windows native
+GUI gate prints two relative filenames, drives a real hover and click from
+renderer-neutral cell geometry, browses with `Right`, dismisses with `Esc`, and
+checks the decoded route-scoped overlay. It samples the exact image-body region,
+rejects black/obscured pixels, and repeats the real-window contract on WGPU and
+the CPU fallback before accepting the final composited frame. Native
+visual review must additionally cover spaces/Unicode, WSL, pointer-edge
+flipping, extreme panes, split isolation, rapid resize, corrupt/oversized
+input, and a protocol client. A visual review does not replace deterministic
+route, geometry, memory, and decoder tests.
+
+`cargo-fuzz`/libFuzzer is supported on Unix-like systems. The xtask command
+therefore installs/uses explicit nightly on Linux/macOS and automatically
+routes Windows through WSL, avoiding an unsupported native-Windows ASan DLL
+configuration. Nightly CI likewise installs nightly and runs
+`cargo +nightly fuzz`; the workspace's pinned stable compiler is never used for
+fuzz execution.
+
+On 2026-08-14 the supported Windows-to-WSL command completed 544,609
+libFuzzer executions in 121 seconds with no crash or sanitizer finding. The
+run reached 2,504 covered edges and 5,383 features, retained 1,161 in-memory
+corpus entries, and peaked at 357 MiB RSS. Local generated corpus/build output
+is ignored and removed after a clean campaign; a failing crash artifact must
+be retained and attached to the security regression that fixes it.
 
 ## Primary references
 
@@ -133,3 +169,5 @@ tests.
 - Yazi image preview adapters: <https://yazi-rs.github.io/docs/image-preview/>
 - image crate ImageReader limits: <https://docs.rs/image/latest/image/struct.ImageReader.html>
 - image crate limit semantics: <https://docs.rs/image/latest/image/struct.Limits.html>
+- Rust Fuzz Book / cargo-fuzz: <https://rust-fuzz.github.io/book/cargo-fuzz.html>
+- Ghostty features and native Quick Look: <https://ghostty.org/docs/features>
