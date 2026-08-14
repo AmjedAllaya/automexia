@@ -3,6 +3,7 @@ members = [
     "automexia-extension-api",
     "automexia-extension-runtime",
     "automexia-devops",
+    "automexia-image",
     "automexia-ui-model",
     "sugarloaf",
     "teletypewriter",
@@ -53,6 +54,7 @@ shell-integration-environment = "AUTOMEXIA_SHELL_INTEGRATION"
 automexia-extension-api = { path = "automexia-extension-api", version = "0.4.0" }
 automexia-extension-runtime = { path = "automexia-extension-runtime", version = "0.4.0" }
 automexia-devops = { path = "automexia-devops", version = "0.4.0" }
+automexia-image = { path = "automexia-image", version = "0.4.0" }
 automexia-ui-model = { path = "automexia-ui-model", version = "0.4.0" }
 
 # Note: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#multiple-locations

@@ -699,6 +699,18 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    pub fn select_split_direction(
+        &mut self,
+        direction: crate::layout::PaneDirection,
+    ) -> bool {
+        if !self.contexts[self.current_index].select_split_direction(direction) {
+            return false;
+        }
+        self.current_route = self.current().route_id;
+        true
+    }
+
+    #[inline]
     pub fn switch_to_next_split_or_tab(&mut self) {
         if self.contexts[self.current_index].select_next_split_no_loop() {
             self.current_route = self.current().route_id;
@@ -992,6 +1004,28 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         true
     }
 
+    pub fn select_next_local_tab(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        let Some(item) = self.contexts[self.current_index].current_item_mut() else {
+            return false;
+        };
+        if !item.select_next_tab(sugarloaf) {
+            return false;
+        }
+        self.current_route = item.val.route_id;
+        true
+    }
+
+    pub fn select_prev_local_tab(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        let Some(item) = self.contexts[self.current_index].current_item_mut() else {
+            return false;
+        };
+        if !item.select_prev_tab(sugarloaf) {
+            return false;
+        }
+        self.current_route = item.val.route_id;
+        true
+    }
+
     /// Close only the selected pane's active local tab. The last local tab is
     /// intentionally retained; callers can then close the pane or window tab
     /// according to their explicit scope.
@@ -1150,6 +1184,18 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                     pane_scale,
                     item.tab_count(),
                 );
+                let pane_rail_height = crate::layout::pane_tab_rail_reserved_height(
+                    item.layout_rect[3],
+                    pane_scale,
+                    item.tab_count(),
+                );
+                let grid_origin = [
+                    self.contexts[self.current_index].scaled_margin.left
+                        + item.layout_rect[0],
+                    self.contexts[self.current_index].scaled_margin.top
+                        + item.layout_rect[1]
+                        + pane_rail_height,
+                ];
                 let local_tab_rail_rect = crate::layout::pane_tab_rail_rect(
                     item.layout_rect,
                     pane_scale,
@@ -1221,6 +1267,9 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                     "active": context.route_id == active_route,
                     "layout_rect": item.layout_rect,
                     "terminal_rect": terminal_rect,
+                    "grid_origin": grid_origin,
+                    "cell_width": context.dimension.cell.cell_width,
+                    "cell_height": context.dimension.cell.cell_height,
                     "local_tab_rail_rect": local_tab_rail_rect,
                     "local_tab_count": item.tab_count(),
                     "active_local_tab_index": active_local_tab_index,

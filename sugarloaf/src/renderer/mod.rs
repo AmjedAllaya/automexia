@@ -789,6 +789,19 @@ fn select_texture_evictions(
     evict
 }
 
+#[cfg(any(test, feature = "native-gui-test-hooks"))]
+fn image_texture_usage(
+    entries: impl Iterator<Item = (u64, usize)>,
+    namespace: u64,
+    namespace_mask: u64,
+) -> (usize, usize) {
+    entries
+        .filter(|(key, _)| key & namespace_mask == namespace & namespace_mask)
+        .fold((0_usize, 0_usize), |(count, bytes), (_, entry_bytes)| {
+            (count + 1, bytes.saturating_add(entry_bytes))
+        })
+}
+
 /// Per-instance data for image rendering (one instance = one image placement).
 /// The vertex shader generates 4 quad corners from vertex_id.
 ///
@@ -1285,9 +1298,10 @@ impl Renderer {
                         last_used: current_frame,
                     },
                 ) {
-                    self.image_texture_bytes -= old.bytes;
+                    self.image_texture_bytes =
+                        self.image_texture_bytes.saturating_sub(old.bytes);
                 }
-                self.image_texture_bytes += bytes;
+                self.image_texture_bytes = self.image_texture_bytes.saturating_add(bytes);
                 continue;
             }
             let gpu = match &context.inner {
@@ -1389,9 +1403,10 @@ impl Renderer {
                     last_used: current_frame,
                 },
             ) {
-                self.image_texture_bytes -= old.bytes;
+                self.image_texture_bytes =
+                    self.image_texture_bytes.saturating_sub(old.bytes);
             }
-            self.image_texture_bytes += bytes;
+            self.image_texture_bytes = self.image_texture_bytes.saturating_add(bytes);
         }
 
         // Enforce the VRAM budget: drop the least-recently-drawn
@@ -1408,7 +1423,8 @@ impl Renderer {
             );
             for key in evict {
                 if let Some(old) = self.image_textures.remove(&key) {
-                    self.image_texture_bytes -= old.bytes;
+                    self.image_texture_bytes =
+                        self.image_texture_bytes.saturating_sub(old.bytes);
                 }
             }
         }
@@ -1672,8 +1688,23 @@ impl Renderer {
     #[inline]
     pub fn evict_image_texture(&mut self, key: u64) {
         if let Some(old) = self.image_textures.remove(&key) {
-            self.image_texture_bytes -= old.bytes;
+            self.image_texture_bytes = self.image_texture_bytes.saturating_sub(old.bytes);
         }
+    }
+
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub(crate) fn native_image_texture_usage(
+        &self,
+        namespace: u64,
+        namespace_mask: u64,
+    ) -> (usize, usize) {
+        image_texture_usage(
+            self.image_textures
+                .iter()
+                .map(|(&key, entry)| (key, entry.bytes)),
+            namespace,
+            namespace_mask,
+        )
     }
 
     #[inline]
@@ -3380,7 +3411,7 @@ mod rect_positioning_tests {
 
 #[cfg(test)]
 mod texture_budget_tests {
-    use super::select_texture_evictions;
+    use super::{image_texture_usage, select_texture_evictions};
 
     #[test]
     fn under_budget_evicts_nothing() {
@@ -3411,5 +3442,31 @@ mod texture_budget_tests {
         let entries = [(1u64, 1u64, 400usize), (2, 2, 400), (3, 3, 400)];
         let evict = select_texture_evictions(entries.iter().copied(), 1200, 800, 10);
         assert_eq!(evict, vec![1], "freeing 400 reaches the budget");
+    }
+
+    #[test]
+    fn namespace_usage_counts_only_matching_texture_bytes() {
+        let entries = [
+            (0xFFFF_FFFE_0000_0001_u64, 256_usize),
+            (0xFFFF_FFFE_0000_0002, 512),
+            (0x0000_0001_0000_0001, 1_024),
+        ];
+        assert_eq!(
+            image_texture_usage(
+                entries.iter().copied(),
+                0xFFFF_FFFE_0000_0000,
+                0xFFFF_FFFF_0000_0000,
+            ),
+            (2, 768)
+        );
+    }
+
+    #[test]
+    fn namespace_usage_saturates_instead_of_wrapping_byte_accounting() {
+        let entries = [(7_u64, usize::MAX), (7, 1)];
+        assert_eq!(
+            image_texture_usage(entries.iter().copied(), 7, u64::MAX),
+            (2, usize::MAX)
+        );
     }
 }

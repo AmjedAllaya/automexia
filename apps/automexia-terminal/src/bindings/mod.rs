@@ -252,6 +252,8 @@ impl From<String> for Action {
             "openconfigeditor" => Some(Action::ConfigEditor),
             "selectprevtab" => Some(Action::SelectPrevTab),
             "selectnexttab" => Some(Action::SelectNextTab),
+            "selectprevlocaltab" => Some(Action::SelectPrevLocalTab),
+            "selectnextlocaltab" => Some(Action::SelectNextLocalTab),
             "selectlasttab" => Some(Action::SelectLastTab),
             "receivechar" => Some(Action::ReceiveChar),
             "scrollpageup" => Some(Action::ScrollPageUp),
@@ -266,6 +268,10 @@ impl From<String> for Action {
             "clonesplitdown" => Some(Action::CloneSplitDown),
             "selectnextsplit" => Some(Action::SelectNextSplit),
             "selectprevsplit" => Some(Action::SelectPrevSplit),
+            "selectpaneleft" => Some(Action::SelectPaneLeft),
+            "selectpaneright" => Some(Action::SelectPaneRight),
+            "selectpaneup" => Some(Action::SelectPaneUp),
+            "selectpanedown" => Some(Action::SelectPaneDown),
             "selectnextsplitortab" => Some(Action::SelectNextSplitOrTab),
             "selectprevsplitortab" => Some(Action::SelectPrevSplitOrTab),
             "movedividerup" => Some(Action::MoveDividerUp),
@@ -454,6 +460,12 @@ pub enum Action {
     /// Switch to prev tab.
     SelectPrevTab,
 
+    /// Switch to the next independent tab inside the selected pane.
+    SelectNextLocalTab,
+
+    /// Switch to the previous independent tab inside the selected pane.
+    SelectPrevLocalTab,
+
     /// Close tab.
     TabCloseCurrent,
 
@@ -526,6 +538,18 @@ pub enum Action {
 
     /// Select previous split
     SelectPrevSplit,
+
+    /// Select the nearest pane to the left.
+    SelectPaneLeft,
+
+    /// Select the nearest pane to the right.
+    SelectPaneRight,
+
+    /// Select the nearest pane above.
+    SelectPaneUp,
+
+    /// Select the nearest pane below.
+    SelectPaneDown,
 
     /// Select next split if available if not next tab
     SelectNextSplitOrTab,
@@ -1200,6 +1224,8 @@ fn automexia_macos_key_bindings(
             "w", ModifiersState::SUPER; Action::CloseCurrentSplitOrTab;
             "[", ModifiersState::SUPER | ModifiersState::SHIFT; Action::SelectPrevTab;
             "]", ModifiersState::SUPER | ModifiersState::SHIFT; Action::SelectNextTab;
+            "[", ModifiersState::SUPER | ModifiersState::ALT; Action::SelectPrevLocalTab;
+            "]", ModifiersState::SUPER | ModifiersState::ALT; Action::SelectNextLocalTab;
             "1", ModifiersState::SUPER; Action::SelectTab(0);
             "2", ModifiersState::SUPER; Action::SelectTab(1);
             "3", ModifiersState::SUPER; Action::SelectTab(2);
@@ -1230,6 +1256,10 @@ fn automexia_macos_key_bindings(
             "d", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
             "]", ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectNextSplit;
             "[", ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectPrevSplit;
+            Key::Named(ArrowLeft), ModifiersState::SUPER | ModifiersState::ALT; Action::SelectPaneLeft;
+            Key::Named(ArrowRight), ModifiersState::SUPER | ModifiersState::ALT; Action::SelectPaneRight;
+            Key::Named(ArrowUp), ModifiersState::SUPER | ModifiersState::ALT; Action::SelectPaneUp;
+            Key::Named(ArrowDown), ModifiersState::SUPER | ModifiersState::ALT; Action::SelectPaneDown;
             Key::Named(ArrowUp), ModifiersState::CONTROL | ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerUp;
             Key::Named(ArrowDown), ModifiersState::CONTROL | ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerDown;
             Key::Named(ArrowLeft), ModifiersState::CONTROL | ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerLeft;
@@ -1290,6 +1320,8 @@ fn automexia_windows_key_bindings(
             Key::Named(Tab), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectPrevTab;
             Key::Named(PageUp), ModifiersState::CONTROL; Action::SelectPrevTab;
             Key::Named(PageDown), ModifiersState::CONTROL; Action::SelectNextTab;
+            Key::Named(PageUp), ModifiersState::ALT; Action::SelectPrevLocalTab;
+            Key::Named(PageDown), ModifiersState::ALT; Action::SelectNextLocalTab;
             Key::Named(PageUp), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::MoveCurrentTabToPrev;
             Key::Named(PageDown), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::MoveCurrentTabToNext;
             "w", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::CloseCurrentSplitOrTab;
@@ -1313,6 +1345,10 @@ fn automexia_windows_key_bindings(
             "d", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
             Key::Named(F6), ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectNextSplit;
             Key::Named(F6), ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectPrevSplit;
+            Key::Named(ArrowLeft), ModifiersState::ALT; Action::SelectPaneLeft;
+            Key::Named(ArrowRight), ModifiersState::ALT; Action::SelectPaneRight;
+            Key::Named(ArrowUp), ModifiersState::ALT; Action::SelectPaneUp;
+            Key::Named(ArrowDown), ModifiersState::ALT; Action::SelectPaneDown;
             Key::Named(ArrowUp), ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerUp;
             Key::Named(ArrowDown), ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerDown;
             Key::Named(ArrowLeft), ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerLeft;
@@ -1365,6 +1401,8 @@ fn automexia_unix_key_bindings(
             Key::Named(Tab), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectPrevTab;
             "[", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectPrevTab;
             "]", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectNextTab;
+            Key::Named(PageUp), ModifiersState::ALT; Action::SelectPrevLocalTab;
+            Key::Named(PageDown), ModifiersState::ALT; Action::SelectNextLocalTab;
             "w", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::CloseCurrentSplitOrTab;
         ));
     }
@@ -1377,6 +1415,10 @@ fn automexia_unix_key_bindings(
             "d", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
             Key::Named(F6), ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectNextSplit;
             Key::Named(F6), ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectPrevSplit;
+            Key::Named(ArrowLeft), ModifiersState::ALT; Action::SelectPaneLeft;
+            Key::Named(ArrowRight), ModifiersState::ALT; Action::SelectPaneRight;
+            Key::Named(ArrowUp), ModifiersState::ALT; Action::SelectPaneUp;
+            Key::Named(ArrowDown), ModifiersState::ALT; Action::SelectPaneDown;
             Key::Named(ArrowUp), ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerUp;
             Key::Named(ArrowDown), ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerDown;
             Key::Named(ArrowLeft), ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerLeft;
@@ -1816,6 +1858,14 @@ mod tests {
             Action::from("PreviewSelectedImage".to_string()),
             Action::PreviewSelectedImage
         );
+        assert_eq!(
+            Action::from("SelectPaneLeft".to_string()),
+            Action::SelectPaneLeft
+        );
+        assert_eq!(
+            Action::from("SelectNextLocalTab".to_string()),
+            Action::SelectNextLocalTab
+        );
     }
 
     #[test]
@@ -2059,6 +2109,30 @@ mod tests {
             ModifiersState::CONTROL,
             Action::CloneSplitRight,
         );
+        assert_action_binding(
+            &bindings,
+            Key::Named(ArrowLeft),
+            ModifiersState::ALT,
+            Action::SelectPaneLeft,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(ArrowDown),
+            ModifiersState::ALT,
+            Action::SelectPaneDown,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(PageUp),
+            ModifiersState::ALT,
+            Action::SelectPrevLocalTab,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(PageDown),
+            ModifiersState::ALT,
+            Action::SelectNextLocalTab,
+        );
     }
 
     #[test]
@@ -2111,6 +2185,30 @@ mod tests {
             Key::Character("r".into()),
             ModifiersState::CONTROL,
             Action::CloneSplitRight,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(ArrowRight),
+            ModifiersState::ALT,
+            Action::SelectPaneRight,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(ArrowUp),
+            ModifiersState::ALT,
+            Action::SelectPaneUp,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(PageUp),
+            ModifiersState::ALT,
+            Action::SelectPrevLocalTab,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(PageDown),
+            ModifiersState::ALT,
+            Action::SelectNextLocalTab,
         );
     }
 
@@ -2172,6 +2270,30 @@ mod tests {
             Key::Character("r".into()),
             ModifiersState::CONTROL,
             Action::CloneSplitRight,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(ArrowLeft),
+            ModifiersState::SUPER | ModifiersState::ALT,
+            Action::SelectPaneLeft,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(ArrowDown),
+            ModifiersState::SUPER | ModifiersState::ALT,
+            Action::SelectPaneDown,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("[".into()),
+            ModifiersState::SUPER | ModifiersState::ALT,
+            Action::SelectPrevLocalTab,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("]".into()),
+            ModifiersState::SUPER | ModifiersState::ALT,
+            Action::SelectNextLocalTab,
         );
     }
 

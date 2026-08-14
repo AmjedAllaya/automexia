@@ -375,6 +375,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "automexia-image"
+version = "0.4.0"
+dependencies = [
+ "image",
+ "libc",
+ "tempfile",
+]
+
+[[package]]
 name = "automexia-terminal"
 version = "0.4.0"
 dependencies = [
@@ -382,6 +391,7 @@ dependencies = [
  "automexia-devops",
  "automexia-extension-api",
  "automexia-extension-runtime",
+ "automexia-image",
  "automexia-ui-model",
  "bitflags 2.13.1",
  "clap",

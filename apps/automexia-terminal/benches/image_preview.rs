@@ -1,8 +1,6 @@
 use std::hint::black_box;
 
-use automexia_terminal::automexia::image::{
-    decode_candidate, ImageCandidate, ThumbnailCache,
-};
+use automexia_image::{decode_candidate, ImageCandidate, ThumbnailCache};
 use criterion::{criterion_group, criterion_main, Criterion};
 
 fn image_preview(c: &mut Criterion) {

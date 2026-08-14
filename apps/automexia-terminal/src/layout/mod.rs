@@ -97,6 +97,154 @@ pub enum BorderDirection {
     Horizontal,
 }
 
+/// Geometric direction used to focus a neighbouring pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaneDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DirectionalPaneScore {
+    outside_beam: bool,
+    distance: f32,
+    cross_distance: f32,
+    top: f32,
+    left: f32,
+}
+
+fn interval_gap(a_start: f32, a_end: f32, b_start: f32, b_end: f32) -> f32 {
+    if a_end < b_start {
+        b_start - a_end
+    } else if b_end < a_start {
+        a_start - b_end
+    } else {
+        0.0
+    }
+}
+
+fn directional_pane_score(
+    current: [f32; 4],
+    candidate: [f32; 4],
+    direction: PaneDirection,
+) -> Option<DirectionalPaneScore> {
+    if current
+        .iter()
+        .chain(candidate.iter())
+        .any(|value| !value.is_finite())
+        || current[2] <= 0.0
+        || current[3] <= 0.0
+        || candidate[2] <= 0.0
+        || candidate[3] <= 0.0
+    {
+        return None;
+    }
+
+    let current_center = [current[0] + current[2] / 2.0, current[1] + current[3] / 2.0];
+    let candidate_center = [
+        candidate[0] + candidate[2] / 2.0,
+        candidate[1] + candidate[3] / 2.0,
+    ];
+    let (eligible, primary_gap, cross_gap, cross_distance) = match direction {
+        PaneDirection::Left => (
+            candidate_center[0] < current_center[0],
+            (current[0] - (candidate[0] + candidate[2])).max(0.0),
+            interval_gap(
+                current[1],
+                current[1] + current[3],
+                candidate[1],
+                candidate[1] + candidate[3],
+            ),
+            (candidate_center[1] - current_center[1]).abs(),
+        ),
+        PaneDirection::Right => (
+            candidate_center[0] > current_center[0],
+            (candidate[0] - (current[0] + current[2])).max(0.0),
+            interval_gap(
+                current[1],
+                current[1] + current[3],
+                candidate[1],
+                candidate[1] + candidate[3],
+            ),
+            (candidate_center[1] - current_center[1]).abs(),
+        ),
+        PaneDirection::Up => (
+            candidate_center[1] < current_center[1],
+            (current[1] - (candidate[1] + candidate[3])).max(0.0),
+            interval_gap(
+                current[0],
+                current[0] + current[2],
+                candidate[0],
+                candidate[0] + candidate[2],
+            ),
+            (candidate_center[0] - current_center[0]).abs(),
+        ),
+        PaneDirection::Down => (
+            candidate_center[1] > current_center[1],
+            (candidate[1] - (current[1] + current[3])).max(0.0),
+            interval_gap(
+                current[0],
+                current[0] + current[2],
+                candidate[0],
+                candidate[0] + candidate[2],
+            ),
+            (candidate_center[0] - current_center[0]).abs(),
+        ),
+    };
+    eligible.then_some(DirectionalPaneScore {
+        outside_beam: cross_gap > f32::EPSILON,
+        distance: primary_gap.hypot(cross_gap),
+        cross_distance,
+        top: candidate[1],
+        left: candidate[0],
+    })
+}
+
+fn compare_directional_pane_scores(
+    left: DirectionalPaneScore,
+    right: DirectionalPaneScore,
+) -> std::cmp::Ordering {
+    left.outside_beam
+        .cmp(&right.outside_beam)
+        .then_with(|| left.distance.total_cmp(&right.distance))
+        .then_with(|| left.cross_distance.total_cmp(&right.cross_distance))
+        .then_with(|| left.top.total_cmp(&right.top))
+        .then_with(|| left.left.total_cmp(&right.left))
+}
+
+fn directional_pane_neighbor<K: Copy + Eq>(
+    current_key: K,
+    current_rect: [f32; 4],
+    panes: impl Iterator<Item = (K, [f32; 4])>,
+    direction: PaneDirection,
+) -> Option<K> {
+    panes
+        .filter(|(key, _)| *key != current_key)
+        .filter_map(|(key, rect)| {
+            directional_pane_score(current_rect, rect, direction)
+                .map(|score| (key, score))
+        })
+        .min_by(|(_, left), (_, right)| compare_directional_pane_scores(*left, *right))
+        .map(|(key, _)| key)
+}
+
+fn adjacent_local_tab_index(
+    tab_count: usize,
+    active: usize,
+    forward: bool,
+) -> Option<usize> {
+    if tab_count <= 1 || active >= tab_count {
+        return None;
+    }
+    Some(if forward {
+        (active + 1) % tab_count
+    } else {
+        (active + tab_count - 1) % tab_count
+    })
+}
+
 /// Describes a draggable border between two panels
 #[derive(Debug, Clone, Copy)]
 pub struct PanelBorder {
@@ -349,6 +497,24 @@ impl<T: rio_backend::event::EventListener> ContextGridItem<T> {
         self.select_tab_core(index)
     }
 
+    pub fn select_next_tab(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        let Some(index) =
+            adjacent_local_tab_index(self.tab_count(), self.active_tab_index(), true)
+        else {
+            return false;
+        };
+        self.select_tab(index, sugarloaf)
+    }
+
+    pub fn select_prev_tab(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        let Some(index) =
+            adjacent_local_tab_index(self.tab_count(), self.active_tab_index(), false)
+        else {
+            return false;
+        };
+        self.select_tab(index, sugarloaf)
+    }
+
     fn select_tab_core(&mut self, index: usize) -> bool {
         while self.active_tab_index() > index {
             let Some(previous) = self.tabs_before.pop() else {
@@ -522,6 +688,94 @@ mod pane_tab_tests {
         let _terminal_guard = item.val.terminal.lock_unfair();
 
         assert_eq!(item.tab_title(0).as_deref(), Some("Cached PowerShell"));
+    }
+
+    #[test]
+    fn local_tab_navigation_wraps_without_changing_order() {
+        let mut item = ContextGridItem::new(dead(11));
+        item.push_tab_core(dead(22));
+        item.push_tab_core(dead(33));
+
+        let next =
+            adjacent_local_tab_index(item.tab_count(), item.active_tab_index(), true)
+                .expect("next local tab");
+        assert_eq!(next, 0);
+        assert!(item.select_tab_core(next));
+        assert_eq!(item.val.route_id, 11);
+
+        let previous =
+            adjacent_local_tab_index(item.tab_count(), item.active_tab_index(), false)
+                .expect("previous local tab");
+        assert_eq!(previous, 2);
+        assert!(item.select_tab_core(previous));
+        assert_eq!(item.val.route_id, 33);
+        assert_eq!(item.route_ids().collect::<Vec<_>>(), [11, 22, 33]);
+
+        assert_eq!(adjacent_local_tab_index(1, 0, true), None);
+        assert_eq!(adjacent_local_tab_index(3, 3, false), None);
+    }
+
+    #[test]
+    fn geometric_pane_navigation_prefers_directional_beam_and_never_wraps() {
+        let panes = [
+            (0, [100.0, 100.0, 100.0, 100.0]),
+            (1, [0.0, 100.0, 90.0, 100.0]),
+            (2, [210.0, 100.0, 100.0, 100.0]),
+            (3, [100.0, 0.0, 100.0, 90.0]),
+            (4, [100.0, 210.0, 100.0, 100.0]),
+            // Closer on the primary axis but outside the horizontal beam.
+            (5, [205.0, 240.0, 100.0, 100.0]),
+        ];
+        let current = panes[0].1;
+        for (direction, expected) in [
+            (PaneDirection::Left, Some(1)),
+            (PaneDirection::Right, Some(2)),
+            (PaneDirection::Up, Some(3)),
+            (PaneDirection::Down, Some(4)),
+        ] {
+            assert_eq!(
+                directional_pane_neighbor(0, current, panes.into_iter(), direction),
+                expected
+            );
+        }
+        assert_eq!(
+            directional_pane_neighbor(
+                1,
+                panes[1].1,
+                panes.into_iter(),
+                PaneDirection::Left
+            ),
+            None,
+            "directional focus must stop at an outer edge"
+        );
+    }
+
+    #[test]
+    fn geometric_pane_navigation_is_deterministic_for_nested_splits() {
+        let panes = [
+            (0, [0.0, 0.0, 300.0, 100.0]),
+            (1, [0.0, 110.0, 145.0, 100.0]),
+            (2, [155.0, 110.0, 145.0, 100.0]),
+        ];
+        assert_eq!(
+            directional_pane_neighbor(
+                0,
+                panes[0].1,
+                panes.into_iter(),
+                PaneDirection::Down
+            ),
+            Some(1),
+            "an exact tie resolves in stable visual order"
+        );
+        assert_eq!(
+            directional_pane_neighbor(
+                1,
+                panes[1].1,
+                panes.into_iter(),
+                PaneDirection::Right
+            ),
+            Some(2)
+        );
     }
 }
 
@@ -1444,6 +1698,30 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
                 self.current = keys[current_pos - 1];
             }
         }
+    }
+
+    /// Focus the nearest pane in a geometric direction without wrapping.
+    ///
+    /// Candidates whose perpendicular span overlaps the active pane are
+    /// preferred, then ranked by edge distance and centre alignment. This
+    /// keeps movement predictable in nested and uneven split layouts.
+    pub fn select_split_direction(&mut self, direction: PaneDirection) -> bool {
+        let Some(current_rect) =
+            self.inner.get(&self.current).map(|item| item.layout_rect)
+        else {
+            return false;
+        };
+        let panes = self
+            .inner
+            .iter()
+            .map(|(&key, item)| (key, item.layout_rect));
+        let Some(next) =
+            directional_pane_neighbor(self.current, current_rect, panes, direction)
+        else {
+            return false;
+        };
+        self.current = next;
+        true
     }
 
     #[inline]

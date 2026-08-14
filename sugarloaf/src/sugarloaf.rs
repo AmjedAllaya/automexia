@@ -77,6 +77,15 @@ pub struct SugarloafWithErrors<'a> {
     pub errors: SugarloafErrors,
 }
 
+#[cfg(feature = "native-gui-test-hooks")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NativeImageResourceStats {
+    pub pixel_entries: usize,
+    pub overlay_entries: usize,
+    pub texture_entries: usize,
+    pub texture_bytes: usize,
+}
+
 impl Debug for SugarloafWithErrors<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.errors)
@@ -859,6 +868,36 @@ impl Sugarloaf<'_> {
     pub fn remove_image(&mut self, key: u64) {
         self.image_data.remove(&key);
         self.renderer.evict_image_texture(key);
+    }
+
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub fn native_image_resource_stats(
+        &self,
+        namespace: u64,
+        namespace_mask: u64,
+    ) -> NativeImageResourceStats {
+        let pixel_entries = self
+            .image_data
+            .keys()
+            .filter(|key| **key & namespace_mask == namespace & namespace_mask)
+            .count();
+        let overlay_entries = self
+            .image_overlays
+            .values()
+            .flatten()
+            .filter(|overlay| {
+                overlay.image_id & namespace_mask == namespace & namespace_mask
+            })
+            .count();
+        let (texture_entries, texture_bytes) = self
+            .renderer
+            .native_image_texture_usage(namespace, namespace_mask);
+        NativeImageResourceStats {
+            pixel_entries,
+            overlay_entries,
+            texture_entries,
+            texture_bytes,
+        }
     }
 
     /// Drop everything this frame's immediate-mode producers pushed

@@ -62,6 +62,16 @@ const MAX_SEARCH_WHILE_TYPING: Option<usize> = Some(1000);
 /// Maximum number of search terms stored in the history.
 const MAX_SEARCH_HISTORY_SIZE: usize = 255;
 
+fn adjacent_preview_index(len: usize, current: Option<usize>, direction: isize) -> usize {
+    debug_assert!(len > 0);
+    match (current, direction.is_negative()) {
+        (Some(0), true) | (None, true) => len - 1,
+        (Some(index), true) => index - 1,
+        (Some(index), false) => (index + 1) % len,
+        (None, false) => 0,
+    }
+}
+
 #[cfg(any(test, feature = "native-gui-test-hooks"))]
 fn decode_native_test_hex(value: &str) -> Option<Vec<u8>> {
     if !value.len().is_multiple_of(2)
@@ -236,6 +246,7 @@ fn claim_native_test_control(control: &str) -> bool {
 struct NativeWindowSnapshot {
     window_width: f32,
     window_height: f32,
+    scale_factor: f32,
     window_tab_count: usize,
     active_window_tab_index: usize,
     grid_width: f32,
@@ -251,7 +262,8 @@ fn write_native_resize_snapshot(
     window: NativeWindowSnapshot,
     last_control: &str,
     palette_enabled: bool,
-    image_preview: (bool, bool, Option<[u32; 2]>),
+    image_preview: crate::image_preview::NativeImagePreviewState,
+    pointer: serde_json::Value,
 ) {
     use rio_backend::crosswords::grid::row::SemanticPrompt;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -327,6 +339,7 @@ fn write_native_resize_snapshot(
         "rows": content.screen_lines,
         "window_width": window.window_width,
         "window_height": window.window_height,
+        "scale_factor": window.scale_factor,
         "window_tab_count": window.window_tab_count,
         "active_window_tab_index": window.active_window_tab_index,
         "grid_width": window.grid_width,
@@ -352,10 +365,22 @@ fn write_native_resize_snapshot(
         "palette_enabled": palette_enabled,
         "fullscreen_display_request_active": fullscreen_display_request_active,
         "image_preview": {
-            "visible": image_preview.0,
-            "overlay_present": image_preview.1,
-            "decoded_dimensions": image_preview.2,
+            "visible": image_preview.visible,
+            "overlay_present": image_preview.overlay_present,
+            "decoded_dimensions": image_preview.decoded_dimensions,
+            "pinned": image_preview.pinned,
+            "candidate": image_preview.candidate,
+            "overlay_rect": image_preview.overlay_rect,
+            "pixel_entries": image_preview.pixel_entries,
+            "overlay_entries": image_preview.overlay_entries,
+            "texture_entries": image_preview.texture_entries,
+            "texture_bytes": image_preview.texture_bytes,
+            "thumbnail_cache_entries": image_preview.thumbnail_cache_entries,
+            "thumbnail_cache_bytes": image_preview.thumbnail_cache_bytes,
+            "queued_requests": image_preview.queued_requests,
+            "completion_pending": image_preview.completion_pending,
         },
+        "pointer": pointer,
         "panel_count": panels.len(),
         "panels": panels,
     });
@@ -710,15 +735,11 @@ impl Screen<'_> {
     }
 
     #[inline]
-    fn image_preview_modifier_active(&self) -> bool {
-        #[cfg(target_os = "macos")]
-        {
-            self.modifiers.state().super_key()
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            self.modifiers.state().alt_key()
-        }
+    fn image_preview_pointer_allowed(&self) -> bool {
+        // Applications using terminal mouse reporting keep ownership. Shift is
+        // the established terminal override for selecting/interacting with
+        // host UI without leaking half a mouse event to the child process.
+        self.modifiers.state().shift_key() || !self.mouse_mode()
     }
 
     fn image_preview_candidate_at_pointer(
@@ -784,10 +805,10 @@ impl Screen<'_> {
         crate::image_preview::PreviewCandidate::new(text, cwd, wsl_distro)
     }
 
-    /// Refresh modifier-hover quick look without touching the filesystem on
-    /// the UI thread. Returns true when the overlay lifecycle changed.
+    /// Refresh plain-hover quick look without touching the filesystem on the
+    /// UI thread. Returns true when the overlay lifecycle changed.
     pub fn update_image_preview_hover(&mut self) -> bool {
-        let candidate = if self.image_preview_modifier_active() {
+        let candidate = if self.image_preview_pointer_allowed() {
             self.image_preview_candidate_at_pointer()
         } else {
             None
@@ -806,6 +827,161 @@ impl Screen<'_> {
             self.mark_dirty();
         }
         changed
+    }
+
+    /// Pin the image path currently under the pointer. A pinned preview owns
+    /// arrow-key browsing until Escape, typing, or an outside click dismisses
+    /// it. Returns false when the pointer is not over a safe image candidate.
+    pub fn activate_image_preview_at_pointer(&mut self) -> bool {
+        if !self.image_preview_pointer_allowed() {
+            return false;
+        }
+        let Some(candidate) = self.image_preview_candidate_at_pointer() else {
+            return false;
+        };
+        let route_id = self.context_manager.current().route_id;
+        self.image_preview.show_selection(
+            candidate,
+            route_id,
+            crate::image_preview::PreviewAnchor {
+                x: self.mouse.x as f32,
+                y: self.mouse.y as f32,
+            },
+            &mut self.sugarloaf,
+        );
+        self.mark_dirty();
+        self.context_manager.request_render();
+        true
+    }
+
+    #[inline]
+    pub fn image_preview_pointer_targeted(&self) -> bool {
+        self.image_preview.has_candidate()
+    }
+
+    pub fn dismiss_image_preview_hover(&mut self) -> bool {
+        let changed = self.image_preview.dismiss_hover(&mut self.sugarloaf);
+        if changed {
+            self.mark_dirty();
+        }
+        changed
+    }
+
+    fn visible_image_preview_candidates(
+        &self,
+    ) -> Vec<(
+        crate::image_preview::PreviewCandidate,
+        crate::image_preview::PreviewAnchor,
+    )> {
+        let current_grid = self.context_manager.current_grid();
+        let (current, margin) = current_grid.current_context_with_computed_dimension();
+        let mut cwd = current
+            .renderable_content
+            .current_directory
+            .clone()
+            .or_else(|| {
+                current
+                    .launch_descriptor
+                    .starting_directory()
+                    .map(Into::into)
+            });
+        let wsl_distro = current.renderable_content.shell_distro.clone().or_else(|| {
+            current
+                .launch_descriptor
+                .wsl_distro()
+                .map(ToOwned::to_owned)
+        });
+        let cell_width = current.dimension.cell.cell_width as f32;
+        let cell_height = current.dimension.cell.cell_height as f32;
+        let terminal = current.terminal.lock();
+        cwd = cwd.or_else(|| terminal.current_directory.clone());
+        let display_offset = terminal.grid.display_offset();
+        let visible_lines = terminal.grid.screen_lines();
+        let columns = terminal.grid.columns();
+        let mut candidates = Vec::new();
+
+        for visible_row in 0..visible_lines {
+            let line = Line(visible_row as i32 - display_offset as i32);
+            let text = (0..columns)
+                .map(|column| {
+                    let character = terminal.grid[line][Column(column)].c();
+                    if character == '\0' {
+                        ' '
+                    } else {
+                        character
+                    }
+                })
+                .collect::<String>();
+            for token in crate::image_preview::image_path_tokens_in_line(&text) {
+                let Some(candidate) = crate::image_preview::PreviewCandidate::new(
+                    token.text,
+                    cwd.clone(),
+                    wsl_distro.clone(),
+                ) else {
+                    continue;
+                };
+                candidates.push((
+                    candidate,
+                    crate::image_preview::PreviewAnchor {
+                        x: margin.left + (token.start as f32 + 0.5) * cell_width,
+                        y: margin.top + (visible_row as f32 + 0.5) * cell_height,
+                    },
+                ));
+            }
+        }
+        candidates
+    }
+
+    fn navigate_image_preview(&mut self, direction: isize) -> bool {
+        if !self.image_preview.is_pinned() {
+            return false;
+        }
+        let candidates = self.visible_image_preview_candidates();
+        if candidates.is_empty() {
+            return true;
+        }
+        let current = self.image_preview.current_candidate().cloned();
+        let current_index = current.as_ref().and_then(|candidate| {
+            candidates.iter().position(|item| &item.0 == candidate)
+        });
+        let index = adjacent_preview_index(candidates.len(), current_index, direction);
+        let (candidate, anchor) = candidates[index].clone();
+        let route_id = self.context_manager.current().route_id;
+        self.image_preview.show_selection(
+            candidate,
+            route_id,
+            anchor,
+            &mut self.sugarloaf,
+        );
+        self.mark_dirty();
+        self.context_manager.request_render();
+        true
+    }
+
+    fn handle_image_preview_key(&mut self, key: &rio_window::event::KeyEvent) -> bool {
+        if key.state != ElementState::Pressed {
+            return false;
+        }
+        if key.logical_key == Key::Named(NamedKey::Escape)
+            && self.image_preview.has_candidate()
+        {
+            let _ = self.dismiss_image_preview();
+            return true;
+        }
+        if self.modifiers.state() != ModifiersState::empty()
+            || !self.image_preview.is_pinned()
+        {
+            return false;
+        }
+        match key.logical_key {
+            Key::Named(NamedKey::ArrowDown) | Key::Named(NamedKey::ArrowRight) => {
+                self.navigate_image_preview(1)
+            }
+            Key::Named(NamedKey::ArrowUp) | Key::Named(NamedKey::ArrowLeft) => {
+                self.navigate_image_preview(-1)
+            }
+            _ => false,
+        }
     }
 
     pub fn preview_selected_image(&mut self) {
@@ -1207,6 +1383,9 @@ impl Screen<'_> {
         key: &rio_window::event::KeyEvent,
         clipboard: &mut Clipboard,
     ) {
+        if self.handle_image_preview_key(key) {
+            return;
+        }
         if key.state == ElementState::Pressed {
             let _ = self.dismiss_image_preview();
         }
@@ -1945,6 +2124,24 @@ impl Screen<'_> {
                         self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
+                    Act::SelectPaneLeft
+                    | Act::SelectPaneRight
+                    | Act::SelectPaneUp
+                    | Act::SelectPaneDown => {
+                        self.cancel_search(clipboard);
+                        self.clear_selection();
+                        let direction = match &action {
+                            Act::SelectPaneLeft => crate::layout::PaneDirection::Left,
+                            Act::SelectPaneRight => crate::layout::PaneDirection::Right,
+                            Act::SelectPaneUp => crate::layout::PaneDirection::Up,
+                            Act::SelectPaneDown => crate::layout::PaneDirection::Down,
+                            _ => unreachable!(),
+                        };
+                        if self.context_manager.select_split_direction(direction) {
+                            self.resize_top_or_bottom_line();
+                            self.mark_dirty();
+                        }
+                    }
                     Act::SelectNextSplitOrTab => {
                         self.cancel_search(clipboard);
                         self.clear_selection();
@@ -2012,6 +2209,28 @@ impl Screen<'_> {
                         );
                         self.resize_top_or_bottom_line();
                         self.mark_dirty();
+                    }
+                    Act::SelectNextLocalTab => {
+                        self.cancel_search(clipboard);
+                        self.clear_selection();
+                        if self
+                            .context_manager
+                            .select_next_local_tab(&mut self.sugarloaf)
+                        {
+                            self.resize_top_or_bottom_line();
+                            self.mark_dirty();
+                        }
+                    }
+                    Act::SelectPrevLocalTab => {
+                        self.cancel_search(clipboard);
+                        self.clear_selection();
+                        if self
+                            .context_manager
+                            .select_prev_local_tab(&mut self.sugarloaf)
+                        {
+                            self.resize_top_or_bottom_line();
+                            self.mark_dirty();
+                        }
                     }
                     Act::MoveCurrentTabToPrev => {
                         self.cancel_search(clipboard);
@@ -4531,6 +4750,24 @@ impl Screen<'_> {
                 );
                 self.resize_top_or_bottom_line();
             }
+            PaletteAction::SelectNextLocalTab => {
+                self.clear_selection();
+                if self
+                    .context_manager
+                    .select_next_local_tab(&mut self.sugarloaf)
+                {
+                    self.resize_top_or_bottom_line();
+                }
+            }
+            PaletteAction::SelectPrevLocalTab => {
+                self.clear_selection();
+                if self
+                    .context_manager
+                    .select_prev_local_tab(&mut self.sugarloaf)
+                {
+                    self.resize_top_or_bottom_line();
+                }
+            }
             PaletteAction::SplitRight => self.split_right(),
             PaletteAction::SplitDown => self.split_down(),
             PaletteAction::CloneSplitRight => self.clone_split_right(),
@@ -4542,6 +4779,22 @@ impl Screen<'_> {
             PaletteAction::SelectPrevSplit => {
                 self.context_manager.select_prev_split();
                 self.resize_top_or_bottom_line();
+            }
+            PaletteAction::SelectPaneLeft
+            | PaletteAction::SelectPaneRight
+            | PaletteAction::SelectPaneUp
+            | PaletteAction::SelectPaneDown => {
+                self.clear_selection();
+                let direction = match action {
+                    PaletteAction::SelectPaneLeft => crate::layout::PaneDirection::Left,
+                    PaletteAction::SelectPaneRight => crate::layout::PaneDirection::Right,
+                    PaletteAction::SelectPaneUp => crate::layout::PaneDirection::Up,
+                    PaletteAction::SelectPaneDown => crate::layout::PaneDirection::Down,
+                    _ => unreachable!(),
+                };
+                if self.context_manager.select_split_direction(direction) {
+                    self.resize_top_or_bottom_line();
+                }
             }
             PaletteAction::CloseCurrentSplitOrTab => self.close_split_or_tab(clipboard),
             PaletteAction::ConfigEditor => {
@@ -4686,12 +4939,27 @@ impl Screen<'_> {
                 panel["context_session_id"] = serde_json::json!(context_session_id);
                 panel["context_segments"] = serde_json::json!(segments);
             }
+            let pointer = serde_json::json!({
+                "x": self.mouse.x,
+                "y": self.mouse.y,
+                "raw_y": self.mouse.raw_y,
+                "inside_text_area": self.mouse.inside_text_area,
+                "last_cell": self.mouse.last_cell.as_ref().map(|point| {
+                    serde_json::json!({
+                        "column": point.col.0,
+                        "row": point.row.0,
+                    })
+                }),
+                "mouse_mode": self.mouse_mode(),
+                "preview_pointer_allowed": self.image_preview_pointer_allowed(),
+            });
             write_native_resize_snapshot(
                 &self.context_manager.current().renderable_content,
                 panels,
                 NativeWindowSnapshot {
                     window_width: window_size.width,
                     window_height: window_size.height,
+                    scale_factor: self.sugarloaf.scale_factor(),
                     window_tab_count: self.context_manager.len(),
                     active_window_tab_index: self.context_manager.current_index(),
                     grid_width: self.context_manager.current_grid().width,
@@ -4704,6 +4972,7 @@ impl Screen<'_> {
                 &self.native_test_last_control,
                 self.renderer.command_palette.is_enabled(),
                 self.image_preview.native_test_state(&self.sugarloaf),
+                pointer,
             );
             // The control file is intentionally not watched by product code.
             // Keep feature-gated automation responsive while the window is
@@ -5511,6 +5780,24 @@ impl Screen<'_> {
                     self.mark_dirty();
                 }
             }
+            "select-local-next" => {
+                if self
+                    .context_manager
+                    .select_next_local_tab(&mut self.sugarloaf)
+                {
+                    self.resize_top_or_bottom_line();
+                    self.mark_dirty();
+                }
+            }
+            "select-local-prev" => {
+                if self
+                    .context_manager
+                    .select_prev_local_tab(&mut self.sugarloaf)
+                {
+                    self.resize_top_or_bottom_line();
+                    self.mark_dirty();
+                }
+            }
             "close-local" => {
                 let index = fields.next().and_then(|value| value.parse::<usize>().ok());
                 if index.is_some_and(|index| {
@@ -5525,6 +5812,21 @@ impl Screen<'_> {
                 self.context_manager.select_prev_split();
                 self.resize_top_or_bottom_line();
                 self.mark_dirty();
+            }
+            "select-pane" => {
+                let direction = match fields.next() {
+                    Some("left") => Some(crate::layout::PaneDirection::Left),
+                    Some("right") => Some(crate::layout::PaneDirection::Right),
+                    Some("up") => Some(crate::layout::PaneDirection::Up),
+                    Some("down") => Some(crate::layout::PaneDirection::Down),
+                    _ => None,
+                };
+                if direction.is_some_and(|direction| {
+                    self.context_manager.select_split_direction(direction)
+                }) {
+                    self.resize_top_or_bottom_line();
+                    self.mark_dirty();
+                }
             }
             "preview-image" => {
                 let Some(path) = fields.next() else {
@@ -6105,6 +6407,15 @@ fn post_process_hyperlink_uri(uri: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_preview_navigation_wraps_and_handles_missing_current_target() {
+        assert_eq!(adjacent_preview_index(3, Some(0), -1), 2);
+        assert_eq!(adjacent_preview_index(3, Some(2), 1), 0);
+        assert_eq!(adjacent_preview_index(3, Some(1), 1), 2);
+        assert_eq!(adjacent_preview_index(3, None, 1), 0);
+        assert_eq!(adjacent_preview_index(3, None, -1), 2);
+    }
 
     #[test]
     fn native_test_hex_decoder_preserves_history_control_sequences() {
