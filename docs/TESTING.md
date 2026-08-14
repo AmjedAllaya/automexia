@@ -160,6 +160,24 @@ updates, viewport/history invariants, modifier-driven link discovery, safe
 click latching, and both CPU-only and product GPU renderer configurations. The
 exact upstream hashes and Automexia-specific adaptations are recorded in
 `UPSTREAM.md`.
+Image protocol and local quick-look changes have a focused gate:
+
+```text
+cargo test -p automexia-terminal image_preview --locked -- --test-threads=1
+cargo test -p automexia-terminal bindings --locked
+cargo test -p automexia-terminal command_palette --locked
+cargo test -p rio-vt --features graphics bounded_decoder --locked
+cargo xtask verify architecture
+```
+
+The suite covers supported/unsupported extensions, URL/control rejection,
+quoted and bare paths, WSL mapping, file/pixel/allocation limits, no small-image
+upscale, tiny/large/edge geometry, route-generation stale result rejection,
+platform shortcut collisions, palette discovery, and iTerm2 valid,
+size-mismatch, and oversized-dimension decoding. Native review follows the
+matrix in [image previews](IMAGE-PREVIEWS.md); protocol rendering and local
+quick look must be exercised separately.
+
 Control-string and reload hardening has a focused local gate:
 
 ```text

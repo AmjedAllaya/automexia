@@ -13,6 +13,7 @@ mod context;
 mod global_hotkey;
 mod grid_emit;
 mod hints;
+mod image_preview;
 mod ime;
 mod layout;
 mod messenger;

@@ -156,6 +156,10 @@ const SHORTCUT_APPEARANCE: &str = "";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_APPEARANCE: &str = "Alt+Shift+T";
 #[cfg(target_os = "macos")]
+const SHORTCUT_PREVIEW_IMAGE: &str = "Cmd+Alt+I";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_PREVIEW_IMAGE: &str = "Ctrl+Alt+I";
+#[cfg(target_os = "macos")]
 const SHORTCUT_CLEAR_SCREEN: &str = "Cmd+K";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_CLEAR_SCREEN: &str = "Ctrl+Shift+K";
@@ -191,6 +195,7 @@ pub enum PaletteAction {
     Paste,
     SearchForward,
     SearchBackward,
+    PreviewSelectedImage,
     ClearScreen,
     CloseCurrentSplitOrTab,
     OpenMarket,
@@ -228,6 +233,7 @@ enum CommandIcon {
     Copy,
     Paste,
     Search,
+    Image,
     History,
     Extension,
     Font,
@@ -342,6 +348,10 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
         SearchForward | SearchBackward => RowPresentation {
             icon: CommandIcon::Search,
             accent: BRAND_BLUE,
+        },
+        PreviewSelectedImage => RowPresentation {
+            icon: CommandIcon::Image,
+            accent: BRAND_CYAN,
         },
         ClearScreen => RowPresentation {
             icon: CommandIcon::History,
@@ -489,6 +499,11 @@ const COMMANDS: &[Command] = &[
         title: "Search Backward",
         shortcut: "",
         action: PaletteAction::SearchBackward,
+    },
+    Command {
+        title: "Preview Selected Image",
+        shortcut: SHORTCUT_PREVIEW_IMAGE,
+        action: PaletteAction::PreviewSelectedImage,
     },
     Command {
         title: "Clear Screen and History",
@@ -941,6 +956,14 @@ fn draw_command_icon(
         CommandIcon::Search => {
             canvas.outline(2.5, 2.5, 12.5, 12.5, 6.25);
             canvas.line(14.0, 14.0, 20.0, 20.0);
+        }
+        CommandIcon::Image => {
+            canvas.outline(2.0, 3.0, 18.0, 16.0, 3.0);
+            canvas.dot(14.5, 6.0, 2.0);
+            canvas.line(4.5, 16.0, 9.0, 11.0);
+            canvas.line(9.0, 11.0, 12.0, 14.0);
+            canvas.line(12.0, 14.0, 15.0, 10.5);
+            canvas.line(15.0, 10.5, 19.0, 15.0);
         }
         CommandIcon::History => {
             canvas.outline(2.0, 2.0, 18.0, 18.0, 9.0);
@@ -1970,6 +1993,22 @@ mod tests {
         );
     }
 
+    #[test]
+    fn image_preview_command_is_discoverable() {
+        let preview = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::PreviewSelectedImage)
+            .expect("image preview command should be present");
+        assert_eq!(preview.title, "Preview Selected Image");
+        #[cfg(target_os = "macos")]
+        assert_eq!(preview.shortcut, "Cmd+Alt+I");
+        #[cfg(not(target_os = "macos"))]
+        assert_eq!(preview.shortcut, "Ctrl+Alt+I");
+        assert_eq!(
+            command_presentation(preview.action).icon,
+            CommandIcon::Image
+        );
+    }
     #[test]
     fn visible_palette_shortcuts_are_unique() {
         let mut shortcuts = std::collections::HashMap::new();

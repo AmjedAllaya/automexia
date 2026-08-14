@@ -90,6 +90,15 @@ profile, WSL distribution, or PTY cannot be recreated, Automexia leaves the
 layout unchanged and displays the concrete failure; it never opens PowerShell
 as a silent substitute for a failed WSL clone.
 
+Image preview has one stable binding action, `PreviewSelectedImage`. Select a
+local raster path and press `Ctrl`+`Alt`+`I` on Windows/Linux/BSD or
+`Cmd`+`Alt`+`I` on macOS. The same action appears as **Preview Selected Image**
+in the command palette. Modifier-hover uses `Alt` outside macOS and `Cmd` on
+macOS after a 350 ms dwell. This release adds no image-preview configuration;
+normal user binding overrides still apply. See
+[image previews](IMAGE-PREVIEWS.md) for protocols, formats, WSL behavior,
+limits, and testing.
+
 These are Automexia's classic defaults. The separate
 [Ghostty keyboard compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md) document is
 a future opt-in compatibility contract, not the active default table.

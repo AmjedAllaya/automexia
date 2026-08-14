@@ -250,6 +250,17 @@ right/lower split. `Ctrl`+`Alt`+`R` and `Ctrl`+`Alt`+`D` explicitly send history
 search and EOF/logout to the shell. Both clone actions are also
 discoverable in the command palette with distinct duplicated-pane icons.
 
+## Image quick look
+
+Image-aware applications keep using Sixel, Kitty Graphics, or iTerm2 inline
+sequences. For an ordinary filename already printed by `ls`, hold `Alt` over
+the path (`Cmd` on macOS) or select it and press `Ctrl`+`Alt`+`I`
+(`Cmd`+`Alt`+`I` on macOS). The preview card uses the same restrained navy,
+cyan edge, typography, and responsive pane ownership as the rest of the
+liquid-hacker surface. It never changes terminal output, and it hides when a
+pane is too small. The complete interaction/security contract is in
+[image previews](IMAGE-PREVIEWS.md).
+
 ## File and folder icons
 
 The reference mockup's file glyphs are produced by the shell integration, not
