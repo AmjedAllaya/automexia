@@ -201,12 +201,27 @@ fn pane_footer_reservation_is_dpi_stable_and_yields_to_tiny_panes() {
     assert_eq!(pane_footer_reserved_height(f32::NAN, 1.0), 0.0);
     assert_eq!(pane_footer_reserved_height(900.0, 0.0), 0.0);
     assert_eq!(
-        pane_terminal_rect([10.0, 20.0, 800.0, 500.0], 1.0),
+        pane_terminal_rect([10.0, 20.0, 800.0, 500.0], 1.0, 1),
         [10.0, 20.0, 800.0, 468.0]
     );
     assert_eq!(
-        pane_terminal_rect([10.0, 20.0, 800.0, 100.0], 1.0),
+        pane_terminal_rect([10.0, 20.0, 800.0, 100.0], 1.0, 1),
         [10.0, 20.0, 800.0, 100.0]
+    );
+}
+
+#[test]
+fn pane_local_tab_rail_is_owned_only_by_its_pane() {
+    assert_eq!(pane_tab_rail_reserved_height(500.0, 1.0, 1), 0.0);
+    assert_eq!(pane_tab_rail_reserved_height(500.0, 1.0, 2), 36.0);
+    assert_eq!(pane_tab_rail_reserved_height(180.0, 2.0, 2), 0.0);
+    assert_eq!(
+        pane_tab_rail_rect([10.0, 20.0, 800.0, 500.0], 1.0, 2),
+        Some([10.0, 20.0, 800.0, 36.0])
+    );
+    assert_eq!(
+        pane_terminal_rect([10.0, 20.0, 800.0, 500.0], 1.0, 2),
+        [10.0, 56.0, 800.0, 432.0]
     );
 }
 
@@ -777,7 +792,7 @@ proptest! {
     ) {
         let physical_height = logical_height * scale;
         let reserved = pane_footer_reserved_height(physical_height, scale);
-        let rect = pane_terminal_rect([x, y, width, physical_height], scale);
+        let rect = pane_terminal_rect([x, y, width, physical_height], scale, 1);
 
         prop_assert_eq!(rect[0], x);
         prop_assert_eq!(rect[1], y);
@@ -794,6 +809,54 @@ proptest! {
             prop_assert!(
                 ((rect[3] + reserved) - physical_height).abs() <= rounding_tolerance
             );
+        }
+    }
+
+    #[test]
+    fn pane_owned_tab_rail_and_terminal_rect_remain_bounded(
+        x in -1_024.0f32..1_024.0,
+        y in -1_024.0f32..1_024.0,
+        width in 0.0f32..32_768.0,
+        logical_height in 0.0f32..18_432.0,
+        scale in 0.25f32..4.0,
+        local_tab_count in 1usize..64,
+    ) {
+        let physical_height = logical_height * scale;
+        let rail = pane_tab_rail_reserved_height(
+            physical_height,
+            scale,
+            local_tab_count,
+        );
+        let footer = pane_footer_reserved_height(physical_height, scale);
+        let rect = pane_terminal_rect(
+            [x, y, width, physical_height],
+            scale,
+            local_tab_count,
+        );
+        let rounding_tolerance =
+            (physical_height.abs() * f32::EPSILON * 8.0).max(0.000_1);
+
+        prop_assert_eq!(rect[0], x);
+        prop_assert_eq!(rect[2], width);
+        prop_assert!(rect.iter().all(|value| value.is_finite()));
+        prop_assert!((rect[1] - (y + rail)).abs() <= rounding_tolerance);
+        prop_assert!(rect[3] >= 0.0);
+        prop_assert!(rect[3] <= physical_height);
+        prop_assert!(rail == 0.0 || rail == PANE_TAB_RAIL_HEIGHT_LOGICAL * scale);
+        prop_assert!((rect[3] - (physical_height - rail - footer).max(0.0)).abs()
+            <= rounding_tolerance);
+
+        let rail_rect = pane_tab_rail_rect(
+            [x, y, width, physical_height],
+            scale,
+            local_tab_count,
+        );
+        if rail == 0.0 {
+            prop_assert!(rail_rect.is_none());
+        } else {
+            let rail_rect = rail_rect.expect("non-zero rail reservation has a rectangle");
+            prop_assert_eq!(rail_rect, [x, y, width, rail]);
+            prop_assert!(rail_rect[1] + rail_rect[3] <= rect[1] + rounding_tolerance);
         }
     }
 }

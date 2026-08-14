@@ -754,6 +754,23 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     if ($localRoutes.Count -ne 2 -or $localPids.Count -ne 2 -or $localPids[0] -le 0) {
         throw 'Pane-local PowerShell tabs reused a route or ConPTY process'
     }
+    if ($null -eq $localPanel.local_tab_rail_rect) {
+        Write-Host ($localCreated | ConvertTo-Json -Depth 10)
+        throw 'Pane-local tabs did not reserve a rail inside their owning pane'
+    }
+    $localLayout = @($localPanel.layout_rect)
+    $localRail = @($localPanel.local_tab_rail_rect)
+    $localTerminal = @($localPanel.terminal_rect)
+    if ($localRail.Count -ne 4 -or $localTerminal.Count -ne 4 -or
+        [double]$localRail[0] -ne [double]$localLayout[0] -or
+        [double]$localRail[1] -ne [double]$localLayout[1] -or
+        [double]$localRail[2] -ne [double]$localLayout[2] -or
+        [double]$localTerminal[1] -ne
+            ([double]$localLayout[1] + [double]$localRail[3]) -or
+        [double]$localTerminal[3] -ge [double]$localLayout[3]) {
+        Write-Host ($localCreated | ConvertTo-Json -Depth 10)
+        throw 'Pane-local rail and terminal content rectangles overlap or escape the pane'
+    }
     if ($localPanel.current_directory -ne $initialPanel.current_directory -or
         $localPanel.launch_program -ne $initialPanel.launch_program -or
         $localPanel.profile_identity -ne $initialPanel.profile_identity -or
@@ -790,6 +807,12 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         [int64]$survivingLocalPanel.shell_pid -ne [int64]$initialPanel.shell_pid) {
         Write-Host ($localClosed | ConvertTo-Json -Depth 10)
         throw 'Closing an inactive pane-local tab changed or closed the active source session'
+    }
+    if ($null -ne $survivingLocalPanel.local_tab_rail_rect -or
+        [double]$survivingLocalPanel.terminal_rect[1] -ne
+            [double]$survivingLocalPanel.layout_rect[1]) {
+        Write-Host ($localClosed | ConvertTo-Json -Depth 10)
+        throw 'Single-tab pane retained stale local-tab rail geometry'
     }
     $historyDone = $localClosed
 

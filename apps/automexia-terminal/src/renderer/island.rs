@@ -136,28 +136,30 @@ impl LocalTabStripLayout {
     }
 }
 
-fn local_tab_strip_layout(
-    metrics: ChromeMetrics,
-    logical_width: f32,
-    count: usize,
-) -> Option<LocalTabStripLayout> {
-    if !metrics.show_context || count <= 1 {
+fn local_tab_strip_layout(rail: [f32; 4], count: usize) -> Option<LocalTabStripLayout> {
+    if count <= 1
+        || rail.iter().any(|value| !value.is_finite())
+        || rail[2] <= 0.0
+        || rail[3] <= 0.0
+    {
         return None;
     }
-    let margin = metrics.context_margin;
-    let preferred_gap = metrics.context_tab_gap;
-    let preferred_add_width = metrics.context_add_width;
-    let usable = (logical_width - margin * 2.0).max(1.0);
+    let margin = 4.0_f32.min(rail[2] * 0.08);
+    let preferred_gap = 4.0_f32;
+    let preferred_add_width = 28.0_f32;
+    let usable = (rail[2] - margin * 2.0).max(1.0);
     let add_width = preferred_add_width.min(usable * 0.20);
     let gap = preferred_gap.min(((usable - add_width) / (count as f32 * 3.0)).max(0.0));
     let available = (usable - add_width - gap * count as f32).max(0.0);
-    let tab_width = (available / count as f32).clamp(0.0, 210.0);
-    let y = metrics.context_top + metrics.context_inset_y;
-    let height = (metrics.context_height - metrics.context_inset_y * 2.0).max(1.0);
-    let add_x = margin + count as f32 * (tab_width + gap);
+    let tab_width = (available / count as f32).clamp(0.0, 190.0);
+    let inset_y = 3.0_f32.min(rail[3] * 0.12);
+    let y = rail[1] + inset_y;
+    let height = (rail[3] - inset_y * 2.0).max(1.0);
+    let first_x = rail[0] + margin;
+    let add_x = first_x + count as f32 * (tab_width + gap);
     Some(LocalTabStripLayout {
         count,
-        first_x: margin,
+        first_x,
         y,
         tab_width,
         height,
@@ -165,6 +167,24 @@ fn local_tab_strip_layout(
         add_x,
         add_width,
     })
+}
+
+fn pane_local_tab_rail_logical_rect(
+    panel_rect: [f32; 4],
+    root_origin: [f32; 2],
+    scale_factor: f32,
+    count: usize,
+) -> Option<[f32; 4]> {
+    if !scale_factor.is_finite() || scale_factor <= f32::EPSILON {
+        return None;
+    }
+    let rail = crate::layout::pane_tab_rail_rect(panel_rect, scale_factor, count)?;
+    Some([
+        (root_origin[0] + rail[0]) / scale_factor,
+        (root_origin[1] + rail[1]) / scale_factor,
+        rail[2] / scale_factor,
+        rail[3] / scale_factor,
+    ])
 }
 
 struct TabDrag {
@@ -641,16 +661,22 @@ impl Island {
 
     pub fn local_tab_action_at(
         &self,
-        window_width: f32,
-        window_height: f32,
+        panel_rect: [f32; 4],
+        root_origin: [f32; 2],
         scale_factor: f32,
         count: usize,
         x: f32,
         y: f32,
     ) -> Option<LocalTabAction> {
-        let metrics = chrome_metrics(window_width, window_height, scale_factor);
-        let logical_width = window_width / scale_factor.max(f32::EPSILON);
-        let layout = local_tab_strip_layout(metrics, logical_width, count)?;
+        let rail = pane_local_tab_rail_logical_rect(
+            panel_rect,
+            root_origin,
+            scale_factor,
+            count,
+        )?;
+        let layout = local_tab_strip_layout(rail, count)?;
+        let x = x / scale_factor;
+        let y = y / scale_factor;
         for index in 0..layout.count {
             let tab = layout.tab(index)?;
             if x >= tab.x
@@ -675,6 +701,28 @@ impl Island {
                     && y <= button.y + button.height
             })
             .map(|_| LocalTabAction::New)
+    }
+
+    pub fn local_tab_rail_contains(
+        &self,
+        panel_rect: [f32; 4],
+        root_origin: [f32; 2],
+        scale_factor: f32,
+        count: usize,
+        x: f32,
+        y: f32,
+    ) -> bool {
+        let Some(rail) = pane_local_tab_rail_logical_rect(
+            panel_rect,
+            root_origin,
+            scale_factor,
+            count,
+        ) else {
+            return false;
+        };
+        let x = x / scale_factor;
+        let y = y / scale_factor;
+        x >= rail[0] && x <= rail[0] + rail[2] && y >= rail[1] && y <= rail[1] + rail[3]
     }
 
     /// Set whether the cursor hovers the active island's close button.
@@ -1053,15 +1101,13 @@ impl Island {
             [0.10, 0.17, 0.24, 0.92],
             1,
         );
-        if context_manager.local_tab_count() > 1 {
-            draw_local_tab_rail(
-                sugarloaf,
-                metrics,
-                logical_width,
-                context_manager,
-                bg_color,
-            );
-        }
+        draw_pane_local_tab_rails(
+            sugarloaf,
+            metrics,
+            context_manager,
+            bg_color,
+            scale_factor,
+        );
         #[cfg(not(target_os = "macos"))]
         if metrics.show_app_button {
             let app_size = metrics.app_button_size;
@@ -2098,158 +2144,178 @@ fn draw_command_center_button(
     }
 }
 
-fn draw_local_tab_rail(
+fn draw_pane_local_tab_rails(
     sugarloaf: &mut Sugarloaf,
     metrics: ChromeMetrics,
-    logical_width: f32,
     context_manager: &ContextManager<EventProxy>,
     bg_color: [f32; 4],
+    scale_factor: f32,
 ) {
-    let count = context_manager.local_tab_count();
-    let active = context_manager.active_local_tab_index();
-    let Some(layout) = local_tab_strip_layout(metrics, logical_width, count) else {
-        return;
-    };
-    let margin = metrics.context_margin;
-    let rail_outline = over(bg_color, [0.06, 0.22, 0.34, 0.78]);
-    let rail_fill = over(bg_color, [0.01, 0.045, 0.075, 0.90]);
-    sugarloaf.rounded_rect(
-        None,
-        margin,
-        metrics.context_top,
-        (logical_width - margin * 2.0).max(1.0),
-        metrics.context_height,
-        rail_outline,
-        0.05,
-        9.0,
-        19,
-    );
-    sugarloaf.rounded_rect(
-        None,
-        margin + 1.0,
-        metrics.context_top + 1.0,
-        (logical_width - margin * 2.0 - 2.0).max(0.0),
-        (metrics.context_height - 2.0).max(0.0),
-        rail_fill,
-        0.05,
-        8.0,
-        20,
-    );
-
-    for index in 0..layout.count {
-        let Some(tab) = layout.tab(index) else {
+    let grid = context_manager.current_grid();
+    let root_origin = [grid.scaled_margin.left, grid.scaled_margin.top];
+    for key in grid.get_ordered_keys() {
+        let Some(item) = grid.contexts().get(&key) else {
             continue;
         };
-        let is_active = tab.index == active;
-        let title = context_manager
-            .local_tab_title(tab.index)
-            .map(|title| normalized_profile_title(&title).into_owned())
-            .filter(|title| !title.is_empty())
-            .unwrap_or_else(|| format!("Session {}", tab.index + 1));
-        let accent = profile_accent(&title, is_active);
-        let outline = if is_active {
-            accent
-        } else {
-            [0.10, 0.22, 0.31, 0.88]
+        let count = item.tab_count();
+        let active = item.active_tab_index();
+        let Some(rail) = pane_local_tab_rail_logical_rect(
+            item.layout_rect,
+            root_origin,
+            scale_factor,
+            count,
+        ) else {
+            continue;
         };
-        let fill = if is_active {
-            [0.018, 0.105, 0.17, 0.98]
-        } else {
-            [0.012, 0.052, 0.086, 0.90]
+        let Some(layout) = local_tab_strip_layout(rail, count) else {
+            continue;
         };
-        sugarloaf.rounded_rect(
-            None, tab.x, tab.y, tab.width, tab.height, outline, 0.05, 7.0, 21,
-        );
+        let pane_is_active = key == grid.current;
+        let rail_outline = if pane_is_active {
+            over(bg_color, [0.06, 0.58, 0.82, 0.82])
+        } else {
+            over(bg_color, [0.06, 0.22, 0.34, 0.68])
+        };
+        let rail_fill = over(bg_color, [0.01, 0.045, 0.075, 0.94]);
         sugarloaf.rounded_rect(
             None,
-            tab.x + 1.0,
-            tab.y + 1.0,
-            (tab.width - 2.0).max(0.0),
-            (tab.height - 2.0).max(0.0),
-            fill,
+            rail[0] + 2.0,
+            rail[1] + 1.0,
+            (rail[2] - 4.0).max(1.0),
+            (rail[3] - 2.0).max(1.0),
+            rail_outline,
             0.05,
             6.0,
-            22,
+            19,
         );
-
-        if tab.width >= 46.0 {
-            let icon = profile_icon(&title);
-            let icon_size = metrics.context_icon_size;
-            let icon_opts = DrawOpts {
-                font_size: icon_size,
-                color: color_u8(accent),
-                ..DrawOpts::default()
-            };
-            sugarloaf.text_mut().draw(
-                tab.x + 10.0,
-                tab.y + (tab.height - icon_size) * 0.5 - 1.0,
-                icon,
-                &icon_opts,
-            );
-        }
-
-        let font_size = metrics.context_font_size;
-        let text_x = tab.x
-            + if tab.width >= 46.0 {
-                10.0 + metrics.context_icon_size + 8.0
-            } else {
-                6.0
-            };
-        let close_budget = 30.0;
-        let title_width = (tab.x + tab.width - close_budget - text_x).max(0.0);
-        if title_width > 4.0 {
-            let fitted = fit_title_to_width(sugarloaf, &title, title_width, font_size);
-            let opts = DrawOpts {
-                font_size,
-                color: color_u8(if is_active {
-                    [0.90, 0.97, 1.0, 1.0]
-                } else {
-                    [0.60, 0.72, 0.81, 1.0]
-                }),
-                bold: is_active,
-                ..DrawOpts::default()
-            };
-            sugarloaf.text_mut().draw(
-                text_x,
-                tab.y + (tab.height - font_size) * 0.5 - 1.0,
-                &fitted,
-                &opts,
-            );
-        }
-        if tab.width >= 34.0 {
-            draw_close_button(
-                sugarloaf,
-                tab.x + tab.width - 14.0,
-                if is_active {
-                    accent
-                } else {
-                    [0.48, 0.58, 0.66, 0.9]
-                },
-                false,
-                tab.y + tab.height / 2.0,
-                24,
-            );
-        }
-    }
-
-    {
-        let add = layout.add();
         sugarloaf.rounded_rect(
             None,
-            add.x,
-            add.y,
-            add.width,
-            add.height,
-            [0.08, 0.25, 0.36, 0.94],
+            rail[0] + 3.0,
+            rail[1] + 2.0,
+            (rail[2] - 6.0).max(0.0),
+            (rail[3] - 4.0).max(0.0),
+            rail_fill,
             0.05,
-            7.0,
-            21,
+            5.0,
+            20,
         );
-        let cx = add.x + add.width / 2.0;
-        let cy = add.y + add.height / 2.0;
-        let accent = [0.20, 0.82, 1.0, 1.0];
-        sugarloaf.line(cx - 5.0, cy, cx + 5.0, cy, 1.8, 0.0, accent, 24);
-        sugarloaf.line(cx, cy - 5.0, cx, cy + 5.0, 1.8, 0.0, accent, 24);
+
+        for index in 0..layout.count {
+            let Some(tab) = layout.tab(index) else {
+                continue;
+            };
+            let is_active = tab.index == active;
+            let title = item
+                .tab_title(tab.index)
+                .map(|title| normalized_profile_title(&title).into_owned())
+                .filter(|title| !title.is_empty())
+                .unwrap_or_else(|| format!("Session {}", tab.index + 1));
+            let accent = profile_accent(&title, is_active);
+            let outline = if is_active {
+                accent
+            } else {
+                [0.10, 0.22, 0.31, 0.88]
+            };
+            let fill = if is_active {
+                [0.018, 0.105, 0.17, 0.98]
+            } else {
+                [0.012, 0.052, 0.086, 0.90]
+            };
+            sugarloaf.rounded_rect(
+                None, tab.x, tab.y, tab.width, tab.height, outline, 0.05, 7.0, 21,
+            );
+            sugarloaf.rounded_rect(
+                None,
+                tab.x + 1.0,
+                tab.y + 1.0,
+                (tab.width - 2.0).max(0.0),
+                (tab.height - 2.0).max(0.0),
+                fill,
+                0.05,
+                6.0,
+                22,
+            );
+
+            if tab.width >= 46.0 {
+                let icon = profile_icon(&title);
+                let icon_size = metrics.local_tab_icon_size;
+                let icon_opts = DrawOpts {
+                    font_size: icon_size,
+                    color: color_u8(accent),
+                    ..DrawOpts::default()
+                };
+                sugarloaf.text_mut().draw(
+                    tab.x + 10.0,
+                    tab.y + (tab.height - icon_size) * 0.5 - 1.0,
+                    icon,
+                    &icon_opts,
+                );
+            }
+
+            let font_size = metrics.local_tab_font_size;
+            let text_x = tab.x
+                + if tab.width >= 46.0 {
+                    10.0 + metrics.local_tab_icon_size + 8.0
+                } else {
+                    6.0
+                };
+            let close_budget = 30.0;
+            let title_width = (tab.x + tab.width - close_budget - text_x).max(0.0);
+            if title_width > 4.0 {
+                let fitted =
+                    fit_title_to_width(sugarloaf, &title, title_width, font_size);
+                let opts = DrawOpts {
+                    font_size,
+                    color: color_u8(if is_active {
+                        [0.90, 0.97, 1.0, 1.0]
+                    } else {
+                        [0.60, 0.72, 0.81, 1.0]
+                    }),
+                    bold: is_active,
+                    ..DrawOpts::default()
+                };
+                sugarloaf.text_mut().draw(
+                    text_x,
+                    tab.y + (tab.height - font_size) * 0.5 - 1.0,
+                    &fitted,
+                    &opts,
+                );
+            }
+            if tab.width >= 34.0 {
+                draw_close_button(
+                    sugarloaf,
+                    tab.x + tab.width - 14.0,
+                    if is_active {
+                        accent
+                    } else {
+                        [0.48, 0.58, 0.66, 0.9]
+                    },
+                    false,
+                    tab.y + tab.height / 2.0,
+                    24,
+                );
+            }
+        }
+
+        {
+            let add = layout.add();
+            sugarloaf.rounded_rect(
+                None,
+                add.x,
+                add.y,
+                add.width,
+                add.height,
+                [0.08, 0.25, 0.36, 0.94],
+                0.05,
+                7.0,
+                21,
+            );
+            let cx = add.x + add.width / 2.0;
+            let cy = add.y + add.height / 2.0;
+            let accent = [0.20, 0.82, 1.0, 1.0];
+            sugarloaf.line(cx - 5.0, cy, cx + 5.0, cy, 1.8, 0.0, accent, 24);
+            sugarloaf.line(cx, cy - 5.0, cx, cy + 5.0, 1.8, 0.0, accent, 24);
+        }
     }
 }
 
@@ -2381,8 +2447,10 @@ mod tests {
 
     #[test]
     fn local_tab_rail_has_disjoint_select_close_and_add_targets() {
-        let metrics = chrome_metrics(1_280.0, 760.0, 1.0);
-        let layout = local_tab_strip_layout(metrics, 1_280.0, 3).unwrap();
+        let panel = [0.0, 0.0, 640.0, 500.0];
+        let root = [12.0, 52.0];
+        let rail = pane_local_tab_rail_logical_rect(panel, root, 1.0, 3).unwrap();
+        let layout = local_tab_strip_layout(rail, 3).unwrap();
         let tabs = (0..layout.count)
             .map(|index| layout.tab(index).unwrap())
             .collect::<Vec<_>>();
@@ -2397,8 +2465,8 @@ mod tests {
         let first = tabs[0];
         assert_eq!(
             island.local_tab_action_at(
-                1_280.0,
-                760.0,
+                panel,
+                root,
                 1.0,
                 3,
                 first.x + 8.0,
@@ -2408,8 +2476,8 @@ mod tests {
         );
         assert_eq!(
             island.local_tab_action_at(
-                1_280.0,
-                760.0,
+                panel,
+                root,
                 1.0,
                 3,
                 first.x + first.width - 5.0,
@@ -2419,8 +2487,8 @@ mod tests {
         );
         assert_eq!(
             island.local_tab_action_at(
-                1_280.0,
-                760.0,
+                panel,
+                root,
                 1.0,
                 3,
                 add.x + add.width / 2.0,
@@ -2433,8 +2501,8 @@ mod tests {
     #[test]
     fn local_tab_rail_stays_inside_extreme_narrow_viewports() {
         for width in [300.0, 120.0, 24.0] {
-            let metrics = chrome_metrics(width, 760.0, 1.0);
-            let layout = local_tab_strip_layout(metrics, width, 28).unwrap();
+            let rail = [0.0, 0.0, width, 36.0];
+            let layout = local_tab_strip_layout(rail, 28).unwrap();
             let tabs = (0..layout.count)
                 .map(|index| layout.tab(index).unwrap())
                 .collect::<Vec<_>>();
@@ -2449,6 +2517,39 @@ mod tests {
             assert!(add.x >= 0.0);
             assert!(add.x + add.width <= width);
         }
+    }
+
+    #[test]
+    fn local_tab_hit_testing_is_pane_scoped_at_hidpi() {
+        let scale = 2.0;
+        let root = [24.0, 104.0];
+        let left_panel = [0.0, 0.0, 640.0, 700.0];
+        let right_panel = [640.0, 0.0, 640.0, 700.0];
+        let left_rail =
+            pane_local_tab_rail_logical_rect(left_panel, root, scale, 2).unwrap();
+        let layout = local_tab_strip_layout(left_rail, 2).unwrap();
+        let first = layout.tab(0).unwrap();
+        let hit_x = (first.x + 8.0) * scale;
+        let hit_y = (first.y + first.height * 0.5) * scale;
+        let island = Island::new([0.5; 4], [1.0; 4], false, 240.0, true);
+
+        assert!(island.local_tab_rail_contains(left_panel, root, scale, 2, hit_x, hit_y,));
+        assert_eq!(
+            island.local_tab_action_at(left_panel, root, scale, 2, hit_x, hit_y,),
+            Some(LocalTabAction::Select(0))
+        );
+        assert!(!island.local_tab_rail_contains(
+            right_panel,
+            root,
+            scale,
+            2,
+            hit_x,
+            hit_y,
+        ));
+        assert_eq!(
+            island.local_tab_action_at(right_panel, root, scale, 2, hit_x, hit_y,),
+            None
+        );
     }
 
     /// The regression that shipped: `window_width` is physical while draws
@@ -2613,7 +2714,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_secondary_chrome_has_no_workspace_action_hit_targets() {
+    fn space_below_window_header_has_no_workspace_action_hit_targets() {
         let island = Island::new([1.0; 4], [1.0; 4], false, 240.0, true);
         let metrics = chrome_metrics(1_280.0, 760.0, 1.0);
         assert_eq!(
@@ -2623,7 +2724,7 @@ mod tests {
                 1.0,
                 2,
                 640.0,
-                metrics.context_top + metrics.context_height * 0.5,
+                metrics.content_top() + 10.0,
             ),
             None
         );

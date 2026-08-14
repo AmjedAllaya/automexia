@@ -11,24 +11,26 @@ terminal grid:
 
 - a 48 px profile/tab row with an application mark, draggable tabs, new-tab
   button, command/profile menu, and native-looking window controls on Windows;
-- a secondary pane-local tab rail only when the selected pane owns multiple
-  local tabs. A single-tab pane has no empty shelf or workspace-action buttons;
+- a tab rail inside every pane that owns multiple local tabs. The rail begins
+  at that pane's top edge and never floats above or changes the height of a
+  sibling pane. A single-tab pane has no empty shelf or workspace-action buttons;
   search, split, and focus commands remain available through keyboard bindings
   and the command palette.
 
 Chrome has one shared responsive contract for drawing, hit-testing and terminal
 grid reservation:
 
-| Density | Trigger (logical viewport) | Header-only reservation | With local tabs |
-|---|---|---:|---|
-| comfortable | at least 840 px wide and 480 px high | 56 px | 102 px |
-| compact | below either comfortable threshold | 50 px | 92 px |
-| minimal | below 480 px wide or 280 px high | 44 px | 80 px when height permits |
+| Density | Trigger (logical viewport) | Window-header reservation |
+|---|---|---:|
+| comfortable | at least 840 px wide and 480 px high | 56 px |
+| compact | below either comfortable threshold | 50 px |
+| minimal | below 480 px wide or 280 px high | 44 px |
 
-Below 260 logical pixels of height, the pane-local tab rail folds away and the
-minimal header reserves only 44 px, leaving 156 px for terminal content at the
-supported 300×200 minimum. Tab commands remain available through shortcuts and
-the command palette, while prompt-level context remains available in the grid.
+Each pane with multiple local tabs independently reserves a DPI-stable 36
+logical pixels inside that pane. Below 96 logical pixels of pane height, its
+rail folds away without closing or merging sessions and returns automatically
+when the pane grows. Tab commands remain available through shortcuts and the
+command palette, while prompt-level context remains available in the grid.
 As width contracts, controls fold in priority order: the product mark,
 command-center control, and then new-tab button hide before the active tab can
 collide with the always-reachable minimize, maximize and close controls. Narrow
@@ -36,8 +38,8 @@ multi-tab strips use icon-only tabs when a readable title no longer fits.
 
 The terminal grid begins below the live reservation, which is recomputed on
 every viewport and DPI change. Typing, output, scrollback and resize/reflow
-therefore cannot erase the tabs, nor can a stale 102 px margin consume a
-single-tab or compact window. Windows uses a 6 px renderer-owned resize frame and
+therefore cannot erase the tabs, nor can a pane's tab rail consume rows from a
+single-tab sibling. Windows uses a 6 px renderer-owned resize frame and
 supports all edges and corners when native decorations are disabled.
 
 The per-command prompt uses a strict ownership boundary. Automexia writes the
@@ -407,8 +409,9 @@ only and never rewrites terminal cells or copied text.
 - Click a top-row tab to select or drag a window-level workspace.
 - Click the top-row `+`, or press `Ctrl`+`T`, to add a window-level tab.
 - Press `Ctrl`+`Shift`+`T` to create an independent tab inside the selected
-  split/session. When a pane has siblings, its second-row local tab rail exposes
-  direct selection, an exact per-tab close target, and a local `+` button.
+  split/session. That pane then exposes an internal top rail with direct
+  selection, an exact per-tab close target, and a local `+` button. Other panes
+  remain unchanged; every pane with multiple tabs can expose its own rail.
 - Press `Ctrl`+`Shift`+`N` to create a separate OS window.
 - On macOS, use `Cmd`+`N`, `Cmd`+`T`, and `Cmd`+`Shift`+`T` for the equivalent
   new-window, window-tab, and selected-session-tab scopes.

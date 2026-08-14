@@ -731,7 +731,11 @@ impl Renderer {
         }
 
         for (_key, grid_context) in grid.contexts_mut().iter_mut() {
-            let panel_rect = grid_context.layout_rect;
+            let panel_rect = crate::layout::pane_terminal_rect(
+                grid_context.layout_rect,
+                grid_context.context().dimension.dimension.scale,
+                grid_context.tab_count(),
+            );
             let context = grid_context.context_mut();
 
             let mut has_ime = false;
@@ -1086,6 +1090,7 @@ impl Renderer {
                 let panel_rect = crate::layout::pane_terminal_rect(
                     grid_context.layout_rect,
                     grid_context.context().dimension.dimension.scale,
+                    grid_context.tab_count(),
                 );
                 let ctx = grid_context.context();
                 // The pane footer owns the remaining bottom strip. Keep the
@@ -1142,10 +1147,13 @@ impl Renderer {
                 let cell_h = dim.cell.cell_height as f32;
                 let cols = dim.columns.max(1) as f32;
                 let rows = dim.lines.max(1) as f32;
-                let panel_left =
-                    (grid_context.layout_rect[0] + grid_scaled_margin.left).round();
-                let panel_top =
-                    (grid_context.layout_rect[1] + grid_scaled_margin.top).round();
+                let terminal_rect = crate::layout::pane_terminal_rect(
+                    grid_context.layout_rect,
+                    scale_factor,
+                    grid_context.tab_count(),
+                );
+                let panel_left = (terminal_rect[0] + grid_scaled_margin.left).round();
+                let panel_top = (terminal_rect[1] + grid_scaled_margin.top).round();
                 let x = panel_left / scale_factor;
                 let y = panel_top / scale_factor;
                 let w = (cols * cell_w) / scale_factor;
@@ -1433,7 +1441,11 @@ impl Renderer {
                     .values()
                     .filter(|item| item.context().route_id != active_route)
                     .map(|item| {
-                        let [panel_x, panel_y, _, _] = item.layout_rect;
+                        let [panel_x, panel_y, _, _] = crate::layout::pane_terminal_rect(
+                            item.layout_rect,
+                            scale_factor,
+                            item.tab_count(),
+                        );
                         let margin = rio_backend::config::layout::Margin {
                             left: base_margin.left + panel_x,
                             top: base_margin.top + panel_y,

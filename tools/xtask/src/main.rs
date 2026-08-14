@@ -1846,6 +1846,9 @@ fn verify_architecture() -> TaskResult {
     )?;
 
     let island_renderer = read(&app.join("src/renderer/island.rs"))?;
+    let pane_layout = read(&app.join("src/layout/mod.rs"))?;
+    let responsive_chrome = read(&app.join("src/renderer/responsive.rs"))?;
+    let renderer_utils = read(&app.join("src/renderer/utils.rs"))?;
     let screen = read(&app.join("src/screen/mod.rs"))?;
     require(
         !island_renderer.contains("UTILITY_ACTIONS")
@@ -1855,10 +1858,17 @@ fn verify_architecture() -> TaskResult {
             && !island_renderer.contains("ChromeAction::SplitDown")
             && !island_renderer.contains("ChromeAction::NextPane")
             && island_renderer
-                .contains("empty_secondary_chrome_has_no_workspace_action_hit_targets")
+                .contains("space_below_window_header_has_no_workspace_action_hit_targets")
+            && island_renderer.contains("draw_pane_local_tab_rails")
+            && island_renderer.contains("local_tab_hit_testing_is_pane_scoped_at_hidpi")
+            && pane_layout.contains("pub fn pane_tab_rail_rect")
+            && pane_layout.contains("pub fn pane_terminal_rect")
+            && responsive_chrome.contains("pub fn content_top(self) -> f32")
+            && !responsive_chrome.contains("show_secondary_rail")
+            && !renderer_utils.contains("show_secondary_rail")
             && context_renderer.contains("pub fn refresh_session_context")
             && !context_renderer.contains("pub fn render_context_bar"),
-        "global session status or the removed workspace action shelf still leaks into chrome",
+        "pane-local tabs are not isolated from window chrome or removed global actions still leak into chrome",
     )?;
     require(
         !screen.contains("ChromeAction::Search =>")

@@ -144,7 +144,8 @@ On Windows, Linux, and BSD, `Ctrl`+`T` adds a window-level tab and
 `Ctrl`+`Shift`+`T` adds an independent tab inside the selected split/session.
 macOS uses `Cmd`+`T` and `Cmd`+`Shift`+`T` for those two scopes. Pane-local tabs preserve the selected
 shell/profile, WSL identity, and working directory while owning independent
-PTYs. See [configuration](docs/CONFIGURATION.md). Ghostty compatibility is a
+PTYs. When a pane has multiple local tabs, their controls live inside that pane
+and do not resize its siblings. See [configuration](docs/CONFIGURATION.md). Ghostty compatibility is a
 future opt-in profile tracked separately in the
 [compatibility roadmap](docs/GHOSTTY-COMPATIBILITY-ROADMAP.md); it is not the
 implicit Automexia default.

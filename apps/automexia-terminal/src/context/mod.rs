@@ -981,36 +981,6 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             .map_or(0, ContextGridItem::tab_count)
     }
 
-    #[inline]
-    pub fn active_local_tab_index(&self) -> usize {
-        self.current_grid()
-            .current_item()
-            .map_or(0, ContextGridItem::active_tab_index)
-    }
-
-    pub fn local_tab_title(&self, index: usize) -> Option<String> {
-        let context = self.current_grid().current_item()?.context_at(index)?;
-        // Avoid locking every inactive terminal on every frame. An inactive
-        // tab retains the last cached title it received while active; only the
-        // selected tab needs a live terminal-title read.
-        if index == self.active_local_tab_index() {
-            let raw = context.terminal.lock().title.to_string();
-            if !raw.trim().is_empty() {
-                return Some(raw);
-            }
-        }
-        if !context.title.content.trim().is_empty() && context.title.content.trim() != "~"
-        {
-            return Some(context.title.content.clone());
-        }
-        context
-            .launch_descriptor
-            .profile_identity()
-            .or_else(|| context.launch_descriptor.program())
-            .map(ToOwned::to_owned)
-            .or_else(|| Some(format!("Session {}", index + 1)))
-    }
-
     pub fn select_local_tab(&mut self, index: usize, sugarloaf: &mut Sugarloaf) -> bool {
         let Some(item) = self.contexts[self.current_index].current_item_mut() else {
             return false;
@@ -1174,6 +1144,17 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             .map(|item| {
                 let context = item.context();
                 let active_local_tab_index = item.active_tab_index();
+                let pane_scale = context.dimension.dimension.scale;
+                let terminal_rect = crate::layout::pane_terminal_rect(
+                    item.layout_rect,
+                    pane_scale,
+                    item.tab_count(),
+                );
+                let local_tab_rail_rect = crate::layout::pane_tab_rail_rect(
+                    item.layout_rect,
+                    pane_scale,
+                    item.tab_count(),
+                );
                 let local_tabs = item
                     .contexts()
                     .enumerate()
@@ -1239,6 +1220,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                     "route_id": context.route_id,
                     "active": context.route_id == active_route,
                     "layout_rect": item.layout_rect,
+                    "terminal_rect": terminal_rect,
+                    "local_tab_rail_rect": local_tab_rail_rect,
                     "local_tab_count": item.tab_count(),
                     "active_local_tab_index": active_local_tab_index,
                     "local_tabs": local_tabs,

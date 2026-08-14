@@ -1877,6 +1877,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     route.window.winit_window.set_cursor(CursorIcon::Default);
                     return;
                 }
+                if route.window.screen.is_hovering_local_tab_rail(x, y) {
+                    route.window.winit_window.set_cursor(CursorIcon::Default);
+                    return;
+                }
 
                 // Only force the default cursor while the island is
                 // visible — when it's hidden (hide_if_single + single

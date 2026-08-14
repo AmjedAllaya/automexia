@@ -333,17 +333,18 @@ read authority does not imply command authority.
   Input and shutdown are barriers, duplicate effective sizes are skipped, and
   a transient PTY resize failure is logged without terminating the session.
   Every effective grid resize forces one complete renderer snapshot.
-- The renderer owns a responsive top-chrome reservation. With no pane-local
-  tab rail, content begins after the header and trailing gap: 56 logical pixels
-  at comfortable sizes, 50 in compact mode, and 44 in minimal mode. A pane with
-  multiple local tabs expands the reservation to 102, 92, or 80 pixels.
-  One viewport policy drives the proportional size of the app control, tab
-  typography, profile icons, create/menu controls, local-tab rail, paint
-  geometry, pointer hit-testing and grid
-  margins, and live resize/DPI changes recompute every grid before layout. The
-  secondary surface exists only when the selected pane has multiple local tabs,
-  becoming that pane's scoped tab rail with direct select/close/add targets and
-  an active outline. Search, split, and focus commands remain available through
+- The renderer owns a responsive window-header reservation. Content begins
+  after the header and trailing gap: 56 logical pixels at comfortable sizes,
+  50 in compact mode, and 44 in minimal mode. Local tabs never expand that
+  window-wide reservation. Instead, each `ContextGridItem` with multiple local
+  tabs independently reserves a 36 logical-pixel rail at the top of its own
+  pane. Sibling panes keep their complete content height, and panes below 96
+  logical pixels hide the rail while retaining every tab and restoring it when
+  space returns. One pane-local geometry contract drives rail drawing and
+  hit-testing, PTY rows, grid/image clipping, scrollbars, cursor trails, and IME
+  placement. Live resize/DPI changes recompute it for every pane. Every visible
+  eligible pane exposes its own direct select/close/add targets; the selected
+  pane receives the stronger focus outline. Search, split, and focus commands remain available through
   keyboard bindings and the command palette;
   it never duplicates session facts that already belong to prompts. Every shell
   prompt reserves a semantic,
