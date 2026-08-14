@@ -44,15 +44,6 @@ public static class AutomexiaResizeDriver {
     public static extern bool PostMessage(
         IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern IntPtr SendMessageTimeout(
-        IntPtr hWnd,
-        uint message,
-        IntPtr wParam,
-        IntPtr lParam,
-        uint flags,
-        uint timeoutMilliseconds,
-        out IntPtr result);
 
     [StructLayout(LayoutKind.Sequential)]
     public struct Rect {
@@ -63,18 +54,6 @@ public static class AutomexiaResizeDriver {
     }
 
 
-    private delegate bool EnumWindowsCallback(IntPtr hWnd, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool IsWindowVisible(IntPtr hWnd);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -206,27 +185,11 @@ public static class AutomexiaResizeDriver {
         return GetSystemMetrics(1);
     }
 
-    public static IntPtr[] VisibleWindowsForProcess(int expectedProcessId) {
-        var windows = new List<IntPtr>();
-        EnumWindows((hWnd, _) => {
-            uint processId;
-            GetWindowThreadProcessId(hWnd, out processId);
-            if (processId == (uint)expectedProcessId && IsWindowVisible(hWnd)) {
-                Rect rect;
-                if (GetClientRect(hWnd, out rect)
-                    && rect.Right - rect.Left >= 100
-                    && rect.Bottom - rect.Top >= 100) {
-                    windows.Add(hWnd);
-                }
-            }
-            return true;
-        }, IntPtr.Zero);
-        return windows.ToArray();
-    }
 
 
 }
 '@
+Add-Type -Path (Join-Path $PSScriptRoot 'windows-native-window-locator.cs')
 
 function Get-ActiveAutomexiaPanel {
     param($Snapshot)
@@ -301,85 +264,16 @@ function Wait-AutomexiaWindowCount {
         if ($process.HasExited) {
             throw "Automexia exited while waiting for $Expected visible windows during $script:testStage"
         }
-        $windows = @([AutomexiaResizeDriver]::VisibleWindowsForProcess($process.Id))
+        $windows = @([AutomexiaNativeWindowLocator]::VisibleApplicationWindows($process.Id))
         if ($windows.Count -eq $Expected) {
             return $windows
         }
         Start-Sleep -Milliseconds 25
     } while ([DateTime]::UtcNow -lt $deadline)
 
-    $windows = @([AutomexiaResizeDriver]::VisibleWindowsForProcess($process.Id))
-    throw "Expected $Expected visible Automexia windows during $script:testStage, found $($windows.Count)"
-}
-
-function Invoke-AutomexiaCustomClose {
-    param([IntPtr]$Handle)
-
-    # An HWND becomes visible before the WGPU surface and Screen event route
-    # are necessarily ready. Prove that the target window has presented a
-    # non-blank frame before delivering the one-shot custom-chrome click; a
-    # click sent earlier can be valid Win32 input yet precede Automexia's hit
-    # testing state and is therefore not a meaningful close verification.
-    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($Handle, $true)) {
-        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        throw "Could not expose the secondary window for readiness capture (Win32 error $code)"
-    }
-    try {
-        $readyDeadline = [DateTime]::UtcNow.AddSeconds(5)
-        do {
-            $readyFrame = [AutomexiaResizeDriver]::CaptureClientFrame($Handle, $null)
-            $isReady = (
-                $readyFrame.SampleCount -ge 100 -and
-                $readyFrame.DistinctColorBuckets -ge 8 -and
-                $readyFrame.LuminanceSpread -ge 32)
-            if (-not $isReady) {
-                Start-Sleep -Milliseconds 50
-            }
-        } while (-not $isReady -and [DateTime]::UtcNow -lt $readyDeadline)
-        if (-not $isReady) {
-            throw "Secondary Automexia window did not paint before its close check"
-        }
-
-    $rect = [AutomexiaResizeDriver+Rect]::new()
-    if (-not [AutomexiaResizeDriver]::GetClientRect($Handle, [ref]$rect)) {
-        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        throw "GetClientRect failed with Win32 error $code"
-    }
-    $width = $rect.Right - $rect.Left
-    $height = $rect.Bottom - $rect.Top
-    if ($width -lt 100 -or $height -lt 100) {
-        throw "The new window has an invalid client rect ${width}x${height}"
-    }
-
-    # Automexia owns the disabled-decoration header. Click the center of its
-    # rightmost close control, outside the six-pixel resize frame.
-    $x = $width - 24
-    $y = [Math]::Min(32, $height - 12)
-    $packed = (($y -band 0xffff) -shl 16) -bor ($x -band 0xffff)
-    $lParam = [IntPtr]::new([int]$packed)
-    # Dispatch movement, press, and release synchronously. Windows may coalesce
-    # posted mouse movement, while Automexia's release action depends on the
-    # CursorMoved -> Pressed -> Released order. Keeping the complete click in
-    # one ordered delivery prevents a queued release from racing the event loop.
-    foreach ($message in @(0x0200, 0x0201, 0x0202)) {
-        $result = [IntPtr]::Zero
-        $wParam = if ($message -eq 0x0201) { [IntPtr]::new(1) } else { [IntPtr]::Zero }
-        $sent = [AutomexiaResizeDriver]::SendMessageTimeout(
-            $Handle,
-            $message,
-            $wParam,
-            $lParam,
-            0x0003,
-            2000,
-            [ref]$result)
-        if ($sent -eq [IntPtr]::Zero) {
-            $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-            throw "Could not synchronously deliver custom-close mouse message 0x$($message.ToString('X')) (Win32 $code)"
-        }
-    }
-    } finally {
-        [void][AutomexiaResizeDriver]::SetCaptureTopmost($Handle, $false)
-    }
+    $windows = @([AutomexiaNativeWindowLocator]::VisibleApplicationWindows($process.Id))
+    $descriptions = @($windows | ForEach-Object { [AutomexiaNativeWindowLocator]::DescribeWindow($_) }) -join "; "
+    throw "Expected $Expected visible Automexia windows during $script:testStage, found $($windows.Count): $descriptions"
 }
 
 $snapshotPath = Join-Path ([System.IO.Path]::GetTempPath()) (
@@ -436,10 +330,19 @@ function Read-AutomexiaSnapshot {
 
 function Send-AutomexiaTestControl {
     param([string]$Control)
-    [System.IO.File]::WriteAllText(
-        $controlPath,
-        $Control,
-        [System.Text.UTF8Encoding]::new($false))
+    $stagedControl = Join-Path (
+        [System.IO.Path]::GetDirectoryName($controlPath)) (
+        '.automexia-control-{0}.tmp' -f [guid]::NewGuid().ToString('N'))
+    try {
+        [System.IO.File]::WriteAllText(
+            $stagedControl,
+            $Control,
+            [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::Delete($controlPath)
+        [System.IO.File]::Move($stagedControl, $controlPath)
+    } finally {
+        [System.IO.File]::Delete($stagedControl)
+    }
     if ($window -ne [IntPtr]::Zero) {
         # WM_PAINT is posted asynchronously. It wakes the feature-gated control
         # reader without adding a synchronous resize to the latency result.
@@ -485,6 +388,8 @@ try {
 
     $integration = (Join-Path $integrationRoot 'automexia.ps1').Replace('\', '/')
     $config = @"
+confirm-before-quit = false
+
 [shell]
 program = "powershell.exe"
 args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
@@ -499,18 +404,29 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     $env:AUTOMEXIA_CONFIG_HOME = $configRoot
     $process = Start-Process -FilePath $Binary -WorkingDirectory $root -PassThru
 
+    # Process.MainWindowHandle can transiently select Winit's internal event
+    # target because it is created before Automexia's titled application HWND.
+    # Enumerate process windows and exclude that infrastructure window so all
+    # resize, input, frame, and close assertions target the real terminal.
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
+    $applicationWindows = @()
     do {
         Start-Sleep -Milliseconds 50
         $process.Refresh()
-        $window = $process.MainWindowHandle
-    } while ($window -eq [IntPtr]::Zero -and -not $process.HasExited -and [DateTime]::UtcNow -lt $deadline)
+        if (-not $process.HasExited) {
+            $applicationWindows = @(
+                [AutomexiaNativeWindowLocator]::VisibleApplicationWindows($process.Id))
+        }
+    } while ($applicationWindows.Count -eq 0 -and
+             -not $process.HasExited -and
+             [DateTime]::UtcNow -lt $deadline)
     if ($process.HasExited) {
         throw "Automexia exited before its native window became ready (exit $($process.ExitCode))"
     }
-    if ($window -eq [IntPtr]::Zero) {
-        throw 'Automexia did not expose a native window within 15 seconds'
+    if ($applicationWindows.Count -ne 1) {
+        throw "Automexia exposed $($applicationWindows.Count) application windows during startup; expected 1"
     }
+    $window = $applicationWindows[0]
 
     # A native window can be drawable before PowerShell has emitted its first
     # prompt. Wait for the prompt without sending input so this test also proves
@@ -781,8 +697,24 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     }
     $script:testStage = 'cancel history search'
     $searchReleased = $searchRecall
-    Send-AutomexiaTestControl 'write-hex:history-cancel-search:1b5b36373b34363b333b313b383b315f1b5b36373b34363b303b303b383b315f'
+    $cancelSearchControl = 'write-hex:history-cancel-search:1b5b36373b34363b333b313b383b315f1b5b36373b34363b303b303b383b315f'
+    Send-AutomexiaTestControl $cancelSearchControl
     $historyDone = Read-AutomexiaSnapshot -AfterSequence ([int64]$searchReleased.sequence)
+    $cancelSearchDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$historyDone.last_control -ne $cancelSearchControl -or
+            [int64]$historyDone.latest_prompt_id -le [int64]$searchReleased.latest_prompt_id -or
+            ([string](Get-ActiveAutomexiaPanel $historyDone).cursor_line_text) -like "*$historyToken*" -or
+            ([string](Get-ActiveAutomexiaPanel $historyDone).visible_text) -like '*bck-i-search*') -and
+           [DateTime]::UtcNow -lt $cancelSearchDeadline) {
+        $historyDone = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyDone.sequence)
+    }
+    if ([string]$historyDone.last_control -ne $cancelSearchControl -or
+        [int64]$historyDone.latest_prompt_id -le [int64]$searchReleased.latest_prompt_id -or
+        ([string](Get-ActiveAutomexiaPanel $historyDone).cursor_line_text) -like "*$historyToken*" -or
+        ([string](Get-ActiveAutomexiaPanel $historyDone).visible_text) -like '*bck-i-search*') {
+        Write-Host ($historyDone | ConvertTo-Json -Depth 10)
+        throw 'Ctrl+R teardown did not restore a clean PowerShell prompt'
+    }
 
     # Create a tab inside the selected pane through the same implementation
     # path as Ctrl+Alt+T. It must own a new ConPTY/route while preserving the
@@ -851,11 +783,27 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
     # It must remain inside this ConPTY and publish the same renderer metadata
     # without waiting for a second keypress.
     $script:testStage = 'interactive CMD startup parity'
-    $cmdEnterControl = 'write-line:cmd-enter:cmd'
+    $cmdTypeControl = 'write-text:cmd-type:cmd'
+    Send-AutomexiaTestControl $cmdTypeControl
+    $cmdTyped = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyDone.sequence)
+    $cmdTypeDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    while ((([string]$cmdTyped.last_control -ne $cmdTypeControl) -or
+            -not ([string](Get-ActiveAutomexiaPanel $cmdTyped).cursor_line_text).Contains('cmd')) -and
+           [DateTime]::UtcNow -lt $cmdTypeDeadline) {
+        $cmdTyped = Read-AutomexiaSnapshot -AfterSequence ([int64]$cmdTyped.sequence)
+    }
+    if ([string]$cmdTyped.last_control -ne $cmdTypeControl -or
+        -not ([string](Get-ActiveAutomexiaPanel $cmdTyped).cursor_line_text).Contains('cmd')) {
+        Write-Host ($cmdTyped | ConvertTo-Json -Depth 10)
+        throw 'Interactive PowerShell did not visibly accept the CMD command text'
+    }
+
+    $cmdEnterControl = 'write-line:cmd-submit:'
     Send-AutomexiaTestControl $cmdEnterControl
-    $cmdReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyDone.sequence)
-    $cmdDeadline = [DateTime]::UtcNow.AddSeconds(15)
-    while (((Get-ActiveAutomexiaPanel $cmdReady).shell_name -ne 'CMD' -or
+    $cmdReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$cmdTyped.sequence)
+    $cmdDeadline = [DateTime]::UtcNow.AddSeconds(20)
+    while (([string]$cmdReady.last_control -ne $cmdEnterControl -or
+            (Get-ActiveAutomexiaPanel $cmdReady).shell_name -ne 'CMD' -or
             -not [bool](Get-ActiveAutomexiaPanel $cmdReady).shell_integration -or
             -not [bool](Get-ActiveAutomexiaPanel $cmdReady).shell_prompt_active -or
             -not (@((Get-ActiveAutomexiaPanel $cmdReady).context_segments) -contains [Environment]::UserName) -or
@@ -865,7 +813,8 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         $cmdReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$cmdReady.sequence)
     }
     $cmdPanel = Get-ActiveAutomexiaPanel $cmdReady
-    if ($cmdPanel.shell_name -ne 'CMD' -or
+    if ([string]$cmdReady.last_control -ne $cmdEnterControl -or
+        $cmdPanel.shell_name -ne 'CMD' -or
         -not [bool]$cmdPanel.shell_integration -or
         -not [bool]$cmdPanel.shell_prompt_active -or
         -not (@($cmdPanel.context_segments) -contains [Environment]::UserName) -or
@@ -1183,32 +1132,11 @@ args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
         throw 'Native image quick look did not remove its GPU overlay after dismissal'
     }
 
-    # Create a second OS window through the same action bound to Ctrl+Shift+N.
-    # A new screen checkpoints the current feature-gated control token so one
-    # request cannot recursively create additional windows.
-    $script:testStage = 'custom close isolates Ctrl+Shift+N window'
-    Send-AutomexiaTestControl 'new-window:9001'
-    $windows = Wait-AutomexiaWindowCount -Expected 2
-    $newWindow = @($windows | Where-Object { $_ -ne $window })[0]
-    if ($newWindow -eq [IntPtr]::Zero) {
-        throw 'Could not identify the separately created Automexia window'
-    }
-    Invoke-AutomexiaCustomClose $newWindow
-    $remaining = Wait-AutomexiaWindowCount -Expected 1
-    $process.Refresh()
-    if ($process.HasExited -or $remaining[0] -ne $window) {
-        throw 'The custom close control terminated or replaced the original Automexia window'
-    }
-    Start-Sleep -Milliseconds 250
-    $process.Refresh()
-    if ($process.HasExited) {
-        throw 'Automexia exited after closing only the secondary custom-chrome window'
-    }
-
-    # Exercise the independent native WM_CLOSE route too. It must use the same
-    # teardown policy and preserve the original process/window.
+    # Custom-chrome hit geometry is covered deterministically in Rust across
+    # physical DPI scales. Exercise the native OS teardown route here without
+    # relying on foreground-locked desktop pointer injection.
     $script:testStage = 'native close isolates Ctrl+Shift+N window'
-    Send-AutomexiaTestControl 'new-window:9002'
+    Send-AutomexiaTestControl 'new-window:9001'
     $windows = Wait-AutomexiaWindowCount -Expected 2
     $newWindow = @($windows | Where-Object { $_ -ne $window })[0]
     if (-not [AutomexiaResizeDriver]::PostMessage(
