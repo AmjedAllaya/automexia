@@ -31,6 +31,12 @@ logical pixels inside that pane. Below 96 logical pixels of pane height, its
 rail folds away without closing or merging sessions and returns automatically
 when the pane grows. Tab commands remain available through shortcuts and the
 command palette, while prompt-level context remains available in the grid.
+Keyboard focus mirrors visual ownership: directional pane navigation uses
+`Alt`+Arrow on Windows/Linux/BSD and `Cmd`+`Alt`+Arrow on macOS, with the active
+outline moving to the chosen geometric neighbour. Pane-local tab navigation
+uses `Alt`+`PageUp`/`PageDown` or macOS `Cmd`+`Alt`+`[`/`]`; it wraps only
+inside the active pane. Window-level `Ctrl`+`Tab` navigation remains a separate
+scope. All navigation actions are also available in the command palette.
 As width contracts, controls fold in priority order: the product mark,
 command-center control, and then new-tab button hide before the active tab can
 collide with the always-reachable minimize, maximize and close controls. Narrow

@@ -73,6 +73,21 @@ sibling panes, and temporarily hides when that pane is below 96 logical pixels
 high. No configuration is required and hidden tabs remain active and reachable
 through their keyboard actions.
 
+Pane and tab navigation have separate scopes:
+
+| Scope | Windows/Linux/BSD | macOS | Behavior |
+|---|---|---|---|
+| nearest pane | `Alt`+Arrow | `Cmd`+`Alt`+Arrow | focus the nearest pane in that direction; stop at the outer edge |
+| next/previous pane | `F6` / `Shift`+`F6` | `Cmd`+`]` / `Cmd`+`[` | cycle panes in visual order |
+| next/previous tab inside selected pane | `Alt`+`PageDown` / `Alt`+`PageUp` | `Cmd`+`Alt`+`]` / `Cmd`+`Alt`+`[` | wrap inside that pane without entering another pane or window tab |
+| next/previous window-level tab | `Ctrl`+`Tab` / `Ctrl`+`Shift`+`Tab` | `Ctrl`+`Tab` / `Ctrl`+`Shift`+`Tab` | switch the complete window workspace |
+
+The configurable action names are `SelectPaneLeft`, `SelectPaneRight`,
+`SelectPaneUp`, `SelectPaneDown`, `SelectNextLocalTab`, and
+`SelectPrevLocalTab`. User bindings retain precedence. Directional focus uses
+the current rendered pane rectangles, prefers candidates that overlap the
+active pane on the perpendicular axis, and never wraps across an outer edge.
+
 Split shortcuts distinguish a clean default shell from an independent clone:
 
 | Shortcut | Result |
@@ -99,9 +114,11 @@ as a silent substitute for a failed WSL clone.
 Image preview has one stable binding action, `PreviewSelectedImage`. Select a
 local raster path and press `Ctrl`+`Alt`+`I` on Windows/Linux/BSD or
 `Cmd`+`Alt`+`I` on macOS. The same action appears as **Preview Selected Image**
-in the command palette. Modifier-hover uses `Alt` outside macOS and `Cmd` on
-macOS after a 350 ms dwell. This release adds no image-preview configuration;
-normal user binding overrides still apply. See
+in the command palette. Plain hover uses a 100 ms stability delay; clicking
+pins the path, unmodified arrows browse other visible image paths, and `Esc`
+closes it. Mouse-reporting terminal applications retain ownership unless
+`Shift` is held. This release adds no image-preview configuration; normal user
+binding overrides still apply. See
 [image previews](IMAGE-PREVIEWS.md) for protocols, formats, WSL behavior,
 limits, and testing.
 

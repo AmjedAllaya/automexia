@@ -27,10 +27,16 @@ the [Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md).
 | `Ctrl`+`Shift`+`R` / `Ctrl`+`Shift`+`D` | fresh right/down split | Ghostty uses `Ctrl`+`Shift`+`O` / `Ctrl`+`Shift`+`E` |
 | `Ctrl`+`R` / `Ctrl`+`D` | clone active session right/down | forwarded to history search / EOF |
 | `Ctrl`+`Alt`+`R` / `Ctrl`+`Alt`+`D` | explicit history-search / EOF passthrough | available for profile-specific actions |
+| `Alt`+Arrow | focus the nearest pane geometrically | geometric split focus uses profile-specific chords |
+| `F6` / `Shift`+`F6` | cycle panes in visual order | available as configurable split actions |
+| `Alt`+`PageDown` / `Alt`+`PageUp` | next/previous tab inside the selected pane | Ghostty has no Automexia pane-local-tab scope |
+| `Ctrl`+`Tab` / `Ctrl`+`Shift`+`Tab` | next/previous window-level tab | next/previous tab |
 
 macOS retains the classic `Cmd`+`T` window tab, `Cmd`+`Shift`+`T` pane-local
 tab, and `Cmd`+`D` / `Cmd`+`Shift`+`D` fresh splits. Session cloning remains on
-`Ctrl`+`R` / `Ctrl`+`D` on every platform.
+`Ctrl`+`R` / `Ctrl`+`D` on every platform. It uses `Cmd`+`Alt`+Arrow for
+geometric pane focus and `Cmd`+`Alt`+`]` / `Cmd`+`Alt`+`[` for pane-local tab
+navigation.
 
 ## Policy
 

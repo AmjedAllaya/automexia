@@ -19,10 +19,15 @@ Automexia restores its original platform defaults. On Windows, Linux, and BSD:
 - `Ctrl+Shift+R` / `Ctrl+Shift+D` create fresh right/down splits;
 - `Ctrl+R` / `Ctrl+D` clone the active session right/down;
 - `Ctrl+Alt+R` / `Ctrl+Alt+D` send history-search/EOF controls to the PTY.
+- `Alt`+Arrow focuses the nearest pane geometrically while `F6` /
+  `Shift+F6` retains cyclic pane navigation;
+- `Alt`+`PageDown` / `Alt`+`PageUp` moves between independent tabs inside the
+  selected pane, while `Ctrl`+`Tab` remains window-level.
 
 macOS retains `Cmd+T`, `Cmd+Shift+T`, `Cmd+D`, and `Cmd+Shift+D` for its native
 tab and fresh-split scopes; cloning and explicit shell passthrough use the same
-Control chords as other platforms.
+Control chords as other platforms. macOS geometric focus uses
+`Cmd`+`Alt`+Arrow and pane-local tabs use `Cmd`+`Alt`+`]` / `Cmd`+`Alt`+`[`.
 
 User configuration remains authoritative. Newer actions such as configuration
 reload, window close, and clear-screen remain available through configuration
