@@ -1316,6 +1316,32 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && release_workflow.contains("$(go env GOPATH)/bin"),
         "Nightly/release workflows must use nightly GNU-target libFuzzer, install sanitizer std sources, enforce the bounded Miri suite and timeout, preserve both sanitizer jobs, and expose the pinned Go-based nFPM tool",
     )?;
+    require(
+        nightly_workflow.contains(
+            "cargo +nightly test -p automexia-extension-runtime --lib --locked -Zbuild-std --target x86_64-unknown-linux-gnu -- --skip loom_models",
+        ),
+        "ASan/TSan must exercise bounded extension worker lifecycle tests without running Loom's scheduler model",
+    )?;
+    let pty_manifest = read(&root().join("teletypewriter/Cargo.toml"))?;
+    require(
+        nightly_workflow.contains(
+            "cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter --no-run --locked",
+        )
+            && qa.contains("\"benchmark-image\": 7200")
+            && qa.contains("\"benchmark-image\"")
+            && qa.contains("\"image_preview\"")
+            && root()
+                .join("apps/automexia-terminal/benches/image_preview.rs")
+                .is_file()
+            && qa.contains("\"benchmark-pty\": 7200")
+            && qa.contains("\"benchmark-pty\"")
+            && qa.contains("\"teletypewriter\"")
+            && qa.contains("\"pty_io\"")
+            && pty_manifest.contains("name = \"pty_io\"")
+            && root().join("teletypewriter/benches/pty_io.rs").is_file(),
+        "Every declared image and PTY lifecycle benchmark must compile nightly and execute with a bounded controlled-QA timeout",
+    )?;
+
     let simd_utf8 = read(&root().join("rio-vt/src/simd_utf8.rs"))?;
     let simd_base64 = read(&root().join("rio-vt/src/simd_base64.rs"))?;
     let parser = read(&root().join("rio-vt/src/performer/parser/mod.rs"))?;

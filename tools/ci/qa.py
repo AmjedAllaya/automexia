@@ -48,8 +48,10 @@ STEP_TIMEOUT_SECONDS = {
     "application-verifier": 3600,
     "wpr-native-trace": 3600,
     "benchmark-app": 7200,
+    "benchmark-image": 7200,
     "benchmark-vt": 7200,
     "benchmark-channel": 7200,
+    "benchmark-pty": 7200,
 }
 TOKEN_PATTERNS = (
     re.compile(r"(?i)(authorization\s*[:=]\s*)(?:bearer\s+)?[^\s]+"),
@@ -733,12 +735,20 @@ def main() -> int:
                 ["cargo", "bench", "-p", "automexia-terminal", "--bench", "automexia_services", "--locked", "--", "--noplot"],
             ),
             (
+                "benchmark-image",
+                ["cargo", "bench", "-p", "automexia-terminal", "--bench", "image_preview", "--locked", "--", "--noplot"],
+            ),
+            (
                 "benchmark-vt",
                 ["cargo", "bench", "-p", "rio-vt", "--bench", "vt_input", "--locked", "--", "--noplot"],
             ),
             (
                 "benchmark-channel",
                 ["cargo", "bench", "-p", "corcovado", "--bench", "bench_poll", "--locked", "--", "--noplot"],
+            ),
+            (
+                "benchmark-pty",
+                ["cargo", "bench", "-p", "teletypewriter", "--bench", "pty_io", "--locked", "--", "--noplot"],
             ),
         )
         for name, command in benchmark_commands:

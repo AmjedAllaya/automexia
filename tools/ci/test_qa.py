@@ -134,6 +134,23 @@ class QaRunnerTests(unittest.TestCase):
                 manifest = json.loads(archive.read(manifest_name))
                 self.assertEqual(len(manifest["excluded"]), 3)
 
+    def test_controlled_benchmark_matrix_covers_every_declared_target(self) -> None:
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        expected = (
+            '"benchmark-app"',
+            '"benchmark-image"',
+            '"image_preview"',
+            '"benchmark-vt"',
+            '"benchmark-channel"',
+            '"benchmark-pty"',
+            '"teletypewriter"',
+            '"pty_io"',
+        )
+        for contract in expected:
+            self.assertIn(contract, source)
+        self.assertEqual(QA.STEP_TIMEOUT_SECONDS["benchmark-image"], 7200)
+        self.assertEqual(QA.STEP_TIMEOUT_SECONDS["benchmark-pty"], 7200)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -95,6 +95,92 @@ fn pty_resize_throughput_child_exit_and_teardown() {
 }
 
 #[cfg(windows)]
+fn spawn_marker_pty(marker: &str) -> Pty {
+    teletypewriter::create_pty(
+        Some("powershell.exe"),
+        vec![
+            "-NoLogo".to_owned(),
+            "-NoProfile".to_owned(),
+            "-NonInteractive".to_owned(),
+            "-Command".to_owned(),
+            format!("[Console]::Out.Write('{marker}')"),
+        ],
+        &None,
+        None,
+        80,
+        24,
+    )
+    .expect("ConPTY lifecycle child should start")
+}
+
+#[cfg(not(windows))]
+fn spawn_marker_pty(marker: &str) -> Pty {
+    teletypewriter::create_pty_with_spawn(
+        Some("/bin/sh"),
+        vec!["-c".to_owned(), format!("printf '%s' '{marker}'")],
+        &None,
+        None,
+        80,
+        24,
+        0,
+        0,
+    )
+    .expect("Unix PTY lifecycle child should start")
+}
+
+#[test]
+fn repeated_pty_create_resize_exit_and_drop_cycles_release_each_route() {
+    const CYCLES: usize = 6;
+
+    for cycle in 0..CYCLES {
+        let marker = format!("AMX_PTY_CYCLE_{cycle}");
+        let mut pty = spawn_marker_pty(&marker);
+        for (rows, cols) in [(2_u16, 2_u16), (80, 240), (24, 80)] {
+            pty.set_winsize(WinsizeBuilder {
+                rows,
+                cols,
+                width: cols.saturating_mul(10),
+                height: rows.saturating_mul(20),
+            })
+            .expect("live PTY should accept every lifecycle resize");
+        }
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut output = Vec::new();
+        let mut exited = false;
+        let mut buffer = [0_u8; 1024];
+        while Instant::now() < deadline {
+            match pty.reader().read(&mut buffer) {
+                Ok(0) => {}
+                Ok(read) => output.extend_from_slice(&buffer[..read]),
+                Err(error) if error.kind() == ErrorKind::WouldBlock => {}
+                Err(error) => panic!("PTY cycle {cycle} read failed: {error}"),
+            }
+            if matches!(pty.next_child_event(), Some(ChildEvent::Exited(_))) {
+                exited = true;
+            }
+            if exited
+                && output
+                    .windows(marker.len())
+                    .any(|bytes| bytes == marker.as_bytes())
+            {
+                break;
+            }
+            thread::sleep(Duration::from_millis(2));
+        }
+
+        assert!(exited, "PTY cycle {cycle} did not report child exit");
+        assert!(
+            output
+                .windows(marker.len())
+                .any(|bytes| bytes == marker.as_bytes()),
+            "PTY cycle {cycle} lost its route-specific output marker"
+        );
+        drop(pty);
+    }
+}
+
+#[cfg(windows)]
 fn read_until(
     pty: &mut Pty,
     deadline: Instant,
