@@ -14,6 +14,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_ROOT = ROOT / ".github" / "workflows"
+MACOS_BUILD_SCRIPT = ROOT / "apps" / "automexia-terminal" / "build.rs"
 
 # These are intentionally reported as external evidence, not represented as a
 # passing hosted check. GitHub does not provide BSD runners or interactive GPU,
@@ -123,6 +124,9 @@ def validate_ci(workflow: dict[str, Any]) -> None:
     )
     require_step_condition(
         native, "tools/ci/test_powershell.ps1", ("runner.os == 'Windows'",)
+    )
+    require_step_condition(
+        native, "tools/ci/test_librio_c_api.sh", ("runner.os == 'Linux'",)
     )
     power_shell = step_for_command(native, "tools/ci/test_powershell.ps1")
     require(
@@ -251,10 +255,24 @@ def validate_release(workflow: dict[str, Any]) -> None:
     )
 
 
+def validate_macos_runtime_contract(source: str) -> None:
+    """Keep the supported macOS deployment floor independent of hard linking."""
+    require(
+        'CARGO_CFG_TARGET_OS' in source and 'Ok("macos")' in source,
+        "the frontend build script must scope the compatibility link to macOS targets",
+    )
+    require(
+        'cargo:rustc-link-arg-bins=-weak_framework' in source
+        and 'cargo:rustc-link-arg-bins=CoreGraphics' in source,
+        "the macOS frontend must weak-link CoreGraphics for binary targets",
+    )
+
+
 def validate_repository_workflows() -> None:
     validate_ci(load_workflow("ci.yml"))
     validate_nightly(load_workflow("nightly.yml"))
     validate_release(load_workflow("release.yml"))
+    validate_macos_runtime_contract(MACOS_BUILD_SCRIPT.read_text(encoding="utf-8"))
 
 
 def main() -> int:

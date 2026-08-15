@@ -110,6 +110,9 @@ jobs:
       - name: Native Unix shell install, repair, and prompt contracts
         if: runner.os == 'Linux' || runner.os == 'macOS'
         run: bash tools/ci/test_shell_sources.sh
+      - name: Native librio C ABI compile, link, and runtime smoke
+        if: runner.os == 'Linux'
+        run: bash tools/ci/test_librio_c_api.sh
       - name: Finite channel readiness model
         if: runner.os == 'Linux'
         env:
