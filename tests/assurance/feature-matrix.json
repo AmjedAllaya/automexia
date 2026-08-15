@@ -38,7 +38,7 @@
       "components": ["rio-vt"],
       "quality": {
         "accessibility": {"level": "pr", "evidence": ["rio-vt/src/codepoint_width.rs", "rio-vt/src/selection.rs"]},
-        "correctness": {"level": "pr", "evidence": ["rio-vt/tests/conformance_fixtures.rs", "tests/fixtures/osc-metadata.json", "tests/fixtures/unicode-width.json"]},
+        "correctness": {"level": "pr", "evidence": ["rio-vt/src/selection.rs", "rio-vt/tests/conformance_fixtures.rs", "tests/fixtures/osc-metadata.json", "tests/fixtures/unicode-width.json"]},
         "security": {"level": "nightly", "evidence": ["fuzz/fuzz_targets/vt_parser.rs", "fuzz/fuzz_targets/osc_metadata.rs", "fuzz/fuzz_targets/control_string_bounds.rs", ".github/workflows/nightly.yml#fuzz"]},
         "performance": {"level": "nightly", "evidence": ["rio-vt/benches/vt_input.rs", ".github/workflows/nightly.yml#benchmarks-controlled"]},
         "resource_lifetime": {"level": "pr", "evidence": ["rio-vt/src/performer/handler.rs", "rio-vt/src/crosswords/grid/storage.rs"]},
@@ -98,7 +98,7 @@
       "components": ["apps/automexia-terminal", "rio-window", "rio-notifier"],
       "quality": {
         "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/src/renderer/command_palette.rs", "apps/automexia-terminal/src/bindings/mod.rs"]},
-        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/context/launch.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/bindings/mod.rs"]},
+        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/context/launch.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/bindings/mod.rs", "apps/automexia-terminal/src/screen/mod.rs", "tests/integration/resize-stress-windows.ps1"]},
         "security": {"level": "pr", "evidence": ["apps/automexia-terminal/src/context/launch.rs", "apps/automexia-terminal/src/mouse/mod.rs"]},
         "performance": {"level": "controlled", "evidence": ["tests/integration/session-clone-wsl-windows.ps1", "tests/integration/resize-stress-windows.ps1"]},
         "resource_lifetime": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1", "tests/integration/appverifier-windows.ps1"]},

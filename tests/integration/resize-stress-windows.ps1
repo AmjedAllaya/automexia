@@ -785,6 +785,70 @@ $rendererConfig
     $initial = $topTab
     $initialPanel = Get-ActiveAutomexiaPanel $initial
 
+    # Exercise the same terminal-owned word extension used by
+    # Ctrl+Shift+Left. The binding table independently proves the chord; this
+    # renderer-neutral check proves the live PowerShell cursor anchors a real
+    # selection without leaking input into ConPTY.
+    $selectionToken = 'AMX_SELECTION_PROBE_74129'
+    $selectionCommand = "Write-Output $selectionToken"
+    $selectionTypeControl = "write-text:selection-type:$selectionCommand"
+    $script:testStage = 'keyboard word selection typing'
+    Send-AutomexiaTestControl $selectionTypeControl
+    $selectionTyped = Read-AutomexiaSnapshot -AfterSequence ([int64]$initial.sequence)
+    $selectionDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$selectionTyped.last_control -ne $selectionTypeControl -or
+            -not ([string](Get-ActiveAutomexiaPanel $selectionTyped).cursor_line_text).Contains($selectionToken)) -and
+           [DateTime]::UtcNow -lt $selectionDeadline) {
+        $selectionTyped = Read-AutomexiaSnapshot -AfterSequence ([int64]$selectionTyped.sequence)
+    }
+    if ([string]$selectionTyped.last_control -ne $selectionTypeControl -or
+        -not ([string](Get-ActiveAutomexiaPanel $selectionTyped).cursor_line_text).Contains($selectionToken)) {
+        Write-Host ($selectionTyped | ConvertTo-Json -Depth 10)
+        throw 'PowerShell did not render the keyboard-selection probe'
+    }
+
+    $selectionControl = 'extend-selection:keyboard-word-left:word-left'
+    Send-AutomexiaTestControl $selectionControl
+    $selectionExtended = Read-AutomexiaSnapshot -AfterSequence ([int64]$selectionTyped.sequence)
+    $selectionDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$selectionExtended.last_control -ne $selectionControl -or
+            [string](Get-ActiveAutomexiaPanel $selectionExtended).selection_text -ne $selectionToken) -and
+           [DateTime]::UtcNow -lt $selectionDeadline) {
+        $selectionExtended = Read-AutomexiaSnapshot -AfterSequence ([int64]$selectionExtended.sequence)
+    }
+    if ([string]$selectionExtended.last_control -ne $selectionControl -or
+        [string](Get-ActiveAutomexiaPanel $selectionExtended).selection_text -ne $selectionToken) {
+        Write-Host ($selectionExtended | ConvertTo-Json -Depth 10)
+        throw 'Ctrl+Shift+Left semantics did not select exactly one PowerShell word'
+    }
+
+    $selectionClearControl = 'clear-selection:keyboard-selection-clear'
+    Send-AutomexiaTestControl $selectionClearControl
+    $selectionCleared = Read-AutomexiaSnapshot -AfterSequence ([int64]$selectionExtended.sequence)
+    $selectionDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$selectionCleared.last_control -ne $selectionClearControl -or
+            -not [string]::IsNullOrEmpty([string](Get-ActiveAutomexiaPanel $selectionCleared).selection_text)) -and
+           [DateTime]::UtcNow -lt $selectionDeadline) {
+        $selectionCleared = Read-AutomexiaSnapshot -AfterSequence ([int64]$selectionCleared.sequence)
+    }
+    if (-not [string]::IsNullOrEmpty([string](Get-ActiveAutomexiaPanel $selectionCleared).selection_text)) {
+        throw 'Keyboard selection did not clear before submitting the probe command'
+    }
+    $selectionSubmitControl = 'write-line:selection-submit:'
+    Send-AutomexiaTestControl $selectionSubmitControl
+    $selectionDone = Read-AutomexiaSnapshot -AfterSequence ([int64]$selectionCleared.sequence)
+    $selectionDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    while (([string]$selectionDone.last_control -ne $selectionSubmitControl -or
+            [int64]$selectionDone.latest_prompt_id -le [int64]$initial.latest_prompt_id) -and
+           [DateTime]::UtcNow -lt $selectionDeadline) {
+        $selectionDone = Read-AutomexiaSnapshot -AfterSequence ([int64]$selectionDone.sequence)
+    }
+    if ([int64]$selectionDone.latest_prompt_id -le [int64]$initial.latest_prompt_id) {
+        Write-Host ($selectionDone | ConvertTo-Json -Depth 10)
+        throw 'PowerShell did not complete the keyboard-selection probe command'
+    }
+    $initial = $selectionDone
+    $initialPanel = Get-ActiveAutomexiaPanel $initial
     # Prove native PowerShell history navigation remains interactive after a
     # completed command. The recall path uses real window messages below; the
     # feature-gated controls only seed/cancel deterministically and publish

@@ -6,6 +6,7 @@ pub mod kitty_keyboard;
 
 use crate::crosswords::vi_mode::ViMotion;
 use crate::crosswords::Mode;
+use crate::selection::SelectionMotion;
 use bitflags::bitflags;
 use rio_backend::config::bindings::KeyBinding as ConfigKeyBinding;
 use rio_backend::config::keyboard::Keyboard as ConfigKeyboard;
@@ -61,6 +62,12 @@ pub enum SearchAction {
 impl From<SearchAction> for Action {
     fn from(action: SearchAction) -> Self {
         Self::Search(action)
+    }
+}
+
+impl From<SelectionMotion> for Action {
+    fn from(motion: SelectionMotion) -> Self {
+        Self::ExtendSelection(motion)
     }
 }
 
@@ -217,6 +224,18 @@ impl From<String> for Action {
             "quit" => Some(Action::Quit),
             "copy" => Some(Action::Copy),
             "selectall" => Some(Action::SelectAll),
+            "extendselectionleft" => Some(Action::ExtendSelection(SelectionMotion::Left)),
+            "extendselectionright" => {
+                Some(Action::ExtendSelection(SelectionMotion::Right))
+            }
+            "extendselectionup" => Some(Action::ExtendSelection(SelectionMotion::Up)),
+            "extendselectiondown" => Some(Action::ExtendSelection(SelectionMotion::Down)),
+            "extendselectionwordleft" => {
+                Some(Action::ExtendSelection(SelectionMotion::WordLeft))
+            }
+            "extendselectionwordright" => {
+                Some(Action::ExtendSelection(SelectionMotion::WordRight))
+            }
             "searchforward" => Some(Action::SearchForward),
             "searchbackward" => Some(Action::SearchBackward),
             "searchconfirm" => Some(Action::Search(SearchAction::SearchConfirm)),
@@ -493,6 +512,9 @@ pub enum Action {
     /// Select everything, including the scrollback history.
     SelectAll,
 
+    /// Extend the terminal-owned selection without sending input to the PTY.
+    ExtendSelection(SelectionMotion),
+
     /// Show or hide the quake-style dropdown window. Also registered
     /// as a system-wide hotkey when bound in `[bindings]`.
     ToggleQuake,
@@ -690,6 +712,12 @@ pub fn default_key_bindings(config: &rio_backend::config::Config) -> Vec<KeyBind
         Key::Named(Copy);  Action::Copy;
         Key::Named(Copy),  +BindingMode::VI; Action::ClearSelection;
         Key::Named(Paste), ~BindingMode::VI; Action::Paste;
+        Key::Named(ArrowLeft),  ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; SelectionMotion::Left;
+        Key::Named(ArrowRight), ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; SelectionMotion::Right;
+        Key::Named(ArrowUp),    ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; SelectionMotion::Up;
+        Key::Named(ArrowDown),  ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; SelectionMotion::Down;
+        Key::Named(ArrowLeft),  ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; SelectionMotion::WordLeft;
+        Key::Named(ArrowRight), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; SelectionMotion::WordRight;
         Key::Character("l".into()), ModifiersState::CONTROL; Action::ClearLogNotice;
         "l",  ModifiersState::CONTROL, ~BindingMode::VI; Action::Esc("\x0c".into());
         Key::Named(Home),     ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN; Action::ScrollToTop;
@@ -1889,6 +1917,99 @@ mod tests {
             Action::from("SelectNextLocalTab".to_string()),
             Action::SelectNextLocalTab
         );
+    }
+
+    #[test]
+    fn selection_actions_parse_with_stable_configuration_names() {
+        for (name, motion) in [
+            ("ExtendSelectionLeft", SelectionMotion::Left),
+            ("ExtendSelectionRight", SelectionMotion::Right),
+            ("ExtendSelectionUp", SelectionMotion::Up),
+            ("ExtendSelectionDown", SelectionMotion::Down),
+            ("ExtendSelectionWordLeft", SelectionMotion::WordLeft),
+            ("ExtendSelectionWordRight", SelectionMotion::WordRight),
+        ] {
+            assert_eq!(
+                Action::from(name.to_string()),
+                Action::ExtendSelection(motion)
+            );
+        }
+    }
+
+    #[test]
+    fn keyboard_selection_defaults_are_local_collision_free_and_mode_safe() {
+        let config = rio_backend::config::Config::default();
+        let bindings = default_key_bindings(&config);
+        let expected = [
+            (ArrowLeft, ModifiersState::SHIFT, SelectionMotion::Left),
+            (ArrowRight, ModifiersState::SHIFT, SelectionMotion::Right),
+            (ArrowUp, ModifiersState::SHIFT, SelectionMotion::Up),
+            (ArrowDown, ModifiersState::SHIFT, SelectionMotion::Down),
+            (
+                ArrowLeft,
+                ModifiersState::CONTROL | ModifiersState::SHIFT,
+                SelectionMotion::WordLeft,
+            ),
+            (
+                ArrowRight,
+                ModifiersState::CONTROL | ModifiersState::SHIFT,
+                SelectionMotion::WordRight,
+            ),
+        ];
+
+        let selection_bindings: Vec<_> = bindings
+            .iter()
+            .filter(|binding| matches!(binding.action, Action::ExtendSelection(_)))
+            .cloned()
+            .collect();
+        assert_eq!(selection_bindings.len(), expected.len());
+        assert_no_overlapping_shortcuts("keyboard selection", &selection_bindings);
+
+        for (key, modifiers, motion) in expected {
+            let trigger = BindingKey::Keycode {
+                key: Key::Named(key),
+                location: KeyLocation::Standard,
+            };
+            let matching: Vec<_> = selection_bindings
+                .iter()
+                .filter(|binding| binding.trigger == trigger && binding.mods == modifiers)
+                .collect();
+            assert_eq!(matching.len(), 1, "missing or duplicate {motion:?}");
+            let binding = matching[0];
+            assert_eq!(binding.action, Action::ExtendSelection(motion));
+            assert!(binding.notmode.contains(BindingMode::VI));
+            assert!(binding.notmode.contains(BindingMode::SEARCH));
+            assert!(binding.is_triggered_by(BindingMode::empty(), modifiers, &trigger));
+            assert!(!binding.is_triggered_by(BindingMode::VI, modifiers, &trigger));
+            assert!(!binding.is_triggered_by(BindingMode::SEARCH, modifiers, &trigger));
+        }
+    }
+
+    #[test]
+    fn user_binding_can_override_shift_left_selection() {
+        let config = rio_backend::config::Config::default();
+        let updated = config_key_bindings(
+            vec![ConfigKeyBinding {
+                key: "left".to_string(),
+                action: "receivechar".to_string(),
+                with: "shift".to_string(),
+                esc: String::new(),
+                mode: String::new(),
+            }],
+            default_key_bindings(&config),
+        );
+        let trigger = BindingKey::Keycode {
+            key: Key::Named(ArrowLeft),
+            location: KeyLocation::Standard,
+        };
+        let matching: Vec<_> = updated
+            .iter()
+            .filter(|binding| {
+                binding.trigger == trigger && binding.mods == ModifiersState::SHIFT
+            })
+            .collect();
+        assert_eq!(matching.len(), 1);
+        assert_eq!(matching[0].action, Action::ReceiveChar);
     }
 
     #[test]

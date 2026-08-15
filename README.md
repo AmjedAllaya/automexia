@@ -165,6 +165,13 @@ future opt-in profile tracked separately in the
 [compatibility roadmap](docs/GHOSTTY-COMPATIBILITY-ROADMAP.md); it is not the
 implicit Automexia default.
 
+Select terminal text without reaching for the mouse on every supported OS:
+`Shift`+Arrow extends by one visible cell or row, and
+`Ctrl`+`Shift`+Left/Right extends by a Unicode-aware word boundary. The first
+press anchors at the live terminal cursor; later presses grow or reverse the
+same selection. Search, Vi mode, image-preview browsing, and explicit user
+bindings retain their established ownership.
+
 ## Image previews
 
 Automexia renders application-driven Sixel, Kitty Graphics (including Unicode

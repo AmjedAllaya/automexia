@@ -98,8 +98,18 @@ semantic accents, outlined key badges, a slim active indicator, and generous
 spacing provide hierarchy without colored icon blocks or redundant category
 labels. Command behavior and keyboard navigation remain unchanged.
 
-## Per-pane session footer
+## Keyboard selection
 
+Keyboard selection uses the same renderer-owned highlight and footer state as
+mouse selection. `Shift`+Arrow begins at the live cursor or extends the active
+end by one cell/row; `Ctrl`+`Shift`+Left/Right moves that end by a Unicode-aware
+word boundary. Reversing direction shrinks the same range instead of creating
+a second highlight. Motion is scoped to the selected pane, follows scrollback,
+skips wide-glyph continuation cells, allocates no per-key text buffer, and
+does not alter shell editor state or PTY history. Search, Vi mode, pinned image
+preview navigation, and explicit user overrides keep priority.
+
+## Per-pane session footer
 Every usable pane ends with a 32 logical-pixel operational footer. It is a
 renderer-owned surface with a real grid reservation, so PTY output, the cursor,
 images, prompt rows, selections, and the scrollbar stop above it rather than

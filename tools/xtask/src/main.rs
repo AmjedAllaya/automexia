@@ -2419,6 +2419,10 @@ fn verify_architecture() -> TaskResult {
     let responsive_chrome = read(&app.join("src/renderer/responsive.rs"))?;
     let renderer_utils = read(&app.join("src/renderer/utils.rs"))?;
     let screen = read(&app.join("src/screen/mod.rs"))?;
+    let selection_source = read(&root().join("rio-vt/src/selection.rs"))?;
+    let selection_benchmark = read(&root().join("rio-vt/benches/vt_input.rs"))?;
+    let native_selection_stress =
+        read(&root().join("tests/integration/resize-stress-windows.ps1"))?;
     require(
         screen.contains("fn should_copy_selection_on_ctrl_c")
             && screen.contains("fn has_nonempty_selection")
@@ -2436,6 +2440,25 @@ fn verify_architecture() -> TaskResult {
                 "default_mouse_clipboard_bindings_preserve_primary_selection_ownership",
             ),
         "selection-aware Ctrl+C or safe secondary-click clipboard ownership regressed",
+    )?;
+    require(
+        bindings.contains("SelectionMotion::Left")
+            && bindings.contains("SelectionMotion::WordRight")
+            && bindings.contains(
+                "keyboard_selection_defaults_are_local_collision_free_and_mode_safe",
+            )
+            && screen.contains("Act::ExtendSelection(motion)")
+            && screen.contains("consumed_win32_key_releases")
+            && screen.contains("pub fn extend_selection")
+            && selection_source.contains("pub enum SelectionMotion")
+            && selection_source.contains("pub fn selection_motion_target")
+            && selection_source.contains("every_keyboard_motion_stays_inside_the_grid")
+            && selection_source
+                .contains("keyboard_cell_extension_never_stops_inside_a_wide_grapheme")
+            && selection_benchmark.contains("keyboard_selection_word_motion_4k")
+            && native_selection_stress.contains("AMX_SELECTION_PROBE_74129")
+            && native_selection_stress.contains(".selection_text"),
+        "keyboard selection lost shortcut, dispatch, ConPTY, VT, benchmark, or native-stress ownership",
     )?;
 
     require(

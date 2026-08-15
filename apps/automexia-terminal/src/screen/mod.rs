@@ -30,7 +30,7 @@ use crate::renderer::island::{self, ChromeAction, LocalTabAction, TabStripLayout
 use crate::renderer::session_footer;
 use crate::renderer::{utils::padding_top_from_config, Renderer};
 use crate::screen::hint::HintMatches;
-use crate::selection::{Selection, SelectionType};
+use crate::selection::{Anchor, Selection, SelectionMotion, SelectionType};
 use core::fmt::Debug;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use rio_backend::clipboard::Clipboard;
@@ -50,6 +50,8 @@ use rio_window::event::Modifiers;
 use rio_window::event::MouseButton;
 #[cfg(target_os = "macos")]
 use rio_window::keyboard::ModifiersKeyState;
+#[cfg(windows)]
+use rio_window::keyboard::PhysicalKey;
 use rio_window::keyboard::{Key, KeyLocation, ModifiersState, NamedKey};
 use rio_window::platform::modifier_supplement::KeyEventExtModifierSupplement;
 use std::error::Error;
@@ -445,10 +447,31 @@ impl RowRenderScratch {
     }
 }
 
+#[cfg(windows)]
+#[derive(Default)]
+struct ConsumedWin32KeyReleases(rustc_hash::FxHashSet<PhysicalKey>);
+
+#[cfg(windows)]
+impl ConsumedWin32KeyReleases {
+    fn record_press(&mut self, key: PhysicalKey) {
+        self.0.insert(key);
+    }
+
+    fn take_release(&mut self, key: &PhysicalKey) -> bool {
+        self.0.remove(key)
+    }
+
+    fn clear(&mut self) {
+        self.0.clear();
+    }
+}
+
 pub struct Screen<'screen> {
     bindings: crate::bindings::KeyBindings,
     mouse_bindings: Vec<MouseBinding>,
     pub modifiers: Modifiers,
+    #[cfg(windows)]
+    consumed_win32_key_releases: ConsumedWin32KeyReleases,
     pub mouse: Mouse,
     pub touchpurpose: TouchPurpose,
     pub search_state: SearchState,
@@ -699,6 +722,8 @@ impl Screen<'_> {
                 .collect(),
             mouse_bindings: crate::bindings::default_mouse_bindings(),
             modifiers: Modifiers::default(),
+            #[cfg(windows)]
+            consumed_win32_key_releases: ConsumedWin32KeyReleases::default(),
             context_manager,
             sugarloaf,
             mouse: Mouse::new(config.scroll.multiplier, config.scroll.divider),
@@ -1425,6 +1450,14 @@ impl Screen<'_> {
         let mods = self.modifiers.state();
 
         if key.state == ElementState::Released {
+            #[cfg(windows)]
+            if self
+                .consumed_win32_key_releases
+                .take_release(&key.physical_key)
+            {
+                return;
+            }
+
             if !self.search_active()
                 && !self.hint_state.is_active()
                 && should_copy_selection_on_ctrl_c(
@@ -1529,6 +1562,11 @@ impl Screen<'_> {
 
         let ignore_chars = self.process_key_bindings(key, &mode, mods, clipboard);
         if ignore_chars {
+            #[cfg(windows)]
+            if mode.contains(Mode::WIN32_INPUT) {
+                self.consumed_win32_key_releases
+                    .record_press(key.physical_key);
+            }
             return;
         }
 
@@ -1777,6 +1815,9 @@ impl Screen<'_> {
                     }
                     Act::SelectAll => {
                         self.select_all();
+                    }
+                    Act::ExtendSelection(motion) => {
+                        self.extend_selection(*motion);
                     }
                     Act::Hint(hint_config) => {
                         self.start_hint_mode(hint_config.clone());
@@ -2773,6 +2814,36 @@ impl Screen<'_> {
         let end = Pos::new(terminal.grid.bottommost_line(), terminal.grid.last_column());
         let mut selection = Selection::new(SelectionType::Simple, start, Side::Left);
         selection.update(end, Side::Right);
+        let selection_range = selection.to_range(&terminal);
+        terminal.selection = Some(selection);
+        drop(terminal);
+
+        current.set_selection(selection_range);
+        self.context_manager.request_render();
+    }
+
+    #[inline]
+    pub fn extend_selection(&mut self, motion: SelectionMotion) {
+        let current = self.context_manager.current_mut();
+        let mut terminal = current.terminal.lock();
+        let had_selection = terminal.selection.is_some();
+        let anchor = terminal
+            .selection
+            .as_ref()
+            .map(Selection::active_anchor)
+            .unwrap_or_else(|| Anchor::new(terminal.grid.cursor.pos, Side::Left));
+        let target = terminal.selection_motion_target(anchor, motion);
+
+        // A clamped motion at a grid boundary should not create an empty
+        // selection or change clipboard semantics.
+        if !had_selection && target == anchor {
+            return;
+        }
+
+        let mut selection = terminal.selection.take().unwrap_or_else(|| {
+            Selection::new(SelectionType::Simple, anchor.point, anchor.side())
+        });
+        selection.update(target.point, target.side());
         let selection_range = selection.to_range(&terminal);
         terminal.selection = Some(selection);
         drop(terminal);
@@ -4608,6 +4679,9 @@ impl Screen<'_> {
             self.mark_dirty();
         }
         if !is_focused {
+            #[cfg(windows)]
+            self.consumed_win32_key_releases.clear();
+
             let rc = &mut self.context_manager.current_mut().renderable_content;
             if !rc.is_blinking_cursor_visible {
                 rc.is_blinking_cursor_visible = true;
@@ -5960,6 +6034,26 @@ impl Screen<'_> {
                     self.mark_dirty();
                 }
             }
+            "extend-selection" => {
+                let motion = match fields.next() {
+                    Some("left") => Some(SelectionMotion::Left),
+                    Some("right") => Some(SelectionMotion::Right),
+                    Some("up") => Some(SelectionMotion::Up),
+                    Some("down") => Some(SelectionMotion::Down),
+                    Some("word-left") => Some(SelectionMotion::WordLeft),
+                    Some("word-right") => Some(SelectionMotion::WordRight),
+                    _ => None,
+                };
+                if let Some(motion) = motion {
+                    self.extend_selection(motion);
+                } else {
+                    tracing::warn!("ignored invalid native selection motion");
+                }
+            }
+            "clear-selection" => {
+                self.clear_selection();
+                self.mark_dirty();
+            }
             "write-line" => {
                 let Some(line) = fields.next() else {
                     return;
@@ -6496,6 +6590,23 @@ fn post_process_hyperlink_uri(uri: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn consumed_win32_releases_are_deduplicated_and_cleared_on_focus_loss() {
+        use rio_window::keyboard::KeyCode;
+
+        let key = PhysicalKey::Code(KeyCode::ArrowLeft);
+        let mut releases = ConsumedWin32KeyReleases::default();
+        releases.record_press(key);
+        releases.record_press(key);
+        assert!(releases.take_release(&key));
+        assert!(!releases.take_release(&key));
+
+        releases.record_press(key);
+        releases.clear();
+        assert!(!releases.take_release(&key));
+    }
 
     #[test]
     fn ctrl_c_copies_only_a_nonempty_selection_and_otherwise_remains_interrupt() {
