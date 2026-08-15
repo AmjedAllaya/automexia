@@ -472,6 +472,11 @@ impl<T: EventListener> Crosswords<T> {
             return anchor;
         }
 
+        // Selection anchors survive reflow and can also be constructed by
+        // embedders. Clamp stale or malformed points before indexing the
+        // retained grid so this public operation is total and panic-free.
+        let anchor = self.normalize_selection_anchor(anchor);
+
         let target = match motion {
             SelectionMotion::Left => self.selection_horizontal_target(anchor, false),
             SelectionMotion::Right => self.selection_horizontal_target(anchor, true),
@@ -517,8 +522,11 @@ impl<T: EventListener> Crosswords<T> {
         } else {
             std::cmp::max(Line(anchor.point.row.0.saturating_sub(1)), top)
         };
-        let boundary_column =
-            anchor.point.col.0 + usize::from(anchor.side == Side::Right);
+        let boundary_column = anchor
+            .point
+            .col
+            .0
+            .saturating_add(usize::from(anchor.side == Side::Right));
 
         let target = if boundary_column >= self.grid.columns() {
             Anchor::new(Pos::new(row, self.grid.last_column()), Side::Right)
@@ -539,7 +547,10 @@ impl<T: EventListener> Crosswords<T> {
 
         if right {
             while boundary < total
-                && self.selection_word_class(boundary) == SelectionWordClass::Continuation
+                && matches!(
+                    self.selection_word_class(boundary),
+                    SelectionWordClass::Whitespace | SelectionWordClass::Continuation
+                )
             {
                 boundary += 1;
             }
@@ -554,18 +565,6 @@ impl<T: EventListener> Crosswords<T> {
                     boundary += 1;
                 } else {
                     break;
-                }
-            }
-
-            if initial != SelectionWordClass::Whitespace {
-                while boundary < total {
-                    match self.selection_word_class(boundary) {
-                        SelectionWordClass::Whitespace
-                        | SelectionWordClass::Continuation => {
-                            boundary += 1;
-                        }
-                        _ => break,
-                    }
                 }
             }
         } else {
@@ -597,6 +596,15 @@ impl<T: EventListener> Crosswords<T> {
         }
 
         self.selection_anchor_from_boundary(boundary)
+    }
+
+    fn normalize_selection_anchor(&self, anchor: Anchor) -> Anchor {
+        let row = std::cmp::max(
+            self.grid.topmost_line(),
+            std::cmp::min(anchor.point.row, self.grid.bottommost_line()),
+        );
+        let column = std::cmp::min(anchor.point.col, self.grid.last_column());
+        Anchor::new(Pos::new(row, column), anchor.side)
     }
 
     fn selection_word_class(&self, index: usize) -> SelectionWordClass {
@@ -688,6 +696,7 @@ mod tests {
 
     use crate::crosswords::pos::{Column, Pos, Side};
     use crate::crosswords::Crosswords;
+    use crate::performer::handler::Processor;
 
     fn term(height: usize, width: usize) -> Crosswords<VoidListener> {
         let size = CrosswordsSize::new(width, height);
@@ -1117,14 +1126,19 @@ mod tests {
         }
         let origin = Anchor::new(Pos::new(Line(0), Column(0)), Side::Left);
 
-        let greek = terminal.selection_motion_target(origin, SelectionMotion::WordRight);
-        assert_eq!(greek, Anchor::new(Pos::new(Line(0), Column(7)), Side::Left));
+        let latin_end =
+            terminal.selection_motion_target(origin, SelectionMotion::WordRight);
+        assert_eq!(
+            latin_end,
+            Anchor::new(Pos::new(Line(0), Column(5)), Side::Left)
+        );
         let punctuation =
-            terminal.selection_motion_target(greek, SelectionMotion::WordRight);
+            terminal.selection_motion_target(latin_end, SelectionMotion::WordRight);
         assert_eq!(
             punctuation,
             Anchor::new(Pos::new(Line(0), Column(12)), Side::Left)
         );
+        let greek = Anchor::new(Pos::new(Line(0), Column(7)), Side::Left);
         assert_eq!(
             terminal.selection_motion_target(punctuation, SelectionMotion::WordLeft),
             greek
@@ -1199,6 +1213,62 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn malformed_keyboard_anchors_are_clamped_before_every_motion() {
+        let motions = [
+            SelectionMotion::Left,
+            SelectionMotion::Right,
+            SelectionMotion::Up,
+            SelectionMotion::Down,
+            SelectionMotion::WordLeft,
+            SelectionMotion::WordRight,
+        ];
+        let anchors = [
+            Anchor::new(Pos::new(Line(i32::MIN), Column(usize::MAX)), Side::Left),
+            Anchor::new(Pos::new(Line(i32::MAX), Column(usize::MAX)), Side::Right),
+        ];
+
+        let mut terminal = term(3, 7);
+        for anchor in anchors {
+            for motion in motions {
+                let target = terminal.selection_motion_target(anchor, motion);
+                assert!(target.point.row >= terminal.grid.topmost_line());
+                assert!(target.point.row <= terminal.grid.bottommost_line());
+                assert!(target.point.col <= terminal.grid.last_column());
+            }
+        }
+    }
+
+    #[test]
+    fn keyboard_word_extension_preserves_decomposed_unicode_and_soft_wrapped_text() {
+        let mut unicode = term(1, 12);
+        let mut parser = Processor::default();
+        parser.advance(&mut unicode, "e\u{0301}clair!".as_bytes());
+        let start = Anchor::new(Pos::new(Line(0), Column(0)), Side::Left);
+        let end = unicode.selection_motion_target(start, SelectionMotion::WordRight);
+        assert_eq!(end, Anchor::new(Pos::new(Line(0), Column(6)), Side::Left));
+        let mut selection =
+            Selection::new(SelectionType::Simple, start.point, start.side());
+        selection.update(end.point, end.side());
+        unicode.selection = Some(selection);
+        assert_eq!(
+            unicode.selection_to_string().as_deref(),
+            Some("e\u{0301}clair")
+        );
+
+        let mut wrapped = term(2, 4);
+        let mut parser = Processor::default();
+        parser.advance(&mut wrapped, b"abcdef!");
+        let start = Anchor::new(Pos::new(Line(0), Column(0)), Side::Left);
+        let end = wrapped.selection_motion_target(start, SelectionMotion::WordRight);
+        assert_eq!(end, Anchor::new(Pos::new(Line(1), Column(2)), Side::Left));
+        let mut selection =
+            Selection::new(SelectionType::Simple, start.point, start.side());
+        selection.update(end.point, end.side());
+        wrapped.selection = Some(selection);
+        assert_eq!(wrapped.selection_to_string().as_deref(), Some("abcdef"));
     }
 
     #[test]

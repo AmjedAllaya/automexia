@@ -2454,10 +2454,18 @@ fn verify_architecture() -> TaskResult {
             && selection_source.contains("pub fn selection_motion_target")
             && selection_source.contains("every_keyboard_motion_stays_inside_the_grid")
             && selection_source
+                .contains("malformed_keyboard_anchors_are_clamped_before_every_motion")
+            && selection_source.contains(
+                "keyboard_word_extension_preserves_decomposed_unicode_and_soft_wrapped_text",
+            )
+            && selection_source
                 .contains("keyboard_cell_extension_never_stops_inside_a_wide_grapheme")
             && selection_benchmark.contains("keyboard_selection_word_motion_4k")
+            && selection_benchmark
+                .contains("keyboard_selection_word_motion_120k_scrollback")
             && native_selection_stress.contains("AMX_SELECTION_PROBE_74129")
-            && native_selection_stress.contains(".selection_text"),
+            && native_selection_stress.contains(".selection_text")
+            && native_selection_stress.contains(".selection_rendered"),
         "keyboard selection lost shortcut, dispatch, ConPTY, VT, benchmark, or native-stress ownership",
     )?;
 

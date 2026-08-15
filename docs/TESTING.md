@@ -239,13 +239,16 @@ cargo xtask test resize-stress --native-gui
 The frontend tests prove all six common shortcuts are unique, disabled during
 search/Vi ownership, configurable, and collision-free beside platform pane and
 tab shortcuts. VT tests cover reversal, row/scrollback boundaries, Unicode
-words, wide graphemes, vertical spacer avoidance, and exhaustive small-grid
-endpoint bounds. `keyboard_selection_word_motion_4k` records worst-case long
-identifier latency without per-key allocation. The feature-gated native
-Windows storm types into a real PowerShell/ConPTY session and asserts the exact
-terminal selection from renderer-neutral state; the same shared binding and VT
-code is compiled and tested by native Linux and macOS CI. Physical keyboard
-layout and assistive-technology checks remain host-owned release evidence.
+words, decomposed Unicode, soft wraps, wide graphemes, malformed anchors,
+vertical spacer avoidance, and exhaustive small-grid endpoint bounds.
+`keyboard_selection_word_motion_4k` records long-identifier latency and
+`keyboard_selection_word_motion_120k_scrollback` covers adversarial retained
+history, both without per-key allocation. The feature-gated native Windows
+storm types into a real PowerShell/ConPTY session and asserts the exact terminal
+selection and renderer highlight from renderer-neutral state; the same shared
+binding and VT code is compiled and tested by native Linux and macOS CI.
+Physical keyboard-layout and assistive-technology checks remain host-owned
+release evidence.
 
 Focused regressions for the 2026-08 upstream correctness adaptation are:
 

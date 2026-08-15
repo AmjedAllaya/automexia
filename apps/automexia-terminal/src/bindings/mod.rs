@@ -1964,6 +1964,16 @@ mod tests {
             .collect();
         assert_eq!(selection_bindings.len(), expected.len());
         assert_no_overlapping_shortcuts("keyboard selection", &selection_bindings);
+        let other_bindings: Vec<_> = bindings
+            .iter()
+            .filter(|binding| !matches!(binding.action, Action::ExtendSelection(_)))
+            .cloned()
+            .collect();
+        assert_no_cross_table_overlaps(
+            "keyboard selection versus common defaults",
+            &selection_bindings,
+            &other_bindings,
+        );
 
         for (key, modifiers, motion) in expected {
             let trigger = BindingKey::Keycode {
