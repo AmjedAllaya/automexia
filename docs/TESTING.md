@@ -655,11 +655,13 @@ configuration migration, semantic classification, and label sanitization. All
 libFuzzer commands install and invoke nightly explicitly. Suitable pure crates
 run Miri and ASan/TSan; sanitizer jobs install nightly `rust-src` and do not
 cancel the second sanitizer when the first fails. Miri selects scalar UTF-8,
-base64, and parser-transcode implementations instead of calling native
-`simdutf` FFI, while retaining the optimized SIMD path in production. Its
-bounded temporary-file protocol tests run with Miri isolation disabled only on
-the ephemeral hosted runner. Criterion cases exist for parser throughput, row rebuild, prompt layout,
-cache access, worker submission, and cold/warm image quick look. Hosted nightly
+base64, parser-transcode, and bounded Kitty temporary-file transport regressions
+instead of running the entire VT suite or calling native `simdutf` FFI. The
+optimized SIMD path remains enabled in production. The explicit Miri suite has
+a 30-minute job timeout; filesystem isolation is disabled only on the ephemeral
+hosted runner so the two bounded temporary-file cases can execute. Criterion
+cases exist for parser throughput, row rebuild, prompt layout, cache access,
+worker submission, and cold/warm image quick look. Hosted nightly
 always compiles them; a named self-hosted runner executes and retains Criterion
 evidence when AUTOMEXIA_BENCHMARK_RUNNER=1. Run the commands below for local
 measurements. The controlled 30-day comparison baseline is not complete.

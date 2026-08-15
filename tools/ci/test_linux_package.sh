@@ -3,6 +3,7 @@ set -euo pipefail
 
 package_dir=${1:?package directory is required}
 version=${2:?version is required}
+package_dir=$(realpath "$package_dir")
 deb=$(find "$package_dir" -maxdepth 1 -type f -name '*.deb' -print -quit)
 rpm=$(find "$package_dir" -maxdepth 1 -type f -name '*.rpm' -print -quit)
 archive=$(find "$package_dir" -maxdepth 1 -type f -name '*.tar.gz' -print -quit)
@@ -24,22 +25,24 @@ chmod +x "$portable"
 
 dpkg-deb --info "$deb" >/dev/null
 rpm -qip "$rpm" >/dev/null
-rpm2cpio "$rpm" | cpio -t 2>/dev/null | grep -q '/usr/bin/automexia'
+# Query the RPM manifest directly. Extracting it through rpm2cpio/cpio under
+# pipefail is needlessly fragile and has produced intermittent false failures.
+rpm -qpl "$rpm" | grep -Fx '/usr/bin/automexia' >/dev/null
 
 sudo apt-get install -y "$deb"
-automexia --version | grep -F "$version"
+/usr/bin/automexia --version | grep -F "$version"
 desktop-file-validate /usr/share/applications/automexia-terminal.desktop
 appstreamcli validate --no-net /usr/share/metainfo/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml
 grep -qF 'x-scheme-handler/automexia;' /usr/share/applications/automexia-terminal.desktop
-test -f /usr/share/icons/hicolor/scalable/apps/automexia-terminal.svg
+test -f /usr/share/icons/hicolor/512x512/apps/automexia-terminal.png
 infocmp automexia >/dev/null
 infocmp xterm-automexia >/dev/null
 test -f /usr/share/doc/automexia-terminal/NOTICE.md
 test -f /usr/share/doc/automexia-terminal/THIRD_PARTY_NOTICES.md
 
 sudo apt-get remove -y automexia-terminal
-if command -v automexia >/dev/null 2>&1; then
-    echo 'uninstall left automexia on PATH' >&2
+if test -e /usr/bin/automexia; then
+    echo 'DEB uninstall left /usr/bin/automexia behind' >&2
     exit 1
 fi
 
