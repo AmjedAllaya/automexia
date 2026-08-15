@@ -138,6 +138,11 @@ impl Route<'_> {
     #[inline]
     pub fn confirm_quit(&mut self) {
         self.window.screen.renderer.confirm_quit.set_active(true);
+        self.window
+            .screen
+            .renderer
+            .command_palette
+            .set_enabled(false);
         self.request_overlay_redraw();
     }
 

@@ -136,7 +136,7 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
     #[cfg(target_os = "windows")]
     let mut clouds = std::mem::take(&mut wsl_live.clouds);
     #[cfg(not(target_os = "windows"))]
-    let mut clouds = Vec::new();
+    let mut clouds: Vec<CloudContext> = Vec::new();
     for configured_cloud in cloud_contexts(
         home,
         project_context.as_ref(),

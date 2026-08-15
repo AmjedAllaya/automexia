@@ -279,6 +279,8 @@ struct NativeWindowSnapshot {
     grid_height: f32,
     grid_margin: Margin,
     active_tab_profile: Option<String>,
+    palette_enabled: bool,
+    confirm_quit_active: bool,
 }
 
 #[cfg(feature = "native-gui-test-hooks")]
@@ -287,7 +289,6 @@ fn write_native_resize_snapshot(
     panels: Vec<serde_json::Value>,
     window: NativeWindowSnapshot,
     last_control: &str,
-    palette_enabled: bool,
     image_preview: crate::image_preview::NativeImagePreviewState,
     pointer: serde_json::Value,
 ) {
@@ -388,7 +389,8 @@ fn write_native_resize_snapshot(
         "latest_prompt_start_count": latest_prompt_start_count,
         "active_prompt_gap_rows": active_prompt_gap_rows,
         "last_control": last_control,
-        "palette_enabled": palette_enabled,
+        "palette_enabled": window.palette_enabled,
+        "confirm_quit_active": window.confirm_quit_active,
         "fullscreen_display_request_active": fullscreen_display_request_active,
         "image_preview": {
             "visible": image_preview.visible,
@@ -5043,9 +5045,10 @@ impl Screen<'_> {
                     active_tab_profile: self
                         .context_manager
                         .tab_profile_identity(self.context_manager.current_index()),
+                    palette_enabled: self.renderer.command_palette.is_enabled(),
+                    confirm_quit_active: self.renderer.confirm_quit.is_active(),
                 },
                 &self.native_test_last_control,
-                self.renderer.command_palette.is_enabled(),
                 self.image_preview.native_test_state(&self.sugarloaf),
                 pointer,
             );
@@ -5822,7 +5825,18 @@ impl Screen<'_> {
         let _sequence = fields.next();
         match action {
             "open-palette" => {
+                self.renderer.confirm_quit.set_active(false);
                 self.renderer.command_palette.set_enabled(true);
+                self.mark_dirty();
+            }
+            "confirm-quit" => {
+                self.renderer.command_palette.set_enabled(false);
+                self.renderer.confirm_quit.set_active(true);
+                self.mark_dirty();
+            }
+            "dismiss-modal" => {
+                self.renderer.command_palette.set_enabled(false);
+                self.renderer.confirm_quit.set_active(false);
                 self.mark_dirty();
             }
             "toggle-fullscreen" => self.context_manager.toggle_full_screen(),

@@ -4,6 +4,7 @@ param(
     [int]$PowerShellHistoryBudgetMilliseconds = 1500,
     [string]$ResourceReport,
     [string]$FrameCapture,
+    [string]$ModalCaptureDirectory,
     [ValidateRange(32, 4096)]
     [int64]$MaximumHandleGrowth = 384,
     [ValidateRange(8, 512)]
@@ -1840,6 +1841,134 @@ $rendererConfig
         }
     }
 
+    # Both command surfaces are true modals: exactly one may be active, the
+    # feature-gated snapshot must acknowledge it, and a real composited client
+    # capture must remain visibly nonblank. Sugarloaf unit tests separately
+    # assert that the modal primitive/text suffix is physically submitted after
+    # pane borders, footers, scrollbars, and all ordinary UI labels.
+    $modalCaptureRoot = if ([string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
+        $null
+    } else {
+        [IO.Path]::GetFullPath($ModalCaptureDirectory)
+    }
+    if ($null -ne $modalCaptureRoot) {
+        New-Item -ItemType Directory -Force -Path $modalCaptureRoot | Out-Null
+    }
+    $paletteCaptureName = if ($UseCpuRenderer) {
+        'palette-cpu.png'
+    } else {
+        'palette-wgpu.png'
+    }
+    $quitCaptureName = if ($UseCpuRenderer) {
+        'confirm-quit-cpu.png'
+    } else {
+        'confirm-quit-wgpu.png'
+    }
+    $paletteCapturePath = if ($null -eq $modalCaptureRoot) {
+        $null
+    } else {
+        Join-Path $modalCaptureRoot $paletteCaptureName
+    }
+    $quitCapturePath = if ($null -eq $modalCaptureRoot) {
+        $null
+    } else {
+        Join-Path $modalCaptureRoot $quitCaptureName
+    }
+
+    $script:testStage = 'topmost command palette composition'
+    $paletteControl = 'open-palette:modal-layer'
+    Send-AutomexiaTestControl $paletteControl
+    $paletteSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$imageLifecycleFinal.sequence)
+    $paletteDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$paletteSnapshot.last_control -ne $paletteControl -or
+            -not [bool]$paletteSnapshot.palette_enabled -or
+            [bool]$paletteSnapshot.confirm_quit_active) -and
+           [DateTime]::UtcNow -lt $paletteDeadline) {
+        $paletteSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$paletteSnapshot.sequence)
+    }
+    if ([string]$paletteSnapshot.last_control -ne $paletteControl -or
+        -not [bool]$paletteSnapshot.palette_enabled -or
+        [bool]$paletteSnapshot.confirm_quit_active) {
+        Write-Host ($paletteSnapshot | ConvertTo-Json -Depth 8)
+        throw 'The command palette did not acquire exclusive modal ownership'
+    }
+    # The snapshot that acknowledges a control is published before that dirty
+    # frame is presented. Wait one additional renderer generation.
+    $palettePresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$paletteSnapshot.sequence)
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not expose Automexia for palette capture (Win32 error $code)"
+    }
+    try {
+        Start-Sleep -Milliseconds 100
+        $paletteFrame = [AutomexiaResizeDriver]::CaptureClientFrame(
+            $window, $paletteCapturePath)
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+    }
+    if ($paletteFrame.Width -lt 100 -or
+        $paletteFrame.Height -lt 100 -or
+        $paletteFrame.SampleCount -lt 100 -or
+        $paletteFrame.DistinctColorBuckets -lt 8 -or
+        $paletteFrame.LuminanceSpread -lt 32) {
+        throw "Command palette composited frame is blank or unreadable: $($paletteFrame.Width)x$($paletteFrame.Height), buckets=$($paletteFrame.DistinctColorBuckets), spread=$($paletteFrame.LuminanceSpread)"
+    }
+
+    $script:testStage = 'topmost close confirmation composition'
+    $quitControl = 'confirm-quit:modal-layer'
+    Send-AutomexiaTestControl $quitControl
+    $quitSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$palettePresented.sequence)
+    $quitDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$quitSnapshot.last_control -ne $quitControl -or
+            [bool]$quitSnapshot.palette_enabled -or
+            -not [bool]$quitSnapshot.confirm_quit_active) -and
+           [DateTime]::UtcNow -lt $quitDeadline) {
+        $quitSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$quitSnapshot.sequence)
+    }
+    if ([string]$quitSnapshot.last_control -ne $quitControl -or
+        [bool]$quitSnapshot.palette_enabled -or
+        -not [bool]$quitSnapshot.confirm_quit_active) {
+        Write-Host ($quitSnapshot | ConvertTo-Json -Depth 8)
+        throw 'The close confirmation did not replace the palette as the exclusive modal'
+    }
+    $quitPresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$quitSnapshot.sequence)
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not expose Automexia for close-confirmation capture (Win32 error $code)"
+    }
+    try {
+        Start-Sleep -Milliseconds 100
+        $quitFrame = [AutomexiaResizeDriver]::CaptureClientFrame(
+            $window, $quitCapturePath)
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+    }
+    if ($quitFrame.Width -lt 100 -or
+        $quitFrame.Height -lt 100 -or
+        $quitFrame.SampleCount -lt 100 -or
+        $quitFrame.DistinctColorBuckets -lt 8 -or
+        $quitFrame.LuminanceSpread -lt 32) {
+        throw "Close confirmation composited frame is blank or unreadable: $($quitFrame.Width)x$($quitFrame.Height), buckets=$($quitFrame.DistinctColorBuckets), spread=$($quitFrame.LuminanceSpread)"
+    }
+
+    $script:testStage = 'modal dismissal restores terminal'
+    $dismissModalControl = 'dismiss-modal:modal-layer'
+    Send-AutomexiaTestControl $dismissModalControl
+    $modalDismissed = Read-AutomexiaSnapshot -AfterSequence ([int64]$quitPresented.sequence)
+    $modalDismissDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$modalDismissed.last_control -ne $dismissModalControl -or
+            [bool]$modalDismissed.palette_enabled -or
+            [bool]$modalDismissed.confirm_quit_active) -and
+           [DateTime]::UtcNow -lt $modalDismissDeadline) {
+        $modalDismissed = Read-AutomexiaSnapshot -AfterSequence ([int64]$modalDismissed.sequence)
+    }
+    if ([string]$modalDismissed.last_control -ne $dismissModalControl -or
+        [bool]$modalDismissed.palette_enabled -or
+        [bool]$modalDismissed.confirm_quit_active) {
+        Write-Host ($modalDismissed | ConvertTo-Json -Depth 8)
+        throw 'Modal dismissal left a hidden input-blocking surface active'
+    }
+
     # Custom-chrome hit geometry is covered deterministically in Rust across
     # physical DPI scales. Exercise the native OS teardown route here without
     # relying on foreground-locked desktop pointer injection.
@@ -1916,6 +2045,34 @@ $rendererConfig
                 attempts = $frameAttempts
                 settle_milliseconds = $frameStopwatch.ElapsedMilliseconds
                 artifact = if ($null -eq $framePath) { $null } else { [IO.Path]::GetFileName($framePath) }
+            }
+            modal_composition = [ordered]@{
+                renderer = if ($UseCpuRenderer) { 'cpu' } else { 'wgpu' }
+                palette = [ordered]@{
+                    width = $paletteFrame.Width
+                    height = $paletteFrame.Height
+                    distinct_color_buckets = $paletteFrame.DistinctColorBuckets
+                    luminance_spread = $paletteFrame.LuminanceSpread
+                    artifact = if ($null -eq $paletteCapturePath) {
+                        $null
+                    } else {
+                        [IO.Path]::GetFileName($paletteCapturePath)
+                    }
+                }
+                close_confirmation = [ordered]@{
+                    width = $quitFrame.Width
+                    height = $quitFrame.Height
+                    distinct_color_buckets = $quitFrame.DistinctColorBuckets
+                    luminance_spread = $quitFrame.LuminanceSpread
+                    artifact = if ($null -eq $quitCapturePath) {
+                        $null
+                    } else {
+                        [IO.Path]::GetFileName($quitCapturePath)
+                    }
+                }
+                exclusive_state_restored = (
+                    -not [bool]$modalDismissed.palette_enabled -and
+                    -not [bool]$modalDismissed.confirm_quit_active)
             }
             image_preview_pixels = [ordered]@{
                 width = $previewPixels.Width

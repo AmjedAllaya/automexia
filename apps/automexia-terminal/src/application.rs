@@ -1336,9 +1336,47 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::MouseInput { state, button, .. } => {
-                if route.path != RoutePath::Terminal
-                    || route.window.screen.renderer.confirm_quit.is_active()
-                {
+                if route.window.screen.renderer.confirm_quit.is_active() {
+                    if state == ElementState::Pressed && button == MouseButton::Left {
+                        let scale = route.window.screen.sugarloaf.scale_factor();
+                        let size = route.window.screen.sugarloaf.window_size();
+                        let action = route.window.screen.renderer.confirm_quit.hit_test(
+                            route.window.screen.mouse.x as f32 / scale,
+                            route.window.screen.mouse.y as f32 / scale,
+                            (size.width, size.height, scale),
+                        );
+                        match action {
+                            Some(
+                                crate::renderer::confirm_quit::ConfirmQuitAction::Cancel,
+                            ) => {
+                                route
+                                    .window
+                                    .screen
+                                    .renderer
+                                    .confirm_quit
+                                    .set_active(false);
+                                route.request_redraw();
+                            }
+                            Some(
+                                crate::renderer::confirm_quit::ConfirmQuitAction::Quit,
+                            ) => {
+                                route.quit();
+                            }
+                            None => {}
+                        }
+                    }
+                    if state == ElementState::Released && button == MouseButton::Left {
+                        route.window.screen.mouse.left_button_state =
+                            ElementState::Released;
+                        route.window.screen.mouse.hint_click_latched = None;
+                        route.window.screen.mouse.image_preview_click_latched = false;
+                        route.window.screen.renderer.scrollbar.end_drag();
+                        route.window.screen.resize_state = None;
+                    }
+                    return;
+                }
+
+                if route.path != RoutePath::Terminal {
                     #[cfg(target_os = "macos")]
                     if state == ElementState::Pressed
                         && button == MouseButton::Left
@@ -2583,7 +2621,7 @@ fn run_bell<T>(
 where
     T: cpal::Sample + cpal::SizedSample + cpal::FromSample<f32>,
 {
-    let sample_rate = config.sample_rate.0 as f32;
+    let sample_rate = config.sample_rate as f32;
     let channels = config.channels as usize;
     let duration_secs = crate::constants::BELL_DURATION.as_secs_f32();
     let total_samples = (sample_rate * duration_secs) as usize;
@@ -2592,7 +2630,7 @@ where
     let mut samples_played = 0usize;
 
     let stream = device.build_output_stream(
-        config,
+        *config,
         move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
             for frame in data.chunks_mut(channels) {
                 if samples_played >= total_samples {

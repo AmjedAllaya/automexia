@@ -378,7 +378,19 @@ fn report_windows_shell_health() {
 fn doctor() -> TaskResult {
     #[cfg(target_os = "windows")]
     let required = ["cargo", "rustc", "rustfmt", "git", "cargo-deny"];
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
+    let required = [
+        "cargo",
+        "rustc",
+        "rustfmt",
+        "git",
+        "cargo-deny",
+        "bash",
+        "zsh",
+        "shellcheck",
+        "glslangValidator",
+    ];
+    #[cfg(all(not(target_os = "windows"), not(target_os = "linux")))]
     let required = [
         "cargo",
         "rustc",
@@ -459,7 +471,7 @@ fn doctor() -> TaskResult {
     #[cfg(target_os = "macos")]
     println!("platform           macOS: Xcode CLI tools and Apple signing credentials are required for releases");
     #[cfg(target_os = "linux")]
-    println!("platform           Linux: X11, Wayland, fontconfig, and audio development packages are required");
+    println!("platform           Linux: install glslang-tools plus X11, Wayland, fontconfig, and audio development packages");
     report_workspace_io_health();
     if let Err(error) = storage_health_summary() {
         println!("storage            unavailable ({error})");
@@ -1232,13 +1244,18 @@ fn verify_phase_zero_assurance() -> TaskResult {
     )?;
 
     let ci = read(&root().join(".github/workflows/ci.yml"))?;
+    let release_workflow = read(&root().join(".github/workflows/release.yml"))?;
+    let nightly_workflow = read(&root().join(".github/workflows/nightly.yml"))?;
     require(
         ci.contains("cargo-nextest@0.9.137")
             && ci.contains("cargo nextest run --workspace --locked --profile ci")
             && ci.contains("cargo test --workspace --doc --locked")
             && ci.contains("loom_channel_readiness")
-            && ci.contains("python tools/ci/test_qa.py"),
-        "PR CI does not preserve QA self-tests, pinned Nextest/JUnit, Cargo doctests, and Loom coverage",
+            && ci.contains("python tools/ci/test_qa.py")
+            && ci.contains("glslang-tools")
+            && release_workflow.contains("glslang-tools")
+            && nightly_workflow.contains("glslang-tools"),
+        "CI/release workflows do not preserve Linux shader prerequisites, QA self-tests, pinned Nextest/JUnit, Cargo doctests, and Loom coverage",
     )?;
 
     let app_manifest = read(&root().join("apps/automexia-terminal/Cargo.toml"))?;
@@ -1677,8 +1694,13 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
     {
         return Err("AUTOMEXIA_NATIVE_RESOURCE_REPORT cannot be empty".into());
     }
-    let wgpu_report = requested_report
-        .map(PathBuf::from)
+    let requested_report_path = requested_report.as_ref().map(PathBuf::from);
+    let modal_capture_directory = requested_report_path
+        .as_ref()
+        .and_then(|report| report.parent())
+        .map(|parent| parent.join("modal-captures"));
+    let wgpu_report = requested_report_path
+        .clone()
         .unwrap_or_else(|| report_directory.path().join("wgpu.json"));
     let cpu_report = report_directory.path().join("cpu.json");
     let mut command = Command::new("powershell");
@@ -1695,6 +1717,9 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
         .arg("-ResourceReport")
         .arg(&wgpu_report)
         .current_dir(root());
+    if let Some(capture_directory) = modal_capture_directory.as_ref() {
+        command.arg("-ModalCaptureDirectory").arg(capture_directory);
+    }
     run_command(command, "native Windows WGPU GUI resize stress")?;
 
     // The CPU fallback has a separate compositor and pass ordering. Run the
@@ -1715,6 +1740,11 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
         .arg("-ResourceReport")
         .arg(&cpu_report)
         .current_dir(root());
+    if let Some(capture_directory) = modal_capture_directory.as_ref() {
+        cpu_command
+            .arg("-ModalCaptureDirectory")
+            .arg(capture_directory);
+    }
     run_command(cpu_command, "native Windows CPU GUI resize stress")?;
     verify_native_image_backend_equivalence(&wgpu_report, &cpu_report)
 }
@@ -2390,6 +2420,33 @@ fn verify_architecture() -> TaskResult {
         "PTY control-string identity, hard bounds, or discard/recovery contracts are missing",
     )?;
     let application = read(&app.join("src/application.rs"))?;
+    let confirm_quit = read(&app.join("src/renderer/confirm_quit.rs"))?;
+    let modal_renderer = read(&root().join("sugarloaf/src/renderer/mod.rs"))?;
+    let modal_sugarloaf = read(&root().join("sugarloaf/src/sugarloaf.rs"))?;
+    let modal_text = read(&root().join("sugarloaf/src/text.rs"))?;
+    require(
+        palette.contains("sugarloaf.begin_modal_layer()")
+            && palette.contains("sugarloaf.end_modal_layer()")
+            && !palette.contains("text_mut().clear()")
+            && confirm_quit.contains("const SCRIM:")
+            && confirm_quit.contains("ConfirmQuitAction")
+            && confirm_quit.contains("hit_test_requires_an_active_explicit_button")
+            && confirm_quit.contains("layout_stays_inside_extreme_viewports")
+            && renderer_root.contains("if self.confirm_quit.is_active()")
+            && application.contains("confirm_quit.hit_test(")
+            && screen.contains(r#""confirm-quit" =>"#)
+            && screen.contains(r#""dismiss-modal" =>"#)
+            && screen.contains(r#""confirm_quit_active": window.confirm_quit_active"#)
+            && modal_renderer.contains("fn finish_composition_phases(")
+            && modal_renderer.contains(
+                "modal_primitives_are_physically_appended_after_base_primitives",
+            )
+            && modal_renderer.contains("pub fn render_modal")
+            && modal_sugarloaf.contains("load: wgpu::LoadOp::Load")
+            && modal_sugarloaf.contains("self.renderer.render_modal")
+            && modal_text.contains("modal_instance_buffers"),
+        "palette and close confirmation lack exclusive input, opaque responsive surfaces, topmost cross-backend composition, or native observability",
+    )?;
     require(
         application.contains("enum RuntimeConfigReload")
             && application.contains("RuntimeConfigReload::KeepLastGood")
@@ -2453,6 +2510,15 @@ fn verify_architecture() -> TaskResult {
             && ci_workflow.contains("cargo xtask test image-rendering")
             && usage().contains("test image-rendering [--native-gui]"),
         "local image quick look must preserve bounded discovery/decode, exact CPU/GPU lifecycle accounting, repeated leak checks, native pixels, and one required contributor gate",
+    )?;
+    require(
+        native_resize.contains("[string]$ModalCaptureDirectory")
+            && native_resize.contains("topmost command palette composition")
+            && native_resize.contains("topmost close confirmation composition")
+            && native_resize.contains("exclusive modal ownership")
+            && native_resize.contains("modal_composition = [ordered]@{")
+            && native_resize.contains("SetCaptureTopmost($window, $true)"),
+        "native Windows stress does not verify exclusive palette/quit ownership and real composited modal frames",
     )?;
     let control_string_fuzz =
         read(&root().join("fuzz/fuzz_targets/control_string_bounds.rs"))?;

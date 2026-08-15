@@ -315,6 +315,8 @@ pub fn render_cpu(
     let vertices = renderer.vertices();
     let quad_instances = renderer.instances();
     let text_instances = text.instances();
+    let modal_vertices = renderer.modal_vertices();
+    let modal_quad_instances = renderer.modal_instances();
 
     // Frame skip.
     //
@@ -340,6 +342,8 @@ pub fn render_cpu(
         h.write(bytes);
         let inst_bytes: &[u8] = bytemuck::cast_slice(quad_instances);
         h.write(inst_bytes);
+        h.write(bytemuck::cast_slice(modal_vertices));
+        h.write(bytemuck::cast_slice(modal_quad_instances));
         for (grid, uniforms) in grids.iter() {
             h.write(bytemuck::bytes_of(uniforms));
             match &**grid {
@@ -556,10 +560,107 @@ pub fn render_cpu(
         images.data,
     );
 
-    text.render_cpu(&mut buffer, ctx.width_px, ctx.height_px);
+    text.render_cpu_base(&mut buffer, ctx.width_px, ctx.height_px);
+    draw_cpu_primitives(
+        &mut buffer,
+        buf_w,
+        buf_h,
+        modal_quad_instances,
+        modal_vertices,
+        renderer.image_cache(),
+        cache,
+    );
+    text.render_cpu_modal(&mut buffer, ctx.width_px, ctx.height_px);
 
     if let Err(e) = buffer.present() {
         tracing::error!("softbuffer present failed: {e}");
+    }
+}
+/// Paint one primitive phase into the software framebuffer.
+fn draw_cpu_primitives(
+    buffer: &mut [u32],
+    buf_w: i32,
+    buf_h: i32,
+    quad_instances: &[crate::renderer::batch::QuadInstance],
+    vertices: &[Vertex],
+    images: &ImageCache,
+    cache: &mut CpuCache,
+) {
+    for inst in quad_instances {
+        if inst.layers[0] != 0 || inst.layers[1] != 0 {
+            continue;
+        }
+        if inst.underline_style > 1 {
+            continue;
+        }
+        draw_quad_instance(buffer, buf_w, buf_h, inst);
+    }
+
+    if vertices.is_empty() {
+        return;
+    }
+    let atlas_size = images.cpu_max_texture_size();
+    let mut pending: Option<PendingFill> = None;
+    let mut i = 0usize;
+    while i + 5 < vertices.len() {
+        let chunk = &vertices[i..i + 6];
+        i += 6;
+        let q = parse_quad(chunk);
+        if q.max_x - q.min_x <= 0.0 || q.max_y - q.min_y <= 0.0 {
+            continue;
+        }
+        let Some((x0, y0, x1, y1)) = snap_and_clip(&q, buf_w, buf_h) else {
+            continue;
+        };
+
+        if q.mask_layer > 0 {
+            if let Some(p) = pending.take() {
+                flush_fill(buffer, buf_w, &p);
+            }
+            draw_glyph(
+                buffer, buf_w, x0, y0, x1, y1, q.min_x, q.min_y, q.min_u, q.min_v,
+                q.color, images, atlas_size, cache,
+            );
+            continue;
+        }
+        if q.color_layer > 0 {
+            if let Some(p) = pending.take() {
+                flush_fill(buffer, buf_w, &p);
+            }
+            continue;
+        }
+
+        let r = (q.color[0].clamp(0.0, 1.0) * 255.0) as u8;
+        let g = (q.color[1].clamp(0.0, 1.0) * 255.0) as u8;
+        let b = (q.color[2].clamp(0.0, 1.0) * 255.0) as u8;
+        let a = (q.color[3].clamp(0.0, 1.0) * 255.0) as u8;
+        if a == 0 {
+            continue;
+        }
+        if a == 255 {
+            let packed = pack_opaque(r, g, b);
+            if let Some(p) = pending.as_mut() {
+                if p.try_extend(x0, y0, x1, y1, packed) {
+                    continue;
+                }
+                flush_fill(buffer, buf_w, p);
+            }
+            pending = Some(PendingFill {
+                x0,
+                y0,
+                x1,
+                y1,
+                packed,
+            });
+        } else {
+            if let Some(p) = pending.take() {
+                flush_fill(buffer, buf_w, &p);
+            }
+            fill_translucent_simd(buffer, buf_w, x0, y0, x1, y1, r, g, b, a);
+        }
+    }
+    if let Some(p) = pending {
+        flush_fill(buffer, buf_w, &p);
     }
 }
 

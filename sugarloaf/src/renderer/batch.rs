@@ -570,7 +570,7 @@ impl Batch {
             });
         }
 
-        if !self.is_empty() {
+        if !self.vertices.is_empty() {
             let offset = vert_list.len() as u32;
             vert_list.extend_from_slice(&self.vertices);
             cmds.push(DrawCmd::Vertices {

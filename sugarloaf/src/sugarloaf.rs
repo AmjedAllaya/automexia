@@ -797,6 +797,20 @@ impl Sugarloaf<'_> {
         &mut self.text
     }
 
+    /// Begin a modal composition phase. All primitives and labels recorded
+    /// until end_modal_layer are painted after normal UI chrome and text.
+    #[inline]
+    pub fn begin_modal_layer(&mut self) {
+        self.renderer.begin_modal_layer();
+        self.text.begin_modal_layer();
+    }
+
+    #[inline]
+    pub fn end_modal_layer(&mut self) {
+        self.renderer.end_modal_layer();
+        self.text.end_modal_layer();
+    }
+
     /// Register an image overlay anchored to `panel_id` (a
     /// `rich_text_id`). Driven by the kitty graphics frontend; read
     /// by the renderer's image pass.
@@ -940,6 +954,7 @@ impl Sugarloaf<'_> {
         &mut self,
         grids: &mut [(&mut crate::grid::GridRenderer, crate::grid::GridUniforms)],
     ) {
+        self.text.finalize_modal_layer();
         self.state.compute_dimensions();
         self.state.compute_updates(
             &mut self.renderer,
@@ -1130,7 +1145,15 @@ impl Sugarloaf<'_> {
         // UI text overlay (tab titles, search overlay labels,
         // command palette items, etc.). Drawn last so labels sit on
         // top of the panel chrome.
-        self.text.render_vulkan(
+        self.text.render_vulkan_base(
+            cmd,
+            frame.slot,
+            [frame.extent.width as f32, frame.extent.height as f32],
+        );
+
+        // Final modal phase: opaque scrim/card first, then dialog labels.
+        self.renderer.render_vulkan_modal(cmd, &frame);
+        self.text.render_vulkan_modal(
             cmd,
             frame.slot,
             [frame.extent.width as f32, frame.extent.height as f32],
@@ -1227,7 +1250,37 @@ impl Sugarloaf<'_> {
             {
                 self.text.init_wgpu(&ctx.device, &ctx.queue, ctx.format);
                 self.text
-                    .render_wgpu(&mut rpass, [ctx.size.width, ctx.size.height]);
+                    .render_wgpu_base(&mut rpass, [ctx.size.width, ctx.size.height]);
+            }
+        }
+
+        // A second load-preserving pass gives the modal phase exclusive
+        // topmost ownership without clearing or replaying base UI labels.
+        // It is created only while a modal is visible, so ordinary frames
+        // keep the original single-pass cost.
+        let has_modal =
+            self.renderer.has_modal_layer() || self.text.modal_instance_count() > 0;
+        if has_modal {
+            let mut modal_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                label: Some("sugarloaf.modal"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                multiview_mask: None,
+            });
+            self.renderer.render_modal(ctx, &mut modal_pass);
+            #[cfg(not(target_os = "macos"))]
+            {
+                self.text.render_wgpu_modal(&mut modal_pass);
             }
         }
 

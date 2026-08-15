@@ -739,6 +739,17 @@ enum ImageTexture {
     Vulkan(vulkan::VulkanImageTexture),
 }
 
+impl ImageTexture {
+    #[cfg(feature = "wgpu")]
+    fn wgpu_view(&self) -> Option<&wgpu::TextureView> {
+        match self {
+            Self::Wgpu { view, .. } => Some(view),
+            #[allow(unreachable_patterns)]
+            _ => None,
+        }
+    }
+}
+
 /// Per-image texture entry stored in the renderer.
 #[cfg_attr(
     not(any(feature = "wgpu", target_os = "macos", target_os = "linux")),
@@ -860,6 +871,19 @@ pub struct BackgroundImagePixels {
     pub pixels: Vec<u8>,
 }
 
+fn finish_composition_phases(
+    base: &mut Compositor,
+    modal: &mut Compositor,
+    instances: &mut Vec<batch::QuadInstance>,
+    vertices: &mut Vec<Vertex>,
+    draw_cmds: &mut Vec<batch::DrawCmd>,
+) -> (usize, usize, usize) {
+    base.finish(instances, vertices, draw_cmds);
+    let boundary = (instances.len(), vertices.len(), draw_cmds.len());
+    modal.finish(instances, vertices, draw_cmds);
+    boundary
+}
+
 pub struct Renderer {
     /// Set when a frame could not be presented (drawable acquisition
     /// failed, e.g. right after sleep/wake). Consumed by the embedder via
@@ -868,9 +892,14 @@ pub struct Renderer {
     brush_type: RendererType,
     comp: Compositor,
     instances: Vec<batch::QuadInstance>,
+    modal_comp: Compositor,
+    recording_modal: bool,
     vertices: Vec<Vertex>,
     draw_cmds: Vec<batch::DrawCmd>,
     images: ImageCache,
+    modal_instance_start: usize,
+    modal_vertex_start: usize,
+    modal_cmd_start: usize,
     /// Per-image GPU textures (one map, any backend).
     image_textures: FxHashMap<u64, ImageTextureEntry>,
     /// Sum of `bytes` across `image_textures`; compared against
@@ -1053,10 +1082,15 @@ impl Renderer {
             brush_type,
             comp: Compositor::new(),
             instances: vec![],
+            modal_comp: Compositor::new(),
+            recording_modal: false,
             vertices: vec![],
             draw_cmds: vec![],
             images: ImageCache::new(context),
             image_textures: FxHashMap::default(),
+            modal_instance_start: 0,
+            modal_vertex_start: 0,
+            modal_cmd_start: 0,
             image_texture_bytes: 0,
             image_frame_counter: 0,
             image_draws: Vec::new(),
@@ -1078,6 +1112,8 @@ impl Renderer {
     #[inline]
     pub(crate) fn discard_frame_batches(&mut self) {
         self.comp.batches.reset();
+        self.modal_comp.batches.reset();
+        self.recording_modal = false;
     }
 
     /// Replace the background image. Pass `None` to clear it. The pixels
@@ -1161,8 +1197,18 @@ impl Renderer {
         self.vertices.clear();
         self.draw_cmds.clear();
         self.images.process_atlases(context);
-        self.comp
-            .finish(&mut self.instances, &mut self.vertices, &mut self.draw_cmds);
+        (
+            self.modal_instance_start,
+            self.modal_vertex_start,
+            self.modal_cmd_start,
+        ) = finish_composition_phases(
+            &mut self.comp,
+            &mut self.modal_comp,
+            &mut self.instances,
+            &mut self.vertices,
+            &mut self.draw_cmds,
+        );
+        self.recording_modal = false;
 
         // Useful for debug occasionally
         // let inst_bytes =
@@ -1716,6 +1762,28 @@ impl Renderer {
         tracing::info!("Renderer atlas cleared");
     }
 
+    /// Route subsequent immediate-mode primitives to the final modal
+    /// compositor. The layer is physically rendered after base UI text,
+    /// so no pane chrome can leak through an opaque dialog.
+    #[inline]
+    pub fn begin_modal_layer(&mut self) {
+        self.recording_modal = true;
+    }
+
+    #[inline]
+    pub fn end_modal_layer(&mut self) {
+        self.recording_modal = false;
+    }
+
+    #[inline]
+    fn compositor_mut(&mut self) -> &mut Compositor {
+        if self.recording_modal {
+            &mut self.modal_comp
+        } else {
+            &mut self.comp
+        }
+    }
+
     #[inline]
     #[allow(clippy::too_many_arguments)]
     pub fn rect(
@@ -1728,7 +1796,7 @@ impl Renderer {
         depth: f32,
         order: u8,
     ) {
-        self.comp.batches.rect(
+        self.compositor_mut().batches.rect(
             &Rect {
                 x,
                 y,
@@ -1755,7 +1823,7 @@ impl Renderer {
         border_radius: f32,
         order: u8,
     ) {
-        self.comp.batches.rounded_rect(
+        self.compositor_mut().batches.rounded_rect(
             &Rect {
                 x,
                 y,
@@ -1783,7 +1851,7 @@ impl Renderer {
         depth: f32,
         order: u8,
     ) {
-        self.comp.batches.quad(
+        self.compositor_mut().batches.quad(
             &Rect {
                 x,
                 y,
@@ -1810,7 +1878,7 @@ impl Renderer {
         depth: f32,
         atlas_layer: i32,
     ) {
-        self.comp.batches.add_image_rect(
+        self.compositor_mut().batches.add_image_rect(
             &Rect {
                 x,
                 y,
@@ -1826,7 +1894,7 @@ impl Renderer {
 
     #[inline]
     pub fn polygon(&mut self, points: &[(f32, f32)], depth: f32, color: [f32; 4]) {
-        self.comp
+        self.compositor_mut()
             .batches
             .add_antialiased_polygon(points, depth, color);
     }
@@ -1844,7 +1912,7 @@ impl Renderer {
         depth: f32,
         color: [f32; 4],
     ) {
-        self.comp
+        self.compositor_mut()
             .batches
             .add_triangle(x1, y1, x2, y2, x3, y3, depth, color);
     }
@@ -1862,7 +1930,7 @@ impl Renderer {
         color: [f32; 4],
         order: u8,
     ) {
-        self.comp
+        self.compositor_mut()
             .batches
             .add_line(x1, y1, x2, y2, width, depth, color, order);
     }
@@ -1880,7 +1948,7 @@ impl Renderer {
         depth: f32,
         color: [f32; 4],
     ) {
-        self.comp.batches.add_arc(
+        self.compositor_mut().batches.add_arc(
             center_x,
             center_y,
             radius,
@@ -1890,6 +1958,12 @@ impl Renderer {
             depth,
             &color,
         );
+    }
+
+    #[inline]
+    #[cfg(feature = "wgpu")]
+    pub(crate) fn has_modal_layer(&self) -> bool {
+        self.modal_cmd_start < self.draw_cmds.len()
     }
 
     #[inline]
@@ -1906,6 +1980,7 @@ impl Renderer {
             instances,
             vertices,
             draw_cmds,
+            modal_cmd_start,
             image_draws,
             image_textures,
             background_image_texture,
@@ -1929,8 +2004,7 @@ impl Renderer {
             // composite on top. Single fullscreen instance, dedicated
             // vertex buffer, reuses the kitty image pipeline + sampler.
             if let Some(bg_tex) = background_image_texture.as_ref() {
-                {
-                    let ImageTexture::Wgpu { view, .. } = &bg_tex.gpu;
+                if let Some(view) = bg_tex.gpu.wgpu_view() {
                     let instance = ImageInstance {
                         dest_pos: [0.0, 0.0],
                         dest_size: [ctx.size.width, ctx.size.height],
@@ -1996,8 +2070,7 @@ impl Renderer {
                         continue;
                     }
                     if let Some(img) = image_textures.get(&draw.image_id) {
-                        {
-                            let ImageTexture::Wgpu { view, .. } = &img.gpu;
+                        if let Some(view) = img.gpu.wgpu_view() {
                             let bg = ctx.device.create_bind_group(
                                 &wgpu::BindGroupDescriptor {
                                     label: None,
@@ -2077,7 +2150,7 @@ impl Renderer {
             let mut current_pipeline_instanced = false;
             let mut pipeline_set = false;
 
-            for cmd in draw_cmds {
+            for cmd in &draw_cmds[..(*modal_cmd_start).min(draw_cmds.len())] {
                 let (color_layer, mask_layer) = match cmd {
                     batch::DrawCmd::Instanced {
                         color_layer,
@@ -2155,8 +2228,7 @@ impl Renderer {
                         continue;
                     }
                     if let Some(img) = image_textures.get(&draw.image_id) {
-                        {
-                            let ImageTexture::Wgpu { view, .. } = &img.gpu;
+                        if let Some(view) = img.gpu.wgpu_view() {
                             let bg = ctx.device.create_bind_group(
                                 &wgpu::BindGroupDescriptor {
                                     label: None,
@@ -2188,6 +2260,94 @@ impl Renderer {
         }
     }
 
+    /// Paint only the modal compositor after the ordinary UI-label pass.
+    /// Primitive buffers were uploaded by render; this pass only rebinds
+    /// their modal command suffix, avoiding a second allocation or upload.
+    #[inline]
+    #[cfg(feature = "wgpu")]
+    pub fn render_modal<'pass>(
+        &'pass mut self,
+        ctx: &mut WgpuContext,
+        rpass: &mut wgpu::RenderPass<'pass>,
+    ) {
+        let Self {
+            brush_type,
+            images,
+            draw_cmds,
+            modal_cmd_start,
+            ..
+        } = self;
+        let start = (*modal_cmd_start).min(draw_cmds.len());
+        if start == draw_cmds.len() {
+            return;
+        }
+        let RendererType::Wgpu(brush) = brush_type else {
+            return;
+        };
+        let color_views = images.get_texture_views();
+        if color_views.is_empty() {
+            return;
+        }
+        let mask_texture_view = images.get_mask_texture_view();
+        let mut current_pipeline_instanced = false;
+        let mut pipeline_set = false;
+
+        for cmd in &draw_cmds[start..] {
+            let (color_layer, mask_layer) = match cmd {
+                batch::DrawCmd::Instanced {
+                    color_layer,
+                    mask_layer,
+                    ..
+                } => (*color_layer, *mask_layer),
+                batch::DrawCmd::Vertices {
+                    color_layer,
+                    mask_layer,
+                    ..
+                } => (*color_layer, *mask_layer),
+            };
+            let color_view = if color_layer > 0 {
+                color_views
+                    .get((color_layer - 1) as usize)
+                    .unwrap_or(&color_views[0])
+            } else {
+                &color_views[0]
+            };
+            let final_mask_view = if mask_layer > 0 {
+                mask_texture_view.unwrap_or(color_views[0])
+            } else {
+                color_views[0]
+            };
+            brush.update_bind_group(ctx, color_view, final_mask_view);
+
+            match cmd {
+                batch::DrawCmd::Instanced { offset, count, .. } => {
+                    if !pipeline_set || !current_pipeline_instanced {
+                        rpass.set_pipeline(&brush.instanced_pipeline);
+                        rpass.set_bind_group(0, &brush.constant_bind_group, &[]);
+                        current_pipeline_instanced = true;
+                        pipeline_set = true;
+                    }
+                    rpass.set_bind_group(1, &brush.layout_bind_group, &[]);
+                    let byte_offset =
+                        *offset as u64 * mem::size_of::<batch::QuadInstance>() as u64;
+                    rpass
+                        .set_vertex_buffer(0, brush.instance_buffer.slice(byte_offset..));
+                    rpass.draw(0..4, 0..*count);
+                }
+                batch::DrawCmd::Vertices { offset, count, .. } => {
+                    if !pipeline_set || current_pipeline_instanced {
+                        rpass.set_pipeline(&brush.pipeline);
+                        rpass.set_bind_group(0, &brush.constant_bind_group, &[]);
+                        rpass.set_vertex_buffer(0, brush.vertex_buffer.slice(..));
+                        current_pipeline_instanced = false;
+                        pipeline_set = true;
+                    }
+                    rpass.set_bind_group(1, &brush.layout_bind_group, &[]);
+                    rpass.draw(*offset..*offset + *count, 0..1);
+                }
+            }
+        }
+    }
     /// Drive an entire Metal frame: acquire a pooled buffer, encode all
     /// passes (bg fill, bg image, BelowText images, text/quads, AboveText
     /// images) into a single render command encoder, present and commit.
@@ -2211,6 +2371,8 @@ impl Renderer {
         use block::ConcreteBlock;
         use std::cell::Cell as StdCell;
 
+        let modal_cmd_start = self.modal_cmd_start.min(self.draw_cmds.len());
+        let has_modal = modal_cmd_start < self.draw_cmds.len();
         let brush = match &mut self.brush_type {
             RendererType::Metal(b) => b,
             _ => return,
@@ -2386,7 +2548,7 @@ impl Renderer {
                     if !brush.render(
                         &self.instances,
                         &self.vertices,
-                        &self.draw_cmds,
+                        &self.draw_cmds[..modal_cmd_start],
                         &self.images,
                         render_encoder,
                         context,
@@ -2400,11 +2562,30 @@ impl Renderer {
                     // after brush.render / above-text images so UI
                     // labels sit on top of everything else.
                     text.init_metal(&context.device, &context.command_queue);
-                    text.render_metal(
+                    text.render_metal_base(
                         render_encoder,
                         [context.size.width, context.size.height],
                         frame,
                     );
+                    if has_modal {
+                        if !brush.render(
+                            &self.instances,
+                            &self.vertices,
+                            &self.draw_cmds[modal_cmd_start..],
+                            &self.images,
+                            render_encoder,
+                            context,
+                            &instance_buffer,
+                            &mut instance_offset,
+                        ) {
+                            return false;
+                        }
+                        text.render_metal_modal(
+                            render_encoder,
+                            [context.size.width, context.size.height],
+                            frame,
+                        );
+                    }
                     true
                 })();
 
@@ -2578,16 +2759,59 @@ impl Renderer {
             }
 
             brush.render_image_overlays(cmd, slot, viewport, &below);
-            brush.render_quads(cmd, slot, viewport, &self.instances);
-            brush.render_geometry(cmd, slot, viewport, &self.vertices);
+            brush.render_quads(
+                cmd,
+                slot,
+                viewport,
+                &self.instances,
+                0..self.modal_instance_start.min(self.instances.len()),
+            );
+            brush.render_geometry(
+                cmd,
+                slot,
+                viewport,
+                &self.vertices,
+                0..self.modal_vertex_start.min(self.vertices.len()),
+            );
             brush.render_image_overlays(cmd, slot, viewport, &above);
             brush.draw_bootstrap(cmd);
+        }
+    }
+    /// Paint the modal primitive suffix after base UI labels.
+    #[cfg(target_os = "linux")]
+    pub fn render_vulkan_modal(
+        &mut self,
+        cmd: ash::vk::CommandBuffer,
+        frame: &crate::context::vulkan::VulkanFrame,
+    ) {
+        let viewport = [frame.extent.width as f32, frame.extent.height as f32];
+        let slot = frame.slot;
+        let instance_start = self.modal_instance_start.min(self.instances.len());
+        let vertex_start = self.modal_vertex_start.min(self.vertices.len());
+        if instance_start == self.instances.len() && vertex_start == self.vertices.len() {
+            return;
+        }
+        if let RendererType::Vulkan(brush) = &mut self.brush_type {
+            brush.render_quads(
+                cmd,
+                slot,
+                viewport,
+                &self.instances,
+                instance_start..self.instances.len(),
+            );
+            brush.render_geometry(
+                cmd,
+                slot,
+                viewport,
+                &self.vertices,
+                vertex_start..self.vertices.len(),
+            );
         }
     }
 
     /// Vertices accumulated for the current frame (CPU rasterizer reads these).
     pub(crate) fn vertices(&self) -> &[Vertex] {
-        &self.vertices
+        &self.vertices[..self.modal_vertex_start.min(self.vertices.len())]
     }
 
     /// Per-quad instances accumulated for the current frame. The CPU
@@ -2596,7 +2820,14 @@ impl Renderer {
     /// panel borders, scrollbars, and dim overlays. The GPU paths
     /// upload them to a per-instance vertex buffer; we just iterate.
     pub(crate) fn instances(&self) -> &[crate::renderer::batch::QuadInstance] {
-        &self.instances
+        &self.instances[..self.modal_instance_start.min(self.instances.len())]
+    }
+    pub(crate) fn modal_vertices(&self) -> &[Vertex] {
+        &self.vertices[self.modal_vertex_start.min(self.vertices.len())..]
+    }
+
+    pub(crate) fn modal_instances(&self) -> &[crate::renderer::batch::QuadInstance] {
+        &self.instances[self.modal_instance_start.min(self.instances.len())..]
     }
 
     /// Image cache for CPU rasterizer atlas sampling.
@@ -3234,6 +3465,74 @@ impl WgpuRenderer {
                 ],
                 label: Some("rich_text::Pipeline uniforms"),
             });
+    }
+}
+
+#[cfg(test)]
+mod modal_phase_tests {
+    use super::{batch, finish_composition_phases, Compositor, Rect};
+
+    #[test]
+    fn modal_primitives_are_physically_appended_after_base_primitives() {
+        let mut base = Compositor::new();
+        let mut modal = Compositor::new();
+        let base_color = [0.1, 0.2, 0.3, 1.0];
+        let modal_color = [0.8, 0.1, 0.2, 1.0];
+        base.batches.rect(
+            &Rect {
+                x: 1.0,
+                y: 2.0,
+                width: 3.0,
+                height: 4.0,
+            },
+            0.0,
+            &base_color,
+            0,
+        );
+        modal.batches.rect(
+            &Rect {
+                x: 5.0,
+                y: 6.0,
+                width: 7.0,
+                height: 8.0,
+            },
+            0.0,
+            &modal_color,
+            0,
+        );
+
+        let mut instances = Vec::new();
+        let mut vertices = Vec::new();
+        let mut commands = Vec::new();
+        let boundary = finish_composition_phases(
+            &mut base,
+            &mut modal,
+            &mut instances,
+            &mut vertices,
+            &mut commands,
+        );
+
+        assert_eq!(boundary, (1, 0, 1));
+        assert_eq!(instances.len(), 2);
+        assert_eq!(instances[0].color, base_color);
+        assert_eq!(instances[1].color, modal_color);
+        assert_eq!(commands.len(), 2);
+        assert!(matches!(
+            commands[0],
+            batch::DrawCmd::Instanced {
+                offset: 0,
+                count: 1,
+                ..
+            }
+        ));
+        assert!(matches!(
+            commands[1],
+            batch::DrawCmd::Instanced {
+                offset: 1,
+                count: 1,
+                ..
+            }
+        ));
     }
 }
 

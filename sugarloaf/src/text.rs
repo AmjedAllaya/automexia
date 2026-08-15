@@ -139,6 +139,9 @@ struct TextVulkanState {
         crate::context::vulkan::FRAMES_IN_FLIGHT],
     instance_capacity: [usize; crate::context::vulkan::FRAMES_IN_FLIGHT],
     descriptor_pool: ash::vk::DescriptorPool,
+    modal_instance_buffers: [Option<crate::context::vulkan::VulkanBuffer>;
+        crate::context::vulkan::FRAMES_IN_FLIGHT],
+    modal_instance_capacity: [usize; crate::context::vulkan::FRAMES_IN_FLIGHT],
     uniform_descriptor_set_layout: ash::vk::DescriptorSetLayout,
     atlas_descriptor_set_layout: ash::vk::DescriptorSetLayout,
     uniform_descriptor_sets:
@@ -150,6 +153,9 @@ struct TextVulkanState {
 
 pub struct Text {
     instances: Vec<TextInstance>,
+    modal_instances: Vec<TextInstance>,
+    modal_start: usize,
+    recording_modal: bool,
     scale_factor: f32,
     font_library: FontLibrary,
     font_resolve: FxHashMap<(char, u8), (u32, bool)>,
@@ -181,6 +187,9 @@ impl Text {
     pub fn new(font_library: &FontLibrary) -> Self {
         Self {
             instances: Vec::new(),
+            modal_instances: Vec::new(),
+            modal_start: 0,
+            recording_modal: false,
             scale_factor: 1.0,
             font_library: font_library.clone(),
             font_resolve: FxHashMap::default(),
@@ -234,6 +243,9 @@ impl Text {
     #[inline]
     pub fn clear(&mut self) {
         self.instances.clear();
+        self.modal_instances.clear();
+        self.modal_start = 0;
+        self.recording_modal = false;
     }
 
     #[inline]
@@ -241,6 +253,40 @@ impl Text {
         &self.instances
     }
 
+    /// Route subsequent immediate-mode labels to the dedicated modal
+    /// phase. Modal labels stay separate until frame finalization so a
+    /// later base-UI producer cannot accidentally paint above a dialog.
+    #[inline]
+    pub fn begin_modal_layer(&mut self) {
+        self.recording_modal = true;
+    }
+
+    #[inline]
+    pub fn end_modal_layer(&mut self) {
+        self.recording_modal = false;
+    }
+
+    /// Append modal instances after every base label and freeze the phase
+    /// boundary for this frame. Called once before backend upload.
+    #[inline]
+    pub(crate) fn finalize_modal_layer(&mut self) {
+        self.modal_start = self.instances.len();
+        self.instances.append(&mut self.modal_instances);
+        self.recording_modal = false;
+    }
+
+    #[inline]
+    pub(crate) fn base_instance_count(&self) -> usize {
+        self.modal_start.min(self.instances.len())
+    }
+
+    #[inline]
+    #[cfg(feature = "wgpu")]
+    pub(crate) fn modal_instance_count(&self) -> usize {
+        self.instances
+            .len()
+            .saturating_sub(self.base_instance_count())
+    }
     /// Draw `text` at logical top-left `(x, y)` with `opts`. Returns
     /// rendered width in **logical** pixels.
     pub fn draw(&mut self, x: f32, y: f32, text: &str, opts: &DrawOpts) -> f32 {
@@ -465,7 +511,12 @@ impl Text {
                 color
             };
 
-            self.instances.push(TextInstance {
+            let target = if self.recording_modal {
+                &mut self.modal_instances
+            } else {
+                &mut self.instances
+            };
+            target.push(TextInstance {
                 pos: [pen_x + glyph.x, py + glyph.y.max(0.0)],
                 glyph_pos: [slot.x as u32, slot.y as u32],
                 glyph_size: [slot.w as u32, slot.h as u32],
@@ -771,8 +822,24 @@ impl Text {
     /// `grid_text_fragment`: glyph origin = `pos + bearings`; mask
     /// glyphs use `instance.color`, color glyphs sample directly.
     /// No-op when CPU state is absent or no instances were queued.
-    pub fn render_cpu(&self, buf: &mut [u32], buf_w: u32, buf_h: u32) {
-        if self.instances.is_empty() {
+    pub fn render_cpu_base(&self, buf: &mut [u32], buf_w: u32, buf_h: u32) {
+        let boundary = self.base_instance_count();
+        self.render_cpu_instances(buf, buf_w, buf_h, &self.instances[..boundary]);
+    }
+
+    pub fn render_cpu_modal(&self, buf: &mut [u32], buf_w: u32, buf_h: u32) {
+        let boundary = self.base_instance_count();
+        self.render_cpu_instances(buf, buf_w, buf_h, &self.instances[boundary..]);
+    }
+
+    fn render_cpu_instances(
+        &self,
+        buf: &mut [u32],
+        buf_w: u32,
+        buf_h: u32,
+        instances: &[TextInstance],
+    ) {
+        if instances.is_empty() {
             return;
         }
         let Some(state) = self.cpu.as_ref() else {
@@ -785,7 +852,7 @@ impl Text {
         let color_atlas = state.atlas_color.pixels();
         let color_side = state.atlas_color.side() as usize;
 
-        for inst in &self.instances {
+        for inst in instances {
             let gw = inst.glyph_size[0] as i32;
             let gh = inst.glyph_size[1] as i32;
             if gw <= 0 || gh <= 0 {
@@ -848,13 +915,14 @@ impl Text {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn render_metal(
+    pub fn render_metal_base(
         &mut self,
         encoder: &metal::RenderCommandEncoderRef,
         viewport: [f32; 2],
         frame: usize,
     ) {
         let instance_count = self.instances.len();
+        let base_count = self.base_instance_count();
         if instance_count == 0 {
             return;
         }
@@ -890,7 +958,45 @@ impl Text {
             metal::MTLPrimitiveType::TriangleStrip,
             0,
             4,
-            instance_count as u64,
+            base_count as u64,
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn render_metal_modal(
+        &mut self,
+        encoder: &metal::RenderCommandEncoderRef,
+        viewport: [f32; 2],
+        frame: usize,
+    ) {
+        let start = self.base_instance_count();
+        let count = self.instances.len().saturating_sub(start);
+        if count == 0 {
+            return;
+        }
+        let Some(state) = self.metal.as_mut() else {
+            return;
+        };
+        let slot = frame % state.instance_buffers.len();
+        encoder.set_render_pipeline_state(&state.pipeline);
+        encoder.set_vertex_buffer(
+            0,
+            Some(&state.instance_buffers[slot]),
+            (start * std::mem::size_of::<TextInstance>()) as u64,
+        );
+        let vp: [f32; 2] = viewport;
+        encoder.set_vertex_bytes(
+            1,
+            std::mem::size_of::<[f32; 2]>() as u64,
+            vp.as_ptr() as *const std::ffi::c_void,
+        );
+        encoder.set_fragment_texture(0, Some(&state.atlas_grayscale.texture));
+        encoder.set_fragment_texture(1, Some(&state.atlas_color.texture));
+        encoder.draw_primitives_instanced(
+            metal::MTLPrimitiveType::TriangleStrip,
+            0,
+            4,
+            count as u64,
         );
     }
 
@@ -975,12 +1081,13 @@ impl Text {
     /// Record the UI text pass into `render_pass`. No-op if wgpu state
     /// isn't initialised or there are no instances this frame.
     #[cfg(all(feature = "wgpu", not(target_os = "macos")))]
-    pub fn render_wgpu<'pass>(
+    pub fn render_wgpu_base<'pass>(
         &'pass mut self,
         render_pass: &mut wgpu::RenderPass<'pass>,
         viewport: [f32; 2],
     ) {
         let instance_count = self.instances.len();
+        let base_count = self.base_instance_count();
         if instance_count == 0 {
             return;
         }
@@ -1014,9 +1121,28 @@ impl Text {
         render_pass.set_bind_group(0, &state.uniform_bind_group, &[]);
         render_pass.set_bind_group(1, &state.atlas_bind_group, &[]);
         render_pass.set_vertex_buffer(0, state.instance_buffer.slice(..));
-        render_pass.draw(0..4, 0..instance_count as u32);
+        render_pass.draw(0..4, 0..base_count as u32);
     }
 
+    #[cfg(all(feature = "wgpu", not(target_os = "macos")))]
+    pub fn render_wgpu_modal<'pass>(
+        &'pass mut self,
+        render_pass: &mut wgpu::RenderPass<'pass>,
+    ) {
+        let start = self.base_instance_count();
+        let end = self.instances.len();
+        if start == end {
+            return;
+        }
+        let Some(state) = self.wgpu.as_mut() else {
+            return;
+        };
+        render_pass.set_pipeline(&state.pipeline);
+        render_pass.set_bind_group(0, &state.uniform_bind_group, &[]);
+        render_pass.set_bind_group(1, &state.atlas_bind_group, &[]);
+        render_pass.set_vertex_buffer(0, state.instance_buffer.slice(..));
+        render_pass.draw(0..4, start as u32..end as u32);
+    }
     //  Vulkan GPU backend
 
     #[cfg(target_os = "linux")]
@@ -1053,13 +1179,43 @@ impl Text {
     /// when no instances were recorded this frame or the Vulkan
     /// state isn't initialised.
     #[cfg(target_os = "linux")]
-    pub fn render_vulkan(
+    pub fn render_vulkan_base(
         &mut self,
         cmd: ash::vk::CommandBuffer,
         slot: usize,
         viewport: [f32; 2],
     ) {
-        if self.instances.is_empty() {
+        self.render_vulkan_phase(cmd, slot, viewport, false);
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn render_vulkan_modal(
+        &mut self,
+        cmd: ash::vk::CommandBuffer,
+        slot: usize,
+        viewport: [f32; 2],
+    ) {
+        self.render_vulkan_phase(cmd, slot, viewport, true);
+    }
+
+    /// Render one label phase into its independent per-frame buffer.
+    /// This prevents host writes for a modal from mutating an earlier
+    /// queued base draw before the Vulkan submission executes.
+    #[cfg(target_os = "linux")]
+    fn render_vulkan_phase(
+        &mut self,
+        cmd: ash::vk::CommandBuffer,
+        slot: usize,
+        viewport: [f32; 2],
+        modal: bool,
+    ) {
+        let boundary = self.base_instance_count();
+        let instances = if modal {
+            &self.instances[boundary..]
+        } else {
+            &self.instances[..boundary]
+        };
+        if instances.is_empty() {
             return;
         }
         let Some(state) = self.vulkan.as_mut() else {
@@ -1080,14 +1236,14 @@ impl Text {
         // 1–2 buckets (a few glyphs on page 0, both kinds at most),
         // so the linear-search grouping is cheap.
         let mut groups: Vec<((u8, u8), Vec<TextInstance>)> = Vec::with_capacity(4);
-        for inst in &self.instances {
+        for inst in instances {
             let key = (inst.atlas, inst.page);
             match groups.iter_mut().find(|(k, _)| *k == key) {
                 Some(g) => g.1.push(*inst),
                 None => groups.push((key, vec![*inst])),
             }
         }
-        let mut bucketed: Vec<TextInstance> = Vec::with_capacity(self.instances.len());
+        let mut bucketed: Vec<TextInstance> = Vec::with_capacity(instances.len());
         let mut buckets: Vec<((u8, u8), u32, u32)> = Vec::with_capacity(groups.len());
         for ((kind, page), insts) in groups.into_iter() {
             let start = bucketed.len() as u32;
@@ -1099,17 +1255,26 @@ impl Text {
         // Grow per-slot instance buffer if needed.
         let instance_count = bucketed.len();
         let needed_bytes = instance_count * std::mem::size_of::<TextInstance>();
-        if instance_count > state.instance_capacity[slot] {
+        let shared = state.shared.clone();
+        let (instance_buffers, instance_capacity) = if modal {
+            (
+                &mut state.modal_instance_buffers,
+                &mut state.modal_instance_capacity,
+            )
+        } else {
+            (&mut state.instance_buffers, &mut state.instance_capacity)
+        };
+        if instance_count > instance_capacity[slot] {
             let new_cap = instance_count.next_power_of_two().max(256);
-            state.instance_buffers[slot] =
+            instance_buffers[slot] =
                 Some(crate::context::vulkan::allocate_host_visible_buffer_raw(
-                    &state.shared,
+                    &shared,
                     (new_cap * std::mem::size_of::<TextInstance>()) as u64,
                     ash::vk::BufferUsageFlags::VERTEX_BUFFER,
                 ));
-            state.instance_capacity[slot] = new_cap;
+            instance_capacity[slot] = new_cap;
         }
-        let instance_buf = state.instance_buffers[slot].as_ref().unwrap();
+        let instance_buf = instance_buffers[slot].as_ref().unwrap();
         unsafe {
             std::ptr::copy_nonoverlapping(
                 bucketed.as_ptr() as *const u8,
@@ -1702,6 +1867,8 @@ fn build_text_vulkan_state(
         instance_buffers: std::array::from_fn(|_| None),
         instance_capacity: [0; FRAMES_IN_FLIGHT],
         descriptor_pool,
+        modal_instance_buffers: std::array::from_fn(|_| None),
+        modal_instance_capacity: [0; FRAMES_IN_FLIGHT],
         uniform_descriptor_set_layout,
         atlas_descriptor_set_layout,
         uniform_descriptor_sets,

@@ -155,7 +155,7 @@ features = [
 [target.'cfg(all(unix, not(any(target_os = "redox", target_family = "wasm", target_os = "macos"))))'.dependencies]
 ahash = { version = "0.8.7", features = ["no-rng"], optional = true }
 bytemuck = { version = "1.13.1", default-features = false, optional = true }
-calloop = "0.14.4"
+calloop = "0.13.0"
 zbus = { workspace = true, features = ["blocking"] }
 libc = { workspace = true }
 memmap2 = { workspace = true, optional = true }

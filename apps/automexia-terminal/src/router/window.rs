@@ -103,14 +103,16 @@ pub fn create_window_builder(
     {
         use rio_window::window::Icon;
 
-        let image = image_rs::load_from_memory(include_bytes!(
+        let image = automexia_image::decode_bounded_bytes(include_bytes!(
             "../../../../assets/brand/png/automexia-terminal-256.png"
         ));
         match image {
             Ok(image) => {
-                let pixels = image.into_rgba8();
-                let (width, height) = pixels.dimensions();
-                match Icon::from_rgba(pixels.into_raw(), width, height) {
+                match Icon::from_rgba(
+                    image.rgba.as_ref().to_vec(),
+                    image.width,
+                    image.height,
+                ) {
                     Ok(icon) => {
                         window_builder = window_builder.with_window_icon(Some(icon));
                     }
@@ -120,7 +122,7 @@ pub fn create_window_builder(
                 }
             }
             Err(error) => {
-                tracing::warn!(%error, "Automexia application icon could not be decoded");
+                tracing::warn!(?error, "Automexia application icon could not be decoded");
             }
         }
     }
