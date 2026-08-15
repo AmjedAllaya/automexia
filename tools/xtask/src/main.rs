@@ -1275,8 +1275,10 @@ fn verify_phase_zero_assurance() -> TaskResult {
     let nightly_workflow = read(&root().join(".github/workflows/nightly.yml"))?;
     require(
         ci.contains("cargo-nextest@0.9.137")
-            && ci.contains("cargo nextest run --workspace --locked --profile ci")
-            && ci.contains("cargo test --workspace --doc --locked")
+            && ci.contains(
+                "cargo nextest run --workspace --all-features --locked --profile ci",
+            )
+            && ci.contains("cargo test --workspace --all-features --doc --locked")
             && ci.contains("loom_channel_readiness")
             && ci.contains("python tools/ci/test_qa.py")
             && ci.contains("glslang-tools")

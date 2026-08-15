@@ -11,7 +11,10 @@ find "$root" \
     # Git guarantees LF in committed sources, but an older Windows checkout
     # can retain CRLF in its existing working tree after .gitattributes changes.
     # Validate the canonical text without mutating contributor files.
-    normalized=$(mktemp "${TMPDIR:-/tmp}/automexia-shellcheck.XXXXXX.sh")
+    # BSD/macOS mktemp requires the XXXXXX suffix at the end of the template.
+    # ShellCheck receives the language explicitly, so this file does not need
+    # a .sh suffix.
+    normalized=$(mktemp "${TMPDIR:-/tmp}/automexia-shellcheck.XXXXXX")
     sed 's/\r$//' "$source" >"$normalized"
     bash -n "$normalized"
     # Retained upstream demo utilities intentionally declare a few variables
