@@ -251,7 +251,9 @@ configuration cases are deterministic; no failed reload changes active input.
 - add structured `ActionOutcome` values for performed/consumed state, terminal
   damage, layout/window/config changes, and user-facing errors;
 - implement unconsumed fallthrough to lower-priority bindings or the PTY;
-- make copy/paste fall through when there is no non-empty selection/text;
+- preserve the implemented terminal-level `Ctrl+C` rule (copy a non-empty
+  selection, otherwise forward ETX) and secondary-click copy/paste rule while
+  generalizing all registry-driven copy/paste fallthrough through `ActionOutcome`;
 - make Escape end search only while search is active;
 - make tab/split navigation fall through at topology boundaries and make split
   zoom/resize fall through when no split target exists;

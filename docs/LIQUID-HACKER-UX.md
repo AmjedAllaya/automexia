@@ -426,6 +426,16 @@ only and never rewrites terminal cells or copied text.
 - Use the custom minimize, maximize/restore and close controls on Windows.
 - Drag empty space in the first row to move the window; drag any edge/corner to
   resize it.
+- In normal terminal input, `Ctrl`+`C` copies a non-empty selection to the
+  system clipboard. With no selection it remains the shell/application
+  interrupt key; search, Vi mode, and explicit user bindings keep precedence.
+- Right-click, including an OS-mapped two-finger touchpad click, copies the
+  current selection and clears it when one exists. With no selection it pastes the system
+  clipboard through the normal bracketed-paste and control filtering path.
+- Middle-click retains primary-selection paste on platforms that provide it.
+- Primary/left click remains reserved for focus, selection, links, image
+  previews, and pane activation. It never pastes, preventing an ordinary focus
+  click from unexpectedly submitting clipboard text.
 
 ## Verification
 
