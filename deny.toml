@@ -62,9 +62,10 @@ skip = [
   { crate = "rustix@0.38.44", reason = "Unix transitive backends require incompatible rustix generations" },
   { crate = "smithay-client-toolkit@0.19.2", reason = "Wayland transitive backends require incompatible toolkit generations" },
   { crate = "smithay-client-toolkit@0.20.0", reason = "clipboard and window-decoration backends require incompatible toolkit generations" },
-  { crate = "wayland-protocols-experimental@20250721.0.1", reason = "Wayland toolkit generations require incompatible experimental protocol snapshots" },
   { crate = "x11rb@0.13.2", reason = "global-hotkey and window-decoration backends require incompatible X11 protocol generations" },
   { crate = "x11rb-protocol@0.13.2", reason = "x11rb compatibility family" },
+  { crate = "tiny-skia@0.11.4", reason = "sctk-adwaita 0.10 requires tiny-skia 0.11, while Sugarloaf requires the two-circle radial-gradient API from 0.12" },
+  { crate = "tiny-skia-path@0.11.4", reason = "tiny-skia 0.11 compatibility family retained by sctk-adwaita 0.10" },
 
   # Widely used foundational crates have incompatible semver requirements in the inherited graph.
   { crate = "getrandom@0.2.17", reason = "transitive dependencies require pre-1.0 incompatible generations" },

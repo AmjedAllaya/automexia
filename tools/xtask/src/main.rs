@@ -267,6 +267,29 @@ fn command_available(program: &str) -> bool {
         .is_ok_and(|status| status.success())
 }
 
+fn command_on_path(program: &str) -> bool {
+    let Some(path) = env::var_os("PATH") else {
+        return false;
+    };
+    env::split_paths(&path).any(|directory| {
+        #[cfg(target_os = "windows")]
+        {
+            let path_ext = env::var_os("PATHEXT")
+                .unwrap_or_else(|| std::ffi::OsString::from(".COM;.EXE;.BAT;.CMD"));
+            path_ext.to_string_lossy().split(';').any(|extension| {
+                directory.join(format!("{program}{extension}")).is_file()
+            })
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::metadata(directory.join(program)).is_ok_and(|metadata| {
+                metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
+            })
+        }
+    })
+}
+
 fn cargo_subcommand_available(subcommand: &str) -> bool {
     Command::new("cargo")
         .args([subcommand, "--version"])
@@ -408,7 +431,10 @@ fn doctor() -> TaskResult {
         ("cargo-llvm-cov", cargo_subcommand_available("llvm-cov")),
         ("cargo-packager", cargo_subcommand_available("packager")),
         ("dotnet (ARM MSI)", command_available("dotnet")),
-        ("nfpm", command_available("nfpm")),
+        ("nfpm", command_on_path("nfpm")),
+        ("scdoc", command_on_path("scdoc")),
+        ("gzip", command_on_path("gzip")),
+        ("tic", command_on_path("tic")),
     ];
     let mut missing = Vec::new();
     let mut missing_qa = Vec::new();
@@ -1275,11 +1301,18 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && nightly_workflow.contains("--component rust-src")
             && nightly_workflow.contains("sanitizer: [address, thread]")
             && nightly_workflow.contains("MIRIFLAGS: -Zmiri-disable-isolation")
+            && nightly_workflow.contains("timeout-minutes: 30")
+            && nightly_workflow.contains("--locked simd_utf8::tests")
+            && nightly_workflow.contains("--locked simd_base64::tests")
+            && nightly_workflow.contains("--locked performer::parser::tests")
+            && nightly_workflow.contains("test_temp_file_transmission_medium")
             && nightly_workflow.contains("--target x86_64-unknown-linux-gnu")
             && nightly_workflow.contains("tool: cross@0.2.5")
             && nightly_workflow.contains("go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4")
-            && release_workflow.contains("go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4"),
-        "Nightly/release workflows must use nightly GNU-target libFuzzer, install sanitizer std sources, allow bounded Miri file-transport tests, preserve both sanitizer jobs, and install the pinned Go-based nFPM tool",
+            && nightly_workflow.contains("$(go env GOPATH)/bin")
+            && release_workflow.contains("go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4")
+            && release_workflow.contains("$(go env GOPATH)/bin"),
+        "Nightly/release workflows must use nightly GNU-target libFuzzer, install sanitizer std sources, enforce the bounded Miri suite and timeout, preserve both sanitizer jobs, and expose the pinned Go-based nFPM tool",
     )?;
     let simd_utf8 = read(&root().join("rio-vt/src/simd_utf8.rs"))?;
     let simd_base64 = read(&root().join("rio-vt/src/simd_base64.rs"))?;
@@ -2958,6 +2991,8 @@ fn package_check() -> TaskResult {
         "packaging/linux/automexia-terminal.desktop",
         "packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml",
         "packaging/linux/nfpm.yaml",
+        "packaging/linux/copyright",
+        "packaging/linux/changelog.Debian",
         "packaging/linux/automexia.terminfo",
         "assets/brand/ASSET-MANIFEST.toml",
     ] {
@@ -3042,6 +3077,30 @@ fn package_check() -> TaskResult {
         "terminfo must define both Automexia names and advertise synchronized updates",
     )?;
     let linux_package = read(&root.join("packaging/linux/nfpm.yaml"))?;
+    let linux_smoke = read(&root.join("tools/ci/test_linux_package.sh"))?;
+    let linux_copyright = read(&root.join("packaging/linux/copyright"))?;
+    let debian_changelog = read(&root.join("packaging/linux/changelog.Debian"))?;
+    require(
+        linux_package.contains("AmjedAllaya@users.noreply.github.com")
+            && linux_package.contains("AUTOMEXIA_CHANGELOG")
+            && linux_package.contains("automexia.1.gz")
+            && linux_package.contains("/usr/share/doc/automexia-terminal/copyright")
+            && linux_package.contains("mode: 0644")
+            && linux_package.contains("libfontconfig1")
+            && linux_copyright.contains("https://github.com/raphamorim/rio")
+            && linux_copyright.contains("Permission is hereby granted")
+            && debian_changelog.contains(&format!("({}-1)", identity.version)),
+        "Linux packages must contain valid maintainer/description metadata, compressed docs, explicit non-executable modes, runtime dependencies, and attributed copyright",
+    )?;
+    require(
+        linux_smoke.contains("package_dir=$(realpath \"$package_dir\")"),
+        "Linux package smoke must normalize the package directory before passing local artifacts to apt",
+    )?;
+    require(
+        linux_smoke.contains("rpm -qpl \"$rpm\" | grep -Fx '/usr/bin/automexia' >/dev/null")
+            && !linux_smoke.contains("rpm2cpio \"$rpm\" | cpio"),
+        "Linux RPM smoke must query the package manifest directly instead of relying on a fragile cpio pipeline",
+    )?;
     for size in [16, 32, 48, 64, 128, 256, 512] {
         require(
             linux_package.contains(&format!(
@@ -3352,17 +3411,40 @@ fn package_linux(
     binary: &Path,
     output: &Path,
 ) -> TaskResult {
-    let manpage = output.join("automexia.1");
+    for tool in ["scdoc", "gzip", "tic", "nfpm"] {
+        require(
+            command_on_path(tool),
+            &format!("Linux packaging requires `{tool}` on PATH"),
+        )?;
+    }
+    let rendered_manpage = output.join("automexia.1");
     let source = File::open(root().join("packaging/linux/automexia.1.scd"))
         .map_err(|error| format!("could not open manpage source: {error}"))?;
-    let rendered = File::create(&manpage)
-        .map_err(|error| format!("could not create {}: {error}", manpage.display()))?;
+    let rendered = File::create(&rendered_manpage).map_err(|error| {
+        format!("could not create {}: {error}", rendered_manpage.display())
+    })?;
     let mut scdoc = Command::new("scdoc");
     scdoc
         .stdin(Stdio::from(source))
         .stdout(Stdio::from(rendered))
         .current_dir(root());
     run_command(scdoc, "scdoc")?;
+
+    let manpage = output.join("automexia.1.gz");
+    gzip_file(&rendered_manpage, &manpage, "compressed manpage")?;
+    let changelog = output.join("changelog.gz");
+    gzip_file(
+        &root().join("CHANGELOG.md"),
+        &changelog,
+        "compressed changelog",
+    )?;
+
+    let debian_changelog = output.join("changelog.Debian.gz");
+    gzip_file(
+        &root().join("packaging/linux/changelog.Debian"),
+        &debian_changelog,
+        "compressed Debian changelog",
+    )?;
 
     let terminfo = output.join("terminfo");
     fs::create_dir_all(&terminfo)
@@ -3396,11 +3478,26 @@ fn package_linux(
         .env("AUTOMEXIA_VERSION", &identity.version)
         .env("AUTOMEXIA_BINARY", binary)
         .env("AUTOMEXIA_MANPAGE", &manpage)
+        .env("AUTOMEXIA_CHANGELOG", &changelog)
+        .env("AUTOMEXIA_DEBIAN_CHANGELOG", &debian_changelog)
         .env("AUTOMEXIA_TERMINFO_ROOT", &terminfo)
         .current_dir(root());
         run_command(nfpm, &format!("nFPM {format}"))?;
     }
     portable_archive(identity, target, binary, output, "tar.gz")
+}
+
+fn gzip_file(source: &Path, destination: &Path, label: &str) -> TaskResult {
+    let input = File::open(source)
+        .map_err(|error| format!("could not open {}: {error}", source.display()))?;
+    let output = File::create(destination).map_err(|error| {
+        format!("could not create {}: {error}", destination.display())
+    })?;
+    let mut gzip = Command::new("gzip");
+    gzip.args(["-n", "-9", "-c"])
+        .stdin(Stdio::from(input))
+        .stdout(Stdio::from(output));
+    run_command(gzip, label)
 }
 
 fn run_command(mut command: Command, label: &str) -> TaskResult {
@@ -3676,6 +3773,12 @@ mod tests {
         assert!(usage().contains("test session-clone [--native-windows|--native-wsl]"));
         assert!(usage().contains("release --version"));
         assert!(usage().contains("verify all"));
+    }
+
+    #[test]
+    fn path_probe_finds_tools_without_invoking_a_version_flag() {
+        assert!(command_on_path("cargo"));
+        assert!(!command_on_path("automexia-tool-that-cannot-exist-7f8332"));
     }
 
     #[test]

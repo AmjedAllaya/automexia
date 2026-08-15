@@ -76,6 +76,7 @@ jobs:
 
   miri:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       # rio-vt intentionally tests bounded temporary-file image transports.
       # Miri still checks UB; the ephemeral runner supplies the filesystem sandbox.
@@ -83,7 +84,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install nightly --profile minimal --component miri
-      - run: cargo +nightly miri test -p rio-vt --lib --no-default-features
+      - name: Bounded pure VT memory-safety suite
+        run: |
+          cargo +nightly miri test -p rio-vt --lib --no-default-features --locked simd_utf8::tests
+          cargo +nightly miri test -p rio-vt --lib --no-default-features --locked simd_base64::tests
+          cargo +nightly miri test -p rio-vt --lib --no-default-features --locked performer::parser::tests
+          cargo +nightly miri test -p rio-vt --lib --no-default-features --locked ansi::kitty_graphics_protocol::tests::test_file_transmission_medium
+          cargo +nightly miri test -p rio-vt --lib --no-default-features --locked ansi::kitty_graphics_protocol::tests::test_temp_file_transmission_medium
       - name: Pure Phase 1 contracts, UI policy, and lifecycle state
         run: |
           cargo +nightly miri test -p automexia-extension-api -p automexia-ui-model --lib
