@@ -821,6 +821,9 @@ $rendererConfig
         Write-Host ($selectionExtended | ConvertTo-Json -Depth 10)
         throw 'Ctrl+Shift+Left semantics did not select exactly one PowerShell word'
     }
+    if (-not [bool](Get-ActiveAutomexiaPanel $selectionExtended).selection_rendered) {
+        throw 'Keyboard selection reached VT state but not the renderer snapshot'
+    }
 
     $selectionClearControl = 'clear-selection:keyboard-selection-clear'
     Send-AutomexiaTestControl $selectionClearControl
@@ -833,6 +836,9 @@ $rendererConfig
     }
     if (-not [string]::IsNullOrEmpty([string](Get-ActiveAutomexiaPanel $selectionCleared).selection_text)) {
         throw 'Keyboard selection did not clear before submitting the probe command'
+    }
+    if ([bool](Get-ActiveAutomexiaPanel $selectionCleared).selection_rendered) {
+        throw 'Cleared keyboard selection remained visible in the renderer snapshot'
     }
     $selectionSubmitControl = 'write-line:selection-submit:'
     Send-AutomexiaTestControl $selectionSubmitControl

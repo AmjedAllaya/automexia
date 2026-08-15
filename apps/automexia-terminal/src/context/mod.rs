@@ -1300,6 +1300,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                     "raw_cursor_line_text": raw_cursor_line_text,
                     "raw_damage": raw_damage,
                     "selection_text": selection_text,
+                    "selection_rendered": context.renderable_content.selection_range.is_some(),
                     "visible_text": visible_text,
                 })
             })

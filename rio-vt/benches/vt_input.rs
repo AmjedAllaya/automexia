@@ -213,6 +213,38 @@ fn bench(c: &mut Criterion) {
             )
         })
     });
+
+    // Adversarial but realistic retained history: finding the previous word
+    // through 1,000 blank 120-column rows remains allocation-free.
+    const HISTORY_COLUMNS: usize = 120;
+    const HISTORY_SCREEN_ROWS: usize = 40;
+    const HISTORY_ROWS: usize = 1_000;
+    let mut history_terminal = Crosswords::new(
+        CrosswordsSize::new(HISTORY_COLUMNS, HISTORY_SCREEN_ROWS),
+        CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0),
+        0,
+        HISTORY_ROWS,
+    );
+    history_terminal
+        .grid
+        .scroll_up(&(Line(0)..Line(HISTORY_SCREEN_ROWS as i32)), HISTORY_ROWS);
+    let history_end = Anchor::new(
+        Pos::new(
+            Line((HISTORY_SCREEN_ROWS - 1) as i32),
+            Column(HISTORY_COLUMNS - 1),
+        ),
+        Side::Right,
+    );
+    c.bench_function("keyboard_selection_word_motion_120k_scrollback", |b| {
+        b.iter(|| {
+            std::hint::black_box(
+                history_terminal
+                    .selection_motion_target(history_end, SelectionMotion::WordLeft),
+            )
+        })
+    });
     // Prompt/path layout is VT reflow, not renderer state. Alternate between
     // a narrow and a wide grid so the benchmark includes both wrap and unwrap
     // of the same semantic prompt without shell or GPU noise.
