@@ -193,6 +193,31 @@ pre-existing verifier state and always removes settings it created. WPR cancels
 a recording it started on failure and can delete the private ETL after hashing
 and recording its size/host manifest.
 
+### Non-activated session-launch review boundary
+
+The proposed D3 broker is compiled only by frontend tests. Run its complete
+contract and the versioned capability constructors with:
+
+```text
+cargo test -p automexia-extension-api --lib --locked
+cargo test -p automexia-terminal --bin automexia --locked context::launch_broker::tests
+cargo xtask verify architecture
+```
+
+The native Windows test target exercises volume/file-index replacement
+detection. Native Linux and macOS test jobs exercise device/inode replacement
+detection. The property case proves every accepted destination remains one
+literal native argument. Denial, mismatch, option confusion, environment and
+secret isolation, cwd fallback, redaction, duplicate operation, revocation,
+stale lease, and sibling-scope cases are deterministic.
+
+These tests do not spawn OpenSSH and are not evidence that managed SSH is
+available. Real process/PTY/route binding, cancellation/teardown, PID reuse,
+application close, host-key/authentication/tunnel behavior, and 1/10/50-session
+resource results remain external activation gates listed in
+[ADR 0012](adr/0012-first-party-ssh-and-session-launch-boundary.md) and the
+[broker contract](SESSION-LAUNCH-BROKER.md).
+
 Focused tab-scope regressions can be run while iterating:
 
 ```text
