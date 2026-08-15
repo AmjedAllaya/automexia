@@ -66,6 +66,47 @@ feature being absent from one host. A platform result is reported as
 `external` or `not run` when its required host, credentials, display server, or
 hardware is unavailable; it must never be inferred from a different OS.
 
+## Enforced feature assurance ledger
+
+`tests/assurance/feature-matrix.json` is the machine-readable ownership and
+evidence ledger for every shipped v0.4 product surface. It maps all Cargo
+workspace members plus shell integration, packaging, workflows, and contributor
+automation to these mandatory dimensions:
+
+- correctness;
+- security and hostile-input behavior;
+- performance;
+- process, thread, handle, memory, queue, cache, and GPU-resource lifetime;
+- persistent and temporary storage hygiene;
+- failure, cancellation, resize, reload, and teardown resilience;
+- accessibility;
+- rendered visual quality.
+
+Every entry also declares Windows, Linux, and macOS evidence. Evidence levels
+are intentionally different: `pr` is deterministic contributor coverage,
+`nightly` owns fuzz/sanitizer/soak work, `controlled` requires named hardware or
+privileges, and `external` is an explicit unobserved gate rather than a pass.
+`not_applicable` is accepted only with a feature-specific rationale. Linux
+evidence means the declared Ubuntu/X11/Wayland and DEB/RPM contracts; it never
+claims that every downstream distribution or driver has been certified.
+
+Run the ledger and workflow mutation contracts directly with:
+
+```text
+python tools/ci/check_feature_assurance.py
+python tools/ci/test_feature_assurance.py
+python tools/ci/check_platform_coverage.py
+python tools/ci/test_platform_coverage.py
+```
+
+The canonical ledger and platform matrix are also part of repository
+validation, so `cargo ready`, `cargo ci`, and every pull request fail when a
+workspace member, required repository surface, quality dimension, native host,
+shell contract, display feature, architecture check, package validator, or
+referenced evidence path/job/heading loses ownership. A pull request that adds
+or materially changes a feature must update the ledger in the same change; the
+ledger does not replace the tests it references.
+
 ## Phase 0 evidence gate
 
 Use the deeper evidence gate before a release or when changing renderer layout,
@@ -675,7 +716,9 @@ Nightly jobs fuzz VT, bounded OSC/APC/XTGETTCAP streams, bounded raster
 decoding, OSC metadata,
 configuration migration, semantic classification, and label sanitization. All
 libFuzzer commands install and invoke nightly explicitly. Suitable pure crates
-run Miri and ASan/TSan; sanitizer jobs install nightly `rust-src` and do not
+run Miri and ASan/TSan; the sanitizer matrix includes the extension worker's
+restart, saturation, recovery, and shutdown paths while excluding Loom's own
+scheduler models. Sanitizer jobs install nightly `rust-src` and do not
 cancel the second sanitizer when the first fails. Miri selects scalar UTF-8,
 base64, parser-transcode, and bounded Kitty temporary-file transport regressions
 instead of running the entire VT suite or calling native `simdutf` FFI. The
@@ -683,9 +726,11 @@ optimized SIMD path remains enabled in production. The explicit Miri suite has
 a 30-minute job timeout; filesystem isolation is disabled only on the ephemeral
 hosted runner so the two bounded temporary-file cases can execute. Criterion
 cases exist for parser throughput, row rebuild, prompt layout, cache access,
-worker submission, and cold/warm image quick look. Hosted nightly
-always compiles them; a named self-hosted runner executes and retains Criterion
-evidence when AUTOMEXIA_BENCHMARK_RUNNER=1. Run the commands below for local
+worker submission, cold/warm image quick look, PTY startup/clean exit, and
+sustained PTY output/clean exit. Hosted nightly compiles every declared target
+under a 45-minute hard job limit; a named self-hosted runner executes and
+retains every Criterion result under a 180-minute hard job limit when
+AUTOMEXIA_BENCHMARK_RUNNER=1. Run the commands below for local
 measurements. The controlled 30-day comparison baseline is not complete.
 
 The renderer-neutral application-service benchmarks are available with:
@@ -706,7 +751,19 @@ It compares cold 1600x1000 decode/downscale with a warm file-version-validated
 lookup. Record both medians; the warm path must retain the same allocation and
 render identity, and cache memory remains capped independently of timing.
 
-The renderer-neutral row_rebuild_full_snapshot` and
+The real PTY lifecycle benchmark is available on Windows, Linux, and macOS:
+
+```text
+cargo bench -p teletypewriter --bench pty_io --locked -- --noplot
+```
+
+It measures shell process startup through first output and clean exit, then a
+1 MiB sustained-output route through clean exit. The adjacent lifecycle test
+repeats create, extreme resize, route-specific output, child exit, and drop six
+times. These checks catch lost output and lifecycle regressions; process handle,
+thread, and memory deltas remain owned by native controlled resource runs.
+
+The renderer-neutral `row_rebuild_full_snapshot` and
 `prompt_layout_resize_reflow` cases cover full visible-row materialization and
 repeated narrow/wide semantic-prompt reflow.
 

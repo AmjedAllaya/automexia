@@ -17,6 +17,9 @@ import xml.etree.ElementTree as element_tree
 
 import yaml
 
+from check_feature_assurance import load_and_validate as validate_feature_assurance
+from check_platform_coverage import validate_repository_workflows
+
 
 ROOT = Path(__file__).resolve().parents[2]
 EXCLUDED_PARTS = {".git", ".cargo-packager", "target"}
@@ -257,6 +260,12 @@ def validate() -> None:
 
     counts["Markdown"] = validate_markdown_links()
     counts["pinned Actions"] = validate_action_pins()
+
+    validate_repository_workflows()
+    counts["platform workflow matrix"] = 1
+
+    feature_counts = validate_feature_assurance()
+    counts["feature assurance entries"] = feature_counts["features"]
 
     validate_brand_assets()
     counts["brand assets"] = 1
