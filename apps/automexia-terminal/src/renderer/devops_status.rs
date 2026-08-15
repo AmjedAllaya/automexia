@@ -24,7 +24,6 @@ pub(crate) const LIVE_REFRESH_MILLIS: u64 = 3_000;
 const REFRESH_INTERVAL: Duration = Duration::from_millis(LIVE_REFRESH_MILLIS);
 const REFRESH_IN_FLIGHT_TIMEOUT: Duration = Duration::from_secs(10);
 const ORDER: u8 = 19;
-const CONTEXT_FONT_SIZE: f32 = 14.0;
 const PROMPT_TAG_FONT_ROW_RATIO: f32 = 0.62;
 const PROMPT_TAG_MAX_FONT_SIZE: f32 = 14.0;
 const PROMPT_TAG_MIN_FONT_SIZE: f32 = 4.0;
@@ -367,7 +366,14 @@ impl DevOpsStatus {
         segments: &[Segment],
     ) {
         let metrics = prompt_tag_metrics(anchor.height);
-        let tag_y = anchor.y + (anchor.height - metrics.height) * 0.5;
+        let Some(top_inset) = automexia_ui_model::prompt_context_top_inset(
+            anchor.height,
+            metrics.height,
+            !segments.is_empty(),
+        ) else {
+            return;
+        };
+        let tag_y = anchor.y + top_inset;
         let text_y = tag_y + (metrics.height - metrics.font_size) * 0.5 - 1.0;
         let icon_y = tag_y + (metrics.height - metrics.icon_size) * 0.5;
         let mut cursor_x = anchor.x + PROMPT_TAG_LEFT_INSET;
@@ -475,8 +481,16 @@ impl DevOpsStatus {
             let success = anchor.exit_code == 0;
             let status = if success { "✓" } else { "×" };
             let label = format!("{status}  {}", format_duration(anchor.elapsed_ms));
+            let metrics = prompt_tag_metrics(anchor.height);
+            let Some(top_inset) = automexia_ui_model::prompt_context_top_inset(
+                anchor.height,
+                metrics.height,
+                true,
+            ) else {
+                continue;
+            };
             let opts = DrawOpts {
-                font_size: CONTEXT_FONT_SIZE,
+                font_size: metrics.font_size,
                 color: color_to_u8(if success { colors.green } else { colors.red }),
                 ..DrawOpts::default()
             };
@@ -485,7 +499,8 @@ impl DevOpsStatus {
             if x <= anchor.x + 24.0 {
                 continue;
             }
-            let y = anchor.y + (anchor.height - CONTEXT_FONT_SIZE) / 2.0;
+            let tag_y = anchor.y + top_inset;
+            let y = tag_y + (metrics.height - metrics.font_size) * 0.5 - 1.0;
             sugarloaf.text_mut().draw(x, y, &label, &opts);
         }
     }
@@ -857,7 +872,7 @@ mod tests {
     #[test]
     fn prompt_tags_are_secondary_compact_and_fit_their_rows() {
         let comfortable = prompt_tag_metrics(24.0);
-        assert_eq!(CONTEXT_FONT_SIZE, 14.0);
+        assert_eq!(PROMPT_TAG_MAX_FONT_SIZE, 14.0);
         assert_eq!(comfortable.font_size, 14.0);
         assert!(
             comfortable.font_size
@@ -869,14 +884,25 @@ mod tests {
 
         for row_height in [2.0, 8.0, 16.0, 24.0, 48.0] {
             let metrics = prompt_tag_metrics(row_height);
+            let top_inset = automexia_ui_model::prompt_context_top_inset(
+                row_height,
+                metrics.height,
+                true,
+            )
+            .unwrap();
             assert!(metrics.font_size <= row_height);
             assert!(metrics.height <= row_height);
+            assert!(top_inset + metrics.height <= row_height + f32::EPSILON);
             assert!(metrics.radius <= metrics.height * 0.5);
             assert!(metrics.padding_x > 0.0);
             assert!(metrics.icon_gap > 0.0);
         }
+        assert!(
+            automexia_ui_model::prompt_context_top_inset(24.0, comfortable.height, true,)
+                .unwrap()
+                > (24.0 - comfortable.height) * 0.5
+        );
     }
-
     #[test]
     fn command_duration_uses_compact_units() {
         assert_eq!(format_duration(18), "18ms");

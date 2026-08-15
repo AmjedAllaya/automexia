@@ -31,9 +31,13 @@ defaults to 18 points with 1.22 line spacing: command blocks and dense output
 remain easy to scan while split panes retain useful working space. The shared
 renderer metric applies identically to PowerShell, CMD, WSL, Unix shells, and
 full-screen applications on every supported OS without inserting characters
-into terminal history. Context tags and chrome use a smaller secondary type
-scale, while click targets retain their accessible dimensions. The relevant
-overrides remain ordinary inherited settings:
+into terminal history. When semantic context exists, its compact tags use the
+pane's actual row height to preserve a minimum 1.22-row rhythm after preceding
+command output; absent context adds no layout. The result is clamped within the
+already reserved semantic row, so paths, cursors, copied text, PTY history, and
+full-screen applications are unaffected. Context tags and chrome use a smaller
+secondary type scale, while click targets retain their accessible dimensions.
+The relevant overrides remain ordinary inherited settings:
 
 ```toml
 line-height = 1.22
