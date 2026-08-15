@@ -52,6 +52,7 @@ STEP_TIMEOUT_SECONDS = {
     "benchmark-vt": 7200,
     "benchmark-channel": 7200,
     "benchmark-pty": 7200,
+    "benchmark-ssh-inventory": 7200,
 }
 TOKEN_PATTERNS = (
     re.compile(r"(?i)(authorization\s*[:=]\s*)(?:bearer\s+)?[^\s]+"),
@@ -749,6 +750,10 @@ def main() -> int:
             (
                 "benchmark-pty",
                 ["cargo", "bench", "-p", "teletypewriter", "--bench", "pty_io", "--locked", "--", "--noplot"],
+            ),
+            (
+                "benchmark-ssh-inventory",
+                ["cargo", "bench", "-p", "automexia-devops-ssh", "--bench", "openssh_inventory", "--locked", "--", "--noplot"],
             ),
         )
         for name, command in benchmark_commands:

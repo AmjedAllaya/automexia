@@ -1,6 +1,6 @@
 use std::{
-    fs::{self, File},
-    io::{Read, Write},
+    fs,
+    io::Write,
     path::{Path, PathBuf},
 };
 
@@ -9,7 +9,36 @@ use tempfile::NamedTempFile;
 use crate::{InventoryError, MetadataDocument};
 
 pub const CONNECTIONS_FILE_NAME: &str = "connections.v1.json";
-const MAX_METADATA_BYTES: usize = 8 * 1024 * 1024;
+pub const MAX_METADATA_BYTES: usize = 8 * 1024 * 1024;
+
+struct BoundedJsonWriter {
+    bytes: Vec<u8>,
+}
+
+impl BoundedJsonWriter {
+    fn new() -> Self {
+        Self {
+            bytes: Vec::with_capacity(64 * 1024),
+        }
+    }
+}
+
+impl Write for BoundedJsonWriter {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        let remaining = MAX_METADATA_BYTES.saturating_sub(self.bytes.len());
+        if buffer.len() > remaining {
+            return Err(std::io::Error::other(
+                "metadata exceeds its persistent byte limit",
+            ));
+        }
+        self.bytes.extend_from_slice(buffer);
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct MetadataStore {
@@ -39,27 +68,16 @@ impl MetadataStore {
 
     pub fn load(&self) -> Result<MetadataDocument, InventoryError> {
         let path = self.path();
-        if !path.exists() {
+        if !entry_exists(&path)? {
             return Ok(MetadataDocument::default());
         }
-        reject_symlink(&path)?;
-        let metadata = fs::metadata(&path).map_err(persistence_io)?;
-        if !metadata.is_file() || metadata.len() > MAX_METADATA_BYTES as u64 {
-            return Err(InventoryError::Persistence(
-                "metadata is not a bounded regular file".into(),
-            ));
-        }
-        let mut bytes = Vec::with_capacity(metadata.len() as usize);
-        File::open(&path)
-            .map_err(persistence_io)?
-            .take(MAX_METADATA_BYTES as u64 + 1)
-            .read_to_end(&mut bytes)
-            .map_err(persistence_io)?;
-        if bytes.len() > MAX_METADATA_BYTES {
-            return Err(InventoryError::Persistence(
-                "metadata changed while reading and exceeded its byte limit".into(),
-            ));
-        }
+        let bytes = crate::secure_fs::read_bounded_regular(&path, MAX_METADATA_BYTES)
+            .map_err(|error| {
+                InventoryError::Persistence(format!(
+                    "private metadata read rejected ({})",
+                    error.message()
+                ))
+            })?;
         let document: MetadataDocument =
             serde_json::from_slice(&bytes).map_err(|_| {
                 InventoryError::Persistence("metadata JSON is malformed".into())
@@ -71,21 +89,18 @@ impl MetadataStore {
     pub fn save(&self, document: &MetadataDocument) -> Result<(), InventoryError> {
         document.validate()?;
         reject_symlink(&self.root)?;
-        let bytes = serde_json::to_vec_pretty(document).map_err(|_| {
+        let mut writer = BoundedJsonWriter::new();
+        serde_json::to_writer_pretty(&mut writer, document).map_err(|_| {
             InventoryError::Persistence("metadata serialization failed".into())
         })?;
-        if bytes.len() > MAX_METADATA_BYTES {
-            return Err(InventoryError::Persistence(
-                "metadata exceeds its persistent byte limit".into(),
-            ));
-        }
+        let bytes = writer.bytes;
 
         let mut staged = NamedTempFile::new_in(&self.root).map_err(persistence_io)?;
         apply_private_permissions(staged.path(), false)?;
         staged.write_all(&bytes).map_err(persistence_io)?;
         staged.as_file_mut().sync_all().map_err(persistence_io)?;
         let destination = self.path();
-        if destination.exists() {
+        if entry_exists(&destination)? {
             reject_symlink(&destination)?;
         }
         let persisted = staged
@@ -99,13 +114,21 @@ impl MetadataStore {
 
     pub fn remove_owned_state(&self) -> Result<bool, InventoryError> {
         let path = self.path();
-        if !path.exists() {
+        if !entry_exists(&path)? {
             return Ok(false);
         }
         reject_symlink(&path)?;
         fs::remove_file(&path).map_err(persistence_io)?;
         sync_parent(&self.root)?;
         Ok(true)
+    }
+}
+
+fn entry_exists(path: &Path) -> Result<bool, InventoryError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(persistence_io(error)),
     }
 }
 
@@ -269,7 +292,7 @@ fn apply_private_permissions(
 
 #[cfg(unix)]
 fn sync_parent(root: &Path) -> Result<(), InventoryError> {
-    File::open(root)
+    fs::File::open(root)
         .and_then(|directory| directory.sync_all())
         .map_err(persistence_io)
 }
@@ -283,6 +306,7 @@ fn sync_parent(_root: &Path) -> Result<(), InventoryError> {
 mod tests {
     use super::*;
     use crate::ConnectionMetadata;
+    use std::fs::File;
 
     fn sample() -> MetadataDocument {
         MetadataDocument {
@@ -330,6 +354,26 @@ mod tests {
     }
 
     #[test]
+    fn serialization_is_bounded_before_a_staging_file_is_created() {
+        let root = tempfile::tempdir().unwrap();
+        let store = MetadataStore::new(root.path().join("devops-ssh")).unwrap();
+        let connections = (0..2_100)
+            .map(|index| ConnectionMetadata {
+                connection_id: format!("openssh:host-{index}"),
+                display_name: Some("x".repeat(crate::MAX_VALUE_BYTES)),
+                ..ConnectionMetadata::default()
+            })
+            .collect();
+        let document = MetadataDocument {
+            schema: crate::SCHEMA_VERSION,
+            connections,
+        };
+        assert!(store.save(&document).is_err());
+        assert!(!store.path().exists());
+        assert_eq!(fs::read_dir(store.root()).unwrap().count(), 0);
+    }
+
+    #[test]
     fn removal_is_exact_and_preserves_unrelated_files() {
         let root = tempfile::tempdir().unwrap();
         let store = MetadataStore::new(root.path().join("devops-ssh")).unwrap();
@@ -339,6 +383,27 @@ mod tests {
         assert!(store.remove_owned_state().unwrap());
         assert!(unrelated.exists());
         assert!(!store.path().exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn load_and_removal_reject_symlinked_owned_state() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let store = MetadataStore::new(root.path().join("devops-ssh")).unwrap();
+        let outside = root.path().join("outside.json");
+        fs::write(&outside, br#"{"schema":1,"connections":[]}"#).unwrap();
+        symlink(&outside, store.path()).unwrap();
+        assert!(store.load().is_err());
+        assert!(store.remove_owned_state().is_err());
+        assert!(outside.exists());
+
+        fs::remove_file(store.path()).unwrap();
+        let missing = root.path().join("missing.json");
+        symlink(&missing, store.path()).unwrap();
+        assert!(store.load().is_err());
+        assert!(store.remove_owned_state().is_err());
     }
 
     #[cfg(unix)]

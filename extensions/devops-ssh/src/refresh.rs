@@ -7,7 +7,10 @@ use std::{
 
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 
-use crate::{InventoryError, InventorySnapshot, ScanOutcome};
+use crate::{
+    InventoryError, InventorySnapshot, MetadataStore, ScanCancellation, ScanOutcome,
+    MAX_SOURCE_FILES,
+};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WatchPlan {
@@ -16,10 +19,37 @@ pub struct WatchPlan {
 }
 
 impl WatchPlan {
-    pub fn new(files: impl IntoIterator<Item = PathBuf>) -> Result<Self, InventoryError> {
+    pub fn from_scan(outcome: &ScanOutcome) -> Result<Self, InventoryError> {
+        Self::build(outcome.watched_files.iter().cloned())
+    }
+
+    pub fn from_scan_and_metadata(
+        outcome: &ScanOutcome,
+        metadata: &MetadataStore,
+    ) -> Result<Self, InventoryError> {
+        let metadata_path = metadata.path();
+        let metadata_path = match std::fs::symlink_metadata(&metadata_path) {
+            Ok(_) => Some(metadata_path),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => {
+                return Err(InventoryError::Watch(format!(
+                    "owned metadata cannot be inspected ({:?})",
+                    error.kind()
+                )))
+            }
+        };
+        Self::build(outcome.watched_files.iter().cloned().chain(metadata_path))
+    }
+
+    fn build(files: impl IntoIterator<Item = PathBuf>) -> Result<Self, InventoryError> {
         let mut exact = BTreeSet::new();
         let mut event_paths = BTreeSet::new();
         for file in files {
+            if exact.len() > MAX_SOURCE_FILES {
+                return Err(InventoryError::Watch(
+                    "watch plan exceeds the bounded source and metadata set".into(),
+                ));
+            }
             let metadata = std::fs::symlink_metadata(&file).map_err(|error| {
                 InventoryError::Watch(format!(
                     "known SSH source cannot be inspected ({:?})",
@@ -122,10 +152,13 @@ pub enum RefreshStatus {
     Stale { generation: u64, error: String },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum RefreshDecision {
     Idle,
-    Run { generation: u64 },
+    Run {
+        generation: u64,
+        cancellation: ScanCancellation,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -136,8 +169,17 @@ pub struct RefreshCoordinator {
     completed_generation: u64,
     pending_at: Option<Instant>,
     next_reconcile_at: Instant,
+    active_cancellation: Option<ScanCancellation>,
     last_good: Option<InventorySnapshot>,
     status: RefreshStatus,
+}
+
+impl Drop for RefreshCoordinator {
+    fn drop(&mut self) {
+        if let Some(active) = self.active_cancellation.take() {
+            active.cancel();
+        }
+    }
 }
 
 impl RefreshCoordinator {
@@ -149,12 +191,16 @@ impl RefreshCoordinator {
             completed_generation: 0,
             pending_at: Some(now),
             next_reconcile_at: now + reconcile_interval,
+            active_cancellation: None,
             last_good: None,
             status: RefreshStatus::Empty,
         }
     }
 
     pub fn request(&mut self, now: Instant) -> u64 {
+        if let Some(active) = self.active_cancellation.take() {
+            active.cancel();
+        }
         self.requested_generation = self.requested_generation.saturating_add(1);
         self.pending_at = Some(now + self.debounce);
         self.requested_generation
@@ -170,7 +216,7 @@ impl RefreshCoordinator {
 
     pub fn poll(&mut self, now: Instant) -> RefreshDecision {
         if now >= self.next_reconcile_at {
-            self.requested_generation = self.requested_generation.saturating_add(1);
+            self.request(now);
             self.pending_at = Some(now);
             self.next_reconcile_at = now + self.reconcile_interval;
         }
@@ -180,8 +226,11 @@ impl RefreshCoordinator {
                     && self.requested_generation > self.completed_generation =>
             {
                 self.pending_at = None;
+                let cancellation = ScanCancellation::default();
+                self.active_cancellation = Some(cancellation.clone());
                 RefreshDecision::Run {
                     generation: self.requested_generation,
+                    cancellation,
                 }
             }
             _ => RefreshDecision::Idle,
@@ -198,6 +247,7 @@ impl RefreshCoordinator {
         {
             return false;
         }
+        self.active_cancellation = None;
         self.completed_generation = generation;
         match result {
             Ok(mut outcome) => {
@@ -243,6 +293,13 @@ mod tests {
         }
     }
 
+    fn observed(files: impl IntoIterator<Item = PathBuf>) -> ScanOutcome {
+        ScanOutcome {
+            watched_files: files.into_iter().collect(),
+            ..ScanOutcome::default()
+        }
+    }
+
     #[test]
     fn burst_is_coalesced_and_obsolete_completion_is_discarded() {
         let now = Instant::now();
@@ -251,20 +308,27 @@ mod tests {
             Duration::from_millis(50),
             Duration::from_secs(60),
         );
-        assert_eq!(
-            coordinator.poll(now),
-            RefreshDecision::Run { generation: 1 }
-        );
+        let RefreshDecision::Run {
+            generation,
+            cancellation: first_scan,
+        } = coordinator.poll(now)
+        else {
+            panic!("initial refresh was not due");
+        };
+        assert_eq!(generation, 1);
         coordinator.request(now);
+        assert!(first_scan.is_cancelled());
         let latest = coordinator.request(now + Duration::from_millis(10));
-        assert_eq!(
+        assert!(matches!(
             coordinator.poll(now + Duration::from_millis(49)),
             RefreshDecision::Idle
-        );
-        assert_eq!(
-            coordinator.poll(now + Duration::from_millis(60)),
-            RefreshDecision::Run { generation: latest }
-        );
+        ));
+        let RefreshDecision::Run { generation, .. } =
+            coordinator.poll(now + Duration::from_millis(60))
+        else {
+            panic!("coalesced refresh was not due");
+        };
+        assert_eq!(generation, latest);
         assert!(!coordinator.complete(latest - 1, Ok(success(latest - 1))));
         assert!(coordinator.complete(latest, Ok(success(latest))));
         assert_eq!(coordinator.snapshot().unwrap().generation, latest);
@@ -276,13 +340,13 @@ mod tests {
         let mut coordinator =
             RefreshCoordinator::new(now, Duration::ZERO, Duration::from_secs(60));
         coordinator.request(now);
-        let RefreshDecision::Run { generation } = coordinator.poll(now) else {
+        let RefreshDecision::Run { generation, .. } = coordinator.poll(now) else {
             panic!("refresh was not due");
         };
         coordinator.complete(generation, Ok(success(generation)));
         let retained = coordinator.snapshot().cloned();
         coordinator.request(now);
-        let RefreshDecision::Run { generation } = coordinator.poll(now) else {
+        let RefreshDecision::Run { generation, .. } = coordinator.poll(now) else {
             panic!("second refresh was not due");
         };
         coordinator.complete(
@@ -300,7 +364,7 @@ mod tests {
         let unknown = root.path().join("other");
         std::fs::write(&known, b"Host prod").unwrap();
         std::fs::write(&unknown, b"Host other").unwrap();
-        let plan = WatchPlan::new([known.clone()]).unwrap();
+        let plan = WatchPlan::from_scan(&observed([known.clone()])).unwrap();
         assert!(plan.contains(&known));
         assert!(!plan.contains(&unknown));
         assert_eq!(plan.files().count(), 1);
@@ -313,7 +377,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let known = root.path().join("config");
         std::fs::write(&known, b"Host prod").unwrap();
-        let plan = WatchPlan::new([known]).unwrap();
+        let plan = WatchPlan::from_scan(&observed([known])).unwrap();
         for _ in 0..16 {
             let (sender, _receiver) = std::sync::mpsc::channel();
             let watcher = recommended_watcher(&plan, sender).unwrap();
@@ -329,5 +393,48 @@ mod tests {
         assert_eq!(redacted, "generic");
         assert!(!redacted.contains("TOP-SECRET"));
         assert!(!redacted.contains("private"));
+    }
+
+    #[test]
+    fn watch_plan_adds_only_owned_metadata_to_observed_sources() {
+        let root = tempfile::tempdir().unwrap();
+        let known = root.path().join("config");
+        std::fs::write(&known, b"Host prod").unwrap();
+        let store = MetadataStore::new(root.path().join("devops-ssh")).unwrap();
+        store.save(&crate::MetadataDocument::default()).unwrap();
+        let plan = WatchPlan::from_scan_and_metadata(&observed([known.clone()]), &store)
+            .unwrap();
+        assert!(plan.contains(&known));
+        assert!(plan.contains(&store.path()));
+        assert_eq!(plan.files().count(), 2);
+    }
+
+    #[test]
+    fn dropping_coordinator_cancels_active_scan() {
+        let cancellation = {
+            let now = Instant::now();
+            let mut coordinator =
+                RefreshCoordinator::new(now, Duration::ZERO, Duration::from_secs(60));
+            let RefreshDecision::Run { cancellation, .. } = coordinator.poll(now) else {
+                panic!("initial refresh was not due");
+            };
+            cancellation
+        };
+        assert!(cancellation.is_cancelled());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn watch_plan_rejects_symlinked_owned_metadata() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let known = root.path().join("config");
+        std::fs::write(&known, b"Host prod").unwrap();
+        let store = MetadataStore::new(root.path().join("devops-ssh")).unwrap();
+        let outside = root.path().join("outside.json");
+        std::fs::write(&outside, b"{}").unwrap();
+        symlink(&outside, store.path()).unwrap();
+        assert!(WatchPlan::from_scan_and_metadata(&observed([known]), &store).is_err());
     }
 }

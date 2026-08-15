@@ -1,14 +1,25 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fmt,
-    fs::{self, File, Metadata},
-    io::{self, Read},
+    fmt, fs, io,
     path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 use glob::{glob_with, MatchOptions};
 
 use crate::{ConnectionRecord, IdentityHint, InventorySnapshot, SourceKind};
+
+pub const MAX_SOURCE_FILE_BYTES: usize = 1024 * 1024;
+pub const MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024;
+pub const MAX_SOURCE_FILES: usize = 128;
+pub const MAX_INCLUDE_DEPTH: usize = 8;
+pub const MAX_ALIASES: usize = 10_000;
+pub const MAX_VALUE_BYTES: usize = 4 * 1024;
+pub const MAX_LINE_BYTES: usize = 16 * 1024;
+const CANCELLATION_CHECK_LINES: usize = 64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GrantKind {
@@ -52,8 +63,21 @@ impl InventoryGrant {
             ));
         }
         let root = canonical_nonsymlink(root.as_ref(), "grant root")?;
+        if !fs::metadata(&root)
+            .map_err(|error| InventoryError::io("grant root", error))?
+            .is_dir()
+        {
+            return Err(InventoryError::Grant(
+                "grant root must be a directory".into(),
+            ));
+        }
         let mut canonical_entries = Vec::new();
         for entry in entries {
+            if canonical_entries.len() >= MAX_SOURCE_FILES {
+                return Err(InventoryError::Grant(
+                    "grant contains too many exact entry files".into(),
+                ));
+            }
             let entry = entry.as_ref();
             reject_symlink(entry, "grant entry")?;
             let canonical = fs::canonicalize(entry)
@@ -103,13 +127,13 @@ pub struct InventoryLimits {
 impl Default for InventoryLimits {
     fn default() -> Self {
         Self {
-            max_file_bytes: 1024 * 1024,
-            max_total_bytes: 8 * 1024 * 1024,
-            max_files: 128,
-            max_include_depth: 8,
-            max_aliases: 10_000,
-            max_value_bytes: 4 * 1024,
-            max_line_bytes: 16 * 1024,
+            max_file_bytes: MAX_SOURCE_FILE_BYTES,
+            max_total_bytes: MAX_SOURCE_BYTES,
+            max_files: MAX_SOURCE_FILES,
+            max_include_depth: MAX_INCLUDE_DEPTH,
+            max_aliases: MAX_ALIASES,
+            max_value_bytes: MAX_VALUE_BYTES,
+            max_line_bytes: MAX_LINE_BYTES,
         }
     }
 }
@@ -123,9 +147,17 @@ impl InventoryLimits {
             || self.max_aliases == 0
             || self.max_value_bytes == 0
             || self.max_line_bytes < self.max_value_bytes
+            || self.max_file_bytes > MAX_SOURCE_FILE_BYTES
+            || self.max_total_bytes > MAX_SOURCE_BYTES
+            || self.max_files > MAX_SOURCE_FILES
+            || self.max_include_depth > MAX_INCLUDE_DEPTH
+            || self.max_aliases > MAX_ALIASES
+            || self.max_value_bytes > MAX_VALUE_BYTES
+            || self.max_line_bytes > MAX_LINE_BYTES
         {
             return Err(InventoryError::Limit(
-                "inventory limits are zero or internally inconsistent".into(),
+                "inventory limits are zero, inconsistent, or exceed the security ceiling"
+                    .into(),
             ));
         }
         Ok(self)
@@ -142,8 +174,21 @@ pub struct Diagnostic {
 #[derive(Clone, Debug, Default)]
 pub struct ScanOutcome {
     pub snapshot: InventorySnapshot,
-    pub watched_files: Vec<PathBuf>,
+    pub(crate) watched_files: Vec<PathBuf>,
     pub diagnostics: Vec<Diagnostic>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ScanCancellation(Arc<AtomicBool>);
+
+impl ScanCancellation {
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
 }
 
 #[derive(Debug)]
@@ -158,6 +203,7 @@ pub enum InventoryError {
     InvalidMetadata(String),
     Persistence(String),
     Watch(String),
+    Cancelled,
 }
 
 impl InventoryError {
@@ -178,6 +224,7 @@ impl fmt::Display for InventoryError {
             | Self::InvalidMetadata(message)
             | Self::Persistence(message)
             | Self::Watch(message) => formatter.write_str(message),
+            Self::Cancelled => formatter.write_str("inventory refresh cancelled"),
             Self::Source {
                 source,
                 line,
@@ -213,12 +260,31 @@ struct ScanState {
     watched: BTreeSet<PathBuf>,
     drafts: BTreeMap<String, Draft>,
     diagnostics: Vec<Diagnostic>,
+    cancellation: Option<ScanCancellation>,
 }
 
 pub fn scan_inventory(
     grants: &[InventoryGrant],
     limits: InventoryLimits,
     generation: u64,
+) -> Result<ScanOutcome, InventoryError> {
+    scan_inventory_inner(grants, limits, generation, None)
+}
+
+pub fn scan_inventory_cancellable(
+    grants: &[InventoryGrant],
+    limits: InventoryLimits,
+    generation: u64,
+    cancellation: ScanCancellation,
+) -> Result<ScanOutcome, InventoryError> {
+    scan_inventory_inner(grants, limits, generation, Some(cancellation))
+}
+
+fn scan_inventory_inner(
+    grants: &[InventoryGrant],
+    limits: InventoryLimits,
+    generation: u64,
+    cancellation: Option<ScanCancellation>,
 ) -> Result<ScanOutcome, InventoryError> {
     let limits = limits.validate()?;
     let mut state = ScanState {
@@ -229,9 +295,11 @@ pub fn scan_inventory(
         watched: BTreeSet::new(),
         drafts: BTreeMap::new(),
         diagnostics: Vec::new(),
+        cancellation,
     };
     for grant in grants {
         for entry in &grant.entries {
+            state.check_cancelled()?;
             state.parse_file(grant, entry, 0, Vec::new())?;
         }
     }
@@ -265,6 +333,17 @@ pub fn scan_inventory(
 }
 
 impl ScanState {
+    fn check_cancelled(&self) -> Result<(), InventoryError> {
+        if self
+            .cancellation
+            .as_ref()
+            .is_some_and(ScanCancellation::is_cancelled)
+        {
+            return Err(InventoryError::Cancelled);
+        }
+        Ok(())
+    }
+
     fn parse_file(
         &mut self,
         grant: &InventoryGrant,
@@ -272,6 +351,7 @@ impl ScanState {
         depth: usize,
         mut aliases: Vec<String>,
     ) -> Result<Vec<String>, InventoryError> {
+        self.check_cancelled()?;
         if depth > self.limits.max_include_depth {
             return Err(source_error(grant, None, "include depth limit exceeded"));
         }
@@ -296,17 +376,11 @@ impl ScanState {
         if self.files > self.limits.max_files {
             return Err(source_error(grant, None, "included file limit exceeded"));
         }
-        let metadata =
-            fs::metadata(&canonical).map_err(|error| source_io(grant, None, error))?;
-        if !metadata.is_file() {
-            return Err(source_error(grant, None, "source is not a regular file"));
-        }
-        let bytes = read_bounded(
+        let bytes = crate::secure_fs::read_bounded_regular(
             &canonical,
-            &metadata,
             self.limits.max_file_bytes,
-            grant.label(),
-        )?;
+        )
+        .map_err(|error| source_error(grant, None, &error.message()))?;
         self.bytes = self
             .bytes
             .checked_add(bytes.len())
@@ -318,6 +392,9 @@ impl ScanState {
             .map_err(|_| source_error(grant, None, "source is not valid UTF-8"))?;
 
         for (index, raw_line) in text.lines().enumerate() {
+            if index % CANCELLATION_CHECK_LINES == 0 {
+                self.check_cancelled()?;
+            }
             let line_number = index + 1;
             if raw_line.len() > self.limits.max_line_bytes {
                 return Err(source_error(
@@ -592,34 +669,6 @@ fn expand_include(
     Ok(expanded)
 }
 
-fn read_bounded(
-    path: &Path,
-    metadata: &Metadata,
-    limit: usize,
-    source: &str,
-) -> Result<Vec<u8>, InventoryError> {
-    if metadata.len() > limit as u64 {
-        return Err(InventoryError::Source {
-            source: source.into(),
-            line: None,
-            message: "file byte limit exceeded".into(),
-        });
-    }
-    let file = File::open(path).map_err(|error| InventoryError::io(source, error))?;
-    let mut bytes = Vec::with_capacity(metadata.len() as usize);
-    file.take(limit as u64 + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|error| InventoryError::io(source, error))?;
-    if bytes.len() > limit {
-        return Err(InventoryError::Source {
-            source: source.into(),
-            line: None,
-            message: "file changed while reading and exceeded its byte limit".into(),
-        });
-    }
-    Ok(bytes)
-}
-
 fn canonical_nonsymlink(path: &Path, label: &str) -> Result<PathBuf, InventoryError> {
     reject_symlink(path, label)?;
     fs::canonicalize(path).map_err(|error| InventoryError::io(label, error))
@@ -715,7 +764,7 @@ fn source_io(
 mod tests {
     use super::*;
     use proptest::prelude::*;
-    use std::io::Write;
+    use std::{fs::File, io::Write};
 
     fn write(path: &Path, contents: &str) {
         let mut file = File::create(path).unwrap();
@@ -895,6 +944,56 @@ Host staging
     }
 
     #[test]
+    fn aggregate_file_count_line_and_value_limits_fail_closed() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config");
+        let first = root.path().join("first.conf");
+        let second = root.path().join("second.conf");
+        write(&config, "Include *.conf\n");
+        write(&first, "Host first\n");
+        write(&second, "Host second\n");
+        let file_count = InventoryLimits {
+            max_files: 2,
+            ..InventoryLimits::default()
+        };
+        assert!(matches!(
+            scan_inventory(&[grant(root.path(), &config)], file_count, 1),
+            Err(InventoryError::Source { .. })
+        ));
+
+        let aggregate = InventoryLimits {
+            max_file_bytes: 32,
+            max_total_bytes: 32,
+            ..InventoryLimits::default()
+        };
+        assert!(matches!(
+            scan_inventory(&[grant(root.path(), &config)], aggregate, 1),
+            Err(InventoryError::Source { .. })
+        ));
+
+        write(&config, "Host value-that-is-too-long\n");
+        let value = InventoryLimits {
+            max_value_bytes: 8,
+            ..InventoryLimits::default()
+        };
+        assert!(matches!(
+            scan_inventory(&[grant(root.path(), &config)], value, 1),
+            Err(InventoryError::Source { .. })
+        ));
+
+        write(&config, "Host line-that-is-too-long\n");
+        let line = InventoryLimits {
+            max_value_bytes: 4,
+            max_line_bytes: 8,
+            ..InventoryLimits::default()
+        };
+        assert!(matches!(
+            scan_inventory(&[grant(root.path(), &config)], line, 1),
+            Err(InventoryError::Source { .. })
+        ));
+    }
+
+    #[test]
     fn include_cycles_are_bounded_and_reported() {
         let root = tempfile::tempdir().unwrap();
         let first = root.path().join("first");
@@ -909,6 +1008,62 @@ Host staging
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.message.contains("cycle")));
+    }
+
+    #[test]
+    fn limits_are_hard_ceilings_and_cancelled_scans_stop() {
+        let excessive = InventoryLimits {
+            max_file_bytes: MAX_SOURCE_FILE_BYTES + 1,
+            ..InventoryLimits::default()
+        };
+        assert!(matches!(
+            scan_inventory(&[], excessive, 1),
+            Err(InventoryError::Limit(_))
+        ));
+
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config");
+        write(&config, "Host prod\n HostName prod.example\n");
+        let cancellation = ScanCancellation::default();
+        cancellation.cancel();
+        assert!(matches!(
+            scan_inventory_cancellable(
+                &[grant(root.path(), &config)],
+                InventoryLimits::default(),
+                1,
+                cancellation,
+            ),
+            Err(InventoryError::Cancelled)
+        ));
+    }
+
+    #[test]
+    fn grants_require_a_directory_root_and_bound_exact_entries() {
+        let root = tempfile::tempdir().unwrap();
+        let file_root = root.path().join("not-a-root");
+        write(&file_root, "Host prod\n");
+        assert!(InventoryGrant::new(
+            "invalid-root",
+            &file_root,
+            [&file_root],
+            GrantKind::User,
+        )
+        .is_err());
+
+        let entries = (0..=MAX_SOURCE_FILES)
+            .map(|index| {
+                let path = root.path().join(format!("entry-{index}"));
+                write(&path, "Host bounded\n");
+                path
+            })
+            .collect::<Vec<_>>();
+        assert!(InventoryGrant::new(
+            "too-many-entries",
+            root.path(),
+            &entries,
+            GrantKind::User,
+        )
+        .is_err());
     }
 
     #[cfg(unix)]

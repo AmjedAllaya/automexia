@@ -16,9 +16,16 @@ grant has:
 - a user or system ownership policy.
 
 The host calls scan_inventory with explicit InventoryLimits and a generation.
+The public values may lower the project limits for a narrower deployment but
+cannot raise any architecture ceiling. For asynchronous refresh, the host uses
+scan_inventory_cancellable with the cancellation handle issued by
+RefreshCoordinator; requesting a newer generation actively stops obsolete
+parsing as well as rejecting any late result.
 On success it receives concrete aliases, public host/user/port hints, an opaque
 identity kind, exact observed files, bounded diagnostics, and accounting for
-files and bytes. WatchPlan accepts only those observed regular files.
+files and bytes. A WatchPlan can be constructed only from those opaque
+scanner-observed files, optionally plus the exact existing MetadataStore file;
+callers cannot create a plan from arbitrary paths.
 
 The package is disabled by default. It is not linked to the renderer, input
 path, PTY transport, or production launch broker. It has no session-launch,
@@ -32,7 +39,9 @@ only in:
 
 MetadataStore creates that exact extension root, validates schema version 1,
 writes a same-directory temporary file, synchronizes it, atomically replaces
-the destination, and applies user-only permissions. Removing owned state
+the destination, and applies user-only permissions. JSON serialization itself
+is bounded, so an oversized in-memory document is rejected before a staging
+file or oversized serialization buffer exists. Removing owned state
 deletes only connections.v1.json. It never edits OpenSSH configuration,
 known_hosts, agents, certificates, or keys.
 
@@ -53,7 +62,10 @@ The default ceilings are mandatory architecture invariants:
 | Metadata tags per connection | 32 |
 
 Every entry and include is canonicalized and must remain under its exact grant.
-Symbolic links are rejected. Unix sources must have the expected user/root
+Symbolic links and Windows reparse points are rejected. Reads use no-follow
+opens, bounded allocation, pre/open/post identity and modification checks, and
+fail if a source is replaced or changes during the read. Unix sources must have
+the expected user/root
 owner and cannot be group- or world-writable. Automexia metadata uses mode
 0700 for its directory and 0600 for its file on Unix. Windows uses a protected
 DACL containing only the current user.
@@ -83,7 +95,14 @@ Run the focused gate:
     cargo clippy -p automexia-devops-ssh --all-targets -- -D warnings
     cargo bench -p automexia-devops-ssh --bench openssh_inventory -- --noplot
 
-The unit/property suite covers concrete versus wildcard aliases, first-value
+Named controlled hardware runs the same benchmark through
+AUTOMEXIA_QA_BENCHMARKS=1 cargo xtask qa --full. Nightly compilation and the
+controlled QA contract both fail if this benchmark becomes orphaned.
+
+The unit/property suite covers immutable maximum ceilings, bounded entry
+grants, race-resistant no-follow reads, active obsolete-generation
+cancellation, scanner-derived watcher provenance, bounded serialization,
+concrete versus wildcard aliases, first-value
 behavior, lexical includes, cycles, out-of-grant and dynamic includes,
 oversized and malformed input, redacted diagnostics, Unix permissions,
 Windows DACL round trips, atomic replacement, interrupted staging, exact

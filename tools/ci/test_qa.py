@@ -145,11 +145,17 @@ class QaRunnerTests(unittest.TestCase):
             '"benchmark-pty"',
             '"teletypewriter"',
             '"pty_io"',
+            '"benchmark-ssh-inventory"',
+            '"automexia-devops-ssh"',
+            '"openssh_inventory"',
         )
         for contract in expected:
             self.assertIn(contract, source)
         self.assertEqual(QA.STEP_TIMEOUT_SECONDS["benchmark-image"], 7200)
         self.assertEqual(QA.STEP_TIMEOUT_SECONDS["benchmark-pty"], 7200)
+        self.assertEqual(
+            QA.STEP_TIMEOUT_SECONDS["benchmark-ssh-inventory"], 7200
+        )
 
 
 if __name__ == "__main__":

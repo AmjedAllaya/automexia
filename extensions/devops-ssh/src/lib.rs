@@ -8,18 +8,21 @@ mod inventory;
 mod model;
 mod persistence;
 mod refresh;
+mod secure_fs;
 
 use automexia_extension_api::{Capability, ExtensionManifest};
 
 pub use inventory::{
-    scan_inventory, Diagnostic, GrantKind, InventoryError, InventoryGrant,
-    InventoryLimits, ScanOutcome,
+    scan_inventory, scan_inventory_cancellable, Diagnostic, GrantKind, InventoryError,
+    InventoryGrant, InventoryLimits, ScanCancellation, ScanOutcome, MAX_ALIASES,
+    MAX_INCLUDE_DEPTH, MAX_LINE_BYTES, MAX_SOURCE_BYTES, MAX_SOURCE_FILES,
+    MAX_SOURCE_FILE_BYTES, MAX_VALUE_BYTES,
 };
 pub use model::{
     ConnectionMetadata, ConnectionRecord, IdentityHint, InventorySnapshot,
     MetadataDocument, SourceKind, SCHEMA_VERSION,
 };
-pub use persistence::{MetadataStore, CONNECTIONS_FILE_NAME};
+pub use persistence::{MetadataStore, CONNECTIONS_FILE_NAME, MAX_METADATA_BYTES};
 pub use refresh::{
     recommended_watcher, RefreshCoordinator, RefreshDecision, RefreshStatus, WatchPlan,
 };
