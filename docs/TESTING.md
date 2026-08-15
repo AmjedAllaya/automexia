@@ -523,6 +523,27 @@ silently inspect the wrong checkout.
 
 ## Terminal conformance
 
+### Embedded `librio` input boundary
+
+The private Rust/C embedding boundary has platform-independent tests for SGR
+and legacy mouse press/release encoding and null-pointer rejection. Native Unix
+tests additionally enable DEC 1000, 1002, 1003, and X10 modes through real VT
+input, then verify application ownership, motion rules, invalid-button
+rejection, and Shift-to-local-selection bypass. The curated C smoke source calls
+the button and motion symbols so a future ABI build cannot silently omit them.
+
+Focused commands are:
+
+```text
+cargo test -p librio --lib --locked mouse
+cargo test -p rio-vt --lib --locked reclaim_purges_interning_lookup
+bash tools/ci/test_librio_c_api.sh
+python tools/ci/test_platform_coverage.py
+```
+
+The last command also locks the macOS weak-framework linker contract alongside
+the native platform and package matrix.
+
 Fixtures cover fragmented and malformed VT/CSI/OSC/DCS sequences, OSC 7, OSC
 133, OSC 1337 user variables, title/prompt lifecycle, Unicode graphemes,
 combining marks, emoji width, and cursor position. PTY suites cover ConPTY and

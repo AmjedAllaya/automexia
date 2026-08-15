@@ -27,6 +27,17 @@ class PlatformCoverageTests(unittest.TestCase):
         PLATFORM.validate_ci(self.ci)
         PLATFORM.validate_nightly(self.nightly)
         PLATFORM.validate_release(self.release)
+        PLATFORM.validate_macos_runtime_contract(
+            PLATFORM.MACOS_BUILD_SCRIPT.read_text(encoding="utf-8")
+        )
+
+    def test_macos_frontend_cannot_restore_a_hard_framework_link(self) -> None:
+        source = PLATFORM.MACOS_BUILD_SCRIPT.read_text(encoding="utf-8")
+        altered = source.replace("-weak_framework", "-framework")
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "weak-link CoreGraphics"
+        ):
+            PLATFORM.validate_macos_runtime_contract(altered)
 
     def test_missing_native_macos_is_rejected(self) -> None:
         altered = copy.deepcopy(self.ci)
@@ -49,6 +60,16 @@ class PlatformCoverageTests(unittest.TestCase):
         self.assertIsNotNone(step)
         step["if"] = "runner.os == 'Linux'"
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "runner.os == 'Windows'"):
+            PLATFORM.validate_ci(altered)
+
+    def test_librio_c_abi_gate_cannot_leave_native_linux(self) -> None:
+        altered = copy.deepcopy(self.ci)
+        step = PLATFORM.step_for_command(
+            altered["jobs"]["native"], "test_librio_c_api.sh"
+        )
+        self.assertIsNotNone(step)
+        step["if"] = "runner.os == 'macOS'"
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "runner.os == 'Linux'"):
             PLATFORM.validate_ci(altered)
 
     def test_missing_release_architecture_is_rejected(self) -> None:
