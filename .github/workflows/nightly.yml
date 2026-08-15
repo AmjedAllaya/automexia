@@ -184,7 +184,9 @@ jobs:
         with:
           tool: cross@0.2.5
       - name: Install pinned nFPM
-        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Build release binary
         run: |
           if [[ "${{ matrix.target }}" == aarch64-* ]]; then
