@@ -32,6 +32,8 @@ The documentation is organized by reader intent:
   responsive layout, prompt semantics, listings, icons, and footer behavior.
 - [Image previews](IMAGE-PREVIEWS.md): inline graphics and bounded local Quick
   Look.
+- [OpenSSH inventory](SSH-INVENTORY.md): bounded static discovery, private
+  metadata, security limits, and the nonactivation boundary.
 - [Accessibility](ACCESSIBILITY.md): current accessibility contract, manual
   checks, and known limitations.
 - [Rio migration](MIGRATION.md): one-time, non-destructive configuration import.
@@ -63,6 +65,8 @@ The documentation is organized by reader intent:
   planned provider-neutral delivery boundaries.
 - [Exact-argument session-launch broker](SESSION-LAUNCH-BROKER.md): reviewed
   non-activated D3 contracts, limits, tests, and activation gates.
+- [OpenSSH inventory](SSH-INVENTORY.md): implemented non-executing D4 parser,
+  persistence, refresh, threat model, and verification contract.
 - [Feature assurance ledger](../tests/assurance/feature-matrix.json):
   machine-checked mapping from each feature to quality, platform, and
   documentation evidence.

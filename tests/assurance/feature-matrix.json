@@ -163,6 +163,31 @@
       }
     },
     {
+      "id": "openssh-inventory-persistence",
+      "title": "Bounded static OpenSSH inventory, private metadata, and last-known-good refresh",
+      "components": ["extensions/devops-ssh"],
+      "documentation": {
+        "guide": ["docs/SSH-INVENTORY.md#using-the-inventory-package"],
+        "reference": ["docs/SSH-INVENTORY.md#security-and-resource-contract"],
+        "explanation": ["docs/SSH-INVENTORY.md#why-automexia-does-not-resolve-effective-ssh-configuration", "docs/adr/0012-first-party-ssh-and-session-launch-boundary.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "D4 is deliberately nonactivated and has no UI; future D5 connection surfaces own accessibility evidence."},
+        "correctness": {"level": "pr", "evidence": ["extensions/devops-ssh/src/inventory.rs", "extensions/devops-ssh/src/model.rs", "extensions/devops-ssh/src/refresh.rs"]},
+        "security": {"level": "nightly", "evidence": ["extensions/devops-ssh/src/inventory.rs", "extensions/devops-ssh/src/persistence.rs", "fuzz/fuzz_targets/openssh_inventory.rs", ".github/workflows/nightly.yml#fuzz"]},
+        "performance": {"level": "nightly", "evidence": ["extensions/devops-ssh/benches/openssh_inventory.rs"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["extensions/devops-ssh/src/refresh.rs", "extensions/devops-ssh/src/persistence.rs"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["extensions/devops-ssh/src/persistence.rs"]},
+        "resilience": {"level": "pr", "evidence": ["extensions/devops-ssh/src/inventory.rs", "extensions/devops-ssh/src/refresh.rs"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "The D4 package exposes models only and is not connected to a renderer or product surface."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "extensions/devops-ssh/src/persistence.rs"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "extensions/devops-ssh/src/inventory.rs", "extensions/devops-ssh/src/persistence.rs"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "extensions/devops-ssh/src/inventory.rs", "extensions/devops-ssh/src/persistence.rs"]}
+      }
+    },
+    {
       "id": "extension-contract-runtime",
       "title": "Versioned extension contracts, bounded runtime, isolation, UI projection, and non-activated launch review",
       "components": ["automexia-extension-api", "automexia-extension-runtime", "apps/automexia-terminal"],

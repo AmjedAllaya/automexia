@@ -63,7 +63,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [vt_parser, osc_metadata, control_string_bounds, image_decoder, config_migration, semantic_classification, label_sanitization]
+        target: [vt_parser, osc_metadata, control_string_bounds, image_decoder, openssh_inventory, config_migration, semantic_classification, label_sanitization]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the nightly compiler required by libFuzzer

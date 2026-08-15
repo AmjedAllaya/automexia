@@ -153,10 +153,27 @@ the production graph still has no managed process capability.
 D3 is therefore **partial, not shipped**. ADR 0012 is still proposed and the
 real first-party package digest/signature/compatibility/revocation proof,
 capability UI, atomic native check-to-spawn, real process/PTY/route attachment,
-platform-native spawn/cancel/teardown evidence, D4 SSH inventory/security
-model, and controlled process/PTY/renderer performance/leak evidence remain
+platform-native spawn/cancel/teardown evidence, D4-to-D5 activation integration,
+and controlled process/PTY/renderer performance/leak evidence remain
 required before activation. The exact current contract is documented in
 [Exact-argument session-launch broker](SESSION-LAUNCH-BROKER.md).
+
+#### D4 inventory status (2026-08-15)
+
+The nonactivated OpenSSH inventory and metadata package is implemented. It
+provides exact canonical grants, the reviewed resource ceilings, static
+concrete-alias parsing, lexical bounded includes, symlink/ownership/permission
+checks, redacted source-plus-line errors, strict public-only schema 1 metadata,
+durable atomic user-only storage, exact-file watches, generation coalescing,
+periodic reconciliation, and last-known-good recovery. Unit/property tests,
+native Windows DACL tests, Unix permission tests, a 10,000-alias benchmark,
+nightly fuzzing, architecture ratchets, and the feature-assurance ledger own
+the boundary. See [OpenSSH inventory](SSH-INVENTORY.md).
+
+This completes D4 only. D3 production activation and D5 connection UX remain
+blocked by ADR 0012 acceptance, protected approval, first-party package
+identity, visible exact grants, atomic native launch, and controlled native
+lifecycle/performance evidence.
 ### v0.5.0 first-party SSH extension
 
 1. Ship `devops-ssh` as an optional, signed or compiled-in first-party
