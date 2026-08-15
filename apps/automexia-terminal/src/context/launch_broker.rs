@@ -86,6 +86,7 @@ pub enum LaunchDenialCode {
     DecisionDenied,
     DecisionMismatch,
     DecisionFromFuture,
+    DecisionExpired,
     InvalidScope,
     UnsupportedExecutable,
     UnsupportedOperation,
@@ -99,6 +100,8 @@ pub enum LaunchDenialCode {
     ExecutableUnavailable,
     ExecutableIdentityChanged,
     DuplicateOperation,
+    ReplayedOperation,
+    NonceExhausted,
     Revoked,
     StaleOperationLease,
 }
@@ -118,6 +121,7 @@ impl fmt::Display for LaunchDenialCode {
                 "the capability decision does not match the operation"
             }
             Self::DecisionFromFuture => "the capability decision timestamp is invalid",
+            Self::DecisionExpired => "the capability decision has expired",
             Self::InvalidScope => "the launch session or capsule scope is invalid",
             Self::UnsupportedExecutable => "the requested executable is not allowlisted",
             Self::UnsupportedOperation => {
@@ -145,6 +149,10 @@ impl fmt::Display for LaunchDenialCode {
                 "the approved executable changed before process creation"
             }
             Self::DuplicateOperation => "the operation identifier is already active",
+            Self::ReplayedOperation => {
+                "the operation identifier was already used in this session"
+            }
+            Self::NonceExhausted => "the operation lease generation is exhausted",
             Self::Revoked => "the extension or session grant was revoked",
             Self::StaleOperationLease => {
                 "the operation lease is stale or belongs to another scope"
@@ -203,7 +211,6 @@ pub struct LaunchSubmission<'a> {
     pub capability: &'a CapabilityRequest,
     pub decision: &'a CapabilityDecision,
     pub launch: &'a LaunchRequest,
-    pub capsule_revision: u64,
     /// Configuration-owned public overrides supplied by core, never read from
     /// extension state or the inherited process environment.
     pub trusted_environment: &'a [(String, String)],
@@ -257,6 +264,20 @@ pub struct OperationLease {
     nonce: u64,
 }
 
+impl OperationLease {
+    pub const fn operation_id(self) -> OperationId {
+        self.operation_id
+    }
+
+    pub const fn session_id(self) -> SessionId {
+        self.session_id
+    }
+
+    pub const fn capsule_revision(self) -> u64 {
+        self.capsule_revision
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WorkingDirectoryDisposition {
     Requested,
@@ -300,6 +321,7 @@ pub struct PreparedLaunch {
     arguments: Vec<String>,
     environment: Vec<(String, String)>,
     working_directory: PathBuf,
+    safe_default_working_directory: PathBuf,
     working_directory_disposition: WorkingDirectoryDisposition,
     operation_kind: LaunchOperationKind,
     lease: OperationLease,
@@ -351,12 +373,9 @@ impl PreparedLaunch {
 
     /// Revalidate the cwd immediately before launch. If a previously valid
     /// requested directory vanished, return the trusted safe default instead.
-    pub fn revalidated_working_directory(
-        &self,
-        safe_default: &Path,
-    ) -> Result<PathBuf, LaunchDenialCode> {
+    pub fn revalidated_working_directory(&self) -> Result<PathBuf, LaunchDenialCode> {
         canonical_directory(&self.working_directory)
-            .or_else(|| canonical_directory(safe_default))
+            .or_else(|| canonical_directory(&self.safe_default_working_directory))
             .ok_or(LaunchDenialCode::InvalidWorkingDirectory)
     }
 
@@ -366,7 +385,6 @@ impl PreparedLaunch {
     /// check. This method does not create a process or PTY.
     pub fn session_launch_descriptor(
         &self,
-        safe_default: &Path,
     ) -> Result<SessionLaunchDescriptor, LaunchDenialCode> {
         self.revalidate_executable()?;
         let program = self
@@ -376,7 +394,7 @@ impl PreparedLaunch {
             .ok_or(LaunchDenialCode::UnsupportedEncoding)?
             .to_owned();
         let cwd = self
-            .revalidated_working_directory(safe_default)?
+            .revalidated_working_directory()?
             .to_str()
             .ok_or(LaunchDenialCode::UnsupportedEncoding)?
             .to_owned();
@@ -436,10 +454,7 @@ impl ExecutablePolicy {
         if !path.is_absolute() || !filename_matches(executable, &path) {
             return Err(LaunchDenialCode::UnsupportedExecutable);
         }
-        self.candidates
-            .entry(executable.id())
-            .or_default()
-            .insert(0, path);
+        self.candidates.insert(executable.id(), vec![path]);
         Ok(self)
     }
 
@@ -614,6 +629,12 @@ struct OperationBinding {
     lease: OperationLease,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct SessionRegistration {
+    capsule_revision: u64,
+    last_operation_id: u64,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum BrokerActivation {
     PendingSecurityReview,
@@ -626,8 +647,9 @@ pub struct CapabilityBroker {
     executable_policy: ExecutablePolicy,
     next_nonce: u64,
     operations: BTreeMap<OperationId, OperationBinding>,
+    sessions: BTreeMap<SessionId, SessionRegistration>,
+    highest_session_id: u64,
     revoked_extensions: BTreeSet<ExtensionId>,
-    revoked_sessions: BTreeSet<SessionId>,
 }
 
 impl CapabilityBroker {
@@ -637,8 +659,9 @@ impl CapabilityBroker {
             executable_policy,
             next_nonce: 1,
             operations: BTreeMap::new(),
+            sessions: BTreeMap::new(),
+            highest_session_id: 0,
             revoked_extensions: BTreeSet::new(),
-            revoked_sessions: BTreeSet::new(),
         }
     }
 
@@ -647,6 +670,53 @@ impl CapabilityBroker {
         let mut broker = Self::pending_security_review(executable_policy);
         broker.activation = BrokerActivation::ReviewHarness;
         broker
+    }
+
+    /// Register a core-owned session/capsule scope before an extension may
+    /// request work for it. Session IDs are monotonic and cannot be reused,
+    /// which prevents a stale grant from becoming valid after session close.
+    pub fn register_session(
+        &mut self,
+        session_id: SessionId,
+        capsule_revision: u64,
+    ) -> Result<(), LaunchDenialCode> {
+        if session_id.get() == 0
+            || capsule_revision == 0
+            || session_id.get() <= self.highest_session_id
+            || self.sessions.contains_key(&session_id)
+        {
+            return Err(LaunchDenialCode::InvalidScope);
+        }
+        self.highest_session_id = session_id.get();
+        self.sessions.insert(
+            session_id,
+            SessionRegistration {
+                capsule_revision,
+                last_operation_id: 0,
+            },
+        );
+        Ok(())
+    }
+
+    /// Advance an existing session to a new capsule revision and cancel only
+    /// operations owned by the previous revision.
+    pub fn rebind_session(
+        &mut self,
+        session_id: SessionId,
+        capsule_revision: u64,
+    ) -> Result<usize, LaunchDenialCode> {
+        let registration = self
+            .sessions
+            .get_mut(&session_id)
+            .ok_or(LaunchDenialCode::InvalidScope)?;
+        if capsule_revision == 0 || capsule_revision <= registration.capsule_revision {
+            return Err(LaunchDenialCode::InvalidScope);
+        }
+        registration.capsule_revision = capsule_revision;
+        let before = self.operations.len();
+        self.operations
+            .retain(|_, binding| binding.lease.session_id != session_id);
+        Ok(before - self.operations.len())
     }
 
     pub fn authorize(
@@ -680,17 +750,25 @@ impl CapabilityBroker {
                 operation_kind,
             ));
         }
-        if self.revoked_extensions.contains(&submission.principal.id)
-            || self
-                .revoked_sessions
-                .contains(&submission.launch.session_id)
-        {
+        if self.revoked_extensions.contains(&submission.principal.id) {
             return Err(deny(&submission, LaunchDenialCode::Revoked, operation_kind));
         }
         if submission.launch.operation_id.get() == 0
             || submission.launch.session_id.get() == 0
-            || submission.capsule_revision == 0
+            || submission.launch.capsule_revision == 0
         {
+            return Err(deny(
+                &submission,
+                LaunchDenialCode::InvalidScope,
+                operation_kind,
+            ));
+        }
+        let Some(registration) = self.sessions.get(&submission.launch.session_id) else {
+            return Err(deny(&submission, LaunchDenialCode::Revoked, operation_kind));
+        };
+        let registered_capsule_revision = registration.capsule_revision;
+        let last_operation_id = registration.last_operation_id;
+        if registered_capsule_revision != submission.launch.capsule_revision {
             return Err(deny(
                 &submission,
                 LaunchDenialCode::InvalidScope,
@@ -699,6 +777,8 @@ impl CapabilityBroker {
         }
         if submission.capability.operation_id != submission.launch.operation_id
             || submission.capability.session_id != submission.launch.session_id
+            || submission.capability.capsule_revision
+                != submission.launch.capsule_revision
             || submission.capability.capability != Capability::SessionLaunch
             || !matches!(
                 &submission.capability.resource,
@@ -712,7 +792,14 @@ impl CapabilityBroker {
                 operation_kind,
             ));
         }
-        if submission.decision.operation_id != submission.launch.operation_id {
+        if submission.decision.operation_id != submission.capability.operation_id
+            || submission.decision.extension_id != submission.capability.extension_id
+            || submission.decision.session_id != submission.capability.session_id
+            || submission.decision.capsule_revision
+                != submission.capability.capsule_revision
+            || submission.decision.capability != submission.capability.capability
+            || submission.decision.resource != submission.capability.resource
+        {
             return Err(deny(
                 &submission,
                 LaunchDenialCode::DecisionMismatch,
@@ -723,6 +810,13 @@ impl CapabilityBroker {
             return Err(deny(
                 &submission,
                 LaunchDenialCode::DecisionFromFuture,
+                operation_kind,
+            ));
+        }
+        if submission.decision.expires_at_ms < submission.now_ms {
+            return Err(deny(
+                &submission,
+                LaunchDenialCode::DecisionExpired,
                 operation_kind,
             ));
         }
@@ -756,34 +850,6 @@ impl CapabilityBroker {
                 operation_kind,
             ));
         }
-
-        if let Err(code) = validate_operation(submission.launch) {
-            return Err(deny(&submission, code, operation_kind));
-        }
-        let environment =
-            match validate_trusted_environment(submission.trusted_environment) {
-                Ok(environment) => environment,
-                Err(code) => return Err(deny(&submission, code, operation_kind)),
-            };
-        let (working_directory, working_directory_disposition) =
-            match resolve_working_directory(
-                submission
-                    .launch
-                    .working_directory
-                    .as_ref()
-                    .map(|value| value.as_str()),
-                submission.safe_default_working_directory,
-            ) {
-                Ok(resolved) => resolved,
-                Err(code) => return Err(deny(&submission, code, operation_kind)),
-            };
-        let executable_identity = match self
-            .executable_policy
-            .resolve(&submission.launch.executable)
-        {
-            Ok(identity) => identity,
-            Err(code) => return Err(deny(&submission, code, operation_kind)),
-        };
         if self
             .operations
             .contains_key(&submission.launch.operation_id)
@@ -794,14 +860,70 @@ impl CapabilityBroker {
                 operation_kind,
             ));
         }
+        if submission.launch.operation_id.get() <= last_operation_id {
+            return Err(deny(
+                &submission,
+                LaunchDenialCode::ReplayedOperation,
+                operation_kind,
+            ));
+        }
 
+        if let Err(code) = validate_operation(submission.launch) {
+            return Err(deny(&submission, code, operation_kind));
+        }
+        let environment =
+            match validate_trusted_environment(submission.trusted_environment) {
+                Ok(environment) => environment,
+                Err(code) => return Err(deny(&submission, code, operation_kind)),
+            };
+        let (
+            working_directory,
+            safe_default_working_directory,
+            working_directory_disposition,
+        ) = match resolve_working_directory(
+            submission
+                .launch
+                .working_directory
+                .as_ref()
+                .map(|value| value.as_str()),
+            submission.safe_default_working_directory,
+        ) {
+            Ok(resolved) => resolved,
+            Err(code) => return Err(deny(&submission, code, operation_kind)),
+        };
+        let executable_identity = match self
+            .executable_policy
+            .resolve(&submission.launch.executable)
+        {
+            Ok(identity) => identity,
+            Err(code) => return Err(deny(&submission, code, operation_kind)),
+        };
+        let next_nonce = match self.next_nonce.checked_add(1) {
+            Some(next_nonce) => next_nonce,
+            None => {
+                return Err(deny(
+                    &submission,
+                    LaunchDenialCode::NonceExhausted,
+                    operation_kind,
+                ));
+            }
+        };
         let lease = OperationLease {
             operation_id: submission.launch.operation_id,
             session_id: submission.launch.session_id,
-            capsule_revision: submission.capsule_revision,
+            capsule_revision: submission.launch.capsule_revision,
             nonce: self.next_nonce,
         };
-        self.next_nonce = self.next_nonce.wrapping_add(1).max(1);
+        let Some(registration) = self.sessions.get_mut(&submission.launch.session_id)
+        else {
+            return Err(deny(
+                &submission,
+                LaunchDenialCode::InvalidScope,
+                operation_kind,
+            ));
+        };
+        registration.last_operation_id = submission.launch.operation_id.get();
+        self.next_nonce = next_nonce;
         self.operations.insert(
             lease.operation_id,
             OperationBinding {
@@ -822,6 +944,7 @@ impl CapabilityBroker {
                 .collect(),
             environment,
             working_directory,
+            safe_default_working_directory,
             working_directory_disposition,
             operation_kind,
             lease,
@@ -859,7 +982,7 @@ impl CapabilityBroker {
     }
 
     pub fn revoke_session(&mut self, session_id: SessionId) -> usize {
-        self.revoked_sessions.insert(session_id);
+        self.sessions.remove(&session_id);
         let before = self.operations.len();
         self.operations
             .retain(|_, binding| binding.lease.session_id != session_id);
@@ -867,6 +990,9 @@ impl CapabilityBroker {
     }
 
     pub fn revoke_extension(&mut self, extension_id: ExtensionId) -> usize {
+        if extension_id.as_str() != REVIEWED_EXTENSION_ID {
+            return 0;
+        }
         self.revoked_extensions.insert(extension_id.clone());
         let before = self.operations.len();
         self.operations
@@ -958,11 +1084,12 @@ fn validate_trusted_environment(
 fn resolve_working_directory(
     requested: Option<&str>,
     safe_default: &Path,
-) -> Result<(PathBuf, WorkingDirectoryDisposition), LaunchDenialCode> {
+) -> Result<(PathBuf, PathBuf, WorkingDirectoryDisposition), LaunchDenialCode> {
     let safe_default = canonical_directory(safe_default)
         .ok_or(LaunchDenialCode::InvalidWorkingDirectory)?;
     let Some(requested) = requested else {
         return Ok((
+            safe_default.clone(),
             safe_default,
             WorkingDirectoryDisposition::SafeDefaultNotRequested,
         ));
@@ -972,8 +1099,13 @@ fn resolve_working_directory(
         return Err(LaunchDenialCode::InvalidWorkingDirectory);
     }
     match canonical_directory(requested) {
-        Some(requested) => Ok((requested, WorkingDirectoryDisposition::Requested)),
+        Some(requested) => Ok((
+            requested,
+            safe_default,
+            WorkingDirectoryDisposition::Requested,
+        )),
         None => Ok((
+            safe_default.clone(),
             safe_default,
             WorkingDirectoryDisposition::SafeDefaultMissing,
         )),
@@ -1043,22 +1175,33 @@ mod tests {
         fn new(safe_default: PathBuf, destination: &str) -> Self {
             let operation_id = OperationId::new(41);
             let session_id = SessionId::new(7);
+            let capsule_revision = 3;
             let executable = ExecutableId::new("ssh").unwrap();
+            let capability = CapabilityRequest::new(
+                operation_id,
+                ExtensionId::new(REVIEWED_EXTENSION_ID).unwrap(),
+                session_id,
+                capsule_revision,
+                Capability::SessionLaunch,
+                ResourceScope::Executable(executable.clone()),
+                BoundedText::new("Open a reviewed SSH connection").unwrap(),
+            )
+            .unwrap();
+            let decision = CapabilityDecision::for_request(
+                &capability,
+                Decision::AllowOnce,
+                90,
+                110,
+            )
+            .unwrap();
             Self {
                 principal: reviewed_principal(),
-                capability: CapabilityRequest::new(
-                    operation_id,
-                    ExtensionId::new(REVIEWED_EXTENSION_ID).unwrap(),
-                    session_id,
-                    Capability::SessionLaunch,
-                    ResourceScope::Executable(executable.clone()),
-                    BoundedText::new("Open a reviewed SSH connection").unwrap(),
-                )
-                .unwrap(),
-                decision: CapabilityDecision::new(operation_id, Decision::AllowOnce, 90),
+                capability,
+                decision,
                 launch: LaunchRequest::new(
                     operation_id,
                     session_id,
+                    capsule_revision,
                     executable,
                     vec![BoundedText::new(destination).unwrap()],
                     None,
@@ -1073,13 +1216,43 @@ mod tests {
             }
         }
 
+        fn refresh_decision(&mut self) {
+            self.decision = CapabilityDecision::for_request(
+                &self.capability,
+                self.decision.decision,
+                self.decision.decided_at_ms,
+                self.decision.expires_at_ms,
+            )
+            .unwrap();
+        }
+
+        fn set_operation_id(&mut self, operation_id: OperationId) {
+            self.launch.operation_id = operation_id;
+            self.capability.operation_id = operation_id;
+            self.refresh_decision();
+        }
+
+        fn set_scope(
+            &mut self,
+            operation_id: OperationId,
+            session_id: SessionId,
+            capsule_revision: u64,
+        ) {
+            self.launch.operation_id = operation_id;
+            self.launch.session_id = session_id;
+            self.launch.capsule_revision = capsule_revision;
+            self.capability.operation_id = operation_id;
+            self.capability.session_id = session_id;
+            self.capability.capsule_revision = capsule_revision;
+            self.refresh_decision();
+        }
+
         fn submission(&self) -> LaunchSubmission<'_> {
             LaunchSubmission {
                 principal: &self.principal,
                 capability: &self.capability,
                 decision: &self.decision,
                 launch: &self.launch,
-                capsule_revision: 3,
                 trusted_environment: &self.environment,
                 safe_default_working_directory: &self.safe_default,
                 now_ms: 100,
@@ -1131,6 +1304,17 @@ mod tests {
         .unwrap()
     }
 
+    fn review_broker(
+        fixture: &ExecutableFixture,
+        request: &TestRequest,
+    ) -> CapabilityBroker {
+        let mut broker = CapabilityBroker::review_harness(fixture.policy());
+        broker
+            .register_session(request.launch.session_id, request.launch.capsule_revision)
+            .unwrap();
+        broker
+    }
+
     #[test]
     fn production_broker_is_a_hard_denial_before_resolution() {
         let fixture = ExecutableFixture::new();
@@ -1146,11 +1330,9 @@ mod tests {
     fn reviewed_exact_request_reaches_the_existing_launch_descriptor_seam() {
         let fixture = ExecutableFixture::new();
         let request = TestRequest::new(fixture.safe_default.clone(), "prod-alias");
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
+        let mut broker = review_broker(&fixture, &request);
         let prepared = broker.authorize(request.submission()).unwrap();
-        let descriptor = prepared
-            .session_launch_descriptor(&fixture.safe_default)
-            .unwrap();
+        let descriptor = prepared.session_launch_descriptor().unwrap();
         assert_eq!(descriptor.args(), &["prod-alias"]);
         assert_eq!(descriptor.environment(), request.environment);
         assert_eq!(
@@ -1167,7 +1349,7 @@ mod tests {
     fn exact_arguments_are_never_joined_or_sent_through_a_shell() {
         let fixture = ExecutableFixture::new();
         let request = TestRequest::new(fixture.safe_default.clone(), "user@example.test");
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
+        let mut broker = review_broker(&fixture, &request);
         let prepared = broker.authorize(request.submission()).unwrap();
         let command = prepared.test_command();
         assert_eq!(
@@ -1183,8 +1365,8 @@ mod tests {
     #[test]
     fn leading_dash_extra_arguments_and_shell_executables_are_denied() {
         let fixture = ExecutableFixture::new();
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
         let option = TestRequest::new(fixture.safe_default.clone(), "-oProxyCommand=bad");
+        let mut broker = review_broker(&fixture, &option);
         assert_eq!(
             broker.authorize(option.submission()).unwrap_err().code,
             LaunchDenialCode::OptionConfusedDestination
@@ -1204,6 +1386,7 @@ mod tests {
         shell.launch.executable = ExecutableId::new("cmd.exe").unwrap();
         shell.capability.resource =
             ResourceScope::Executable(shell.launch.executable.clone());
+        shell.refresh_decision();
         assert_eq!(
             broker.authorize(shell.submission()).unwrap_err().code,
             LaunchDenialCode::UnsupportedExecutable
@@ -1213,9 +1396,8 @@ mod tests {
     #[test]
     fn broad_spawn_wsl_environment_and_secret_requests_are_denied() {
         let fixture = ExecutableFixture::new();
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
-
         let mut broad = TestRequest::new(fixture.safe_default.clone(), "host");
+        let mut broker = review_broker(&fixture, &broad);
         broad.capability.capability = Capability::ProcessSpawn;
         assert_eq!(
             broker.authorize(broad.submission()).unwrap_err().code,
@@ -1257,9 +1439,8 @@ mod tests {
     #[test]
     fn mismatched_scope_decision_principal_and_future_timestamp_are_denied() {
         let fixture = ExecutableFixture::new();
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
-
         let mut scope = TestRequest::new(fixture.safe_default.clone(), "host");
+        let mut broker = review_broker(&fixture, &scope);
         scope.capability.session_id = SessionId::new(99);
         assert_eq!(
             broker.authorize(scope.submission()).unwrap_err().code,
@@ -1323,12 +1504,14 @@ mod tests {
     #[test]
     fn recognized_but_unreviewed_openssh_tools_remain_denied() {
         let fixture = ExecutableFixture::new();
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
+        let request = TestRequest::new(fixture.safe_default.clone(), "host");
+        let mut broker = review_broker(&fixture, &request);
         for executable in [OpenSshExecutable::SshAdd, OpenSshExecutable::SshKeygen] {
             let mut request = TestRequest::new(fixture.safe_default.clone(), "host");
             request.launch.executable = ExecutableId::new(executable.id()).unwrap();
             request.capability.resource =
                 ResourceScope::Executable(request.launch.executable.clone());
+            request.refresh_decision();
             assert_eq!(
                 broker.authorize(request.submission()).unwrap_err().code,
                 LaunchDenialCode::UnsupportedOperation
@@ -1377,10 +1560,30 @@ mod tests {
     }
 
     #[test]
+    fn configured_executable_override_is_fail_closed() {
+        let fixture = ExecutableFixture::new();
+        let missing = fixture
+            ._directory
+            .path()
+            .join("missing")
+            .join(OpenSshExecutable::Ssh.filename());
+        let policy = ExecutablePolicy::host_defaults()
+            .with_configured_path(OpenSshExecutable::Ssh, missing.clone())
+            .unwrap();
+        assert_eq!(policy.candidates.get("ssh"), Some(&vec![missing]));
+        assert_eq!(
+            policy
+                .resolve(&ExecutableId::new("ssh").unwrap())
+                .unwrap_err(),
+            LaunchDenialCode::ExecutableUnavailable
+        );
+    }
+
+    #[test]
     fn executable_replacement_is_detected_even_when_size_is_unchanged() {
         let fixture = ExecutableFixture::new();
         let request = TestRequest::new(fixture.safe_default.clone(), "host");
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
+        let mut broker = review_broker(&fixture, &request);
         let prepared = broker.authorize(request.submission()).unwrap();
         let old = fixture.executable.with_extension("old");
         fs::rename(&fixture.executable, &old).unwrap();
@@ -1396,9 +1599,7 @@ mod tests {
             LaunchDenialCode::ExecutableIdentityChanged
         );
         assert_eq!(
-            prepared
-                .session_launch_descriptor(&fixture.safe_default)
-                .unwrap_err(),
+            prepared.session_launch_descriptor().unwrap_err(),
             LaunchDenialCode::ExecutableIdentityChanged
         );
     }
@@ -1410,20 +1611,19 @@ mod tests {
         let mut request = TestRequest::new(fixture.safe_default.clone(), "host");
         request.launch.working_directory =
             Some(BoundedText::new(missing.to_string_lossy().into_owned()).unwrap());
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
+        let mut broker = review_broker(&fixture, &request);
         let prepared = broker.authorize(request.submission()).unwrap();
         assert_eq!(
             prepared.working_directory_disposition,
             WorkingDirectoryDisposition::SafeDefaultMissing
         );
         assert_eq!(
-            prepared
-                .revalidated_working_directory(&fixture.safe_default)
-                .unwrap(),
+            prepared.revalidated_working_directory().unwrap(),
             canonical_existing(&fixture.safe_default).unwrap()
         );
 
         let mut relative = TestRequest::new(fixture.safe_default.clone(), "host");
+        relative.set_operation_id(OperationId::new(42));
         relative.launch.working_directory = Some(BoundedText::new("relative").unwrap());
         assert_eq!(
             broker.authorize(relative.submission()).unwrap_err().code,
@@ -1439,7 +1639,7 @@ mod tests {
         let mut request = TestRequest::new(fixture.safe_default.clone(), "host");
         request.launch.working_directory =
             Some(BoundedText::new(requested.to_string_lossy().into_owned()).unwrap());
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
+        let mut broker = review_broker(&fixture, &request);
         let prepared = broker.authorize(request.submission()).unwrap();
         assert_eq!(
             prepared.working_directory_disposition,
@@ -1447,15 +1647,10 @@ mod tests {
         );
         fs::remove_dir(&requested).unwrap();
         let expected = canonical_existing(&fixture.safe_default).unwrap();
+        assert_eq!(prepared.revalidated_working_directory().unwrap(), expected);
         assert_eq!(
             prepared
-                .revalidated_working_directory(&fixture.safe_default)
-                .unwrap(),
-            expected
-        );
-        assert_eq!(
-            prepared
-                .session_launch_descriptor(&fixture.safe_default)
+                .session_launch_descriptor()
                 .unwrap()
                 .starting_directory(),
             expected.to_str()
@@ -1469,7 +1664,7 @@ mod tests {
             TestRequest::new(fixture.safe_default.clone(), "private-user@host");
         request.environment =
             vec![("SSH_AUTH_SOCK".into(), "CANARY-SECRET-SOCKET".into())];
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
+        let mut broker = review_broker(&fixture, &request);
         let prepared = broker.authorize(request.submission()).unwrap();
         let combined = format!("{prepared:?} {:?}", prepared.audit());
         assert!(!combined.contains("CANARY-SECRET-SOCKET"));
@@ -1477,6 +1672,7 @@ mod tests {
         assert!(!combined.contains(&fixture.safe_default.to_string_lossy().to_string()));
 
         let mut invalid = TestRequest::new(fixture.safe_default.clone(), "host");
+        invalid.set_operation_id(OperationId::new(42));
         invalid.environment = vec![("BAD=NAME".into(), "value".into())];
         assert_eq!(
             broker.authorize(invalid.submission()).unwrap_err().code,
@@ -1484,6 +1680,7 @@ mod tests {
         );
 
         let mut oversized = TestRequest::new(fixture.safe_default.clone(), "host");
+        oversized.set_operation_id(OperationId::new(43));
         oversized.environment = vec![(
             "PUBLIC_VALUE".into(),
             "x".repeat(MAX_ENVIRONMENT_VALUE_BYTES + 1),
@@ -1495,10 +1692,10 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_cancel_revocation_and_nonce_reuse_are_scope_safe() {
+    fn duplicate_replay_cancel_and_revocation_are_scope_safe() {
         let fixture = ExecutableFixture::new();
         let request = TestRequest::new(fixture.safe_default.clone(), "host");
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
+        let mut broker = review_broker(&fixture, &request);
         let first = broker.authorize(request.submission()).unwrap();
         let first_lease = first.lease();
         assert_eq!(
@@ -1506,9 +1703,19 @@ mod tests {
             LaunchDenialCode::DuplicateOperation
         );
         broker.cancel(first_lease).unwrap();
-        let second = broker.authorize(request.submission()).unwrap();
+        assert_eq!(
+            broker.authorize(request.submission()).unwrap_err().code,
+            LaunchDenialCode::ReplayedOperation
+        );
+
+        let mut next_request = TestRequest::new(fixture.safe_default.clone(), "host");
+        next_request.set_operation_id(OperationId::new(42));
+        let second = broker.authorize(next_request.submission()).unwrap();
         let second_lease = second.lease();
         assert_ne!(first_lease.nonce, second_lease.nonce);
+        assert_eq!(second_lease.operation_id(), OperationId::new(42));
+        assert_eq!(second_lease.session_id(), SessionId::new(7));
+        assert_eq!(second_lease.capsule_revision(), 3);
         assert_eq!(
             broker.cancel(first_lease).unwrap_err(),
             LaunchDenialCode::StaleOperationLease
@@ -1528,12 +1735,13 @@ mod tests {
     fn extension_revocation_does_not_remove_another_extension_binding() {
         let fixture = ExecutableFixture::new();
         let request = TestRequest::new(fixture.safe_default.clone(), "host");
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
+        let mut broker = review_broker(&fixture, &request);
         let prepared = broker.authorize(request.submission()).unwrap();
         assert_eq!(
             broker.revoke_extension(ExtensionId::new("unrelated.extension").unwrap()),
             0
         );
+        assert!(broker.revoked_extensions.is_empty());
         broker.complete(prepared.lease()).unwrap();
     }
 
@@ -1542,7 +1750,7 @@ mod tests {
         let fixture = ExecutableFixture::new();
         let mut request = TestRequest::new(fixture.safe_default.clone(), "host");
         request.decision.decision = Decision::AllowSession;
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
+        let mut broker = review_broker(&fixture, &request);
         let prepared = broker.authorize(request.submission()).unwrap();
         assert_eq!(prepared.audit().decision, AuditDecision::AllowSession);
         broker.revoke_session(prepared.lease().session_id);
@@ -1550,6 +1758,104 @@ mod tests {
             broker.authorize(request.submission()).unwrap_err().code,
             LaunchDenialCode::Revoked
         );
+    }
+
+    #[test]
+    fn decisions_are_expiring_and_bound_to_registered_capsule_scope() {
+        let fixture = ExecutableFixture::new();
+        let mut expired = TestRequest::new(fixture.safe_default.clone(), "host");
+        expired.decision.expires_at_ms = 99;
+        let mut broker = review_broker(&fixture, &expired);
+        assert_eq!(
+            broker.authorize(expired.submission()).unwrap_err().code,
+            LaunchDenialCode::DecisionExpired
+        );
+
+        let unregistered = TestRequest::new(fixture.safe_default.clone(), "host");
+        let mut broker = CapabilityBroker::review_harness(fixture.policy());
+        assert_eq!(
+            broker
+                .authorize(unregistered.submission())
+                .unwrap_err()
+                .code,
+            LaunchDenialCode::Revoked
+        );
+
+        let mut wrong_capsule = TestRequest::new(fixture.safe_default.clone(), "host");
+        let mut broker = review_broker(&fixture, &wrong_capsule);
+        wrong_capsule.launch.capsule_revision = 4;
+        wrong_capsule.capability.capsule_revision = 4;
+        wrong_capsule.refresh_decision();
+        assert_eq!(
+            broker
+                .authorize(wrong_capsule.submission())
+                .unwrap_err()
+                .code,
+            LaunchDenialCode::InvalidScope
+        );
+    }
+
+    #[test]
+    fn capsule_rebind_cancels_old_work_without_reusing_scope() {
+        let fixture = ExecutableFixture::new();
+        let request = TestRequest::new(fixture.safe_default.clone(), "host");
+        let mut broker = review_broker(&fixture, &request);
+        let old_lease = broker.authorize(request.submission()).unwrap().lease();
+        assert_eq!(broker.rebind_session(SessionId::new(7), 4).unwrap(), 1);
+        assert_eq!(
+            broker.complete(old_lease).unwrap_err(),
+            LaunchDenialCode::StaleOperationLease
+        );
+        assert_eq!(
+            broker.authorize(request.submission()).unwrap_err().code,
+            LaunchDenialCode::InvalidScope
+        );
+
+        let mut rebound = TestRequest::new(fixture.safe_default.clone(), "host");
+        rebound.set_scope(OperationId::new(42), SessionId::new(7), 4);
+        let prepared = broker.authorize(rebound.submission()).unwrap();
+        assert_eq!(prepared.lease().capsule_revision(), 4);
+    }
+
+    #[test]
+    fn nonce_exhaustion_is_fail_closed_and_atomic() {
+        let fixture = ExecutableFixture::new();
+        let request = TestRequest::new(fixture.safe_default.clone(), "host");
+        let mut broker = review_broker(&fixture, &request);
+        broker.next_nonce = u64::MAX;
+        assert_eq!(
+            broker.authorize(request.submission()).unwrap_err().code,
+            LaunchDenialCode::NonceExhausted
+        );
+        assert!(broker.operations.is_empty());
+        assert_eq!(
+            broker.sessions[&request.launch.session_id].last_operation_id,
+            0
+        );
+        broker.next_nonce = 1;
+        broker.authorize(request.submission()).unwrap();
+    }
+
+    #[test]
+    fn one_ten_and_fifty_session_cycles_release_all_bounded_state() {
+        let fixture = ExecutableFixture::new();
+        for count in [1_u64, 10, 50] {
+            let mut broker = CapabilityBroker::review_harness(fixture.policy());
+            for index in 1..=count {
+                let mut request = TestRequest::new(fixture.safe_default.clone(), "host");
+                request.set_scope(OperationId::new(1), SessionId::new(index), 1);
+                broker
+                    .register_session(request.launch.session_id, 1)
+                    .unwrap();
+                let lease = broker.authorize(request.submission()).unwrap().lease();
+                broker.complete(lease).unwrap();
+                assert_eq!(broker.revoke_session(request.launch.session_id), 0);
+            }
+            assert!(broker.operations.is_empty());
+            assert!(broker.sessions.is_empty());
+            assert_eq!(broker.highest_session_id, count);
+            assert!(broker.revoked_extensions.is_empty());
+        }
     }
 
     proptest! {

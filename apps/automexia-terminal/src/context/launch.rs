@@ -155,6 +155,7 @@ impl SessionLaunchDescriptor {
         &self,
         operation_id: OperationId,
         session_id: SessionId,
+        capsule_revision: u64,
     ) -> Result<LaunchRequest, ContractError> {
         let executable = ExecutableId::new(
             self.program
@@ -191,6 +192,7 @@ impl SessionLaunchDescriptor {
         LaunchRequest::new(
             operation_id,
             session_id,
+            capsule_revision,
             executable,
             arguments,
             profile,
@@ -856,7 +858,7 @@ mod contract_tests {
             Some("D:\\work tree\\项目".to_string()),
         );
         let contract = descriptor
-            .launch_contract(OperationId::new(8), SessionId::new(9))
+            .launch_contract(OperationId::new(8), SessionId::new(9), 2)
             .unwrap();
         let encoded = serde_json::to_string(&contract).unwrap();
         assert!(encoded.contains("PATH"));
@@ -864,6 +866,7 @@ mod contract_tests {
         assert!(!encoded.contains("plaintext-secret"));
         assert!(!format!("{descriptor:?}").contains("plaintext-secret"));
         assert_eq!(contract.session_id, SessionId::new(9));
+        assert_eq!(contract.capsule_revision, 2);
     }
 
     #[test]
@@ -895,9 +898,10 @@ mod contract_tests {
             Some("amjed")
         );
         let contract = descriptor
-            .launch_contract(OperationId::new(45), session_id)
+            .launch_contract(OperationId::new(45), session_id, capsule.revision)
             .unwrap();
         assert!(matches!(contract.kind, LaunchKind::Wsl { .. }));
+        assert_eq!(contract.capsule_revision, capsule.revision);
     }
 
     #[test]
@@ -910,7 +914,7 @@ mod contract_tests {
             None,
         );
         assert!(descriptor
-            .launch_contract(OperationId::new(1), SessionId::new(1))
+            .launch_contract(OperationId::new(1), SessionId::new(1), 1)
             .is_err());
     }
 }

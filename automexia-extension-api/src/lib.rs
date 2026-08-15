@@ -24,6 +24,7 @@ pub enum ContractError {
     TooLong { field: &'static str, maximum: usize },
     InvalidCharacter(&'static str),
     TooMany { field: &'static str, maximum: usize },
+    InvalidValue(&'static str),
     UnsupportedVersion(u16),
 }
 
@@ -40,6 +41,7 @@ impl fmt::Display for ContractError {
             Self::TooMany { field, maximum } => {
                 write!(formatter, "{field} exceeds the {maximum}-item limit")
             }
+            Self::InvalidValue(field) => write!(formatter, "{field} is invalid"),
             Self::UnsupportedVersion(version) => {
                 write!(
                     formatter,
@@ -808,6 +810,7 @@ pub struct LaunchRequest {
     pub version: ContractVersion,
     pub operation_id: OperationId,
     pub session_id: SessionId,
+    pub capsule_revision: u64,
     pub executable: ExecutableId,
     /// Arguments are launch syntax, never resolved secret values.
     pub arguments: Vec<BoundedText>,
@@ -826,6 +829,7 @@ impl fmt::Debug for LaunchRequest {
             .field("version", &self.version)
             .field("operation_id", &self.operation_id)
             .field("session_id", &self.session_id)
+            .field("capsule_revision", &self.capsule_revision)
             .field("executable", &self.executable)
             .field("argument_count", &self.arguments.len())
             .field("profile", &self.profile)
@@ -842,6 +846,7 @@ impl LaunchRequest {
     pub fn new(
         operation_id: OperationId,
         session_id: SessionId,
+        capsule_revision: u64,
         executable: ExecutableId,
         arguments: Vec<BoundedText>,
         profile: Option<BoundedText>,
@@ -897,6 +902,7 @@ impl LaunchRequest {
             version: ContractVersion::CURRENT,
             operation_id,
             session_id,
+            capsule_revision,
             executable,
             arguments,
             profile,
@@ -914,6 +920,7 @@ struct LaunchRequestWire {
     version: ContractVersion,
     operation_id: OperationId,
     session_id: SessionId,
+    capsule_revision: u64,
     executable: ExecutableId,
     arguments: Vec<BoundedText>,
     profile: Option<BoundedText>,
@@ -931,6 +938,7 @@ impl TryFrom<LaunchRequestWire> for LaunchRequest {
         Self::new(
             value.operation_id,
             value.session_id,
+            value.capsule_revision,
             value.executable,
             value.arguments,
             value.profile,
@@ -952,6 +960,18 @@ pub enum ResourceScope {
     NetworkHost(BoundedText),
 }
 
+fn validate_resource_scope(resource: &ResourceScope) -> Result<(), ContractError> {
+    match resource {
+        ResourceScope::Path(path) => validate_public_text(path, "capability path"),
+        ResourceScope::NetworkHost(host) => {
+            validate_public_text(host, "capability network host")
+        }
+        ResourceScope::Session
+        | ResourceScope::Executable(_)
+        | ResourceScope::Clipboard => Ok(()),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "CapabilityRequestWire")]
 pub struct CapabilityRequest {
@@ -959,6 +979,7 @@ pub struct CapabilityRequest {
     pub operation_id: OperationId,
     pub extension_id: ExtensionId,
     pub session_id: SessionId,
+    pub capsule_revision: u64,
     pub capability: Capability,
     pub resource: ResourceScope,
     pub reason: BoundedText,
@@ -969,25 +990,19 @@ impl CapabilityRequest {
         operation_id: OperationId,
         extension_id: ExtensionId,
         session_id: SessionId,
+        capsule_revision: u64,
         capability: Capability,
         resource: ResourceScope,
         reason: BoundedText,
     ) -> Result<Self, ContractError> {
         validate_public_text(&reason, "capability reason")?;
-        match &resource {
-            ResourceScope::Path(path) => validate_public_text(path, "capability path")?,
-            ResourceScope::NetworkHost(host) => {
-                validate_public_text(host, "capability network host")?
-            }
-            ResourceScope::Session
-            | ResourceScope::Executable(_)
-            | ResourceScope::Clipboard => {}
-        }
+        validate_resource_scope(&resource)?;
         Ok(Self {
             version: ContractVersion::CURRENT,
             operation_id,
             extension_id,
             session_id,
+            capsule_revision,
             capability,
             resource,
             reason,
@@ -1002,6 +1017,7 @@ struct CapabilityRequestWire {
     operation_id: OperationId,
     extension_id: ExtensionId,
     session_id: SessionId,
+    capsule_revision: u64,
     capability: Capability,
     resource: ResourceScope,
     reason: BoundedText,
@@ -1016,6 +1032,7 @@ impl TryFrom<CapabilityRequestWire> for CapabilityRequest {
             value.operation_id,
             value.extension_id,
             value.session_id,
+            value.capsule_revision,
             value.capability,
             value.resource,
             value.reason,
@@ -1032,26 +1049,81 @@ pub enum Decision {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "CapabilityDecisionWire")]
 pub struct CapabilityDecision {
     pub version: ContractVersion,
     pub operation_id: OperationId,
+    pub extension_id: ExtensionId,
+    pub session_id: SessionId,
+    pub capsule_revision: u64,
+    pub capability: Capability,
+    pub resource: ResourceScope,
     pub decision: Decision,
     pub decided_at_ms: u64,
+    pub expires_at_ms: u64,
 }
 
 impl CapabilityDecision {
-    pub const fn new(
-        operation_id: OperationId,
+    pub fn for_request(
+        request: &CapabilityRequest,
         decision: Decision,
         decided_at_ms: u64,
-    ) -> Self {
-        Self {
+        expires_at_ms: u64,
+    ) -> Result<Self, ContractError> {
+        if expires_at_ms < decided_at_ms {
+            return Err(ContractError::InvalidValue("capability decision expiry"));
+        }
+        Ok(Self {
             version: ContractVersion::CURRENT,
-            operation_id,
+            operation_id: request.operation_id,
+            extension_id: request.extension_id.clone(),
+            session_id: request.session_id,
+            capsule_revision: request.capsule_revision,
+            capability: request.capability,
+            resource: request.resource.clone(),
             decision,
             decided_at_ms,
+            expires_at_ms,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CapabilityDecisionWire {
+    version: ContractVersion,
+    operation_id: OperationId,
+    extension_id: ExtensionId,
+    session_id: SessionId,
+    capsule_revision: u64,
+    capability: Capability,
+    resource: ResourceScope,
+    decision: Decision,
+    decided_at_ms: u64,
+    expires_at_ms: u64,
+}
+
+impl TryFrom<CapabilityDecisionWire> for CapabilityDecision {
+    type Error = ContractError;
+
+    fn try_from(value: CapabilityDecisionWire) -> Result<Self, Self::Error> {
+        let _version = value.version;
+        validate_resource_scope(&value.resource)?;
+        if value.expires_at_ms < value.decided_at_ms {
+            return Err(ContractError::InvalidValue("capability decision expiry"));
         }
+        Ok(Self {
+            version: ContractVersion::CURRENT,
+            operation_id: value.operation_id,
+            extension_id: value.extension_id,
+            session_id: value.session_id,
+            capsule_revision: value.capsule_revision,
+            capability: value.capability,
+            resource: value.resource,
+            decision: value.decision,
+            decided_at_ms: value.decided_at_ms,
+            expires_at_ms: value.expires_at_ms,
+        })
     }
 }
 
@@ -1152,6 +1224,7 @@ mod tests {
         let request = LaunchRequest::new(
             OperationId::new(1),
             SessionId::new(2),
+            3,
             ExecutableId::new("ssh").unwrap(),
             vec![BoundedText::new("server").unwrap()],
             None,
@@ -1173,6 +1246,7 @@ mod tests {
         let request = LaunchRequest::new(
             OperationId::new(3),
             SessionId::new(4),
+            5,
             ExecutableId::new("wsl.exe").unwrap(),
             Vec::new(),
             None,
@@ -1229,6 +1303,7 @@ mod tests {
         let request = LaunchRequest::new(
             OperationId::new(3),
             SessionId::new(4),
+            5,
             ExecutableId::new("ssh").unwrap(),
             Vec::new(),
             None,
@@ -1262,20 +1337,25 @@ mod tests {
             operation_id,
             ExtensionId::new("automexia.devops-ssh").unwrap(),
             SessionId::new(9),
+            4,
             Capability::SessionLaunch,
             ResourceScope::Executable(ExecutableId::new("ssh").unwrap()),
             BoundedText::new("Open reviewed connection").unwrap(),
         )
         .unwrap();
         assert_eq!(request.capability.label(), "session.launch");
-        assert_eq!(
-            CapabilityDecision::new(operation_id, Decision::Deny, 1).operation_id,
-            operation_id
-        );
+        let decision =
+            CapabilityDecision::for_request(&request, Decision::Deny, 1, 2).unwrap();
+        assert_eq!(decision.operation_id, operation_id);
+        assert_eq!(decision.session_id, request.session_id);
+        assert_eq!(decision.capsule_revision, request.capsule_revision);
+        assert_eq!(decision.resource, request.resource);
+        assert!(CapabilityDecision::for_request(&request, Decision::Deny, 2, 1).is_err());
         assert!(CapabilityRequest::new(
             operation_id,
             ExtensionId::new("automexia.devops-ssh").unwrap(),
             SessionId::new(9),
+            4,
             Capability::SessionLaunch,
             ResourceScope::Executable(ExecutableId::new("ssh").unwrap()),
             BoundedText::new("line one\nline two").unwrap(),
@@ -1285,5 +1365,9 @@ mod tests {
         let mut serialized = serde_json::to_value(request).unwrap();
         serialized["reason"] = serde_json::json!("line one\nline two");
         assert!(serde_json::from_value::<CapabilityRequest>(serialized).is_err());
+
+        let mut invalid_decision = serde_json::to_value(decision).unwrap();
+        invalid_decision["expires_at_ms"] = serde_json::json!(0);
+        assert!(serde_json::from_value::<CapabilityDecision>(invalid_decision).is_err());
     }
 }
