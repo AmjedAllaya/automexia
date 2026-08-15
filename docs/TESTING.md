@@ -266,6 +266,7 @@ Focused keyboard-selection regressions can be run with:
 
 ```text
 cargo test -p automexia-terminal --bin automexia --locked keyboard_selection
+cargo test -p automexia-terminal --bin automexia --locked forwarded_input_exits_selection
 cargo test -p automexia-terminal --bin automexia --locked selection_actions_parse
 cargo test -p automexia-terminal --bin automexia --locked user_binding_can_override_shift_left_selection
 cargo test -p rio-vt --lib --locked keyboard_
@@ -282,8 +283,12 @@ vertical spacer avoidance, and exhaustive small-grid endpoint bounds.
 `keyboard_selection_word_motion_120k_scrollback` covers adversarial retained
 history, both without per-key allocation. The feature-gated native Windows
 storm types into a real PowerShell/ConPTY session and asserts the exact terminal
-selection and renderer highlight from renderer-neutral state; the same shared
-binding and VT code is compiled and tested by native Linux and macOS CI.
+selection and renderer highlight from renderer-neutral state. It also posts a
+real unmodified Left Arrow and sends text through the shared input seam, proving
+both clear VT/render selection state before reaching PowerShell. Unit coverage
+reproduces an empty mouse-click anchor at a different cell from the terminal
+cursor and proves keyboard selection chooses the cursor. The same shared input,
+binding, and VT code is compiled and tested by native Linux and macOS CI.
 Physical keyboard-layout and assistive-technology checks remain host-owned
 release evidence.
 

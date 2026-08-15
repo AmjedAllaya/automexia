@@ -825,20 +825,74 @@ $rendererConfig
         throw 'Keyboard selection reached VT state but not the renderer snapshot'
     }
 
-    $selectionClearControl = 'clear-selection:keyboard-selection-clear'
-    Send-AutomexiaTestControl $selectionClearControl
-    $selectionCleared = Read-AutomexiaSnapshot -AfterSequence ([int64]$selectionExtended.sequence)
+    # A bare arrow is shell input and therefore exits terminal selection mode
+    # before the key is forwarded. Use a real window message so this covers
+    # the native Windows/ConPTY input path rather than a test-only clear call.
+    $script:testStage = 'bare arrow exits keyboard selection'
+    if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x25, $true)) {
+        throw 'Could not deliver the native Left Arrow selection-exit probe'
+    }
+    $selectionArrowCleared =
+        Read-AutomexiaSnapshot -AfterSequence ([int64]$selectionExtended.sequence)
     $selectionDeadline = [DateTime]::UtcNow.AddSeconds(5)
-    while (([string]$selectionCleared.last_control -ne $selectionClearControl -or
-            -not [string]::IsNullOrEmpty([string](Get-ActiveAutomexiaPanel $selectionCleared).selection_text)) -and
+    while ((-not [string]::IsNullOrEmpty(
+                [string](Get-ActiveAutomexiaPanel $selectionArrowCleared).selection_text) -or
+            [bool](Get-ActiveAutomexiaPanel $selectionArrowCleared).selection_rendered) -and
            [DateTime]::UtcNow -lt $selectionDeadline) {
-        $selectionCleared = Read-AutomexiaSnapshot -AfterSequence ([int64]$selectionCleared.sequence)
+        $selectionArrowCleared =
+            Read-AutomexiaSnapshot -AfterSequence ([int64]$selectionArrowCleared.sequence)
     }
-    if (-not [string]::IsNullOrEmpty([string](Get-ActiveAutomexiaPanel $selectionCleared).selection_text)) {
-        throw 'Keyboard selection did not clear before submitting the probe command'
+    if (-not [string]::IsNullOrEmpty(
+            [string](Get-ActiveAutomexiaPanel $selectionArrowCleared).selection_text) -or
+        [bool](Get-ActiveAutomexiaPanel $selectionArrowCleared).selection_rendered) {
+        throw 'Bare Left Arrow did not exit keyboard selection mode'
     }
-    if ([bool](Get-ActiveAutomexiaPanel $selectionCleared).selection_rendered) {
-        throw 'Cleared keyboard selection remained visible in the renderer snapshot'
+
+    # Recreate a real selection, then exercise the same paste/input seam used
+    # by printable text, IME commits and unbracketed paste. The payload must be
+    # visible in PowerShell and both VT/render selection state must clear.
+    $selectionAgainControl = 'extend-selection:keyboard-input-exit:word-left'
+    Send-AutomexiaTestControl $selectionAgainControl
+    $selectionAgain =
+        Read-AutomexiaSnapshot -AfterSequence ([int64]$selectionArrowCleared.sequence)
+    $selectionDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$selectionAgain.last_control -ne $selectionAgainControl -or
+            [string]::IsNullOrEmpty(
+                [string](Get-ActiveAutomexiaPanel $selectionAgain).selection_text)) -and
+           [DateTime]::UtcNow -lt $selectionDeadline) {
+        $selectionAgain =
+            Read-AutomexiaSnapshot -AfterSequence ([int64]$selectionAgain.sequence)
+    }
+    if ([string]::IsNullOrEmpty(
+            [string](Get-ActiveAutomexiaPanel $selectionAgain).selection_text) -or
+        -not [bool](Get-ActiveAutomexiaPanel $selectionAgain).selection_rendered) {
+        throw 'Could not recreate keyboard selection for the text-input exit probe'
+    }
+
+    $selectionInputSuffix = '__EXIT__'
+    $selectionInputControl =
+        "input-text:keyboard-selection-input-exit:$selectionInputSuffix"
+    Send-AutomexiaTestControl $selectionInputControl
+    $selectionCleared =
+        Read-AutomexiaSnapshot -AfterSequence ([int64]$selectionAgain.sequence)
+    $selectionDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$selectionCleared.last_control -ne $selectionInputControl -or
+            -not [string]::IsNullOrEmpty(
+                [string](Get-ActiveAutomexiaPanel $selectionCleared).selection_text) -or
+            [bool](Get-ActiveAutomexiaPanel $selectionCleared).selection_rendered -or
+            -not ([string](Get-ActiveAutomexiaPanel $selectionCleared).cursor_line_text).Contains(
+                $selectionInputSuffix)) -and
+           [DateTime]::UtcNow -lt $selectionDeadline) {
+        $selectionCleared =
+            Read-AutomexiaSnapshot -AfterSequence ([int64]$selectionCleared.sequence)
+    }
+    if (-not [string]::IsNullOrEmpty(
+            [string](Get-ActiveAutomexiaPanel $selectionCleared).selection_text) -or
+        [bool](Get-ActiveAutomexiaPanel $selectionCleared).selection_rendered -or
+        -not ([string](Get-ActiveAutomexiaPanel $selectionCleared).cursor_line_text).Contains(
+            $selectionInputSuffix)) {
+        Write-Host ($selectionCleared | ConvertTo-Json -Depth 10)
+        throw 'Text input did not exit selection mode and reach PowerShell'
     }
     $selectionSubmitControl = 'write-line:selection-submit:'
     Send-AutomexiaTestControl $selectionSubmitControl

@@ -101,13 +101,17 @@ labels. Command behavior and keyboard navigation remain unchanged.
 ## Keyboard selection
 
 Keyboard selection uses the same renderer-owned highlight and footer state as
-mouse selection. `Shift`+Arrow begins at the live cursor or extends the active
-end by one cell/row; `Ctrl`+`Shift`+Left/Right moves that end by a Unicode-aware
-word boundary. Reversing direction shrinks the same range instead of creating
-a second highlight. Motion is scoped to the selected pane, follows scrollback,
-skips wide-glyph continuation cells, allocates no per-key text buffer, and
-does not alter shell editor state or PTY history. Search, Vi mode, pinned image
-preview navigation, and explicit user overrides keep priority.
+mouse selection. `Shift`+Arrow begins at the live terminal insertion cursor,
+never at an empty pointer-click anchor, or extends the active end of a real
+selection by one cell/row; `Ctrl`+`Shift`+Left/Right moves that end by a
+Unicode-aware word boundary. Reversing direction shrinks the same range instead
+of creating a second highlight. An Arrow without `Shift`, printable text,
+clipboard paste, or IME commit clears the terminal selection before that
+non-empty input is forwarded, matching the shell editor's normal ownership.
+Motion is scoped to the selected pane, follows scrollback, skips wide-glyph
+continuation cells, allocates no per-key text buffer, and does not alter shell
+editor state or PTY history. Search, Vi mode, pinned image preview navigation,
+and explicit user overrides keep priority.
 
 ## Per-pane session footer
 Every usable pane ends with a 32 logical-pixel operational footer. It is a
