@@ -26,6 +26,7 @@ QUALITY_DIMENSIONS = {
 }
 SUPPORTED_PLATFORMS = {"windows", "linux", "macos"}
 LEVELS = {"pr", "nightly", "controlled", "external", "not_applicable"}
+DOCUMENTATION_TYPES = {"guide", "reference", "explanation"}
 REQUIRED_SURFACES = {
     ".github/workflows",
     "packaging",
@@ -109,6 +110,38 @@ def validate_evidence(root: Path, owner: str, item: Any) -> None:
         validate_fragment(path, reference)
 
 
+def validate_documentation(root: Path, owner: str, item: Any) -> int:
+    if not isinstance(item, dict) or set(item) != DOCUMENTATION_TYPES:
+        raise AssuranceError(
+            f"{owner}.documentation must define exactly "
+            f"{sorted(DOCUMENTATION_TYPES)}"
+        )
+    count = 0
+    for kind in sorted(DOCUMENTATION_TYPES):
+        references = item[kind]
+        if (
+            not isinstance(references, list)
+            or not references
+            or any(not isinstance(entry, str) or not entry for entry in references)
+        ):
+            raise AssuranceError(
+                f"{owner}.documentation.{kind} must be a non-empty list of Markdown references"
+            )
+        for reference in references:
+            path = evidence_path(root, reference)
+            if not path.exists():
+                raise AssuranceError(
+                    f"{owner}.documentation.{kind} references missing documentation: {reference}"
+                )
+            if path.suffix.lower() != ".md":
+                raise AssuranceError(
+                    f"{owner}.documentation.{kind} must reference Markdown: {reference}"
+                )
+            validate_fragment(path, reference)
+            count += 1
+    return count
+
+
 def validate_document(document: Any, root: Path = ROOT) -> dict[str, int]:
     if not isinstance(document, dict) or document.get("schema") != 1:
         raise AssuranceError("feature assurance schema must be 1")
@@ -128,10 +161,23 @@ def validate_document(document: Any, root: Path = ROOT) -> dict[str, int]:
     security_evidence: set[str] = set()
     performance_evidence: set[str] = set()
     evidence_count = 0
+    documentation_count = 0
     for index, feature in enumerate(features):
         owner = f"features[{index}]"
         if not isinstance(feature, dict):
             raise AssuranceError(f"{owner} must be an object")
+        expected_feature_keys = {
+            "id",
+            "title",
+            "components",
+            "documentation",
+            "quality",
+            "platforms",
+        }
+        if set(feature) != expected_feature_keys:
+            raise AssuranceError(
+                f"{owner} must define exactly {sorted(expected_feature_keys)}"
+            )
         feature_id = feature.get("id")
         if not isinstance(feature_id, str) or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", feature_id):
             raise AssuranceError(f"{owner}.id must be a lowercase kebab-case identifier")
@@ -151,6 +197,10 @@ def validate_document(document: Any, root: Path = ROOT) -> dict[str, int]:
             if not (root / component).exists():
                 raise AssuranceError(f"{feature_id} claims missing component: {component}")
             claimed_components.add(component)
+
+        documentation_count += validate_documentation(
+            root, feature_id, feature.get("documentation")
+        )
 
         quality = feature.get("quality")
         if not isinstance(quality, dict) or set(quality) != QUALITY_DIMENSIONS:
@@ -203,6 +253,7 @@ def validate_document(document: Any, root: Path = ROOT) -> dict[str, int]:
         "evidence": evidence_count,
         "benchmarks": len(benchmark_targets),
         "fuzz_targets": len(fuzz_targets),
+        "documentation": documentation_count,
     }
 
 
@@ -224,7 +275,7 @@ def main() -> int:
         "PASS: feature assurance is traceable "
         f"(features={counts['features']}, components={counts['components']}, "
         f"benchmarks={counts['benchmarks']}, fuzz_targets={counts['fuzz_targets']}, "
-        f"evidence={counts['evidence']})"
+        f"documentation={counts['documentation']}, evidence={counts['evidence']})"
     )
     return 0
 

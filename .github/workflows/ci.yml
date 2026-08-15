@@ -47,6 +47,10 @@ jobs:
         run: |
           python tools/ci/check_feature_assurance.py
           python tools/ci/test_feature_assurance.py
+      - name: Documentation source-registry coverage tests
+        run: |
+          python tools/ci/check_documentation_coverage.py
+          python tools/ci/test_documentation_coverage.py
       - name: Shell syntax
         run: bash tools/ci/test_shell_sources.sh
       - name: PowerShell syntax

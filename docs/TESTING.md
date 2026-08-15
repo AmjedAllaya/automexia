@@ -82,6 +82,13 @@ automation to these mandatory dimensions:
 - accessibility;
 - rendered visual quality.
 
+Each feature also owns non-empty `guide`, `reference`, and `explanation`
+Markdown links. The validator resolves every file and heading, so an
+implemented feature cannot satisfy quality/platform evidence while leaving its
+user workflow, exact contract, or design rationale undocumented. The
+[documentation contribution guide](DOCUMENTATION.md) defines canonical page
+ownership and the website-ready information architecture.
+
 Every entry also declares Windows, Linux, and macOS evidence. Evidence levels
 are intentionally different: `pr` is deterministic contributor coverage,
 `nightly` owns fuzz/sanitizer/soak work, `controlled` requires named hardware or
@@ -95,6 +102,8 @@ Run the ledger and workflow mutation contracts directly with:
 ```text
 python tools/ci/check_feature_assurance.py
 python tools/ci/test_feature_assurance.py
+python tools/ci/check_documentation_coverage.py
+python tools/ci/test_documentation_coverage.py
 python tools/ci/check_platform_coverage.py
 python tools/ci/test_platform_coverage.py
 ```
