@@ -22,6 +22,9 @@ domain checks but never remove the base policy suite.
 - Use a conventional PR title, for example `fix(renderer): preserve prompt anchor`.
 - Update configuration, CLI, migration, architecture, and support docs when a
   public contract changes.
+- Follow the [documentation contribution guide](docs/DOCUMENTATION.md). Every
+  new or materially changed feature must retain guide, reference, and
+  explanation/ADR ownership in the machine-checked assurance ledger.
 - Add an ADR for dependency boundaries, persistence, threading,
   security/capabilities, or public-behavior decisions.
 - Include screenshots or renderer-neutral goldens for visible UI changes.
@@ -96,8 +99,9 @@ matrices.
 New or materially changed product features must update
 `tests/assurance/feature-matrix.json` with correctness, security, performance,
 resource-lifetime, storage, resilience, accessibility, visual, and native-host
-evidence. Repository validation rejects unowned workspace members, benchmark
-targets, fuzz targets, workflow jobs, and evidence paths. Image decoder,
+evidence plus canonical guide, reference, and explanation links. Repository
+validation rejects unowned workspace members, benchmark targets, fuzz targets,
+workflow jobs, documentation categories, and evidence paths. Image decoder,
 preview, renderer, or graphics-protocol changes must additionally
 run `cargo xtask test image-rendering`; Windows rendering/lifecycle changes run
 `cargo xtask test image-rendering --native-gui` before review.

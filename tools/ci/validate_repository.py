@@ -17,6 +17,7 @@ import xml.etree.ElementTree as element_tree
 
 import yaml
 
+from check_documentation_coverage import validate as validate_documentation_coverage
 from check_feature_assurance import load_and_validate as validate_feature_assurance
 from check_platform_coverage import validate_repository_workflows
 
@@ -266,6 +267,13 @@ def validate() -> None:
 
     feature_counts = validate_feature_assurance()
     counts["feature assurance entries"] = feature_counts["features"]
+
+    documentation_counts = validate_documentation_coverage()
+    counts["documented source entries"] = sum(
+        count
+        for kind, count in documentation_counts.items()
+        if kind != "pages"
+    )
 
     validate_brand_assets()
     counts["brand assets"] = 1

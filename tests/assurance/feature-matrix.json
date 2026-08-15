@@ -16,6 +16,11 @@
       "id": "identity-config-migration",
       "title": "Product identity, configuration, migration, and coexistence",
       "components": ["apps/automexia-terminal", "rio-backend"],
+      "documentation": {
+        "guide": ["docs/GETTING-STARTED.md#5-create-a-personal-configuration", "docs/MIGRATION.md"],
+        "reference": ["docs/CONFIGURATION.md#file-location-and-precedence"],
+        "explanation": ["docs/adr/0001-standalone-product-boundary.md", "docs/adr/0002-non-destructive-config-migration.md"]
+      },
       "quality": {
         "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "Configuration and migration have no independent interactive surface; rendered configuration effects are owned by renderer-ui."},
         "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/migration.rs", "rio-backend/src/config/mod.rs"]},
@@ -36,6 +41,11 @@
       "id": "terminal-protocols-grid-history",
       "title": "VT protocols, Unicode grid, selection, search, history, and reflow",
       "components": ["rio-vt"],
+      "documentation": {
+        "guide": ["docs/LIQUID-HACKER-UX.md#keyboard-selection"],
+        "reference": ["docs/TESTING.md#terminal-conformance"],
+        "explanation": ["docs/ARCHITECTURE.md#vt-control-string-trust-boundary"]
+      },
       "quality": {
         "accessibility": {"level": "pr", "evidence": ["rio-vt/src/codepoint_width.rs", "rio-vt/src/selection.rs"]},
         "correctness": {"level": "pr", "evidence": ["rio-vt/src/selection.rs", "rio-vt/tests/conformance_fixtures.rs", "tests/fixtures/osc-metadata.json", "tests/fixtures/unicode-width.json"]},
@@ -56,6 +66,11 @@
       "id": "pty-scheduler-process-lifecycle",
       "title": "PTY, ConPTY, event polling, resize delivery, child ownership, and teardown",
       "components": ["teletypewriter", "corcovado"],
+      "documentation": {
+        "guide": ["docs/TROUBLESHOOTING.md#prompt-cursor-or-footer-moves-during-resize"],
+        "reference": ["docs/PLATFORMS.md#support-matrix"],
+        "explanation": ["docs/ARCHITECTURE.md#interactive-performance-invariants"]
+      },
       "quality": {
         "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "PTY transport has no independent user interface; terminal and renderer surfaces own accessibility."},
         "correctness": {"level": "pr", "evidence": ["teletypewriter/tests/pty_lifecycle.rs", "corcovado/test/test_poll.rs"]},
@@ -76,6 +91,11 @@
       "id": "renderer-fonts-responsive-ui",
       "title": "GPU/CPU rendering, fonts, graphemes, responsive panes, modal layers, and footer",
       "components": ["sugarloaf", "rio-graphics", "rio-fonts", "rio-grapheme-width"],
+      "documentation": {
+        "guide": ["docs/LIQUID-HACKER-UX.md#layout-contract", "docs/ACCESSIBILITY.md"],
+        "reference": ["docs/CONFIGURATION.md#renderer-and-keyboard"],
+        "explanation": ["docs/adr/0004-native-persistent-operational-chrome.md", "docs/adr/0013-renderer-independent-accessibility-model.md"]
+      },
       "quality": {
         "accessibility": {"level": "external", "evidence": ["docs/ACCESSIBILITY.md"]},
         "correctness": {"level": "pr", "evidence": ["sugarloaf/tests/wgsl_validation.rs", "sugarloaf/src/font/cjk_metrics_tests.rs", "apps/automexia-terminal/src/layout/compute_tests.rs"]},
@@ -96,6 +116,11 @@
       "id": "windows-tabs-sessions-input",
       "title": "OS windows, global and pane-local tabs, session cloning, shortcuts, mouse, and clipboard",
       "components": ["apps/automexia-terminal", "rio-window", "rio-notifier"],
+      "documentation": {
+        "guide": ["docs/GETTING-STARTED.md#4-try-panes-tabs-and-selection"],
+        "reference": ["docs/KEYBOARD.md#windows-and-linuxbsd-defaults"],
+        "explanation": ["docs/adr/0006-prompt-context-and-workspace-actions.md", "docs/adr/0007-pane-local-session-tabs.md"]
+      },
       "quality": {
         "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/src/renderer/command_palette.rs", "apps/automexia-terminal/src/bindings/mod.rs"]},
         "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/context/launch.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/bindings/mod.rs", "apps/automexia-terminal/src/screen/mod.rs", "tests/integration/resize-stress-windows.ps1"]},
@@ -116,6 +141,11 @@
       "id": "prompt-context-devops-semantics",
       "title": "Prompt metadata, path layout, semantic colors, Git, containers, Kubernetes, cloud, Terraform, and user context",
       "components": ["automexia-devops", "automexia-ui-model"],
+      "documentation": {
+        "guide": ["docs/SHELL-INTEGRATION.md#prompt-ownership"],
+        "reference": ["docs/LIQUID-HACKER-UX.md#per-pane-operational-context"],
+        "explanation": ["docs/adr/0006-prompt-context-and-workspace-actions.md"]
+      },
       "quality": {
         "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/lib.rs", "automexia-devops/src/semantics.rs"]},
         "correctness": {"level": "pr", "evidence": ["automexia-devops/src/context.rs", "automexia-devops/src/semantics.rs"]},
@@ -136,6 +166,11 @@
       "id": "extension-contract-runtime",
       "title": "Versioned extension contracts, bounded caches/workers, cancellation, isolation, and UI projection",
       "components": ["automexia-extension-api", "automexia-extension-runtime"],
+      "documentation": {
+        "guide": ["CONTRIBUTING.md#change-requirements"],
+        "reference": ["docs/ARCHITECTURE.md#core-and-extension-ownership"],
+        "explanation": ["docs/adr/0003-extension-capability-and-threading.md"]
+      },
       "quality": {
         "accessibility": {"level": "pr", "evidence": ["automexia-extension-api/src/lib.rs", "automexia-ui-model/src/lib.rs"]},
         "correctness": {"level": "pr", "evidence": ["automexia-extension-api/src/lib.rs", "automexia-extension-runtime/src/lib.rs"]},
@@ -156,6 +191,11 @@
       "id": "image-protocols-local-preview",
       "title": "Kitty, Sixel, iTerm2, and bounded local image preview",
       "components": ["automexia-image", "apps/automexia-terminal", "rio-vt", "sugarloaf"],
+      "documentation": {
+        "guide": ["docs/IMAGE-PREVIEWS.md#local-quick-look"],
+        "reference": ["docs/IMAGE-PREVIEWS.md#security-and-performance-contract"],
+        "explanation": ["docs/adr/0014-explicit-bounded-image-quick-look.md"]
+      },
       "quality": {
         "accessibility": {"level": "external", "evidence": ["docs/IMAGE-PREVIEWS.md"]},
         "correctness": {"level": "pr", "evidence": ["automexia-image/src/lib.rs", "apps/automexia-terminal/src/image_preview.rs", "rio-vt/src/ansi/graphics.rs"]},
@@ -176,6 +216,11 @@
       "id": "shell-integration-listings",
       "title": "PowerShell, CMD, WSL, Bash, Zsh, prompt integration, and icon-aware listings",
       "components": ["shell-integration"],
+      "documentation": {
+        "guide": ["docs/SHELL-INTEGRATION.md#automatic-provisioning"],
+        "reference": ["docs/SHELL-INTEGRATION.md#icon-aware-listings"],
+        "explanation": ["docs/adr/0009-launch-time-shell-provisioning.md"]
+      },
       "quality": {
         "accessibility": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_sources.sh"]},
         "correctness": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_integration.sh", "tools/ci/test_zsh_integration.zsh"]},
@@ -196,6 +241,11 @@
       "id": "packaging-release-provenance",
       "title": "Windows, macOS, and Linux packages, identity, signing, SBOM, checksum, and provenance",
       "components": ["packaging", ".github/workflows"],
+      "documentation": {
+        "guide": ["RELEASING.md"],
+        "reference": ["packaging/README.md"],
+        "explanation": ["docs/ARCHITECTURE.md#build-artifact-lifecycle"]
+      },
       "quality": {
         "accessibility": {"level": "external", "evidence": ["docs/ACCESSIBILITY.md", "packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml"]},
         "correctness": {"level": "nightly", "evidence": ["tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh", ".github/workflows/release.yml"]},
@@ -216,6 +266,11 @@
       "id": "contributor-automation-quality-policy",
       "title": "Single-command workflow, architecture, identity, coverage, QA evidence, and dependency policy",
       "components": ["tools/xtask"],
+      "documentation": {
+        "guide": ["CONTRIBUTING.md#one-command-workflows", "docs/GETTING-STARTED.md#6-prepare-a-contribution"],
+        "reference": ["docs/CLI-REFERENCE.md#focused-xtask-commands", "docs/TESTING.md#complete-local-gate"],
+        "explanation": ["docs/adr/0005-storage-bounded-build-workflow.md"]
+      },
       "quality": {
         "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "Contributor automation is a textual command interface; product accessibility is tested at renderer and input surfaces."},
         "correctness": {"level": "pr", "evidence": ["tools/xtask/src/main.rs", "tools/ci/test_qa.py"]},
@@ -236,6 +291,11 @@
       "id": "ffi-wasm-embedding",
       "title": "Native C API and WebAssembly embedding surfaces",
       "components": ["librio", "librio-wasm"],
+      "documentation": {
+        "guide": ["librio/README.md", "librio-wasm/README.md"],
+        "reference": ["docs/ARCHITECTURE.md#layers"],
+        "explanation": ["docs/adr/0001-standalone-product-boundary.md"]
+      },
       "quality": {
         "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "Embedding APIs do not define a standalone interface; the embedding consumer owns presentation accessibility."},
         "correctness": {"level": "pr", "evidence": ["librio/src/capi.rs", "librio/src/lib.rs", "librio-wasm/src/lib.rs"]},

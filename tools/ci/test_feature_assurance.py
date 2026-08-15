@@ -30,6 +30,33 @@ class FeatureAssuranceTests(unittest.TestCase):
         self.assertGreater(counts["evidence"], counts["features"] * 9)
         self.assertEqual(counts["benchmarks"], 5)
         self.assertEqual(counts["fuzz_targets"], 7)
+        self.assertGreaterEqual(counts["documentation"], counts["features"] * 3)
+
+    def test_missing_documentation_type_is_rejected(self) -> None:
+        document = copy.deepcopy(self.document)
+        del document["features"][0]["documentation"]["explanation"]
+        with self.assertRaisesRegex(
+            ASSURANCE.AssuranceError, "documentation must define exactly"
+        ):
+            ASSURANCE.validate_document(document)
+
+    def test_missing_documentation_anchor_is_rejected(self) -> None:
+        document = copy.deepcopy(self.document)
+        document["features"][0]["documentation"]["reference"] = [
+            "docs/CONFIGURATION.md#missing-section"
+        ]
+        with self.assertRaisesRegex(
+            ASSURANCE.AssuranceError, "missing Markdown anchor"
+        ):
+            ASSURANCE.validate_document(document)
+
+    def test_non_markdown_documentation_is_rejected(self) -> None:
+        document = copy.deepcopy(self.document)
+        document["features"][0]["documentation"]["guide"] = ["Cargo.toml"]
+        with self.assertRaisesRegex(
+            ASSURANCE.AssuranceError, "must reference Markdown"
+        ):
+            ASSURANCE.validate_document(document)
 
     def test_missing_quality_dimension_is_rejected(self) -> None:
         document = copy.deepcopy(self.document)

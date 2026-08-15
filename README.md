@@ -5,6 +5,11 @@ modern development workflows. Version 0.4.0 is a standalone downstream of Rio
 with a separate executable, application identity, configuration root, and
 release process.
 
+Start with the [documentation home](docs/index.md) for a guided path through
+installation/building, features, configuration, shortcuts, shells,
+troubleshooting, platform support, architecture decisions, testing, and
+release operations.
+
 > The supplied Automexia raster mark is integrated for development and nightly
 > packages. Stable v0.4.0 publication remains blocked until its vector variants
 > and rights approval, Windows signing certificate, Apple signing/notarization
@@ -194,8 +199,9 @@ Automexia uses these roots by default:
 - Linux/BSD: `$XDG_CONFIG_HOME/automexia`, or `~/.config/automexia`
 
 `AUTOMEXIA_CONFIG_HOME` overrides the root. See
-[docs/CONFIGURATION.md](docs/CONFIGURATION.md) for migration and compatibility
-details.
+the [configuration reference](docs/CONFIGURATION.md) for the complete
+schema, defaults, limits, platform overrides, reload behavior, migration, and
+compatibility details.
 
 ## Project status
 
