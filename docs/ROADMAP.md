@@ -174,6 +174,41 @@ This completes D4 only. D3 production activation and D5 connection UX remain
 blocked by ADR 0012 acceptance, protected approval, first-party package
 identity, visible exact grants, atomic native launch, and controlled native
 lifecycle/performance evidence.
+
+### v0.5.x command productivity track
+
+Command completion and persistent DevOps shortcuts are now an explicit parallel
+delivery track rather than an implied shell-integration side effect. The
+authoritative design, resource ceilings, shell matrix, phases CP0-CP6, tests,
+and acceptance criteria are in
+[Command Productivity](COMMAND-PRODUCTIVITY.md); the ownership and trust decision
+is [ADR 0015](adr/0015-shell-native-completion-and-typed-quick-actions.md).
+
+1. Preserve PSReadLine, Readline, ZLE, Fish, and CMD ownership of command input,
+   history, cursor, quoting, and completion. Never infer the editable command
+   from terminal-grid cells.
+2. Add idempotent, removable adapters and `doctor` diagnostics for PowerShell,
+   Bash, Zsh, Fish, CMD, and WSL. Prefer official Git/Docker/Kubernetes/Helm/
+   Terraform/OpenTofu/AWS/Azure/GCP/OpenSSH completion contracts and preserve
+   native user definitions.
+3. Store reusable commands as bounded, versioned, typed Quick Actions with
+   global, shell, capsule, trusted-workspace, and session scopes. Persist the
+   source atomically; treat generated shell aliases/functions as disposable.
+4. Deliver reviewed DevOps packs with descriptive actions and **no short aliases
+   enabled by default**. Optional aliases require collision validation, matching
+   completion, reversible generation, and native definitions take precedence.
+5. Insert expanded commands for review without Enter by default. Raw snippets
+   remain shell-scoped and insert-only; exact execution is available only after
+   D3 activation through typed executable/argv/cwd capability requests.
+6. Keep startup and keystroke paths offline and secret-free. Provider-aware
+   actions wait for D6 Environment Capsules and consume bounded cached public
+   context with freshness and cancellation.
+
+CP0-CP3 may proceed alongside D5 when their own gates pass. CP4 depends on
+D5/D6; CP5's optional rich completion surface is not a v0.5.0 blocker and may
+ship only through a versioned shell-editor bridge. This plan does not claim that
+autocomplete, Quick Actions, or generated aliases are shipped in v0.4.
+
 ### v0.5.0 first-party SSH extension
 
 1. Ship `devops-ssh` as an optional, signed or compiled-in first-party
@@ -226,7 +261,11 @@ are true:
   resizing, or unrelated panes;
 - no secret appears in persistent state or redacted QA evidence;
 - keyboard, screen-reader, contrast, production-risk, and error semantics are
-  tested on supported platforms.
+  tested on supported platforms;
+- any command-productivity capability included in the release passes its CP exit
+  gate: shell-disabled behavior remains native, generated files are removable,
+  native aliases win, insertion never sends Enter, and startup/keystroke paths
+  perform no provider, network, authentication, or secret work.
 
 The v0.5 keybinding crate still begins as a behavior-preserving typed registry
 before profiles or sequences. GPU drawing stays in the frontend adapter;
@@ -326,6 +365,7 @@ detailed implementation and exit gates. The version assignment is:
 | Performance | Execute Criterion, collect 30-day baselines, record startup/interaction/resource data | Enforce ratchets and add SSH index/connect/tunnel/saturation budgets | Add CLI/config/API refresh and 10/50/100-session budgets | Add public SDK/sandbox overhead budgets |
 | Native assurance | AppVerifier/WPR and controlled Windows/Linux/macOS GPU/shell matrices | System OpenSSH, agents, certificates, host keys, jumps, tunnels, cancellation, and cleanup on each OS | Official provider CLIs, Kubernetes/OpenShift, SSM/Bastion/IAP, offline/expiry paths | Sandboxed third-party and AI extension isolation |
 | Test-strength/security ratchets | Longer fuzz corpora and Automexia-owned coverage baseline | Fuzz config/index/IPC/diagnostics; mutation-test policy and argv validation | Fuzz provider/config/exec-plugin adapters; audit SDK/CLI supply chain | Public extension supply-chain, signature, revocation, and capability audits |
+| Command productivity | Existing shell integration only; no managed autocomplete/action-store claim | CP0-CP3: shell-native adapters, diagnostics, typed persistent actions, opt-in aliases, static DevOps packs | CP4: capsule/provider-aware cached actions with freshness and brokered exact launch | CP5/CP6: optional editor bridge and signed ecosystem packs after separate gates |
 
 No single host or test layer may claim complete assurance. Pull requests prove
 deterministic contracts, nightly jobs explore expensive state and native

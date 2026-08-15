@@ -496,6 +496,32 @@ native security evidence. Remote feature work never weakens or bypasses the
 remaining v0.4 native, packaging, hosted, signing, SBOM,
 provenance, visual, accessibility, or performance gates.
 
+## Command productivity delivery track
+
+This parallel track closes the previously implicit autocomplete and reusable
+DevOps-alias requirements. Its full product, architecture, security, performance,
+data, shell-adapter, test, and acceptance contract is
+[Command Productivity](COMMAND-PRODUCTIVITY.md), governed by
+[ADR 0015](adr/0015-shell-native-completion-and-typed-quick-actions.md). It does
+not authorize shell evaluation, provider access, or arbitrary process launch.
+
+| Stage | Dependency | Required work | Exit evidence |
+|---|---|---|---|
+| CP0 decisions/threats | May run beside D5 design | Accept shell/editor ownership, typed schema, precedence, trust, privacy, ceilings, native support matrix, and terminal-grid-inference prohibition. | ADR accepted; hostile fixtures, precedence/collision matrix, and architecture ratchets reviewed. |
+| CP1 native completion | CP0 | Idempotent PowerShell/Bash/Zsh/Fish/CMD/WSL adapters; read-only doctor health; official provider generator discovery/cache; clean uninstall and disabled-integration behavior. | Native cursor/history/quoting/exit-status/profile, collision, startup, update/uninstall, and shell-disabled tests pass on supported hosts. |
+| CP2 typed Quick Actions | CP0; D3 not required for insert/copy | Bounded versioned store; atomic user-only writes; last-known-good reload; exact-file watcher; layered scopes; CRUD/import/export; placeholder review; accessible search; insert/copy only. | Persistence/recovery/concurrent-window/isolation, Unicode/hostile input, deterministic ordering, leak, accessibility, and Windows/Linux/macOS tests pass. |
+| CP3 aliases and static packs | CP1/CP2 | Reversible opt-in aliases/functions/abbreviations plus Git, Docker, Kubernetes/OpenShift, Helm, Terraform/OpenTofu, AWS, Azure, GCP, and SSH packs; no default short alias. | Native definitions win; projections round-trip/remove cleanly; completion follows aliases; risk and tool/version states are truthful. |
+| CP4 capsule-aware actions | D3 activation plus D5/D6 | Bind cached public capsule/target context with freshness; explicit refresh; reviewed exact launch only through the broker. | Mixed-pane/session isolation, offline/stale/revocation/cancellation, production-risk, provider-native, audit-redaction, and resource tests pass. |
+| CP5 optional rich completion | CP1 plus a separately reviewed editor bridge | Versioned buffer/cursor/replacement/generation/cancellation bridge; renderer-neutral accessible popup; native fallback. | IME/grapheme, screen-reader, resize, shell parity, latency, cancellation, and disabled-fallback evidence proves a benefit. Not a v0.5.0 blocker. |
+| CP6 ecosystem packs | v0.6 capability/sandbox/signing gates | Signed third-party packs and separate opt-in AI tools only through provenance, capability, quota, revocation, and privacy policy. | Malicious-package/sandbox/supply-chain/data-flow gates pass; no ambient terminal, secret, provider, or process authority. |
+
+CP0-CP3 may proceed alongside D5 without delaying safe system-OpenSSH work. CP4
+must not precede D6 capsule isolation. CP5 and CP6 cannot be pulled into the
+release merely because a candidate UI or pack parses locally. A completed stage
+records exact commands/results, native environments, resource ceilings,
+benchmark comparison, redaction proof, external gaps, and rollback/uninstall
+behavior.
+
 ### Implementation-agent protocol
 
 An AI or human implementation agent follows these rules:
@@ -505,8 +531,9 @@ An AI or human implementation agent follows these rules:
    prerequisite exit gate is open.
 2. Before each stage, read this complete track, the linked architecture, current
    accepted/proposed ADRs, relevant source modules/tests, and current working
-   tree. Preserve unrelated user changes and do not mix their ownership into the
-   stage.
+   tree. A CP stage additionally requires the complete
+   [Command Productivity](COMMAND-PRODUCTIVITY.md) contract. Preserve unrelated
+   user changes and do not mix their ownership into the stage.
 3. Keep extraction, behavior migration, and new capability activation as
    separate reviewable changes. First prove equivalence, then change contracts,
    then add behavior. Do not rewrite provider discovery while moving it.
@@ -993,6 +1020,16 @@ and performance/resource results under concurrent mixed-provider sessions.
 Direct provider SDK/API inventory is not a v0.5.1 blocker unless included in
 release claims.
 
+Any v0.5.x release that includes command productivity additionally requires the
+corresponding CP stage exit gates. A release must not claim managed autocomplete
+or persistent aliases from the existing prompt/listing shell integration alone.
+CP1-CP3 require native shell-disabled and install/update/uninstall evidence,
+bounded atomic state and recovery, collision/precedence proof, review-before-
+insert behavior, secret-negative tests, and performance/resource results on
+Windows, Linux, and macOS. CP4 exact launch additionally requires accepted D3
+activation and D6 capsule isolation. CP5/CP6 are never implicit blockers unless
+their UI/ecosystem capability is included in the release claim.
+
 ## Stable acceptance criteria
 
 - all completed local contracts above remain covered by regressions;
@@ -1017,4 +1054,8 @@ release claims.
 - the redacted QA bundle identifies every pass, failure, skip, host limitation,
   environment, visual artifact, benchmark, and resource result;
 - v0.4 keyboard/focus/contrast/scaling and recorded native screen-reader
-  baselines pass without claiming the deferred v0.5 accessibility tree.
+  baselines pass without claiming the deferred v0.5 accessibility tree;
+- shipped completion and Quick Action stages preserve shell/editor ownership,
+  keep startup and keystrokes offline and secret-free, leave native definitions
+  intact, insert without implicit execution, recover last-known-good bounded
+  state, and uninstall without profile or generated-file residue.

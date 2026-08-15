@@ -30,6 +30,7 @@ inferred pass.
 |---|---|---|---|---|
 | Extension contracts | Private versioned API, bounded worker/cache runtime, cancellation, session isolation, renderer-neutral UI model | PR models; nightly Miri/sanitizers | [Architecture](ARCHITECTURE.md#core-and-extension-ownership) | [ADR 0003](adr/0003-extension-capability-and-threading.md) |
 | OpenSSH inventory foundation | Disabled-by-default static concrete-alias indexing, exact grants, bounded includes, user-only atomic metadata, exact-file watchers, and last-known-good refresh; no launch or network authority | PR: Windows/Linux/macOS; nightly fuzz/benchmark | [OpenSSH inventory](SSH-INVENTORY.md) | [ADR 0012](adr/0012-first-party-ssh-and-session-launch-boundary.md) |
+| Command completion and persistent Quick Actions | **Planned for v0.5.x, not shipped in v0.4:** shell-native completion adapters/health plus a bounded typed action store, review-before-insert commands, opt-in aliases, and static DevOps packs | Planned: native shell/OS contracts, schema/property/fuzz/security/leak/performance gates | [Command Productivity](COMMAND-PRODUCTIVITY.md) | [ADR 0015](adr/0015-shell-native-completion-and-typed-quick-actions.md) |
 | Native and Wasm embedding | Inherited private C and WebAssembly embedding crates retained for compatibility | PR compilation/tests; nightly static analysis | [Architecture](ARCHITECTURE.md#layers), crate READMEs | [ADR 0001](adr/0001-standalone-product-boundary.md) |
 | Contributor automation | One-command doctor/check/CI/QA/build/run/package/release workflows, isolated cleanup, identity/provenance/architecture contracts | PR on every host | [CLI reference](CLI-REFERENCE.md), [testing](TESTING.md) | [ADR 0005](adr/0005-storage-bounded-build-workflow.md) |
 | Packaging and release | Windows MSI/ZIP, macOS universal app/DMG, Linux DEB/RPM/tar, signatures, notarization, checksums, SBOMs, attestations | Nightly packages; controlled stable release | [Releasing](../RELEASING.md), [packaging](../packaging/README.md) | [Architecture](ARCHITECTURE.md#build-artifact-lifecycle) |
@@ -38,7 +39,9 @@ inferred pass.
 
 Automexia v0.4 does not claim a public extension SDK, third-party extension
 downloads, Wasm sandboxing, remote image fetching, SVG/PDF preview, shared live
-PTY views, complete Ghostty action parity, or provider SDK authentication.
+PTY views, complete Ghostty action parity, provider SDK authentication, managed
+shell autocomplete, a persistent Quick Action store, or generated DevOps
+aliases.
 Those omissions are deliberate security and product boundaries, not hidden
 features. See the [roadmap](ROADMAP.md) for sequencing and the
 [decision index](DECISIONS.md) for rationale.

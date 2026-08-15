@@ -291,6 +291,27 @@ environment, SSH agent, cloud cache, terminal history, capsule, connection, or
 production authority. Every tool call is a structured, exact-session request;
 read authority does not imply command authority.
 
+### Command productivity boundary
+
+Planned v0.5 command productivity preserves PSReadLine, Readline, ZLE, Fish, and
+CMD ownership of the editable buffer, cursor, history, quoting, and completion.
+The application may diagnose and idempotently provision managed adapters, but it
+must not reconstruct a command from terminal-grid cells. Official CLI completion
+generators run only through bounded, explicit refresh; provider, network,
+authentication, plugin, and secret-store work is forbidden on startup,
+keystroke, render, VT, and PTY paths.
+
+Persistent reusable commands use a renderer-/PTY-independent typed Quick Action
+model. The bounded versioned source is authoritative; shell aliases, functions,
+abbreviations, and completion adapters are removable generated artifacts.
+Actions insert for review without Enter by default. Raw shell snippets are
+insert-only; exact execution uses only the D3 typed launch broker. Native user
+definitions win unless the user chooses a visible reversible override.
+Provider-aware actions consume bounded cached public capsule context only after
+D6, with session/generation keys, freshness, cancellation, and stale-result
+rejection. See [Command Productivity](COMMAND-PRODUCTIVITY.md) and
+[ADR 0015](adr/0015-shell-native-completion-and-typed-quick-actions.md).
+
 ## Dependency rules
 
 - Engine crates never depend on the desktop frontend.
@@ -308,6 +329,9 @@ read authority does not imply command authority.
 - GPU drawing stays in the frontend renderer adapter.
 - Session IDs key worker results, completion state, and cached context; one
   window or pane cannot observe another session's state.
+- Shell adapters own no renderer, VT, PTY, provider SDK, credential, or direct
+  process/network dependency. Action parsing/indexing/generation runs off input
+  and render paths; exact launch crosses only the reviewed capability broker.
 - Credentials and inherited environments never enter renderer snapshots,
   extension context contributions, general configuration, diagnostics, or
   terminal-history metadata. Only public identity and opaque references cross
@@ -552,7 +576,10 @@ extension, and GPU code do not call platform accessibility APIs directly.
 ## Persistence
 
 Automexia owns `config.toml`, `themes/`, `extensions/`, and `logs/` under its
-platform configuration root. The one-release migration reads a narrow Rio
+platform configuration root. Planned typed user actions live below
+`actions/actions.toml`; per-shell completion and alias files below
+`generated/` are disposable, digest-marked artifacts rebuilt from that source.
+The one-release migration reads a narrow Rio
 allowlist and never modifies the source. See `docs/MIGRATION.md`.
 
 Extension state is versioned below its own directory, atomically replaced,
@@ -582,6 +609,8 @@ behavior-equivalence adapters remain stable through the release gates.
 
 The exact implementation order and acceptance evidence are in the
 [early DevOps and SSH delivery track](STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track).
+The parallel autocomplete/action work is ordered in the
+[command productivity delivery track](STABILIZATION-ROADMAP.md#command-productivity-delivery-track).
 The full research, provider mappings, Termix decision, library evaluation, and
 long-term extension model are in
 [SSH, DevOps, and multi-cloud extension architecture](SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md).

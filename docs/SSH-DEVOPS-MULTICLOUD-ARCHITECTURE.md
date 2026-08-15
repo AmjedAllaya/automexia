@@ -847,6 +847,16 @@ Sensitive actions show the target and effect before launch. A quick-connect
 result should indicate transport, user, host, environment, and production risk,
 not just a friendly alias.
 
+Command completion and reusable DevOps commands use the separate
+[Command Productivity](COMMAND-PRODUCTIVITY.md) contract. The palette consumes
+the same typed Quick Action model; it does not turn display labels into shell
+text. Actions insert for review by default, built-in packs enable no short alias
+by default, and an exact launch crosses only the reviewed D3 broker. Native shell
+editors remain completion owners. Provider-aware candidates appear only after
+D6, from bounded cached public capsule data with freshness; opening a palette or
+typing a key never calls a provider, authenticates, reads a credential cache, or
+executes a plugin.
+
 ### Per-pane context
 
 The existing per-command context design remains the right UI. Provider
@@ -1038,6 +1048,14 @@ protected-path approvals, injection tests, cross-platform native SSH tests,
 cancellation, cleanup, secret redaction, and resource limits pass while the
 generic terminal remains complete with `devops-ssh` disabled.
 
+The parallel CP0-CP3 command-productivity work may deliver native completion
+health, typed persistent Quick Actions, optional aliases, and static DevOps packs
+without waiting for provider APIs. SSH actions may reference only the bounded D4
+public inventory and remain insert-only until D3 activation. CP4 provider-aware
+actions wait for Phase 3 capsule isolation. The detailed ordering and gates are
+in the
+[command productivity delivery track](STABILIZATION-ROADMAP.md#command-productivity-delivery-track).
+
 ### Phase 3: v0.5.1 provider-native authentication and capsules
 
 - Ship AWS, Azure, GCP, Kubernetes, and OpenShift extensions separately.
@@ -1083,6 +1101,7 @@ ambient terminal, credential, process, filesystem, or network authority.
 | Kubernetes security | Malicious/unknown exec plugins are blocked or confirmed; config sizes and paths are bounded. |
 | Provider authentication | Interactive, expired, cancelled, offline, MFA, multiple-identity, and token-refresh paths are tested without token disclosure. |
 | Capability policy | Deny, allow-once, persisted grant, revocation, publisher change, manifest change, and enterprise override are deterministic. |
+| Command productivity | Native shell completion remains functional with Automexia integration enabled or disabled; typed actions, aliases, scope/precedence, quoting, insertion-without-Enter, secret-negative behavior, and uninstall residue pass on supported shells/OSes. |
 | Performance | Slow/hung CLIs and APIs do not affect input, rendering, PTY parsing, resize, or unrelated sessions. |
 | Resource lifecycle | Sessions, broker operations, tunnels, processes, handles, sockets, tasks, and caches terminate cleanly. |
 | Output hardening | Remote hostile control-string and graphics corpora obey memory/time caps and deterministic recovery. |
@@ -1120,11 +1139,13 @@ capability rather than added directly to the terminal core.
 - [Configuration](CONFIGURATION.md)
 - [Roadmap](ROADMAP.md)
 - [Stabilization roadmap](STABILIZATION-ROADMAP.md)
+- [Command Productivity](COMMAND-PRODUCTIVITY.md)
 - [Security debt](SECURITY-DEBT.md)
 - [ADR 0003: extension capability and threading boundary](adr/0003-extension-capability-and-threading.md)
 - [ADR 0006: prompt-owned context](adr/0006-prompt-context-and-workspace-actions.md)
 - [ADR 0007: pane-local independent sessions](adr/0007-pane-local-session-tabs.md)
 - [ADR 0012: proposed first-party SSH and scoped session launch](adr/0012-first-party-ssh-and-session-launch-boundary.md)
+- [ADR 0015: shell-native completion and typed Quick Actions](adr/0015-shell-native-completion-and-typed-quick-actions.md)
 
 ### SSH and external access
 
