@@ -1325,7 +1325,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
     let pty_manifest = read(&root().join("teletypewriter/Cargo.toml"))?;
     require(
         nightly_workflow.contains(
-            "cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter --no-run --locked",
+            "cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-devops-ssh --no-run --locked",
         )
             && qa.contains("\"benchmark-image\": 7200")
             && qa.contains("\"benchmark-image\"")
@@ -1337,9 +1337,13 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && qa.contains("\"benchmark-pty\"")
             && qa.contains("\"teletypewriter\"")
             && qa.contains("\"pty_io\"")
+            && qa.contains("\"benchmark-ssh-inventory\": 7200")
+            && qa.contains("\"benchmark-ssh-inventory\"")
+            && qa.contains("\"automexia-devops-ssh\"")
+            && qa.contains("\"openssh_inventory\"")
             && pty_manifest.contains("name = \"pty_io\"")
             && root().join("teletypewriter/benches/pty_io.rs").is_file(),
-        "Every declared image and PTY lifecycle benchmark must compile nightly and execute with a bounded controlled-QA timeout",
+        "Every declared controlled benchmark must compile nightly and execute with a bounded controlled-QA timeout",
     )?;
 
     let simd_utf8 = read(&root().join("rio-vt/src/simd_utf8.rs"))?;
@@ -2874,19 +2878,23 @@ fn verify_architecture() -> TaskResult {
         read(&ssh_root.join("src/model.rs"))?,
         read(&ssh_root.join("src/persistence.rs"))?,
         read(&ssh_root.join("src/refresh.rs"))?,
+        read(&ssh_root.join("src/secure_fs.rs"))?,
     ]
     .join("\n");
     for invariant in [
-        "max_file_bytes: 1024 * 1024",
-        "max_total_bytes: 8 * 1024 * 1024",
-        "max_files: 128",
-        "max_include_depth: 8",
-        "max_aliases: 10_000",
-        "max_value_bytes: 4 * 1024",
+        "MAX_SOURCE_FILE_BYTES: usize = 1024 * 1024",
+        "MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024",
+        "MAX_SOURCE_FILES: usize = 128",
+        "MAX_INCLUDE_DEPTH: usize = 8",
+        "MAX_ALIASES: usize = 10_000",
+        "MAX_VALUE_BYTES: usize = 4 * 1024",
         "PROTECTED_DACL_SECURITY_INFORMATION",
         "if directory { 0o700 } else { 0o600 }",
         "RecursiveMode::NonRecursive",
         "last_good",
+        "scan_inventory_cancellable",
+        "WatchPlan::from_scan",
+        "FILE_FLAG_OPEN_REPARSE_POINT",
     ] {
         require(
             ssh_source.contains(invariant),
@@ -2912,6 +2920,7 @@ fn verify_architecture() -> TaskResult {
         read(&root().join("fuzz/Cargo.toml"))?.contains("openssh_inventory")
             && read(&root().join(".github/workflows/nightly.yml"))?
                 .contains("openssh_inventory")
+            && read(&root().join("tools/ci/qa.py"))?.contains("benchmark-ssh-inventory")
             && ssh_root.join("benches/openssh_inventory.rs").is_file(),
         "OpenSSH inventory fuzz or benchmark assurance is missing",
     )?;

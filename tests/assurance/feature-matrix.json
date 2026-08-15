@@ -174,11 +174,11 @@
       "quality": {
         "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "D4 is deliberately nonactivated and has no UI; future D5 connection surfaces own accessibility evidence."},
         "correctness": {"level": "pr", "evidence": ["extensions/devops-ssh/src/inventory.rs", "extensions/devops-ssh/src/model.rs", "extensions/devops-ssh/src/refresh.rs"]},
-        "security": {"level": "nightly", "evidence": ["extensions/devops-ssh/src/inventory.rs", "extensions/devops-ssh/src/persistence.rs", "fuzz/fuzz_targets/openssh_inventory.rs", ".github/workflows/nightly.yml#fuzz"]},
-        "performance": {"level": "nightly", "evidence": ["extensions/devops-ssh/benches/openssh_inventory.rs"]},
+        "security": {"level": "nightly", "evidence": ["extensions/devops-ssh/src/inventory.rs", "extensions/devops-ssh/src/persistence.rs", "extensions/devops-ssh/src/secure_fs.rs", "fuzz/fuzz_targets/openssh_inventory.rs", ".github/workflows/nightly.yml#fuzz"]},
+        "performance": {"level": "nightly", "evidence": ["extensions/devops-ssh/benches/openssh_inventory.rs", ".github/workflows/nightly.yml#benchmark-build", "tools/ci/qa.py"]},
         "resource_lifetime": {"level": "pr", "evidence": ["extensions/devops-ssh/src/refresh.rs", "extensions/devops-ssh/src/persistence.rs"]},
         "storage_hygiene": {"level": "pr", "evidence": ["extensions/devops-ssh/src/persistence.rs"]},
-        "resilience": {"level": "pr", "evidence": ["extensions/devops-ssh/src/inventory.rs", "extensions/devops-ssh/src/refresh.rs"]},
+        "resilience": {"level": "pr", "evidence": ["extensions/devops-ssh/src/inventory.rs", "extensions/devops-ssh/src/refresh.rs", "extensions/devops-ssh/src/secure_fs.rs"]},
         "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "The D4 package exposes models only and is not connected to a renderer or product surface."}
       },
       "platforms": {

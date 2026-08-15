@@ -772,17 +772,20 @@ and state without touching OpenSSH files or user keys.
 | Item | Status | Evidence |
 |---|---|---|
 | D4.1 private package and authority | Complete | automexia-devops-ssh is a private disabled-by-default workspace package. Its manifest declares only filesystem.read; architecture verification rejects process, network, launch, clipboard, terminal, environment, or UI authority and forbidden dependencies. |
-| D4.2 exact grants and ceilings | Complete | InventoryGrant canonicalizes exact roots and entry files. InventoryLimits enforces 1 MiB/file, 8 MiB total, 128 files, depth 8, 10,000 aliases, 4 KiB/value, and 16 KiB/line. |
+| D4.2 exact grants and ceilings | Complete, re-audited | InventoryGrant requires a directory root, canonicalizes exact entries, and rejects more than 128 entries before collecting them. InventoryLimits may lower but cannot raise the fixed 1 MiB/file, 8 MiB total, 128 files, depth 8, 10,000 aliases, 4 KiB/value, and 16 KiB/line security ceilings. |
 | D4.3 includes and recovery | Complete for the nonactivated inventory | Includes expand lexically only inside the grant, reject symlinks/dynamic tokens/unsafe Unix ownership or permissions, bound cycles and changes, and use public labels plus line numbers. RefreshCoordinator retains last-known-good state on any failure. |
 | D4.4 static non-executable syntax | Complete | Only concrete Host records and public hints are indexed. Wildcards/negation and Match are excluded; executable directives are diagnostics only. The package contains no process, socket, DNS, or ssh -G path. |
-| D4.5 private metadata | Complete | Strict schema 1 stores public Automexia metadata only in connections.v1.json. Same-directory synchronized replacement, Unix 0700/0600, protected current-user Windows DACL, bounded reads, malformed/secret-field rejection, and exact removal are tested. |
-| D4.6 refresh and watches | Complete for package scope | WatchPlan accepts only known canonical regular files, notify uses nonrecursive exact watches, event bursts coalesce, obsolete generations are discarded, and periodic reconciliation is mandatory. No production renderer/input/PTY wiring exists. |
+| D4.5 private metadata | Complete, re-audited | Strict schema 1 stores public Automexia metadata only in connections.v1.json. Same-directory synchronized replacement, Unix 0700/0600, protected current-user Windows DACL, race-resistant no-follow bounded reads, serialization bounded before staging, malformed/secret-field rejection, and exact removal are tested. |
+| D4.6 refresh and watches | Complete for package scope, re-audited | WatchPlan can be derived only from scanner-observed canonical files plus the exact owned metadata file; notify uses nonrecursive exact watches, event bursts coalesce, newer requests actively cancel obsolete scans, late generations are discarded, and periodic reconciliation is mandatory. No production renderer/input/PTY wiring exists. |
 | D4.7 credential custody | Complete as a boundary | Records retain only an opaque identity kind. OpenSSH, agents, keychains, hardware providers, certificates, and encrypted files remain external owners; no vault or secret dependency was added. |
 
 D4 is complete as a nonactivated package boundary. It does not make D3 or D5
 shipped: ADR 0012 is still proposed, no capability UI or managed OpenSSH launch
 exists, and controlled native lifecycle/parallel-session evidence remains
 required before connection activation.
+The re-audit also makes nightly compilation and controlled execution of the
+10,000-alias benchmark mandatory; UI/accessibility remain not applicable until
+D5 connects this package to a product surface.
 
 ### D5.1 — production SSH UX and connection lifecycle
 

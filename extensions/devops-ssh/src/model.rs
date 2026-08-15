@@ -188,4 +188,24 @@ mod tests {
         };
         assert!(metadata.validate().is_err());
     }
+
+    #[test]
+    fn metadata_rejects_duplicate_ids_and_excessive_tags() {
+        let duplicate = ConnectionMetadata {
+            connection_id: "openssh:prod".into(),
+            ..ConnectionMetadata::default()
+        };
+        let document = MetadataDocument {
+            schema: SCHEMA_VERSION,
+            connections: vec![duplicate.clone(), duplicate],
+        };
+        assert!(document.validate().is_err());
+
+        let excessive_tags = ConnectionMetadata {
+            connection_id: "openssh:prod".into(),
+            tags: (0..=MAX_TAGS).map(|index| format!("tag-{index}")).collect(),
+            ..ConnectionMetadata::default()
+        };
+        assert!(excessive_tags.validate().is_err());
+    }
 }

@@ -926,7 +926,14 @@ The D4 package is verified independently of any managed connection feature:
     cargo clippy -p automexia-devops-ssh --all-targets -- -D warnings
     cargo bench -p automexia-devops-ssh --bench openssh_inventory -- --noplot
 
-PR-native jobs execute parser, model, refresh, and platform persistence tests
+The benchmark is also compiled by the nightly benchmark-build job and executed
+with a 7,200-second process ceiling by controlled QA when
+AUTOMEXIA_QA_BENCHMARKS=1. Repository validation prevents the benchmark from
+being declared without both owners.
+
+PR-native jobs execute immutable-ceiling, bounded-grant, race-resistant
+no-follow read, active cancellation, scanner-derived watcher, bounded
+serialization, parser, model, refresh, and platform persistence tests
 on Windows, Linux, and macOS. Nightly runs openssh_inventory under libFuzzer
 with explicit nightly, duration, per-input timeout, and RSS limits. The
 10,000-alias Criterion target protects the reviewed maximum-cardinality path.
