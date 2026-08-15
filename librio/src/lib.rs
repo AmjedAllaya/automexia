@@ -446,13 +446,26 @@ pub struct Surface {
 /// Encode one mouse report. SGR (`CSI < b ; x ; y M`) when the program
 /// asked for it, else the original X10 form, whose coordinates are
 /// offset by 32 and cannot exceed 223 without the UTF-8 extension.
-fn mouse_report(button: u8, col: u16, row: u16, sgr: bool, utf8: bool) -> Vec<u8> {
+fn mouse_report(
+    button: u8,
+    col: u16,
+    row: u16,
+    pressed: bool,
+    sgr: bool,
+    utf8: bool,
+) -> Vec<u8> {
     let x = col.saturating_add(1);
     let y = row.saturating_add(1);
     if sgr {
-        return format!("\x1b[<{button};{x};{y}M").into_bytes();
+        // SGR preserves the actual button and distinguishes releases with a
+        // lowercase final byte.
+        let final_byte = if pressed { 'M' } else { 'm' };
+        return format!("\x1b[<{button};{x};{y}{final_byte}").into_bytes();
     }
-    let mut out = vec![0x1b, b'[', b'M', 32u8.saturating_add(button)];
+    // The legacy form represents a release as button 3 while retaining the
+    // modifier and motion bits carried above the low two button bits.
+    let encoded = if pressed { button } else { button | 3 };
+    let mut out = vec![0x1b, b'[', b'M', 32u8.saturating_add(encoded)];
     for value in [x, y] {
         if utf8 && value >= 95 {
             // Two-byte UTF-8 for the extended range.
@@ -755,7 +768,7 @@ impl Surface {
             }
             let mut out = Vec::new();
             for _ in 0..lines.abs() {
-                out.extend_from_slice(&mouse_report(button, col, row, sgr, utf8));
+                out.extend_from_slice(&mouse_report(button, col, row, true, sgr, utf8));
             }
             self.write(out);
             return true;
@@ -779,6 +792,79 @@ impl Surface {
 
         self.scroll(lines);
         false
+    }
+
+    /// Report a mouse button press or release when the application enabled a
+    /// DEC mouse mode. `button` uses 0=left, 1=middle, 2=right. Returning
+    /// `true` tells an embedding host that the application owns the event and
+    /// a local selection must not start. Shift always bypasses reporting.
+    pub fn mouse_button(
+        &self,
+        col: u16,
+        row: u16,
+        button: u8,
+        pressed: bool,
+        mods: Modifiers,
+    ) -> bool {
+        let (mouse_mode, x10, sgr, utf8) = {
+            let mode = self.terminal.lock().mode();
+            (
+                mode.intersects(Mode::MOUSE_MODE),
+                mode.contains(Mode::MOUSE_REPORT_X10),
+                mode.contains(Mode::SGR_MOUSE),
+                mode.contains(Mode::UTF8_MOUSE),
+            )
+        };
+        if !mouse_mode || mods.contains(Modifiers::SHIFT) || button > 2 {
+            return false;
+        }
+        // X10 mode reports only presses and carries no modifiers.
+        if x10 && !pressed {
+            return false;
+        }
+
+        let mut encoded = button;
+        if !x10 {
+            if mods.contains(Modifiers::ALT) {
+                encoded += 8;
+            }
+            if mods.contains(Modifiers::CTRL) {
+                encoded += 16;
+            }
+        }
+        self.write(mouse_report(encoded, col, row, pressed, sgr, utf8));
+        true
+    }
+
+    /// Report pointer motion for DEC button-event (1002) or any-event (1003)
+    /// modes. `button` is 0/1/2 while dragging or 3 for unpressed motion.
+    pub fn mouse_motion(&self, col: u16, row: u16, button: u8, mods: Modifiers) -> bool {
+        let (drag, motion, sgr, utf8) = {
+            let mode = self.terminal.lock().mode();
+            (
+                mode.contains(Mode::MOUSE_DRAG),
+                mode.contains(Mode::MOUSE_MOTION),
+                mode.contains(Mode::SGR_MOUSE),
+                mode.contains(Mode::UTF8_MOUSE),
+            )
+        };
+        if mods.contains(Modifiers::SHIFT) || button > 3 {
+            return false;
+        }
+        let wanted = if button == 3 { motion } else { drag || motion };
+        if !wanted {
+            return false;
+        }
+
+        let mut encoded = button + 32;
+        if mods.contains(Modifiers::ALT) {
+            encoded += 8;
+        }
+        if mods.contains(Modifiers::CTRL) {
+            encoded += 16;
+        }
+        self.write(mouse_report(encoded, col, row, true, sgr, utf8));
+        true
     }
 
     pub fn scroll(&self, delta_lines: i32) {
@@ -1236,17 +1322,46 @@ mod tests {
         assert!(state.display_offset() > 0, "the view should have moved");
     }
 
-    // SGR is the modern form; the X10 fallback offsets by 32.
     #[test]
-    fn mouse_reports_encode_both_forms() {
-        assert_eq!(
-            mouse_report(64, 4, 2, true, false),
-            b"\x1b[<64;5;3M".to_vec()
-        );
-        assert_eq!(
-            mouse_report(65, 0, 0, false, false),
-            vec![0x1b, b'[', b'M', 32 + 65, 33, 33]
-        );
+    fn clicks_and_motion_respect_application_mouse_ownership() {
+        let engine = Engine::new(Arc::new(CountingDelegate {
+            wakeups: AtomicUsize::new(0),
+        }));
+        let surface = engine
+            .create_surface(&SurfaceDesc::default())
+            .expect("spawn shell");
+
+        assert!(!surface.mouse_button(4, 2, 0, true, Modifiers::empty()));
+        surface.inject_output(b"\x1b[?1000h\x1b[?1006h");
+        assert!(surface.mouse_button(4, 2, 0, true, Modifiers::empty()));
+        assert!(surface.mouse_button(4, 2, 0, false, Modifiers::empty()));
+        assert!(!surface.mouse_button(4, 2, 0, true, Modifiers::SHIFT));
+        assert!(!surface.mouse_button(4, 2, 3, true, Modifiers::empty()));
+        assert!(!surface.mouse_motion(5, 2, 0, Modifiers::empty()));
+
+        surface.inject_output(b"\x1b[?1002h");
+        assert!(surface.mouse_motion(5, 2, 0, Modifiers::empty()));
+        assert!(!surface.mouse_motion(5, 2, 3, Modifiers::empty()));
+        assert!(!surface.mouse_motion(5, 2, 0, Modifiers::SHIFT));
+
+        surface.inject_output(b"\x1b[?1003h");
+        assert!(surface.mouse_motion(6, 2, 3, Modifiers::empty()));
+        assert!(!surface.mouse_motion(6, 2, 4, Modifiers::empty()));
+    }
+
+    #[test]
+    fn x10_mouse_reports_only_main_button_presses() {
+        let engine = Engine::new(Arc::new(CountingDelegate {
+            wakeups: AtomicUsize::new(0),
+        }));
+        let surface = engine
+            .create_surface(&SurfaceDesc::default())
+            .expect("spawn shell");
+
+        surface.inject_output(b"\x1b[?9h");
+        assert!(surface.mouse_button(1, 1, 0, true, Modifiers::CTRL));
+        assert!(!surface.mouse_button(1, 1, 0, false, Modifiers::empty()));
+        assert!(!surface.mouse_button(1, 1, 3, true, Modifiers::empty()));
     }
 
     // Dragging right to left has to be able to reach the first column.
@@ -1796,5 +1911,35 @@ mod tests {
         // The RGBA copy path serves virtual images the same way.
         let mut buf = [0u8; 16];
         assert_eq!(state.kitty_image_rgba(7, &mut buf), 16);
+    }
+}
+
+#[cfg(test)]
+mod mouse_report_tests {
+    use super::mouse_report;
+
+    #[test]
+    fn encodes_press_release_sgr_and_legacy_forms() {
+        assert_eq!(
+            mouse_report(64, 4, 2, true, true, false),
+            b"\x1b[<64;5;3M".to_vec()
+        );
+        assert_eq!(
+            mouse_report(0, 4, 2, false, true, false),
+            b"\x1b[<0;5;3m".to_vec()
+        );
+        assert_eq!(
+            mouse_report(65, 0, 0, true, false, false),
+            vec![0x1b, b'[', b'M', 32 + 65, 33, 33]
+        );
+        assert_eq!(
+            mouse_report(0, 0, 0, false, false, false),
+            vec![0x1b, b'[', b'M', 32 + 3, 33, 33]
+        );
+        // Legacy releases keep modifier bits: ctrl+left is 16 | 3.
+        assert_eq!(
+            mouse_report(16, 0, 0, false, false, false),
+            vec![0x1b, b'[', b'M', 32 + 19, 33, 33]
+        );
     }
 }

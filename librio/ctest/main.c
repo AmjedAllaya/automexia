@@ -1,11 +1,19 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include "../include/librio.h"
 
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
+#include <time.h>
 
 static atomic_int wakeups = 0;
+
+static void sleep_millis(long millis) {
+  struct timespec delay = {.tv_sec = millis / 1000,
+                           .tv_nsec = (millis % 1000) * 1000000L};
+  (void)nanosleep(&delay, NULL);
+}
 
 static void on_wakeup(void *userdata, rio_surface_id_t surface) {
   (void)userdata;
@@ -36,7 +44,15 @@ int main(void) {
     return 1;
   }
 
-  usleep(400 * 1000);
+  /* Compile and link every mouse-input ABI entry point. A plain shell has not
+     enabled mouse reporting, so it must leave ownership with this host. */
+  if (rio_surface_mouse_button(surface, 0, 0, 0, true, 0) ||
+      rio_surface_mouse_motion(surface, 0, 0, 3, 0)) {
+    fprintf(stderr, "plain shell unexpectedly captured mouse input\n");
+    return 1;
+  }
+
+  sleep_millis(400);
   const char *cmd = "printf '%s%s\\n' li brio-cgate\r";
   rio_surface_text(surface, cmd, strlen(cmd));
 
@@ -60,7 +76,7 @@ int main(void) {
         found = 1;
       }
     }
-    usleep(25 * 1000);
+    sleep_millis(25);
   }
 
   rio_cursor_s cursor = rio_render_state_cursor(state);

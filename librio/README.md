@@ -31,3 +31,8 @@ state.update();
 The C ABI is compiled by default (`crate-type = ["staticlib"]`); see
 `librio/include` for the curated header and modulemap. Public SDK packaging is
 out of scope until the extension/SDK milestone.
+
+Embedding hosts can forward keyboard, wheel, mouse-button, and pointer-motion
+events through the API instead of reproducing terminal-mode rules. Mouse input
+returns whether the child application owns the event; holding Shift bypasses
+application mouse reporting so the host can keep local text selection.
