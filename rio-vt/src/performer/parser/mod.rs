@@ -1044,11 +1044,11 @@ impl Parser {
         }
     }
 
-    /// Scalar transcode for wasm, where the C++-backed `simdutf` cannot
+    /// Scalar transcode for wasm and Miri, where the C++-backed `simdutf` is unavailable and cannot
     /// build. Same contract as the SIMD path below: each invalid maximal
     /// subpart becomes one U+FFFD, except a lone C1 byte, which keeps its
     /// execute semantics through decode.
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", miri))]
     #[inline]
     fn decode_codepoints(&mut self, src: &[u8]) {
         self.decode_buf.clear();
@@ -1083,7 +1083,7 @@ impl Parser {
     /// SIMD-transcode a UTF-8 byte slice into [`Self::decode_buf`] as `u32`
     /// codepoints, replacing each invalid UTF-8 maximal subpart with one
     /// U+FFFD inline (W3C/Unicode "Substitution of Maximal Subparts").
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), not(miri)))]
     #[inline]
     fn decode_codepoints(&mut self, src: &[u8]) {
         self.decode_buf.clear();
