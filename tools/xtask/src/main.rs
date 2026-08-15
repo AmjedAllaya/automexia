@@ -2414,6 +2414,34 @@ fn verify_architecture() -> TaskResult {
         "Phase 1 contracts lack schema rejection, secret redaction, launch adaptation, or per-session capsule ownership",
     )?;
 
+    let launch_broker = read(&app.join("src/context/launch_broker.rs"))?;
+    require(
+        context.contains("#[cfg(test)]")
+            && context.contains("pub mod launch_broker;")
+            && launch_broker.contains("pub const MANAGED_SESSION_LAUNCH_ENABLED: bool = false")
+            && launch_broker.contains("const _: () = assert!(!MANAGED_SESSION_LAUNCH_ENABLED)")
+            && launch_broker.contains("Capability::SessionLaunch")
+            && launch_broker.contains("Capability::ProcessSpawn")
+            && launch_broker.contains("SessionLaunchDescriptor::new")
+            && launch_broker.contains("GetFileInformationByHandle")
+            && launch_broker.contains("metadata.dev()")
+            && launch_broker.contains("metadata.ino()")
+            && launch_broker.contains("OptionConfusedDestination")
+            && launch_broker.contains("ExtensionEnvironmentAccess")
+            && launch_broker.contains("StaleOperationLease")
+            && launch_broker.contains("production_broker_is_a_hard_denial_before_resolution")
+            && launch_broker.contains("executable_replacement_is_detected_even_when_size_is_unchanged")
+            && launch_broker.contains("accepted_destination_remains_one_literal_native_argument")
+            && !launch_broker.contains(".spawn()")
+            && !launch_broker.contains("create_pty")
+            && api_model.contains("SessionLaunch")
+            && api_model.contains("session.launch")
+            && api_model.contains("impl CapabilityRequest")
+            && api_model.contains(r#"try_from = "CapabilityRequestWire""#)
+            && api_model.contains("impl CapabilityDecision"),
+        "non-activated D3 broker lost its test-only gate, native identity/argv/lifecycle validation, single launch seam, or typed capability contracts",
+    )?;
+
     let island_renderer = read(&app.join("src/renderer/island.rs"))?;
     let pane_layout = read(&app.join("src/layout/mod.rs"))?;
     let responsive_chrome = read(&app.join("src/renderer/responsive.rs"))?;
@@ -2766,6 +2794,7 @@ fn verify_architecture() -> TaskResult {
         )?;
     }
     for excessive in [
+        "Capability::SessionLaunch",
         "Capability::ProcessSpawn",
         "Capability::Network",
         "Capability::Clipboard",

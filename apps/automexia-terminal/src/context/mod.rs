@@ -1,4 +1,6 @@
 pub mod launch;
+#[cfg(test)]
+pub mod launch_broker;
 pub mod renderable;
 pub mod title;
 

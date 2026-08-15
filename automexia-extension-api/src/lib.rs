@@ -309,6 +309,12 @@ pub enum Capability {
     TerminalOutputRead,
     UiOverlay,
     Clipboard,
+    /// Application-owned exact-argument interactive session creation.
+    ///
+    /// This is intentionally distinct from broad process spawning. The v0.4
+    /// runtime does not grant it; the non-activated v0.5 broker boundary may
+    /// evaluate it only after the replacement security ADR is accepted.
+    SessionLaunch,
     ProcessSpawn,
     Network,
 }
@@ -321,6 +327,7 @@ impl Capability {
             Self::TerminalOutputRead => "terminal.output.read",
             Self::UiOverlay => "ui.overlay",
             Self::Clipboard => "clipboard",
+            Self::SessionLaunch => "session.launch",
             Self::ProcessSpawn => "process.spawn",
             Self::Network => "network",
         }
@@ -946,7 +953,7 @@ pub enum ResourceScope {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "CapabilityRequestWire")]
 pub struct CapabilityRequest {
     pub version: ContractVersion,
     pub operation_id: OperationId,
@@ -955,6 +962,65 @@ pub struct CapabilityRequest {
     pub capability: Capability,
     pub resource: ResourceScope,
     pub reason: BoundedText,
+}
+
+impl CapabilityRequest {
+    pub fn new(
+        operation_id: OperationId,
+        extension_id: ExtensionId,
+        session_id: SessionId,
+        capability: Capability,
+        resource: ResourceScope,
+        reason: BoundedText,
+    ) -> Result<Self, ContractError> {
+        validate_public_text(&reason, "capability reason")?;
+        match &resource {
+            ResourceScope::Path(path) => validate_public_text(path, "capability path")?,
+            ResourceScope::NetworkHost(host) => {
+                validate_public_text(host, "capability network host")?
+            }
+            ResourceScope::Session
+            | ResourceScope::Executable(_)
+            | ResourceScope::Clipboard => {}
+        }
+        Ok(Self {
+            version: ContractVersion::CURRENT,
+            operation_id,
+            extension_id,
+            session_id,
+            capability,
+            resource,
+            reason,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CapabilityRequestWire {
+    version: ContractVersion,
+    operation_id: OperationId,
+    extension_id: ExtensionId,
+    session_id: SessionId,
+    capability: Capability,
+    resource: ResourceScope,
+    reason: BoundedText,
+}
+
+impl TryFrom<CapabilityRequestWire> for CapabilityRequest {
+    type Error = ContractError;
+
+    fn try_from(value: CapabilityRequestWire) -> Result<Self, Self::Error> {
+        let _version = value.version;
+        Self::new(
+            value.operation_id,
+            value.extension_id,
+            value.session_id,
+            value.capability,
+            value.resource,
+            value.reason,
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -972,6 +1038,21 @@ pub struct CapabilityDecision {
     pub operation_id: OperationId,
     pub decision: Decision,
     pub decided_at_ms: u64,
+}
+
+impl CapabilityDecision {
+    pub const fn new(
+        operation_id: OperationId,
+        decision: Decision,
+        decided_at_ms: u64,
+    ) -> Self {
+        Self {
+            version: ContractVersion::CURRENT,
+            operation_id,
+            decision,
+            decided_at_ms,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1172,5 +1253,37 @@ mod tests {
         assert!(ExtensionId::new("automexia devops").is_err());
         assert!(ExecutableId::new("pwsh\u{0}.exe").is_err());
         assert_ne!(SessionId::new(1).get(), OperationId::new(2).get());
+    }
+
+    #[test]
+    fn session_launch_capability_is_scoped_and_reason_is_public_text() {
+        let operation_id = OperationId::new(17);
+        let request = CapabilityRequest::new(
+            operation_id,
+            ExtensionId::new("automexia.devops-ssh").unwrap(),
+            SessionId::new(9),
+            Capability::SessionLaunch,
+            ResourceScope::Executable(ExecutableId::new("ssh").unwrap()),
+            BoundedText::new("Open reviewed connection").unwrap(),
+        )
+        .unwrap();
+        assert_eq!(request.capability.label(), "session.launch");
+        assert_eq!(
+            CapabilityDecision::new(operation_id, Decision::Deny, 1).operation_id,
+            operation_id
+        );
+        assert!(CapabilityRequest::new(
+            operation_id,
+            ExtensionId::new("automexia.devops-ssh").unwrap(),
+            SessionId::new(9),
+            Capability::SessionLaunch,
+            ResourceScope::Executable(ExecutableId::new("ssh").unwrap()),
+            BoundedText::new("line one\nline two").unwrap(),
+        )
+        .is_err());
+
+        let mut serialized = serde_json::to_value(request).unwrap();
+        serialized["reason"] = serde_json::json!("line one\nline two");
+        assert!(serde_json::from_value::<CapabilityRequest>(serialized).is_err());
     }
 }
