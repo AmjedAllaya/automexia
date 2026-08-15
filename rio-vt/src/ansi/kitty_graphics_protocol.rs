@@ -62,6 +62,11 @@ pub struct KittyGraphicsResponse {
     pub placement_request: Option<PlacementRequest>,
     pub delete_request: Option<DeleteRequest>,
     pub response: Option<String>,
+    /// Failure response selected by the terminal state layer when a
+    /// parsed action cannot be completed. Placement requests need this
+    /// because only the image store can determine whether `a=p` refers
+    /// to a live image. Quiet-level handling remains centralized here.
+    pub error_response: Option<String>,
     /// True when this "response" is just a chunk-accumulation
     /// acknowledgement — the parser stored the chunk and is waiting
     /// for more. The dispatcher should treat this as a successful
@@ -82,6 +87,7 @@ impl KittyGraphicsResponse {
             placement_request: None,
             delete_request: None,
             response: None,
+            error_response: None,
             incomplete: true,
         }
     }
@@ -408,43 +414,27 @@ pub fn parse(
                 cmd.quiet,
                 true,
             ),
+            error_response: None,
             incomplete: false,
         });
     }
 
-    // Handle query action: requires an image id per kitty spec. Without
-    // one we cannot even build a response addressed to anything, so we
-    // surface EINVAL instead of pretending success.
-    if cmd.action == Action::Query {
-        if cmd.image_id == 0 {
-            return Some(KittyGraphicsResponse {
-                graphic_data: None,
-                placement_request: None,
-                delete_request: None,
-                response: encode_response_quiet(
-                    cmd.image_id,
-                    cmd.image_number,
-                    cmd.placement_id,
-                    "EINVAL: image ID required",
-                    cmd.quiet,
-                    true,
-                ),
-                incomplete: false,
-            });
-        }
-        let response = encode_response_quiet(
-            cmd.image_id,
-            cmd.image_number,
-            cmd.placement_id,
-            "OK",
-            cmd.quiet,
-            false,
-        );
+    // Queries use the normal accumulation and decode path below. An
+    // unconditional early OK bypassed decoding and chunk accumulation.
+    if cmd.action == Action::Query && cmd.image_id == 0 {
         return Some(KittyGraphicsResponse {
             graphic_data: None,
             placement_request: None,
             delete_request: None,
-            response,
+            response: encode_response_quiet(
+                cmd.image_id,
+                cmd.image_number,
+                cmd.placement_id,
+                "EINVAL: image ID required",
+                cmd.quiet,
+                true,
+            ),
+            error_response: None,
             incomplete: false,
         });
     }
@@ -599,6 +589,7 @@ pub fn parse(
                                 true,
                             )
                         },
+                        error_response: None,
                         incomplete: false,
                     });
                 }
@@ -646,6 +637,7 @@ pub fn parse(
                 placement_request,
                 delete_request: None,
                 response,
+                error_response: None,
                 incomplete: false,
             })
         }
@@ -679,11 +671,20 @@ pub fn parse(
                     false,
                 )
             };
+            let error_response = encode_response_quiet(
+                cmd.image_id,
+                cmd.image_number,
+                cmd.placement_id,
+                "ENOENT: image not found",
+                cmd.quiet,
+                true,
+            );
             Some(KittyGraphicsResponse {
                 graphic_data: None,
                 placement_request: Some(placement),
                 delete_request: None,
                 response,
+                error_response,
                 incomplete: false,
             })
         }
@@ -705,14 +706,39 @@ pub fn parse(
                 placement_request: None,
                 delete_request: Some(delete),
                 response: None,
+                error_response: None,
                 incomplete: false,
             })
         }
         Action::Query => {
-            // Query is handled earlier in the function before the
-            // chunking branches; the early return makes this arm
-            // unreachable in practice.
-            unreachable!("Query handled above")
+            // Probes exercise the same decoder as transmissions and
+            // report capability honestly without storing the result.
+            let response = match create_graphic_data(&cmd) {
+                Ok(_) => encode_response_quiet(
+                    cmd.image_id,
+                    cmd.image_number,
+                    cmd.placement_id,
+                    "OK",
+                    cmd.quiet,
+                    false,
+                ),
+                Err(err) => encode_response_quiet(
+                    cmd.image_id,
+                    cmd.image_number,
+                    cmd.placement_id,
+                    err.message(),
+                    cmd.quiet,
+                    true,
+                ),
+            };
+            Some(KittyGraphicsResponse {
+                graphic_data: None,
+                placement_request: None,
+                delete_request: None,
+                response,
+                error_response: None,
+                incomplete: false,
+            })
         }
         Action::Frame | Action::Animate | Action::Compose => {
             // Animation actions are not supported. Per the kitty spec we
@@ -746,6 +772,7 @@ pub fn parse(
                 placement_request: None,
                 delete_request: None,
                 response,
+                error_response: None,
                 incomplete: false,
             })
         }
@@ -1632,12 +1659,17 @@ mod tests {
 
     #[test]
     fn test_parse_query() {
-        let result = parse_kitty_graphics_protocol("a=q,i=1", "");
-        assert!(result.is_some());
+        let valid = parse_kitty_graphics_protocol("a=q,i=1,f=32,s=1,v=1", "AAAAAA==")
+            .expect("valid query response");
+        assert!(valid.graphic_data.is_none(), "queries never store data");
+        assert!(valid.response.expect("query reply").contains(";OK"));
 
-        let response = result.unwrap();
-        assert!(response.response.is_some());
-        assert!(response.response.unwrap().contains("OK"));
+        let invalid =
+            parse_kitty_graphics_protocol("a=q,i=1", "").expect("invalid query response");
+        assert!(
+            !invalid.response.expect("failure reply").contains(";OK"),
+            "unsupported data must not disable a client's fallback"
+        );
     }
 
     #[test]
@@ -2035,8 +2067,8 @@ mod tests {
         );
         assert!(body.contains("I=7"));
 
-        // With an explicit id, query succeeds with OK.
-        let result = parse_kitty_graphics_protocol("a=q,i=42", "")
+        // An explicit id plus decodable data succeeds.
+        let result = parse_kitty_graphics_protocol("a=q,i=42,f=32,s=1,v=1", "AAAAAA==")
             .expect("response struct must exist");
         let body = result.response.expect("OK response expected");
         assert!(body.contains("i=42"));

@@ -1,0 +1,41 @@
+---
+source: apps/automexia-terminal/src/renderer/session_footer.rs
+expression: matrix
+---
+[
+  {
+    "case": "single",
+    "outer": [
+      0.0,
+      468.0,
+      900.0,
+      32.0
+    ],
+    "surface": [
+      0.0,
+      468.0,
+      900.0,
+      32.0
+    ]
+  },
+  {
+    "case": "tiny",
+    "outer": null,
+    "surface": null
+  },
+  {
+    "case": "hidpi",
+    "outer": [
+      0.0,
+      548.0,
+      760.0,
+      32.0
+    ],
+    "surface": [
+      0.0,
+      548.0,
+      760.0,
+      32.0
+    ]
+  }
+]

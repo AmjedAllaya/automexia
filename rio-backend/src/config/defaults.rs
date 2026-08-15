@@ -7,9 +7,11 @@ pub fn default_bool_true() -> bool {
 
 #[inline]
 pub fn default_line_height() -> f32 {
-    // Give long listings and structured command output enough vertical air to
-    // keep adjacent semantic/color roles visually distinct.
-    1.20
+    // Keep command blocks and dense output readable without making the shared
+    // terminal grid so tall that split panes lose too much working space.
+    // This renderer-level metric is intentionally platform-neutral: shell
+    // blank lines would alter PTY history, copied text, and full-screen TUIs.
+    1.22
 }
 
 #[inline]
@@ -164,4 +166,15 @@ pub fn default_config_file_content() -> String {
     String::from(
         "# See the configuration reference: https://github.com/AmjedAllaya/automexia-terminal/tree/main/docs\n",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_line_spacing_balances_density_and_legibility() {
+        assert_eq!(default_line_height(), 1.22);
+        assert!((1.15..=1.25).contains(&default_line_height()));
+    }
 }

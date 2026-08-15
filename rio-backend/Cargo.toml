@@ -12,7 +12,7 @@ description = "Backend infrastructure for Rio terminal"
 
 [lib]
 path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [dependencies]
 tracing = { workspace = true }
@@ -40,6 +40,7 @@ default = ["renderer", "wayland", "x11", "rio-window", "graphics"]
 # The renderer (sugarloaf) backend. Off makes rio-backend a lean terminal
 # core with no GPU/font-shaping deps — this is what `librio` embeds.
 renderer = ["dep:sugarloaf", "rio-vt/renderer"]
+native-gui-test-hooks = ["renderer", "sugarloaf/native-gui-test-hooks"]
 # Image (sixel/kitty/iTerm2) and glyph protocol decoding. On for the desktop
 # frontend; off for lean headless embeds (librio).
 graphics = ["rio-vt/graphics"]

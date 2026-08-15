@@ -232,14 +232,18 @@ impl From<String> for Action {
                 Some(Action::Search(SearchAction::SearchHistoryPrevious))
             }
             "clearhistory" => Some(Action::ClearHistory),
+            "clearscreen" => Some(Action::ClearScreen),
             "resetfontsize" => Some(Action::ResetFontSize),
             "increasefontsize" => Some(Action::IncreaseFontSize),
             "decreasefontsize" => Some(Action::DecreaseFontSize),
             "createwindow" => Some(Action::WindowCreateNew),
+            "closewindow" => Some(Action::WindowClose),
+            "reloadconfig" => Some(Action::ReloadConfig),
             "togglequake" => Some(Action::ToggleQuake),
             "scrolltoprevprompt" => Some(Action::ScrollToPrevPrompt),
             "scrolltonextprompt" => Some(Action::ScrollToNextPrompt),
             "createtab" => Some(Action::TabCreateNew),
+            "createlocaltab" => Some(Action::LocalTabCreateNew),
             "movecurrenttabtoprev" => Some(Action::MoveCurrentTabToPrev),
             "movecurrenttabtonext" => Some(Action::MoveCurrentTabToNext),
             "closetab" => Some(Action::TabCloseCurrent),
@@ -248,6 +252,8 @@ impl From<String> for Action {
             "openconfigeditor" => Some(Action::ConfigEditor),
             "selectprevtab" => Some(Action::SelectPrevTab),
             "selectnexttab" => Some(Action::SelectNextTab),
+            "selectprevlocaltab" => Some(Action::SelectPrevLocalTab),
+            "selectnextlocaltab" => Some(Action::SelectNextLocalTab),
             "selectlasttab" => Some(Action::SelectLastTab),
             "receivechar" => Some(Action::ReceiveChar),
             "scrollpageup" => Some(Action::ScrollPageUp),
@@ -258,8 +264,14 @@ impl From<String> for Action {
             "scrolltobottom" => Some(Action::ScrollToBottom),
             "splitright" => Some(Action::SplitRight),
             "splitdown" => Some(Action::SplitDown),
+            "clonesplitright" => Some(Action::CloneSplitRight),
+            "clonesplitdown" => Some(Action::CloneSplitDown),
             "selectnextsplit" => Some(Action::SelectNextSplit),
             "selectprevsplit" => Some(Action::SelectPrevSplit),
+            "selectpaneleft" => Some(Action::SelectPaneLeft),
+            "selectpaneright" => Some(Action::SelectPaneRight),
+            "selectpaneup" => Some(Action::SelectPaneUp),
+            "selectpanedown" => Some(Action::SelectPaneDown),
             "selectnextsplitortab" => Some(Action::SelectNextSplitOrTab),
             "selectprevsplitortab" => Some(Action::SelectPrevSplitOrTab),
             "movedividerup" => Some(Action::MoveDividerUp),
@@ -270,6 +282,7 @@ impl From<String> for Action {
             "toggleappearancetheme" => Some(Action::ToggleAppearanceTheme),
             "togglefullscreen" => Some(Action::ToggleFullscreen),
             "opencommandpalette" => Some(Action::OpenCommandPalette),
+            "previewselectedimage" => Some(Action::PreviewSelectedImage),
             "none" => Some(Action::None),
             _ => None,
         };
@@ -390,6 +403,9 @@ pub enum Action {
     /// Clear the display buffer(s) to remove history.
     ClearHistory,
 
+    /// Clear the visible screen and all scrollback.
+    ClearScreen,
+
     /// Hide the Automexia window.
     #[allow(dead_code)]
     Hide,
@@ -417,11 +433,20 @@ pub enum Action {
     #[allow(dead_code)]
     WindowCreateNew,
 
+    /// Close only the current Automexia window.
+    WindowClose,
+
+    /// Reload Automexia's configuration from disk.
+    ReloadConfig,
+
     /// Create config editor.
     ConfigEditor,
 
     /// Create a new Automexia tab.
     TabCreateNew,
+
+    /// Create an independent tab inside the selected split pane.
+    LocalTabCreateNew,
 
     /// Move current tab to previous slot.
     MoveCurrentTabToPrev,
@@ -434,6 +459,12 @@ pub enum Action {
 
     /// Switch to prev tab.
     SelectPrevTab,
+
+    /// Switch to the next independent tab inside the selected pane.
+    SelectNextLocalTab,
+
+    /// Switch to the previous independent tab inside the selected pane.
+    SelectPrevLocalTab,
 
     /// Close tab.
     TabCloseCurrent,
@@ -496,11 +527,29 @@ pub enum Action {
     /// Split vertically
     SplitDown,
 
+    /// Create an independent clone of the active session in a right split.
+    CloneSplitRight,
+
+    /// Create an independent clone of the active session in a lower split.
+    CloneSplitDown,
+
     /// Select next split
     SelectNextSplit,
 
     /// Select previous split
     SelectPrevSplit,
+
+    /// Select the nearest pane to the left.
+    SelectPaneLeft,
+
+    /// Select the nearest pane to the right.
+    SelectPaneRight,
+
+    /// Select the nearest pane above.
+    SelectPaneUp,
+
+    /// Select the nearest pane below.
+    SelectPaneDown,
 
     /// Select next split if available if not next tab
     SelectNextSplitOrTab,
@@ -519,6 +568,9 @@ pub enum Action {
 
     /// Move divider right
     MoveDividerRight,
+
+    /// Preview the selected or pointer-targeted local raster image.
+    PreviewSelectedImage,
 
     /// Toggle the command palette overlay.
     OpenCommandPalette,
@@ -626,7 +678,7 @@ macro_rules! trigger {
 pub fn default_mouse_bindings() -> Vec<MouseBinding> {
     bindings!(
         MouseBinding;
-        MouseButton::Right;                            MouseAction::ExpandSelection;
+        MouseButton::Right,  ~BindingMode::VI;         Action::Paste;
         MouseButton::Right,   ModifiersState::CONTROL; MouseAction::ExpandSelection;
         MouseButton::Middle, ~BindingMode::VI;         Action::PasteSelection;
     )
@@ -1098,9 +1150,33 @@ pub fn create_hint_bindings(
     hint_bindings
 }
 
-// Macos
-#[cfg(all(target_os = "macos", not(test)))]
-pub fn platform_key_bindings(
+fn clone_split_key_bindings() -> Vec<KeyBinding> {
+    bindings!(
+        KeyBinding;
+        "r", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
+        "d", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown;
+        // Keep the displaced shell controls available explicitly.
+        "r", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x12".into());
+        "d", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x04".into());
+    )
+}
+
+/// Automexia's original non-macOS tab scopes.
+///
+/// - Ctrl+T adds a window-level tab.
+/// - Ctrl+Shift+T adds an independent tab to the selected pane/session.
+#[cfg(any(test, not(target_os = "macos")))]
+fn scoped_tab_key_bindings() -> Vec<KeyBinding> {
+    bindings!(
+        KeyBinding;
+        "t", ModifiersState::CONTROL; Action::TabCreateNew;
+        "t", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::LocalTabCreateNew;
+    )
+}
+
+/// Automexia's classic macOS defaults.
+#[cfg(any(test, target_os = "macos"))]
+fn automexia_macos_key_bindings(
     use_navigation_key_bindings: bool,
     use_splits: bool,
     config_keyboard: ConfigKeyboard,
@@ -1115,20 +1191,17 @@ pub fn platform_key_bindings(
             Action::Esc("\x1b[2;2~".into());
         "k", ModifiersState::SUPER, ~BindingMode::VI, ~BindingMode::SEARCH;
             Action::Esc("\x0c".into());
-        "k", ModifiersState::SUPER, ~BindingMode::VI;  Action::ClearHistory;
+        "k", ModifiersState::SUPER, ~BindingMode::VI; Action::ClearHistory;
         "v", ModifiersState::SUPER, ~BindingMode::VI; Action::Paste;
         "f", ModifiersState::CONTROL | ModifiersState::SUPER; Action::ToggleFullscreen;
         "c", ModifiersState::SUPER; Action::Copy;
         "c", ModifiersState::SUPER, +BindingMode::VI; Action::ClearSelection;
         "a", ModifiersState::SUPER, ~BindingMode::VI, ~BindingMode::SEARCH; Action::SelectAll;
-        "h", ModifiersState::SUPER; Action::Hide;
-        "h", ModifiersState::SUPER | ModifiersState::ALT; Action::HideOtherApplications;
-        "m", ModifiersState::SUPER; Action::Minimize;
         "q", ModifiersState::SUPER; Action::Quit;
         "n", ModifiersState::SUPER; Action::WindowCreateNew;
         ",", ModifiersState::SUPER; Action::ConfigEditor;
         "p", ModifiersState::SUPER | ModifiersState::SHIFT; Action::OpenCommandPalette;
-
+        "i", ModifiersState::SUPER | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::PreviewSelectedImage;
         // Search
         "f", ModifiersState::SUPER, ~BindingMode::SEARCH; Action::SearchForward;
         "b", ModifiersState::SUPER, ~BindingMode::SEARCH; Action::SearchBackward;
@@ -1145,11 +1218,14 @@ pub fn platform_key_bindings(
         key_bindings.extend(bindings!(
             KeyBinding;
             "t", ModifiersState::SUPER; Action::TabCreateNew;
+            "t", ModifiersState::SUPER | ModifiersState::SHIFT; Action::LocalTabCreateNew;
             Key::Named(Tab), ModifiersState::CONTROL; Action::SelectNextTab;
             Key::Named(Tab), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectPrevTab;
             "w", ModifiersState::SUPER; Action::CloseCurrentSplitOrTab;
             "[", ModifiersState::SUPER | ModifiersState::SHIFT; Action::SelectPrevTab;
             "]", ModifiersState::SUPER | ModifiersState::SHIFT; Action::SelectNextTab;
+            "[", ModifiersState::SUPER | ModifiersState::ALT; Action::SelectPrevLocalTab;
+            "]", ModifiersState::SUPER | ModifiersState::ALT; Action::SelectNextLocalTab;
             "1", ModifiersState::SUPER; Action::SelectTab(0);
             "2", ModifiersState::SUPER; Action::SelectTab(1);
             "3", ModifiersState::SUPER; Action::SelectTab(2);
@@ -1165,20 +1241,25 @@ pub fn platform_key_bindings(
     if config_keyboard.disable_ctlseqs_alt {
         key_bindings.extend(bindings!(
             KeyBinding;
-            Key::Named(ArrowLeft), ModifiersState::ALT,  ~BindingMode::VI;
+            Key::Named(ArrowLeft), ModifiersState::ALT, ~BindingMode::VI;
                 Action::Esc("\x1bb".into());
-            Key::Named(ArrowRight), ModifiersState::ALT,  ~BindingMode::VI;
+            Key::Named(ArrowRight), ModifiersState::ALT, ~BindingMode::VI;
                 Action::Esc("\x1bf".into());
         ));
     }
 
     if use_splits {
+        key_bindings.extend(clone_split_key_bindings());
         key_bindings.extend(bindings!(
             KeyBinding;
             "d", ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
             "d", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
             "]", ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectNextSplit;
             "[", ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectPrevSplit;
+            Key::Named(ArrowLeft), ModifiersState::SUPER | ModifiersState::ALT; Action::SelectPaneLeft;
+            Key::Named(ArrowRight), ModifiersState::SUPER | ModifiersState::ALT; Action::SelectPaneRight;
+            Key::Named(ArrowUp), ModifiersState::SUPER | ModifiersState::ALT; Action::SelectPaneUp;
+            Key::Named(ArrowDown), ModifiersState::SUPER | ModifiersState::ALT; Action::SelectPaneDown;
             Key::Named(ArrowUp), ModifiersState::CONTROL | ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerUp;
             Key::Named(ArrowDown), ModifiersState::CONTROL | ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerDown;
             Key::Named(ArrowLeft), ModifiersState::CONTROL | ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerLeft;
@@ -1189,28 +1270,27 @@ pub fn platform_key_bindings(
     key_bindings
 }
 
-// Not Windows, Macos
-#[cfg(not(any(target_os = "macos", target_os = "windows", test)))]
-pub fn platform_key_bindings(
+/// Automexia's classic Windows defaults.
+#[cfg(any(test, target_os = "windows"))]
+fn automexia_windows_key_bindings(
     use_navigation_key_bindings: bool,
     use_splits: bool,
-    _: ConfigKeyboard,
 ) -> Vec<KeyBinding> {
     let mut key_bindings = bindings!(
         KeyBinding;
+        ",", ModifiersState::CONTROL; Action::ConfigEditor;
+        Key::Named(Insert), ModifiersState::SHIFT, ~BindingMode::VI; Action::PasteSelection;
+        "c", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::Copy;
+        "c", ModifiersState::CONTROL | ModifiersState::SHIFT, +BindingMode::VI; Action::ClearSelection;
         "v", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::Paste;
-        "c", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::Copy;
-        "c", ModifiersState::CONTROL | ModifiersState::SHIFT,
-            +BindingMode::VI; Action::ClearSelection;
-        Key::Named(Insert),   ModifiersState::SHIFT, ~BindingMode::VI; Action::PasteSelection;
-        "0", ModifiersState::CONTROL;  Action::ResetFontSize;
-        "=", ModifiersState::CONTROL;  Action::IncreaseFontSize;
-        "+", ModifiersState::CONTROL;  Action::IncreaseFontSize;
-        "-", ModifiersState::CONTROL;  Action::DecreaseFontSize;
+        "0", ModifiersState::CONTROL; Action::ResetFontSize;
+        "=", ModifiersState::CONTROL; Action::IncreaseFontSize;
+        "+", ModifiersState::CONTROL; Action::IncreaseFontSize;
+        "-", ModifiersState::CONTROL; Action::DecreaseFontSize;
         "n", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::WindowCreateNew;
-        ",", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::ConfigEditor;
         "p", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::OpenCommandPalette;
-
+        "i", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::PreviewSelectedImage;
+        "a", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; Action::SelectAll;
         // Search
         "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchForward;
         "b", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchBackward;
@@ -1221,90 +1301,30 @@ pub fn platform_key_bindings(
         "n", ModifiersState::CONTROL,  +BindingMode::SEARCH; SearchAction::SearchHistoryNext;
         Key::Named(ArrowUp), +BindingMode::SEARCH; SearchAction::SearchHistoryPrevious;
         Key::Named(ArrowDown), +BindingMode::SEARCH; SearchAction::SearchHistoryNext;
-    );
 
-    if use_navigation_key_bindings {
-        key_bindings.extend(bindings!(
-            KeyBinding;
-            "t", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::TabCreateNew;
-            Key::Named(Tab), ModifiersState::CONTROL; Action::SelectNextTab;
-            Key::Named(Tab), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectPrevTab;
-            "[", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectPrevTab;
-            "]", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectNextTab;
-            "w", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::CloseCurrentSplitOrTab;
-        ));
-    }
-
-    if use_splits {
-        key_bindings.extend(bindings!(
-            KeyBinding;
-            "r", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
-            "d", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
-            "]", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectNextSplit;
-            "[", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectPrevSplit;
-            Key::Named(ArrowUp), ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerUp;
-            Key::Named(ArrowDown), ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerDown;
-            Key::Named(ArrowLeft), ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerLeft;
-            Key::Named(ArrowRight), ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerRight;
-        ));
-    }
-
-    key_bindings
-}
-
-// Windows
-#[cfg(all(target_os = "windows", not(test)))]
-pub fn platform_key_bindings(
-    use_navigation_key_bindings: bool,
-    use_splits: bool,
-    _: ConfigKeyboard,
-) -> Vec<KeyBinding> {
-    // AUTOMEXIA WINDOWS DEFAULTS v2.3 — application shortcuts follow
-    // Windows/browser conventions while readline/editor control keys remain PTY input.
-    let mut key_bindings = bindings!(
-        KeyBinding;
-        "v", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::Paste;
-        "c", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::Copy;
-        "c", ModifiersState::CONTROL | ModifiersState::SHIFT, +BindingMode::VI; Action::ClearSelection;
-        "a", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; Action::SelectAll;
-        "k", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::ClearHistory;
-        Key::Named(Insert), ModifiersState::SHIFT, ~BindingMode::VI; Action::PasteSelection;
-        "0", ModifiersState::CONTROL; Action::ResetFontSize;
-        "=", ModifiersState::CONTROL; Action::IncreaseFontSize;
-        "+", ModifiersState::CONTROL; Action::IncreaseFontSize;
-        "-", ModifiersState::CONTROL; Action::DecreaseFontSize;
-        Key::Named(Enter), ModifiersState::ALT; Action::ToggleFullscreen;
-        Key::Named(F11); Action::ToggleFullscreen;
-        "n", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::WindowCreateNew;
-        ",", ModifiersState::CONTROL; Action::ConfigEditor;
-        "p", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::OpenCommandPalette;
         Key::Named(Space), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::ToggleViMode;
         Key::Named(Space), ModifiersState::CONTROL | ModifiersState::ALT; Action::ToggleQuake;
         "t", ModifiersState::ALT | ModifiersState::SHIFT; Action::ToggleAppearanceTheme;
+        "k", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::ClearHistory;
+        Key::Named(F11); Action::ToggleFullscreen;
+        Key::Named(Enter), ModifiersState::ALT; Action::ToggleFullscreen;
         Key::Named(Backspace), ModifiersState::CONTROL, ~BindingMode::VI; Action::Esc("\u{0017}".into());
-
-        // Search. Backward search remains Shift+Enter inside search mode.
-        "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchForward;
-        "c", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchCancel;
-        "u", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchClear;
-        "w", ModifiersState::CONTROL,  +BindingMode::SEARCH; SearchAction::SearchDeleteWord;
-        "p", ModifiersState::CONTROL,  +BindingMode::SEARCH; SearchAction::SearchHistoryPrevious;
-        "n", ModifiersState::CONTROL,  +BindingMode::SEARCH; SearchAction::SearchHistoryNext;
-        Key::Named(ArrowUp), +BindingMode::SEARCH; SearchAction::SearchHistoryPrevious;
-        Key::Named(ArrowDown), +BindingMode::SEARCH; SearchAction::SearchHistoryNext;
     );
+
+    key_bindings.extend(scoped_tab_key_bindings());
 
     if use_navigation_key_bindings {
         key_bindings.extend(bindings!(
             KeyBinding;
-            "t", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::TabCreateNew;
-            "w", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::CloseCurrentSplitOrTab;
             Key::Named(Tab), ModifiersState::CONTROL; Action::SelectNextTab;
             Key::Named(Tab), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectPrevTab;
             Key::Named(PageUp), ModifiersState::CONTROL; Action::SelectPrevTab;
             Key::Named(PageDown), ModifiersState::CONTROL; Action::SelectNextTab;
+            Key::Named(PageUp), ModifiersState::ALT; Action::SelectPrevLocalTab;
+            Key::Named(PageDown), ModifiersState::ALT; Action::SelectNextLocalTab;
             Key::Named(PageUp), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::MoveCurrentTabToPrev;
             Key::Named(PageDown), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::MoveCurrentTabToNext;
+            "w", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::CloseCurrentSplitOrTab;
             "1", ModifiersState::CONTROL; Action::SelectTab(0);
             "2", ModifiersState::CONTROL; Action::SelectTab(1);
             "3", ModifiersState::CONTROL; Action::SelectTab(2);
@@ -1318,12 +1338,17 @@ pub fn platform_key_bindings(
     }
 
     if use_splits {
+        key_bindings.extend(clone_split_key_bindings());
         key_bindings.extend(bindings!(
             KeyBinding;
             "r", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
             "d", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
             Key::Named(F6), ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectNextSplit;
             Key::Named(F6), ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectPrevSplit;
+            Key::Named(ArrowLeft), ModifiersState::ALT; Action::SelectPaneLeft;
+            Key::Named(ArrowRight), ModifiersState::ALT; Action::SelectPaneRight;
+            Key::Named(ArrowUp), ModifiersState::ALT; Action::SelectPaneUp;
+            Key::Named(ArrowDown), ModifiersState::ALT; Action::SelectPaneDown;
             Key::Named(ArrowUp), ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerUp;
             Key::Named(ArrowDown), ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerDown;
             Key::Named(ArrowLeft), ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerLeft;
@@ -1331,7 +1356,114 @@ pub fn platform_key_bindings(
         ));
     }
 
-    // Hint bindings are added separately in Screen::new() based on config.
+    key_bindings
+}
+
+/// Automexia's classic Linux/BSD defaults. Pane focus uses F6/Shift+F6 so the
+/// historical Ctrl+Shift+bracket tab shortcuts never have a duplicate owner.
+#[cfg(any(test, not(any(target_os = "macos", target_os = "windows"))))]
+fn automexia_unix_key_bindings(
+    use_navigation_key_bindings: bool,
+    use_splits: bool,
+) -> Vec<KeyBinding> {
+    let mut key_bindings = bindings!(
+        KeyBinding;
+        "v", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::Paste;
+        "c", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::Copy;
+        "c", ModifiersState::CONTROL | ModifiersState::SHIFT, +BindingMode::VI; Action::ClearSelection;
+        Key::Named(Insert), ModifiersState::SHIFT, ~BindingMode::VI; Action::PasteSelection;
+        "0", ModifiersState::CONTROL; Action::ResetFontSize;
+        "=", ModifiersState::CONTROL; Action::IncreaseFontSize;
+        "+", ModifiersState::CONTROL; Action::IncreaseFontSize;
+        "-", ModifiersState::CONTROL; Action::DecreaseFontSize;
+        "n", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::WindowCreateNew;
+        ",", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::ConfigEditor;
+        "p", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::OpenCommandPalette;
+        "i", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::PreviewSelectedImage;
+
+        "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchForward;
+        "b", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchBackward;
+        "c", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchCancel;
+        "u", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchClear;
+        "w", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchDeleteWord;
+        "p", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchHistoryPrevious;
+        "n", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchHistoryNext;
+        Key::Named(ArrowUp), +BindingMode::SEARCH; SearchAction::SearchHistoryPrevious;
+        Key::Named(ArrowDown), +BindingMode::SEARCH; SearchAction::SearchHistoryNext;
+    );
+
+    key_bindings.extend(scoped_tab_key_bindings());
+
+    if use_navigation_key_bindings {
+        key_bindings.extend(bindings!(
+            KeyBinding;
+            Key::Named(Tab), ModifiersState::CONTROL; Action::SelectNextTab;
+            Key::Named(Tab), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectPrevTab;
+            "[", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectPrevTab;
+            "]", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectNextTab;
+            Key::Named(PageUp), ModifiersState::ALT; Action::SelectPrevLocalTab;
+            Key::Named(PageDown), ModifiersState::ALT; Action::SelectNextLocalTab;
+            "w", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::CloseCurrentSplitOrTab;
+        ));
+    }
+
+    if use_splits {
+        key_bindings.extend(clone_split_key_bindings());
+        key_bindings.extend(bindings!(
+            KeyBinding;
+            "r", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
+            "d", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
+            Key::Named(F6), ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectNextSplit;
+            Key::Named(F6), ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectPrevSplit;
+            Key::Named(ArrowLeft), ModifiersState::ALT; Action::SelectPaneLeft;
+            Key::Named(ArrowRight), ModifiersState::ALT; Action::SelectPaneRight;
+            Key::Named(ArrowUp), ModifiersState::ALT; Action::SelectPaneUp;
+            Key::Named(ArrowDown), ModifiersState::ALT; Action::SelectPaneDown;
+            Key::Named(ArrowUp), ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerUp;
+            Key::Named(ArrowDown), ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerDown;
+            Key::Named(ArrowLeft), ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerLeft;
+            Key::Named(ArrowRight), ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::MoveDividerRight;
+        ));
+    }
+
+    key_bindings
+}
+
+#[cfg(all(target_os = "windows", not(test)))]
+pub fn platform_key_bindings(
+    use_navigation_key_bindings: bool,
+    use_splits: bool,
+    _: ConfigKeyboard,
+) -> Vec<KeyBinding> {
+    automexia_windows_key_bindings(use_navigation_key_bindings, use_splits)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows", test)))]
+pub fn platform_key_bindings(
+    use_navigation_key_bindings: bool,
+    use_splits: bool,
+    _: ConfigKeyboard,
+) -> Vec<KeyBinding> {
+    automexia_unix_key_bindings(use_navigation_key_bindings, use_splits)
+}
+
+#[cfg(all(target_os = "macos", not(test)))]
+pub fn platform_key_bindings(
+    use_navigation_key_bindings: bool,
+    use_splits: bool,
+    config_keyboard: ConfigKeyboard,
+) -> Vec<KeyBinding> {
+    let mut key_bindings = automexia_macos_key_bindings(
+        use_navigation_key_bindings,
+        use_splits,
+        config_keyboard,
+    );
+    key_bindings.extend(bindings!(
+        KeyBinding;
+        "h", ModifiersState::SUPER; Action::Hide;
+        "h", ModifiersState::SUPER | ModifiersState::ALT; Action::HideOtherApplications;
+        "m", ModifiersState::SUPER; Action::Minimize;
+    ));
     key_bindings
 }
 
@@ -1379,6 +1511,29 @@ mod tests {
 
         assert!(binding.triggers_match(&different_action));
         assert!(different_action.triggers_match(&binding));
+    }
+
+    #[test]
+    fn default_mouse_clipboard_bindings_preserve_primary_selection_ownership() {
+        let bindings = default_mouse_bindings();
+        let right_paste = bindings.iter().find(|binding| {
+            binding.trigger == MouseButton::Right
+                && binding.mods.is_empty()
+                && binding.action == Action::Paste
+        });
+        assert_eq!(
+            right_paste.map(|binding| binding.notmode.clone()),
+            Some(BindingMode::VI)
+        );
+        assert!(bindings.iter().any(|binding| {
+            binding.trigger == MouseButton::Middle
+                && binding.action == Action::PasteSelection
+                && binding.notmode == BindingMode::VI
+        }));
+        assert!(!bindings.iter().any(|binding| {
+            binding.trigger == MouseButton::Left
+                && matches!(binding.action, Action::Paste | Action::PasteSelection)
+        }));
     }
 
     #[test]
@@ -1673,6 +1828,7 @@ mod tests {
         assert_eq!(ctrl_seq(&key("6"), "6", ctrl | alt), Some(0x1e));
         // Letters map, except the fixterms exclusions.
         assert_eq!(ctrl_seq(&key("q"), "q", ctrl), Some(0x11));
+        assert_eq!(ctrl_seq(&key("r"), "r", ctrl), Some(0x12));
         assert_eq!(ctrl_seq(&key("i"), "i", ctrl), None);
         assert_eq!(ctrl_seq(&key("m"), "m", ctrl), None);
         // ctrl+shift+letter stays distinguishable: no C0 collapse.
@@ -1701,6 +1857,143 @@ mod tests {
         let new_bindings = config_key_bindings(config_bindings, bindings);
         assert_eq!(new_bindings.len(), 1);
         assert_eq!(new_bindings[0].action, Action::Quit);
+    }
+
+    #[test]
+    fn clone_actions_parse_with_stable_configuration_names() {
+        assert_eq!(
+            Action::from("clonesplitright".to_string()),
+            Action::CloneSplitRight
+        );
+        assert_eq!(
+            Action::from("CloneSplitDown".to_string()),
+            Action::CloneSplitDown
+        );
+        assert_eq!(Action::from("splitright".to_string()), Action::SplitRight);
+        assert_eq!(Action::from("splitdown".to_string()), Action::SplitDown);
+        assert_eq!(
+            Action::from("reloadconfig".to_string()),
+            Action::ReloadConfig
+        );
+        assert_eq!(Action::from("closewindow".to_string()), Action::WindowClose);
+        assert_eq!(Action::from("clearscreen".to_string()), Action::ClearScreen);
+        assert_eq!(
+            Action::from("PreviewSelectedImage".to_string()),
+            Action::PreviewSelectedImage
+        );
+        assert_eq!(
+            Action::from("SelectPaneLeft".to_string()),
+            Action::SelectPaneLeft
+        );
+        assert_eq!(
+            Action::from("SelectNextLocalTab".to_string()),
+            Action::SelectNextLocalTab
+        );
+    }
+
+    #[test]
+    fn automexia_tab_scopes_use_the_original_shortcuts() {
+        assert_eq!(
+            Action::from("CreateLocalTab".to_string()),
+            Action::LocalTabCreateNew
+        );
+        let bindings = scoped_tab_key_bindings();
+        assert_eq!(bindings.len(), 2);
+        assert_eq!(bindings[0].mods, ModifiersState::CONTROL);
+        assert_eq!(bindings[0].action, Action::TabCreateNew);
+        assert_eq!(
+            bindings[1].mods,
+            ModifiersState::CONTROL | ModifiersState::SHIFT
+        );
+        assert_eq!(bindings[1].action, Action::LocalTabCreateNew);
+        assert_eq!(bindings[0].trigger, bindings[1].trigger);
+        assert_ne!(bindings[0].mods, bindings[1].mods);
+    }
+
+    #[test]
+    fn user_binding_can_override_ctrl_t_without_changing_local_tab_shortcut() {
+        let updated = config_key_bindings(
+            vec![ConfigKeyBinding {
+                key: "t".to_string(),
+                action: "receivechar".to_string(),
+                with: "control".to_string(),
+                esc: String::new(),
+                mode: String::new(),
+            }],
+            scoped_tab_key_bindings(),
+        );
+        assert!(updated.iter().any(|binding| {
+            binding.mods == ModifiersState::CONTROL
+                && binding.action == Action::ReceiveChar
+        }));
+        assert!(updated.iter().any(|binding| {
+            binding.mods == ModifiersState::CONTROL | ModifiersState::SHIFT
+                && binding.action == Action::LocalTabCreateNew
+        }));
+        assert!(!updated.iter().any(|binding| {
+            binding.mods == ModifiersState::CONTROL
+                && binding.action == Action::TabCreateNew
+        }));
+    }
+
+    #[test]
+    fn bare_ctrl_clone_shortcuts_preserve_alt_shell_passthroughs() {
+        let bindings = clone_split_key_bindings();
+        assert_eq!(bindings.len(), 4);
+        assert_eq!(bindings[0].action, Action::CloneSplitRight);
+        assert_eq!(bindings[1].action, Action::CloneSplitDown);
+        for binding in &bindings[..2] {
+            assert_eq!(binding.mods, ModifiersState::CONTROL);
+            assert!(binding.notmode.contains(BindingMode::SEARCH));
+            assert!(binding.notmode.contains(BindingMode::VI));
+            assert!(!binding.is_triggered_by(
+                BindingMode::SEARCH,
+                binding.mods,
+                &binding.trigger
+            ));
+            assert!(!binding.is_triggered_by(
+                BindingMode::VI,
+                binding.mods,
+                &binding.trigger
+            ));
+            assert!(binding.is_triggered_by(
+                BindingMode::empty(),
+                ModifiersState::CONTROL,
+                &binding.trigger
+            ));
+        }
+        assert_eq!(
+            bindings[2].mods,
+            ModifiersState::CONTROL | ModifiersState::ALT
+        );
+        assert_eq!(
+            bindings[3].mods,
+            ModifiersState::CONTROL | ModifiersState::ALT
+        );
+        assert!(matches!(&bindings[2].action, Action::Esc(value) if value == "\x12"));
+        assert!(matches!(&bindings[3].action, Action::Esc(value) if value == "\x04"));
+    }
+
+    #[test]
+    fn user_binding_can_override_a_clone_shortcut() {
+        let updated = config_key_bindings(
+            vec![ConfigKeyBinding {
+                key: "r".to_string(),
+                action: "receivechar".to_string(),
+                with: "control".to_string(),
+                esc: String::new(),
+                mode: String::new(),
+            }],
+            clone_split_key_bindings(),
+        );
+        assert_eq!(updated.len(), 4);
+        assert!(updated.iter().any(|binding| {
+            binding.mods == ModifiersState::CONTROL
+                && binding.action == Action::ReceiveChar
+        }));
+        assert!(updated
+            .iter()
+            .any(|binding| binding.action == Action::CloneSplitDown));
     }
 
     #[test]
@@ -1741,6 +2034,305 @@ mod tests {
                 );
             }
         }
+    }
+
+    fn assert_no_overlapping_shortcuts(label: &str, bindings: &[KeyBinding]) {
+        for (index, binding) in bindings.iter().enumerate() {
+            for candidate in bindings.iter().skip(index + 1) {
+                assert!(
+                    !binding.triggers_match(candidate),
+                    "{label} shortcut collision: {binding:?} overlaps {candidate:?}"
+                );
+            }
+        }
+    }
+
+    fn assert_no_cross_table_overlaps(
+        label: &str,
+        inherited: &[KeyBinding],
+        platform: &[KeyBinding],
+    ) {
+        for existing in inherited {
+            for candidate in platform {
+                assert!(
+                    !existing.triggers_match(candidate),
+                    "{label} shortcut collision: {existing:?} overlaps {candidate:?}"
+                );
+            }
+        }
+    }
+
+    fn assert_action_binding(
+        bindings: &[KeyBinding],
+        key: Key,
+        modifiers: ModifiersState,
+        action: Action,
+    ) {
+        let trigger = BindingKey::Keycode {
+            key,
+            location: KeyLocation::Standard,
+        };
+        assert!(
+            bindings.iter().any(|binding| {
+                binding.trigger == trigger
+                    && binding.mods == modifiers
+                    && binding.action == action
+            }),
+            "missing shortcut {modifiers:?} + {trigger:?} => {action:?}"
+        );
+    }
+
+    #[test]
+    fn automexia_windows_defaults_restore_the_classic_workflow() {
+        let config = rio_backend::config::Config::default();
+        let inherited = default_key_bindings(&config);
+        let bindings = automexia_windows_key_bindings(true, true);
+        assert_no_overlapping_shortcuts("Windows", &bindings);
+        assert_no_cross_table_overlaps("Windows", &inherited, &bindings);
+        assert_action_binding(
+            &bindings,
+            Key::Character("n".into()),
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            Action::WindowCreateNew,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("i".into()),
+            ModifiersState::CONTROL | ModifiersState::ALT,
+            Action::PreviewSelectedImage,
+        );
+
+        assert_action_binding(
+            &bindings,
+            Key::Character("t".into()),
+            ModifiersState::CONTROL,
+            Action::TabCreateNew,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("t".into()),
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            Action::LocalTabCreateNew,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("r".into()),
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            Action::SplitRight,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("d".into()),
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            Action::SplitDown,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("r".into()),
+            ModifiersState::CONTROL,
+            Action::CloneSplitRight,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(ArrowLeft),
+            ModifiersState::ALT,
+            Action::SelectPaneLeft,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(ArrowDown),
+            ModifiersState::ALT,
+            Action::SelectPaneDown,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(PageUp),
+            ModifiersState::ALT,
+            Action::SelectPrevLocalTab,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(PageDown),
+            ModifiersState::ALT,
+            Action::SelectNextLocalTab,
+        );
+    }
+
+    #[test]
+    fn automexia_unix_defaults_restore_the_classic_workflow() {
+        let config = rio_backend::config::Config::default();
+        let inherited = default_key_bindings(&config);
+        let bindings = automexia_unix_key_bindings(true, true);
+        assert_no_cross_table_overlaps("Unix", &inherited, &bindings);
+        assert_action_binding(
+            &bindings,
+            Key::Character("i".into()),
+            ModifiersState::CONTROL | ModifiersState::ALT,
+            Action::PreviewSelectedImage,
+        );
+        let copy_actions = bindings
+            .iter()
+            .filter(|binding| {
+                binding.mods == ModifiersState::CONTROL | ModifiersState::SHIFT
+                    && binding.trigger
+                        == BindingKey::Keycode {
+                            key: Key::Character("c".into()),
+                            location: KeyLocation::Standard,
+                        }
+            })
+            .count();
+        assert_eq!(
+            copy_actions, 2,
+            "Ctrl+Shift+C intentionally copies and clears the vi selection"
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("t".into()),
+            ModifiersState::CONTROL,
+            Action::TabCreateNew,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("t".into()),
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            Action::LocalTabCreateNew,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("r".into()),
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            Action::SplitRight,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("r".into()),
+            ModifiersState::CONTROL,
+            Action::CloneSplitRight,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(ArrowRight),
+            ModifiersState::ALT,
+            Action::SelectPaneRight,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(ArrowUp),
+            ModifiersState::ALT,
+            Action::SelectPaneUp,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(PageUp),
+            ModifiersState::ALT,
+            Action::SelectPrevLocalTab,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(PageDown),
+            ModifiersState::ALT,
+            Action::SelectNextLocalTab,
+        );
+    }
+
+    #[test]
+    fn automexia_macos_defaults_restore_the_classic_workflow() {
+        let config = rio_backend::config::Config::default();
+        let inherited = default_key_bindings(&config);
+        let bindings =
+            automexia_macos_key_bindings(true, true, ConfigKeyboard::default());
+        assert_no_cross_table_overlaps("macOS", &inherited, &bindings);
+        assert_action_binding(
+            &bindings,
+            Key::Character("i".into()),
+            ModifiersState::SUPER | ModifiersState::ALT,
+            Action::PreviewSelectedImage,
+        );
+        let command_k_actions = bindings
+            .iter()
+            .filter(|binding| {
+                binding.mods == ModifiersState::SUPER
+                    && binding.trigger
+                        == BindingKey::Keycode {
+                            key: Key::Character("k".into()),
+                            location: KeyLocation::Standard,
+                        }
+            })
+            .count();
+        assert_eq!(
+            command_k_actions, 2,
+            "Cmd+K intentionally sends form-feed and clears saved history"
+        );
+
+        assert_action_binding(
+            &bindings,
+            Key::Character("t".into()),
+            ModifiersState::SUPER,
+            Action::TabCreateNew,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("d".into()),
+            ModifiersState::SUPER,
+            Action::SplitRight,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("d".into()),
+            ModifiersState::SUPER | ModifiersState::SHIFT,
+            Action::SplitDown,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("t".into()),
+            ModifiersState::SUPER | ModifiersState::SHIFT,
+            Action::LocalTabCreateNew,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("r".into()),
+            ModifiersState::CONTROL,
+            Action::CloneSplitRight,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(ArrowLeft),
+            ModifiersState::SUPER | ModifiersState::ALT,
+            Action::SelectPaneLeft,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(ArrowDown),
+            ModifiersState::SUPER | ModifiersState::ALT,
+            Action::SelectPaneDown,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("[".into()),
+            ModifiersState::SUPER | ModifiersState::ALT,
+            Action::SelectPrevLocalTab,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("]".into()),
+            ModifiersState::SUPER | ModifiersState::ALT,
+            Action::SelectNextLocalTab,
+        );
+    }
+
+    #[test]
+    fn up_arrow_remains_native_pty_input() {
+        let config = rio_backend::config::Config::default();
+        let bindings = default_key_bindings(&config);
+        assert!(bindings.iter().any(|binding| {
+            binding.mods.is_empty()
+                && binding.trigger
+                    == BindingKey::Keycode {
+                        key: Key::Named(ArrowUp),
+                        location: KeyLocation::Standard,
+                    }
+                && matches!(&binding.action, Action::Esc(value) if value == "\x1b[A")
+        }));
     }
 
     #[test]

@@ -8,7 +8,7 @@
 
 use crate::context::ContextManager;
 use crate::renderer::helpers::spring::Spring;
-use crate::renderer::responsive::{ChromeMetrics, Density, Viewport};
+use crate::renderer::responsive::{ChromeMetrics, Viewport};
 use rio_backend::event::{EventProxy, ProgressReport, ProgressState};
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::{Attributes, Sugarloaf};
@@ -17,16 +17,18 @@ use std::borrow::Cow;
 use std::time::Instant;
 
 /// Native liquid-hacker title/tab row height in logical pixels.
-pub const ISLAND_HEIGHT: f32 = 66.0;
+#[cfg(test)]
+pub const ISLAND_HEIGHT: f32 = 48.0;
 const PROGRESS_BAR_HEIGHT: f32 = 3.0;
 
 const PROGRESS_BAR_TIMEOUT_SECS: u64 = 15;
 
-const TAB_PADDING_X: f32 = 35.0;
+const TAB_PADDING_X: f32 = 20.0;
+const PROFILE_TITLE_OFFSET_X: f32 = 18.0;
 #[cfg(test)]
-const TAB_GAP: f32 = 8.0;
+const TAB_GAP: f32 = 6.0;
 #[cfg(test)]
-const TAB_INSET_Y: f32 = 15.0;
+const TAB_INSET_Y: f32 = 5.0;
 const TAB_RADIUS: f32 = 8.0;
 const TITLE_ELLIPSIS: char = '…';
 const DRAG_THRESHOLD: f32 = 4.0;
@@ -68,20 +70,13 @@ const PICKER_COLORS: [[f32; 4]; 6] = [
 const ISLAND_MARGIN_LEFT_MACOS: f32 = 76.0;
 
 const CLOSE_MARGIN_RIGHT: f32 = 14.0;
-const CLOSE_GLYPH_HALF: f32 = 6.5;
 const CLOSE_MIN_ISLAND_WIDTH: f32 = 96.0;
 const CLOSE_HOVER_HALF: f32 = 10.0;
 const CLOSE_HOVER_CORNER_RADIUS: f32 = 5.0;
 const CLOSE_HIT_HALF_WIDTH: f32 = 10.0;
 const CLOSE_ALPHA_IDLE: f32 = 0.55;
 const CLOSE_ALPHA_HOVER: f32 = 0.95;
-const CLOSE_STROKE_WIDTH: f32 = 1.5;
 const INACTIVE_CUSTOM_MUTE: f32 = 0.55;
-#[cfg(not(target_os = "macos"))]
-const APP_BUTTON_X: f32 = 18.0;
-#[cfg(not(target_os = "macos"))]
-const APP_BUTTON_SIZE: f32 = 34.0;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChromeAction {
     NewTab,
@@ -89,6 +84,107 @@ pub enum ChromeAction {
     Minimize,
     Maximize,
     CloseWindow,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LocalTabAction {
+    Select(usize),
+    Close(usize),
+    New,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct LocalTabGeometry {
+    index: usize,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct LocalTabStripLayout {
+    count: usize,
+    first_x: f32,
+    y: f32,
+    tab_width: f32,
+    height: f32,
+    gap: f32,
+    add_x: f32,
+    add_width: f32,
+}
+
+impl LocalTabStripLayout {
+    fn tab(self, index: usize) -> Option<LocalTabGeometry> {
+        (index < self.count).then_some(LocalTabGeometry {
+            index,
+            x: self.first_x + index as f32 * (self.tab_width + self.gap),
+            y: self.y,
+            width: self.tab_width,
+            height: self.height,
+        })
+    }
+
+    fn add(self) -> LocalTabGeometry {
+        LocalTabGeometry {
+            index: self.count,
+            x: self.add_x,
+            y: self.y,
+            width: self.add_width,
+            height: self.height,
+        }
+    }
+}
+
+fn local_tab_strip_layout(rail: [f32; 4], count: usize) -> Option<LocalTabStripLayout> {
+    if count <= 1
+        || rail.iter().any(|value| !value.is_finite())
+        || rail[2] <= 0.0
+        || rail[3] <= 0.0
+    {
+        return None;
+    }
+    let margin = 4.0_f32.min(rail[2] * 0.08);
+    let preferred_gap = 4.0_f32;
+    let preferred_add_width = 28.0_f32;
+    let usable = (rail[2] - margin * 2.0).max(1.0);
+    let add_width = preferred_add_width.min(usable * 0.20);
+    let gap = preferred_gap.min(((usable - add_width) / (count as f32 * 3.0)).max(0.0));
+    let available = (usable - add_width - gap * count as f32).max(0.0);
+    let tab_width = (available / count as f32).clamp(0.0, 190.0);
+    let inset_y = 3.0_f32.min(rail[3] * 0.12);
+    let y = rail[1] + inset_y;
+    let height = (rail[3] - inset_y * 2.0).max(1.0);
+    let first_x = rail[0] + margin;
+    let add_x = first_x + count as f32 * (tab_width + gap);
+    Some(LocalTabStripLayout {
+        count,
+        first_x,
+        y,
+        tab_width,
+        height,
+        gap,
+        add_x,
+        add_width,
+    })
+}
+
+fn pane_local_tab_rail_logical_rect(
+    panel_rect: [f32; 4],
+    root_origin: [f32; 2],
+    scale_factor: f32,
+    count: usize,
+) -> Option<[f32; 4]> {
+    if !scale_factor.is_finite() || scale_factor <= f32::EPSILON {
+        return None;
+    }
+    let rail = crate::layout::pane_tab_rail_rect(panel_rect, scale_factor, count)?;
+    Some([
+        (root_origin[0] + rail[0]) / scale_factor,
+        (root_origin[1] + rail[1]) / scale_factor,
+        rail[2] / scale_factor,
+        rail[3] / scale_factor,
+    ])
 }
 
 struct TabDrag {
@@ -177,13 +273,32 @@ pub fn chrome_metrics(
 
 /// Compute the tab strip layout from the physical window width.
 /// `max_tab_width` comes from `navigation.max-tab-width` (logical px).
+#[cfg(test)]
 pub fn tab_strip_layout(
     window_width: f32,
     scale_factor: f32,
     num_tabs: usize,
     max_tab_width: f32,
 ) -> TabStripLayout {
-    let viewport = Viewport::from_physical(window_width, f32::MAX, scale_factor);
+    tab_strip_layout_for_viewport(
+        window_width,
+        f32::MAX,
+        scale_factor,
+        num_tabs,
+        max_tab_width,
+    )
+}
+
+/// Runtime tab geometry uses both viewport axes so a very wide, very short
+/// window cannot draw minimal controls while retaining comfortable hit boxes.
+pub fn tab_strip_layout_for_viewport(
+    window_width: f32,
+    window_height: f32,
+    scale_factor: f32,
+    num_tabs: usize,
+    max_tab_width: f32,
+) -> TabStripLayout {
+    let viewport = Viewport::from_physical(window_width, window_height, scale_factor);
     let metrics = ChromeMetrics::for_viewport(viewport);
     #[cfg(target_os = "macos")]
     let left_margin = ISLAND_MARGIN_LEFT_MACOS;
@@ -351,6 +466,31 @@ fn close_button_center_x(layout: &TabStripLayout, tab_index: usize) -> Option<f3
 }
 
 #[inline]
+fn tab_close_hit_left(layout: &TabStripLayout) -> Option<f32> {
+    let island_x = layout.tab_gap / 2.0;
+    let island_width = (layout.tab_width - layout.tab_gap).max(0.0);
+    close_button_center(island_x, island_width)
+        .map(|center| center - CLOSE_HIT_HALF_WIDTH)
+}
+
+#[inline]
+fn tab_title_budget(layout: &TabStripLayout) -> f32 {
+    let title_start = layout.tab_padding_x + PROFILE_TITLE_OFFSET_X;
+    let title_end = tab_close_hit_left(layout)
+        .map(|close_left| close_left - 1.0)
+        .unwrap_or(layout.tab_width - layout.tab_padding_x);
+    (title_end - title_start).max(0.0)
+}
+
+#[inline]
+fn centered_tab_title_budget(layout: &TabStripLayout) -> f32 {
+    let side_guard = tab_close_hit_left(layout)
+        .map(|close_left| layout.tab_width - close_left + 1.0)
+        .unwrap_or(layout.tab_padding_x);
+    (layout.tab_width - side_guard * 2.0).max(0.0)
+}
+
+#[inline]
 pub fn close_button_hit(
     layout: &TabStripLayout,
     tab_index: usize,
@@ -369,33 +509,32 @@ fn draw_close_button(
     order: u8,
 ) {
     let cy = center_y;
-    let r = CLOSE_GLYPH_HALF;
     let alpha = if hover {
         CLOSE_ALPHA_HOVER
     } else {
         CLOSE_ALPHA_IDLE
     };
     let color = [color[0], color[1], color[2], color[3] * alpha];
-    sugarloaf.line(
-        cx - r,
-        cy - r,
-        cx + r,
-        cy + r,
-        CLOSE_STROKE_WIDTH,
-        0.0,
-        color,
-        order,
+    // Diagonal quad-lines are not consistently rasterized by every GPU
+    // backend and can collapse into a filled square. A font-shaped multiply
+    // mark is not present in every configured terminal font, so use the
+    // universally available Latin X and let the glyph rasterizer antialias it.
+    let glyph = "X";
+    let font_size = 12.5;
+    let opts = DrawOpts {
+        font_size,
+        color: color_u8(color),
+        ..DrawOpts::default()
+    };
+    let ui = sugarloaf.text_mut();
+    let glyph_width = ui.measure(glyph, &opts);
+    ui.draw(
+        cx - glyph_width * 0.5,
+        cy - font_size * 0.5 - 1.0,
+        glyph,
+        &opts,
     );
-    sugarloaf.line(
-        cx - r,
-        cy + r,
-        cx + r,
-        cy - r,
-        CLOSE_STROKE_WIDTH,
-        0.0,
-        color,
-        order,
-    );
+    let _ = order;
 }
 
 pub struct Island {
@@ -486,13 +625,22 @@ impl Island {
         if !(0.0..=metrics.header_height).contains(&y) {
             return None;
         }
-        let layout =
-            tab_strip_layout(window_width, scale_factor, num_tabs, self.max_tab_width);
+        let layout = tab_strip_layout_for_viewport(
+            window_width,
+            window_height,
+            scale_factor,
+            num_tabs,
+            self.max_tab_width,
+        );
         let plus_x = layout.actions_x;
-        if layout.show_new_tab && x >= plus_x && x <= plus_x + 30.0 {
+        if layout.show_new_tab && x >= plus_x && x <= plus_x + metrics.action_button_size
+        {
             return Some(ChromeAction::NewTab);
         }
-        if layout.show_palette && x > plus_x + 30.0 && x <= plus_x + 64.0 {
+        if layout.show_palette
+            && x > plus_x + metrics.action_button_size
+            && x <= plus_x + metrics.action_button_size * 2.0
+        {
             return Some(ChromeAction::OpenPalette);
         }
         if !self.custom_chrome {
@@ -509,6 +657,72 @@ impl Island {
             2 => Some(ChromeAction::CloseWindow),
             _ => None,
         }
+    }
+
+    pub fn local_tab_action_at(
+        &self,
+        panel_rect: [f32; 4],
+        root_origin: [f32; 2],
+        scale_factor: f32,
+        count: usize,
+        x: f32,
+        y: f32,
+    ) -> Option<LocalTabAction> {
+        let rail = pane_local_tab_rail_logical_rect(
+            panel_rect,
+            root_origin,
+            scale_factor,
+            count,
+        )?;
+        let layout = local_tab_strip_layout(rail, count)?;
+        let x = x / scale_factor;
+        let y = y / scale_factor;
+        for index in 0..layout.count {
+            let tab = layout.tab(index)?;
+            if x >= tab.x
+                && x <= tab.x + tab.width
+                && y >= tab.y
+                && y <= tab.y + tab.height
+            {
+                let close_width = 28.0_f32.min(tab.width * 0.35);
+                return Some(if x >= tab.x + tab.width - close_width {
+                    LocalTabAction::Close(tab.index)
+                } else {
+                    LocalTabAction::Select(tab.index)
+                });
+            }
+        }
+        let add = layout.add();
+        Some(add)
+            .filter(|button| {
+                x >= button.x
+                    && x <= button.x + button.width
+                    && y >= button.y
+                    && y <= button.y + button.height
+            })
+            .map(|_| LocalTabAction::New)
+    }
+
+    pub fn local_tab_rail_contains(
+        &self,
+        panel_rect: [f32; 4],
+        root_origin: [f32; 2],
+        scale_factor: f32,
+        count: usize,
+        x: f32,
+        y: f32,
+    ) -> bool {
+        let Some(rail) = pane_local_tab_rail_logical_rect(
+            panel_rect,
+            root_origin,
+            scale_factor,
+            count,
+        ) else {
+            return false;
+        };
+        let x = x / scale_factor;
+        let y = y / scale_factor;
+        x >= rail[0] && x <= rail[0] + rail[2] && y >= rail[1] && y <= rail[1] + rail[3]
     }
 
     /// Set whether the cursor hovers the active island's close button.
@@ -843,6 +1057,7 @@ impl Island {
     }
 
     /// Get the height of the island
+    #[cfg(test)]
     #[inline]
     pub fn height(&self) -> f32 {
         ISLAND_HEIGHT
@@ -886,18 +1101,17 @@ impl Island {
             [0.10, 0.17, 0.24, 0.92],
             1,
         );
+        draw_pane_local_tab_rails(
+            sugarloaf,
+            metrics,
+            context_manager,
+            bg_color,
+            scale_factor,
+        );
         #[cfg(not(target_os = "macos"))]
         if metrics.show_app_button {
-            let app_size = if metrics.density == Density::Comfortable {
-                APP_BUTTON_SIZE
-            } else {
-                30.0
-            };
-            let app_x = if metrics.density == Density::Comfortable {
-                APP_BUTTON_X
-            } else {
-                10.0
-            };
+            let app_size = metrics.app_button_size;
+            let app_x = metrics.app_button_x;
             let app_y = (metrics.header_height - app_size) / 2.0;
             sugarloaf.rounded_rect(
                 None,
@@ -966,8 +1180,13 @@ impl Island {
         self.slide_springs
             .retain(|_, s| s.update(dt, DRAG_ANIMATION_LENGTH));
 
-        let layout =
-            tab_strip_layout(window_width, scale_factor, num_tabs, self.max_tab_width);
+        let layout = tab_strip_layout_for_viewport(
+            window_width,
+            window_height,
+            scale_factor,
+            num_tabs,
+            self.max_tab_width,
+        );
         let TabStripLayout {
             left_margin,
             tab_width,
@@ -1024,7 +1243,7 @@ impl Island {
             let max_text_width = if single {
                 single_title_budget(window_width, scale_factor, left_margin)
             } else {
-                (tab_width - layout.tab_padding_x * 2.0 - 22.0).max(0.0)
+                tab_title_budget(&layout)
             };
             let title = fit_title_to_width(
                 sugarloaf,
@@ -1071,7 +1290,7 @@ impl Island {
                 let text_x = if single {
                     single_title_x(window_width, scale_factor, text_width, left_margin)
                 } else {
-                    tab_x + layout.tab_padding_x + 18.0
+                    tab_x + layout.tab_padding_x + PROFILE_TITLE_OFFSET_X
                 };
                 let text_y = (metrics.header_height - layout.title_font_size) / 2.0;
                 if max_text_width > 0.0 {
@@ -1186,22 +1405,7 @@ impl Island {
                 None,
                 actions_x,
                 layout.tab_inset_y,
-                30.0,
-                metrics.header_height - layout.tab_inset_y * 2.0,
-                [0.12, 0.22, 0.32, 0.72],
-                0.05,
-                6.0,
-                3,
-            );
-        }
-        if layout.show_palette
-            && matches!(self.chrome_hover, Some(ChromeAction::OpenPalette))
-        {
-            sugarloaf.rounded_rect(
-                None,
-                actions_x + 30.0,
-                layout.tab_inset_y,
-                34.0,
+                metrics.action_button_size,
                 metrics.header_height - layout.tab_inset_y * 2.0,
                 [0.12, 0.22, 0.32, 0.72],
                 0.05,
@@ -1210,29 +1414,27 @@ impl Island {
             );
         }
         let action_opts = DrawOpts {
-            font_size: 25.0,
+            font_size: metrics.action_glyph_size,
             color: [230, 238, 245, 242],
             ..DrawOpts::default()
         };
         if layout.show_new_tab {
+            let plus_width = sugarloaf.text_mut().measure("+", &action_opts);
             sugarloaf.text_mut().draw(
-                actions_x + 6.0,
-                (metrics.header_height - 22.0) / 2.0 - 1.0,
+                actions_x + (metrics.action_button_size - plus_width) * 0.5,
+                (metrics.header_height - metrics.action_glyph_size) * 0.5 - 1.0,
                 "+",
                 &action_opts,
             );
         }
-        let menu_opts = DrawOpts {
-            font_size: 20.0,
-            color: [180, 194, 209, 230],
-            ..DrawOpts::default()
-        };
         if layout.show_palette {
-            sugarloaf.text_mut().draw(
-                actions_x + 41.0,
-                (metrics.header_height - 14.0) / 2.0,
-                "⌄",
-                &menu_opts,
+            draw_command_center_button(
+                sugarloaf,
+                actions_x + metrics.action_button_size,
+                layout.tab_inset_y,
+                metrics.action_button_size,
+                metrics.header_height - layout.tab_inset_y * 2.0,
+                matches!(self.chrome_hover, Some(ChromeAction::OpenPalette)),
             );
         }
 
@@ -1309,7 +1511,7 @@ impl Island {
 
             let raw_title = self.get_title_for_tab(context_manager, drag_idx);
             if !raw_title.is_empty() {
-                let max_text_width = (tab_width - layout.tab_padding_x * 2.0).max(0.0);
+                let max_text_width = centered_tab_title_budget(&layout);
                 let title = fit_title_to_width(
                     sugarloaf,
                     &raw_title,
@@ -1474,7 +1676,13 @@ impl Island {
             left_margin,
             tab_width,
             ..
-        } = tab_strip_layout(window_width, scale_factor, num_tabs, self.max_tab_width);
+        } = tab_strip_layout_for_viewport(
+            window_width,
+            window_height,
+            scale_factor,
+            num_tabs,
+            self.max_tab_width,
+        );
         let tab_x = left_margin + picker_tab as f32 * tab_width;
         let logical_width = window_width / scale_factor.max(f32::EPSILON);
         let metrics = chrome_metrics(window_width, window_height, scale_factor);
@@ -1755,6 +1963,13 @@ impl Island {
             return custom.to_string();
         }
 
+        // Launch intent is available before the PTY can emit output. Prefer
+        // that stable profile identity (or newer semantic shell metadata) to
+        // transient PowerShell/profile OSC titles during session startup.
+        if let Some(profile) = context_manager.tab_profile_identity(tab_index) {
+            return profile;
+        }
+
         if let Some(raw_title) = context_manager.raw_terminal_title(tab_index) {
             return raw_title;
         }
@@ -1791,6 +2006,16 @@ fn normalized_profile_title(raw: &str) -> Cow<'_, str> {
     {
         return Cow::Borrowed("PowerShell");
     }
+    if lower == "wsl" || lower == "wsl.exe" || lower.ends_with("\\wsl.exe") {
+        return Cow::Borrowed("WSL");
+    }
+    if lower == "cmd"
+        || lower == "cmd.exe"
+        || lower.contains("command prompt")
+        || lower.starts_with("cmd - ")
+    {
+        return Cow::Borrowed("Command Prompt");
+    }
     if lower.contains("ssh") {
         return Cow::Borrowed("SSH Lab");
     }
@@ -1808,6 +2033,8 @@ fn profile_icon(title: &str) -> &'static str {
     let lower = title.to_ascii_lowercase();
     if lower.contains("powershell") {
         "\u{e70f}"
+    } else if lower.contains("command prompt") || lower == "cmd" {
+        "\u{f489}"
     } else if lower.contains("ubuntu") {
         "\u{f31b}"
     } else if lower.contains("ssh") {
@@ -1823,6 +2050,8 @@ fn profile_accent(title: &str, active: bool) -> [f32; 4] {
         [1.0, 0.35, 0.04, 1.0]
     } else if lower.contains("powershell") {
         [0.29, 0.65, 1.0, 1.0]
+    } else if lower.contains("command prompt") || lower == "cmd" {
+        [0.45, 0.95, 0.42, 1.0]
     } else if lower.contains("ssh") {
         [0.49, 1.0, 0.70, 1.0]
     } else {
@@ -1843,6 +2072,251 @@ fn draw_terminal_mark(sugarloaf: &mut Sugarloaf, x: f32, y: f32) {
     sugarloaf.line(x + 4.5, y + 5.0, x + 7.5, y + 8.0, 1.25, 0.0, line, 6);
     sugarloaf.line(x + 7.5, y + 8.0, x + 4.5, y + 11.0, 1.25, 0.0, line, 6);
     sugarloaf.line(x + 10.0, y + 11.0, x + 15.5, y + 11.0, 1.25, 0.0, line, 6);
+}
+
+/// Header action for the command palette. A restrained vector command-list
+/// mark stays optically centered at every DPI and cannot degrade into a font
+/// fallback glyph.
+fn draw_command_center_button(
+    sugarloaf: &mut Sugarloaf,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    hovered: bool,
+) {
+    // Preserve a 40 px interaction slot while matching the quieter optical
+    // weight of the adjacent tab with a smaller visible plate.
+    let visual_width = width.min(32.0);
+    let visual_height = height.min(32.0);
+    let x = x + (width - visual_width) * 0.5;
+    let y = y + (height - visual_height) * 0.5;
+    let width = visual_width;
+    let height = visual_height;
+    let outline = if hovered {
+        [0.08, 0.72, 0.96, 0.94]
+    } else {
+        [0.055, 0.24, 0.36, 0.70]
+    };
+    let fill = if hovered {
+        [0.018, 0.13, 0.21, 0.96]
+    } else {
+        [0.008, 0.045, 0.078, 0.86]
+    };
+    sugarloaf.rounded_rect(None, x, y, width, height, outline, 0.05, 8.0, 3);
+    sugarloaf.rounded_rect(
+        None,
+        x + 1.0,
+        y + 1.0,
+        (width - 2.0).max(0.0),
+        (height - 2.0).max(0.0),
+        fill,
+        0.051,
+        7.0,
+        3,
+    );
+
+    let dot_color = if hovered {
+        [0.10, 0.88, 1.0, 1.0]
+    } else {
+        [0.10, 0.70, 0.90, 0.94]
+    };
+    let line_color = if hovered {
+        [0.72, 0.91, 1.0, 0.98]
+    } else {
+        [0.46, 0.69, 0.82, 0.90]
+    };
+    let start_x = x + (width - 18.0) / 2.0;
+    let start_y = y + (height - 14.0) / 2.0;
+    for (index, line_width) in [11.0, 8.0, 13.0].into_iter().enumerate() {
+        let row_y = start_y + index as f32 * 6.0;
+        sugarloaf.rounded_rect(None, start_x, row_y, 2.5, 2.5, dot_color, 0.06, 1.25, 4);
+        sugarloaf.line(
+            start_x + 6.0,
+            row_y + 1.25,
+            start_x + 6.0 + line_width,
+            row_y + 1.25,
+            1.35,
+            0.06,
+            line_color,
+            4,
+        );
+    }
+}
+
+fn draw_pane_local_tab_rails(
+    sugarloaf: &mut Sugarloaf,
+    metrics: ChromeMetrics,
+    context_manager: &ContextManager<EventProxy>,
+    bg_color: [f32; 4],
+    scale_factor: f32,
+) {
+    let grid = context_manager.current_grid();
+    let root_origin = [grid.scaled_margin.left, grid.scaled_margin.top];
+    for key in grid.get_ordered_keys() {
+        let Some(item) = grid.contexts().get(&key) else {
+            continue;
+        };
+        let count = item.tab_count();
+        let active = item.active_tab_index();
+        let Some(rail) = pane_local_tab_rail_logical_rect(
+            item.layout_rect,
+            root_origin,
+            scale_factor,
+            count,
+        ) else {
+            continue;
+        };
+        let Some(layout) = local_tab_strip_layout(rail, count) else {
+            continue;
+        };
+        let pane_is_active = key == grid.current;
+        let rail_outline = if pane_is_active {
+            over(bg_color, [0.06, 0.58, 0.82, 0.82])
+        } else {
+            over(bg_color, [0.06, 0.22, 0.34, 0.68])
+        };
+        let rail_fill = over(bg_color, [0.01, 0.045, 0.075, 0.94]);
+        sugarloaf.rounded_rect(
+            None,
+            rail[0] + 2.0,
+            rail[1] + 1.0,
+            (rail[2] - 4.0).max(1.0),
+            (rail[3] - 2.0).max(1.0),
+            rail_outline,
+            0.05,
+            6.0,
+            19,
+        );
+        sugarloaf.rounded_rect(
+            None,
+            rail[0] + 3.0,
+            rail[1] + 2.0,
+            (rail[2] - 6.0).max(0.0),
+            (rail[3] - 4.0).max(0.0),
+            rail_fill,
+            0.05,
+            5.0,
+            20,
+        );
+
+        for index in 0..layout.count {
+            let Some(tab) = layout.tab(index) else {
+                continue;
+            };
+            let is_active = tab.index == active;
+            let title = item
+                .tab_title(tab.index)
+                .map(|title| normalized_profile_title(&title).into_owned())
+                .filter(|title| !title.is_empty())
+                .unwrap_or_else(|| format!("Session {}", tab.index + 1));
+            let accent = profile_accent(&title, is_active);
+            let outline = if is_active {
+                accent
+            } else {
+                [0.10, 0.22, 0.31, 0.88]
+            };
+            let fill = if is_active {
+                [0.018, 0.105, 0.17, 0.98]
+            } else {
+                [0.012, 0.052, 0.086, 0.90]
+            };
+            sugarloaf.rounded_rect(
+                None, tab.x, tab.y, tab.width, tab.height, outline, 0.05, 7.0, 21,
+            );
+            sugarloaf.rounded_rect(
+                None,
+                tab.x + 1.0,
+                tab.y + 1.0,
+                (tab.width - 2.0).max(0.0),
+                (tab.height - 2.0).max(0.0),
+                fill,
+                0.05,
+                6.0,
+                22,
+            );
+
+            if tab.width >= 46.0 {
+                let icon = profile_icon(&title);
+                let icon_size = metrics.local_tab_icon_size;
+                let icon_opts = DrawOpts {
+                    font_size: icon_size,
+                    color: color_u8(accent),
+                    ..DrawOpts::default()
+                };
+                sugarloaf.text_mut().draw(
+                    tab.x + 10.0,
+                    tab.y + (tab.height - icon_size) * 0.5 - 1.0,
+                    icon,
+                    &icon_opts,
+                );
+            }
+
+            let font_size = metrics.local_tab_font_size;
+            let text_x = tab.x
+                + if tab.width >= 46.0 {
+                    10.0 + metrics.local_tab_icon_size + 8.0
+                } else {
+                    6.0
+                };
+            let close_budget = 30.0;
+            let title_width = (tab.x + tab.width - close_budget - text_x).max(0.0);
+            if title_width > 4.0 {
+                let fitted =
+                    fit_title_to_width(sugarloaf, &title, title_width, font_size);
+                let opts = DrawOpts {
+                    font_size,
+                    color: color_u8(if is_active {
+                        [0.90, 0.97, 1.0, 1.0]
+                    } else {
+                        [0.60, 0.72, 0.81, 1.0]
+                    }),
+                    bold: is_active,
+                    ..DrawOpts::default()
+                };
+                sugarloaf.text_mut().draw(
+                    text_x,
+                    tab.y + (tab.height - font_size) * 0.5 - 1.0,
+                    &fitted,
+                    &opts,
+                );
+            }
+            if tab.width >= 34.0 {
+                draw_close_button(
+                    sugarloaf,
+                    tab.x + tab.width - 14.0,
+                    if is_active {
+                        accent
+                    } else {
+                        [0.48, 0.58, 0.66, 0.9]
+                    },
+                    false,
+                    tab.y + tab.height / 2.0,
+                    24,
+                );
+            }
+        }
+
+        {
+            let add = layout.add();
+            sugarloaf.rounded_rect(
+                None,
+                add.x,
+                add.y,
+                add.width,
+                add.height,
+                [0.08, 0.25, 0.36, 0.94],
+                0.05,
+                7.0,
+                21,
+            );
+            let cx = add.x + add.width / 2.0;
+            let cy = add.y + add.height / 2.0;
+            let accent = [0.20, 0.82, 1.0, 1.0];
+            sugarloaf.line(cx - 5.0, cy, cx + 5.0, cy, 1.8, 0.0, accent, 24);
+            sugarloaf.line(cx, cy - 5.0, cx, cy + 5.0, 1.8, 0.0, accent, 24);
+        }
+    }
 }
 
 fn draw_window_controls(
@@ -1969,6 +2443,113 @@ mod tests {
             assert!(CLOSE_MARGIN_RIGHT + CLOSE_HIT_HALF_WIDTH < CLOSE_MIN_ISLAND_WIDTH);
             assert!(CLOSE_HOVER_HALF * 2.0 <= ISLAND_HEIGHT - TAB_INSET_Y * 2.0);
         }
+    }
+
+    #[test]
+    fn local_tab_rail_has_disjoint_select_close_and_add_targets() {
+        let panel = [0.0, 0.0, 640.0, 500.0];
+        let root = [12.0, 52.0];
+        let rail = pane_local_tab_rail_logical_rect(panel, root, 1.0, 3).unwrap();
+        let layout = local_tab_strip_layout(rail, 3).unwrap();
+        let tabs = (0..layout.count)
+            .map(|index| layout.tab(index).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(tabs.len(), 3);
+        assert!(tabs
+            .windows(2)
+            .all(|pair| pair[0].x + pair[0].width < pair[1].x));
+        let add = layout.add();
+        assert!(tabs[2].x + tabs[2].width < add.x);
+
+        let island = Island::new([0.5; 4], [1.0; 4], false, 240.0, true);
+        let first = tabs[0];
+        assert_eq!(
+            island.local_tab_action_at(
+                panel,
+                root,
+                1.0,
+                3,
+                first.x + 8.0,
+                first.y + first.height / 2.0,
+            ),
+            Some(LocalTabAction::Select(0))
+        );
+        assert_eq!(
+            island.local_tab_action_at(
+                panel,
+                root,
+                1.0,
+                3,
+                first.x + first.width - 5.0,
+                first.y + first.height / 2.0,
+            ),
+            Some(LocalTabAction::Close(0))
+        );
+        assert_eq!(
+            island.local_tab_action_at(
+                panel,
+                root,
+                1.0,
+                3,
+                add.x + add.width / 2.0,
+                add.y + add.height / 2.0,
+            ),
+            Some(LocalTabAction::New)
+        );
+    }
+
+    #[test]
+    fn local_tab_rail_stays_inside_extreme_narrow_viewports() {
+        for width in [300.0, 120.0, 24.0] {
+            let rail = [0.0, 0.0, width, 36.0];
+            let layout = local_tab_strip_layout(rail, 28).unwrap();
+            let tabs = (0..layout.count)
+                .map(|index| layout.tab(index).unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(tabs.len(), 28);
+            assert!(tabs.iter().all(|tab| {
+                tab.x.is_finite()
+                    && tab.width.is_finite()
+                    && tab.x >= 0.0
+                    && tab.x + tab.width <= width
+            }));
+            let add = layout.add();
+            assert!(add.x >= 0.0);
+            assert!(add.x + add.width <= width);
+        }
+    }
+
+    #[test]
+    fn local_tab_hit_testing_is_pane_scoped_at_hidpi() {
+        let scale = 2.0;
+        let root = [24.0, 104.0];
+        let left_panel = [0.0, 0.0, 640.0, 700.0];
+        let right_panel = [640.0, 0.0, 640.0, 700.0];
+        let left_rail =
+            pane_local_tab_rail_logical_rect(left_panel, root, scale, 2).unwrap();
+        let layout = local_tab_strip_layout(left_rail, 2).unwrap();
+        let first = layout.tab(0).unwrap();
+        let hit_x = (first.x + 8.0) * scale;
+        let hit_y = (first.y + first.height * 0.5) * scale;
+        let island = Island::new([0.5; 4], [1.0; 4], false, 240.0, true);
+
+        assert!(island.local_tab_rail_contains(left_panel, root, scale, 2, hit_x, hit_y,));
+        assert_eq!(
+            island.local_tab_action_at(left_panel, root, scale, 2, hit_x, hit_y,),
+            Some(LocalTabAction::Select(0))
+        );
+        assert!(!island.local_tab_rail_contains(
+            right_panel,
+            root,
+            scale,
+            2,
+            hit_x,
+            hit_y,
+        ));
+        assert_eq!(
+            island.local_tab_action_at(right_panel, root, scale, 2, hit_x, hit_y,),
+            None
+        );
     }
 
     /// The regression that shipped: `window_width` is physical while draws
@@ -2114,21 +2695,70 @@ mod tests {
             island.chrome_action_at(1_280.0, 760.0, 1.0, 2, 1_265.0, 33.0),
             Some(ChromeAction::CloseWindow)
         );
+        for scale in [1.25_f32, 1.5, 2.0] {
+            let physical_width = 1_280.0 * scale;
+            let physical_height = 760.0 * scale;
+            assert_eq!(
+                island.chrome_action_at(
+                    physical_width,
+                    physical_height,
+                    scale,
+                    2,
+                    (physical_width - 24.0) / scale,
+                    32.0 / scale,
+                ),
+                Some(ChromeAction::CloseWindow),
+                "close target should survive {scale}x physical scaling",
+            );
+        }
+    }
+
+    #[test]
+    fn space_below_window_header_has_no_workspace_action_hit_targets() {
+        let island = Island::new([1.0; 4], [1.0; 4], false, 240.0, true);
+        let metrics = chrome_metrics(1_280.0, 760.0, 1.0);
+        assert_eq!(
+            island.chrome_action_at(
+                1_280.0,
+                760.0,
+                1.0,
+                2,
+                640.0,
+                metrics.content_top() + 10.0,
+            ),
+            None
+        );
     }
 
     #[test]
     fn profile_title_distinguishes_windows_drives_from_posix_paths() {
         assert_eq!(
-            normalized_profile_title("lamjed@DESKTOP: D:/workstation/projects/automexia"),
+            normalized_profile_title(
+                "developer@DEVBOX: D:/workspaces/projects/automexia"
+            ),
             "PowerShell"
         );
         assert_eq!(
-            normalized_profile_title("lamjed@DESKTOP:/mnt/d/workstation"),
+            normalized_profile_title("developer@DEVBOX:/mnt/d/workspaces"),
             "Ubuntu"
         );
         assert_eq!(
-            normalized_profile_title("PowerShell - D:/workstation"),
+            normalized_profile_title("PowerShell - D:/workspaces"),
             "PowerShell"
+        );
+        assert_eq!(
+            normalized_profile_title("CMD - D:\\workspaces"),
+            "Command Prompt"
+        );
+        assert_eq!(normalized_profile_title("wsl.exe"), "WSL");
+        assert_eq!(
+            normalized_profile_title(r"C:\Windows\System32\wsl.exe"),
+            "WSL"
+        );
+        assert_ne!(profile_icon("Command Prompt"), profile_icon("PowerShell"));
+        assert_ne!(
+            profile_accent("Command Prompt", true),
+            profile_accent("PowerShell", true)
         );
     }
 
@@ -2406,10 +3036,24 @@ mod tests {
     }
 
     #[test]
+    fn short_wide_viewport_uses_identical_minimal_draw_and_hit_geometry() {
+        let layout = tab_strip_layout_for_viewport(1_600.0, 200.0, 1.0, 2, 240.0);
+        let metrics = chrome_metrics(1_600.0, 200.0, 1.0);
+        assert_eq!(
+            metrics.density,
+            crate::renderer::responsive::Density::Minimal
+        );
+        assert_eq!(layout.window_button_width, metrics.window_button_width);
+        assert_eq!(layout.tab_inset_y, metrics.tab_inset_y);
+        assert_eq!(layout.title_font_size, metrics.title_font_size);
+        assert_eq!(layout.profile_icon_size, metrics.profile_icon_size);
+    }
+
+    #[test]
     fn hidden_compact_actions_have_no_hit_targets() {
         let island = Island::new([1.0; 4], [1.0; 4], false, 240.0, true);
         assert_eq!(
-            island.chrome_action_at(300.0, 200.0, 1.0, 1, 185.0, 23.0),
+            island.chrome_action_at(300.0, 200.0, 1.0, 1, 170.0, 23.0),
             None
         );
         assert_eq!(
@@ -2507,14 +3151,14 @@ mod tests {
 
     #[test]
     fn close_hit_box_clears_the_title_budget() {
-        // A max-width centered title on slot 0 ends at
-        // slot_right - TAB_PADDING_X; the close hit box must start at
-        // or after that point, or clicking visible title glyphs would
-        // close the tab.
+        // The title budget is derived from the rendered close hit box, so
+        // compact padding cannot make visible glyphs clickable as Close.
         let layout = layout_for_test(0.0, 180.0, 360.0);
         let cx = close_button_center_x(&layout, 0).unwrap();
-        let title_max_right = layout.tab_width - TAB_PADDING_X;
-        assert!(cx - CLOSE_HIT_HALF_WIDTH >= title_max_right);
+        let title_start = layout.tab_padding_x + PROFILE_TITLE_OFFSET_X;
+        let title_max_right = title_start + tab_title_budget(&layout);
+        assert!(cx - CLOSE_HIT_HALF_WIDTH > title_max_right);
+        assert!(centered_tab_title_budget(&layout) <= layout.tab_width);
     }
 
     #[test]

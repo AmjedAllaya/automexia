@@ -1,0 +1,256 @@
+{
+  "schema": 1,
+  "supported_platforms": ["windows", "linux", "macos"],
+  "quality_dimensions": [
+    "accessibility",
+    "correctness",
+    "security",
+    "performance",
+    "resource_lifetime",
+    "storage_hygiene",
+    "resilience",
+    "visual_quality"
+  ],
+  "features": [
+    {
+      "id": "identity-config-migration",
+      "title": "Product identity, configuration, migration, and coexistence",
+      "components": ["apps/automexia-terminal", "rio-backend"],
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "Configuration and migration have no independent interactive surface; rendered configuration effects are owned by renderer-ui."},
+        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/migration.rs", "rio-backend/src/config/mod.rs"]},
+        "security": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/migration.rs", "fuzz/fuzz_targets/config_migration.rs"]},
+        "performance": {"level": "controlled", "evidence": ["docs/STABILIZATION-ROADMAP.md#performance-proof-plan"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/migration.rs"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/migration.rs", "tools/ci/test_powershell.ps1"]},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/runtime.rs", "apps/automexia-terminal/src/global_hotkey.rs"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "Migration is intentionally nonvisual and reports through established notification surfaces."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "tools/ci/test_powershell.ps1"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "terminal-protocols-grid-history",
+      "title": "VT protocols, Unicode grid, selection, search, history, and reflow",
+      "components": ["rio-vt"],
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["rio-vt/src/codepoint_width.rs", "rio-vt/src/selection.rs"]},
+        "correctness": {"level": "pr", "evidence": ["rio-vt/tests/conformance_fixtures.rs", "tests/fixtures/osc-metadata.json", "tests/fixtures/unicode-width.json"]},
+        "security": {"level": "nightly", "evidence": ["fuzz/fuzz_targets/vt_parser.rs", "fuzz/fuzz_targets/osc_metadata.rs", "fuzz/fuzz_targets/control_string_bounds.rs", ".github/workflows/nightly.yml#fuzz"]},
+        "performance": {"level": "nightly", "evidence": ["rio-vt/benches/vt_input.rs", ".github/workflows/nightly.yml#benchmarks-controlled"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["rio-vt/src/performer/handler.rs", "rio-vt/src/crosswords/grid/storage.rs"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["rio-vt/src/ansi/kitty_graphics_protocol.rs"]},
+        "resilience": {"level": "pr", "evidence": ["rio-vt/src/performer/parser/mod.rs", "tools/xtask/src/main.rs"]},
+        "visual_quality": {"level": "pr", "evidence": ["rio-vt/tests/conformance_fixtures.rs", "rio-vt/tests/sixel/testimage_libsixel.rgba"]}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "pty-scheduler-process-lifecycle",
+      "title": "PTY, ConPTY, event polling, resize delivery, child ownership, and teardown",
+      "components": ["teletypewriter", "corcovado"],
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "PTY transport has no independent user interface; terminal and renderer surfaces own accessibility."},
+        "correctness": {"level": "pr", "evidence": ["teletypewriter/tests/pty_lifecycle.rs", "corcovado/test/test_poll.rs"]},
+        "security": {"level": "nightly", "evidence": [".github/workflows/nightly.yml#sanitizers", "tests/integration/appverifier-windows.ps1"]},
+        "performance": {"level": "nightly", "evidence": ["teletypewriter/benches/pty_io.rs", "corcovado/benches/bench_poll.rs"]},
+        "resource_lifetime": {"level": "controlled", "evidence": ["teletypewriter/tests/pty_lifecycle.rs", "tests/integration/appverifier-windows.ps1", "tests/integration/wpr-windows.ps1"]},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "PTY transport owns processes, handles, pipes, and memory but does not persist product data."},
+        "resilience": {"level": "pr", "evidence": ["tests/integration/resize-stress-windows.ps1", "corcovado/tests/loom_channel_readiness.rs"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "PTY transport does not paint pixels; native renderer storms consume its output."}
+      },
+      "platforms": {
+        "windows": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1", ".github/workflows/nightly.yml#native-windows-deep"]},
+        "linux": {"level": "pr", "evidence": ["teletypewriter/tests/pty_lifecycle.rs", ".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": ["teletypewriter/tests/pty_lifecycle.rs", ".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "renderer-fonts-responsive-ui",
+      "title": "GPU/CPU rendering, fonts, graphemes, responsive panes, modal layers, and footer",
+      "components": ["sugarloaf", "rio-graphics", "rio-fonts", "rio-grapheme-width"],
+      "quality": {
+        "accessibility": {"level": "external", "evidence": ["docs/ACCESSIBILITY.md"]},
+        "correctness": {"level": "pr", "evidence": ["sugarloaf/tests/wgsl_validation.rs", "sugarloaf/src/font/cjk_metrics_tests.rs", "apps/automexia-terminal/src/layout/compute_tests.rs"]},
+        "security": {"level": "nightly", "evidence": ["sugarloaf/tests/wgsl_validation.rs", ".github/workflows/codeql.yml"]},
+        "performance": {"level": "controlled", "evidence": ["apps/automexia-terminal/benches/automexia_services.rs", ".github/workflows/nightly.yml#benchmarks-controlled"]},
+        "resource_lifetime": {"level": "controlled", "evidence": ["sugarloaf/src/renderer/image_cache/cache.rs", "tests/integration/resize-stress-windows.ps1"]},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "Renderer caches are memory/GPU resources and do not write persistent cache files."},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/layout/compute_tests.rs", "apps/automexia-terminal/proptest-regressions/layout/compute_tests.txt"]},
+        "visual_quality": {"level": "controlled", "evidence": ["apps/automexia-terminal/src/renderer/snapshots/automexia__renderer__session_footer__tests__session_footer_geometry_matrix.snap", "tests/integration/resize-stress-windows.ps1"]}
+      },
+      "platforms": {
+        "windows": {"level": "controlled", "evidence": [".github/workflows/nightly.yml#native-gui-resize-stress"]},
+        "linux": {"level": "external", "evidence": ["docs/TESTING.md#native-platform-ownership"]},
+        "macos": {"level": "external", "evidence": ["docs/TESTING.md#native-platform-ownership"]}
+      }
+    },
+    {
+      "id": "windows-tabs-sessions-input",
+      "title": "OS windows, global and pane-local tabs, session cloning, shortcuts, mouse, and clipboard",
+      "components": ["apps/automexia-terminal", "rio-window", "rio-notifier"],
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/src/renderer/command_palette.rs", "apps/automexia-terminal/src/bindings/mod.rs"]},
+        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/context/launch.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/bindings/mod.rs"]},
+        "security": {"level": "pr", "evidence": ["apps/automexia-terminal/src/context/launch.rs", "apps/automexia-terminal/src/mouse/mod.rs"]},
+        "performance": {"level": "controlled", "evidence": ["tests/integration/session-clone-wsl-windows.ps1", "tests/integration/resize-stress-windows.ps1"]},
+        "resource_lifetime": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1", "tests/integration/appverifier-windows.ps1"]},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "Window, tab, input, and clipboard routing do not own persistent storage."},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/router/mod.rs"]},
+        "visual_quality": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1"]}
+      },
+      "platforms": {
+        "windows": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1", "tests/integration/session-clone-wsl-windows.ps1"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", ".github/workflows/ci.yml#linux-features"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", ".github/workflows/ci.yml#cross-checks"]}
+      }
+    },
+    {
+      "id": "prompt-context-devops-semantics",
+      "title": "Prompt metadata, path layout, semantic colors, Git, containers, Kubernetes, cloud, Terraform, and user context",
+      "components": ["automexia-devops", "automexia-ui-model"],
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/lib.rs", "automexia-devops/src/semantics.rs"]},
+        "correctness": {"level": "pr", "evidence": ["automexia-devops/src/context.rs", "automexia-devops/src/semantics.rs"]},
+        "security": {"level": "pr", "evidence": ["automexia-devops/src/context.rs", "fuzz/fuzz_targets/semantic_classification.rs", "fuzz/fuzz_targets/label_sanitization.rs"]},
+        "performance": {"level": "nightly", "evidence": ["apps/automexia-terminal/benches/automexia_services.rs"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["automexia-devops/src/context.rs"]},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "Provider discovery is read-only and retains bounded in-memory snapshots only."},
+        "resilience": {"level": "pr", "evidence": ["automexia-devops/src/context.rs", "automexia-ui-model/src/lib.rs"]},
+        "visual_quality": {"level": "pr", "evidence": ["apps/automexia-terminal/src/renderer/devops_status.rs"]}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-devops/src/context.rs"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-devops/src/context.rs"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-devops/src/context.rs"]}
+      }
+    },
+    {
+      "id": "extension-contract-runtime",
+      "title": "Versioned extension contracts, bounded caches/workers, cancellation, isolation, and UI projection",
+      "components": ["automexia-extension-api", "automexia-extension-runtime"],
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-extension-api/src/lib.rs", "automexia-ui-model/src/lib.rs"]},
+        "correctness": {"level": "pr", "evidence": ["automexia-extension-api/src/lib.rs", "automexia-extension-runtime/src/lib.rs"]},
+        "security": {"level": "nightly", "evidence": ["automexia-extension-api/src/lib.rs", ".github/workflows/nightly.yml#miri"]},
+        "performance": {"level": "nightly", "evidence": ["apps/automexia-terminal/benches/automexia_services.rs"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["automexia-extension-runtime/src/lib.rs"]},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "The current private runtime has no extension download or persistent package store."},
+        "resilience": {"level": "pr", "evidence": ["automexia-extension-runtime/src/lib.rs"]},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/src/lib.rs", "apps/automexia-terminal/src/renderer/devops_status.rs"]}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "image-protocols-local-preview",
+      "title": "Kitty, Sixel, iTerm2, and bounded local image preview",
+      "components": ["automexia-image", "apps/automexia-terminal", "rio-vt", "sugarloaf"],
+      "quality": {
+        "accessibility": {"level": "external", "evidence": ["docs/IMAGE-PREVIEWS.md"]},
+        "correctness": {"level": "pr", "evidence": ["automexia-image/src/lib.rs", "apps/automexia-terminal/src/image_preview.rs", "rio-vt/src/ansi/graphics.rs"]},
+        "security": {"level": "nightly", "evidence": ["fuzz/fuzz_targets/image_decoder.rs", ".github/workflows/nightly.yml#sanitizers"]},
+        "performance": {"level": "nightly", "evidence": ["apps/automexia-terminal/benches/image_preview.rs"]},
+        "resource_lifetime": {"level": "controlled", "evidence": ["automexia-image/src/lib.rs", "apps/automexia-terminal/src/image_preview.rs", "tests/integration/resize-stress-windows.ps1"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["automexia-image/src/lib.rs", "tools/xtask/src/main.rs"]},
+        "resilience": {"level": "pr", "evidence": ["automexia-image/src/lib.rs", "apps/automexia-terminal/src/image_preview.rs"]},
+        "visual_quality": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1", "docs/IMAGE-PREVIEWS.md"]}
+      },
+      "platforms": {
+        "windows": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1"]},
+        "linux": {"level": "external", "evidence": ["docs/IMAGE-PREVIEWS.md"]},
+        "macos": {"level": "external", "evidence": ["docs/IMAGE-PREVIEWS.md"]}
+      }
+    },
+    {
+      "id": "shell-integration-listings",
+      "title": "PowerShell, CMD, WSL, Bash, Zsh, prompt integration, and icon-aware listings",
+      "components": ["shell-integration"],
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_sources.sh"]},
+        "correctness": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_integration.sh", "tools/ci/test_zsh_integration.zsh"]},
+        "security": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_sources.sh"]},
+        "performance": {"level": "external", "evidence": ["docs/STABILIZATION-ROADMAP.md#performance-proof-plan"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_shell_integration.ps1"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_shell_integration.ps1"]},
+        "resilience": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_powershell.ps1"]},
+        "visual_quality": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_integration.sh"]}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", ".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", ".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", ".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "packaging-release-provenance",
+      "title": "Windows, macOS, and Linux packages, identity, signing, SBOM, checksum, and provenance",
+      "components": ["packaging", ".github/workflows"],
+      "quality": {
+        "accessibility": {"level": "external", "evidence": ["docs/ACCESSIBILITY.md", "packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml"]},
+        "correctness": {"level": "nightly", "evidence": ["tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh", ".github/workflows/release.yml"]},
+        "security": {"level": "controlled", "evidence": ["deny.toml", ".github/workflows/codeql.yml", ".github/workflows/release.yml"]},
+        "performance": {"level": "not_applicable", "evidence": [], "rationale": "Artifact construction speed is not a product runtime contract; package size and startup are tracked separately in release evidence."},
+        "resource_lifetime": {"level": "nightly", "evidence": ["tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh"]},
+        "storage_hygiene": {"level": "nightly", "evidence": ["tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh", "tools/xtask/src/main.rs"]},
+        "resilience": {"level": "controlled", "evidence": [".github/workflows/release.yml", "RELEASING.md"]},
+        "visual_quality": {"level": "pr", "evidence": ["assets/brand/ASSET-MANIFEST.toml", "tools/ci/validate_repository.py"]}
+      },
+      "platforms": {
+        "windows": {"level": "controlled", "evidence": [".github/workflows/release.yml#package-windows", "tools/ci/test_windows_installer.ps1"]},
+        "linux": {"level": "controlled", "evidence": [".github/workflows/release.yml#package-linux", "tools/ci/test_linux_package.sh"]},
+        "macos": {"level": "controlled", "evidence": [".github/workflows/release.yml#package-macos"]}
+      }
+    },
+    {
+      "id": "contributor-automation-quality-policy",
+      "title": "Single-command workflow, architecture, identity, coverage, QA evidence, and dependency policy",
+      "components": ["tools/xtask"],
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "Contributor automation is a textual command interface; product accessibility is tested at renderer and input surfaces."},
+        "correctness": {"level": "pr", "evidence": ["tools/xtask/src/main.rs", "tools/ci/test_qa.py"]},
+        "security": {"level": "pr", "evidence": ["tools/ci/test_qa.py", "tools/ci/validate_repository.py", "deny.toml"]},
+        "performance": {"level": "pr", "evidence": ["tools/ci/qa.py", "tools/ci/test_qa.py"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["tools/ci/qa.py", "tools/ci/test_qa.py"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["tools/ci/qa.py", "tools/ci/test_qa.py", "docs/WSL-DEVELOPMENT.md"]},
+        "resilience": {"level": "pr", "evidence": ["tools/xtask/src/main.rs", "tools/ci/test_qa.py"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "QA reports are evidence artifacts rather than the terminal product UI."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "tools/xtask/src/main.rs"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "tools/xtask/src/main.rs"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "tools/xtask/src/main.rs"]}
+      }
+    },
+    {
+      "id": "ffi-wasm-embedding",
+      "title": "Native C API and WebAssembly embedding surfaces",
+      "components": ["librio", "librio-wasm"],
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "Embedding APIs do not define a standalone interface; the embedding consumer owns presentation accessibility."},
+        "correctness": {"level": "pr", "evidence": ["librio/src/capi.rs", "librio/src/lib.rs", "librio-wasm/src/lib.rs"]},
+        "security": {"level": "nightly", "evidence": ["librio/src/capi.rs", ".github/workflows/codeql.yml"]},
+        "performance": {"level": "external", "evidence": ["docs/STABILIZATION-ROADMAP.md#s1-executable-benchmark-pipeline"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["librio/src/capi.rs", "librio/src/lib.rs"]},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "The embedding boundary owns no persistent storage."},
+        "resilience": {"level": "pr", "evidence": ["librio/src/capi.rs", "librio/src/lib.rs"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "Embedding APIs expose terminal state but do not own application chrome or visual policy."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]}
+      }
+    }
+  ]
+}

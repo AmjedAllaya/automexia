@@ -22,12 +22,21 @@ cargo dev
 
 This checks required tools and repository formats; verifies identity,
 architecture, provenance, packages, and brand assets; runs rustfmt, locked
-metadata, workspace checks, warning-denied Clippy, all tests, and `cargo deny`;
-builds Automexia; verifies `automexia --version`; and launches the terminal.
+metadata, native shell-integration validation, workspace checks, warning-denied
+Clippy, all tests, and `cargo deny`; builds Automexia; verifies
+`automexia --version`; installs or refreshes the shell integration; and launches
+the terminal. On Windows that automatic phase prepares PowerShell, Command
+Prompt, and every detected user WSL distribution. On macOS/Linux it prepares Bash, Zsh,
+and user-local terminfo. No separate integration command or restart is needed.
 The first run can take several minutes. Exhaustive checks use a dedicated,
 non-incremental verification target that is removed whether the gate passes or
 returns an ordinary failure; only the reusable application build remains in the
 normal Cargo target.
+
+No Automexia window appears until those checks pass. The workflow prints its
+launch and verification phases and keeps compiler/build-script progress live,
+including long WGPU and native shader compilation. This distinguishes active
+work from a stalled process.
 
 The complete gate requires Python 3 with PyYAML and `cargo-deny`. If either is
 missing, `cargo dev` reports it before starting the expensive build. Install
@@ -38,17 +47,37 @@ python -m pip install PyYAML
 cargo install --locked cargo-deny --version 0.20.2
 ```
 
+On Windows, `cargo xtask doctor` also reports the installed PowerShell host,
+newest available PSReadLine module, and PowerShell 7 availability. Its history
+advisory is informational: it never installs or updates shell software.
+
+When developing inside WSL, keep the Linux checkout and Cargo target under the
+WSL filesystem (for example `~/src/automexia-terminal`), not under
+`/mnt/c` or `/mnt/d`. Keep this NTFS checkout for Windows/MSVC,
+ConPTY, GPU, and packaging work. `cargo xtask doctor` reports the effective
+workspace I/O mode, and compilation-heavy project workflows fail early on a
+cross-filesystem WSL checkout instead of spending hours in avoidable metadata
+I/O. The supported two-checkout workflow and diagnostic override are documented
+in [Windows and WSL development](docs/WSL-DEVELOPMENT.md).
+
 For normal day-to-day launches after the repository is known to be healthy:
 
 ```text
 cargo automexia
 ```
 
-It rebuilds only changed code, performs a version smoke, and launches Automexia.
+It rebuilds only changed code, performs a version smoke, automatically prepares
+the same shell integrations, and launches Automexia.
+It does not repeat the exhaustive isolated gate and is the recommended command
+for normal launches after `cargo ready` or `cargo dev` has passed once.
 Both launch commands return after starting the Automexia process, so the
 terminal remains usable and Cargo's build output stays unlocked. Each launch
 uses a generation-specific copy under `target/automexia-runtime`; stale copies
-are reclaimed automatically on later launches.
+are reclaimed automatically on later launches. Integration provisioning is
+source-aware and idempotent: a current installation is a fast no-op, while a
+changed or missing generated file/profile marker is repaired before process
+creation. Provisioning failure stops the launch with an actionable error rather
+than opening a partially integrated terminal.
 Pass terminal arguments after `--`, for example:
 
 ```text
@@ -62,6 +91,16 @@ window:
 cargo ready
 ```
 
+For the deeper Phase 0 evidence profile, including pinned Nextest/JUnit,
+property/model checks, hard subprocess deadlines with process-tree cleanup,
+privacy-bounded host/resource/coverage evidence, and explicit external-gate
+status, run:
+
+```text
+cargo qa
+cargo qa --bundle
+```
+
 The executable remains available at `target/debug/automexia`
 (`automexia.exe` on Windows). Advanced scoped `cargo xtask` commands are
 documented in [CONTRIBUTING.md](CONTRIBUTING.md) and
@@ -73,25 +112,71 @@ where build storage is being used with `cargo storage`. To remove all Cargo
 build artifacts, close running Automexia windows and run `cargo purge`.
 Brand-source and platform-export rules are in
 [docs/BRANDING.md](docs/BRANDING.md).
+The latest plan-by-plan implementation evidence and explicit external release
+blockers are recorded in [docs/READINESS-AUDIT.md](docs/READINESS-AUDIT.md).
 
-The native liquid-hacker interface, persistent context bar, tab/window
-interactions, one-line shell prompt, command timing, semantic output styling,
-and focused regression commands are documented in
+The native liquid-hacker interface, responsive pane-local tab rail,
+passive session footers, per-command operational context, tab/window
+interactions, shell prompt, command timing, semantic output styling, and focused regression commands are documented in
 [docs/LIQUID-HACKER-UX.md](docs/LIQUID-HACKER-UX.md).
 
-On Windows, install or refresh the bundled PowerShell and WSL integrations once
-after building, then restart Automexia:
-
-```powershell
-.\shell-integration\install-windows.ps1
-```
+Both `cargo dev` and `cargo automexia` install or refresh the repository-owned
+shell support automatically immediately before they launch. `cargo ready`,
+`cargo check`, and CI remain non-mutating verification commands. The standalone
+installer scripts remain available only for maintainer repair and uninstall
+diagnostics; they are not part of the normal user workflow.
 
 Native PowerShell gains icon-aware `ls` output through a bundled, pipeline-safe
-format view and does not require `eza`. In Bash and Zsh, the integration uses an
+format view and does not require `eza`. Typing bare `cmd` or `cmd.exe` from an
+integrated PowerShell pane opens Command Prompt inside that same Automexia pane;
+CMD receives the branded full-path/lambda prompt, live shell/user/path context,
+and icon-aware `ls`/`ll`. Identity is reasserted on every CMD prompt, and
+PowerShell restores its own metadata immediately after `exit`; built-in `dir`
+and explicit `cmd /c` behavior stay native. In Bash and Zsh, the integration
+uses an
 installed `eza` for icon-aware `ls`, `ll`, and `tree` output and falls back
-cleanly when `eza` is unavailable; see
+cleanly when `eza` is unavailable. A bundled compatibility layer gives older
+Ubuntu/WSL eza 0.18.x releases the same colored composite folder badges as
+PowerShell without changing filenames or piped output; see
 [docs/LIQUID-HACKER-UX.md](docs/LIQUID-HACKER-UX.md#file-and-folder-icons) for
-the shortcuts and opt-out.
+the shortcuts, sensitive/config/log/source/test/build category vocabulary, and
+opt-out.
+
+Clone the active PowerShell, Command Prompt, Bash, Zsh, or WSL session into an
+independent right/lower split with the original Automexia shortcuts
+`Ctrl`+`R` / `Ctrl`+`D`. `Ctrl`+`Alt`+`R` sends history search to the shell and
+`Ctrl`+`Alt`+`D` sends EOF/logout. Fresh default-shell splits use
+`Ctrl`+`Shift`+`R` / `Ctrl`+`Shift`+`D` on Windows/Linux/BSD and `Cmd`+`D` /
+`Cmd`+`Shift`+`D` on macOS.
+
+On Windows, Linux, and BSD, `Ctrl`+`T` adds a window-level tab and
+`Ctrl`+`Shift`+`T` adds an independent tab inside the selected split/session.
+macOS uses `Cmd`+`T` and `Cmd`+`Shift`+`T` for those two scopes. Pane-local tabs preserve the selected
+shell/profile, WSL identity, and working directory while owning independent
+PTYs. When a pane has multiple local tabs, their controls live inside that pane
+and do not resize its siblings. Navigate panes geometrically with
+`Alt`+Arrow on Windows/Linux/BSD (`Cmd`+`Alt`+Arrow on macOS), or cycle them
+with `F6` / `Shift`+`F6` (`Cmd`+`]` / `Cmd`+`[` on macOS).
+`Alt`+`PageDown` / `Alt`+`PageUp` switches tabs only inside the selected pane;
+macOS uses `Cmd`+`Alt`+`]` / `Cmd`+`Alt`+`[`.
+`Ctrl`+`Tab` remains reserved for window-level tabs. See
+[configuration](docs/CONFIGURATION.md). Ghostty compatibility is a
+future opt-in profile tracked separately in the
+[compatibility roadmap](docs/GHOSTTY-COMPATIBILITY-ROADMAP.md); it is not the
+implicit Automexia default.
+
+## Image previews
+
+Automexia renders application-driven Sixel, Kitty Graphics (including Unicode
+placeholders), and iTerm2 inline images. It also provides local quick look for
+paths printed by ordinary commands: hover a filename, click it to pin, then use
+the arrow keys to browse other visible images. `Esc` closes the card. Selecting
+a path and pressing `Ctrl`+`Alt`+`I` (`Cmd`+`Alt`+`I` on macOS) and the
+**Preview Selected Image** palette action remain keyboard alternatives.
+Decoding is local-only, bounded, asynchronous, route-scoped, and responsive
+across pane sizes. See
+[image previews](docs/IMAGE-PREVIEWS.md) for supported tools, formats, security
+limits, and focused tests.
 
 ## Configuration
 
@@ -109,8 +194,15 @@ details.
 
 - v0.4 keeps attributed private `rio-*`, `librio`, Sugarloaf, and related
   engine crate names while all product-facing identity is Automexia.
-- v0.5 will extract Automexia-owned application modules and then consider
-  grouping inherited engines beneath `engine/`.
+- v0.5.0 will perform the smallest behavior-preserving API/runtime/UI-model
+  extraction required to ship an optional first-party `devops-ssh` extension
+  through the system OpenSSH client. v0.5.1 then adds separately enabled AWS,
+  Azure, Google Cloud, Kubernetes, OpenShift, and infrastructure extensions with
+  per-PTY environment isolation. These are planned, not current v0.4 features;
+  see the [roadmap](docs/ROADMAP.md) and
+  [SSH/DevOps/multi-cloud architecture](docs/SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md).
+- Grouping inherited engines beneath `engine/` remains lower priority than the
+  release-critical v0.5 extension/session boundary.
 - Third-party extension downloads, a public extension SDK, and Wasm sandboxing
   remain out of scope until the documented v0.6 milestone.
 

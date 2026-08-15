@@ -180,6 +180,18 @@ impl TrailCursor {
         }
     }
 
+    /// Snap the next frame to the cursor's new pixel position.
+    ///
+    /// Window and pane geometry changes can move a stable terminal cell by
+    /// hundreds of pixels. Treating that layout change as user cursor motion
+    /// produces a distracting trail from the old coordinate, so resize paths
+    /// explicitly arm this one-frame teleport instead.
+    pub fn snap_after_geometry_change(&mut self) {
+        self.first_frame = true;
+        self.jumped = false;
+        self.animating = false;
+    }
+
     /// Update the cursor destination.  Called once per frame **before**
     /// `animate()`.  Sets the `jumped` flag when the destination changes
     /// (matching neovide's `update_cursor_destination`).
@@ -374,5 +386,27 @@ impl TrailCursor {
     #[inline]
     pub fn is_animating(&self) -> bool {
         self.animating
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TrailCursor;
+
+    #[test]
+    fn geometry_change_snaps_instead_of_animating_from_stale_pixels() {
+        let mut cursor = TrailCursor::new();
+        cursor.set_destination(10.0, 20.0, 10.0, 20.0);
+        cursor.animate(10.0, 20.0);
+        assert!(!cursor.is_animating());
+
+        cursor.set_destination(410.0, 320.0, 10.0, 20.0);
+        cursor.animate(10.0, 20.0);
+        assert!(cursor.is_animating());
+
+        cursor.snap_after_geometry_change();
+        cursor.set_destination(700.0, 500.0, 10.0, 20.0);
+        cursor.animate(10.0, 20.0);
+        assert!(!cursor.is_animating());
     }
 }

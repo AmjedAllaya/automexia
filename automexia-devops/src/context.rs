@@ -20,7 +20,7 @@ use std::{env, fs};
 use super::model::DevOpsSnapshot;
 #[cfg(not(target_arch = "wasm32"))]
 use super::model::{CloudContext, KubernetesContext, WslContext};
-use crate::automexia::api::SessionFacts;
+use automexia_extension_api::SessionFacts;
 
 const MAX_CONFIG_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_KUBECONFIG_FILES: usize = 16;
@@ -136,7 +136,7 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
     #[cfg(target_os = "windows")]
     let mut clouds = std::mem::take(&mut wsl_live.clouds);
     #[cfg(not(target_os = "windows"))]
-    let mut clouds = Vec::new();
+    let mut clouds: Vec<CloudContext> = Vec::new();
     for configured_cloud in cloud_contexts(
         home,
         project_context.as_ref(),
@@ -268,26 +268,6 @@ fn session_view(session: &SessionFacts, host_home: Option<&Path>) -> SessionView
     }
 }
 
-/// Parse the common WSL interactive title shape emitted by bash/zsh, e.g.
-/// `amjed@DESKTOP-2LR87FN:/mnt/d/work` or `amjed@host: /mnt/d/work`.
-/// This observes existing terminal metadata only; Automexia injects no shell
-/// command and requires no prompt/plugin installation.
-#[cfg(target_os = "windows")]
-fn parse_wsl_title(title: &str) -> Option<(String, String)> {
-    let title = title.trim();
-    let (user, host_and_path) = title.rsplit_once('@')?;
-    // Split on the host separator, never on a later Windows drive separator.
-    // The previous `find(":/")` implementation interpreted `D:/work` in a
-    // native PowerShell title as a WSL `/work` path.
-    let (host, path) = host_and_path.split_once(':')?;
-    let user = user.split_whitespace().last()?.trim();
-    let path = path.trim();
-    if user.is_empty() || host.trim().is_empty() || !path.starts_with('/') {
-        return None;
-    }
-    Some((sanitize_label(user), path.to_string()))
-}
-
 #[cfg(target_os = "windows")]
 fn windows_wsl_session_view(session: &SessionFacts) -> Option<SessionView> {
     // `WSL_DISTRO_NAME` is published by the Bash/Zsh integration. Requiring it
@@ -296,7 +276,23 @@ fn windows_wsl_session_view(session: &SessionFacts) -> Option<SessionView> {
         .distro
         .as_ref()
         .filter(|value| !value.trim().is_empty())?;
-    let (user, linux_cwd) = parse_wsl_title(&session.title)?;
+    if session.shell_name.as_deref().is_some_and(|shell| {
+        shell.eq_ignore_ascii_case("PowerShell")
+            || shell.eq_ignore_ascii_case("CMD")
+            || shell.eq_ignore_ascii_case("Command Prompt")
+    }) {
+        return None;
+    }
+    let user = sanitize_label(
+        session
+            .shell_user
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())?,
+    );
+    let linux_cwd = session.cwd.as_ref()?.to_string_lossy().into_owned();
+    if !linux_cwd.starts_with('/') {
+        return None;
+    }
 
     // Do not touch WSL UNC provider paths from discovery. Even a direct UNC
     // lookup can inherit unbounded provider/filesystem latency and stall the
@@ -1133,24 +1129,28 @@ mod tests {
 
     #[cfg(target_os = "windows")]
     #[test]
-    fn wsl_title_parser_accepts_common_bash_shapes() {
-        assert_eq!(
-            parse_wsl_title("amjed@DESKTOP-2LR87FN:/mnt/d/work"),
-            Some(("amjed".to_string(), "/mnt/d/work".to_string()))
-        );
-        assert_eq!(
-            parse_wsl_title("amjed@DESKTOP-2LR87FN: /home/amjed/project"),
-            Some(("amjed".to_string(), "/home/amjed/project".to_string()))
-        );
-        assert_eq!(parse_wsl_title("Windows PowerShell"), None);
+    fn wsl_view_uses_explicit_metadata_instead_of_mutable_title_text() {
+        let session = SessionFacts {
+            session_id: 1,
+            cwd: Some(PathBuf::from("/mnt/d/work tree")),
+            title: "misleading native title D:/ignored".to_string(),
+            distro: Some("Ubuntu-24.04".to_string()),
+            os_version: Some("24.04".to_string()),
+            shell_name: Some("bash".to_string()),
+            shell_user: Some("amjed".to_string()),
+            shell_path: Some("/usr/bin/bash".to_string()),
+            shell_integration: true,
+            shell_pid: 42,
+        };
+        let view = windows_wsl_session_view(&session).expect("explicit WSL view");
+        assert_eq!(view.wsl_cwd.as_deref(), Some("/mnt/d/work tree"));
+        assert_eq!(view.wsl.expect("WSL identity").user, "amjed");
     }
 
     #[cfg(target_os = "windows")]
     #[test]
     fn native_powershell_drive_title_is_not_wsl() {
         let title = "lamjed@DESKTOP-2LR87FN: D:/workstation/projects/automexia";
-        assert_eq!(parse_wsl_title(title), None);
-
         let session = SessionFacts {
             session_id: 1,
             cwd: Some(PathBuf::from(r"D:\workstation\projects\automexia")),
@@ -1160,6 +1160,28 @@ mod tests {
             distro: Some("Ubuntu-24.04".to_string()),
             os_version: Some("24.04".to_string()),
             shell_name: Some("PowerShell".to_string()),
+            shell_user: Some("lamjed".to_string()),
+            shell_path: Some(
+                r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe".to_string(),
+            ),
+            shell_integration: true,
+            shell_pid: 42,
+        };
+        assert!(windows_wsl_session_view(&session).is_none());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn native_command_prompt_never_inherits_a_stale_wsl_badge() {
+        let session = SessionFacts {
+            session_id: 1,
+            cwd: Some(PathBuf::from(r"D:\workstation\projects\automexia")),
+            title: "CMD - D:/workstation/projects/automexia".to_string(),
+            distro: Some("Ubuntu-24.04".to_string()),
+            os_version: Some("24.04".to_string()),
+            shell_name: Some("CMD".to_string()),
+            shell_user: Some("lamjed".to_string()),
+            shell_path: Some(r"C:\Windows\System32\cmd.exe".to_string()),
             shell_integration: true,
             shell_pid: 42,
         };

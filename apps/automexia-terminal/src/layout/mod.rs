@@ -17,6 +17,77 @@ use taffy::{
 const MIN_COLS: usize = 2;
 const MIN_LINES: usize = 1;
 
+/// Height reserved below every usable pane for Automexia's session footer.
+///
+/// The footer is renderer-owned rather than PTY-owned, so it must never share
+/// cells with terminal output.  Tiny panes keep all of their space for the PTY
+/// and omit the footer until there is enough room for both surfaces.
+pub const PANE_FOOTER_HEIGHT_LOGICAL: f32 = 32.0;
+const PANE_FOOTER_MIN_PANE_HEIGHT_LOGICAL: f32 = 112.0;
+
+/// Height reserved at the top of a pane that owns multiple local tabs.
+///
+/// This is deliberately pane chrome rather than window chrome: a sibling
+/// pane with one session must not lose rows because another pane has tabs.
+pub const PANE_TAB_RAIL_HEIGHT_LOGICAL: f32 = 36.0;
+const PANE_TAB_RAIL_MIN_PANE_HEIGHT_LOGICAL: f32 = 96.0;
+
+#[inline]
+pub fn pane_footer_reserved_height(panel_height: f32, scale: f32) -> f32 {
+    if !panel_height.is_finite()
+        || !scale.is_finite()
+        || scale <= f32::EPSILON
+        || panel_height / scale < PANE_FOOTER_MIN_PANE_HEIGHT_LOGICAL
+    {
+        0.0
+    } else {
+        PANE_FOOTER_HEIGHT_LOGICAL * scale
+    }
+}
+
+#[inline]
+pub fn pane_tab_rail_reserved_height(
+    panel_height: f32,
+    scale: f32,
+    local_tab_count: usize,
+) -> f32 {
+    if local_tab_count <= 1
+        || !panel_height.is_finite()
+        || !scale.is_finite()
+        || scale <= f32::EPSILON
+        || panel_height / scale < PANE_TAB_RAIL_MIN_PANE_HEIGHT_LOGICAL
+    {
+        0.0
+    } else {
+        PANE_TAB_RAIL_HEIGHT_LOGICAL * scale
+    }
+}
+
+/// Full physical-pixel rectangle owned by a pane's local-tab rail.
+#[inline]
+pub fn pane_tab_rail_rect(
+    panel_rect: [f32; 4],
+    scale: f32,
+    local_tab_count: usize,
+) -> Option<[f32; 4]> {
+    let height = pane_tab_rail_reserved_height(panel_rect[3], scale, local_tab_count);
+    (height > 0.0).then_some([panel_rect[0], panel_rect[1], panel_rect[2], height])
+}
+
+/// Terminal-cell rectangle after subtracting pane-owned top and bottom chrome.
+#[inline]
+pub fn pane_terminal_rect(
+    mut panel_rect: [f32; 4],
+    scale: f32,
+    local_tab_count: usize,
+) -> [f32; 4] {
+    let rail = pane_tab_rail_reserved_height(panel_rect[3], scale, local_tab_count);
+    let footer = pane_footer_reserved_height(panel_rect[3], scale);
+    panel_rect[1] += rail;
+    panel_rect[3] = (panel_rect[3] - rail - footer).max(0.0);
+    panel_rect
+}
+
 /// Direction of a draggable panel border
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BorderDirection {
@@ -24,6 +95,154 @@ pub enum BorderDirection {
     Vertical,
     /// Border between top/bottom panels (drag vertically)
     Horizontal,
+}
+
+/// Geometric direction used to focus a neighbouring pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaneDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DirectionalPaneScore {
+    outside_beam: bool,
+    distance: f32,
+    cross_distance: f32,
+    top: f32,
+    left: f32,
+}
+
+fn interval_gap(a_start: f32, a_end: f32, b_start: f32, b_end: f32) -> f32 {
+    if a_end < b_start {
+        b_start - a_end
+    } else if b_end < a_start {
+        a_start - b_end
+    } else {
+        0.0
+    }
+}
+
+fn directional_pane_score(
+    current: [f32; 4],
+    candidate: [f32; 4],
+    direction: PaneDirection,
+) -> Option<DirectionalPaneScore> {
+    if current
+        .iter()
+        .chain(candidate.iter())
+        .any(|value| !value.is_finite())
+        || current[2] <= 0.0
+        || current[3] <= 0.0
+        || candidate[2] <= 0.0
+        || candidate[3] <= 0.0
+    {
+        return None;
+    }
+
+    let current_center = [current[0] + current[2] / 2.0, current[1] + current[3] / 2.0];
+    let candidate_center = [
+        candidate[0] + candidate[2] / 2.0,
+        candidate[1] + candidate[3] / 2.0,
+    ];
+    let (eligible, primary_gap, cross_gap, cross_distance) = match direction {
+        PaneDirection::Left => (
+            candidate_center[0] < current_center[0],
+            (current[0] - (candidate[0] + candidate[2])).max(0.0),
+            interval_gap(
+                current[1],
+                current[1] + current[3],
+                candidate[1],
+                candidate[1] + candidate[3],
+            ),
+            (candidate_center[1] - current_center[1]).abs(),
+        ),
+        PaneDirection::Right => (
+            candidate_center[0] > current_center[0],
+            (candidate[0] - (current[0] + current[2])).max(0.0),
+            interval_gap(
+                current[1],
+                current[1] + current[3],
+                candidate[1],
+                candidate[1] + candidate[3],
+            ),
+            (candidate_center[1] - current_center[1]).abs(),
+        ),
+        PaneDirection::Up => (
+            candidate_center[1] < current_center[1],
+            (current[1] - (candidate[1] + candidate[3])).max(0.0),
+            interval_gap(
+                current[0],
+                current[0] + current[2],
+                candidate[0],
+                candidate[0] + candidate[2],
+            ),
+            (candidate_center[0] - current_center[0]).abs(),
+        ),
+        PaneDirection::Down => (
+            candidate_center[1] > current_center[1],
+            (candidate[1] - (current[1] + current[3])).max(0.0),
+            interval_gap(
+                current[0],
+                current[0] + current[2],
+                candidate[0],
+                candidate[0] + candidate[2],
+            ),
+            (candidate_center[0] - current_center[0]).abs(),
+        ),
+    };
+    eligible.then_some(DirectionalPaneScore {
+        outside_beam: cross_gap > f32::EPSILON,
+        distance: primary_gap.hypot(cross_gap),
+        cross_distance,
+        top: candidate[1],
+        left: candidate[0],
+    })
+}
+
+fn compare_directional_pane_scores(
+    left: DirectionalPaneScore,
+    right: DirectionalPaneScore,
+) -> std::cmp::Ordering {
+    left.outside_beam
+        .cmp(&right.outside_beam)
+        .then_with(|| left.distance.total_cmp(&right.distance))
+        .then_with(|| left.cross_distance.total_cmp(&right.cross_distance))
+        .then_with(|| left.top.total_cmp(&right.top))
+        .then_with(|| left.left.total_cmp(&right.left))
+}
+
+fn directional_pane_neighbor<K: Copy + Eq>(
+    current_key: K,
+    current_rect: [f32; 4],
+    panes: impl Iterator<Item = (K, [f32; 4])>,
+    direction: PaneDirection,
+) -> Option<K> {
+    panes
+        .filter(|(key, _)| *key != current_key)
+        .filter_map(|(key, rect)| {
+            directional_pane_score(current_rect, rect, direction)
+                .map(|score| (key, score))
+        })
+        .min_by(|(_, left), (_, right)| compare_directional_pane_scores(*left, *right))
+        .map(|(key, _)| key)
+}
+
+fn adjacent_local_tab_index(
+    tab_count: usize,
+    active: usize,
+    forward: bool,
+) -> Option<usize> {
+    if tab_count <= 1 || active >= tab_count {
+        return None;
+    }
+    Some(if forward {
+        (active + 1) % tab_count
+    } else {
+        (active + tab_count - 1) % tab_count
+    })
 }
 
 /// Describes a draggable border between two panels
@@ -89,6 +308,29 @@ fn create_border(color: [f32; 4], position: [f32; 2], size: [f32; 2]) -> Rect {
     Rect::new(position[0], position[1], size[0], size[1], color)
 }
 
+/// Build an inset four-sided focus ring for a pane rectangle.
+///
+/// Keeping every edge inside the pane prevents clipping at the window bounds
+/// and makes nested horizontal/vertical layouts behave identically. The
+/// renderer adds the grid's outer margin when these rectangles are painted.
+fn panel_focus_outline(panel: [f32; 4], config: BorderConfig) -> [Rect; 4] {
+    let [x, y, width, height] = panel;
+    let thickness = config
+        .width
+        .max(1.0)
+        .min(width.max(1.0))
+        .min(height.max(1.0));
+    let right = (x + width - thickness).max(x);
+    let bottom = (y + height - thickness).max(y);
+
+    [
+        create_border(config.color, [x, y], [width, thickness]),
+        create_border(config.color, [x, bottom], [width, thickness]),
+        create_border(config.color, [x, y], [thickness, height]),
+        create_border(config.color, [right, y], [thickness, height]),
+    ]
+}
+
 /// Separator configuration for split panels
 #[derive(Debug, Clone, Copy)]
 pub struct BorderConfig {
@@ -121,10 +363,16 @@ pub struct ContextGrid<T: EventListener> {
     tree: TaffyTree<()>,
     root_node: NodeId,
     border_config: BorderConfig,
+    active_border_config: BorderConfig,
 }
 
 pub struct ContextGridItem<T: EventListener> {
+    /// The PTY currently presented by this pane.
     pub val: Context<T>,
+    /// Tabs before the active tab, in display order.
+    tabs_before: Vec<Context<T>>,
+    /// Tabs after the active tab, in display order.
+    tabs_after: Vec<Context<T>>,
     pub layout_rect: [f32; 4],
 }
 
@@ -132,6 +380,8 @@ impl<T: rio_backend::event::EventListener> ContextGridItem<T> {
     pub fn new(context: Context<T>) -> Self {
         Self {
             val: context,
+            tabs_before: Vec::new(),
+            tabs_after: Vec::new(),
             layout_rect: [0.0; 4],
         }
     }
@@ -146,6 +396,221 @@ impl<T: rio_backend::event::EventListener> ContextGridItem<T> {
         &mut self.val
     }
 
+    #[inline]
+    pub fn tab_count(&self) -> usize {
+        self.tabs_before.len() + 1 + self.tabs_after.len()
+    }
+
+    #[inline]
+    pub fn active_tab_index(&self) -> usize {
+        self.tabs_before.len()
+    }
+
+    /// Best available display title for a tab in this pane.
+    ///
+    /// Only the active tab attempts a non-blocking terminal-title read.
+    /// Inactive tabs retain the last title cached by their route, and a busy
+    /// PTY falls back to the same cache instead of stalling the render frame.
+    pub fn tab_title(&self, index: usize) -> Option<String> {
+        let context = self.context_at(index)?;
+        if index == self.active_tab_index() {
+            if let Some(terminal) = context.terminal.try_lock_unfair() {
+                let raw = terminal.title.to_string();
+                if !raw.trim().is_empty() {
+                    return Some(raw);
+                }
+            }
+        }
+        if !context.title.content.trim().is_empty()
+            && context.title.content.trim().chars().ne(['~'])
+        {
+            return Some(context.title.content.clone());
+        }
+        context
+            .launch_descriptor
+            .profile_identity()
+            .or_else(|| context.launch_descriptor.program())
+            .map(ToOwned::to_owned)
+    }
+
+    pub fn context_at(&self, index: usize) -> Option<&Context<T>> {
+        if index < self.tabs_before.len() {
+            return self.tabs_before.get(index);
+        }
+        if index == self.tabs_before.len() {
+            return Some(&self.val);
+        }
+        self.tabs_after
+            .get(index.saturating_sub(self.tabs_before.len() + 1))
+    }
+
+    pub fn contexts(&self) -> impl Iterator<Item = &Context<T>> {
+        self.tabs_before
+            .iter()
+            .chain(std::iter::once(&self.val))
+            .chain(self.tabs_after.iter())
+    }
+
+    pub fn contexts_mut(&mut self) -> impl Iterator<Item = &mut Context<T>> {
+        self.tabs_before
+            .iter_mut()
+            .chain(std::iter::once(&mut self.val))
+            .chain(self.tabs_after.iter_mut())
+    }
+
+    pub fn context_by_route_id(&mut self, route_id: usize) -> Option<&mut Context<T>> {
+        if self.val.route_id == route_id {
+            return Some(&mut self.val);
+        }
+        self.tabs_before
+            .iter_mut()
+            .chain(self.tabs_after.iter_mut())
+            .find(|context| context.route_id == route_id)
+    }
+
+    pub fn contains_route(&self, route_id: usize) -> bool {
+        self.contexts().any(|context| context.route_id == route_id)
+    }
+
+    pub fn route_ids(&self) -> impl Iterator<Item = usize> + '_ {
+        self.contexts().map(|context| context.route_id)
+    }
+
+    /// Insert a new independent PTY immediately after the active tab and
+    /// activate it. Existing tabs to the right retain their relative order.
+    pub fn push_tab(&mut self, context: Context<T>, sugarloaf: &mut Sugarloaf) {
+        sugarloaf.clear_image_overlays_for(self.val.rich_text_id);
+        self.push_tab_core(context);
+    }
+
+    fn push_tab_core(&mut self, context: Context<T>) {
+        let previous = std::mem::replace(&mut self.val, context);
+        self.tabs_before.push(previous);
+    }
+
+    pub fn select_tab(&mut self, index: usize, sugarloaf: &mut Sugarloaf) -> bool {
+        if index >= self.tab_count() || index == self.active_tab_index() {
+            return false;
+        }
+
+        sugarloaf.clear_image_overlays_for(self.val.rich_text_id);
+        self.select_tab_core(index)
+    }
+
+    pub fn select_next_tab(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        let Some(index) =
+            adjacent_local_tab_index(self.tab_count(), self.active_tab_index(), true)
+        else {
+            return false;
+        };
+        self.select_tab(index, sugarloaf)
+    }
+
+    pub fn select_prev_tab(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        let Some(index) =
+            adjacent_local_tab_index(self.tab_count(), self.active_tab_index(), false)
+        else {
+            return false;
+        };
+        self.select_tab(index, sugarloaf)
+    }
+
+    fn select_tab_core(&mut self, index: usize) -> bool {
+        while self.active_tab_index() > index {
+            let Some(previous) = self.tabs_before.pop() else {
+                return false;
+            };
+            let active = std::mem::replace(&mut self.val, previous);
+            self.tabs_after.insert(0, active);
+        }
+        while self.active_tab_index() < index {
+            if self.tabs_after.is_empty() {
+                return false;
+            }
+            let next = self.tabs_after.remove(0);
+            let active = std::mem::replace(&mut self.val, next);
+            self.tabs_before.push(active);
+        }
+        self.val.renderable_content.pending_update.set_dirty();
+        true
+    }
+
+    /// Close only the active pane-local tab. Returns its route id, or `None`
+    /// when the pane has no sibling tab and must therefore stay alive.
+    pub fn close_active_tab(&mut self, sugarloaf: &mut Sugarloaf) -> Option<usize> {
+        if self.tab_count() <= 1 {
+            return None;
+        }
+        sugarloaf.clear_image_overlays_for(self.val.rich_text_id);
+        self.close_active_tab_core()
+    }
+
+    pub fn close_tab(
+        &mut self,
+        index: usize,
+        sugarloaf: &mut Sugarloaf,
+    ) -> Option<usize> {
+        if self.tab_count() <= 1 || index >= self.tab_count() {
+            return None;
+        }
+        let active = self.active_tab_index();
+        if index == active {
+            return self.close_active_tab(sugarloaf);
+        }
+        let context = if index < active {
+            self.tabs_before.remove(index)
+        } else {
+            self.tabs_after.remove(index - active - 1)
+        };
+        let route_id = context.route_id;
+        sugarloaf.clear_image_overlays_for(context.rich_text_id);
+        drop(context);
+        Some(route_id)
+    }
+
+    fn close_active_tab_core(&mut self) -> Option<usize> {
+        if self.tab_count() <= 1 {
+            return None;
+        }
+        let closed_route = self.val.route_id;
+        let replacement = if self.tabs_after.is_empty() {
+            self.tabs_before.pop()?
+        } else {
+            self.tabs_after.remove(0)
+        };
+        let closed = std::mem::replace(&mut self.val, replacement);
+        drop(closed);
+        self.val.renderable_content.pending_update.set_dirty();
+        Some(closed_route)
+    }
+
+    /// Remove a PTY that exited. The active tab is replaced by its nearest
+    /// sibling; an inactive tab is removed without disturbing pane focus.
+    pub fn remove_route(&mut self, route_id: usize, sugarloaf: &mut Sugarloaf) -> bool {
+        if self.val.route_id == route_id {
+            return self.close_active_tab(sugarloaf).is_some();
+        }
+        if let Some(index) = self
+            .tabs_before
+            .iter()
+            .position(|context| context.route_id == route_id)
+        {
+            let context = self.tabs_before.remove(index);
+            sugarloaf.clear_image_overlays_for(context.rich_text_id);
+            return true;
+        }
+        if let Some(index) = self
+            .tabs_after
+            .iter()
+            .position(|context| context.route_id == route_id)
+        {
+            let context = self.tabs_after.remove(index);
+            sugarloaf.clear_image_overlays_for(context.rich_text_id);
+            return true;
+        }
+        false
+    }
+
     /// Previously stashed panel position into the rich-text object's
     /// render_data; that object tree is gone with the Content drop.
     /// The grid renderer reads panel positions directly from
@@ -153,16 +618,198 @@ impl<T: rio_backend::event::EventListener> ContextGridItem<T> {
     fn set_position(&mut self, _position: [f32; 2]) {}
 }
 
+#[cfg(test)]
+mod pane_tab_tests {
+    use super::*;
+    use crate::context::create_dead_context;
+    use crate::event::VoidListener;
+    use rio_backend::event::WindowId;
+
+    fn dead(route_id: usize) -> Context<VoidListener> {
+        create_dead_context(
+            VoidListener {},
+            WindowId::from(7),
+            route_id,
+            route_id,
+            ContextDimension::default(),
+        )
+    }
+
+    #[test]
+    fn pane_local_tabs_keep_stable_order_across_selection_and_close() {
+        let mut item = ContextGridItem::new(dead(11));
+        item.push_tab_core(dead(22));
+        item.push_tab_core(dead(33));
+        assert_eq!(item.route_ids().collect::<Vec<_>>(), [11, 22, 33]);
+        assert_eq!(item.active_tab_index(), 2);
+
+        assert!(item.select_tab_core(0));
+        assert_eq!(item.val.route_id, 11);
+        assert_eq!(item.route_ids().collect::<Vec<_>>(), [11, 22, 33]);
+
+        assert!(item.select_tab_core(1));
+        assert_eq!(item.val.route_id, 22);
+        assert_eq!(item.close_active_tab_core(), Some(22));
+        assert_eq!(item.route_ids().collect::<Vec<_>>(), [11, 33]);
+        assert_eq!(item.val.route_id, 33);
+
+        assert!(item.context_by_route_id(11).is_some());
+        assert!(item.context_by_route_id(22).is_none());
+    }
+
+    #[test]
+    fn closing_inactive_local_tab_preserves_the_active_pty() {
+        let mut item = ContextGridItem::new(dead(11));
+        item.push_tab_core(dead(22));
+        item.push_tab_core(dead(33));
+        assert!(item.select_tab_core(0));
+
+        // Exercise the core equivalent of `close_tab(1)` without a GPU
+        // surface: remove the inactive middle sibling directly.
+        let closed = item.tabs_after.remove(0);
+        assert_eq!(closed.route_id, 22);
+        drop(closed);
+        assert_eq!(item.val.route_id, 11);
+        assert_eq!(item.route_ids().collect::<Vec<_>>(), [11, 33]);
+    }
+
+    #[test]
+    fn pane_local_tab_never_closes_its_last_pty() {
+        let mut item = ContextGridItem::new(dead(44));
+        assert_eq!(item.close_active_tab_core(), None);
+        assert_eq!(item.tab_count(), 1);
+        assert_eq!(item.val.route_id, 44);
+    }
+
+    #[test]
+    fn pane_tab_title_uses_cached_identity_when_the_terminal_is_busy() {
+        let mut item = ContextGridItem::new(dead(55));
+        item.val.title.content = "Cached PowerShell".to_string();
+        let _terminal_guard = item.val.terminal.lock_unfair();
+
+        assert_eq!(item.tab_title(0).as_deref(), Some("Cached PowerShell"));
+    }
+
+    #[test]
+    fn local_tab_navigation_wraps_without_changing_order() {
+        let mut item = ContextGridItem::new(dead(11));
+        item.push_tab_core(dead(22));
+        item.push_tab_core(dead(33));
+
+        let next =
+            adjacent_local_tab_index(item.tab_count(), item.active_tab_index(), true)
+                .expect("next local tab");
+        assert_eq!(next, 0);
+        assert!(item.select_tab_core(next));
+        assert_eq!(item.val.route_id, 11);
+
+        let previous =
+            adjacent_local_tab_index(item.tab_count(), item.active_tab_index(), false)
+                .expect("previous local tab");
+        assert_eq!(previous, 2);
+        assert!(item.select_tab_core(previous));
+        assert_eq!(item.val.route_id, 33);
+        assert_eq!(item.route_ids().collect::<Vec<_>>(), [11, 22, 33]);
+
+        assert_eq!(adjacent_local_tab_index(1, 0, true), None);
+        assert_eq!(adjacent_local_tab_index(3, 3, false), None);
+    }
+
+    #[test]
+    fn geometric_pane_navigation_prefers_directional_beam_and_never_wraps() {
+        let panes = [
+            (0, [100.0, 100.0, 100.0, 100.0]),
+            (1, [0.0, 100.0, 90.0, 100.0]),
+            (2, [210.0, 100.0, 100.0, 100.0]),
+            (3, [100.0, 0.0, 100.0, 90.0]),
+            (4, [100.0, 210.0, 100.0, 100.0]),
+            // Closer on the primary axis but outside the horizontal beam.
+            (5, [205.0, 240.0, 100.0, 100.0]),
+        ];
+        let current = panes[0].1;
+        for (direction, expected) in [
+            (PaneDirection::Left, Some(1)),
+            (PaneDirection::Right, Some(2)),
+            (PaneDirection::Up, Some(3)),
+            (PaneDirection::Down, Some(4)),
+        ] {
+            assert_eq!(
+                directional_pane_neighbor(0, current, panes.into_iter(), direction),
+                expected
+            );
+        }
+        assert_eq!(
+            directional_pane_neighbor(
+                1,
+                panes[1].1,
+                panes.into_iter(),
+                PaneDirection::Left
+            ),
+            None,
+            "directional focus must stop at an outer edge"
+        );
+    }
+
+    #[test]
+    fn geometric_pane_navigation_is_deterministic_for_nested_splits() {
+        let panes = [
+            (0, [0.0, 0.0, 300.0, 100.0]),
+            (1, [0.0, 110.0, 145.0, 100.0]),
+            (2, [155.0, 110.0, 145.0, 100.0]),
+        ];
+        assert_eq!(
+            directional_pane_neighbor(
+                0,
+                panes[0].1,
+                panes.into_iter(),
+                PaneDirection::Down
+            ),
+            Some(1),
+            "an exact tie resolves in stable visual order"
+        );
+        assert_eq!(
+            directional_pane_neighbor(
+                1,
+                panes[1].1,
+                panes.into_iter(),
+                PaneDirection::Right
+            ),
+            Some(2)
+        );
+    }
+}
+
 impl<T: rio_backend::event::EventListener> ContextGrid<T> {
     pub fn new(
         context: Context<T>,
         scaled_margin: Margin,
         border_color: [f32; 4],
-        _border_active_color: [f32; 4],
+        border_active_color: [f32; 4],
         panel_config: rio_backend::config::layout::Panel,
     ) -> Self {
         let width = context.dimension.width;
         let height = context.dimension.height;
+        Self::new_with_viewport(
+            context,
+            scaled_margin,
+            border_color,
+            border_active_color,
+            panel_config,
+            width,
+            height,
+        )
+    }
+
+    /// Construct a grid whose layout root already matches the owning window.
+    pub fn new_with_viewport(
+        context: Context<T>,
+        scaled_margin: Margin,
+        border_color: [f32; 4],
+        border_active_color: [f32; 4],
+        panel_config: rio_backend::config::layout::Panel,
+        width: f32,
+        height: f32,
+    ) -> Self {
         let scale = context.dimension.dimension.scale;
 
         let mut tree: TaffyTree<()> = TaffyTree::new();
@@ -223,6 +870,13 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             width: panel_config.border_width,
             color: border_color,
         };
+        let active_border_config = BorderConfig {
+            // Keep the focus ring at least two physical pixels wide. A split
+            // with a hairline divider still needs an immediately legible
+            // focus target in a dense multi-cloud workspace.
+            width: panel_config.border_width.max(2.0),
+            color: border_active_color,
+        };
 
         let mut grid = Self {
             inner,
@@ -238,6 +892,7 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             tree,
             root_node,
             border_config,
+            active_border_config,
         };
         grid.calculate_positions();
         grid
@@ -251,13 +906,10 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
 
     /// Get item by route_id (used for event routing)
     #[inline]
-    pub fn get_by_route_id(
-        &mut self,
-        route_id: usize,
-    ) -> Option<&mut ContextGridItem<T>> {
+    pub fn get_by_route_id(&mut self, route_id: usize) -> Option<&mut Context<T>> {
         self.inner
             .values_mut()
-            .find(|item| item.val.route_id == route_id)
+            .find_map(|item| item.context_by_route_id(route_id))
     }
 
     #[inline]
@@ -451,6 +1103,16 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             }
             None // continue walking
         });
+
+        // Paint the active pane last so its themed focus ring wins where it
+        // intersects a neutral split divider. The outline is an overlay: it
+        // never consumes grid cells or changes PTY dimensions.
+        if let Some(active) = self.inner.get(&self.current) {
+            separators.extend(panel_focus_outline(
+                active.layout_rect,
+                self.active_border_config,
+            ));
+        }
 
         separators
     }
@@ -906,42 +1568,44 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
 
         for item in self.inner.values_mut() {
             let [abs_x, abs_y, width, height] = item.layout_rect;
-            let previous_grid_size =
-                (item.val.dimension.columns, item.val.dimension.lines);
+            let local_tab_count = item.tab_count();
 
             let x = (abs_x + self.scaled_margin.left) / scale;
             let y = (abs_y + self.scaled_margin.top) / scale;
 
-            // Clear margin since Taffy layout already accounts for spacing
-            item.val.dimension.margin = Margin::all(0.0);
-            item.val.dimension.update_width(width);
-            item.val.dimension.update_height(height);
-            let grid_size_changed = previous_grid_size
-                != (item.val.dimension.columns, item.val.dimension.lines);
+            // Every pane-local tab shares the pane geometry. Resizing inactive
+            // PTYs prevents a stale-size flash when the user switches tabs and
+            // keeps ConPTY/Unix PTY state consistent while output is arriving.
+            for context in item.contexts_mut() {
+                let previous_grid_size =
+                    (context.dimension.columns, context.dimension.lines);
+                let footer_height = pane_footer_reserved_height(height, scale);
+                let tab_rail_height =
+                    pane_tab_rail_reserved_height(height, scale, local_tab_count);
+                context.dimension.margin = Margin::all(0.0);
+                context.dimension.update_width(width);
+                context
+                    .dimension
+                    .update_height((height - footer_height - tab_rail_height).max(0.0));
+                let grid_size_changed = previous_grid_size
+                    != (context.dimension.columns, context.dimension.lines);
 
-            // Update terminal size
-            let mut terminal = item.val.terminal.lock();
-            terminal.resize::<ContextDimension>(item.val.dimension);
-            drop(terminal);
+                let mut terminal = context.terminal.lock();
+                terminal.resize::<ContextDimension>(context.dimension);
+                drop(terminal);
 
-            let winsize =
-                crate::renderer::utils::terminal_dimensions(&item.val.dimension);
-            let _ = item.val.messenger.send_resize(winsize);
+                let winsize =
+                    crate::renderer::utils::terminal_dimensions(&context.dimension);
+                let _ = context.messenger.send_resize(winsize);
 
-            // A columns/lines change reflows Crosswords and invalidates the
-            // resident GPU row buffers. The terminal's asynchronous damage
-            // event can arrive after the resize frame, so explicitly request
-            // one full rebuild here; otherwise rapid small/large transitions
-            // can briefly combine freshly positioned overlays with stale text
-            // rows. Pixel-only changes that preserve the grid stay on the
-            // cheaper dirty-only path.
-            if grid_size_changed {
-                item.val
-                    .renderable_content
-                    .pending_update
-                    .set_terminal_damage(rio_backend::event::TerminalDamage::Full);
-            } else {
-                item.val.renderable_content.pending_update.set_dirty();
+                if grid_size_changed {
+                    context
+                        .renderable_content
+                        .pending_update
+                        .set_terminal_damage(rio_backend::event::TerminalDamage::Full);
+                } else {
+                    context.renderable_content.pending_update.set_dirty();
+                }
             }
 
             // Panel position / clipping bounds are tracked rio-side
@@ -1036,6 +1700,30 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
         }
     }
 
+    /// Focus the nearest pane in a geometric direction without wrapping.
+    ///
+    /// Candidates whose perpendicular span overlaps the active pane are
+    /// preferred, then ranked by edge distance and centre alignment. This
+    /// keeps movement predictable in nested and uneven split layouts.
+    pub fn select_split_direction(&mut self, direction: PaneDirection) -> bool {
+        let Some(current_rect) =
+            self.inner.get(&self.current).map(|item| item.layout_rect)
+        else {
+            return false;
+        };
+        let panes = self
+            .inner
+            .iter()
+            .map(|(&key, item)| (key, item.layout_rect));
+        let Some(next) =
+            directional_pane_neighbor(self.current, current_rect, panes, direction)
+        else {
+            return false;
+        };
+        self.current = next;
+        true
+    }
+
     #[inline]
     pub fn select_prev_split_no_loop(&mut self) -> bool {
         if self.inner.len() == 1 {
@@ -1057,6 +1745,18 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
     #[inline]
     pub fn current_item(&self) -> Option<&ContextGridItem<T>> {
         self.inner.get(&self.current)
+    }
+
+    #[inline]
+    pub fn current_item_mut(&mut self) -> Option<&mut ContextGridItem<T>> {
+        self.inner.get_mut(&self.current)
+    }
+
+    pub fn tab_count_for_route(&self, route_id: usize) -> Option<usize> {
+        self.inner
+            .values()
+            .find(|item| item.contains_route(route_id))
+            .map(ContextGridItem::tab_count)
     }
 
     pub fn current(&self) -> &Context<T> {
@@ -1107,10 +1807,24 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
         let len = self.inner.len();
         if len <= 1 {
             if let Some(item) = self.inner.get(&self.current) {
-                return (&item.val, self.scaled_margin);
+                let rail = pane_tab_rail_reserved_height(
+                    item.layout_rect[3],
+                    self.scale,
+                    item.tab_count(),
+                );
+                let mut margin = self.scaled_margin;
+                margin.top += rail;
+                return (&item.val, margin);
             } else if let Some(root) = self.root {
                 if let Some(item) = self.inner.get(&root) {
-                    return (&item.val, self.scaled_margin);
+                    let rail = pane_tab_rail_reserved_height(
+                        item.layout_rect[3],
+                        self.scale,
+                        item.tab_count(),
+                    );
+                    let mut margin = self.scaled_margin;
+                    margin.top += rail;
+                    return (&item.val, margin);
                 }
             }
             panic!("Grid is in an invalid state - no contexts available");
@@ -1124,7 +1838,13 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             let [abs_x, abs_y, _, _] = current_item.layout_rect;
             let margin = Margin {
                 left: self.scaled_margin.left + abs_x,
-                top: self.scaled_margin.top + abs_y,
+                top: self.scaled_margin.top
+                    + abs_y
+                    + pane_tab_rail_reserved_height(
+                        current_item.layout_rect[3],
+                        self.scale,
+                        current_item.tab_count(),
+                    ),
                 right: self.scaled_margin.right,
                 bottom: self.scaled_margin.bottom,
             };
@@ -1133,7 +1853,15 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             tracing::error!("Current key {:?} not found in grid", self.current);
             if let Some(root) = self.root {
                 if let Some(item) = self.inner.get(&root) {
-                    return (&item.val, self.scaled_margin);
+                    let mut margin = self.scaled_margin;
+                    margin.left += item.layout_rect[0];
+                    margin.top += item.layout_rect[1]
+                        + pane_tab_rail_reserved_height(
+                            item.layout_rect[3],
+                            self.scale,
+                            item.tab_count(),
+                        );
+                    return (&item.val, margin);
                 }
             }
             panic!("Grid is in an invalid state - no contexts available");
@@ -1250,8 +1978,10 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
     }
 
     pub fn update_line_height(&mut self, line_height: f32) {
-        for context in self.inner.values_mut() {
-            context.val.dimension.update_line_height(line_height);
+        for item in self.inner.values_mut() {
+            for context in item.contexts_mut() {
+                context.dimension.update_line_height(line_height);
+            }
         }
     }
 
@@ -1261,17 +1991,19 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
         // `dimension.font_size` / `line_height` / `dimension.scale`
         // drive the result, so panels with per-panel zoom keep
         // independent cell strides.
-        for context in self.inner.values_mut() {
-            let dim = &mut context.val.dimension;
-            if dim.font_size <= 0.0 {
-                continue;
+        for item in self.inner.values_mut() {
+            for context in item.contexts_mut() {
+                let dim = &mut context.dimension;
+                if dim.font_size <= 0.0 {
+                    continue;
+                }
+                let (text_dims, cell) = sugarloaf.compute_cell_metrics(
+                    dim.font_size,
+                    dim.line_height,
+                    dim.dimension.scale,
+                );
+                dim.update_dimensions(text_dims, cell);
             }
-            let (text_dims, cell) = sugarloaf.compute_cell_metrics(
-                dim.font_size,
-                dim.line_height,
-                dim.dimension.scale,
-            );
-            dim.update_dimensions(text_dims, cell);
         }
 
         // Always apply Taffy layout for consistent positioning
@@ -1329,7 +2061,15 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
         }
 
         // Get rich text ID before removing
-        let rich_text_id = self.inner.get(&to_remove).map(|item| item.val.rich_text_id);
+        let rich_text_ids = self
+            .inner
+            .get(&to_remove)
+            .map(|item| {
+                item.contexts()
+                    .map(|context| context.rich_text_id)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
 
         // Select next panel before removing (use visual ordering)
         let ordered_keys = self.get_ordered_keys();
@@ -1364,7 +2104,7 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
 
         // Drop image overlays for the removed panel — sugarloaf has
         // no other panel state to clean up post-Content removal.
-        if let Some(id) = rich_text_id {
+        for id in rich_text_ids {
             sugarloaf.clear_image_overlays_for(id);
         }
 
@@ -1387,6 +2127,50 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             }
             self.apply_taffy_layout(sugarloaf);
         }
+    }
+
+    /// Remove the pane containing `route_id`. Used when that pane's final PTY
+    /// exits while sibling panes remain.
+    pub fn remove_pane_by_route(
+        &mut self,
+        route_id: usize,
+        sugarloaf: &mut Sugarloaf,
+    ) -> bool {
+        let Some(node) = self
+            .inner
+            .iter()
+            .find_map(|(node, item)| item.contains_route(route_id).then_some(*node))
+        else {
+            return false;
+        };
+        if self.inner.len() <= 1 {
+            return false;
+        }
+        let previously_selected = self.current;
+        self.current = node;
+        self.remove_current(sugarloaf);
+        if previously_selected != node && self.inner.contains_key(&previously_selected) {
+            self.current = previously_selected;
+        }
+        true
+    }
+
+    pub fn remove_local_route(
+        &mut self,
+        route_id: usize,
+        sugarloaf: &mut Sugarloaf,
+    ) -> bool {
+        self.inner
+            .values_mut()
+            .find(|item| item.contains_route(route_id))
+            .is_some_and(|item| item.remove_route(route_id, sugarloaf))
+    }
+
+    pub fn route_ids(&self) -> Vec<usize> {
+        self.inner
+            .values()
+            .flat_map(ContextGridItem::route_ids)
+            .collect()
     }
 
     pub fn split_right(&mut self, context: Context<T>, sugarloaf: &mut Sugarloaf) {
@@ -1635,7 +2419,9 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             return;
         }
         for item in self.inner.values() {
-            sugarloaf.clear_image_overlays_for(item.val.rich_text_id);
+            for context in item.contexts() {
+                sugarloaf.clear_image_overlays_for(context.rich_text_id);
+            }
         }
     }
 
@@ -1646,7 +2432,9 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
     #[inline]
     pub fn remove_all_rich_text(&self, sugarloaf: &mut Sugarloaf) {
         for item in self.inner.values() {
-            sugarloaf.clear_image_overlays_for(item.val.rich_text_id);
+            for context in item.contexts() {
+                sugarloaf.clear_image_overlays_for(context.rich_text_id);
+            }
         }
     }
 }

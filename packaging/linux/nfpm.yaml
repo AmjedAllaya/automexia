@@ -2,10 +2,14 @@ name: automexia-terminal
 arch: ${NFPM_ARCH}
 platform: linux
 version: ${AUTOMEXIA_VERSION}
+release: 1
 section: utils
 priority: optional
-maintainer: Automexia Contributors
-description: Hardware-accelerated terminal for modern development workflows
+maintainer: Automexia Contributors <AmjedAllaya@users.noreply.github.com>
+description: |-
+  Hardware-accelerated terminal for modern development workflows
+  Automexia Terminal combines responsive terminal emulation with pane-local
+  tabs, shell-aware context, DevOps metadata, and bounded image previews.
 vendor: Automexia
 homepage: https://github.com/AmjedAllaya/automexia-terminal
 license: MIT
@@ -17,35 +21,91 @@ contents:
       mode: 0755
   - src: packaging/linux/automexia-terminal.desktop
     dst: /usr/share/applications/automexia-terminal.desktop
+    file_info:
+      mode: 0644
   - src: packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml
     dst: /usr/share/metainfo/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml
+    file_info:
+      mode: 0644
   - src: assets/brand/png/automexia-terminal-16.png
     dst: /usr/share/icons/hicolor/16x16/apps/automexia-terminal.png
+    file_info:
+      mode: 0644
   - src: assets/brand/png/automexia-terminal-32.png
     dst: /usr/share/icons/hicolor/32x32/apps/automexia-terminal.png
+    file_info:
+      mode: 0644
   - src: assets/brand/png/automexia-terminal-48.png
     dst: /usr/share/icons/hicolor/48x48/apps/automexia-terminal.png
+    file_info:
+      mode: 0644
   - src: assets/brand/png/automexia-terminal-64.png
     dst: /usr/share/icons/hicolor/64x64/apps/automexia-terminal.png
+    file_info:
+      mode: 0644
   - src: assets/brand/png/automexia-terminal-128.png
     dst: /usr/share/icons/hicolor/128x128/apps/automexia-terminal.png
+    file_info:
+      mode: 0644
   - src: assets/brand/png/automexia-terminal-256.png
     dst: /usr/share/icons/hicolor/256x256/apps/automexia-terminal.png
+    file_info:
+      mode: 0644
   - src: assets/brand/png/automexia-terminal-512.png
     dst: /usr/share/icons/hicolor/512x512/apps/automexia-terminal.png
+    file_info:
+      mode: 0644
   - src: ${AUTOMEXIA_TERMINFO_ROOT}/
     dst: /usr/share/terminfo
     type: tree
     expand: true
   - src: ${AUTOMEXIA_MANPAGE}
-    dst: /usr/share/man/man1/automexia.1
+    dst: /usr/share/man/man1/automexia.1.gz
     expand: true
+    file_info:
+      mode: 0644
+  - src: ${AUTOMEXIA_CHANGELOG}
+    dst: /usr/share/doc/automexia-terminal/changelog.gz
+    expand: true
+    file_info:
+      mode: 0644
+  - src: ${AUTOMEXIA_DEBIAN_CHANGELOG}
+    dst: /usr/share/doc/automexia-terminal/changelog.Debian.gz
+    expand: true
+    packager: deb
+    file_info:
+      mode: 0644
+  - src: packaging/linux/copyright
+    dst: /usr/share/doc/automexia-terminal/copyright
+    file_info:
+      mode: 0644
   - src: LICENSE
     dst: /usr/share/doc/automexia-terminal/LICENSE
+    file_info:
+      mode: 0644
   - src: NOTICE.md
     dst: /usr/share/doc/automexia-terminal/NOTICE.md
+    file_info:
+      mode: 0644
   - src: THIRD_PARTY_NOTICES.md
     dst: /usr/share/doc/automexia-terminal/THIRD_PARTY_NOTICES.md
+    file_info:
+      mode: 0644
+overrides:
+  deb:
+    depends:
+      - libc6
+      - libfontconfig1
+      - libfreetype6
+      - libgcc-s1
+      - libstdc++6
+  rpm:
+    depends:
+      - fontconfig
+      - freetype
+      - glibc
+      - libgcc
+      - libstdc++
 rpm:
   compression: xz
 deb:

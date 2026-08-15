@@ -277,7 +277,7 @@ fn default_hints_enabled() -> Vec<Hint> {
         mouse: HintMouse::default(),
         binding: Some(HintBinding {
             key: "O".to_string(),
-            mods: vec!["Control".to_string(), "Shift".to_string()],
+            mods: vec!["Control".to_string(), "Alt".to_string()],
             mode: Vec::new(),
         }),
     }]
@@ -489,6 +489,17 @@ mods = ["Control"]
         assert!(!hint.hyperlinks);
         assert!(hint.post_processing);
         assert!(!hint.persist);
+    }
+
+    #[test]
+    fn default_hint_binding_does_not_collide_with_ghostty_split_right() {
+        let hints = default_hints_enabled();
+        let binding = hints[0]
+            .binding
+            .as_ref()
+            .expect("default URL hint must remain keyboard-accessible");
+        assert_eq!(binding.key, "O");
+        assert_eq!(binding.mods, ["Control", "Alt"]);
     }
 
     fn parse_rule(rule_body: &str) -> Result<crate::config::Config, toml::de::Error> {

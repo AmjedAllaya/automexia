@@ -192,7 +192,7 @@ rio_engine_t *rio_engine_new(const rio_runtime_config_s *config);
 void rio_engine_free(rio_engine_t *engine);
 
 /* Replace the palette used to resolve named/indexed cell colors, process-wide.
- * NULL restores Rio's default theme. Dim variants derive from the new palette.
+ * NULL restores the host's default theme. Dim variants derive from the new palette.
  * The host owns redraw: repaint every surface after this (cells re-resolve on
  * the next rio_render_state_cell read; no re-snapshot needed). */
 void rio_set_colors(const rio_colors_s *colors);

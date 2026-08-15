@@ -2926,7 +2926,7 @@ unsafe fn confirm_close_native(hwnd: HWND) -> bool {
     use std::iter::once;
     use std::os::windows::ffi::OsStrExt;
 
-    let title: Vec<u16> = OsStr::new("Close Rio terminal?")
+    let title: Vec<u16> = OsStr::new("Close Automexia Terminal?")
         .encode_wide()
         .chain(once(0))
         .collect();

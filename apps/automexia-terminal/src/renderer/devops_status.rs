@@ -1,87 +1,70 @@
-//! Persistent, renderer-owned operational chrome.
+//! Renderer-owned operational context for semantic prompt rows.
 //!
-//! Context is intentionally outside the terminal grid. PTY output, prompt
-//! editing, scrollback and resize/reflow therefore cannot erase it. Discovery
-//! is asynchronous and local-only; this renderer never contacts a daemon,
+//! Context is attached to every prompt generation so PTY output, prompt
+//! editing, scrollback and resize/reflow cannot erase it. Discovery is
+//! asynchronous and local-only; this renderer never contacts a daemon,
 //! cluster or cloud API.
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
-#[cfg(not(target_os = "windows"))]
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use rio_backend::config::colors::Colors;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
 
-use crate::automexia::api::SessionFacts;
-use crate::automexia::builtins::devops::{CloudContext, DevOpsSnapshot};
+use automexia_extension_api::{ContextContribution, IconKind, SegmentRole, SessionFacts};
+use automexia_ui_model::{self, IconOptics, Segment};
+
 use crate::automexia::runtime;
 use crate::automexia::ui::{
     CommandResultAnchor, PromptAnchor, MAX_PROMPT_CONTEXT_HISTORY,
 };
-use crate::renderer::island::chrome_metrics;
-use crate::renderer::responsive::Density;
 
 pub(crate) const LIVE_REFRESH_MILLIS: u64 = 3_000;
 const REFRESH_INTERVAL: Duration = Duration::from_millis(LIVE_REFRESH_MILLIS);
 const REFRESH_IN_FLIGHT_TIMEOUT: Duration = Duration::from_secs(10);
 const ORDER: u8 = 19;
-const CONTEXT_MARGIN_X: f32 = 18.0;
-const CONTEXT_GAP: f32 = 24.0;
-const CONTEXT_PAD_X: f32 = 20.0;
-const CONTEXT_FONT_SIZE: f32 = 18.0;
-const CONTEXT_ICON_SIZE: f32 = 24.0;
-const DOCKER_CONTEXT_ICON_SIZE: f32 = 30.0;
-const CLOCK_ICON_SIZE: f32 = 23.0;
-const PROMPT_CONTEXT_FONT_SIZE: f32 = 18.0;
-const PROMPT_CONTEXT_ICON_SIZE: f32 = 23.0;
-const DOCKER_PROMPT_ICON_SIZE: f32 = 29.0;
-const PROMPT_CONTEXT_PAD_X: f32 = 4.0;
-const PROMPT_CONTEXT_ICON_GAP: f32 = 8.0;
-const PROMPT_CONTEXT_SEPARATOR_GAP: f32 = 9.0;
+const PROMPT_TAG_FONT_ROW_RATIO: f32 = 0.62;
+const PROMPT_TAG_MAX_FONT_SIZE: f32 = 14.0;
+const PROMPT_TAG_MIN_FONT_SIZE: f32 = 4.0;
+const PROMPT_TAG_LEFT_INSET: f32 = 2.0;
 const PROMPT_RESULT_RESERVE: f32 = 112.0;
-const CONTEXT_RADIUS: f32 = 9.0;
-const RIGHT_STATUS_WIDTH: f32 = 310.0;
-const RIGHT_STATUS_BREAKPOINT: f32 = 760.0;
 
-const MAX_WSL_CHARS: usize = 14;
-const MAX_CONTEXT_CHARS: usize = 22;
-const MAX_CLOUD_CHARS: usize = 22;
-const MAX_GIT_CHARS: usize = 24;
-const MAX_ENV_CHARS: usize = 16;
-
-#[derive(Clone, Copy)]
-enum SegmentColor {
-    Cyan,
-    Blue,
-    Yellow,
-    Magenta,
-    Red,
-    Green,
-    Orange,
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PromptTagMetrics {
+    font_size: f32,
+    icon_size: f32,
+    icon_slot: f32,
+    height: f32,
+    padding_x: f32,
+    icon_gap: f32,
+    tag_gap: f32,
+    radius: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum IconKind {
-    Wsl,
-    Windows,
-    Docker,
-    Kubernetes,
-    Cloud,
-    Terraform,
-    Git,
-    Environment,
-    User,
-    Clock,
-    Production,
-}
-
-#[derive(Clone)]
-struct Segment {
-    value: String,
-    color: SegmentColor,
-    icon: IconKind,
+fn prompt_tag_metrics(row_height: f32) -> PromptTagMetrics {
+    let row_height = row_height.max(1.0);
+    let font_size = (row_height * PROMPT_TAG_FONT_ROW_RATIO)
+        .clamp(PROMPT_TAG_MIN_FONT_SIZE, PROMPT_TAG_MAX_FONT_SIZE)
+        .min(row_height);
+    let vertical_padding = (row_height * 0.08).clamp(1.0, 2.0);
+    let height = (font_size + vertical_padding * 2.0).min(row_height);
+    let padding_x = (font_size * 0.35).clamp(3.0, 6.0);
+    let icon_gap = (font_size * 0.28).clamp(2.0, 5.0);
+    let tag_gap = (font_size * 0.35).clamp(3.0, 6.0);
+    let icon_size = font_size * 1.05;
+    let icon_slot = font_size * 1.20;
+    let radius = (height * 0.22).clamp(1.0, 5.0).min(height * 0.5);
+    PromptTagMetrics {
+        font_size,
+        icon_size,
+        icon_slot,
+        height,
+        padding_x,
+        icon_gap,
+        tag_gap,
+        radius,
+    }
 }
 
 struct PromptSnapshot {
@@ -99,19 +82,6 @@ struct ActivePrompt {
     segments_revision: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct ContextBarLayout {
-    left_x: f32,
-    left_width: f32,
-    right: Option<(f32, f32)>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct ContextBarGeometry {
-    top: f32,
-    height: f32,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SnapshotCandidate {
     Unchanged,
@@ -121,8 +91,8 @@ enum SnapshotCandidate {
 
 #[derive(Default)]
 pub struct DevOpsStatus {
-    snapshot: DevOpsSnapshot,
-    /// Materialized segment labels shared by the header and every prompt row.
+    contribution: Option<ContextContribution>,
+    /// Materialized segment labels shared by live and historical prompt rows.
     /// Rebuilt only when session facts or the async discovery revision change.
     live_segments: Vec<Segment>,
     live_segments_session: Option<SessionFacts>,
@@ -143,14 +113,27 @@ impl DevOpsStatus {
         *self = Self::default();
     }
 
-    /// Draw the persistent second chrome row from cached local context facts.
-    /// Returns true while the discovery worker owes us another snapshot.
-    pub fn render_context_bar<F>(
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub(crate) fn native_test_context(&self) -> Option<(usize, Vec<String>)> {
+        let session_id = self.live_segments_session.as_ref()?.session_id;
+        Some((
+            session_id,
+            self.live_segments
+                .iter()
+                .map(|segment| segment.value.clone())
+                .collect(),
+        ))
+    }
+
+    /// Keep asynchronous context discovery warm for semantic prompt rows.
+    ///
+    /// The former persistent context/status header duplicated the same facts
+    /// above every command. The chrome row is now action-focused and rendered
+    /// by `Island`, while this method keeps prompt metadata current without
+    /// submitting any global-header drawing primitives.
+    pub fn refresh_session_context<F>(
         &mut self,
-        sugarloaf: &mut Sugarloaf,
-        colors: Colors,
         session: &SessionFacts,
-        dimensions: (f32, f32, f32),
         completion: F,
     ) -> bool
     where
@@ -159,43 +142,6 @@ impl DevOpsStatus {
         self.request_refresh_if_needed(session, false, completion);
         self.sync_cached_snapshot(session);
         self.ensure_live_segments(session);
-
-        let (window_width, window_height, scale_factor) = dimensions;
-        let logical_width = window_width / scale_factor.max(f32::EPSILON);
-        let metrics = chrome_metrics(window_width, window_height, scale_factor);
-        if !metrics.show_context {
-            return self.refresh_pending;
-        }
-        let layout = context_bar_layout(logical_width, metrics.density);
-        let bar = ContextBarGeometry {
-            top: metrics.context_top,
-            height: metrics.context_height,
-        };
-        let outline = [0.10, 0.17, 0.24, 0.96];
-        let fill = [0.018, 0.040, 0.066, 0.91];
-
-        draw_glass_surface(
-            sugarloaf,
-            layout.left_x,
-            layout.left_width,
-            bar,
-            fill,
-            outline,
-        );
-        self.draw_context_segments(
-            sugarloaf,
-            colors,
-            layout.left_x,
-            layout.left_width,
-            &self.live_segments,
-            bar,
-        );
-
-        if let Some((right_x, right_width)) = layout.right {
-            draw_glass_surface(sugarloaf, right_x, right_width, bar, fill, outline);
-            self.draw_shell_clock(sugarloaf, colors, session, right_x, right_width, bar);
-        }
-
         self.refresh_pending
     }
 
@@ -313,6 +259,24 @@ impl DevOpsStatus {
         self.ensure_live_segments(session);
     }
 
+    /// Keep an inactive but visible pane's operational snapshot current.
+    ///
+    /// This small preparation entry point performs asynchronous cache
+    /// synchronization without painting global chrome.
+    pub fn refresh_visible_session<F>(
+        &mut self,
+        session: &SessionFacts,
+        completion: F,
+    ) -> bool
+    where
+        F: FnOnce() -> runtime::DevOpsRefreshCompletion,
+    {
+        self.request_refresh_if_needed(session, false, completion);
+        self.sync_cached_snapshot(session);
+        self.ensure_live_segments(session);
+        self.refresh_pending
+    }
+
     fn sync_active_prompt(
         &mut self,
         session: &SessionFacts,
@@ -401,62 +365,62 @@ impl DevOpsStatus {
         anchor: &PromptAnchor,
         segments: &[Segment],
     ) {
-        let text_y = anchor.y
-            + (anchor.height.max(PROMPT_CONTEXT_FONT_SIZE) - PROMPT_CONTEXT_FONT_SIZE)
-                / 2.0
-            - 1.0;
-        let mut cursor_x = anchor.x + PROMPT_CONTEXT_PAD_X;
+        let metrics = prompt_tag_metrics(anchor.height);
+        let Some(top_inset) = automexia_ui_model::prompt_context_top_inset(
+            anchor.height,
+            metrics.height,
+            !segments.is_empty(),
+        ) else {
+            return;
+        };
+        let tag_y = anchor.y + top_inset;
+        let text_y = tag_y + (metrics.height - metrics.font_size) * 0.5 - 1.0;
+        let icon_y = tag_y + (metrics.height - metrics.icon_size) * 0.5;
+        let mut cursor_x = anchor.x + PROMPT_TAG_LEFT_INSET;
         let right_edge = anchor.x + (anchor.width - PROMPT_RESULT_RESERVE).max(80.0);
-        let separator = muted(colors.foreground, 0.32);
 
-        for (index, segment) in segments.iter().enumerate() {
-            let color = segment_color(colors, segment.color);
-            let icon_opts = DrawOpts {
-                font_size: prompt_icon_size(segment.icon),
-                color: color_to_u8(color),
-                ..DrawOpts::default()
-            };
+        for segment in segments {
+            let color = segment_color(colors, segment.role);
             let text_opts = DrawOpts {
-                font_size: PROMPT_CONTEXT_FONT_SIZE,
+                font_size: metrics.font_size,
                 color: color_to_u8(color),
                 ..DrawOpts::default()
             };
-            let icon = icon_glyph(segment.icon);
-            let icon_width = sugarloaf.text_mut().measure(icon, &icon_opts);
             let text_width = sugarloaf.text_mut().measure(&segment.value, &text_opts);
-            let separator_width = if index == 0 {
-                0.0
-            } else {
-                PROMPT_CONTEXT_SEPARATOR_GAP * 2.0 + 1.0
-            };
-            let segment_width =
-                icon_width + PROMPT_CONTEXT_ICON_GAP + text_width + PROMPT_CONTEXT_PAD_X;
-            if cursor_x + separator_width + segment_width > right_edge {
+            let segment_width = metrics.padding_x * 2.0
+                + metrics.icon_slot
+                + metrics.icon_gap
+                + text_width;
+            if cursor_x + segment_width > right_edge {
                 break;
             }
 
-            if index != 0 {
-                cursor_x += PROMPT_CONTEXT_SEPARATOR_GAP;
-                sugarloaf.line(
-                    cursor_x,
-                    anchor.y + 3.0,
-                    cursor_x,
-                    anchor.y + anchor.height - 3.0,
-                    1.0,
-                    0.0,
-                    separator,
-                    ORDER,
-                );
-                cursor_x += PROMPT_CONTEXT_SEPARATOR_GAP + 1.0;
-            }
+            sugarloaf.rounded_rect(
+                None,
+                cursor_x,
+                tag_y,
+                segment_width,
+                metrics.height,
+                segment_tag_background(segment.role),
+                0.0,
+                metrics.radius,
+                ORDER - 1,
+            );
+            let content_x = cursor_x + metrics.padding_x;
+            draw_icon_in_slot(
+                sugarloaf,
+                segment.icon,
+                content_x,
+                icon_y,
+                metrics.icon_slot,
+                metrics.icon_size,
+                color,
+            );
+            let label_x = content_x + metrics.icon_slot + metrics.icon_gap;
             sugarloaf
                 .text_mut()
-                .draw(cursor_x, text_y - 2.0, icon, &icon_opts);
-            cursor_x += icon_width + PROMPT_CONTEXT_ICON_GAP;
-            sugarloaf
-                .text_mut()
-                .draw(cursor_x, text_y, &segment.value, &text_opts);
-            cursor_x += text_width + PROMPT_CONTEXT_PAD_X;
+                .draw(label_x, text_y, &segment.value, &text_opts);
+            cursor_x += segment_width + metrics.tag_gap;
         }
     }
 
@@ -517,8 +481,16 @@ impl DevOpsStatus {
             let success = anchor.exit_code == 0;
             let status = if success { "✓" } else { "×" };
             let label = format!("{status}  {}", format_duration(anchor.elapsed_ms));
+            let metrics = prompt_tag_metrics(anchor.height);
+            let Some(top_inset) = automexia_ui_model::prompt_context_top_inset(
+                anchor.height,
+                metrics.height,
+                true,
+            ) else {
+                continue;
+            };
             let opts = DrawOpts {
-                font_size: CONTEXT_FONT_SIZE,
+                font_size: metrics.font_size,
                 color: color_to_u8(if success { colors.green } else { colors.red }),
                 ..DrawOpts::default()
             };
@@ -527,127 +499,10 @@ impl DevOpsStatus {
             if x <= anchor.x + 24.0 {
                 continue;
             }
-            let y = anchor.y + (anchor.height - CONTEXT_FONT_SIZE) / 2.0;
+            let tag_y = anchor.y + top_inset;
+            let y = tag_y + (metrics.height - metrics.font_size) * 0.5 - 1.0;
             sugarloaf.text_mut().draw(x, y, &label, &opts);
         }
-    }
-
-    fn draw_context_segments(
-        &self,
-        sugarloaf: &mut Sugarloaf,
-        colors: Colors,
-        x: f32,
-        width: f32,
-        segments: &[Segment],
-        bar: ContextBarGeometry,
-    ) {
-        let mut cursor_x = x + CONTEXT_PAD_X;
-        let right_edge = x + width - CONTEXT_PAD_X;
-        let text_y = bar.top + (bar.height - CONTEXT_FONT_SIZE) / 2.0 - 1.0;
-        let separator = muted(colors.foreground, 0.27);
-
-        for (index, segment) in segments.iter().enumerate() {
-            let icon = icon_glyph(segment.icon);
-            let color = segment_color(colors, segment.color);
-            let icon_opts = DrawOpts {
-                font_size: context_icon_size(segment.icon),
-                color: color_to_u8(color),
-                ..DrawOpts::default()
-            };
-            let text_opts = DrawOpts {
-                font_size: CONTEXT_FONT_SIZE,
-                color: color_to_u8(color),
-                ..DrawOpts::default()
-            };
-            let icon_width = sugarloaf.text_mut().measure(icon, &icon_opts);
-            let text_width = sugarloaf.text_mut().measure(&segment.value, &text_opts);
-            let separator_width = if index == 0 { 0.0 } else { 25.0 };
-            if cursor_x + separator_width + icon_width + 10.0 + text_width > right_edge {
-                break;
-            }
-
-            if index != 0 {
-                cursor_x += 12.0;
-                sugarloaf.line(
-                    cursor_x,
-                    bar.top + 10.0,
-                    cursor_x,
-                    bar.top + bar.height - 10.0,
-                    1.0,
-                    0.0,
-                    separator,
-                    ORDER + 1,
-                );
-                cursor_x += 13.0;
-            }
-            sugarloaf
-                .text_mut()
-                .draw(cursor_x, text_y - 1.0, icon, &icon_opts);
-            cursor_x += icon_width + 10.0;
-            sugarloaf
-                .text_mut()
-                .draw(cursor_x, text_y, &segment.value, &text_opts);
-            cursor_x += text_width;
-        }
-    }
-
-    fn draw_shell_clock(
-        &self,
-        sugarloaf: &mut Sugarloaf,
-        colors: Colors,
-        session: &SessionFacts,
-        x: f32,
-        width: f32,
-        bar: ContextBarGeometry,
-    ) {
-        let shell_text = format!("Shell: {}", shell_label(session));
-        let clock_text = local_clock_hhmm();
-        let clock_icon = icon_glyph(IconKind::Clock);
-        let shell_opts = DrawOpts {
-            font_size: CONTEXT_FONT_SIZE,
-            color: color_to_u8(colors.blue),
-            ..DrawOpts::default()
-        };
-        let clock_icon_opts = DrawOpts {
-            font_size: CLOCK_ICON_SIZE,
-            color: color_to_u8(colors.cyan),
-            ..DrawOpts::default()
-        };
-        let clock_opts = DrawOpts {
-            font_size: CONTEXT_FONT_SIZE,
-            color: color_to_u8(muted(colors.foreground, 0.70)),
-            ..DrawOpts::default()
-        };
-        let shell_width = sugarloaf.text_mut().measure(&shell_text, &shell_opts);
-        let clock_icon_width = sugarloaf.text_mut().measure(clock_icon, &clock_icon_opts);
-        let clock_text_width = sugarloaf.text_mut().measure(&clock_text, &clock_opts);
-        let clock_width = clock_icon_width + 10.0 + clock_text_width;
-        let text_y = bar.top + (bar.height - CONTEXT_FONT_SIZE) / 2.0 - 1.0;
-        let shell_x = x + 18.0;
-        sugarloaf
-            .text_mut()
-            .draw(shell_x, text_y, &shell_text, &shell_opts);
-        let separator_x = shell_x + shell_width + 17.0;
-        sugarloaf.line(
-            separator_x,
-            bar.top + 10.0,
-            separator_x,
-            bar.top + bar.height - 10.0,
-            1.0,
-            0.0,
-            muted(colors.foreground, 0.22),
-            ORDER + 1,
-        );
-        let clock_x = (x + width - clock_width - 16.0).max(separator_x + 14.0);
-        sugarloaf
-            .text_mut()
-            .draw(clock_x, text_y - 2.5, clock_icon, &clock_icon_opts);
-        sugarloaf.text_mut().draw(
-            clock_x + clock_icon_width + 10.0,
-            text_y,
-            &clock_text,
-            &clock_opts,
-        );
     }
 
     fn request_refresh_if_needed<F>(
@@ -678,7 +533,7 @@ impl DevOpsStatus {
         }
 
         if session_changed {
-            self.snapshot = DevOpsSnapshot::default();
+            self.contribution = None;
             self.observed_global_generation = 0;
             self.snapshot_revision = 0;
             self.request_in_flight = false;
@@ -712,8 +567,8 @@ impl DevOpsStatus {
         }
         self.observed_global_generation = global_generation;
 
-        let (revision, cached_session, snapshot) =
-            runtime::devops_snapshot(session.session_id);
+        let (revision, cached_session, contribution) =
+            runtime::context_contribution(session.session_id);
         match snapshot_candidate(
             self.snapshot_revision,
             revision,
@@ -735,7 +590,7 @@ impl DevOpsStatus {
         self.snapshot_revision = revision;
         self.refresh_pending = false;
         self.request_in_flight = false;
-        self.snapshot = snapshot;
+        self.contribution = Some(contribution);
     }
 
     fn ensure_live_segments(&mut self, session: &SessionFacts) {
@@ -752,97 +607,10 @@ impl DevOpsStatus {
     }
 
     fn build_live_segments(&self, session: &SessionFacts) -> Vec<Segment> {
-        let mut segments = Vec::new();
-        if self.snapshot.production {
-            segments.push(Segment {
-                value: "PRODUCTION".to_string(),
-                color: SegmentColor::Red,
-                icon: IconKind::Production,
-            });
-        }
-        let immediate_os = immediate_os_value(session);
-        let detected_wsl = immediate_os.or_else(|| {
-            (shell_label(session) != "PowerShell")
-                .then(|| self.snapshot.wsl.as_ref().map(|wsl| wsl_value(&wsl.distro)))
-                .flatten()
-        });
-        if let Some(os) = detected_wsl {
-            segments.push(Segment {
-                value: compact_label(&os, MAX_WSL_CHARS),
-                color: SegmentColor::Orange,
-                icon: IconKind::Wsl,
-            });
-        } else if shell_label(session) == "PowerShell" {
-            segments.push(Segment {
-                value: "Windows".to_string(),
-                color: SegmentColor::Blue,
-                icon: IconKind::Windows,
-            });
-        }
-        if let Some(branch) = &self.snapshot.git_branch {
-            segments.push(Segment {
-                value: compact_middle(branch, MAX_GIT_CHARS),
-                color: SegmentColor::Magenta,
-                icon: IconKind::Git,
-            });
-        }
-        if let Some(kubernetes) = &self.snapshot.kubernetes {
-            let value =
-                if kubernetes.namespace.is_empty() || kubernetes.namespace == "default" {
-                    compact_label(&kubernetes.context, MAX_CONTEXT_CHARS)
-                } else {
-                    compact_label(
-                        &format!("{}/{}", kubernetes.context, kubernetes.namespace),
-                        MAX_CONTEXT_CHARS,
-                    )
-                };
-            segments.push(Segment {
-                value,
-                color: SegmentColor::Cyan,
-                icon: IconKind::Kubernetes,
-            });
-        }
-        for cloud in &self.snapshot.clouds {
-            segments.push(Segment {
-                value: cloud_value(cloud),
-                color: SegmentColor::Yellow,
-                icon: IconKind::Cloud,
-            });
-        }
-        if let Some(context) = &self.snapshot.docker {
-            segments.push(Segment {
-                value: docker_value(context),
-                color: SegmentColor::Blue,
-                icon: IconKind::Docker,
-            });
-        }
-        if let Some(workspace) = &self.snapshot.terraform {
-            segments.push(Segment {
-                value: compact_label(workspace, MAX_CONTEXT_CHARS),
-                color: SegmentColor::Magenta,
-                icon: IconKind::Terraform,
-            });
-        }
-        if let Some(environment) = &self.snapshot.environment {
-            segments.push(Segment {
-                value: compact_label(environment, MAX_ENV_CHARS),
-                color: SegmentColor::Green,
-                icon: IconKind::Environment,
-            });
-        }
-        if let Some(user) = self
-            .snapshot
-            .user
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-        {
-            segments.push(Segment {
-                value: compact_label(user, MAX_ENV_CHARS),
-                color: SegmentColor::Blue,
-                icon: IconKind::User,
-            });
-        }
-        segments
+        self.contribution.as_ref().map_or_else(
+            || automexia_ui_model::immediate_session_segments(session),
+            |contribution| automexia_ui_model::project_status(session, contribution),
+        )
     }
 }
 
@@ -873,129 +641,51 @@ fn same_prompt_identity(
     }
 }
 
-fn context_bar_layout(window_width: f32, density: Density) -> ContextBarLayout {
-    let preferred_margin = match density {
-        Density::Minimal => 8.0,
-        Density::Compact => 12.0,
-        Density::Comfortable => CONTEXT_MARGIN_X,
-    };
-    let margin = preferred_margin.min((window_width * 0.25).max(0.0));
-    let gap = match density {
-        Density::Minimal => 12.0,
-        Density::Compact => 18.0,
-        Density::Comfortable => CONTEXT_GAP,
-    };
-    let usable = (window_width - margin * 2.0).max(1.0);
-    if density == Density::Comfortable && window_width >= RIGHT_STATUS_BREAKPOINT {
-        let right_width = RIGHT_STATUS_WIDTH.min(usable * 0.36);
-        let right_x = window_width - margin - right_width;
-        ContextBarLayout {
-            left_x: margin,
-            left_width: (right_x - gap - margin).max(1.0),
-            right: Some((right_x, right_width)),
-        }
-    } else {
-        ContextBarLayout {
-            left_x: margin,
-            left_width: usable,
-            right: None,
-        }
-    }
-}
-
-fn draw_glass_surface(
-    sugarloaf: &mut Sugarloaf,
-    x: f32,
-    width: f32,
-    bar: ContextBarGeometry,
-    fill: [f32; 4],
-    outline: [f32; 4],
-) {
-    sugarloaf.rounded_rect(
-        None,
-        x,
-        bar.top,
-        width,
-        bar.height,
-        outline,
-        0.06,
-        CONTEXT_RADIUS,
-        ORDER,
-    );
-    sugarloaf.rounded_rect(
-        None,
-        x + 1.0,
-        bar.top + 1.0,
-        (width - 2.0).max(0.0),
-        (bar.height - 2.0).max(0.0),
-        fill,
-        0.06,
-        CONTEXT_RADIUS - 1.0,
-        ORDER + 1,
-    );
-}
-
 /// Symbols from the Nerd Font vocabulary used by the reference project.
 fn icon_glyph(icon: IconKind) -> &'static str {
-    match icon {
-        IconKind::Wsl => "\u{f31b}",
-        IconKind::Windows => "\u{e70f}",
-        IconKind::Docker => "\u{f308}",
-        IconKind::Kubernetes => "\u{f10fe}",
-        IconKind::Cloud => "\u{f0c2}",
-        IconKind::Terraform => "\u{f1062}",
-        IconKind::Git => "\u{e725}",
-        IconKind::Environment => "\u{f1b2}",
-        IconKind::User => "\u{f007}",
-        // Octicons' outlined clock stays legible at chrome sizes; the older
-        // Font Awesome codepoint collapsed to a filled dot in our bundled
-        // Symbols Nerd Font at common Windows scale factors.
-        IconKind::Clock => "\u{f43a}",
-        IconKind::Production => "⚠",
-    }
+    automexia_ui_model::icon_glyph(icon)
+}
+
+/// Optical corrections measured against the bundled Symbols Nerd Font.
+/// Codepoints share an advance cell but not an ink box: Docker occupies only
+/// about two thirds of the height used by Git or Kubernetes, while cloud and
+/// environment marks are also deliberately compact.
+#[inline]
+fn icon_optics(icon: IconKind) -> IconOptics {
+    automexia_ui_model::icon_optics(icon)
 }
 
 #[inline]
-fn context_icon_size(icon: IconKind) -> f32 {
-    if icon == IconKind::Docker {
-        DOCKER_CONTEXT_ICON_SIZE
-    } else {
-        CONTEXT_ICON_SIZE
-    }
+fn icon_font_size(base_size: f32, icon: IconKind) -> f32 {
+    base_size * icon_optics(icon).scale
 }
 
 #[inline]
-fn prompt_icon_size(icon: IconKind) -> f32 {
-    if icon == IconKind::Docker {
-        DOCKER_PROMPT_ICON_SIZE
-    } else {
-        PROMPT_CONTEXT_ICON_SIZE
-    }
+fn icon_draw_y(base_y: f32, base_size: f32, icon: IconKind) -> f32 {
+    let optics = icon_optics(icon);
+    base_y + (base_size - base_size * optics.scale) * 0.5 + optics.y_shift
 }
 
-fn shell_label(session: &SessionFacts) -> &'static str {
-    if let Some(name) = session.shell_name.as_deref() {
-        if name.eq_ignore_ascii_case("powershell") || name.eq_ignore_ascii_case("pwsh") {
-            return "PowerShell";
-        }
-        if name.eq_ignore_ascii_case("bash") {
-            return "bash";
-        }
-        if name.eq_ignore_ascii_case("zsh") {
-            return "zsh";
-        }
-    }
-    if session
-        .distro
-        .as_ref()
-        .is_some_and(|value| !value.trim().is_empty())
-    {
-        return "zsh";
-    }
-    #[cfg(target_os = "windows")]
-    return "PowerShell";
-    #[cfg(not(target_os = "windows"))]
-    return "zsh";
+fn draw_icon_in_slot(
+    sugarloaf: &mut Sugarloaf,
+    icon: IconKind,
+    slot_x: f32,
+    base_y: f32,
+    slot_width: f32,
+    base_size: f32,
+    color: [f32; 4],
+) {
+    let glyph = icon_glyph(icon);
+    let opts = DrawOpts {
+        font_size: icon_font_size(base_size, icon),
+        color: color_to_u8(color),
+        ..DrawOpts::default()
+    };
+    let measured_width = sugarloaf.text_mut().measure(glyph, &opts);
+    let x = slot_x + (slot_width - measured_width) * 0.5;
+    sugarloaf
+        .text_mut()
+        .draw(x, icon_draw_y(base_y, base_size, icon), glyph, &opts);
 }
 
 fn format_duration(elapsed_ms: u64) -> String {
@@ -1012,95 +702,6 @@ fn format_duration(elapsed_ms: u64) -> String {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
-fn utc_clock_hhmm() -> String {
-    let seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-        % 86_400;
-    format!("{:02}:{:02}", seconds / 3_600, (seconds % 3_600) / 60)
-}
-
-#[cfg(target_os = "windows")]
-fn local_clock_hhmm() -> String {
-    use windows_sys::Win32::Foundation::SYSTEMTIME;
-    use windows_sys::Win32::System::SystemInformation::GetLocalTime;
-
-    let mut time: SYSTEMTIME = unsafe { std::mem::zeroed() };
-    unsafe { GetLocalTime(&mut time) };
-    format!("{:02}:{:02}", time.wHour, time.wMinute)
-}
-
-#[cfg(all(unix, not(target_arch = "wasm32")))]
-fn local_clock_hhmm() -> String {
-    let raw = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as libc::time_t;
-    let mut local: libc::tm = unsafe { std::mem::zeroed() };
-    if unsafe { libc::localtime_r(&raw, &mut local) }.is_null() {
-        return utc_clock_hhmm();
-    }
-    format!("{:02}:{:02}", local.tm_hour, local.tm_min)
-}
-
-#[cfg(any(target_arch = "wasm32", not(any(unix, target_os = "windows"))))]
-fn local_clock_hhmm() -> String {
-    utc_clock_hhmm()
-}
-
-fn immediate_os_value(session: &SessionFacts) -> Option<String> {
-    let distro = session
-        .distro
-        .as_ref()
-        .filter(|value| !value.trim().is_empty())?;
-    let (_, path) = parse_shell_title(&session.title)?;
-    path.starts_with('/').then(|| wsl_value(distro))
-}
-
-fn parse_shell_title(title: &str) -> Option<(String, String)> {
-    let (user, host_and_path) = title.trim().rsplit_once('@')?;
-    let (host, path) = host_and_path.split_once(':')?;
-    let user = user.split_whitespace().last()?.trim();
-    let path = path.trim();
-    if user.is_empty() || host.trim().is_empty() || path.is_empty() {
-        return None;
-    }
-    Some((user.to_string(), path.to_string()))
-}
-
-fn wsl_value(distro: &str) -> String {
-    let distro = distro.trim();
-    if distro.eq_ignore_ascii_case("Ubuntu") || distro.starts_with("Ubuntu-") {
-        "Ubuntu".to_string()
-    } else {
-        distro.to_string()
-    }
-}
-
-fn cloud_value(cloud: &CloudContext) -> String {
-    if !cloud.region.trim().is_empty() {
-        compact_label(&cloud.region, MAX_CLOUD_CHARS)
-    } else if !cloud.profile.trim().is_empty() {
-        compact_label(&cloud.profile, MAX_CLOUD_CHARS)
-    } else {
-        cloud.provider.to_string()
-    }
-}
-
-fn docker_value(context: &str) -> String {
-    let context = context.trim();
-    if context.is_empty()
-        || context.eq_ignore_ascii_case("default")
-        || context.eq_ignore_ascii_case("docker")
-    {
-        "docker".to_string()
-    } else {
-        compact_label(context, MAX_CONTEXT_CHARS)
-    }
-}
-
 pub(crate) fn next_context_wake_millis(refresh_pending: bool) -> u64 {
     if refresh_pending {
         100
@@ -1109,53 +710,37 @@ pub(crate) fn next_context_wake_millis(refresh_pending: bool) -> u64 {
     }
 }
 
+#[cfg(test)]
 fn compact_label(value: &str, max_chars: usize) -> String {
-    let value = value.trim();
-    if value.chars().count() <= max_chars {
-        return value.to_string();
-    }
-    let mut out: String = value.chars().take(max_chars.saturating_sub(1)).collect();
-    out.push('…');
-    out
+    automexia_ui_model::compact_label(value, max_chars)
 }
 
+#[cfg(test)]
 fn compact_middle(value: &str, max_chars: usize) -> String {
-    let value = value.trim();
-    if value.chars().count() <= max_chars {
-        return value.to_string();
-    }
-    if max_chars < 5 {
-        return compact_label(value, max_chars);
-    }
-    let left = (max_chars - 1) / 2;
-    let right = max_chars - left - 1;
-    let head: String = value.chars().take(left).collect();
-    let tail: String = value
-        .chars()
-        .rev()
-        .take(right)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect();
-    format!("{head}…{tail}")
+    automexia_ui_model::compact_middle(value, max_chars)
 }
 
-fn muted(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
-    color[3] = alpha;
-    color
+#[cfg(test)]
+fn segment_anchor_rgb(role: SegmentRole) -> [u8; 3] {
+    automexia_ui_model::segment_anchor_rgb(role)
 }
 
-fn segment_color(colors: Colors, color: SegmentColor) -> [f32; 4] {
-    match color {
-        SegmentColor::Cyan => colors.cyan,
-        SegmentColor::Blue => colors.blue,
-        SegmentColor::Yellow => colors.yellow,
-        SegmentColor::Magenta => colors.magenta,
-        SegmentColor::Red => colors.red,
-        SegmentColor::Green => colors.green,
-        SegmentColor::Orange => [1.0, 0.35, 0.04, 1.0],
-    }
+#[cfg(test)]
+fn segment_anchor(role: SegmentRole) -> [f32; 4] {
+    automexia_ui_model::segment_anchor(role)
+}
+
+fn segment_color(colors: Colors, role: SegmentRole) -> [f32; 4] {
+    automexia_ui_model::segment_tag_color(colors.background.0, role)
+}
+
+fn segment_tag_background(role: SegmentRole) -> [f32; 4] {
+    automexia_ui_model::segment_tag_background(role)
+}
+
+#[cfg(test)]
+fn contrast_ratio(left: [f32; 4], right: [f32; 4]) -> f32 {
+    automexia_ui_model::contrast_ratio(left, right)
 }
 
 fn color_to_u8(color: [f32; 4]) -> [u8; 4] {
@@ -1165,6 +750,45 @@ fn color_to_u8(color: [f32; 4]) -> [u8; 4] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use automexia_extension_api::{ExtensionId, Freshness, SessionId, StatusSegment};
+
+    const ALL_SEGMENT_ROLES: [SegmentRole; 13] = [
+        SegmentRole::Production,
+        SegmentRole::UbuntuWsl,
+        SegmentRole::Windows,
+        SegmentRole::Git,
+        SegmentRole::Kubernetes,
+        SegmentRole::Docker,
+        SegmentRole::Azure,
+        SegmentRole::Aws,
+        SegmentRole::Gcp,
+        SegmentRole::UnknownCloud,
+        SegmentRole::Terraform,
+        SegmentRole::Environment,
+        SegmentRole::User,
+    ];
+    const ALL_ICON_KINDS: [IconKind; 10] = [
+        IconKind::Wsl,
+        IconKind::Windows,
+        IconKind::Docker,
+        IconKind::Kubernetes,
+        IconKind::Cloud,
+        IconKind::Terraform,
+        IconKind::Git,
+        IconKind::Environment,
+        IconKind::User,
+        IconKind::Production,
+    ];
+
+    fn colors_with_background(background: [f32; 4]) -> Colors {
+        let mut colors = Colors::default();
+        colors.background.0 = background;
+        colors
+    }
+
+    fn quantized(color: [f32; 4]) -> [f32; 4] {
+        color_to_u8(color).map(|channel| f32::from(channel) / 255.0)
+    }
 
     fn session(title: &str, distro: Option<&str>) -> SessionFacts {
         SessionFacts {
@@ -1173,55 +797,112 @@ mod tests {
             title: title.to_string(),
             distro: distro.map(str::to_string),
             os_version: None,
-            shell_name: None,
+            shell_name: Some(
+                if distro.is_some() {
+                    "bash"
+                } else {
+                    "PowerShell"
+                }
+                .to_string(),
+            ),
+            shell_user: None,
+            shell_path: None,
             shell_integration: true,
             shell_pid: 42,
         }
     }
 
-    #[test]
-    fn wide_layout_keeps_context_and_right_status_separate() {
-        let layout = context_bar_layout(1_600.0, Density::Comfortable);
-        let (right_x, right_width) = layout.right.unwrap();
-        assert!(layout.left_width > 1_000.0);
-        assert!(layout.left_x + layout.left_width + CONTEXT_GAP <= right_x);
-        assert_eq!(right_x + right_width + CONTEXT_MARGIN_X, 1_600.0);
+    fn contribution(segments: Vec<StatusSegment>) -> ContextContribution {
+        ContextContribution::new(
+            ExtensionId::new("automexia.devops").unwrap(),
+            SessionId::new(1),
+            1,
+            1,
+            Freshness::Current,
+            segments,
+        )
+        .unwrap()
+    }
+
+    fn status_segment(
+        id: &str,
+        value: &str,
+        role: SegmentRole,
+        icon: IconKind,
+        priority: u16,
+    ) -> StatusSegment {
+        StatusSegment::new(
+            id,
+            value,
+            format!("{id} {value}"),
+            role,
+            icon,
+            priority,
+            Freshness::Current,
+        )
+        .unwrap()
     }
 
     #[test]
-    fn narrow_layout_gives_context_the_full_width() {
-        let layout = context_bar_layout(600.0, Density::Compact);
-        assert_eq!(layout.right, None);
-        assert_eq!(layout.left_x, 12.0);
-        assert_eq!(layout.left_width, 576.0);
-    }
-
-    #[test]
-    fn minimum_layout_stays_inside_viewport() {
-        let layout = context_bar_layout(300.0, Density::Minimal);
-        assert_eq!(layout.right, None);
-        assert!(layout.left_x >= 0.0);
-        assert!(layout.left_width > 0.0);
-        assert!(layout.left_x + layout.left_width <= 300.0);
-    }
-
-    #[test]
-    fn powershell_never_inherits_a_stale_wsl_badge() {
-        let mut native = session(
-            "lamjed@DESKTOP: D:/workstation/projects",
-            Some("Ubuntu-24.04"),
+    fn renderer_adapter_uses_the_shared_brand_anchors_and_contrast() {
+        let backgrounds = [
+            [0.01, 0.02, 0.03, 1.0],
+            [0.98, 0.98, 0.96, 1.0],
+            [0.32, 0.34, 0.37, 1.0],
+        ];
+        for background in backgrounds {
+            let colors = colors_with_background(background);
+            for role in ALL_SEGMENT_ROLES {
+                assert_eq!(
+                    segment_anchor_rgb(role),
+                    automexia_ui_model::segment_anchor_rgb(role)
+                );
+                let rendered = quantized(segment_color(colors, role));
+                let surface =
+                    quantized(automexia_ui_model::segment_tag_surface(background, role));
+                assert!(contrast_ratio(rendered, surface) >= 4.5);
+            }
+        }
+        assert_eq!(
+            segment_anchor(SegmentRole::User),
+            automexia_ui_model::segment_anchor(SegmentRole::User)
         );
-        native.shell_name = Some("PowerShell".to_string());
-        assert_eq!(immediate_os_value(&native), None);
-        assert_eq!(shell_label(&native), "PowerShell");
     }
 
     #[test]
-    fn wsl_title_and_distro_produce_the_real_distribution() {
-        let wsl = session("lamjed@DESKTOP:/mnt/d/workstation", Some("Ubuntu-24.04"));
-        assert_eq!(immediate_os_value(&wsl).as_deref(), Some("Ubuntu"));
-    }
+    fn prompt_tags_are_secondary_compact_and_fit_their_rows() {
+        let comfortable = prompt_tag_metrics(24.0);
+        assert_eq!(PROMPT_TAG_MAX_FONT_SIZE, 14.0);
+        assert_eq!(comfortable.font_size, 14.0);
+        assert!(
+            comfortable.font_size
+                < rio_backend::sugarloaf::font::fonts::default_font_size()
+        );
+        assert!(comfortable.height < 24.0);
+        assert!(comfortable.icon_slot >= comfortable.icon_size);
+        assert!(comfortable.tag_gap < comfortable.icon_slot);
 
+        for row_height in [2.0, 8.0, 16.0, 24.0, 48.0] {
+            let metrics = prompt_tag_metrics(row_height);
+            let top_inset = automexia_ui_model::prompt_context_top_inset(
+                row_height,
+                metrics.height,
+                true,
+            )
+            .unwrap();
+            assert!(metrics.font_size <= row_height);
+            assert!(metrics.height <= row_height);
+            assert!(top_inset + metrics.height <= row_height + f32::EPSILON);
+            assert!(metrics.radius <= metrics.height * 0.5);
+            assert!(metrics.padding_x > 0.0);
+            assert!(metrics.icon_gap > 0.0);
+        }
+        assert!(
+            automexia_ui_model::prompt_context_top_inset(24.0, comfortable.height, true,)
+                .unwrap()
+                > (24.0 - comfortable.height) * 0.5
+        );
+    }
     #[test]
     fn command_duration_uses_compact_units() {
         assert_eq!(format_duration(18), "18ms");
@@ -1230,44 +911,40 @@ mod tests {
     }
 
     #[test]
-    fn reference_icons_are_real_nerd_font_codepoints() {
-        for kind in [
-            IconKind::Wsl,
-            IconKind::Windows,
-            IconKind::Docker,
-            IconKind::Kubernetes,
-            IconKind::Cloud,
-            IconKind::Terraform,
-            IconKind::Git,
-            IconKind::Environment,
-            IconKind::User,
-            IconKind::Clock,
-        ] {
+    fn renderer_icon_adapter_uses_shared_glyphs_and_optics() {
+        let docker = icon_optics(IconKind::Docker);
+        assert_eq!(docker.scale, 1.85);
+        let prompt_icon_size = prompt_tag_metrics(24.0).icon_size;
+        for kind in ALL_ICON_KINDS {
+            assert_eq!(icon_glyph(kind), automexia_ui_model::icon_glyph(kind));
             assert!(icon_glyph(kind)
                 .chars()
                 .all(|character| character as u32 >= 0xe000));
+            let optics = icon_optics(kind);
+            assert!((0.90..=1.90).contains(&optics.scale));
+            let prompt_size = icon_font_size(prompt_icon_size, kind);
+            assert!(prompt_size > 0.0);
+            let prompt_center = icon_draw_y(20.0, prompt_icon_size, kind)
+                + prompt_size * 0.5
+                - optics.y_shift;
+            assert!((prompt_center - (20.0 + prompt_icon_size * 0.5)).abs() < 0.001);
         }
     }
 
     #[test]
-    fn labels_truncate_on_unicode_boundaries() {
-        assert_eq!(compact_label("dev-😀-cluster-name", 10), "dev-😀-clu…");
+    fn renderer_compaction_delegates_to_grapheme_safe_ui_policy() {
         assert_eq!(
-            compact_middle("feature/very-long-branch", 12)
-                .chars()
-                .count(),
-            12
+            compact_label("dev-😀-cluster-name", 10),
+            automexia_ui_model::compact_label("dev-😀-cluster-name", 10)
+        );
+        assert_eq!(
+            compact_middle("feature/very-long-branch", 12),
+            automexia_ui_model::compact_middle("feature/very-long-branch", 12)
         );
     }
 
     #[test]
-    fn default_docker_context_uses_the_product_label() {
-        assert_eq!(docker_value("default"), "docker");
-        assert_eq!(docker_value("desktop-linux"), "desktop-linux");
-    }
-
-    #[test]
-    fn live_segments_rebuild_only_when_their_inputs_change() {
+    fn live_segments_rebuild_only_when_generic_inputs_change() {
         let session = session("amjed@host:/work", Some("Ubuntu"));
         let mut status = DevOpsStatus::default();
         status.ensure_live_segments(&session);
@@ -1276,7 +953,13 @@ mod tests {
         status.ensure_live_segments(&session);
         assert_eq!(status.live_segments_revision, initial_revision);
 
-        status.snapshot.docker = Some("default".to_string());
+        status.contribution = Some(contribution(vec![status_segment(
+            "docker",
+            "docker",
+            SegmentRole::Docker,
+            IconKind::Docker,
+            60,
+        )]));
         status.snapshot_revision = 1;
         status.ensure_live_segments(&session);
         assert_eq!(
@@ -1290,11 +973,32 @@ mod tests {
     }
 
     #[test]
-    fn docker_icon_is_emphasized_in_both_context_rows() {
-        assert!(context_icon_size(IconKind::Docker) > CONTEXT_ICON_SIZE);
-        assert!(prompt_icon_size(IconKind::Docker) > PROMPT_CONTEXT_ICON_SIZE);
-        assert_eq!(context_icon_size(IconKind::Git), CONTEXT_ICON_SIZE);
-        assert_eq!(prompt_icon_size(IconKind::Git), PROMPT_CONTEXT_ICON_SIZE);
+    fn generic_projection_preserves_priority_and_user_is_final() {
+        let session = session("amjed@host:/work", Some("Ubuntu"));
+        let status = DevOpsStatus {
+            contribution: Some(contribution(vec![
+                status_segment(
+                    "docker",
+                    "docker",
+                    SegmentRole::Docker,
+                    IconKind::Docker,
+                    60,
+                ),
+                status_segment("user", "amjed", SegmentRole::User, IconKind::User, 90),
+            ])),
+            ..DevOpsStatus::default()
+        };
+        let segments = status.build_live_segments(&session);
+        assert_eq!(
+            segments.last().map(|segment| segment.icon),
+            Some(IconKind::User)
+        );
+        assert!(
+            segments
+                .iter()
+                .any(|segment| segment.icon == IconKind::Docker
+                    && segment.value == "docker")
+        );
     }
 
     #[test]
@@ -1304,7 +1008,7 @@ mod tests {
     }
 
     #[test]
-    fn stale_startup_snapshot_is_retried_without_waiting_for_timeout() {
+    fn stale_startup_contribution_is_retried_without_timeout() {
         let current = session("amjed@host:/work/current", Some("Ubuntu"));
         let stale = session("Automexia", None);
         assert_eq!(
@@ -1318,30 +1022,6 @@ mod tests {
         assert_eq!(
             snapshot_candidate(2, 2, Some(&current), &current),
             SnapshotCandidate::Unchanged
-        );
-    }
-
-    #[test]
-    fn live_user_is_the_final_context_segment() {
-        let session = session("amjed@host:/work", Some("Ubuntu"));
-        let status = DevOpsStatus {
-            snapshot: DevOpsSnapshot {
-                docker: Some("default".to_string()),
-                user: Some("amjed".to_string()),
-                ..DevOpsSnapshot::default()
-            },
-            ..DevOpsStatus::default()
-        };
-        let segments = status.build_live_segments(&session);
-        assert_eq!(
-            segments.last().map(|segment| segment.icon),
-            Some(IconKind::User)
-        );
-        assert!(
-            segments
-                .iter()
-                .any(|segment| segment.icon == IconKind::Docker
-                    && segment.value == "docker")
         );
     }
 

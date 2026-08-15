@@ -31,6 +31,11 @@ use std::time::{Duration, Instant};
 // const DEFAULT_TAB_TITLE: &str = "𜱭𜱭";
 // #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 const DEFAULT_TAB_TITLE: &str = "▲";
+fn clear_window_reference(reference: &mut Option<WindowId>, closed: WindowId) {
+    if *reference == Some(closed) {
+        *reference = None;
+    }
+}
 
 pub struct Route<'a> {
     pub assistant: assistant::Assistant,
@@ -133,6 +138,11 @@ impl Route<'_> {
     #[inline]
     pub fn confirm_quit(&mut self) {
         self.window.screen.renderer.confirm_quit.set_active(true);
+        self.window
+            .screen
+            .renderer
+            .command_palette
+            .set_enabled(false);
         self.request_overlay_redraw();
     }
 
@@ -446,6 +456,7 @@ impl Router<'_> {
         for route in self.routes.values_mut() {
             if route.window.is_focused {
                 route.window.screen.context_manager.update_titles();
+                route.request_redraw();
             }
         }
     }
@@ -462,6 +473,14 @@ impl Router<'_> {
                 }
             })
             .copied()
+    }
+
+    /// Remove exactly one OS window and invalidate identities that point to
+    /// it. The caller owns application-level timer teardown.
+    pub fn remove_window(&mut self, window_id: WindowId) -> Option<Route<'_>> {
+        clear_window_reference(&mut self.config_route, window_id);
+        clear_window_reference(&mut self.quake_window_id, window_id);
+        self.routes.remove(&window_id)
     }
 
     pub fn open_config_window(
@@ -659,12 +678,21 @@ pub struct RouteWindow<'a> {
     #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub vblank_interval: Duration,
     pub winit_window: Window,
+    #[cfg(target_os = "windows")]
+    fullscreen_display_request: crate::platform::windows::FullscreenDisplayRequest,
     pub screen: Screen<'a>,
 }
 
 impl<'a> RouteWindow<'a> {
     pub fn configure_window(&mut self, config: &rio_backend::config::Config) {
         configure_window(&self.winit_window, config);
+    }
+
+    pub fn set_fullscreen(&mut self, fullscreen: Option<rio_window::window::Fullscreen>) {
+        #[cfg(target_os = "windows")]
+        self.fullscreen_display_request
+            .set_required(fullscreen.is_some());
+        self.winit_window.set_fullscreen(fullscreen);
     }
 
     pub fn wait_until(&self) -> Option<Duration> {
@@ -791,6 +819,12 @@ impl<'a> RouteWindow<'a> {
         let screen = Screen::new(properties, config, event_proxy, font_library, open_url)
             .expect("Screen not created");
 
+        #[cfg(target_os = "windows")]
+        let fullscreen_display_request =
+            crate::platform::windows::FullscreenDisplayRequest::new(
+                winit_window.fullscreen().is_some(),
+            );
+
         if config.window.columns.is_some() || config.window.rows.is_some() {
             let (physical_width, physical_height) = compute_window_size_from_grid(
                 config.window.columns,
@@ -838,6 +872,8 @@ impl<'a> RouteWindow<'a> {
             #[cfg(target_os = "windows")]
             initial_frame_rendered: false,
             winit_window,
+            #[cfg(target_os = "windows")]
+            fullscreen_display_request,
             screen,
         }
     }
@@ -905,6 +941,20 @@ fn compute_window_size_from_grid(
 #[cfg(test)]
 mod grid_size_tests {
     use super::*;
+
+    #[test]
+    fn closing_special_window_clears_only_matching_router_references() {
+        let closed = WindowId::from(41);
+        let survivor = WindowId::from(42);
+        let mut config = Some(closed);
+        let mut quake = Some(survivor);
+
+        clear_window_reference(&mut config, closed);
+        clear_window_reference(&mut quake, closed);
+
+        assert_eq!(config, None);
+        assert_eq!(quake, Some(survivor));
+    }
     use rio_backend::config::layout::{Margin, Panel};
     use rio_backend::sugarloaf::layout::TextDimensions;
 

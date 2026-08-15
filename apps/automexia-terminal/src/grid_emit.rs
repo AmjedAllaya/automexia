@@ -2919,6 +2919,53 @@ mod hint_label_tests {
 }
 
 #[cfg(test)]
+mod cell_background_tests {
+    use super::*;
+    use rio_backend::config::colors::ColorRgb;
+    use rio_backend::config::Config;
+
+    #[test]
+    fn dim_only_changes_glyph_intensity_not_explicit_background() {
+        let renderer = Renderer::new(&Config::default());
+        let term_colors = TermColors::default();
+        let square = Square::from_char('x');
+        let background = AnsiColor::Spec(ColorRgb {
+            r: 47,
+            g: 91,
+            b: 137,
+        });
+        let normal = Style {
+            bg: background,
+            ..Style::default()
+        };
+        let dim = Style {
+            flags: StyleFlags::DIM,
+            ..normal
+        };
+
+        let normal_bg = cell_bg(square, normal, &renderer, &term_colors);
+        let dim_bg = cell_bg(square, dim, &renderer, &term_colors);
+        assert_eq!(dim_bg, normal_bg);
+        assert_eq!(dim_bg[3], 255);
+    }
+
+    #[test]
+    fn dim_default_background_remains_transparent() {
+        let renderer = Renderer::new(&Config::default());
+        let term_colors = TermColors::default();
+        let style = Style {
+            flags: StyleFlags::DIM,
+            ..Style::default()
+        };
+
+        assert_eq!(
+            cell_bg(Square::from_char('x'), style, &renderer, &term_colors),
+            [0, 0, 0, 0]
+        );
+    }
+}
+
+#[cfg(test)]
 mod nerd_icon_tests {
     use super::*;
 

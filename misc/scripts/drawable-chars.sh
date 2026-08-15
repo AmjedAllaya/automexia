@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Show the codepoint ranges Rio renders with built-in "drawable" sprites
+# Show the codepoint ranges Automexia renders with built-in "drawable" sprites
 # (box-drawing, blocks, braille, and — as they land — sextants, octants,
-# powerline, geometric shapes, branch glyphs). Run inside a Rio window to
+# powerline, geometric shapes, branch glyphs). Run inside an Automexia window to
 # eyeball the sprite rasterizer.
 #
 # With `fonts.use-drawable-chars = true` (the default) these render

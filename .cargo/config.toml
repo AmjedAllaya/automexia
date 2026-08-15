@@ -4,6 +4,7 @@ dev = "run --package xtask -- dev"
 ready = "run --package xtask -- ready"
 automexia = "run --package xtask -- run"
 ci = "run --package xtask -- ci"
+qa = "run --package xtask -- qa --full"
 storage = "run --package xtask -- storage"
 # This remains a built-in Cargo clean, so it can remove xtask itself after all
 # Automexia windows have closed. An xtask process cannot safely delete its own

@@ -31,6 +31,12 @@ domain checks but never remove the base policy suite.
   files are excluded from the untouched changed-line threshold.
 - Do not introduce network access, arbitrary process execution, or new extension
   capabilities without a security review and explicit least-privilege manifest.
+- For keyboard changes, update the shipped
+  [compatibility matrix](docs/GHOSTTY-KEYBOARD-COMPATIBILITY.md), collision tests,
+  action dispatch, palette discovery, and the
+  [full compatibility roadmap](docs/GHOSTTY-COMPATIBILITY-ROADMAP.md) in the
+  same pull request. Do not claim exact profile parity from a hand-maintained
+  default table.
 
 Documentation-only, tests-only, or internal-maintenance PRs may omit a changelog
 fragment only when the corresponding repository label is applied.
@@ -44,6 +50,15 @@ cargo ready     # complete local gate without launching
 cargo storage   # report target size, free space, and largest target children
 cargo purge     # remove Cargo artifacts after closing Automexia windows
 ```
+
+The two launching commands automatically provision the repository-owned shell
+support before spawning Automexia. This includes PowerShell, CMD, and WSL on
+Windows, or Bash, Zsh, and user-local terminfo on Unix. The operation is
+source-aware and idempotent, so contributors never need to run an integration
+installer or restart a just-launched window. A provisioning error fails the
+launch instead of silently dropping prompt, context, or listing features.
+Non-launching `cargo ready`, `cargo check`, and CI intentionally do not change
+user profiles.
 
 `cargo ready` is the required contributor command. It includes tool and
 structured-file validation, all Automexia verification scopes, package metadata,
@@ -64,11 +79,28 @@ remove it afterward with `cargo purge`. Threshold overrides
 `AUTOMEXIA_TARGET_WARN_GIB` accept integer GiB values, but lowering the safety
 minimums is not recommended.
 
+Windows and WSL builds use separate native checkouts. Windows Cargo/MSVC and
+native ConPTY/GPU/package work stays on NTFS; Linux Cargo and Unix PTY work runs
+from a WSL path such as `~/src/automexia-terminal`. The project commands
+reject source or target storage under `/mnt/<drive>` before expensive work.
+Run `cargo xtask doctor` to verify the mode and follow
+[Windows and WSL development](docs/WSL-DEVELOPMENT.md) to synchronize the two
+checkouts through Git without sharing build artifacts.
+
 Individual `cargo xtask` commands remain available for focused diagnosis, but
 contributors do not need to assemble the normal gate manually. Platform-specific
 changes must also run on their native OS. See `docs/TESTING.md` for X11/Wayland,
 MSVC/ARM64, macOS universal, coverage, sanitizer, fuzz, benchmark, and package
 matrices.
+
+New or materially changed product features must update
+`tests/assurance/feature-matrix.json` with correctness, security, performance,
+resource-lifetime, storage, resilience, accessibility, visual, and native-host
+evidence. Repository validation rejects unowned workspace members, benchmark
+targets, fuzz targets, workflow jobs, and evidence paths. Image decoder,
+preview, renderer, or graphics-protocol changes must additionally
+run `cargo xtask test image-rendering`; Windows rendering/lifecycle changes run
+`cargo xtask test image-rendering --native-gui` before review.
 
 ## Reviews and merging
 

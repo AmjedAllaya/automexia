@@ -22,20 +22,24 @@ fn color_u8(c: [f32; 4]) -> [u8; 4] {
     ]
 }
 
-// Layout
-const PALETTE_WIDTH: f32 = 480.0;
-const PALETTE_CORNER_RADIUS: f32 = 8.0;
-const PALETTE_MARGIN_TOP: f32 = 80.0;
-const PALETTE_PADDING: f32 = 4.0;
+// Headerless command palette: search is the visual anchor and every action
+// shares one crisp, DPI-independent icon grid.
+const PALETTE_WIDTH: f32 = 600.0;
+const PALETTE_CORNER_RADIUS: f32 = 16.0;
+const PALETTE_MARGIN_TOP: f32 = 76.0;
+const PALETTE_PADDING: f32 = 12.0;
 
-const INPUT_HEIGHT: f32 = 40.0;
-const INPUT_FONT_SIZE: f32 = 14.0;
-const INPUT_PADDING_X: f32 = 14.0;
+const INPUT_HEIGHT: f32 = 52.0;
+const INPUT_FONT_SIZE: f32 = 15.0;
+const INPUT_PADDING_X: f32 = 16.0;
+const INPUT_ICON_WELL: f32 = 32.0;
+const ESC_BADGE_WIDTH: f32 = 42.0;
 
-const RESULT_ITEM_HEIGHT: f32 = 32.0;
-const RESULT_FONT_SIZE: f32 = 13.0;
-const SHORTCUT_FONT_SIZE: f32 = 11.0;
-const MAX_VISIBLE_RESULTS: usize = 8;
+const RESULT_ITEM_HEIGHT: f32 = 44.0;
+const RESULT_FONT_SIZE: f32 = 14.5;
+const RESULT_ICON_SIZE: f32 = 22.0;
+const SHORTCUT_FONT_SIZE: f32 = 10.0;
+const MAX_VISIBLE_RESULTS: usize = 10;
 
 // Copy icon (two overlapping page outlines with rounded corners,
 // drawn by layering filled + cutout rounded rects). Sized to fit
@@ -49,18 +53,31 @@ const COPY_ICON_W: f32 = COPY_ICON_PAGE_W + COPY_ICON_OFFSET; // 13
 const COPY_ICON_H: f32 = COPY_ICON_PAGE_H + COPY_ICON_OFFSET; // 15
 
 const SEPARATOR_HEIGHT: f32 = 1.0;
-const RESULTS_MARGIN_TOP: f32 = 2.0;
+const RESULTS_MARGIN_TOP: f32 = 8.0;
 const CARET_WIDTH: f32 = 1.5;
 const CARET_BLINK_MS: u128 = 500;
 
 // Colors — dark minimalist
-const BACKDROP_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 0.50];
-const BG_COLOR: [f32; 4] = [0.08, 0.08, 0.08, 0.98];
-const SELECTED_BG_COLOR: [f32; 4] = [0.15, 0.15, 0.15, 1.0];
-const TEXT_COLOR: [f32; 4] = [0.85, 0.85, 0.85, 1.0];
-const DIM_TEXT_COLOR: [f32; 4] = [0.35, 0.35, 0.35, 1.0];
-const SHORTCUT_TEXT_COLOR: [f32; 4] = [0.30, 0.30, 0.32, 1.0];
-const SEPARATOR_COLOR: [f32; 4] = [0.15, 0.15, 0.15, 1.0];
+const BACKDROP_COLOR: [f32; 4] = [0.0, 0.025, 0.055, 0.72];
+const SHADOW_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 0.42];
+const OUTLINE_COLOR: [f32; 4] = [0.055, 0.36, 0.58, 0.88];
+const BG_COLOR: [f32; 4] = [0.008, 0.027, 0.050, 1.0];
+const INPUT_BG_COLOR: [f32; 4] = [0.012, 0.046, 0.080, 1.0];
+const INPUT_OUTLINE_COLOR: [f32; 4] = [0.075, 0.40, 0.61, 0.92];
+const SELECTED_BG_COLOR: [f32; 4] = [0.022, 0.125, 0.205, 0.88];
+const SELECTED_OUTLINE_COLOR: [f32; 4] = [0.063, 0.72, 0.96, 0.82];
+const TEXT_COLOR: [f32; 4] = [0.86, 0.93, 0.98, 1.0];
+const DIM_TEXT_COLOR: [f32; 4] = [0.38, 0.49, 0.59, 1.0];
+const SHORTCUT_TEXT_COLOR: [f32; 4] = [0.57, 0.69, 0.78, 1.0];
+const SHORTCUT_BG_COLOR: [f32; 4] = [0.020, 0.065, 0.105, 1.0];
+const SHORTCUT_OUTLINE_COLOR: [f32; 4] = [0.080, 0.24, 0.35, 0.94];
+const SEPARATOR_COLOR: [f32; 4] = [0.055, 0.19, 0.29, 0.84];
+const BRAND_CYAN: [f32; 4] = [0.063, 0.88, 1.0, 1.0];
+const BRAND_BLUE: [f32; 4] = [0.18, 0.58, 0.96, 1.0];
+const BRAND_PURPLE: [f32; 4] = [0.78, 0.42, 1.0, 1.0];
+const BRAND_LIME: [f32; 4] = [0.52, 0.94, 0.36, 1.0];
+const BRAND_AMBER: [f32; 4] = [1.0, 0.69, 0.18, 1.0];
+const BRAND_CORAL: [f32; 4] = [1.0, 0.36, 0.48, 1.0];
 
 // Depth / order
 const DEPTH_BACKDROP: f32 = 0.0;
@@ -70,113 +87,140 @@ const ORDER: u8 = 20;
 
 #[cfg(target_os = "macos")]
 const SHORTCUT_NEW_TAB: &str = "Cmd+T";
-#[cfg(target_os = "windows")]
-const SHORTCUT_NEW_TAB: &str = "Ctrl+Shift+T";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_NEW_TAB: &str = "Ctrl+Shift+T";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_NEW_TAB: &str = "Ctrl+T";
 #[cfg(target_os = "macos")]
-const SHORTCUT_CLOSE: &str = "Cmd+W";
-#[cfg(target_os = "windows")]
-const SHORTCUT_CLOSE: &str = "Ctrl+Shift+W";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_CLOSE: &str = "Ctrl+Shift+W";
+const SHORTCUT_NEW_LOCAL_TAB: &str = "Cmd+Shift+T";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_NEW_LOCAL_TAB: &str = "Ctrl+Shift+T";
+#[cfg(target_os = "macos")]
+const SHORTCUT_CLOSE_TAB: &str = "Cmd+W";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_CLOSE_TAB: &str = "Ctrl+Shift+W";
+#[cfg(target_os = "macos")]
+const SHORTCUT_CLOSE_SURFACE: &str = "Cmd+W";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_CLOSE_SURFACE: &str = "";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SPLIT_RIGHT: &str = "Cmd+D";
-#[cfg(target_os = "windows")]
-const SHORTCUT_SPLIT_RIGHT: &str = "Ctrl+Shift+R";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_SPLIT_RIGHT: &str = "Ctrl+Shift+R";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SPLIT_DOWN: &str = "Cmd+Shift+D";
-#[cfg(target_os = "windows")]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_SPLIT_DOWN: &str = "Ctrl+Shift+D";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_SPLIT_DOWN: &str = "Ctrl+Shift+D";
+const SHORTCUT_CLONE_RIGHT: &str = "Ctrl+R";
+const SHORTCUT_CLONE_DOWN: &str = "Ctrl+D";
+#[cfg(target_os = "macos")]
+const SHORTCUT_PREV_LOCAL_TAB: &str = "Cmd+Alt+[";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_PREV_LOCAL_TAB: &str = "Alt+PageUp";
+#[cfg(target_os = "macos")]
+const SHORTCUT_NEXT_LOCAL_TAB: &str = "Cmd+Alt+]";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_NEXT_LOCAL_TAB: &str = "Alt+PageDown";
+#[cfg(target_os = "macos")]
+const SHORTCUT_PANE_LEFT: &str = "Cmd+Alt+Left";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_PANE_LEFT: &str = "Alt+Left";
+#[cfg(target_os = "macos")]
+const SHORTCUT_PANE_RIGHT: &str = "Cmd+Alt+Right";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_PANE_RIGHT: &str = "Alt+Right";
+#[cfg(target_os = "macos")]
+const SHORTCUT_PANE_UP: &str = "Cmd+Alt+Up";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_PANE_UP: &str = "Alt+Up";
+#[cfg(target_os = "macos")]
+const SHORTCUT_PANE_DOWN: &str = "Cmd+Alt+Down";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_PANE_DOWN: &str = "Alt+Down";
+#[cfg(target_os = "macos")]
+const SHORTCUT_NEXT_PANE: &str = "Cmd+]";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_NEXT_PANE: &str = "F6";
+#[cfg(target_os = "macos")]
+const SHORTCUT_PREV_PANE: &str = "Cmd+[";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_PREV_PANE: &str = "Shift+F6";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SETTINGS: &str = "Cmd+,";
-#[cfg(target_os = "windows")]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_SETTINGS: &str = "Ctrl+,";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_SETTINGS: &str = "Ctrl+Shift+,";
 #[cfg(target_os = "macos")]
 const SHORTCUT_NEW_WINDOW: &str = "Cmd+N";
-#[cfg(target_os = "windows")]
-const SHORTCUT_NEW_WINDOW: &str = "Ctrl+Shift+N";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_NEW_WINDOW: &str = "Ctrl+Shift+N";
 #[cfg(target_os = "macos")]
 const SHORTCUT_COPY: &str = "Cmd+C";
-#[cfg(target_os = "windows")]
-const SHORTCUT_COPY: &str = "Ctrl+Shift+C";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_COPY: &str = "Ctrl+Shift+C";
 #[cfg(target_os = "macos")]
 const SHORTCUT_PASTE: &str = "Cmd+V";
-#[cfg(target_os = "windows")]
-const SHORTCUT_PASTE: &str = "Ctrl+Shift+V";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_PASTE: &str = "Ctrl+Shift+V";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SEARCH: &str = "Cmd+F";
-#[cfg(target_os = "windows")]
-const SHORTCUT_SEARCH: &str = "Ctrl+Shift+F";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_SEARCH: &str = "Ctrl+Shift+F";
 #[cfg(target_os = "macos")]
 const SHORTCUT_FONT_UP: &str = "Cmd++";
-#[cfg(target_os = "windows")]
-const SHORTCUT_FONT_UP: &str = "Ctrl++";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_FONT_UP: &str = "Ctrl++";
 #[cfg(target_os = "macos")]
 const SHORTCUT_FONT_DOWN: &str = "Cmd+-";
-#[cfg(target_os = "windows")]
-const SHORTCUT_FONT_DOWN: &str = "Ctrl+-";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_FONT_DOWN: &str = "Ctrl+-";
 #[cfg(target_os = "macos")]
 const SHORTCUT_FONT_RESET: &str = "Cmd+0";
-#[cfg(target_os = "windows")]
-const SHORTCUT_FONT_RESET: &str = "Ctrl+0";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_FONT_RESET: &str = "Ctrl+0";
 #[cfg(target_os = "macos")]
 const SHORTCUT_VI_MODE: &str = "Alt+Shift+Space";
-#[cfg(target_os = "windows")]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_VI_MODE: &str = "Ctrl+Shift+Space";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_VI_MODE: &str = "Alt+Shift+Space";
 #[cfg(target_os = "macos")]
 const SHORTCUT_FULLSCREEN: &str = "Ctrl+Cmd+F";
-#[cfg(target_os = "windows")]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_FULLSCREEN: &str = "F11";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_FULLSCREEN: &str = "";
 #[cfg(target_os = "macos")]
 const SHORTCUT_APPEARANCE: &str = "";
-#[cfg(target_os = "windows")]
+#[cfg(not(target_os = "macos"))]
 const SHORTCUT_APPEARANCE: &str = "Alt+Shift+T";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_APPEARANCE: &str = "";
 #[cfg(target_os = "macos")]
-const SHORTCUT_CLEAR_HISTORY: &str = "Cmd+K";
-#[cfg(target_os = "windows")]
-const SHORTCUT_CLEAR_HISTORY: &str = "Ctrl+Shift+K";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const SHORTCUT_CLEAR_HISTORY: &str = "";
+const SHORTCUT_PREVIEW_IMAGE: &str = "Cmd+Alt+I";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_PREVIEW_IMAGE: &str = "Ctrl+Alt+I";
+#[cfg(target_os = "macos")]
+const SHORTCUT_CLEAR_SCREEN: &str = "Cmd+K";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_CLEAR_SCREEN: &str = "Ctrl+Shift+K";
+#[cfg(target_os = "macos")]
+const SHORTCUT_QUIT: &str = "Cmd+Q";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_QUIT: &str = "Ctrl+Shift+Q";
 
 /// Actions that can be triggered from the command palette.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaletteAction {
     TabCreate,
+    LocalTabCreate,
     TabClose,
     TabCloseUnfocused,
     SelectNextTab,
     SelectPrevTab,
+    SelectNextLocalTab,
+    SelectPrevLocalTab,
     SplitRight,
     SplitDown,
+    CloneSplitRight,
+    CloneSplitDown,
     SelectNextSplit,
     SelectPrevSplit,
+    SelectPaneLeft,
+    SelectPaneRight,
+    SelectPaneUp,
+    SelectPaneDown,
     ConfigEditor,
     WindowCreateNew,
     IncreaseFontSize,
@@ -189,7 +233,8 @@ pub enum PaletteAction {
     Paste,
     SearchForward,
     SearchBackward,
-    ClearHistory,
+    PreviewSelectedImage,
+    ClearScreen,
     CloseCurrentSplitOrTab,
     OpenMarket,
     /// Browse the family names of every registered font. Does NOT
@@ -200,6 +245,183 @@ pub enum PaletteAction {
     Quit,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CommandIcon {
+    TabAdd,
+    LocalTabAdd,
+    TabClose,
+    TabsClose,
+    TabNext,
+    TabPrevious,
+    SplitRight,
+    SplitDown,
+    CloneSplitRight,
+    CloneSplitDown,
+    PaneNext,
+    PanePrevious,
+    Close,
+    Settings,
+    WindowAdd,
+    FontIncrease,
+    FontDecrease,
+    FontReset,
+    Code,
+    Fullscreen,
+    Theme,
+    Copy,
+    Paste,
+    Search,
+    Image,
+    History,
+    Extension,
+    Font,
+    Power,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct RowPresentation {
+    icon: CommandIcon,
+    accent: [f32; 4],
+}
+
+fn command_presentation(action: PaletteAction) -> RowPresentation {
+    use PaletteAction::*;
+    match action {
+        TabCreate => RowPresentation {
+            icon: CommandIcon::TabAdd,
+            accent: BRAND_CYAN,
+        },
+        LocalTabCreate => RowPresentation {
+            icon: CommandIcon::LocalTabAdd,
+            accent: BRAND_LIME,
+        },
+        TabClose => RowPresentation {
+            icon: CommandIcon::TabClose,
+            accent: BRAND_CORAL,
+        },
+        TabCloseUnfocused => RowPresentation {
+            icon: CommandIcon::TabsClose,
+            accent: BRAND_CORAL,
+        },
+        CloseCurrentSplitOrTab => RowPresentation {
+            icon: CommandIcon::Close,
+            accent: BRAND_CORAL,
+        },
+        SelectNextTab => RowPresentation {
+            icon: CommandIcon::TabNext,
+            accent: BRAND_BLUE,
+        },
+        SelectPrevTab => RowPresentation {
+            icon: CommandIcon::TabPrevious,
+            accent: BRAND_BLUE,
+        },
+        SelectNextLocalTab => RowPresentation {
+            icon: CommandIcon::TabNext,
+            accent: BRAND_LIME,
+        },
+        SelectPrevLocalTab => RowPresentation {
+            icon: CommandIcon::TabPrevious,
+            accent: BRAND_LIME,
+        },
+        SplitRight => RowPresentation {
+            icon: CommandIcon::SplitRight,
+            accent: BRAND_PURPLE,
+        },
+        SplitDown => RowPresentation {
+            icon: CommandIcon::SplitDown,
+            accent: BRAND_PURPLE,
+        },
+        CloneSplitRight => RowPresentation {
+            icon: CommandIcon::CloneSplitRight,
+            accent: BRAND_CYAN,
+        },
+        CloneSplitDown => RowPresentation {
+            icon: CommandIcon::CloneSplitDown,
+            accent: BRAND_CYAN,
+        },
+        SelectNextSplit => RowPresentation {
+            icon: CommandIcon::PaneNext,
+            accent: BRAND_PURPLE,
+        },
+        SelectPrevSplit => RowPresentation {
+            icon: CommandIcon::PanePrevious,
+            accent: BRAND_PURPLE,
+        },
+        SelectPaneLeft | SelectPaneUp => RowPresentation {
+            icon: CommandIcon::PanePrevious,
+            accent: BRAND_CYAN,
+        },
+        SelectPaneRight | SelectPaneDown => RowPresentation {
+            icon: CommandIcon::PaneNext,
+            accent: BRAND_CYAN,
+        },
+        ConfigEditor => RowPresentation {
+            icon: CommandIcon::Settings,
+            accent: BRAND_AMBER,
+        },
+        WindowCreateNew => RowPresentation {
+            icon: CommandIcon::WindowAdd,
+            accent: BRAND_CYAN,
+        },
+        IncreaseFontSize => RowPresentation {
+            icon: CommandIcon::FontIncrease,
+            accent: BRAND_PURPLE,
+        },
+        DecreaseFontSize => RowPresentation {
+            icon: CommandIcon::FontDecrease,
+            accent: BRAND_PURPLE,
+        },
+        ResetFontSize => RowPresentation {
+            icon: CommandIcon::FontReset,
+            accent: BRAND_PURPLE,
+        },
+        ListFonts => RowPresentation {
+            icon: CommandIcon::Font,
+            accent: BRAND_PURPLE,
+        },
+        ToggleViMode => RowPresentation {
+            icon: CommandIcon::Code,
+            accent: BRAND_LIME,
+        },
+        ToggleFullscreen => RowPresentation {
+            icon: CommandIcon::Fullscreen,
+            accent: BRAND_BLUE,
+        },
+        ToggleAppearanceTheme => RowPresentation {
+            icon: CommandIcon::Theme,
+            accent: BRAND_AMBER,
+        },
+        Copy => RowPresentation {
+            icon: CommandIcon::Copy,
+            accent: BRAND_CYAN,
+        },
+        Paste => RowPresentation {
+            icon: CommandIcon::Paste,
+            accent: BRAND_CYAN,
+        },
+        SearchForward | SearchBackward => RowPresentation {
+            icon: CommandIcon::Search,
+            accent: BRAND_BLUE,
+        },
+        PreviewSelectedImage => RowPresentation {
+            icon: CommandIcon::Image,
+            accent: BRAND_CYAN,
+        },
+        ClearScreen => RowPresentation {
+            icon: CommandIcon::History,
+            accent: BRAND_AMBER,
+        },
+        OpenMarket => RowPresentation {
+            icon: CommandIcon::Extension,
+            accent: BRAND_LIME,
+        },
+        Quit => RowPresentation {
+            icon: CommandIcon::Power,
+            accent: BRAND_CORAL,
+        },
+    }
+}
+
 struct Command {
     title: &'static str,
     shortcut: &'static str,
@@ -208,13 +430,18 @@ struct Command {
 
 const COMMANDS: &[Command] = &[
     Command {
-        title: "New Tab",
+        title: "New Window Tab",
         shortcut: SHORTCUT_NEW_TAB,
         action: PaletteAction::TabCreate,
     },
     Command {
+        title: "New Tab in Selected Session",
+        shortcut: SHORTCUT_NEW_LOCAL_TAB,
+        action: PaletteAction::LocalTabCreate,
+    },
+    Command {
         title: "Close Tab",
-        shortcut: SHORTCUT_CLOSE,
+        shortcut: SHORTCUT_CLOSE_TAB,
         action: PaletteAction::TabClose,
     },
     Command {
@@ -233,6 +460,16 @@ const COMMANDS: &[Command] = &[
         action: PaletteAction::SelectPrevTab,
     },
     Command {
+        title: "Next Tab in Selected Pane",
+        shortcut: SHORTCUT_NEXT_LOCAL_TAB,
+        action: PaletteAction::SelectNextLocalTab,
+    },
+    Command {
+        title: "Previous Tab in Selected Pane",
+        shortcut: SHORTCUT_PREV_LOCAL_TAB,
+        action: PaletteAction::SelectPrevLocalTab,
+    },
+    Command {
         title: "Split Right",
         shortcut: SHORTCUT_SPLIT_RIGHT,
         action: PaletteAction::SplitRight,
@@ -243,18 +480,48 @@ const COMMANDS: &[Command] = &[
         action: PaletteAction::SplitDown,
     },
     Command {
+        title: "Clone Active Session Right",
+        shortcut: SHORTCUT_CLONE_RIGHT,
+        action: PaletteAction::CloneSplitRight,
+    },
+    Command {
+        title: "Clone Active Session Down",
+        shortcut: SHORTCUT_CLONE_DOWN,
+        action: PaletteAction::CloneSplitDown,
+    },
+    Command {
         title: "Next Split",
-        shortcut: "",
+        shortcut: SHORTCUT_NEXT_PANE,
         action: PaletteAction::SelectNextSplit,
     },
     Command {
         title: "Previous Split",
-        shortcut: "",
+        shortcut: SHORTCUT_PREV_PANE,
         action: PaletteAction::SelectPrevSplit,
     },
     Command {
+        title: "Focus Pane Left",
+        shortcut: SHORTCUT_PANE_LEFT,
+        action: PaletteAction::SelectPaneLeft,
+    },
+    Command {
+        title: "Focus Pane Right",
+        shortcut: SHORTCUT_PANE_RIGHT,
+        action: PaletteAction::SelectPaneRight,
+    },
+    Command {
+        title: "Focus Pane Up",
+        shortcut: SHORTCUT_PANE_UP,
+        action: PaletteAction::SelectPaneUp,
+    },
+    Command {
+        title: "Focus Pane Down",
+        shortcut: SHORTCUT_PANE_DOWN,
+        action: PaletteAction::SelectPaneDown,
+    },
+    Command {
         title: "Close Split or Tab",
-        shortcut: "",
+        shortcut: SHORTCUT_CLOSE_SURFACE,
         action: PaletteAction::CloseCurrentSplitOrTab,
     },
     Command {
@@ -318,9 +585,14 @@ const COMMANDS: &[Command] = &[
         action: PaletteAction::SearchBackward,
     },
     Command {
-        title: "Clear History",
-        shortcut: SHORTCUT_CLEAR_HISTORY,
-        action: PaletteAction::ClearHistory,
+        title: "Preview Selected Image",
+        shortcut: SHORTCUT_PREVIEW_IMAGE,
+        action: PaletteAction::PreviewSelectedImage,
+    },
+    Command {
+        title: "Clear Screen and History",
+        shortcut: SHORTCUT_CLEAR_SCREEN,
+        action: PaletteAction::ClearScreen,
     },
     Command {
         title: "market",
@@ -334,7 +606,7 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         title: "Quit",
-        shortcut: "Cmd+Q",
+        shortcut: SHORTCUT_QUIT,
         action: PaletteAction::Quit,
     },
 ];
@@ -400,6 +672,28 @@ impl<'a> PaletteRow<'a> {
         match *self {
             PaletteRow::Command { action, .. } => Some(action),
             PaletteRow::Font { .. } | PaletteRow::Market { .. } => None,
+        }
+    }
+
+    fn presentation(&self) -> RowPresentation {
+        match *self {
+            PaletteRow::Command { action, .. } => command_presentation(action),
+            PaletteRow::Font { .. } => RowPresentation {
+                icon: CommandIcon::Font,
+                accent: BRAND_PURPLE,
+            },
+            PaletteRow::Market {
+                installed: true, ..
+            } => RowPresentation {
+                icon: CommandIcon::Extension,
+                accent: BRAND_LIME,
+            },
+            PaletteRow::Market {
+                installed: false, ..
+            } => RowPresentation {
+                icon: CommandIcon::Extension,
+                accent: BRAND_CYAN,
+            },
         }
     }
 }
@@ -501,6 +795,281 @@ fn draw_copy_icon(
         depth + 0.01,
         order,
     );
+}
+
+/// Small vector canvas shared by every palette icon. Keeping all actions on a
+/// 22 px grid with the same stroke weight avoids font fallback, baseline drift,
+/// and the mismatched optical sizes of icon-font glyphs.
+struct IconCanvas<'a, 'font> {
+    sugarloaf: &'a mut Sugarloaf<'font>,
+    x: f32,
+    y: f32,
+    color: [f32; 4],
+    fill: [f32; 4],
+    depth: f32,
+    order: u8,
+}
+
+impl IconCanvas<'_, '_> {
+    fn line(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) {
+        self.sugarloaf.line(
+            self.x + x1,
+            self.y + y1,
+            self.x + x2,
+            self.y + y2,
+            1.45,
+            self.depth,
+            self.color,
+            self.order,
+        );
+    }
+
+    fn outline(&mut self, x: f32, y: f32, width: f32, height: f32, radius: f32) {
+        stroke_rounded_rect(
+            self.sugarloaf,
+            self.x + x,
+            self.y + y,
+            width,
+            height,
+            1.25,
+            radius,
+            self.color,
+            self.fill,
+            self.depth,
+            self.order,
+        );
+    }
+
+    fn dot(&mut self, x: f32, y: f32, size: f32) {
+        self.sugarloaf.rounded_rect(
+            None,
+            self.x + x,
+            self.y + y,
+            size,
+            size,
+            self.color,
+            self.depth + 0.01,
+            size / 2.0,
+            self.order,
+        );
+    }
+
+    fn plus(&mut self, x: f32, y: f32, radius: f32) {
+        self.line(x - radius, y, x + radius, y);
+        self.line(x, y - radius, x, y + radius);
+    }
+
+    fn chevron_right(&mut self, x: f32, y: f32, radius: f32) {
+        self.line(x - radius, y - radius, x, y);
+        self.line(x, y, x - radius, y + radius);
+    }
+
+    fn chevron_left(&mut self, x: f32, y: f32, radius: f32) {
+        self.line(x + radius, y - radius, x, y);
+        self.line(x, y, x + radius, y + radius);
+    }
+
+    fn tab_frame(&mut self) {
+        self.outline(1.5, 3.0, 19.0, 16.0, 3.5);
+        self.line(5.0, 6.0, 11.0, 6.0);
+    }
+
+    fn font_mark(&mut self) {
+        self.line(3.5, 18.5, 9.0, 4.0);
+        self.line(9.0, 4.0, 14.5, 18.5);
+        self.line(5.8, 12.5, 12.2, 12.5);
+    }
+}
+
+fn draw_command_icon(
+    sugarloaf: &mut Sugarloaf,
+    icon: CommandIcon,
+    x: f32,
+    y: f32,
+    color: [f32; 4],
+    fill: [f32; 4],
+) {
+    let mut canvas = IconCanvas {
+        sugarloaf,
+        x,
+        y,
+        color,
+        fill,
+        depth: DEPTH_ELEMENT + 0.035,
+        order: ORDER,
+    };
+
+    match icon {
+        CommandIcon::TabAdd => {
+            canvas.tab_frame();
+            canvas.plus(15.5, 12.5, 2.7);
+        }
+        CommandIcon::LocalTabAdd => {
+            canvas.outline(1.5, 3.0, 19.0, 16.0, 3.5);
+            canvas.line(8.5, 3.5, 8.5, 18.5);
+            canvas.plus(15.0, 11.0, 2.8);
+        }
+        CommandIcon::TabClose => {
+            canvas.tab_frame();
+            canvas.line(12.5, 12.5, 18.5, 12.5);
+        }
+        CommandIcon::TabsClose => {
+            canvas.outline(4.0, 1.5, 16.5, 14.0, 3.0);
+            canvas.outline(1.5, 5.0, 16.5, 14.0, 3.0);
+            canvas.line(10.0, 13.5, 16.0, 13.5);
+        }
+        CommandIcon::TabNext => {
+            canvas.tab_frame();
+            canvas.chevron_right(15.5, 12.5, 3.0);
+        }
+        CommandIcon::TabPrevious => {
+            canvas.tab_frame();
+            canvas.chevron_left(7.0, 12.5, 3.0);
+        }
+        CommandIcon::SplitRight => {
+            canvas.outline(1.5, 2.0, 19.0, 18.0, 3.5);
+            canvas.line(11.0, 2.5, 11.0, 19.5);
+            canvas.chevron_right(16.0, 11.0, 2.5);
+        }
+        CommandIcon::SplitDown => {
+            canvas.outline(1.5, 2.0, 19.0, 18.0, 3.5);
+            canvas.line(2.0, 11.0, 20.0, 11.0);
+            canvas.line(8.5, 15.0, 11.0, 17.5);
+            canvas.line(11.0, 17.5, 13.5, 15.0);
+        }
+        CommandIcon::CloneSplitRight => {
+            canvas.outline(1.5, 1.5, 15.0, 14.0, 3.0);
+            canvas.outline(5.5, 6.5, 15.0, 14.0, 3.0);
+            canvas.line(13.0, 7.0, 13.0, 20.0);
+            canvas.chevron_right(17.0, 13.5, 2.2);
+        }
+        CommandIcon::CloneSplitDown => {
+            canvas.outline(1.5, 1.5, 15.0, 14.0, 3.0);
+            canvas.outline(5.5, 6.5, 15.0, 14.0, 3.0);
+            canvas.line(6.0, 13.5, 20.0, 13.5);
+            canvas.line(10.5, 16.0, 13.0, 18.5);
+            canvas.line(13.0, 18.5, 15.5, 16.0);
+        }
+        CommandIcon::PaneNext => {
+            canvas.outline(1.5, 2.0, 19.0, 18.0, 3.5);
+            canvas.line(11.0, 2.5, 11.0, 19.5);
+            canvas.chevron_right(17.0, 11.0, 2.5);
+        }
+        CommandIcon::PanePrevious => {
+            canvas.outline(1.5, 2.0, 19.0, 18.0, 3.5);
+            canvas.line(11.0, 2.5, 11.0, 19.5);
+            canvas.chevron_left(5.0, 11.0, 2.5);
+        }
+        CommandIcon::Close => {
+            canvas.outline(3.5, 3.5, 15.0, 15.0, 7.5);
+            canvas.line(7.0, 11.0, 15.0, 11.0);
+        }
+        CommandIcon::Settings => {
+            canvas.line(2.5, 5.0, 19.5, 5.0);
+            canvas.line(2.5, 11.0, 19.5, 11.0);
+            canvas.line(2.5, 17.0, 19.5, 17.0);
+            canvas.dot(6.0, 3.25, 3.5);
+            canvas.dot(13.0, 9.25, 3.5);
+            canvas.dot(8.5, 15.25, 3.5);
+        }
+        CommandIcon::WindowAdd => {
+            canvas.outline(1.5, 2.5, 19.0, 17.0, 3.5);
+            canvas.line(2.5, 6.5, 19.5, 6.5);
+            canvas.plus(15.0, 13.0, 3.0);
+        }
+        CommandIcon::FontIncrease => {
+            canvas.font_mark();
+            canvas.plus(18.0, 6.0, 2.8);
+        }
+        CommandIcon::FontDecrease => {
+            canvas.font_mark();
+            canvas.line(15.2, 6.0, 20.8, 6.0);
+        }
+        CommandIcon::FontReset => {
+            canvas.font_mark();
+            canvas.line(15.0, 5.0, 20.0, 5.0);
+            canvas.line(15.0, 5.0, 17.0, 3.0);
+            canvas.line(15.0, 5.0, 17.0, 7.0);
+        }
+        CommandIcon::Code => {
+            canvas.line(8.0, 5.0, 3.0, 11.0);
+            canvas.line(3.0, 11.0, 8.0, 17.0);
+            canvas.line(14.0, 5.0, 19.0, 11.0);
+            canvas.line(19.0, 11.0, 14.0, 17.0);
+        }
+        CommandIcon::Fullscreen => {
+            canvas.line(2.5, 8.0, 2.5, 2.5);
+            canvas.line(2.5, 2.5, 8.0, 2.5);
+            canvas.line(14.0, 2.5, 19.5, 2.5);
+            canvas.line(19.5, 2.5, 19.5, 8.0);
+            canvas.line(19.5, 14.0, 19.5, 19.5);
+            canvas.line(19.5, 19.5, 14.0, 19.5);
+            canvas.line(8.0, 19.5, 2.5, 19.5);
+            canvas.line(2.5, 19.5, 2.5, 14.0);
+        }
+        CommandIcon::Theme => {
+            canvas.outline(7.0, 7.0, 8.0, 8.0, 4.0);
+            for (x1, y1, x2, y2) in [
+                (11.0, 1.5, 11.0, 4.0),
+                (11.0, 18.0, 11.0, 20.5),
+                (1.5, 11.0, 4.0, 11.0),
+                (18.0, 11.0, 20.5, 11.0),
+                (4.2, 4.2, 6.0, 6.0),
+                (16.0, 16.0, 17.8, 17.8),
+                (16.0, 6.0, 17.8, 4.2),
+                (4.2, 17.8, 6.0, 16.0),
+            ] {
+                canvas.line(x1, y1, x2, y2);
+            }
+        }
+        CommandIcon::Copy => draw_copy_icon(
+            canvas.sugarloaf,
+            x + 3.0,
+            y + 3.0,
+            color,
+            fill,
+            DEPTH_ELEMENT + 0.035,
+            ORDER,
+        ),
+        CommandIcon::Paste => {
+            canvas.outline(3.5, 3.5, 15.0, 17.0, 3.0);
+            canvas.outline(7.0, 1.5, 8.0, 4.5, 2.0);
+            canvas.line(7.0, 10.0, 15.0, 10.0);
+            canvas.line(7.0, 14.0, 13.0, 14.0);
+        }
+        CommandIcon::Search => {
+            canvas.outline(2.5, 2.5, 12.5, 12.5, 6.25);
+            canvas.line(14.0, 14.0, 20.0, 20.0);
+        }
+        CommandIcon::Image => {
+            canvas.outline(2.0, 3.0, 18.0, 16.0, 3.0);
+            canvas.dot(14.5, 6.0, 2.0);
+            canvas.line(4.5, 16.0, 9.0, 11.0);
+            canvas.line(9.0, 11.0, 12.0, 14.0);
+            canvas.line(12.0, 14.0, 15.0, 10.5);
+            canvas.line(15.0, 10.5, 19.0, 15.0);
+        }
+        CommandIcon::History => {
+            canvas.outline(2.0, 2.0, 18.0, 18.0, 9.0);
+            canvas.line(11.0, 6.0, 11.0, 11.0);
+            canvas.line(11.0, 11.0, 15.0, 13.5);
+            canvas.chevron_left(2.5, 6.0, 2.0);
+        }
+        CommandIcon::Extension => {
+            canvas.outline(5.0, 5.0, 12.0, 12.0, 3.0);
+            canvas.line(8.0, 2.0, 8.0, 5.0);
+            canvas.line(14.0, 2.0, 14.0, 5.0);
+            canvas.line(8.0, 17.0, 8.0, 20.0);
+            canvas.line(14.0, 17.0, 14.0, 20.0);
+            canvas.line(2.0, 8.0, 5.0, 8.0);
+            canvas.line(17.0, 14.0, 20.0, 14.0);
+        }
+        CommandIcon::Font => canvas.font_mark(),
+        CommandIcon::Power => {
+            canvas.outline(2.5, 2.5, 17.0, 17.0, 8.5);
+            canvas.line(11.0, 1.0, 11.0, 10.5);
+        }
+    }
 }
 
 /// Fuzzy match: checks if all query chars appear in order in the target.
@@ -851,6 +1420,8 @@ impl CommandPalette {
             return;
         }
 
+        sugarloaf.begin_modal_layer();
+
         let (window_width, window_height, scale_factor) = dimensions;
 
         let (palette_x, palette_y, palette_width, palette_height, visible_results) =
@@ -873,15 +1444,30 @@ impl CommandPalette {
             ORDER,
         );
 
+        // Lift the command center above terminal content, then carve a crisp
+        // one-pixel Automexia outline around the blue-black glass surface.
         sugarloaf.rounded_rect(
             None,
+            palette_x - 8.0,
+            palette_y + 5.0,
+            palette_width + 16.0,
+            palette_height + 12.0,
+            SHADOW_COLOR,
+            DEPTH_BG,
+            PALETTE_CORNER_RADIUS + 7.0,
+            ORDER,
+        );
+        stroke_rounded_rect(
+            sugarloaf,
             palette_x,
             palette_y,
             palette_width,
             palette_height,
-            BG_COLOR,
-            DEPTH_BG,
+            1.0,
             PALETTE_CORNER_RADIUS,
+            OUTLINE_COLOR,
+            BG_COLOR,
+            DEPTH_BG + 0.01,
             ORDER,
         );
 
@@ -889,14 +1475,62 @@ impl CommandPalette {
         let input_y = palette_y + PALETTE_PADDING;
         let input_width = palette_width - PALETTE_PADDING * 2.0;
 
-        // No separate input background — blends with palette bg for minimalism
+        stroke_rounded_rect(
+            sugarloaf,
+            input_x,
+            input_y,
+            input_width,
+            INPUT_HEIGHT - 4.0,
+            1.0,
+            9.0,
+            INPUT_OUTLINE_COLOR,
+            INPUT_BG_COLOR,
+            DEPTH_ELEMENT,
+            ORDER,
+        );
+        draw_command_icon(
+            sugarloaf,
+            CommandIcon::Search,
+            input_x + 13.0,
+            input_y + 11.0,
+            BRAND_CYAN,
+            INPUT_BG_COLOR,
+        );
+
+        let esc_x = input_x + input_width - ESC_BADGE_WIDTH - 10.0;
+        stroke_rounded_rect(
+            sugarloaf,
+            esc_x,
+            input_y + 11.0,
+            ESC_BADGE_WIDTH,
+            25.0,
+            1.0,
+            6.0,
+            SHORTCUT_OUTLINE_COLOR,
+            SHORTCUT_BG_COLOR,
+            DEPTH_ELEMENT + 0.01,
+            ORDER,
+        );
+        let esc_opts = DrawOpts {
+            font_size: SHORTCUT_FONT_SIZE,
+            color: color_u8(SHORTCUT_TEXT_COLOR),
+            ..DrawOpts::default()
+        };
+        sugarloaf
+            .text_mut()
+            .draw(esc_x + 9.0, input_y + 18.0, "ESC", &esc_opts);
 
         let placeholder = match self.mode {
             PaletteMode::Commands => "Type a command...",
             PaletteMode::Fonts(_) => "Type a font name...",
             PaletteMode::Market(_) => "Search extensions...",
         };
-        let input_text_width = (input_width - INPUT_PADDING_X * 2.0 - 4.0).max(0.0);
+        let input_text_width = (input_width
+            - INPUT_PADDING_X * 2.0
+            - INPUT_ICON_WELL
+            - ESC_BADGE_WIDTH
+            - 18.0)
+            .max(0.0);
         let display_text = if self.query.is_empty() {
             elide_end(sugarloaf, placeholder, input_text_width, INPUT_FONT_SIZE)
         } else {
@@ -913,7 +1547,7 @@ impl CommandPalette {
             TEXT_COLOR
         };
 
-        let text_x = input_x + INPUT_PADDING_X;
+        let text_x = input_x + INPUT_PADDING_X + INPUT_ICON_WELL;
         let text_y = input_y + (INPUT_HEIGHT - INPUT_FONT_SIZE) / 2.0;
         let input_opts = DrawOpts {
             font_size: INPUT_FONT_SIZE,
@@ -966,12 +1600,6 @@ impl CommandPalette {
         let results_y = sep_y + SEPARATOR_HEIGHT + RESULTS_MARGIN_TOP;
         let filtered = self.filtered_rows();
 
-        let shortcut_opts = DrawOpts {
-            font_size: SHORTCUT_FONT_SIZE,
-            color: color_u8(SHORTCUT_TEXT_COLOR),
-            ..DrawOpts::default()
-        };
-
         for (display_i, (_, row)) in filtered
             .iter()
             .skip(self.scroll_offset)
@@ -981,60 +1609,120 @@ impl CommandPalette {
             let actual_index = self.scroll_offset + display_i;
             let item_y = results_y + RESULT_ITEM_HEIGHT * display_i as f32;
             let is_selected = actual_index == self.selected_index;
+            let presentation = row.presentation();
 
-            // Selection highlight
             if is_selected {
-                sugarloaf.rounded_rect(
-                    None,
+                stroke_rounded_rect(
+                    sugarloaf,
                     input_x,
                     item_y,
                     input_width,
-                    RESULT_ITEM_HEIGHT,
+                    RESULT_ITEM_HEIGHT - 2.0,
+                    1.0,
+                    8.0,
+                    SELECTED_OUTLINE_COLOR,
                     SELECTED_BG_COLOR,
                     DEPTH_ELEMENT,
-                    4.0,
+                    ORDER,
+                );
+                sugarloaf.rounded_rect(
+                    None,
+                    input_x + 4.0,
+                    item_y + 11.0,
+                    2.0,
+                    RESULT_ITEM_HEIGHT - 24.0,
+                    presentation.accent,
+                    DEPTH_ELEMENT + 0.02,
+                    1.0,
                     ORDER,
                 );
             }
+
+            let icon_x = input_x + 14.0;
+            let icon_y = item_y + (RESULT_ITEM_HEIGHT - RESULT_ICON_SIZE) / 2.0 - 1.0;
+            let row_fill_color = if is_selected {
+                SELECTED_BG_COLOR
+            } else {
+                BG_COLOR
+            };
+            draw_command_icon(
+                sugarloaf,
+                presentation.icon,
+                icon_x,
+                icon_y,
+                presentation.accent,
+                row_fill_color,
+            );
 
             let result_opts = DrawOpts {
                 font_size: RESULT_FONT_SIZE,
                 color: color_u8(if is_selected {
                     TEXT_COLOR
                 } else {
-                    [0.55, 0.55, 0.55, 1.0]
+                    [0.68, 0.78, 0.86, 1.0]
                 }),
                 ..DrawOpts::default()
             };
-            let row_text_x = input_x + INPUT_PADDING_X;
-            let row_text_y = item_y + (RESULT_ITEM_HEIGHT - RESULT_FONT_SIZE) / 2.0;
+            let row_text_x = icon_x + RESULT_ICON_SIZE + 14.0;
+            let row_text_y = item_y + (RESULT_ITEM_HEIGHT - RESULT_FONT_SIZE) / 2.0 - 1.0;
             let shortcut = row.shortcut();
             let is_font_row = matches!(row, PaletteRow::Font { .. });
             let trailing_width = if !shortcut.is_empty() {
-                sugarloaf.text_mut().measure(shortcut, &shortcut_opts) + 10.0
+                let shortcut_opts = DrawOpts {
+                    font_size: SHORTCUT_FONT_SIZE,
+                    color: color_u8(SHORTCUT_TEXT_COLOR),
+                    ..DrawOpts::default()
+                };
+                sugarloaf.text_mut().measure(shortcut, &shortcut_opts) + 30.0
             } else if is_font_row {
-                COPY_ICON_W + 10.0
+                COPY_ICON_W + 24.0
             } else {
-                0.0
+                10.0
             };
             let row_title = elide_end(
                 sugarloaf,
                 row.title(),
-                (input_width - INPUT_PADDING_X * 2.0 - trailing_width).max(0.0),
+                (input_x + input_width - row_text_x - trailing_width).max(0.0),
                 RESULT_FONT_SIZE,
             );
             sugarloaf
                 .text_mut()
                 .draw(row_text_x, row_text_y, &row_title, &result_opts);
 
-            // Right-side hint: shortcut for commands, copy icon for
-            // font rows (signals "Enter copies this to clipboard").
             if !shortcut.is_empty() {
-                let ui = sugarloaf.text_mut();
-                let shortcut_width = ui.measure(shortcut, &shortcut_opts);
-                let shortcut_x = input_x + input_width - INPUT_PADDING_X - shortcut_width;
-                let shortcut_y = item_y + (RESULT_ITEM_HEIGHT - SHORTCUT_FONT_SIZE) / 2.0;
-                ui.draw(shortcut_x, shortcut_y, shortcut, &shortcut_opts);
+                let shortcut_opts = DrawOpts {
+                    font_size: SHORTCUT_FONT_SIZE,
+                    color: color_u8(if is_selected {
+                        TEXT_COLOR
+                    } else {
+                        SHORTCUT_TEXT_COLOR
+                    }),
+                    ..DrawOpts::default()
+                };
+                let shortcut_width =
+                    sugarloaf.text_mut().measure(shortcut, &shortcut_opts);
+                let keycap_width = shortcut_width + 18.0;
+                let shortcut_x = input_x + input_width - 10.0 - keycap_width;
+                let shortcut_y = item_y + 10.0;
+                stroke_rounded_rect(
+                    sugarloaf,
+                    shortcut_x,
+                    shortcut_y,
+                    keycap_width,
+                    24.0,
+                    1.0,
+                    6.0,
+                    SHORTCUT_OUTLINE_COLOR,
+                    SHORTCUT_BG_COLOR,
+                    DEPTH_ELEMENT + 0.01,
+                    ORDER,
+                );
+                sugarloaf.text_mut().draw(
+                    shortcut_x + 9.0,
+                    shortcut_y + 6.0,
+                    shortcut,
+                    &shortcut_opts,
+                );
             }
 
             if is_font_row {
@@ -1051,8 +1739,8 @@ impl CommandPalette {
                 } else {
                     BG_COLOR
                 };
-                let icon_x = input_x + input_width - INPUT_PADDING_X - COPY_ICON_W;
-                let icon_y = item_y + (RESULT_ITEM_HEIGHT - COPY_ICON_H) / 2.0;
+                let icon_x = input_x + input_width - 15.0 - COPY_ICON_W;
+                let icon_y = item_y + (RESULT_ITEM_HEIGHT - COPY_ICON_H) / 2.0 - 1.0;
                 draw_copy_icon(
                     sugarloaf,
                     icon_x,
@@ -1063,6 +1751,22 @@ impl CommandPalette {
                     ORDER,
                 );
             }
+        }
+
+        if filtered.is_empty() {
+            let empty_opts = DrawOpts {
+                font_size: RESULT_FONT_SIZE,
+                color: color_u8(DIM_TEXT_COLOR),
+                ..DrawOpts::default()
+            };
+            let empty = "No matching Automexia actions";
+            let width = sugarloaf.text_mut().measure(empty, &empty_opts);
+            sugarloaf.text_mut().draw(
+                palette_x + (palette_width - width) / 2.0,
+                results_y + 15.0,
+                empty,
+                &empty_opts,
+            );
         }
 
         // Scrollbar: shares the terminal scrollbar's visual language
@@ -1107,6 +1811,7 @@ impl CommandPalette {
                 ORDER,
             );
         }
+        sugarloaf.end_modal_layer();
     }
 }
 
@@ -1167,9 +1872,80 @@ mod tests {
     }
 
     #[test]
+    fn every_command_has_a_vector_icon_and_opaque_accent() {
+        for command in COMMANDS {
+            let presentation = command_presentation(command.action);
+            assert_eq!(presentation.accent[3], 1.0, "accent: {}", command.title);
+            assert!(
+                presentation.accent[..3]
+                    .iter()
+                    .all(|channel| channel.is_finite()),
+                "non-finite icon accent: {}",
+                command.title
+            );
+        }
+    }
+
+    #[test]
+    fn primary_actions_have_distinct_icons_on_one_optical_grid() {
+        assert_eq!(RESULT_ICON_SIZE, 22.0);
+        let icons = [
+            PaletteAction::TabCreate,
+            PaletteAction::LocalTabCreate,
+            PaletteAction::TabClose,
+            PaletteAction::TabCloseUnfocused,
+            PaletteAction::SelectNextTab,
+            PaletteAction::SelectPrevTab,
+            PaletteAction::SplitRight,
+            PaletteAction::SplitDown,
+            PaletteAction::CloneSplitRight,
+            PaletteAction::CloneSplitDown,
+            PaletteAction::SelectNextSplit,
+            PaletteAction::SelectPrevSplit,
+            PaletteAction::ConfigEditor,
+            PaletteAction::WindowCreateNew,
+            PaletteAction::ToggleFullscreen,
+            PaletteAction::ToggleAppearanceTheme,
+            PaletteAction::OpenMarket,
+            PaletteAction::Quit,
+        ]
+        .map(|action| command_presentation(action).icon);
+
+        for (index, icon) in icons.iter().enumerate() {
+            assert!(
+                !icons
+                    .iter()
+                    .skip(index + 1)
+                    .any(|candidate| candidate == icon),
+                "primary command icons must remain visually distinct: {icon:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn destructive_automexia_and_pane_commands_have_distinct_roles() {
+        assert_eq!(
+            command_presentation(PaletteAction::Quit).accent,
+            BRAND_CORAL
+        );
+        assert_eq!(
+            command_presentation(PaletteAction::OpenMarket).accent,
+            BRAND_LIME
+        );
+        assert_eq!(
+            command_presentation(PaletteAction::SplitRight).accent,
+            BRAND_PURPLE
+        );
+        assert_ne!(
+            command_presentation(PaletteAction::OpenMarket).icon,
+            command_presentation(PaletteAction::SplitRight).icon
+        );
+    }
+
+    #[test]
     fn test_fuzzy_matching() {
         let mut palette = CommandPalette::new();
-        palette.query = "nt".to_string(); // Should match "New Tab", "Next Tab", etc.
+        palette.query = "nt".to_string(); // Should match tab commands.
         let filtered = palette.filtered_rows();
         assert!(!filtered.is_empty());
     }
@@ -1227,8 +2003,133 @@ mod tests {
         let palette = CommandPalette::new();
         let action = palette.get_selected_action();
         assert!(action.is_some());
-        // First command is "New Tab"
+        // First command is the current-window tab action.
         assert_eq!(action.unwrap(), PaletteAction::TabCreate);
+    }
+
+    #[test]
+    fn window_window_tab_and_session_tab_are_distinct_commands() {
+        let new_window = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::WindowCreateNew)
+            .expect("new-window command should be present");
+        let window_tab = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::TabCreate)
+            .expect("window-tab command should be present");
+        let local_tab = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::LocalTabCreate)
+            .expect("session-tab command should be present");
+
+        assert_eq!(new_window.title, "New Window");
+        assert_eq!(window_tab.title, "New Window Tab");
+        assert_eq!(local_tab.title, "New Tab in Selected Session");
+        assert_ne!(new_window.action, window_tab.action);
+        assert_ne!(window_tab.action, local_tab.action);
+        assert_ne!(new_window.shortcut, window_tab.shortcut);
+        assert_ne!(window_tab.shortcut, local_tab.shortcut);
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            assert_eq!(new_window.shortcut, "Ctrl+Shift+N");
+            assert_eq!(window_tab.shortcut, "Ctrl+T");
+            assert_eq!(local_tab.shortcut, "Ctrl+Shift+T");
+        }
+    }
+
+    #[test]
+    fn clone_and_default_split_commands_are_distinct_and_discoverable() {
+        let clone_right = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::CloneSplitRight)
+            .expect("clone-right command should be present");
+        let clone_down = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::CloneSplitDown)
+            .expect("clone-down command should be present");
+        let split_right = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::SplitRight)
+            .expect("fresh split-right command should be present");
+        let split_down = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::SplitDown)
+            .expect("fresh split-down command should be present");
+
+        assert_eq!(clone_right.shortcut, "Ctrl+R");
+        assert_eq!(clone_down.shortcut, "Ctrl+D");
+        assert_ne!(clone_right.action, split_right.action);
+        assert_ne!(clone_down.action, split_down.action);
+        assert_ne!(
+            command_presentation(clone_right.action).icon,
+            command_presentation(split_right.action).icon
+        );
+        assert_ne!(
+            command_presentation(clone_down.action).icon,
+            command_presentation(split_down.action).icon
+        );
+    }
+
+    #[test]
+    fn image_preview_command_is_discoverable() {
+        let preview = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::PreviewSelectedImage)
+            .expect("image preview command should be present");
+        assert_eq!(preview.title, "Preview Selected Image");
+        #[cfg(target_os = "macos")]
+        assert_eq!(preview.shortcut, "Cmd+Alt+I");
+        #[cfg(not(target_os = "macos"))]
+        assert_eq!(preview.shortcut, "Ctrl+Alt+I");
+        assert_eq!(
+            command_presentation(preview.action).icon,
+            CommandIcon::Image
+        );
+    }
+    #[test]
+    fn visible_palette_shortcuts_are_unique() {
+        let mut shortcuts = std::collections::HashMap::new();
+        for command in COMMANDS
+            .iter()
+            .filter(|command| !command.shortcut.is_empty())
+        {
+            assert!(
+                shortcuts.insert(command.shortcut, command.title).is_none(),
+                "duplicate palette shortcut {}",
+                command.shortcut
+            );
+        }
+    }
+
+    #[test]
+    fn pane_and_local_tab_navigation_are_scoped_and_discoverable() {
+        let command = |action| {
+            COMMANDS
+                .iter()
+                .find(|command| command.action == action)
+                .expect("navigation command")
+        };
+        assert_eq!(
+            command(PaletteAction::SelectNextLocalTab).title,
+            "Next Tab in Selected Pane"
+        );
+        assert_eq!(
+            command(PaletteAction::SelectPrevLocalTab).title,
+            "Previous Tab in Selected Pane"
+        );
+        assert!(!command(PaletteAction::SelectPaneLeft).shortcut.is_empty());
+        assert!(!command(PaletteAction::SelectPaneRight).shortcut.is_empty());
+        assert!(!command(PaletteAction::SelectPaneUp).shortcut.is_empty());
+        assert!(!command(PaletteAction::SelectPaneDown).shortcut.is_empty());
+        assert_eq!(
+            command(PaletteAction::SelectNextSplit).shortcut,
+            SHORTCUT_NEXT_PANE
+        );
+        assert_eq!(
+            command(PaletteAction::SelectPrevSplit).shortcut,
+            SHORTCUT_PREV_PANE
+        );
     }
 
     #[test]
@@ -1274,16 +2175,39 @@ mod tests {
     }
 
     #[test]
+    fn headerless_search_surface_is_not_a_result_hit_target() {
+        let palette = CommandPalette::new();
+        let (x, y, width, height, rows) = palette.palette_rect(1_280.0, 760.0, 1.0);
+        assert_eq!(
+            height,
+            PALETTE_PADDING
+                + INPUT_HEIGHT
+                + SEPARATOR_HEIGHT
+                + RESULTS_MARGIN_TOP
+                + RESULT_ITEM_HEIGHT * rows as f32
+                + PALETTE_PADDING
+        );
+        assert_eq!(
+            palette.hit_test(x + width / 2.0, y + 20.0, 1_280.0, 760.0, 1.0),
+            Ok(None)
+        );
+        assert_eq!(
+            palette.hit_test(x + 40.0, y + PALETTE_PADDING + 20.0, 1_280.0, 760.0, 1.0),
+            Ok(None)
+        );
+    }
+
+    #[test]
     fn test_fuzzy_score_basic() {
-        assert!(fuzzy_score("nt", "New Tab").is_some());
-        assert!(fuzzy_score("xyz", "New Tab").is_none());
-        assert!(fuzzy_score("", "New Tab").is_some());
+        assert!(fuzzy_score("nt", "New Global Tab").is_some());
+        assert!(fuzzy_score("xyz", "New Global Tab").is_none());
+        assert!(fuzzy_score("", "New Global Tab").is_some());
     }
 
     #[test]
     fn test_fuzzy_score_ordering() {
-        // "New Tab" should score higher than "Next Tab" for "net" because of word boundary
-        let score_new = fuzzy_score("net", "New Tab").unwrap_or(-100);
+        // The creation command and navigation command should both remain searchable.
+        let score_new = fuzzy_score("net", "New Global Tab").unwrap_or(-100);
         let score_next = fuzzy_score("net", "Next Tab").unwrap_or(-100);
         // Both should match
         assert!(score_new > -100);

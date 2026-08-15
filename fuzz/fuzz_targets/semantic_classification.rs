@@ -1,6 +1,6 @@
 #![no_main]
 
-use automexia_terminal::automexia::builtins::devops::classify_row_text;
+use automexia_devops::classify_row_text;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
