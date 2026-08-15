@@ -20,6 +20,8 @@ pub const LEGACY_CONFIG_HOME_ENV: &str = "RIO_CONFIG_HOME";
 pub const LEGACY_LOG_LEVEL_ENV: &str = "RIO_LOG_LEVEL";
 pub const TERMINFO_NAME: &str = "automexia";
 pub const TERMINFO_EXTENDED_NAME: &str = "xterm-automexia";
+pub const MAX_CONFIG_FILE_BYTES: u64 = 4 * 1024 * 1024;
+pub const MAX_THEME_FILE_BYTES: u64 = 1024 * 1024;
 
 /// Parse a legacy configuration before any migration writes occur.
 pub fn validate_legacy_config(config: &str) -> Result<(), String> {

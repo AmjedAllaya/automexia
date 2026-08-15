@@ -375,7 +375,9 @@ fn open_regular_file_without_links(
 }
 
 fn is_non_local_token(token: &str) -> bool {
-    token.contains("://")
+    token.starts_with("//")
+        || token.starts_with("\\\\")
+        || token.contains("://")
         || token
             .get(..5)
             .is_some_and(|prefix| prefix.eq_ignore_ascii_case("file:"))
@@ -386,10 +388,6 @@ fn resolve_candidate_path(
 ) -> Result<PathBuf, ImagePreviewError> {
     let token = trim_path_token(&candidate.text);
     if is_non_local_token(token) || token.chars().any(char::is_control) {
-        return Err(ImagePreviewError::NotLocal);
-    }
-    #[cfg(windows)]
-    if token.starts_with("\\\\") || token.starts_with("//") {
         return Err(ImagePreviewError::NotLocal);
     }
 
@@ -703,6 +701,8 @@ mod tests {
         assert!(ImageCandidate::new("https://example.com/a.png", None, None).is_none());
         assert!(ImageCandidate::new("file:///tmp/a.png", None, None).is_none());
         assert!(ImageCandidate::new("FILE:C:\\temp\\a.png", None, None).is_none());
+        assert!(ImageCandidate::new("//server/share/a.png", None, None).is_none());
+        assert!(ImageCandidate::new(r"\\server\share\a.png", None, None).is_none());
         assert!(ImageCandidate::new("image.png\nnext-command", None, None).is_none());
         assert!(ImageCandidate::new("image.png\u{1b}", None, None).is_none());
     }
