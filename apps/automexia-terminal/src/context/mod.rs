@@ -285,6 +285,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         let _launch_contract = launch_descriptor.launch_contract(
             OperationId::new(route_id as u64),
             SessionId::new(route_id as u64),
+            environment_capsule.revision,
         );
 
         #[cfg(test)]

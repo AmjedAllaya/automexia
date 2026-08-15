@@ -2429,17 +2429,30 @@ fn verify_architecture() -> TaskResult {
             && launch_broker.contains("OptionConfusedDestination")
             && launch_broker.contains("ExtensionEnvironmentAccess")
             && launch_broker.contains("StaleOperationLease")
+            && launch_broker.contains("DecisionExpired")
+            && launch_broker.contains("ReplayedOperation")
+            && launch_broker.contains("NonceExhausted")
+            && launch_broker.contains("pub fn register_session")
+            && launch_broker.contains("pub fn rebind_session")
+            && launch_broker.contains("safe_default_working_directory")
+            && !launch_broker.contains("revoked_sessions")
             && launch_broker.contains("production_broker_is_a_hard_denial_before_resolution")
             && launch_broker.contains("executable_replacement_is_detected_even_when_size_is_unchanged")
             && launch_broker.contains("accepted_destination_remains_one_literal_native_argument")
+            && launch_broker.contains("configured_executable_override_is_fail_closed")
+            && launch_broker.contains("decisions_are_expiring_and_bound_to_registered_capsule_scope")
+            && launch_broker.contains("one_ten_and_fifty_session_cycles_release_all_bounded_state")
             && !launch_broker.contains(".spawn()")
             && !launch_broker.contains("create_pty")
             && api_model.contains("SessionLaunch")
             && api_model.contains("session.launch")
             && api_model.contains("impl CapabilityRequest")
             && api_model.contains(r#"try_from = "CapabilityRequestWire""#)
-            && api_model.contains("impl CapabilityDecision"),
-        "non-activated D3 broker lost its test-only gate, native identity/argv/lifecycle validation, single launch seam, or typed capability contracts",
+            && api_model.contains("impl CapabilityDecision")
+            && api_model.contains(r#"try_from = "CapabilityDecisionWire""#)
+            && api_model.contains("expires_at_ms")
+            && api_model.contains("capsule_revision"),
+        "non-activated D3 broker lost its test-only gate, exact capsule/decision/replay scope, bounded lifecycle, fail-closed resolver, native identity/argv validation, single launch seam, or typed contracts",
     )?;
 
     let island_renderer = read(&app.join("src/renderer/island.rs"))?;
