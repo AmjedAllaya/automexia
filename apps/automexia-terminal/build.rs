@@ -19,4 +19,11 @@ fn main() {
 }
 
 #[cfg(not(windows))]
-fn main() {}
+fn main() {
+    // Keep CoreGraphics optional at load time. Restrict this application-only
+    // linker contract to macOS binary targets.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        println!("cargo:rustc-link-arg-bins=-weak_framework");
+        println!("cargo:rustc-link-arg-bins=CoreGraphics");
+    }
+}

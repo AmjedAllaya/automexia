@@ -8958,6 +8958,28 @@ mod tests {
         )
     }
 
+    /// Sweeping an unused extras slot must also remove its interned lookup;
+    /// otherwise allocating identical content could return a dead slot ID.
+    #[test]
+    fn reclaim_purges_interning_lookup() {
+        use crate::performer::handler::Handler;
+        let mut cw = new_term(10, 2);
+        cw.input('e');
+        cw.input('\u{301}');
+        let content = cw
+            .grid
+            .extras_table
+            .get(cw.grid[Line(0)][Column(0)].extras_id().unwrap())
+            .unwrap()
+            .clone();
+
+        cw.clear_screen(ClearMode::All);
+        cw.grid.reclaim_extras();
+        let id = cw.grid.alloc_extras(content.clone());
+        assert_ne!(id, 0);
+        assert_eq!(cw.grid.extras_table.get(id), Some(&content));
+    }
+
     #[test]
     fn legacy_text_emoji_vs16_keeps_width() {
         use crate::performer::handler::Handler;
