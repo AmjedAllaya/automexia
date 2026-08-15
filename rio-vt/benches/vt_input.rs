@@ -6,11 +6,13 @@ use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 
 use rio_vt::ansi::CursorShape;
 use rio_vt::crosswords::grid::row::Row;
+use rio_vt::crosswords::pos::{Column, Line, Pos, Side};
 use rio_vt::crosswords::square::{Extras, Square};
 use rio_vt::crosswords::style::Style;
 use rio_vt::crosswords::{Crosswords, CrosswordsSize};
 use rio_vt::event::{TerminalDamage, VoidListener, WindowId};
 use rio_vt::performer::handler::Processor;
+use rio_vt::selection::{Anchor, SelectionMotion};
 
 const COLS: usize = 120;
 const ROWS: usize = 40;
@@ -188,6 +190,29 @@ fn bench(c: &mut Criterion) {
         });
     });
 
+    // Worst-case interactive word extension: a full 4K-cell identifier.
+    // This stays allocation-free and bounds work to the terminal grid.
+    const SELECTION_COLUMNS: usize = 4096;
+    let mut selection_terminal = Crosswords::new(
+        CrosswordsSize::new(SELECTION_COLUMNS, 1),
+        CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0),
+        0,
+        0,
+    );
+    for column in 0..SELECTION_COLUMNS {
+        selection_terminal.grid[Line(0)][Column(column)].set_c('x');
+    }
+    let selection_start = Anchor::new(Pos::new(Line(0), Column(0)), Side::Left);
+    c.bench_function("keyboard_selection_word_motion_4k", |b| {
+        b.iter(|| {
+            std::hint::black_box(
+                selection_terminal
+                    .selection_motion_target(selection_start, SelectionMotion::WordRight),
+            )
+        })
+    });
     // Prompt/path layout is VT reflow, not renderer state. Alternate between
     // a narrow and a wide grid so the benchmark includes both wrap and unwrap
     // of the same semantic prompt without shell or GPU noise.

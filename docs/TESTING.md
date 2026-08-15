@@ -225,6 +225,28 @@ native verification should additionally cover drag selection, touchpad
 secondary click, a running command interrupted with no selection, and a
 mouse-reporting TUI.
 
+Focused keyboard-selection regressions can be run with:
+
+```text
+cargo test -p automexia-terminal --bin automexia --locked keyboard_selection
+cargo test -p automexia-terminal --bin automexia --locked selection_actions_parse
+cargo test -p automexia-terminal --bin automexia --locked user_binding_can_override_shift_left_selection
+cargo test -p rio-vt --lib --locked keyboard_
+cargo check -p rio-vt --bench vt_input --locked
+cargo xtask test resize-stress --native-gui
+```
+
+The frontend tests prove all six common shortcuts are unique, disabled during
+search/Vi ownership, configurable, and collision-free beside platform pane and
+tab shortcuts. VT tests cover reversal, row/scrollback boundaries, Unicode
+words, wide graphemes, vertical spacer avoidance, and exhaustive small-grid
+endpoint bounds. `keyboard_selection_word_motion_4k` records worst-case long
+identifier latency without per-key allocation. The feature-gated native
+Windows storm types into a real PowerShell/ConPTY session and asserts the exact
+terminal selection from renderer-neutral state; the same shared binding and VT
+code is compiled and tested by native Linux and macOS CI. Physical keyboard
+layout and assistive-technology checks remain host-owned release evidence.
+
 Focused regressions for the 2026-08 upstream correctness adaptation are:
 
 ```text

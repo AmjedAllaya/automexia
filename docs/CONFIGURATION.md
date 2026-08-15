@@ -58,6 +58,25 @@ size = 18.0
 `Ctrl`+`+` and `Ctrl`+`-` adjust an individual terminal panel at runtime;
 `Ctrl`+`0` returns it to the configured size.
 
+Keyboard selection is terminal-owned and common to Windows, Linux/BSD, macOS,
+PowerShell, CMD, WSL, Bash, and Zsh:
+
+| Shortcut | Result |
+|---|---|
+| `Shift`+Left/Right | extend or reverse the selection by one visible cell |
+| `Shift`+Up/Down | extend or reverse the selection by one row |
+| `Ctrl`+`Shift`+Left/Right | extend or reverse by a Unicode-aware word boundary |
+
+The first motion anchors at the live terminal cursor; following motions move
+the active end of the existing selection. Horizontal motion crosses wrapped
+rows and scrollback, vertical motion preserves the visual column, and neither
+stops inside a wide-character spacer. These actions never send bytes to the
+PTY. Search, Vi mode, and pinned image-preview browsing retain arrow-key
+ownership. User bindings may override the defaults with the stable action
+names `ExtendSelectionLeft`, `ExtendSelectionRight`, `ExtendSelectionUp`,
+`ExtendSelectionDown`, `ExtendSelectionWordLeft`, and
+`ExtendSelectionWordRight`.
+
 Tab shortcuts have three deliberate scopes. The non-macOS defaults are:
 
 | Shortcut | Result |

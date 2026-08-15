@@ -26,9 +26,26 @@ pub struct Anchor {
 }
 
 impl Anchor {
-    fn new(point: Pos, side: Side) -> Anchor {
+    /// Build a terminal selection boundary at a grid point.
+    pub fn new(point: Pos, side: Side) -> Anchor {
         Anchor { point, side }
     }
+
+    /// Return the cell edge represented by this anchor.
+    pub fn side(self) -> Side {
+        self.side
+    }
+}
+
+/// Keyboard-driven ways to extend the active terminal selection.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum SelectionMotion {
+    Left,
+    Right,
+    Up,
+    Down,
+    WordLeft,
+    WordRight,
 }
 
 /// Represents a range of selected cells.
@@ -142,6 +159,11 @@ impl Selection {
     /// Update the end of the selection.
     pub fn update(&mut self, point: Pos, side: Side) {
         self.region.end = Anchor::new(point, side);
+    }
+
+    /// Return the endpoint currently moved by keyboard or pointer extension.
+    pub fn active_anchor(&self) -> Anchor {
+        self.region.end
     }
 
     pub fn rotate<D: Dimensions>(
@@ -424,6 +446,227 @@ impl Selection {
             end: end.point,
             is_block: true,
         })
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum SelectionWordClass {
+    Whitespace,
+    Word,
+    Symbol,
+    Continuation,
+}
+
+impl<T: EventListener> Crosswords<T> {
+    /// Resolve the next keyboard-selection endpoint without allocating or
+    /// modifying PTY/grid content. Horizontal cell movement operates on cell
+    /// boundaries, vertical movement preserves the visual boundary column,
+    /// and word movement follows Unicode-aware word/symbol classes.
+    pub fn selection_motion_target(
+        &mut self,
+        anchor: Anchor,
+        motion: SelectionMotion,
+    ) -> Anchor {
+        let columns = self.grid.columns();
+        if columns == 0 {
+            return anchor;
+        }
+
+        let target = match motion {
+            SelectionMotion::Left => self.selection_horizontal_target(anchor, false),
+            SelectionMotion::Right => self.selection_horizontal_target(anchor, true),
+            SelectionMotion::Up => self.selection_vertical_target(anchor, false),
+            SelectionMotion::Down => self.selection_vertical_target(anchor, true),
+            SelectionMotion::WordLeft => self.selection_word_target(anchor, false),
+            SelectionMotion::WordRight => self.selection_word_target(anchor, true),
+        };
+
+        self.scroll_to_pos(target.point);
+        target
+    }
+
+    fn selection_horizontal_target(&self, anchor: Anchor, right: bool) -> Anchor {
+        let total = self.selection_total_cells();
+        let boundary = self.selection_boundary_index(anchor);
+        let mut target = if right {
+            boundary.saturating_add(1).min(total)
+        } else {
+            boundary.saturating_sub(1)
+        };
+
+        // A wide grapheme's spacer cell is not a selectable text boundary.
+        // Skip it so one key press always advances by one visible grapheme.
+        if right {
+            while target < total && self.selection_cell_is_continuation(target) {
+                target += 1;
+            }
+        } else {
+            while target > 0 && self.selection_cell_is_continuation(target) {
+                target -= 1;
+            }
+        }
+
+        self.selection_anchor_from_boundary(target)
+    }
+
+    fn selection_vertical_target(&self, anchor: Anchor, down: bool) -> Anchor {
+        let top = self.grid.topmost_line();
+        let bottom = self.grid.bottommost_line();
+        let row = if down {
+            std::cmp::min(Line(anchor.point.row.0.saturating_add(1)), bottom)
+        } else {
+            std::cmp::max(Line(anchor.point.row.0.saturating_sub(1)), top)
+        };
+        let boundary_column =
+            anchor.point.col.0 + usize::from(anchor.side == Side::Right);
+
+        let target = if boundary_column >= self.grid.columns() {
+            Anchor::new(Pos::new(row, self.grid.last_column()), Side::Right)
+        } else {
+            Anchor::new(Pos::new(row, Column(boundary_column)), Side::Left)
+        };
+        let boundary = self.selection_boundary_index(target);
+        if self.selection_cell_is_continuation(boundary) {
+            self.selection_anchor_from_boundary(boundary.saturating_sub(1))
+        } else {
+            target
+        }
+    }
+
+    fn selection_word_target(&self, anchor: Anchor, right: bool) -> Anchor {
+        let total = self.selection_total_cells();
+        let mut boundary = self.selection_boundary_index(anchor);
+
+        if right {
+            while boundary < total
+                && self.selection_word_class(boundary) == SelectionWordClass::Continuation
+            {
+                boundary += 1;
+            }
+            if boundary >= total {
+                return self.selection_anchor_from_boundary(total);
+            }
+
+            let initial = self.selection_word_class(boundary);
+            while boundary < total {
+                let class = self.selection_word_class(boundary);
+                if class == initial || class == SelectionWordClass::Continuation {
+                    boundary += 1;
+                } else {
+                    break;
+                }
+            }
+
+            if initial != SelectionWordClass::Whitespace {
+                while boundary < total {
+                    match self.selection_word_class(boundary) {
+                        SelectionWordClass::Whitespace
+                        | SelectionWordClass::Continuation => {
+                            boundary += 1;
+                        }
+                        _ => break,
+                    }
+                }
+            }
+        } else {
+            while boundary > 0
+                && self.selection_word_class(boundary - 1)
+                    == SelectionWordClass::Continuation
+            {
+                boundary -= 1;
+            }
+            while boundary > 0
+                && self.selection_word_class(boundary - 1)
+                    == SelectionWordClass::Whitespace
+            {
+                boundary -= 1;
+            }
+            if boundary == 0 {
+                return self.selection_anchor_from_boundary(0);
+            }
+
+            let initial = self.selection_word_class(boundary - 1);
+            while boundary > 0 {
+                let class = self.selection_word_class(boundary - 1);
+                if class == initial || class == SelectionWordClass::Continuation {
+                    boundary -= 1;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        self.selection_anchor_from_boundary(boundary)
+    }
+
+    fn selection_word_class(&self, index: usize) -> SelectionWordClass {
+        let pos = self.selection_pos_from_cell_index(index);
+        let square = &self.grid[pos];
+        if matches!(square.wide(), Wide::Spacer | Wide::LeadingSpacer) {
+            return SelectionWordClass::Continuation;
+        }
+
+        let character = square.c();
+        if matches!(character, '\0' | ' ' | '\t') {
+            SelectionWordClass::Whitespace
+        } else if character == '_' || character.is_alphanumeric() {
+            SelectionWordClass::Word
+        } else {
+            SelectionWordClass::Symbol
+        }
+    }
+
+    fn selection_cell_is_continuation(&self, boundary: usize) -> bool {
+        boundary < self.selection_total_cells()
+            && self.selection_word_class(boundary) == SelectionWordClass::Continuation
+    }
+
+    fn selection_total_cells(&self) -> usize {
+        let rows = self
+            .grid
+            .bottommost_line()
+            .0
+            .saturating_sub(self.grid.topmost_line().0)
+            .saturating_add(1)
+            .max(0) as usize;
+        rows.saturating_mul(self.grid.columns())
+    }
+
+    fn selection_boundary_index(&self, anchor: Anchor) -> usize {
+        let row = anchor
+            .point
+            .row
+            .0
+            .saturating_sub(self.grid.topmost_line().0)
+            .max(0) as usize;
+        let cell = row
+            .saturating_mul(self.grid.columns())
+            .saturating_add(anchor.point.col.0);
+        cell.saturating_add(usize::from(anchor.side == Side::Right))
+            .min(self.selection_total_cells())
+    }
+
+    fn selection_anchor_from_boundary(&self, boundary: usize) -> Anchor {
+        let total = self.selection_total_cells();
+        if boundary >= total {
+            return Anchor::new(
+                Pos::new(self.grid.bottommost_line(), self.grid.last_column()),
+                Side::Right,
+            );
+        }
+
+        let columns = self.grid.columns();
+        let row = self.grid.topmost_line() + (boundary / columns);
+        let column = Column(boundary % columns);
+        Anchor::new(Pos::new(row, column), Side::Left)
+    }
+
+    fn selection_pos_from_cell_index(&self, index: usize) -> Pos {
+        let columns = self.grid.columns();
+        Pos::new(
+            self.grid.topmost_line() + (index / columns),
+            Column(index % columns),
+        )
     }
 }
 
@@ -807,5 +1050,191 @@ mod tests {
 
         assert!(!selection.intersects_range(..=Line(2)));
         assert!(!selection.intersects_range(Line(7)..=Line(8)));
+    }
+
+    #[test]
+    fn keyboard_cell_extension_uses_boundaries_and_reverses_exactly() {
+        let mut terminal = term(2, 6);
+        let origin = Anchor::new(Pos::new(Line(0), Column(2)), Side::Left);
+
+        let right = terminal.selection_motion_target(origin, SelectionMotion::Right);
+        assert_eq!(right, Anchor::new(Pos::new(Line(0), Column(3)), Side::Left));
+
+        let mut selection =
+            Selection::new(SelectionType::Simple, origin.point, origin.side());
+        selection.update(right.point, right.side());
+        assert_eq!(
+            selection.to_range(&terminal),
+            Some(SelectionRange::new(origin.point, origin.point, false))
+        );
+
+        let reversed = terminal.selection_motion_target(right, SelectionMotion::Left);
+        selection.update(reversed.point, reversed.side());
+        assert_eq!(selection.to_range(&terminal), None);
+
+        let left = terminal.selection_motion_target(reversed, SelectionMotion::Left);
+        selection.update(left.point, left.side());
+        assert_eq!(
+            selection.to_range(&terminal),
+            Some(SelectionRange::new(left.point, left.point, false))
+        );
+    }
+
+    #[test]
+    fn keyboard_extension_crosses_rows_clamps_and_preserves_vertical_column() {
+        let mut terminal = term(2, 4);
+        let row_end = Anchor::new(Pos::new(Line(0), Column(3)), Side::Left);
+        assert_eq!(
+            terminal.selection_motion_target(row_end, SelectionMotion::Right),
+            Anchor::new(Pos::new(Line(1), Column(0)), Side::Left)
+        );
+
+        let column = Anchor::new(Pos::new(Line(1), Column(2)), Side::Left);
+        assert_eq!(
+            terminal.selection_motion_target(column, SelectionMotion::Up),
+            Anchor::new(Pos::new(Line(0), Column(2)), Side::Left)
+        );
+        assert_eq!(
+            terminal.selection_motion_target(column, SelectionMotion::Down),
+            column
+        );
+
+        let grid_end = Anchor::new(Pos::new(Line(1), Column(3)), Side::Right);
+        assert_eq!(
+            terminal.selection_motion_target(grid_end, SelectionMotion::Right),
+            grid_end
+        );
+    }
+
+    #[test]
+    fn keyboard_word_extension_is_unicode_aware_and_symmetric() {
+        let mut terminal = term(1, 16);
+        for (index, character) in "h\u{e9}llo  \u{3ba}\u{3cc}\u{3c3}\u{3bc}\u{3b5}!"
+            .chars()
+            .enumerate()
+        {
+            terminal.grid[Line(0)][Column(index)].set_c(character);
+        }
+        let origin = Anchor::new(Pos::new(Line(0), Column(0)), Side::Left);
+
+        let greek = terminal.selection_motion_target(origin, SelectionMotion::WordRight);
+        assert_eq!(greek, Anchor::new(Pos::new(Line(0), Column(7)), Side::Left));
+        let punctuation =
+            terminal.selection_motion_target(greek, SelectionMotion::WordRight);
+        assert_eq!(
+            punctuation,
+            Anchor::new(Pos::new(Line(0), Column(12)), Side::Left)
+        );
+        assert_eq!(
+            terminal.selection_motion_target(punctuation, SelectionMotion::WordLeft),
+            greek
+        );
+        assert_eq!(
+            terminal.selection_motion_target(greek, SelectionMotion::WordLeft),
+            origin
+        );
+    }
+
+    #[test]
+    fn keyboard_cell_extension_never_stops_inside_a_wide_grapheme() {
+        let mut terminal = term(1, 5);
+        terminal.grid[Line(0)][Column(1)].set_c('\u{754c}');
+        terminal.grid[Line(0)][Column(1)].set_wide(Wide::Wide);
+        terminal.grid[Line(0)][Column(2)].set_wide(Wide::Spacer);
+        let before = Anchor::new(Pos::new(Line(0), Column(1)), Side::Left);
+
+        let after = terminal.selection_motion_target(before, SelectionMotion::Right);
+        assert_eq!(after, Anchor::new(Pos::new(Line(0), Column(3)), Side::Left));
+        assert_eq!(
+            terminal.selection_motion_target(after, SelectionMotion::Left),
+            before
+        );
+    }
+
+    #[test]
+    fn every_keyboard_motion_stays_inside_the_grid() {
+        let motions = [
+            SelectionMotion::Left,
+            SelectionMotion::Right,
+            SelectionMotion::Up,
+            SelectionMotion::Down,
+            SelectionMotion::WordLeft,
+            SelectionMotion::WordRight,
+        ];
+
+        for rows in 1..=8 {
+            for columns in 1..=17 {
+                let mut terminal = term(rows, columns);
+                for row in 0..rows {
+                    for column in 0..columns {
+                        terminal.grid[Line(row as i32)][Column(column)].set_c(
+                            match (row + column) % 4 {
+                                0 => 'a',
+                                1 => ' ',
+                                2 => '_',
+                                _ => '.',
+                            },
+                        );
+                    }
+                }
+
+                for row in 0..rows {
+                    for column in 0..columns {
+                        for side in [Side::Left, Side::Right] {
+                            let anchor = Anchor::new(
+                                Pos::new(Line(row as i32), Column(column)),
+                                side,
+                            );
+                            for motion in motions {
+                                let target =
+                                    terminal.selection_motion_target(anchor, motion);
+                                assert!(target.point.row >= terminal.grid.topmost_line());
+                                assert!(
+                                    target.point.row <= terminal.grid.bottommost_line()
+                                );
+                                assert!(target.point.col <= terminal.grid.last_column());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn vertical_keyboard_motion_avoids_wide_spacer_boundaries() {
+        let mut terminal = term(2, 5);
+        terminal.grid[Line(0)][Column(1)].set_c('\u{754c}');
+        terminal.grid[Line(0)][Column(1)].set_wide(Wide::Wide);
+        terminal.grid[Line(0)][Column(2)].set_wide(Wide::Spacer);
+        let below_spacer = Anchor::new(Pos::new(Line(1), Column(2)), Side::Left);
+
+        assert_eq!(
+            terminal.selection_motion_target(below_spacer, SelectionMotion::Up),
+            Anchor::new(Pos::new(Line(0), Column(1)), Side::Left)
+        );
+    }
+
+    #[test]
+    fn keyboard_word_extension_traverses_scrollback_and_restores_the_view() {
+        let mut terminal = term(2, 4);
+        terminal.grid.scroll_up(&(Line(0)..Line(2)), 2);
+        let origin = Anchor::new(Pos::new(Line(0), Column(0)), Side::Left);
+
+        let history_start =
+            terminal.selection_motion_target(origin, SelectionMotion::WordLeft);
+        assert_eq!(
+            history_start,
+            Anchor::new(Pos::new(Line(-2), Column(0)), Side::Left)
+        );
+        assert_eq!(terminal.display_offset(), 2);
+
+        let screen_end =
+            terminal.selection_motion_target(history_start, SelectionMotion::WordRight);
+        assert_eq!(
+            screen_end,
+            Anchor::new(Pos::new(Line(1), Column(3)), Side::Right)
+        );
+        assert_eq!(terminal.display_offset(), 0);
     }
 }

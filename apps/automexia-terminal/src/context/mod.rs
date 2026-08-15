@@ -1218,7 +1218,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                         })
                     })
                     .collect::<Vec<_>>();
-                let (raw_cursor_line_text, raw_damage) = {
+                let (raw_cursor_line_text, raw_damage, selection_text) = {
                     let terminal = context.terminal.lock();
                     let cursor_row = terminal.cursor().pos.row;
                     let raw_cursor_line_text = terminal.grid[cursor_row]
@@ -1228,7 +1228,11 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                         .collect::<String>()
                         .trim_end_matches(['\0', ' '])
                         .to_string();
-                    (raw_cursor_line_text, format!("{:?}", terminal.peek_damage_event()))
+                    (
+                        raw_cursor_line_text,
+                        format!("{:?}", terminal.peek_damage_event()),
+                        terminal.selection_to_string(),
+                    )
                 };
                 let visible_text = context
                     .renderable_content
@@ -1295,6 +1299,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                     "cursor_line_text": cursor_line_text,
                     "raw_cursor_line_text": raw_cursor_line_text,
                     "raw_damage": raw_damage,
+                    "selection_text": selection_text,
                     "visible_text": visible_text,
                 })
             })
