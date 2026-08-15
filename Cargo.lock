@@ -4780,6 +4780,7 @@ name = "teletypewriter"
 version = "0.4.0"
 dependencies = [
  "corcovado",
+ "criterion",
  "dirs",
  "libc",
  "miow",

@@ -500,6 +500,63 @@ mod tests {
     }
 
     #[test]
+    fn worker_restarts_after_every_shutdown_without_stale_work_or_threads() {
+        const CYCLES: usize = 24;
+        let (sender, receiver) = mpsc::channel();
+        let worker = BoundedWorker::new("restart-lifecycle", 1, move |route| {
+            sender.send(route).unwrap();
+        });
+
+        for route in 0..CYCLES {
+            assert!(worker.ensure_started());
+            assert_eq!(worker.try_submit(route), RefreshSubmission::Queued);
+            assert_eq!(
+                receiver.recv_timeout(Duration::from_secs(2)).unwrap(),
+                route
+            );
+            worker.shutdown();
+            assert!(receiver.try_recv().is_err(), "stale work crossed a restart");
+        }
+    }
+
+    #[test]
+    fn worker_capacity_is_clamped_and_repeated_saturation_recovers() {
+        let (release_sender, release_receiver) = mpsc::channel::<()>();
+        let release_receiver = Arc::new(Mutex::new(release_receiver));
+        let handler_release = Arc::clone(&release_receiver);
+        let (started_sender, started_receiver) = mpsc::channel();
+        let worker = BoundedWorker::new("zero-capacity", 0, move |route| {
+            started_sender.send(route).unwrap();
+            handler_release.lock().unwrap().recv().unwrap();
+        });
+
+        assert_eq!(worker.try_submit(1), RefreshSubmission::Queued);
+        assert_eq!(
+            started_receiver
+                .recv_timeout(Duration::from_secs(2))
+                .unwrap(),
+            1
+        );
+        assert_eq!(worker.try_submit(2), RefreshSubmission::Queued);
+        for route in 3..64 {
+            assert_eq!(
+                worker.try_submit(route),
+                RefreshSubmission::Busy,
+                "bounded queue accepted route {route} while saturated"
+            );
+        }
+        release_sender.send(()).unwrap();
+        assert_eq!(
+            started_receiver
+                .recv_timeout(Duration::from_secs(2))
+                .unwrap(),
+            2
+        );
+        release_sender.send(()).unwrap();
+        worker.shutdown();
+    }
+
+    #[test]
     fn accepted_work_observes_registration_before_the_handler_runs() {
         let phase = Arc::new(AtomicUsize::new(0));
         let handler_phase = Arc::clone(&phase);

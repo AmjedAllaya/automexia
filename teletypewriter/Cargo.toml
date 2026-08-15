@@ -30,3 +30,10 @@ windows-sys = { version = "0.61.2", features = [
 ]}
 miow = "0.6.1"
 parking_lot = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "pty_io"
+harness = false
