@@ -2173,7 +2173,7 @@ fn verify_architecture() -> TaskResult {
         "frontend package is outside apps/automexia-terminal",
     )?;
 
-    let private_crates: [(&str, &[&str]); 5] = [
+    let private_crates: [(&str, &[&str]); 6] = [
         ("automexia-extension-api", &["serde", "serde_json"]),
         (
             "automexia-extension-runtime",
@@ -2186,6 +2186,21 @@ fn verify_architecture() -> TaskResult {
                 "automexia-ui-model",
                 "dirs",
                 "serde_json",
+            ],
+        ),
+        (
+            "automexia-devops-ssh",
+            &[
+                "automexia-extension-api",
+                "glob",
+                "libc",
+                "notify",
+                "serde",
+                "serde_json",
+                "tempfile",
+                "windows-sys",
+                "criterion",
+                "proptest",
             ],
         ),
         ("automexia-image", &["image", "libc", "tempfile"]),
@@ -2827,6 +2842,79 @@ fn verify_architecture() -> TaskResult {
             &format!("DevOps manifest declares excessive privilege {excessive}"),
         )?;
     }
+
+    let ssh_root = root().join("extensions/devops-ssh");
+    let ssh_manifest = read(&ssh_root.join("src/lib.rs"))?;
+    let ssh_capabilities = ssh_manifest
+        .split("pub const MANIFEST")
+        .nth(1)
+        .and_then(|manifest| manifest.split("};").next())
+        .ok_or("OpenSSH inventory manifest block is missing")?;
+    require(
+        ssh_capabilities.contains("default_enabled: false")
+            && ssh_capabilities.contains("Capability::FilesystemRead"),
+        "OpenSSH inventory must remain nonactivated with exact filesystem-read authority",
+    )?;
+    for excessive in [
+        "Capability::EnvironmentRead",
+        "Capability::TerminalOutputRead",
+        "Capability::UiOverlay",
+        "Capability::SessionLaunch",
+        "Capability::ProcessSpawn",
+        "Capability::Network",
+        "Capability::Clipboard",
+    ] {
+        require(
+            !ssh_capabilities.contains(excessive),
+            &format!("OpenSSH inventory declares excessive privilege {excessive}"),
+        )?;
+    }
+    let ssh_source = [
+        read(&ssh_root.join("src/inventory.rs"))?,
+        read(&ssh_root.join("src/model.rs"))?,
+        read(&ssh_root.join("src/persistence.rs"))?,
+        read(&ssh_root.join("src/refresh.rs"))?,
+    ]
+    .join("\n");
+    for invariant in [
+        "max_file_bytes: 1024 * 1024",
+        "max_total_bytes: 8 * 1024 * 1024",
+        "max_files: 128",
+        "max_include_depth: 8",
+        "max_aliases: 10_000",
+        "max_value_bytes: 4 * 1024",
+        "PROTECTED_DACL_SECURITY_INFORMATION",
+        "if directory { 0o700 } else { 0o600 }",
+        "RecursiveMode::NonRecursive",
+        "last_good",
+    ] {
+        require(
+            ssh_source.contains(invariant),
+            &format!("OpenSSH inventory lost required D4 invariant {invariant}"),
+        )?;
+    }
+    for forbidden in [
+        "std::process::Command",
+        "Command::new",
+        "TcpStream",
+        "UdpSocket",
+        "reqwest",
+        "ssh -G",
+    ] {
+        require(
+            !ssh_source.contains(forbidden),
+            &format!(
+                "OpenSSH inventory crossed its non-executing boundary with {forbidden}"
+            ),
+        )?;
+    }
+    require(
+        read(&root().join("fuzz/Cargo.toml"))?.contains("openssh_inventory")
+            && read(&root().join(".github/workflows/nightly.yml"))?
+                .contains("openssh_inventory")
+            && ssh_root.join("benches/openssh_inventory.rs").is_file(),
+        "OpenSSH inventory fuzz or benchmark assurance is missing",
+    )?;
 
     for engine in ["rio-vt", "teletypewriter", "sugarloaf", "rio-window"] {
         let package = packages

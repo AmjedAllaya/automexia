@@ -918,6 +918,23 @@ Stable release requires WSL, real-GPU, clean-install, upgrade, uninstall,
 signature, notarization, URL handler, terminfo, and migration smoke tests on
 controlled hardware/self-hosted runners.
 
+## OpenSSH inventory foundation
+
+The D4 package is verified independently of any managed connection feature:
+
+    cargo test -p automexia-devops-ssh --all-targets --locked
+    cargo clippy -p automexia-devops-ssh --all-targets -- -D warnings
+    cargo bench -p automexia-devops-ssh --bench openssh_inventory -- --noplot
+
+PR-native jobs execute parser, model, refresh, and platform persistence tests
+on Windows, Linux, and macOS. Nightly runs openssh_inventory under libFuzzer
+with explicit nightly, duration, per-input timeout, and RSS limits. The
+10,000-alias Criterion target protects the reviewed maximum-cardinality path.
+Architecture verification rejects added process/network authority, evaluator
+calls, missing resource ceilings, weakened private permissions, or loss of
+fuzz/benchmark ownership. Full threat model, limits, and manual interpretation
+are in [OpenSSH inventory](SSH-INVENTORY.md).
+
 ## Assurance status and remaining expansion
 
 The Phase 0 local baseline now includes pinned Nextest/JUnit/doctests, a
