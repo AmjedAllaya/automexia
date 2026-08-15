@@ -99,9 +99,9 @@ impl ChromeMetrics {
             title_font_size,
             profile_icon_size,
         ) = match density {
-            Density::Minimal => (40.0, 4.0, 40.0, 4.0, 4.0, 10.0, 13.5, 16.0),
-            Density::Compact => (44.0, 6.0, 44.0, 4.0, 5.0, 16.0, 14.5, 17.0),
-            Density::Comfortable => (48.0, 8.0, 46.0, 5.0, 6.0, 20.0, 15.5, 18.0),
+            Density::Minimal => (40.0, 4.0, 40.0, 4.0, 4.0, 10.0, 12.5, 16.0),
+            Density::Compact => (44.0, 6.0, 44.0, 4.0, 5.0, 16.0, 13.5, 17.0),
+            Density::Comfortable => (48.0, 8.0, 46.0, 5.0, 6.0, 20.0, 14.5, 18.0),
         };
         let (
             app_button_x,
@@ -111,7 +111,7 @@ impl ChromeMetrics {
             local_tab_icon_size,
             local_tab_font_size,
         ) = match density {
-            Density::Minimal => (6.0, 26.0, 40.0, 18.0, 14.0, 11.5),
+            Density::Minimal => (6.0, 26.0, 40.0, 18.0, 14.0, 12.0),
             Density::Compact => (8.0, 28.0, 40.0, 19.0, 15.0, 12.0),
             Density::Comfortable => (10.0, 30.0, 40.0, 20.0, 16.0, 12.5),
         };
@@ -372,7 +372,8 @@ mod tests {
             assert!(metrics.action_button_size >= 40.0);
             assert!(tab_height >= 32.0);
             assert!(metrics.app_button_size < metrics.header_height);
-            assert!((13.0..=16.0).contains(&metrics.title_font_size));
+            assert!((12.0..=15.0).contains(&metrics.title_font_size));
+            assert!(metrics.local_tab_font_size >= 12.0);
         }
     }
 

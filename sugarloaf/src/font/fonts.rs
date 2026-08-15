@@ -108,10 +108,11 @@ impl SugarloafFont {
 
 #[inline]
 pub fn default_font_size() -> f32 {
-    // Automexia's information-dense DevOps views remain comfortably readable
-    // on common 100%-150% Windows/WSL displays without requiring first-run
-    // zoom. Users can still override this through `[fonts].size`.
-    20.
+    // Keep dense multi-pane workspaces readable without letting terminal text
+    // dominate the surrounding chrome. This remains deliberately larger than
+    // common terminal defaults, and users retain config and runtime zoom
+    // overrides.
+    18.
 }
 
 #[inline]
@@ -185,5 +186,17 @@ impl Default for SugarloafFonts {
             disable_warnings_not_found: false,
             additional_dirs: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn automexia_default_type_is_dense_but_still_comfortable() {
+        assert_eq!(default_font_size(), 18.0);
+        assert_eq!(SugarloafFonts::default().size, 18.0);
+        assert!(default_font_size() >= 14.0);
     }
 }

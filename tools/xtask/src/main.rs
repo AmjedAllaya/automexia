@@ -1300,6 +1300,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
     require(
         native_resize.contains("BitBlt(")
             && native_resize.contains("ClientToScreen")
+            && native_resize.contains("SetThreadDpiAwarenessContext")
             && native_resize.contains("SetCaptureTopmost")
             && native_resize.contains("CaptureClientRegionStats")
             && native_resize.contains("overlay_rect")
@@ -1307,6 +1308,10 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && native_resize.contains("[switch]$UseCpuRenderer")
             && native_resize.contains("VisibleApplicationWindows")
             && native_resize.contains("[string]$FrameCapture")
+            && native_resize.contains("[string]$TypographyCapture")
+            && native_resize.contains("typography_frame = [ordered]@{")
+            && native_resize.contains("font_size - 18.0")
+            && native_resize.contains("line_height - 1.15")
             && native_resize.contains("$frameDeadline = [DateTime]::UtcNow.AddSeconds(5)")
             && native_resize.contains("DistinctColorBuckets -ge 8")
             && native_resize.contains("did not settle within 5 seconds")
@@ -1699,6 +1704,24 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
         .as_ref()
         .and_then(|report| report.parent())
         .map(|parent| parent.join("modal-captures"));
+    let typography_capture_directory = requested_report_path
+        .as_ref()
+        .and_then(|report| report.parent())
+        .map(|parent| parent.join("typography-captures"));
+    if let Some(directory) = typography_capture_directory.as_ref() {
+        fs::create_dir_all(directory).map_err(|error| {
+            format!(
+                "could not create native typography capture directory {}: {error}",
+                directory.display()
+            )
+        })?;
+    }
+    let wgpu_typography_capture = typography_capture_directory
+        .as_ref()
+        .map(|directory| directory.join("workspace-wgpu.png"));
+    let cpu_typography_capture = typography_capture_directory
+        .as_ref()
+        .map(|directory| directory.join("workspace-cpu.png"));
     let wgpu_report = requested_report_path
         .clone()
         .unwrap_or_else(|| report_directory.path().join("wgpu.json"));
@@ -1719,6 +1742,9 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
         .current_dir(root());
     if let Some(capture_directory) = modal_capture_directory.as_ref() {
         command.arg("-ModalCaptureDirectory").arg(capture_directory);
+    }
+    if let Some(capture) = wgpu_typography_capture.as_ref() {
+        command.arg("-TypographyCapture").arg(capture);
     }
     run_command(command, "native Windows WGPU GUI resize stress")?;
 
@@ -1744,6 +1770,9 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
         cpu_command
             .arg("-ModalCaptureDirectory")
             .arg(capture_directory);
+    }
+    if let Some(capture) = cpu_typography_capture.as_ref() {
+        cpu_command.arg("-TypographyCapture").arg(capture);
     }
     run_command(cpu_command, "native Windows CPU GUI resize stress")?;
     verify_native_image_backend_equivalence(&wgpu_report, &cpu_report)

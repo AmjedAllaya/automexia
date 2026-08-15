@@ -278,15 +278,20 @@ base labels through modal primitives and modal labels, including a
 load-preserving WGPU modal pass; pane borders, footers, scrollbars, and ordinary
 labels therefore cannot render over either modal.
 
-To retain native modal screenshots for human visual review, set the report path
+To retain native screenshots for human visual review, set the report path
 before running the canonical command:
 
-    $env:AUTOMEXIA_NATIVE_RESOURCE_REPORT = "$PWDartifacts
-ative-modalwgpu.json"
+    $env:AUTOMEXIA_NATIVE_RESOURCE_REPORT =
+        Join-Path $PWD 'artifacts\native-gui\wgpu.json'
     cargo xtask test resize-stress --native-gui
 
-The command writes WGPU and CPU palette/confirmation PNGs under the adjacent
-modal-captures directory. These artifacts are local evidence and must not be
+The command writes clean four-pane WGPU and CPU workspace PNGs under the
+adjacent typography-captures directory, plus palette and close-confirmation
+PNGs under modal-captures. The report also records each pane's effective font
+size, zoom-reset baseline, scaled size, and line height, and rejects blank
+or low-detail frames. Retained screenshots temporarily enter per-monitor DPI
+awareness so 125%-225% Windows scaling cannot crop the visual evidence. These
+artifacts are local evidence and must not be
 committed.
 
 ## Build-artifact lifecycle and storage

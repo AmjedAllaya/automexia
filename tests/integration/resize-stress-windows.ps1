@@ -4,6 +4,7 @@ param(
     [int]$PowerShellHistoryBudgetMilliseconds = 1500,
     [string]$ResourceReport,
     [string]$FrameCapture,
+    [string]$TypographyCapture,
     [string]$ModalCaptureDirectory,
     [ValidateRange(32, 4096)]
     [int64]$MaximumHandleGrowth = 384,
@@ -152,6 +153,9 @@ public static class AutomexiaResizeDriver {
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int index);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+
     [DllImport("gdi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool BitBlt(
@@ -170,6 +174,28 @@ public static class AutomexiaResizeDriver {
     }
 
     public static FrameStats CaptureClientFrame(IntPtr hWnd, string outputPath) {
+        // An opt-in artifact must use physical client pixels. PowerShell is
+        // normally DPI-unaware, so its logical GetClientRect dimensions crop
+        // a 125%-225% display capture even though the application is correct.
+        // Scope per-monitor-v2 awareness to this synchronous method only so
+        // pointer-message tests retain their existing coordinate contract.
+        if (!String.IsNullOrWhiteSpace(outputPath)) {
+            IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+            if (previous == IntPtr.Zero) {
+                throw new System.ComponentModel.Win32Exception(
+                    Marshal.GetLastWin32Error(),
+                    "Could not enter per-monitor DPI awareness for retained capture");
+            }
+            try {
+                return CaptureClientFrameCore(hWnd, outputPath);
+            } finally {
+                SetThreadDpiAwarenessContext(previous);
+            }
+        }
+        return CaptureClientFrameCore(hWnd, outputPath);
+    }
+
+    private static FrameStats CaptureClientFrameCore(IntPtr hWnd, string outputPath) {
         Rect rect;
         if (!GetClientRect(hWnd, out rect)) {
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
@@ -1384,6 +1410,64 @@ $rendererConfig
         throw 'A visible pane lost or inherited another route operational context during resize'
     }
 
+    # The native fixture intentionally omits font overrides. Assert the real
+    # renderer inherited the product defaults in every independent pane and
+    # retained the same zoom-reset baseline through cloning and resize storms.
+    foreach ($panel in @($final.panels)) {
+        if ([Math]::Abs([double]$panel.font_size - 18.0) -gt 0.01 -or
+            [Math]::Abs([double]$panel.original_font_size - 18.0) -gt 0.01 -or
+            [Math]::Abs([double]$panel.line_height - 1.15) -gt 0.001 -or
+            [double]$panel.scaled_font_size -le 0.0) {
+            Write-Host ($panel | ConvertTo-Json -Depth 8)
+            throw 'A native pane did not retain the balanced typography defaults'
+        }
+    }
+
+    # Capture the clean, settled four-pane workspace before any fullscreen or
+    # preview overlay changes its composition. Pixel statistics reject blank
+    # frames automatically; an explicit path additionally retains a PNG for
+    # human typography review without making CI store terminal contents.
+    $typographyFramePath = if ([string]::IsNullOrWhiteSpace($TypographyCapture)) {
+        $null
+    } else {
+        [IO.Path]::GetFullPath($TypographyCapture)
+    }
+    if ($null -ne $typographyFramePath) {
+        $typographyDirectory = [IO.Path]::GetDirectoryName($typographyFramePath)
+        if (-not [string]::IsNullOrWhiteSpace($typographyDirectory)) {
+            New-Item -ItemType Directory -Force -Path $typographyDirectory | Out-Null
+        }
+    }
+    $script:testStage = 'balanced typography composited frame'
+    $typographyDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    $typographyAttempts = 0
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not expose Automexia for typography capture (Win32 error $code)"
+    }
+    try {
+        do {
+            $typographyAttempts++
+            $typographyFrame = [AutomexiaResizeDriver]::CaptureClientFrame(
+                $window, $typographyFramePath)
+            $typographyFrameValid = (
+                $typographyFrame.Width -ge 100 -and
+                $typographyFrame.Height -ge 100 -and
+                $typographyFrame.SampleCount -ge 100 -and
+                $typographyFrame.DistinctColorBuckets -ge 8 -and
+                $typographyFrame.LuminanceSpread -ge 32)
+            if (-not $typographyFrameValid) {
+                Start-Sleep -Milliseconds 100
+            }
+        } while (-not $typographyFrameValid -and
+                 [DateTime]::UtcNow -lt $typographyDeadline)
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+    }
+    if (-not $typographyFrameValid) {
+        throw "Balanced typography frame remained blank or low-detail after $typographyAttempts attempts"
+    }
+
     # Enter and leave the exact borderless-fullscreen path used by F11 and
     # Alt+Enter. The renderer's dominant composited color must not change, the
     # client must cover the display, and Windows must expose Automexia's scoped
@@ -2028,6 +2112,19 @@ $rendererConfig
             final = $resourceFinal
             delta = $resourceDelta
             ceilings = $resourceLimits
+            typography_frame = [ordered]@{
+                width = $typographyFrame.Width
+                height = $typographyFrame.Height
+                sample_count = $typographyFrame.SampleCount
+                distinct_color_buckets = $typographyFrame.DistinctColorBuckets
+                luminance_spread = $typographyFrame.LuminanceSpread
+                attempts = $typographyAttempts
+                artifact = if ($null -eq $typographyFramePath) {
+                    $null
+                } else {
+                    [IO.Path]::GetFileName($typographyFramePath)
+                }
+            }
             fullscreen_brightness = [ordered]@{
                 windowed_size = @($windowedBrightnessFrame.Width, $windowedBrightnessFrame.Height)
                 fullscreen_size = @($fullscreenBrightnessFrame.Width, $fullscreenBrightnessFrame.Height)

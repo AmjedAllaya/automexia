@@ -7,6 +7,8 @@ result/
 /result
 
 target/
+# Opt-in native screenshots, reports, and other local QA evidence.
+artifacts/
 # Local libFuzzer output is generated per campaign. Crash artifacts are CI
 # evidence, not source; preserve/report them before cleaning a failed run.
 fuzz/corpus/
