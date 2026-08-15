@@ -16,7 +16,11 @@ ID/notarization credentials.
 
 The release workflow builds Windows x86_64/ARM64 MSI and ZIP artifacts, a
 signed/notarized universal macOS app in a DMG, and Linux x86_64/ARM64 DEB, RPM,
-and tar.gz artifacts with X11 and Wayland support. It also produces SHA-256
+and tar.gz artifacts with X11 and Wayland support. Windows x86_64 uses
+`cargo-packager`; ARM64 uses the repository-owned WiX 5 source because the
+cargo-packager 0.11.x WiX 3 backend cannot create ARM64 MSI databases. The
+Windows runner therefore needs the .NET SDK, and xtask restores the exact WiX
+5.0.2 tool from `.config/dotnet-tools.json`. The workflow also produces SHA-256
 checksums, CycloneDX/SPDX SBOMs, and GitHub provenance attestations.
 
 Publication requires successful clean install/upgrade/uninstall checks,

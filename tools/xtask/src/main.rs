@@ -407,6 +407,7 @@ fn doctor() -> TaskResult {
         ("cargo-fuzz", cargo_subcommand_available("fuzz")),
         ("cargo-llvm-cov", cargo_subcommand_available("llvm-cov")),
         ("cargo-packager", cargo_subcommand_available("packager")),
+        ("dotnet (ARM MSI)", command_available("dotnet")),
         ("nfpm", command_available("nfpm")),
     ];
     let mut missing = Vec::new();
@@ -467,7 +468,7 @@ fn doctor() -> TaskResult {
     #[cfg(target_os = "windows")]
     report_windows_shell_health();
     #[cfg(target_os = "windows")]
-    println!("platform           Windows: Visual Studio Build Tools and WiX are required for MSI builds");
+    println!("platform           Windows: Visual Studio Build Tools, cargo-packager (x64), and the .NET SDK for repository-pinned WiX 5 (ARM64) are required for MSI builds");
     #[cfg(target_os = "macos")]
     println!("platform           macOS: Xcode CLI tools and Apple signing credentials are required for releases");
     #[cfg(target_os = "linux")]
@@ -1257,6 +1258,57 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && nightly_workflow.contains("glslang-tools"),
         "CI/release workflows do not preserve Linux shader prerequisites, QA self-tests, pinned Nextest/JUnit, Cargo doctests, and Loom coverage",
     )?;
+
+    let codeql_workflow = read(&root().join(".github/workflows/codeql.yml"))?;
+    require(
+        codeql_workflow.contains("workflow_dispatch:")
+            && codeql_workflow.contains("actions: read")
+            && codeql_workflow.contains("github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7")
+            && codeql_workflow.contains("github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7")
+            && codeql_workflow.contains("github.event.repository.private && 'never' || 'always'")
+            && codeql_workflow.contains("codeql-results/**/*.sarif")
+            && codeql_workflow.contains("if-no-files-found: error"),
+        "CodeQL must be dispatchable, pinned to v4, upload findings when entitled, and retain private-repository SARIF without requiring GitHub Code Security",
+    )?;
+    require(
+        nightly_workflow.contains("cargo +nightly fuzz run")
+            && nightly_workflow.contains("--component rust-src")
+            && nightly_workflow.contains("sanitizer: [address, thread]")
+            && nightly_workflow.contains("MIRIFLAGS: -Zmiri-disable-isolation")
+            && nightly_workflow.contains("cross@0.2.5,nfpm@2.43.4")
+            && !nightly_workflow.contains("nfpm@v")
+            && release_workflow.contains("tool: nfpm@2.43.4")
+            && !release_workflow.contains("nfpm@v"),
+        "Nightly/release workflows must use nightly libFuzzer, install sanitizer std sources, allow bounded Miri file-transport tests, preserve both sanitizer jobs, and use valid exact nFPM versions",
+    )?;
+    let simd_utf8 = read(&root().join("rio-vt/src/simd_utf8.rs"))?;
+    let simd_base64 = read(&root().join("rio-vt/src/simd_base64.rs"))?;
+    let parser = read(&root().join("rio-vt/src/performer/parser/mod.rs"))?;
+    require(
+        simd_utf8.contains("cfg(any(target_arch = \"wasm32\", miri))")
+            && simd_base64.contains("cfg(any(target_arch = \"wasm32\", miri))")
+            && parser.contains("cfg(any(target_arch = \"wasm32\", miri))")
+            && simd_utf8.contains("cfg(all(not(target_arch = \"wasm32\"), not(miri)))")
+            && simd_base64.contains("cfg(all(not(target_arch = \"wasm32\"), not(miri)))")
+            && parser.contains("cfg(all(not(target_arch = \"wasm32\"), not(miri)))"),
+        "Miri must use scalar UTF-8, base64, and parser transcode paths instead of unsupported native simdutf FFI",
+    )?;
+    for source in [
+        "rio-window/src/platform_impl/macos/app.rs",
+        "rio-window/src/platform_impl/macos/app_delegate.rs",
+        "rio-window/src/platform_impl/macos/view.rs",
+        "rio-window/src/platform_impl/macos/window.rs",
+        "rio-window/src/platform_impl/macos/window_delegate.rs",
+    ] {
+        let contents = read(&root().join(source))?;
+        require(
+            contents.contains("define_class!")
+                && contents.contains("#[unsafe(super(")
+                && !contents.contains("declare_class!")
+                && !contents.contains("DeclaredClass"),
+            &format!("{source} does not use the objc2 0.6 class-definition contract"),
+        )?;
+    }
 
     let app_manifest = read(&root().join("apps/automexia-terminal/Cargo.toml"))?;
     let channel_manifest = read(&root().join("corcovado/Cargo.toml"))?;
@@ -2899,7 +2951,9 @@ fn package_check() -> TaskResult {
     for required in [
         "apps/automexia-terminal/Cargo.toml",
         "apps/automexia-terminal/build.rs",
+        ".config/dotnet-tools.json",
         "packaging/windows/automexia.wxs",
+        "packaging/windows/automexia-arm64.wxs",
         "packaging/macos/Info.plist",
         "packaging/linux/automexia-terminal.desktop",
         "packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml",
@@ -2953,6 +3007,18 @@ fn package_check() -> TaskResult {
                     .any(|value| value.as_str() == Some("AutomexiaContextMenuComponents"))
             }),
         "cargo-packager does not include the Automexia WiX context-menu fragment",
+    )?;
+    let dotnet_tools = read(&root.join(".config/dotnet-tools.json"))?;
+    let arm64_wix = read(&root.join("packaging/windows/automexia-arm64.wxs"))?;
+    require(
+        dotnet_tools.contains(r#""wix""#)
+            && dotnet_tools.contains(r#""version": "5.0.2""#)
+            && arm64_wix.contains("ProgramFiles6432Folder")
+            && arm64_wix.contains("Bitness=\"always64\"")
+            && arm64_wix.contains("AutomexiaExecutable")
+            && arm64_wix.contains("Software\\Classes\\automexia")
+            && arm64_wix.contains("A4783F75-5705-4F89-B0BF-A74562D6601D"),
+        "ARM64 MSI must use the pinned WiX 5 tool, 64-bit directories/components, stable upgrade identity, executable, context menu, and URL protocol",
     )?;
     let windows_resources = read(&root.join("apps/automexia-terminal/build.rs"))?;
     require(
@@ -3104,26 +3170,30 @@ fn package_target(target: &str) -> TaskResult {
             cfg!(windows),
             "Windows packages must be produced on Windows",
         )?;
-        run(
-            "cargo",
-            &[
-                "packager",
-                "--manifest-path",
-                "apps/automexia-terminal/Cargo.toml",
-                "--release",
-                "--binaries-dir",
-                binary
-                    .parent()
-                    .and_then(Path::to_str)
-                    .ok_or("binary directory is not UTF-8")?,
-                "--out-dir",
-                output.to_str().ok_or("package path is not UTF-8")?,
-                "--target",
-                target,
-                "--formats",
-                "wix",
-            ],
-        )?;
+        if target == "aarch64-pc-windows-msvc" {
+            package_windows_arm64(&identity, &binary, &output, target)?;
+        } else {
+            run(
+                "cargo",
+                &[
+                    "packager",
+                    "--manifest-path",
+                    "apps/automexia-terminal/Cargo.toml",
+                    "--release",
+                    "--binaries-dir",
+                    binary
+                        .parent()
+                        .and_then(Path::to_str)
+                        .ok_or("binary directory is not UTF-8")?,
+                    "--out-dir",
+                    output.to_str().ok_or("package path is not UTF-8")?,
+                    "--target",
+                    target,
+                    "--formats",
+                    "wix",
+                ],
+            )?;
+        }
         portable_archive(&identity, target, &binary, &output, "zip")?;
     } else if target.contains("apple-darwin") {
         require(
@@ -3161,6 +3231,72 @@ fn package_target(target: &str) -> TaskResult {
     }
     println!("PASS: packages staged in {}", output.display());
     Ok(())
+}
+
+fn package_windows_arm64(
+    identity: &ProductIdentity,
+    binary: &Path,
+    output: &Path,
+    target: &str,
+) -> TaskResult {
+    require(
+        command_available("dotnet"),
+        "ARM64 MSI packaging requires the .NET SDK for the repository-pinned WiX 5 tool",
+    )?;
+    run("dotnet", &["tool", "restore"])?;
+
+    let msi = output.join(format!(
+        "automexia-terminal-{}-{target}.msi",
+        identity.version
+    ));
+    let intermediate = output.join(".wix-arm64");
+    fs::create_dir_all(&intermediate).map_err(|error| {
+        format!(
+            "could not create WiX intermediate directory {}: {error}",
+            intermediate.display()
+        )
+    })?;
+
+    let define = |name: &str, path: &Path| format!("{name}={}", path.display());
+    let mut command = Command::new("dotnet");
+    command.args([
+        "tool",
+        "run",
+        "wix",
+        "--",
+        "build",
+        "-arch",
+        "arm64",
+        "-pdbtype",
+        "none",
+        "-intermediateFolder",
+    ]);
+    command.arg(&intermediate);
+    command.args(["-d", &format!("ProductVersion={}", identity.version)]);
+    command.args(["-d", &define("BinaryPath", binary)]);
+    command.args([
+        "-d",
+        &define(
+            "IconPath",
+            &root().join("assets/brand/automexia-terminal.ico"),
+        ),
+    ]);
+    command.args(["-d", &define("LicensePath", &root().join("LICENSE"))]);
+    command.args(["-d", &define("NoticePath", &root().join("NOTICE.md"))]);
+    command.args([
+        "-d",
+        &define("ThirdPartyPath", &root().join("THIRD_PARTY_NOTICES.md")),
+    ]);
+    command.args(["-d", &define("ReadmePath", &root().join("README.md"))]);
+    command.args(["-o"]);
+    command.arg(&msi);
+    command.arg(root().join("packaging/windows/automexia-arm64.wxs"));
+    command.current_dir(root());
+    run_command(command, "WiX 5 ARM64 MSI")?;
+    require(
+        msi.is_file(),
+        &format!("WiX 5 did not produce {}", msi.display()),
+    )
 }
 
 fn portable_archive(

@@ -651,8 +651,14 @@ cargo test -p automexia-terminal layout::compute_tests
 
 Nightly jobs fuzz VT, bounded OSC/APC/XTGETTCAP streams, bounded raster
 decoding, OSC metadata,
-configuration migration, semantic classification, and label sanitization. Suitable pure crates run Miri and
-ASan/TSan. Criterion cases exist for parser throughput, row rebuild, prompt layout,
+configuration migration, semantic classification, and label sanitization. All
+libFuzzer commands install and invoke nightly explicitly. Suitable pure crates
+run Miri and ASan/TSan; sanitizer jobs install nightly `rust-src` and do not
+cancel the second sanitizer when the first fails. Miri selects scalar UTF-8,
+base64, and parser-transcode implementations instead of calling native
+`simdutf` FFI, while retaining the optimized SIMD path in production. Its
+bounded temporary-file protocol tests run with Miri isolation disabled only on
+the ephemeral hosted runner. Criterion cases exist for parser throughput, row rebuild, prompt layout,
 cache access, worker submission, and cold/warm image quick look. Hosted nightly
 always compiles them; a named self-hosted runner executes and retains Criterion
 evidence when AUTOMEXIA_BENCHMARK_RUNNER=1. Run the commands below for local
@@ -724,10 +730,20 @@ generated docs, fuzzing, and hot-path latency—is specified in the
 [full Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md) and must
 not be reported as implemented until those gates exist and pass.
 
-Nightly builds unsigned installers for every artifact target. Stable release
-requires WSL, real-GPU, clean-install, upgrade, uninstall, signature,
-notarization, URL handler, terminfo, and migration smoke tests on controlled
-hardware/self-hosted runners.
+Nightly builds unsigned installers for every artifact target. The Windows x64
+MSI uses cargo-packager/WiX 3; ARM64 uses the pinned repository-owned WiX 5
+source because WiX 3 has no ARM64 MSI support. Linux package jobs install the
+exact nFPM version without a semver-incompatible `v` prefix.
+
+CodeQL runs in no-build Rust mode. Public repositories upload SARIF to GitHub
+code scanning. When the repository is private without GitHub Code Security,
+the same analysis runs with upload disabled and retains its SARIF as a private
+14-day workflow artifact for maintainer review instead of failing on an
+unavailable entitlement.
+
+Stable release requires WSL, real-GPU, clean-install, upgrade, uninstall,
+signature, notarization, URL handler, terminfo, and migration smoke tests on
+controlled hardware/self-hosted runners.
 
 ## Assurance status and remaining expansion
 
