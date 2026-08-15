@@ -97,18 +97,22 @@ are exposed.
 ## Non-activated implementation evidence
 
 As of 2026-08-15, the typed capability identity, fixed-location executable
-resolver, native file-identity revalidation, exact one-destination SSH grammar,
-bounded core-owned environment/cwd validation, operation leases, revocation,
-and redacted authorization audit model exist only in a `#[cfg(test)]` frontend
-module. Architecture verification enforces that gate and the absence of process
-or PTY creation in the broker.
+resolver with fail-closed configured overrides, native file-identity
+revalidation, exact one-destination SSH grammar, bounded core-owned
+environment/cwd validation, expiring exact-scope decisions, active
+session/capsule registration, monotonic replay-resistant operation leases,
+bounded lifecycle state, revocation, and redacted authorization audit model
+exist only in a `#[cfg(test)]` frontend module. Architecture verification
+enforces that gate and the absence of process or PTY creation in the broker.
 
 This evidence does not accept this ADR and does not enable the capability. The
-remaining acceptance evidence includes the visible decision/grant policy,
-application-owned process/PTY/route binding, real native spawn/cancel/teardown
-on Windows/Linux/macOS, D4 SSH security behavior, redaction across every listed
-surface, and controlled 1/10/50-session performance and leak results. The
-current exact limits and commands are in the
+remaining acceptance evidence includes the real package digest/signature,
+compatibility, and revocation proof; visible decision/grant policy; atomic
+native check-to-spawn; application-owned process/PTY/route binding; real native
+spawn/cancel/teardown on Windows/Linux/macOS; D4 SSH security behavior;
+redaction across every listed surface; and controlled 1/10/50-session process,
+PTY, renderer, performance, and leak results. The current exact limits and
+commands are in the
 [broker contract](../SESSION-LAUNCH-BROKER.md).
 
 ## Consequences

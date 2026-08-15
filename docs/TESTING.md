@@ -208,13 +208,16 @@ The native Windows test target exercises volume/file-index replacement
 detection. Native Linux and macOS test jobs exercise device/inode replacement
 detection. The property case proves every accepted destination remains one
 literal native argument. Denial, mismatch, option confusion, environment and
-secret isolation, cwd fallback, redaction, duplicate operation, revocation,
-stale lease, and sibling-scope cases are deterministic.
+secret isolation, fail-closed configured resolution, authorization-owned cwd
+fallback, exact decision expiry/scope, registered capsule rebind, operation
+replay, nonce exhaustion, redaction, revocation, stale lease, sibling-scope,
+and zero-retained-state 1/10/50-cycle cases are deterministic.
 
 These tests do not spawn OpenSSH and are not evidence that managed SSH is
 available. Real process/PTY/route binding, cancellation/teardown, PID reuse,
-application close, host-key/authentication/tunnel behavior, and 1/10/50-session
-resource results remain external activation gates listed in
+application close, atomic native check-to-spawn, package signature/digest,
+host-key/authentication/tunnel behavior, and 1/10/50-session process/PTY/
+renderer resource results remain external activation gates listed in
 [ADR 0012](adr/0012-first-party-ssh-and-session-launch-boundary.md) and the
 [broker contract](SESSION-LAUNCH-BROKER.md).
 
