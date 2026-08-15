@@ -375,9 +375,11 @@ Exit: decision, threat model, versioned fixtures, and conflict/precedence matrix
 are approved. This work may proceed in parallel with D5.
 
 CP0 status (2026-08-15): complete at the non-runtime policy boundary. ADR 0015
-is accepted; the native shell/provider and conflict/fallback matrix, 16-threat
-model, schema-1 fixtures, resource ceilings, pre-activation scanner, eleven
-mutation tests, repository-policy integration, and architecture gate are implemented.
+is accepted; the native shell/provider/discovery and conflict/fallback matrix,
+16-threat model, schema-1 fixtures, 14 resource ceilings, canonical
+fingerprints, whole-workspace pre-activation scanner, seventeen policy tests
+(including a versioned 11-case hostile corpus), repository-policy integration,
+and architecture gate are implemented.
 The current shell integration is also proven not to register provider
 completions or DevOps short aliases. CP1 remains unimplemented: there is still
 no Fish adapter, completion health UI, provider generator execution, action

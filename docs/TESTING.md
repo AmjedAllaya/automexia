@@ -951,17 +951,20 @@ aliases, or Quick Actions. Run the focused contract and mutation suite with:
     python tools/ci/test_command_productivity.py
     cargo xtask verify architecture
 
-The checker validates the accepted five-shell and eleven-provider matrix,
-native-editor ownership, deterministic precedence and fallback, exact resource
-ceilings, eleven conflict fixtures, sixteen threats, and seven trust
-boundaries. It also scans shell startup and interactive renderer/screen/VT/PTY
-paths to reject premature provider execution or terminal-grid command
-inference. Eleven mutation tests prove that weakened contracts, threat
-catalogs, activation status, source boundaries, and CI wiring fail closed.
+The checker validates the accepted five-shell discovery and ownership matrix,
+eleven-provider matrix, deterministic precedence and fallback, fourteen exact
+resource ceilings, eleven conflict fixtures, sixteen threats, and seven trust
+boundaries. Canonical fingerprints and exact nested schemas make every accepted
+field review-visible. Bounded no-symlink scanning covers shell startup and all
+runtime workspace crates to reject premature provider/runtime activation or
+terminal-grid command inference. Seventeen policy tests, including a versioned
+eleven-case hostile corpus, prove that weakened contracts, threat controls,
+activation status, source boundaries, and CI wiring fail closed.
 
 The machine-readable sources are
-[the compatibility fixture](../tests/fixtures/command-productivity/cp0-contract-v1.json)
-and [the threat fixture](../tests/fixtures/command-productivity/cp0-threats-v1.json).
+[the compatibility fixture](../tests/fixtures/command-productivity/cp0-contract-v1.json),
+[the threat fixture](../tests/fixtures/command-productivity/cp0-threats-v1.json),
+and [the hostile corpus](../tests/fixtures/command-productivity/cp0-hostile-mutations-v1.json).
 Human interpretation belongs in the
 [compatibility baseline](COMMAND-PRODUCTIVITY-COMPATIBILITY.md) and
 [threat model](COMMAND-PRODUCTIVITY-THREAT-MODEL.md). CP1 must add real

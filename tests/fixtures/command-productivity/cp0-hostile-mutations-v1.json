@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "phase": "CP0",
+  "cases": [
+    {
+      "id": "shell-editor-ownership-replaced",
+      "document": "contract",
+      "operation": "set",
+      "path": ["shells", 0, "editor"],
+      "value": "AutomexiaTerminalGrid",
+      "error": "canonical fingerprint"
+    },
+    {
+      "id": "shell-record-unknown-field",
+      "document": "contract",
+      "operation": "set",
+      "path": ["shells", 0, "terminal_owned"],
+      "value": true,
+      "error": "keys must be exactly"
+    },
+    {
+      "id": "shell-platform-duplicated",
+      "document": "contract",
+      "operation": "append",
+      "path": ["shells", 0, "platforms"],
+      "value": "windows",
+      "error": "unique non-empty strings"
+    },
+    {
+      "id": "discovery-invokes-user-definitions",
+      "document": "contract",
+      "operation": "set",
+      "path": ["discovery", 0, "invokes_definitions"],
+      "value": true,
+      "error": "read-only"
+    },
+    {
+      "id": "provider-contract-substituted",
+      "document": "contract",
+      "operation": "set",
+      "path": ["providers", 1, "contract"],
+      "value": "network-api",
+      "error": "canonical fingerprint"
+    },
+    {
+      "id": "terraform-consent-weakened",
+      "document": "contract",
+      "operation": "set",
+      "path": ["providers", 5, "trigger"],
+      "value": "explicit-refresh-only",
+      "error": "canonical fingerprint"
+    },
+    {
+      "id": "conflict-outcome-weakened",
+      "document": "contract",
+      "operation": "set",
+      "path": ["compatibility_cases", 0, "expected"],
+      "value": "allow-silent-override",
+      "error": "canonical fingerprint"
+    },
+    {
+      "id": "protected-asset-removed",
+      "document": "threats",
+      "operation": "delete",
+      "path": ["assets", 0],
+      "error": "protected assets"
+    },
+    {
+      "id": "threat-control-removed",
+      "document": "threats",
+      "operation": "delete",
+      "path": ["threats", 0, "controls", 0],
+      "error": "canonical fingerprint"
+    },
+    {
+      "id": "threat-record-unknown-field",
+      "document": "threats",
+      "operation": "set",
+      "path": ["threats", 0, "severity"],
+      "value": "ignored",
+      "error": "keys must be exactly"
+    },
+    {
+      "id": "mandatory-review-trigger-removed",
+      "document": "threats",
+      "operation": "delete",
+      "path": ["review_triggers", 8],
+      "error": "review triggers"
+    }
+  ]
+}

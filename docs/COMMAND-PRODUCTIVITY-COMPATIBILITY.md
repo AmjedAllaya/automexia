@@ -43,6 +43,28 @@ Automexia never recovers the editable command from terminal-grid cells. A future
 custom completion surface requires the CP5 editor bridge and must preserve the
 native editor as a complete disable/failure fallback.
 
+## Read-only discovery contract
+
+CP1 health checks may inventory names and configuration only through the active
+shell's own read-only introspection. They must not source a profile, execute an
+alias/function/completer body, start a provider, authenticate, access the
+network, or write any shell state. Each discovery request has a 500 ms deadline,
+a 256 KiB output ceiling, and a 4,096-entry ceiling; profile candidates retain
+the general 1 MiB source-file limit.
+
+| Shell | Permitted read-only sources | Current-user profile candidates |
+|---|---|---|
+| PowerShell | Current process version; profile path variables; alias/function names; PSReadLine options and key-handler names | CurrentUserAllHosts and CurrentUserCurrentHost |
+| Bash | BASH_VERSION; type, alias, function, completion-specification, and Readline-binding listings | .bash_profile, .bash_login, .profile, and .bashrc |
+| Zsh | ZSH_VERSION; command, alias, function, completion-name, binding, and fpath listings | .zshenv, .zprofile, .zshrc, and .zlogin |
+| Fish | Version; command, function, abbreviation, completion, binding, and fish-complete-path listings | config.fish plus conf.d, completions, and functions directories |
+| CMD | COMSPEC, executable resolution, and current DOSKEY macro names | Current-user Command Processor AutoRun registry value |
+
+Profile paths are candidate metadata, not permission to read without limits or
+to evaluate content. Unsupported or unavailable introspection produces an
+unknown health field and preserves native behavior; it never enables a fallback
+probe with more authority.
+
 ## Platform contract
 
 | Environment | Required CP1 evidence | Installation boundary |
@@ -124,10 +146,11 @@ unless the user chooses an explicit reversible override.
 ## CP0 acceptance
 
 CP0 is complete when ADR 0015 is accepted, this baseline and the threat model
-are published, schema-1 fixtures validate, mutation tests prove the checker can
-reject weakened contracts, architecture verification runs the checker, existing
-shell integration still adds no managed provider completion/short aliases, and
-the master/stabilization roadmaps record evidence without claiming CP1 behavior.
+are published, schema-1 fixtures validate, the versioned hostile corpus proves
+the checker rejects weakened nested contracts, architecture verification scans
+every runtime crate, existing shell integration still adds no managed provider
+completion/short aliases, and the master/stabilization roadmaps record evidence
+without claiming CP1 behavior.
 
 ## Primary references
 

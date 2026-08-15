@@ -51,6 +51,43 @@
       "native_fallback": "preserved-no-rich-parity-claim"
     }
   ],
+  "discovery": [
+    {
+      "id": "powershell",
+      "sources": ["current-process-version", "profile-path-variables", "Get-Alias-names", "Get-Command-alias-function-names", "Get-PSReadLineOption", "Get-PSReadLineKeyHandler"],
+      "profile_candidates": ["CurrentUserAllHosts", "CurrentUserCurrentHost"],
+      "mutates": false,
+      "invokes_definitions": false
+    },
+    {
+      "id": "bash",
+      "sources": ["BASH_VERSION", "type-a", "alias-p", "declare-F", "complete-p", "bind-P"],
+      "profile_candidates": ["~/.bash_profile", "~/.bash_login", "~/.profile", "~/.bashrc"],
+      "mutates": false,
+      "invokes_definitions": false
+    },
+    {
+      "id": "zsh",
+      "sources": ["ZSH_VERSION", "whence-a", "aliases-names", "functions-names", "comps-names", "bindkey-L", "fpath-values"],
+      "profile_candidates": ["~/.zshenv", "~/.zprofile", "~/.zshrc", "~/.zlogin"],
+      "mutates": false,
+      "invokes_definitions": false
+    },
+    {
+      "id": "fish",
+      "sources": ["FISH_VERSION", "type-a", "functions-names", "abbr-show", "complete-definitions", "bind", "fish-complete-path-values"],
+      "profile_candidates": ["~/.config/fish/config.fish", "~/.config/fish/conf.d", "~/.config/fish/completions", "~/.config/fish/functions"],
+      "mutates": false,
+      "invokes_definitions": false
+    },
+    {
+      "id": "cmd",
+      "sources": ["COMSPEC", "where-resolution", "doskey-macros"],
+      "profile_candidates": ["HKCU/Software/Microsoft/Command Processor/AutoRun"],
+      "mutates": false,
+      "invokes_definitions": false
+    }
+  ],
   "providers": [
     {"id": "git", "contract": "platform-packaged", "shells": ["powershell", "bash", "zsh", "fish"], "trigger": "explicit-refresh-only", "startup": false, "keystroke": false},
     {"id": "docker", "contract": "docker completion", "shells": ["bash", "zsh", "fish"], "trigger": "explicit-refresh-only", "startup": false, "keystroke": false},
@@ -89,7 +126,10 @@
     "candidate_bytes": 1024,
     "candidate_response_bytes": 524288,
     "generated_file_bytes": 1048576,
-    "in_process_cache_bytes": 8388608
+    "in_process_cache_bytes": 8388608,
+    "discovery_deadline_ms": 500,
+    "discovery_output_bytes": 262144,
+    "discovery_entries": 4096
   },
   "forbidden_runtime_paths": [
     "renderer",

@@ -189,10 +189,13 @@ fallback; terminal-cell scraping is forbidden.
 
 ## Verification strategy
 
-- CP0 policy checker validates schema-1 compatibility/threat fixtures, required
-  shells/providers/threats/limits, precedence, nonactivation, ADR/docs, and
-  forbidden startup/input/render/VT/PTY provider hooks.
-- Mutation tests remove or weaken every important class and prove rejection.
+- CP0 policy checker validates canonical fingerprints, exact nested schemas,
+  schema-1 compatibility/threat fixtures, required shells/providers/discovery/
+  threats/limits, precedence, nonactivation, ADR/docs, and forbidden provider
+  hooks across shell startup and every runtime workspace crate.
+- A versioned hostile corpus plus focused mutations remove or weaken ownership,
+  discovery, consent, nested schemas, conflict outcomes, protected assets,
+  threat controls, limits, review triggers, CI wiring, and source boundaries.
 - CP1 adds native install/update/disable/uninstall, provider-output, timeout,
   collision, profile-surrounding-content, and shell-editor behavior tests.
 - CP2 adds parser/property/fuzz, atomic/recovery/concurrency, serializer,
