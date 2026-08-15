@@ -30,8 +30,8 @@ use crate::config::title::Title;
 use crate::config::window::Window;
 use colors::Colors;
 use serde::{Deserialize, Serialize};
-use std::io::Write;
-use std::path::PathBuf;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::{default::Default, fs::File};
 #[cfg(feature = "renderer")]
 use sugarloaf::font::fonts::SugarloafFonts;
@@ -211,6 +211,45 @@ pub fn config_file_content() -> String {
     default_config_file_content()
 }
 
+fn read_bounded_utf8(
+    path: &Path,
+    max_bytes: u64,
+    purpose: &str,
+) -> Result<String, String> {
+    let mut file = File::open(path)
+        .map_err(|error| format!("could not open {}: {error}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("could not inspect {}: {error}", path.display()))?;
+    if !metadata.file_type().is_file() {
+        return Err(format!(
+            "{purpose} is not a regular file: {}",
+            path.display()
+        ));
+    }
+    if metadata.len() > max_bytes {
+        return Err(format!(
+            "{purpose} exceeds the maximum size of {max_bytes} bytes: {}",
+            path.display()
+        ));
+    }
+
+    let mut content = String::with_capacity(metadata.len() as usize);
+    (&mut file)
+        .take(max_bytes + 1)
+        .read_to_string(&mut content)
+        .map_err(|error| {
+            format!("could not read {} as UTF-8: {error}", path.display())
+        })?;
+    if content.len() as u64 > max_bytes {
+        return Err(format!(
+            "{purpose} exceeds the maximum size of {max_bytes} bytes: {}",
+            path.display()
+        ));
+    }
+    Ok(content)
+}
+
 #[inline]
 pub fn create_config_file(path: Option<PathBuf>) {
     let default_file_path = path.clone().unwrap_or(config_file_path());
@@ -259,20 +298,23 @@ pub fn create_config_file(path: Option<PathBuf>) {
 
 impl Config {
     #[cfg(test)]
-    fn load_from_path(path: &PathBuf) -> Self {
+    fn load_from_path(path: &Path) -> Self {
         if path.exists() {
-            let content = std::fs::read_to_string(path).unwrap();
-            let decoded: Config =
-                toml::from_str(&content).unwrap_or_else(|_| Config::default());
-            decoded
+            let Ok(content) =
+                read_bounded_utf8(path, product::MAX_CONFIG_FILE_BYTES, "configuration")
+            else {
+                return Config::default();
+            };
+            toml::from_str(&content).unwrap_or_else(|_| Config::default())
         } else {
             Config::default()
         }
     }
     #[cfg(test)]
-    fn load_from_path_without_fallback(path: &PathBuf) -> Result<Self, String> {
+    fn load_from_path_without_fallback(path: &Path) -> Result<Self, String> {
         if path.exists() {
-            let content = std::fs::read_to_string(path).unwrap();
+            let content =
+                read_bounded_utf8(path, product::MAX_CONFIG_FILE_BYTES, "configuration")?;
             match toml::from_str::<Config>(&content) {
                 Ok(mut decoded) => {
                     let theme = &decoded.theme;
@@ -326,9 +368,10 @@ impl Config {
         }
     }
 
-    fn load_theme(path: &PathBuf) -> Result<Theme, String> {
+    fn load_theme(path: &Path) -> Result<Theme, String> {
         if path.exists() {
-            let content = std::fs::read_to_string(path).unwrap();
+            let content =
+                read_bounded_utf8(path, product::MAX_THEME_FILE_BYTES, "theme")?;
             match toml::from_str::<Theme>(&content) {
                 Ok(decoded) => Ok(decoded),
                 Err(err_message) => Err(format!("error parsing: {err_message:?}")),
@@ -346,7 +389,19 @@ impl Config {
         let config_path = config_dir_path();
         let path = config_file_path();
         if path.exists() {
-            let content = std::fs::read_to_string(path).unwrap();
+            let content = match read_bounded_utf8(
+                &path,
+                product::MAX_CONFIG_FILE_BYTES,
+                "configuration",
+            ) {
+                Ok(content) => content,
+                Err(error) => {
+                    warn!(
+                        "failure to load config file, falling back to default: {error}"
+                    );
+                    return Config::default();
+                }
+            };
             match toml::from_str::<Config>(&content) {
                 Ok(mut decoded) => {
                     let theme = &decoded.theme;
@@ -379,7 +434,11 @@ impl Config {
     pub fn try_load() -> Result<Self, ConfigError> {
         let path = config_file_path();
         if path.exists() {
-            match std::fs::read_to_string(path) {
+            match read_bounded_utf8(
+                &path,
+                product::MAX_CONFIG_FILE_BYTES,
+                "configuration",
+            ) {
                 Ok(content) => match toml::from_str::<Config>(&content) {
                     Ok(mut decoded) => {
                         let theme = &decoded.theme;
@@ -674,11 +733,19 @@ impl Default for CursorConfig {
 mod tests {
     use super::*;
     use colors::{hex_to_color_arr, hex_to_color_wgpu};
+    use std::fs;
     use std::io::Write;
     use sugarloaf::font::fonts::parse_unicode;
 
     fn tmp_dir() -> PathBuf {
         std::env::temp_dir()
+    }
+
+    fn bounded_test_path(name: &str) -> PathBuf {
+        tmp_dir().join(format!(
+            "automexia-config-boundary-{name}-{}",
+            std::process::id()
+        ))
     }
 
     fn create_temporary_config(prefix: &str, toml_str: &str) -> Config {
@@ -711,6 +778,47 @@ mod tests {
         let config = Config::load_from_path(&tmp_dir().join("it-should-never-exist"));
         assert_eq!(config.theme, String::default());
         assert_eq!(config.cursor.shape, default_cursor());
+    }
+
+    #[test]
+    fn config_reader_rejects_oversized_invalid_utf8_and_non_files_without_panics() {
+        let oversized = bounded_test_path("oversized.toml");
+        let file = File::create(&oversized).unwrap();
+        file.set_len(product::MAX_CONFIG_FILE_BYTES + 1).unwrap();
+        let error = Config::load_from_path_without_fallback(&oversized).unwrap_err();
+        assert!(error.contains("configuration exceeds the maximum size"));
+        assert_eq!(Config::load_from_path(&oversized), Config::default());
+        fs::remove_file(&oversized).unwrap();
+
+        let invalid_utf8 = bounded_test_path("invalid-utf8.toml");
+        fs::write(&invalid_utf8, [0xff, 0xfe, 0xfd]).unwrap();
+        let error = Config::load_from_path_without_fallback(&invalid_utf8).unwrap_err();
+        assert!(error.contains("as UTF-8"));
+        assert_eq!(Config::load_from_path(&invalid_utf8), Config::default());
+        fs::remove_file(&invalid_utf8).unwrap();
+
+        let directory = bounded_test_path("directory");
+        fs::create_dir_all(&directory).unwrap();
+        let error = Config::load_from_path_without_fallback(&directory).unwrap_err();
+        assert!(error.contains("not a regular file") || error.contains("could not open"));
+        assert_eq!(Config::load_from_path(&directory), Config::default());
+        fs::remove_dir(&directory).unwrap();
+    }
+
+    #[test]
+    fn theme_reader_enforces_its_smaller_size_and_utf8_boundaries() {
+        let oversized = bounded_test_path("oversized-theme.toml");
+        let file = File::create(&oversized).unwrap();
+        file.set_len(product::MAX_THEME_FILE_BYTES + 1).unwrap();
+        let error = Config::load_theme(&oversized).unwrap_err();
+        assert!(error.contains("theme exceeds the maximum size"));
+        fs::remove_file(&oversized).unwrap();
+
+        let invalid_utf8 = bounded_test_path("invalid-theme.toml");
+        fs::write(&invalid_utf8, [0xff, 0xfe, 0xfd]).unwrap();
+        let error = Config::load_theme(&invalid_utf8).unwrap_err();
+        assert!(error.contains("as UTF-8"));
+        fs::remove_file(&invalid_utf8).unwrap();
     }
 
     #[test]
