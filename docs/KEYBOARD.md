@@ -41,7 +41,7 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `Ctrl+C` | Copy a non-empty terminal selection; with no selection, send the shell/application interrupt unchanged. |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste. |
 | `Shift+Insert` | Paste the primary selection when the platform provides one. |
-| `Shift+Arrow` | Extend/reverse selection by one cell or row. |
+| `Shift+Arrow` | Start at the terminal insertion cursor, then extend/reverse selection by one cell or row. |
 | `Ctrl+Shift+Left/Right` | Extend/reverse selection by a Unicode word boundary. |
 | `Ctrl+Shift+A` | Select all on Windows. |
 | `Ctrl+0`, `Ctrl+=` or `Ctrl++`, `Ctrl+-` | Reset, increase, or decrease pane font size. |
@@ -87,7 +87,10 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `Cmd+Q`, `Cmd+H`, `Cmd+Alt+H`, `Cmd+M` | Quit, hide, hide others, minimize. |
 
 Keyboard selection (`Shift+Arrow`, with `Ctrl` for horizontal word motion)
-remains platform-neutral.
+remains platform-neutral. A pointer click without a drag is never reused as
+the keyboard anchor. Once a selection exists, an unmodified Arrow key or any
+non-empty text/paste/IME input exits selection mode before the input is
+forwarded to the shell. Search and Vi mode retain their own input ownership.
 
 ## Search mode
 

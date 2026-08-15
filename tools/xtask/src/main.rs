@@ -2491,6 +2491,14 @@ fn verify_architecture() -> TaskResult {
             && screen.contains("Act::ExtendSelection(motion)")
             && screen.contains("consumed_win32_key_releases")
             && screen.contains("pub fn extend_selection")
+            && screen.contains("fn keyboard_selection_origin")
+            && screen.contains("fn should_clear_selection_before_input")
+            && screen.contains(
+                "keyboard_selection_ignores_an_empty_mouse_anchor_and_starts_at_the_cursor",
+            )
+            && screen.contains(
+                "forwarded_input_exits_selection_but_search_and_empty_input_do_not",
+            )
             && selection_source.contains("pub enum SelectionMotion")
             && selection_source.contains("pub fn selection_motion_target")
             && selection_source.contains("every_keyboard_motion_stays_inside_the_grid")
@@ -2505,6 +2513,8 @@ fn verify_architecture() -> TaskResult {
             && selection_benchmark
                 .contains("keyboard_selection_word_motion_120k_scrollback")
             && native_selection_stress.contains("AMX_SELECTION_PROBE_74129")
+            && native_selection_stress.contains("bare arrow exits keyboard selection")
+            && native_selection_stress.contains("keyboard-selection-input-exit")
             && native_selection_stress.contains(".selection_text")
             && native_selection_stress.contains(".selection_rendered"),
         "keyboard selection lost shortcut, dispatch, ConPTY, VT, benchmark, or native-stress ownership",

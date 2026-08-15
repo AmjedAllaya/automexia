@@ -100,6 +100,23 @@ fn should_copy_selection_on_ctrl_c(
         && matches!(key, Key::Character(character) if character.as_str().eq_ignore_ascii_case("c"))
 }
 
+fn keyboard_selection_origin(
+    selection: Option<&Selection>,
+    cursor: Pos,
+) -> (Anchor, bool) {
+    let selection = selection.filter(|selection| !selection.is_empty());
+    (
+        selection
+            .map(Selection::active_anchor)
+            .unwrap_or_else(|| Anchor::new(cursor, Side::Left)),
+        selection.is_some(),
+    )
+}
+
+fn should_clear_selection_before_input(search_active: bool, text: &str) -> bool {
+    !search_active && !text.is_empty()
+}
+
 #[cfg(any(test, feature = "native-gui-test-hooks"))]
 fn decode_native_test_hex(value: &str) -> Option<Vec<u8>> {
     if !value.len().is_multiple_of(2)
@@ -2826,17 +2843,24 @@ impl Screen<'_> {
     pub fn extend_selection(&mut self, motion: SelectionMotion) {
         let current = self.context_manager.current_mut();
         let mut terminal = current.terminal.lock();
-        let had_selection = terminal.selection.is_some();
-        let anchor = terminal
-            .selection
-            .as_ref()
-            .map(Selection::active_anchor)
-            .unwrap_or_else(|| Anchor::new(terminal.grid.cursor.pos, Side::Left));
+        let (anchor, had_selection) = keyboard_selection_origin(
+            terminal.selection.as_ref(),
+            terminal.grid.cursor.pos,
+        );
         let target = terminal.selection_motion_target(anchor, motion);
+
+        // A plain pointer click leaves an empty selection at the mouse cell.
+        // It is not a keyboard anchor: discard it so Shift+Arrow always starts
+        // at the terminal insertion cursor.
+        if !had_selection {
+            terminal.selection.take();
+        }
 
         // A clamped motion at a grid boundary should not create an empty
         // selection or change clipboard semantics.
         if !had_selection && target == anchor {
+            drop(terminal);
+            current.set_selection(None);
             return;
         }
 
@@ -4801,14 +4825,25 @@ impl Screen<'_> {
 
     #[inline]
     pub fn paste(&mut self, text: &str, bracketed: bool) {
-        if self.search_active() {
+        let search_active = self.search_active();
+        if search_active {
             for c in text.chars() {
                 self.search_input(c);
             }
-        } else if bracketed && self.get_mode().contains(Mode::BRACKETED_PASTE) {
-            self.scroll_bottom_when_cursor_not_visible();
-            self.clear_selection();
+            return;
+        }
 
+        if !should_clear_selection_before_input(search_active, text) {
+            return;
+        }
+
+        // Every payload forwarded to the PTY exits terminal selection mode.
+        // This includes plain/application-cursor arrows, normal text,
+        // clipboard paste, and IME commits.
+        self.scroll_bottom_when_cursor_not_visible();
+        self.clear_selection();
+
+        if bracketed && self.get_mode().contains(Mode::BRACKETED_PASTE) {
             self.ctx_mut()
                 .current_mut()
                 .messenger
@@ -6076,6 +6111,12 @@ impl Screen<'_> {
                     .messenger
                     .send_write(bytes);
             }
+            "input-text" => {
+                let Some(text) = fields.next() else {
+                    return;
+                };
+                self.paste(text, false);
+            }
             "write-hex" => {
                 let Some(encoded) = fields.next() else {
                     return;
@@ -6645,6 +6686,44 @@ mod tests {
             secondary_click_clipboard_action(false),
             SecondaryClickClipboardAction::PasteClipboard
         );
+    }
+
+    #[test]
+    fn keyboard_selection_ignores_an_empty_mouse_anchor_and_starts_at_the_cursor() {
+        let pointer = Pos::new(Line(2), Column(3));
+        let cursor = Pos::new(Line(7), Column(11));
+        let empty_pointer_selection =
+            Selection::new(SelectionType::Simple, pointer, Side::Left);
+
+        let (anchor, extends_existing) =
+            keyboard_selection_origin(Some(&empty_pointer_selection), cursor);
+
+        assert_eq!(anchor, Anchor::new(cursor, Side::Left));
+        assert!(!extends_existing);
+    }
+
+    #[test]
+    fn keyboard_selection_keeps_the_active_edge_of_a_real_selection() {
+        let cursor = Pos::new(Line(7), Column(11));
+        let start = Pos::new(Line(2), Column(3));
+        let end = Pos::new(Line(2), Column(8));
+        let mut selection = Selection::new(SelectionType::Simple, start, Side::Left);
+        selection.update(end, Side::Right);
+
+        let (anchor, extends_existing) =
+            keyboard_selection_origin(Some(&selection), cursor);
+
+        assert_eq!(anchor, Anchor::new(end, Side::Right));
+        assert!(extends_existing);
+    }
+
+    #[test]
+    fn forwarded_input_exits_selection_but_search_and_empty_input_do_not() {
+        assert!(should_clear_selection_before_input(false, "\u{1b}[D"));
+        assert!(should_clear_selection_before_input(false, "typed text"));
+        assert!(should_clear_selection_before_input(false, "pasted text"));
+        assert!(!should_clear_selection_before_input(true, "query"));
+        assert!(!should_clear_selection_before_input(false, ""));
     }
 
     #[test]

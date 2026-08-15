@@ -84,8 +84,10 @@ On Windows/Linux, try these default interactions:
 - `Ctrl+Shift+R` / `Ctrl+Shift+D`: fresh right/lower split.
 - `Ctrl+R` / `Ctrl+D`: clone the active session into a right/lower split.
 - `Alt+Arrow`: select a neighboring pane.
-- `Shift+Arrow`: extend terminal selection; add `Ctrl` on horizontal motion to
-  jump by Unicode word boundary.
+- `Shift+Arrow`: start terminal selection at the insertion cursor and extend
+  it; add `Ctrl` on horizontal motion to jump by Unicode word boundary. Press
+  an Arrow without `Shift`, or type/paste text, to exit selection and resume
+  normal shell input.
 - `Ctrl+Shift+P`: command palette.
 
 macOS uses its native `Cmd` variants. The authoritative complete table and
