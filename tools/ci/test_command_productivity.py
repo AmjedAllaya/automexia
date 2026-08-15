@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -26,16 +27,59 @@ def load_fixture(name: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def apply_mutation(document: dict, case: dict) -> None:
+    path = case["path"]
+    target = document
+    for component in path[:-1]:
+        target = target[component]
+    leaf = path[-1]
+    operation = case["operation"]
+    if operation == "set":
+        target[leaf] = case["value"]
+    elif operation == "append":
+        target[leaf].append(case["value"])
+    elif operation == "delete":
+        del target[leaf]
+    else:
+        raise AssertionError(f"unsupported hostile mutation operation: {operation}")
+
+
 class CommandProductivityPolicyTests(unittest.TestCase):
     def setUp(self) -> None:
         self.contract = load_fixture("cp0-contract-v1.json")
         self.threats = load_fixture("cp0-threats-v1.json")
+        self.hostile = load_fixture("cp0-hostile-mutations-v1.json")
 
     def test_repository_contract_validates(self) -> None:
         counts = POLICY.validate_repository(ROOT)
         self.assertEqual(counts["shells"], 5)
+        self.assertEqual(counts["discoveries"], 5)
         self.assertEqual(counts["providers"], 11)
         self.assertEqual(counts["threats"], 16)
+        self.assertGreater(counts["runtime_files"], 100)
+
+    def test_versioned_hostile_mutation_corpus_is_rejected(self) -> None:
+        self.assertEqual(set(self.hostile), {"schema", "phase", "cases"})
+        self.assertEqual(self.hostile["schema"], 1)
+        self.assertEqual(self.hostile["phase"], "CP0")
+        identifiers = [case["id"] for case in self.hostile["cases"]]
+        self.assertEqual(len(identifiers), len(set(identifiers)))
+        self.assertEqual(len(identifiers), 11)
+        for case in self.hostile["cases"]:
+            with self.subTest(case=case["id"]):
+                document = deepcopy(
+                    self.contract if case["document"] == "contract" else self.threats
+                )
+                apply_mutation(document, case)
+                validator = (
+                    POLICY.validate_contract
+                    if case["document"] == "contract"
+                    else POLICY.validate_threats
+                )
+                with self.assertRaisesRegex(
+                    POLICY.CommandProductivityError, case["error"]
+                ):
+                    validator(document)
 
     def test_missing_shell_is_rejected(self) -> None:
         mutated = deepcopy(self.contract)
@@ -100,7 +144,7 @@ class CommandProductivityPolicyTests(unittest.TestCase):
             root = Path(directory)
             (root / "shell-integration").mkdir(parents=True)
             (root / "shell-integration/automexia.sh").write_text(
-                "docker completion bash\n", encoding="utf-8"
+                "docker   \n completion bash\n", encoding="utf-8"
             )
             for relative in (
                 "apps/automexia-terminal/src/renderer",
@@ -145,6 +189,97 @@ class CommandProductivityPolicyTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(POLICY.CommandProductivityError, "grid inference"):
                 POLICY.validate_pre_activation(root)
+
+    def test_runtime_productivity_activation_outside_ui_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "Cargo.toml").write_text(
+                '[workspace]\nmembers = ["automexia-devops"]\n',
+                encoding="utf-8",
+            )
+            runtime = root / "automexia-devops/src"
+            runtime.mkdir(parents=True)
+            (runtime / "lib.rs").write_text(
+                "struct QuickActionRuntime;\n", encoding="utf-8"
+            )
+            (root / "shell-integration").mkdir(parents=True)
+            (root / "shell-integration/safe.sh").write_text(
+                "true\n", encoding="utf-8"
+            )
+            for relative in (
+                "apps/automexia-terminal/src/renderer",
+                "apps/automexia-terminal/src/screen",
+                "rio-vt/src",
+                "teletypewriter/src",
+            ):
+                path = root / relative
+                path.mkdir(parents=True)
+                (path / "safe.rs").write_text("fn safe() {}\n", encoding="utf-8")
+            shell_test = root / "tools/ci/test_shell_integration.ps1"
+            shell_test.parent.mkdir(parents=True)
+            shell_test.write_text(
+                "alias docker alias kubectl function ax function kgp\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                POLICY.CommandProductivityError,
+                "non-runtime CP0",
+            ):
+                POLICY.validate_pre_activation(root)
+
+    def test_scanned_source_size_ceiling_is_enforced_before_read(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "oversized.rs"
+            with path.open("wb") as destination:
+                destination.seek(POLICY.SCANNED_SOURCE_MAX_BYTES)
+                destination.write(b"x")
+            with self.assertRaisesRegex(
+                POLICY.CommandProductivityError,
+                "exceeds",
+            ):
+                POLICY.read_lower(path)
+
+    def test_policy_reader_rejects_symbolic_links_before_read(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "fixture.json"
+            path.write_text("{}\n", encoding="utf-8")
+            with patch.object(Path, "is_symlink", return_value=True):
+                with self.assertRaisesRegex(
+                    POLICY.CommandProductivityError,
+                    "must not be a symbolic link",
+                ):
+                    POLICY.bounded_read_text(
+                        path,
+                        POLICY.POLICY_DOCUMENT_MAX_BYTES,
+                        "test policy",
+                    )
+
+    def test_source_file_count_ceiling_is_enforced(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sources = root / "shell-integration"
+            sources.mkdir()
+            (sources / "one.sh").write_text("true\n", encoding="utf-8")
+            (sources / "two.sh").write_text("true\n", encoding="utf-8")
+            with patch.object(POLICY, "SCANNED_SOURCE_MAX_FILES", 1):
+                with self.assertRaisesRegex(
+                    POLICY.CommandProductivityError,
+                    "file scan limit",
+                ):
+                    POLICY.source_files(root, "shell-integration")
+
+    def test_workspace_member_cannot_escape_repository_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "Cargo.toml").write_text(
+                '[workspace]\nmembers = ["../outside"]\n',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                POLICY.CommandProductivityError,
+                "escapes the repository boundary",
+            ):
+                POLICY.workspace_runtime_files(root)
 
     def test_missing_ci_wiring_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
