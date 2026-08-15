@@ -1512,15 +1512,12 @@ impl Renderer {
             self.named_colors.background.0,
         );
 
-        self.command_palette.render(
-            sugarloaf,
-            (window_size.width, window_size.height, scale_factor),
-        );
-
-        self.confirm_quit.render(
-            sugarloaf,
-            (window_size.width, window_size.height, scale_factor),
-        );
+        let modal_dimensions = (window_size.width, window_size.height, scale_factor);
+        if self.confirm_quit.is_active() {
+            self.confirm_quit.render(sugarloaf, modal_dimensions);
+        } else {
+            self.command_palette.render(sugarloaf, modal_dimensions);
+        }
 
         // Render scrollbars for each panel
         let grid_scaled_margin_sb = context_manager.get_current_grid_scaled_margin();

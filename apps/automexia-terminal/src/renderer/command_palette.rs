@@ -1420,14 +1420,7 @@ impl CommandPalette {
             return;
         }
 
-        // UI glyphs are submitted in one pass after every rounded rectangle.
-        // Without a modal boundary, labels emitted earlier by window tabs or a
-        // pane-local tab rail remain above even an opaque palette surface. The
-        // command center is the top-most modal owner:
-        // discard earlier UI-label instances, then emit only palette labels.
-        // Terminal grid text uses a separate pass and remains safely beneath
-        // the palette's opaque blue-black surface.
-        sugarloaf.text_mut().clear();
+        sugarloaf.begin_modal_layer();
 
         let (window_width, window_height, scale_factor) = dimensions;
 
@@ -1818,6 +1811,7 @@ impl CommandPalette {
                 ORDER,
             );
         }
+        sugarloaf.end_modal_layer();
     }
 }
 

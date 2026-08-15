@@ -170,7 +170,7 @@ jobs:
             arch: arm64
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: sudo apt-get update && sudo apt-get install -y appstream desktop-file-utils libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev ncurses-bin rpm scdoc
+      - run: sudo apt-get update && sudo apt-get install -y appstream desktop-file-utils glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev ncurses-bin rpm scdoc
       - run: rustup target add ${{ matrix.target }}
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:

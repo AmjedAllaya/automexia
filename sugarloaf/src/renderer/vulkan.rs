@@ -320,8 +320,9 @@ impl VulkanRenderer {
         slot: usize,
         viewport: [f32; 2],
         vertices: &[Vertex],
+        range: std::ops::Range<usize>,
     ) {
-        if vertices.is_empty() {
+        if vertices.is_empty() || range.is_empty() {
             return;
         }
         debug_assert!(slot < FRAMES_IN_FLIGHT);
@@ -381,7 +382,8 @@ impl VulkanRenderer {
             // Caller-provided vertices are TRIANGLE_LIST — the emit
             // path tessellates polygons / arcs / lines into
             // triangles before pushing.
-            self.shared.cmd_draw(cmd, vertex_count as u32, 1, 0, 0);
+            self.shared
+                .cmd_draw(cmd, range.len() as u32, 1, range.start as u32, 0);
         }
     }
 
@@ -557,8 +559,9 @@ impl VulkanRenderer {
         slot: usize,
         viewport: [f32; 2],
         instances: &[QuadInstance],
+        range: std::ops::Range<usize>,
     ) {
-        if instances.is_empty() {
+        if instances.is_empty() || range.is_empty() {
             return;
         }
         debug_assert!(slot < FRAMES_IN_FLIGHT);
@@ -614,7 +617,8 @@ impl VulkanRenderer {
             self.shared
                 .cmd_bind_vertex_buffers(cmd, 0, &[instance_buf.handle()], &[0]);
             // 4 vertices per instance (TRIANGLE_STRIP quad).
-            self.shared.cmd_draw(cmd, 4, instance_count as u32, 0, 0);
+            self.shared
+                .cmd_draw(cmd, 4, range.len() as u32, 0, range.start as u32);
         }
     }
 

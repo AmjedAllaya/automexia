@@ -269,6 +269,26 @@ rendered geometry without changing either route, then runs the multi-pane
 resize storm and requires automatic full-path restoration. Binding-table tests
 separately prove the platform chords dispatch those tested actions.
 
+The same native run opens the command palette and close confirmation through
+feature-gated renderer controls, requires exactly one modal owner at a time,
+waits for a later presented frame, checks nonblank WGPU and CPU captures, then
+dismisses the overlay and proves no hidden input-blocking state remains.
+Sugarloaf unit coverage enforces the physical order from base primitives and
+base labels through modal primitives and modal labels, including a
+load-preserving WGPU modal pass; pane borders, footers, scrollbars, and ordinary
+labels therefore cannot render over either modal.
+
+To retain native modal screenshots for human visual review, set the report path
+before running the canonical command:
+
+    $env:AUTOMEXIA_NATIVE_RESOURCE_REPORT = "$PWDartifacts
+ative-modalwgpu.json"
+    cargo xtask test resize-stress --native-gui
+
+The command writes WGPU and CPU palette/confirmation PNGs under the adjacent
+modal-captures directory. These artifacts are local evidence and must not be
+committed.
+
 ## Build-artifact lifecycle and storage
 
 ### Keep every toolchain on its native filesystem
