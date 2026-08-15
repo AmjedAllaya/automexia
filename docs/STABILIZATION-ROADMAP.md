@@ -703,6 +703,30 @@ Exit gate: property and native tests prove command/argument injection is not
 possible, denial and revocation are deterministic, and launch/cancel/teardown
 cannot affect another route or leave a child/listener behind.
 
+#### Phase 2 execution ledger (D3 review boundary, 2026-08-15)
+
+ADR 0012 remains proposed, so this ledger separates reviewed source preparation
+from activation. The broker module is reachable only through `#[cfg(test)]`;
+the release binary contains no managed-launch success path.
+
+| Obligation | Status | Implemented evidence |
+|---|---|---|
+| D3.1 application capability broker | Complete as a non-activated review model | Matching typed `CapabilityRequest`, `CapabilityDecision`, `LaunchRequest`, verified principal, operation, session, and capsule revision are required. Production/pending mode returns `PendingSecurityReview` before resolution, and the extension receives no application object. |
+| D3.2 canonical executable resolver | Complete in the review model | Only fixed platform locations or explicitly configured absolute exact filenames are considered; `PATH` and cwd are never searched. Windows records volume/file index and Unix records device/inode, with size/time metadata and immediate revalidation detecting rename-and-replace. |
+| D3.3 exact first-party grant | Complete at deny-by-default policy level | Only the exact repository publisher/extension/build identity passes the review harness. `ssh`, `ssh-add`, and `ssh-keygen` are the only recognized IDs; only the one-argument `ssh` connect grammar is modeled, while agent/key operations remain denied until a shipped operation is reviewed. DevOps manifests still declare no session/process/network authority. |
+| D3.4 exact argv | Complete for the pure/native command boundary; real spawn evidence pending | One bounded ordered destination argument is preserved as one native `Command::arg`; leading-dash, whitespace/control, extra arguments, shell executables, unsupported IDs, and oversized input are denied. The code contains no spawn or shell-evaluation call. Native process-level adversarial evidence remains an activation gate. |
+| D3.5 trusted environment | Complete at the restrictive boundary | Extension-selected inherited environment and secret references are denied. Only bounded, duplicate-free, core-owned public overrides enter the prepared descriptor; audit/debug redaction canaries exclude values and destinations. Public extension deltas remain an empty allowlist until separately reviewed. |
+| D3.6 working directory | Complete in the review model | Requested cwd must be absolute and canonical. A vanished absolute directory uses a validated core-owned safe default; a relative/invalid default is denied and no executable, shell, remote target, or session fallback occurs. |
+| D3.7 process/PTY/route/tunnel lifecycle | Partial by design | Generation-bearing leases provide duplicate rejection, exact completion/cancellation, deterministic session/extension revocation, stale-operation/PID-reuse-style isolation, and sibling preservation. No process, PID, PTY, route, or listener is created while ADR 0012 is proposed; graceful/forced teardown and leak evidence require approved activation. |
+| D3.8 redacted audit model | Complete for authorization | Records contain only the approved identity, decision, operation class, optional future public connection ID, operation/session IDs, time/duration, and result class. They contain no argv, cwd/path, environment value, terminal content, username, PID, secret, or agent data. Process completion audit persistence remains coupled to D3.7 activation. |
+
+Phase 2 result: the safe review boundary and its deterministic tests are
+implemented, but D3 is not complete as a product capability. The exit gate
+remains blocked on ADR acceptance, capability UI/grant policy, real native
+spawn/cancel/teardown evidence on Windows/Linux/macOS, D4 SSH security work,
+and controlled 1/10/50-session performance/leak results. See the
+[exact broker contract](SESSION-LAUNCH-BROKER.md).
+
 ### D4 — safe OpenSSH inventory and persistence
 
 1. Add `devops-ssh` as a separate manifest and package. During v0.5.0 it is a

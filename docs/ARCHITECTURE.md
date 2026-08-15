@@ -245,6 +245,15 @@ for the exact OpenSSH tools they use. The extension itself has no direct-network
 capability: the approved OpenSSH child connects exactly as it would when typed
 in a shell. Arbitrary process/network access and third-party use remain denied.
 
+Current source status is deliberately narrower. While ADR 0012 is proposed,
+the exact resolver/argv/cwd/environment/lease/audit candidate is included only
+under `#[cfg(test)]`; production builds contain no broker module or successful
+managed-launch path. The review harness converts an authorized request back
+into the existing `SessionLaunchDescriptor` seam but never spawns or attaches a
+process. Exact limits, platform identity rules, verification commands, and
+remaining activation gates are documented in the
+[session-launch broker contract](SESSION-LAUNCH-BROKER.md).
+
 ### OpenSSH inventory and persistence boundary
 
 `devops-ssh` statically indexes a bounded subset of granted OpenSSH config

@@ -138,6 +138,22 @@ The following foundation work is intentionally not claimed by Phase 1:
 - the capability decision UI, executable resolver, exact-argv broker, managed
   environment-changing rebind/relaunch action, and `devops-ssh` activation begin
   with Phase 2/D3 after the replacement ADR is accepted.
+
+#### Phase 2 preparation status (2026-08-15)
+
+The non-activated D3 review boundary is now implemented and tested. It adds the
+typed `session.launch` capability identity, fixed-location OpenSSH resolver,
+native executable identity/revalidation, exact one-argument SSH grammar,
+bounded core-owned environment/cwd policy, generation-scoped operation leases,
+revocation, and redacted audit records. The complete module is test-only and
+the production graph still has no managed process capability.
+
+D3 is therefore **partial, not shipped**. ADR 0012 is still proposed and the
+capability UI, real process/PTY/route attachment, platform-native
+spawn/cancel/teardown evidence, D4 SSH inventory/security model, and controlled
+performance/leak evidence remain required before activation. The exact current
+contract is documented in
+[Exact-argument session-launch broker](SESSION-LAUNCH-BROKER.md).
 ### v0.5.0 first-party SSH extension
 
 1. Ship `devops-ssh` as an optional, signed or compiled-in first-party

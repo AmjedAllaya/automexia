@@ -61,6 +61,8 @@ The documentation is organized by reader intent:
   alternatives, and consequences.
 - [SSH, DevOps, and multi-cloud architecture](SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md):
   planned provider-neutral delivery boundaries.
+- [Exact-argument session-launch broker](SESSION-LAUNCH-BROKER.md): reviewed
+  non-activated D3 contracts, limits, tests, and activation gates.
 - [Feature assurance ledger](../tests/assurance/feature-matrix.json):
   machine-checked mapping from each feature to quality, platform, and
   documentation evidence.
