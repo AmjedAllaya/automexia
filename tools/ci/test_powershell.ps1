@@ -1,3 +1,7 @@
+param(
+    [switch]$SyntaxOnly
+)
+
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
@@ -24,6 +28,11 @@ Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*.ps1' |
 
 if ($parseFailures.Count -ne 0) {
     throw "PowerShell syntax validation failed:`n$($parseFailures -join "`n")"
+}
+
+if ($SyntaxOnly) {
+    Write-Host 'PASS: all repository PowerShell sources parse'
+    exit 0
 }
 
 & (Join-Path $PSScriptRoot 'test_shell_integration.ps1')

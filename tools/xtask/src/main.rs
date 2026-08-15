@@ -1275,11 +1275,11 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && nightly_workflow.contains("--component rust-src")
             && nightly_workflow.contains("sanitizer: [address, thread]")
             && nightly_workflow.contains("MIRIFLAGS: -Zmiri-disable-isolation")
-            && nightly_workflow.contains("cross@0.2.5,nfpm@2.43.4")
-            && !nightly_workflow.contains("nfpm@v")
-            && release_workflow.contains("tool: nfpm@2.43.4")
-            && !release_workflow.contains("nfpm@v"),
-        "Nightly/release workflows must use nightly libFuzzer, install sanitizer std sources, allow bounded Miri file-transport tests, preserve both sanitizer jobs, and use valid exact nFPM versions",
+            && nightly_workflow.contains("--target x86_64-unknown-linux-gnu")
+            && nightly_workflow.contains("tool: cross@0.2.5")
+            && nightly_workflow.contains("go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4")
+            && release_workflow.contains("go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4"),
+        "Nightly/release workflows must use nightly GNU-target libFuzzer, install sanitizer std sources, allow bounded Miri file-transport tests, preserve both sanitizer jobs, and install the pinned Go-based nFPM tool",
     )?;
     let simd_utf8 = read(&root().join("rio-vt/src/simd_utf8.rs"))?;
     let simd_base64 = read(&root().join("rio-vt/src/simd_base64.rs"))?;

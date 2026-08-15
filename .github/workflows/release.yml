@@ -307,9 +307,8 @@ jobs:
           path: staged
       - name: Install Linux package validators
         run: sudo apt-get update && sudo apt-get install -y appstream cpio desktop-file-utils lintian ncurses-bin rpm scdoc
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
-        with:
-          tool: nfpm@2.43.4
+      - name: Install pinned nFPM
+        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
       - name: Build DEB, RPM, and portable archive
         run: |
           set -euo pipefail
