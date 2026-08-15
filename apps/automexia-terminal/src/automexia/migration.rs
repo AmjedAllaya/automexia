@@ -1,6 +1,7 @@
 //! One-release, non-destructive import of safe Rio configuration state.
 
 use rio_backend::config::product;
+pub use rio_backend::config::product::validate_legacy_config;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
@@ -80,12 +81,6 @@ fn migrate_paths(source: &Path, destination: &Path) -> Result<MigrationStatus, S
     fs::remove_file(&progress)
         .map_err(|error| format!("could not clear {}: {error}", progress.display()))?;
     Ok(MigrationStatus::Migrated)
-}
-
-pub fn validate_legacy_config(config: &str) -> Result<(), String> {
-    toml::from_str::<toml::Value>(config)
-        .map(|_| ())
-        .map_err(|error| format!("legacy config is malformed: {error}"))
 }
 
 fn copy_theme_tree(source: &Path, destination: &Path) -> Result<(), String> {
