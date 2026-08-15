@@ -72,7 +72,7 @@ jobs:
         with:
           tool: cargo-fuzz@0.13.1
       - name: Fuzz ${{ matrix.target }} with nightly
-        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=120 -rss_limit_mb=768 -timeout=15
+        run: cargo +nightly fuzz run ${{ matrix.target }} --target x86_64-unknown-linux-gnu -- -max_total_time=120 -rss_limit_mb=768 -timeout=15
 
   miri:
     runs-on: ubuntu-latest
@@ -110,6 +110,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install benchmark build dependencies
+        run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
       - run: cargo bench -p automexia-terminal -p rio-vt -p corcovado --no-run --locked
 
   benchmarks-controlled:
@@ -180,7 +182,9 @@ jobs:
       - run: rustup target add ${{ matrix.target }}
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:
-          tool: cross@0.2.5,nfpm@2.43.4
+          tool: cross@0.2.5
+      - name: Install pinned nFPM
+        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
       - name: Build release binary
         run: |
           if [[ "${{ matrix.target }}" == aarch64-* ]]; then

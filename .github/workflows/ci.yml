@@ -43,7 +43,7 @@ jobs:
         run: bash tools/ci/test_shell_sources.sh
       - name: PowerShell syntax
         shell: pwsh
-        run: tools/ci/test_powershell.ps1
+        run: tools/ci/test_powershell.ps1 -SyntaxOnly
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:
           tool: lychee@0.20.1
@@ -116,6 +116,10 @@ jobs:
       - name: Session-clone descriptors, bindings, isolation, and Windows quoting
         if: runner.os == 'Windows'
         run: cargo xtask test session-clone
+      - name: Native PowerShell and CMD integration contracts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: tools/ci/test_powershell.ps1
       - if: runner.os == 'Linux'
         run: cargo doc --workspace --no-deps --locked
 
