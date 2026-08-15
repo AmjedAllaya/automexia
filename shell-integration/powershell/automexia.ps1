@@ -107,30 +107,31 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
     }
     $configureEditorColors = $null -ne $psReadLineModule
     if ($null -ne $psReadLineModule) {
-        # Mark editable-prompt state false immediately before PowerShell executes
-        # an accepted line, while preserving any user history handler.
-        try {
-            $script:AutomexiaPreviousHistoryHandler = (Get-PSReadLineOption).AddToHistoryHandler
-            Set-PSReadLineOption -AddToHistoryHandler {
-                param($line)
-                [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_prompt_active=MA==$script:AutomexiaBel")
-                [Console]::Write("$script:AutomexiaEsc]133;C$script:AutomexiaBel")
-                if ($script:AutomexiaPreviousHistoryHandler -is [scriptblock]) {
-                    return (& $script:AutomexiaPreviousHistoryHandler $line)
+        # PSConsoleHostReadLine is the console host's documented input extension
+        # point. Its return is the first boundary after PSReadLine has completed
+        # its final repaint but before PowerShell executes the accepted line.
+        # Emitting OSC 133;C here prevents late editor cells from overwriting
+        # command output after resize and leaves the user's history predicate
+        # completely untouched.
+        $readLineCommand = Get-Command PSConsoleHostReadLine -ErrorAction SilentlyContinue
+        if ($null -ne $readLineCommand -and $null -ne $readLineCommand.ScriptBlock) {
+            $script:AutomexiaOriginalPSConsoleHostReadLine = $readLineCommand.ScriptBlock
+            function global:PSConsoleHostReadLine {
+                $line = & $script:AutomexiaOriginalPSConsoleHostReadLine
+                if ($null -ne $line) {
+                    # A resize can leave obsolete PSReadLine repaint cells below
+                    # the accepted line. At this point the editor has returned
+                    # and command output has not started, so ED(0) can retire
+                    # only that unused tail without touching the command or
+                    # completed history. This keeps short output from inheriting
+                    # characters belonging to an earlier wrapped repaint.
+                    [Console]::Write("$script:AutomexiaEsc[0J")
+                    [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_prompt_active=MA==$script:AutomexiaBel")
+                    [Console]::Write("$script:AutomexiaEsc]133;C$script:AutomexiaBel")
                 }
-                if ($script:AutomexiaPreviousHistoryHandler -is [System.Delegate]) {
-                    # PSReadLine 2.0 exposes its default predicate as a
-                    # Func<string, object> which returns AddToHistoryOption.
-                    # The call operator and Boolean coercion lose that contract
-                    # and can leave AcceptLine waiting indefinitely.
-                    return $script:AutomexiaPreviousHistoryHandler.DynamicInvoke(
-                        [object[]]@($line)
-                    )
-                }
-                return $true
-            } -ErrorAction SilentlyContinue
-        } catch {}
-
+                return $line
+            }
+        }
     }
 
 

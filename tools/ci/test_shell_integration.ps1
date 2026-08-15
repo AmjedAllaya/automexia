@@ -137,10 +137,13 @@ if ($integrationSource -match '(?m)^\s*Register-EngineEvent\b' -or
     $integrationSource -match '\[System\.Timers\.Timer\]') {
     throw 'PowerShell presentation setup must not run from an asynchronous event callback'
 }
-if ($integrationSource -notmatch 'AutomexiaPreviousHistoryHandler -is \[scriptblock\]' -or
-    $integrationSource -notmatch 'AutomexiaPreviousHistoryHandler -is \[System\.Delegate\]' -or
-    $integrationSource -notmatch 'DynamicInvoke') {
-    throw 'PowerShell history chaining does not preserve script-block and .NET delegate handlers'
+if ($integrationSource -match 'Set-PSReadLineOption\s+-AddToHistoryHandler' -or
+    $integrationSource -notmatch 'function global:PSConsoleHostReadLine' -or
+    $integrationSource -notmatch 'AutomexiaOriginalPSConsoleHostReadLine') {
+    throw 'PowerShell command-start integration does not preserve the PSReadLine history handler'
+}
+if ($integrationSource -notmatch '\$script:AutomexiaEsc\[0J') {
+    throw 'PowerShell command acceptance must clear stale editor cells below the cursor'
 }
 $lsAlias = Get-Alias ls -ErrorAction SilentlyContinue
 if (-not $lsAlias -or $lsAlias.Definition -ne 'Get-ChildItem') { throw 'PowerShell ls no longer resolves to Get-ChildItem' }

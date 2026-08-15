@@ -1582,6 +1582,7 @@ $rendererConfig
     $previewCwd = Read-AutomexiaSnapshot -AfterSequence ([int64]$final.sequence)
     $previewCwdDeadline = [DateTime]::UtcNow.AddSeconds(10)
     while (([string]$previewCwd.last_control -ne $previewCwdControl -or
+            [int64]$previewCwd.latest_prompt_id -le [int64]$final.latest_prompt_id -or
             [string](Get-ActiveAutomexiaPanel $previewCwd).current_directory -ne
                 $previewDirectory.Replace('\', '/') -or
             -not [bool](Get-ActiveAutomexiaPanel $previewCwd).shell_prompt_active) -and
@@ -1603,6 +1604,7 @@ $rendererConfig
     $preview = Read-AutomexiaSnapshot -AfterSequence ([int64]$previewCwd.sequence)
     $previewDeadline = [DateTime]::UtcNow.AddSeconds(10)
     while (([string]$preview.last_control -ne $previewControl -or
+            [int64]$preview.latest_prompt_id -le [int64]$previewCwd.latest_prompt_id -or
             -not ([string](Get-ActiveAutomexiaPanel $preview).visible_text).Contains($previewTokenSmall) -or
             -not ([string](Get-ActiveAutomexiaPanel $preview).visible_text).Contains($previewTokenLarge) -or
             -not [bool](Get-ActiveAutomexiaPanel $preview).shell_prompt_active) -and
