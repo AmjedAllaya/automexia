@@ -308,7 +308,9 @@ jobs:
       - name: Install Linux package validators
         run: sudo apt-get update && sudo apt-get install -y appstream cpio desktop-file-utils lintian ncurses-bin rpm scdoc
       - name: Install pinned nFPM
-        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Build DEB, RPM, and portable archive
         run: |
           set -euo pipefail
