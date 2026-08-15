@@ -532,6 +532,10 @@ writer path propagates its `aid`, and the final effective resize repairs a
 missing terminal-owned context even when no later PTY byte arrives. It also
 proves that a hard shell newline ends context-row ownership, so incomplete or
 legacy prompt markers cannot attach later command output to the active prompt.
+Renderer-neutral geometry additionally proves that a visible context tag starts
+on at least a 1.22-row rhythm from the preceding row origin, no context produces
+no spacing geometry, and tiny or unusually tall rows remain bounded without
+overlapping the complete path below. Completion timing shares the same origin.
 The same gate proves that 1,000 queued PTY resizes collapse to the final size while input and
 shutdown remain ordering barriers. A recording PTY sink verifies exact
 delivery order, duplicate suppression, final size, and retry behavior after a

@@ -14,7 +14,38 @@ pub const MIN_TEXT_CONTRAST: f32 = 4.55;
 /// Context tags use a restrained semantic tint so they read as passive
 /// metadata instead of interactive controls.
 pub const CONTEXT_TAG_BACKGROUND_ALPHA: f32 = 0.12;
+/// Minimum vertical rhythm between the preceding terminal row origin and a
+/// renderer-owned prompt-context tag. The terminal row itself already provides
+/// one stride; the remaining 0.22 becomes the dynamic top inset.
+pub const PROMPT_CONTEXT_ROW_RHYTHM: f32 = 1.22;
 const MAX_OS_CHARS: usize = 14;
+
+/// Resolve a prompt-context tag's top inset inside its reserved semantic row.
+///
+/// No geometry is returned when the context bar has no content. For visible
+/// context, the inset is derived from the actual row height, retains at least
+/// the prior centered placement, and is clamped so future font/tag changes can
+/// never push the bar into the path row below it.
+#[inline]
+pub fn prompt_context_top_inset(
+    row_height: f32,
+    content_height: f32,
+    context_present: bool,
+) -> Option<f32> {
+    if !context_present
+        || !row_height.is_finite()
+        || !content_height.is_finite()
+        || row_height <= 0.0
+        || content_height < 0.0
+    {
+        return None;
+    }
+
+    let maximum = (row_height - content_height).max(0.0);
+    let centered = maximum * 0.5;
+    let rhythmic = row_height * (PROMPT_CONTEXT_ROW_RHYTHM - 1.0);
+    Some(centered.max(rhythmic).min(maximum))
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Segment {
@@ -616,6 +647,30 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn prompt_context_spacing_is_dynamic_content_aware_and_bounded() {
+        assert_eq!(prompt_context_top_inset(24.0, 18.0, false), None);
+        assert_eq!(prompt_context_top_inset(0.0, 0.0, true), None);
+        assert_eq!(prompt_context_top_inset(f32::NAN, 10.0, true), None);
+
+        let row_height = 24.0;
+        let content_height = 18.0;
+        let inset = prompt_context_top_inset(row_height, content_height, true).unwrap();
+        assert!((inset - 5.28).abs() < 0.001);
+        assert!(
+            (row_height + inset - row_height * PROMPT_CONTEXT_ROW_RHYTHM).abs() < 0.001
+        );
+        assert!(inset + content_height <= row_height);
+
+        // Tiny rows clamp to their physical capacity instead of overlapping
+        // the complete-path row below the tags.
+        assert_eq!(prompt_context_top_inset(8.0, 7.0, true), Some(1.0));
+
+        // Very tall/custom line heights keep the existing centered breathing
+        // room when it already exceeds the minimum 1.22 rhythm.
+        assert_eq!(prompt_context_top_inset(48.0, 18.0, true), Some(15.0));
     }
 
     #[test]
