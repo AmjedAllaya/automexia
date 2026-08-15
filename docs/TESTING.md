@@ -44,6 +44,28 @@ shell-integration suites.
 `cargo xtask ci` runs the same non-launching gate; neither command leaves its
 isolated exhaustive build artifacts behind.
 
+### Native platform ownership
+
+Cross-platform behavior is accepted on the operating system that owns the
+adapter; compiling an Apple target from Windows is not a substitute for a
+macOS run because Apple's SDK, window server, signing policy, and GPU stack are
+host-provided. The required evidence is:
+
+| Surface | Required host and checks |
+|---|---|
+| Portable Rust, metadata, configuration, bindings, and renderer-neutral layout | Every PR runs locked, all-feature Clippy, Nextest, and doctests on native Windows, Ubuntu Linux, and macOS. |
+| PowerShell, CMD, ConPTY, window ownership, WGPU/CPU rendering, and Windows shell formatting | Native Windows runs `tools/ci/test_powershell.ps1`, `cargo xtask test resize-stress --native-gui`, `cargo xtask test session-clone --native-windows`, and the focused image GUI lifecycle. |
+| Bash/Zsh install, repair, prompt metadata, and listing behavior | Native Linux and macOS run `bash tools/ci/test_shell_sources.sh`; the script uses only Bash 3.2/BSD-compatible temporary-file semantics and tests an isolated home. |
+| Linux display adapters | Ubuntu checks the frontend separately with X11-only, Wayland-only, and combined features. Release jobs additionally validate DEB and RPM metadata/install behavior; this does not imply that every downstream Linux distribution has been manually certified. |
+| WSL launch and clone routing | Native Windows plus an installed WSL distribution runs `cargo xtask test session-clone --native-wsl`; Linux source/build artifacts stay on the WSL filesystem rather than `/mnt/<drive>`. |
+| macOS windows, Metal/WGPU, universal application, signing, and notarization | Native Intel/Apple-Silicon macOS jobs own compilation and tests. Controlled macOS hardware owns GUI, VoiceOver, Gatekeeper, notarization, and final artifact evidence. |
+
+The native CI job intentionally enables every Cargo feature on all three host
+families. Platform-specific code must use target configuration, not rely on a
+feature being absent from one host. A platform result is reported as
+`external` or `not run` when its required host, credentials, display server, or
+hardware is unavailable; it must never be inferred from a different OS.
+
 ## Phase 0 evidence gate
 
 Use the deeper evidence gate before a release or when changing renderer layout,
