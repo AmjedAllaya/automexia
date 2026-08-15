@@ -24,9 +24,9 @@ pub(crate) const LIVE_REFRESH_MILLIS: u64 = 3_000;
 const REFRESH_INTERVAL: Duration = Duration::from_millis(LIVE_REFRESH_MILLIS);
 const REFRESH_IN_FLIGHT_TIMEOUT: Duration = Duration::from_secs(10);
 const ORDER: u8 = 19;
-const CONTEXT_FONT_SIZE: f32 = 18.0;
-const PROMPT_TAG_FONT_ROW_RATIO: f32 = 0.70;
-const PROMPT_TAG_MAX_FONT_SIZE: f32 = 17.0;
+const CONTEXT_FONT_SIZE: f32 = 14.0;
+const PROMPT_TAG_FONT_ROW_RATIO: f32 = 0.62;
+const PROMPT_TAG_MAX_FONT_SIZE: f32 = 14.0;
 const PROMPT_TAG_MIN_FONT_SIZE: f32 = 4.0;
 const PROMPT_TAG_LEFT_INSET: f32 = 2.0;
 const PROMPT_RESULT_RESERVE: f32 = 112.0;
@@ -857,7 +857,12 @@ mod tests {
     #[test]
     fn prompt_tags_are_secondary_compact_and_fit_their_rows() {
         let comfortable = prompt_tag_metrics(24.0);
-        assert!((16.0..18.0).contains(&comfortable.font_size));
+        assert_eq!(CONTEXT_FONT_SIZE, 14.0);
+        assert_eq!(comfortable.font_size, 14.0);
+        assert!(
+            comfortable.font_size
+                < rio_backend::sugarloaf::font::fonts::default_font_size()
+        );
         assert!(comfortable.height < 24.0);
         assert!(comfortable.icon_slot >= comfortable.icon_size);
         assert!(comfortable.tag_gap < comfortable.icon_slot);
