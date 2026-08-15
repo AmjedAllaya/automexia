@@ -7,9 +7,11 @@ pub fn default_bool_true() -> bool {
 
 #[inline]
 pub fn default_line_height() -> f32 {
-    // Preserve clear row separation while recovering useful vertical space in
-    // information-dense listings and multi-pane layouts.
-    1.15
+    // Keep command blocks and dense output readable without making the shared
+    // terminal grid so tall that split panes lose too much working space.
+    // This renderer-level metric is intentionally platform-neutral: shell
+    // blank lines would alter PTY history, copied text, and full-screen TUIs.
+    1.22
 }
 
 #[inline]
@@ -172,7 +174,7 @@ mod tests {
 
     #[test]
     fn default_line_spacing_balances_density_and_legibility() {
-        assert_eq!(default_line_height(), 1.15);
-        assert!((1.0..=1.25).contains(&default_line_height()));
+        assert_eq!(default_line_height(), 1.22);
+        assert!((1.15..=1.25).contains(&default_line_height()));
     }
 }

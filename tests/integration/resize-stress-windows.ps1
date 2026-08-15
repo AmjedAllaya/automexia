@@ -1416,7 +1416,7 @@ $rendererConfig
     foreach ($panel in @($final.panels)) {
         if ([Math]::Abs([double]$panel.font_size - 18.0) -gt 0.01 -or
             [Math]::Abs([double]$panel.original_font_size - 18.0) -gt 0.01 -or
-            [Math]::Abs([double]$panel.line_height - 1.15) -gt 0.001 -or
+            [Math]::Abs([double]$panel.line_height - 1.22) -gt 0.001 -or
             [double]$panel.scaled_font_size -le 0.0) {
             Write-Host ($panel | ConvertTo-Json -Depth 8)
             throw 'A native pane did not retain the balanced typography defaults'

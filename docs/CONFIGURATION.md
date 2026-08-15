@@ -27,14 +27,16 @@ explicitly documents a change. Generate a default file with
 Automexia's default liquid-hacker window is 1280x760 with a persistent tab row
 and responsive pane-local tab rail. Operational context belongs to each
 semantic prompt instead of being duplicated in global chrome. Terminal text
-defaults to 18 points with 1.15 line spacing: comfortably larger than common
-terminal defaults while leaving substantially more working space in split-pane
-workflows. Context tags and chrome use a smaller secondary type scale, while
-click targets retain their accessible dimensions. The relevant overrides remain
-ordinary inherited settings:
+defaults to 18 points with 1.22 line spacing: command blocks and dense output
+remain easy to scan while split panes retain useful working space. The shared
+renderer metric applies identically to PowerShell, CMD, WSL, Unix shells, and
+full-screen applications on every supported OS without inserting characters
+into terminal history. Context tags and chrome use a smaller secondary type
+scale, while click targets retain their accessible dimensions. The relevant
+overrides remain ordinary inherited settings:
 
 ```toml
-line-height = 1.15
+line-height = 1.22
 
 [window]
 width = 1280

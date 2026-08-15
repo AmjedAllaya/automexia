@@ -1398,7 +1398,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && native_resize.contains("[string]$TypographyCapture")
             && native_resize.contains("typography_frame = [ordered]@{")
             && native_resize.contains("font_size - 18.0")
-            && native_resize.contains("line_height - 1.15")
+            && native_resize.contains("line_height - 1.22")
             && native_resize.contains("$frameDeadline = [DateTime]::UtcNow.AddSeconds(5)")
             && native_resize.contains("DistinctColorBuckets -ge 8")
             && native_resize.contains("did not settle within 5 seconds")
