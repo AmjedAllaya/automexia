@@ -488,6 +488,14 @@ impl KeyEventBuilder {
         };
         let event_info = PartialKeyEventInfo {
             vkey: vk,
+            scancode,
+            control_key_state: synthetic_control_key_state(
+                vk,
+                key_state,
+                caps_lock_on,
+                num_lock_on,
+                scancode,
+            ),
             logical_key: PartialLogicalKey::This(logical_key.clone()),
             key_without_modifiers,
             key_state,
@@ -527,6 +535,8 @@ enum PartialLogicalKey {
 
 struct PartialKeyEventInfo {
     vkey: VIRTUAL_KEY,
+    scancode: ExScancode,
+    control_key_state: u32,
     key_state: ElementState,
     is_repeat: bool,
     physical_key: PhysicalKey,
@@ -568,6 +578,7 @@ impl PartialKeyEventInfo {
         let location = get_location(scancode, layout.hkl as HKL);
 
         let kbd_state = get_kbd_state();
+        let control_key_state = win32_control_key_state(&kbd_state, scancode);
         let mods = WindowsModifiers::active_modifiers(&kbd_state);
         let mods_without_ctrl = mods.remove_only_ctrl();
         let num_lock_on = kbd_state[VK_NUMLOCK as usize] & 1 != 0;
@@ -629,6 +640,8 @@ impl PartialKeyEventInfo {
 
         PartialKeyEventInfo {
             vkey,
+            scancode,
+            control_key_state,
             key_state: state,
             logical_key,
             key_without_modifiers,
@@ -689,9 +702,89 @@ impl PartialKeyEventInfo {
             platform_specific: KeyEventExtra {
                 text_with_all_modifiers: char_with_all_modifiers,
                 key_without_modifiers: self.key_without_modifiers,
+                win32_virtual_key: self.vkey,
+                win32_scan_code: self.scancode,
+                win32_control_key_state: self.control_key_state,
             },
         }
     }
+}
+
+/// Translate the live keyboard state into `KEY_EVENT_RECORD::dwControlKeyState`.
+/// The extended-key flag belongs to the event's physical scan code rather than
+/// the global modifier array.
+fn win32_control_key_state(key_state: &[u8; 256], scancode: ExScancode) -> u32 {
+    const RIGHT_ALT_PRESSED: u32 = 0x0001;
+    const LEFT_ALT_PRESSED: u32 = 0x0002;
+    const RIGHT_CTRL_PRESSED: u32 = 0x0004;
+    const LEFT_CTRL_PRESSED: u32 = 0x0008;
+    const SHIFT_PRESSED: u32 = 0x0010;
+    const NUMLOCK_ON: u32 = 0x0020;
+    const SCROLLLOCK_ON: u32 = 0x0040;
+    const CAPSLOCK_ON: u32 = 0x0080;
+    const ENHANCED_KEY: u32 = 0x0100;
+
+    let pressed = |vkey: VIRTUAL_KEY| key_state[vkey as usize] & 0x80 != 0;
+    let toggled = |vkey: VIRTUAL_KEY| key_state[vkey as usize] & 0x01 != 0;
+    let mut state = 0;
+    if pressed(VK_RMENU) {
+        state |= RIGHT_ALT_PRESSED;
+    }
+    if pressed(VK_LMENU) {
+        state |= LEFT_ALT_PRESSED;
+    }
+    if pressed(VK_RCONTROL) {
+        state |= RIGHT_CTRL_PRESSED;
+    }
+    if pressed(VK_LCONTROL) {
+        state |= LEFT_CTRL_PRESSED;
+    }
+    if pressed(VK_SHIFT) || pressed(VK_LSHIFT) || pressed(VK_RSHIFT) {
+        state |= SHIFT_PRESSED;
+    }
+    if toggled(VK_NUMLOCK) {
+        state |= NUMLOCK_ON;
+    }
+    if toggled(VK_SCROLL) {
+        state |= SCROLLLOCK_ON;
+    }
+    if toggled(VK_CAPITAL) {
+        state |= CAPSLOCK_ON;
+    }
+    if scancode & 0xe000 != 0 {
+        state |= ENHANCED_KEY;
+    }
+    state
+}
+
+fn synthetic_control_key_state(
+    vkey: VIRTUAL_KEY,
+    key_state: ElementState,
+    caps_lock_on: bool,
+    num_lock_on: bool,
+    scancode: ExScancode,
+) -> u32 {
+    let mut state = 0;
+    if key_state == ElementState::Pressed {
+        state |= match vkey {
+            VK_RMENU => 0x0001,
+            VK_LMENU => 0x0002,
+            VK_RCONTROL => 0x0004,
+            VK_LCONTROL => 0x0008,
+            VK_SHIFT | VK_LSHIFT | VK_RSHIFT => 0x0010,
+            _ => 0,
+        };
+    }
+    if num_lock_on {
+        state |= 0x0020;
+    }
+    if caps_lock_on {
+        state |= 0x0080;
+    }
+    if scancode & 0xe000 != 0 {
+        state |= 0x0100;
+    }
+    state
 }
 
 #[derive(Debug, Copy, Clone)]

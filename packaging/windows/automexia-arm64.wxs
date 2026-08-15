@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  WiX 5 ARM64 package. cargo-packager 0.11.x uses WiX 3, whose compiler cannot
+  produce ARM64 MSI databases. Keep this source limited to the unsupported
+  target; x64 continues to use the canonical cargo-packager configuration.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Automexia Terminal"
+           Manufacturer="Automexia Contributors"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="A4783F75-5705-4F89-B0BF-A74562D6601D"
+           Language="1033"
+           InstallerVersion="500"
+           Scope="perMachine"
+           Compressed="yes">
+    <SummaryInformation Description="Automexia Terminal ARM64 installer"
+                        Manufacturer="Automexia Contributors" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Automexia Terminal is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <Icon Id="AutomexiaTerminal.exe" SourceFile="$(var.IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="AutomexiaTerminal.exe" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="AutomexiaPublisherFolder" Name="Automexia">
+        <Directory Id="INSTALLFOLDER" Name="Terminal">
+          <Component Id="AutomexiaExecutableComponent" Guid="*" Bitness="always64">
+            <File Id="AutomexiaExecutable" Source="$(var.BinaryPath)" Name="automexia.exe" KeyPath="yes">
+              <Shortcut Id="AutomexiaStartMenuShortcut"
+                        Directory="ProgramMenuFolder"
+                        Name="Automexia Terminal"
+                        Description="Automexia Terminal"
+                        WorkingDirectory="INSTALLFOLDER"
+                        Icon="AutomexiaTerminal.exe"
+                        Advertise="no" />
+            </File>
+            <Environment Id="AutomexiaPath"
+                         Name="PATH"
+                         Value="[INSTALLFOLDER]"
+                         Action="set"
+                         Part="last"
+                         Permanent="no"
+                         System="yes" />
+            <RegistryKey Root="HKLM" Key="Software\Classes\Directory\shell\AutomexiaTerminal">
+              <RegistryValue Type="string" Value="Open Automexia Terminal here" />
+              <RegistryKey Key="command">
+                <RegistryValue Type="string" Value="&quot;[#AutomexiaExecutable]&quot; --working-dir &quot;%1&quot;" />
+              </RegistryKey>
+            </RegistryKey>
+            <RegistryKey Root="HKLM" Key="Software\Classes\Directory\Background\shell\AutomexiaTerminal">
+              <RegistryValue Type="string" Value="Open Automexia Terminal here" />
+              <RegistryKey Key="command">
+                <RegistryValue Type="string" Value="&quot;[#AutomexiaExecutable]&quot; --working-dir &quot;%V&quot;" />
+              </RegistryKey>
+            </RegistryKey>
+            <RegistryKey Root="HKLM" Key="Software\Classes\automexia">
+              <RegistryValue Type="string" Value="URL:Automexia Terminal protocol" />
+              <RegistryValue Type="string" Name="URL Protocol" Value="" />
+              <RegistryKey Key="DefaultIcon">
+                <RegistryValue Type="string" Value="&quot;[#AutomexiaExecutable]&quot;,0" />
+              </RegistryKey>
+              <RegistryKey Key="shell\open\command">
+                <RegistryValue Type="string" Value="&quot;[#AutomexiaExecutable]&quot; &quot;%1&quot;" />
+              </RegistryKey>
+            </RegistryKey>
+          </Component>
+
+          <Component Id="AutomexiaLicenseComponent" Guid="*" Bitness="always64">
+            <File Id="AutomexiaLicense" Source="$(var.LicensePath)" Name="LICENSE" KeyPath="yes" />
+          </Component>
+          <Component Id="AutomexiaNoticeComponent" Guid="*" Bitness="always64">
+            <File Id="AutomexiaNotice" Source="$(var.NoticePath)" Name="NOTICE.md" KeyPath="yes" />
+          </Component>
+          <Component Id="AutomexiaThirdPartyComponent" Guid="*" Bitness="always64">
+            <File Id="AutomexiaThirdParty" Source="$(var.ThirdPartyPath)" Name="THIRD_PARTY_NOTICES.md" KeyPath="yes" />
+          </Component>
+          <Component Id="AutomexiaReadmeComponent" Guid="*" Bitness="always64">
+            <File Id="AutomexiaReadme" Source="$(var.ReadmePath)" Name="README.md" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="AutomexiaTerminalFeature" Title="Automexia Terminal" Level="1">
+      <ComponentRef Id="AutomexiaExecutableComponent" />
+      <ComponentRef Id="AutomexiaLicenseComponent" />
+      <ComponentRef Id="AutomexiaNoticeComponent" />
+      <ComponentRef Id="AutomexiaThirdPartyComponent" />
+      <ComponentRef Id="AutomexiaReadmeComponent" />
+    </Feature>
+  </Package>
+</Wix>

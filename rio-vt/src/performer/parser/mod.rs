@@ -16,6 +16,8 @@
 #![deny(clippy::all, clippy::if_not_else, clippy::enum_glob_use)]
 
 use std::str;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use tracing::warn;
 
 mod params;
 
@@ -23,6 +25,22 @@ pub use params::{Params, ParamsIter};
 
 const MAX_INTERMEDIATES: usize = 4;
 const MAX_OSC_PARAMS: usize = 16;
+
+/// Maximum raw OSC payload retained for one control string. This is large
+/// enough for ordinary OSC 52 clipboard transfers while preventing a child
+/// process from growing the parser heap without bound. Oversized strings are
+/// discarded through their terminator and the next OSC starts cleanly.
+const MAX_OSC_RAW_LEN: usize = 1024 * 1024;
+static OSC_OVERFLOW_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+fn warn_oversized_osc() {
+    let occurrence = OSC_OVERFLOW_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+    if occurrence == 1 || occurrence.is_power_of_two() {
+        warn!(
+            "oversized OSC sequence discarded (occurrence {occurrence}; further reports are exponentially rate-limited)"
+        );
+    }
+}
 
 /// Inline OSC byte capacity. Sized to absorb common OSCs (titles, color
 /// queries, hyperlink URLs, kitty graphics control headers) without
@@ -39,6 +57,7 @@ pub struct Parser {
     params: Params,
     param: u16,
     osc_raw: OscBuffer,
+    osc_overflowed: bool,
     osc_params: [(usize, usize); MAX_OSC_PARAMS],
     osc_num_params: usize,
     ignoring: bool,
@@ -83,12 +102,16 @@ impl OscBuffer {
     }
 
     #[inline]
-    fn push(&mut self, byte: u8) {
+    fn push(&mut self, byte: u8) -> bool {
+        if self.len() >= MAX_OSC_RAW_LEN {
+            return false;
+        }
+
         if self.overflow.is_empty() {
             if self.fixed_len < OSC_FIXED_LEN {
                 self.fixed[self.fixed_len] = byte;
                 self.fixed_len += 1;
-                return;
+                return true;
             }
             // Spill: promote the current contents to the heap once, then
             // append. After this point, `overflow.len() >= OSC_FIXED_LEN`,
@@ -97,6 +120,30 @@ impl OscBuffer {
                 .extend_from_slice(&self.fixed[..self.fixed_len]);
         }
         self.overflow.push(byte);
+        true
+    }
+
+    /// Append a complete payload run while retaining the fixed-buffer
+    /// fast path and spilling to the heap at most once.
+    #[inline]
+    fn extend_from_slice(&mut self, bytes: &[u8]) -> bool {
+        let available = MAX_OSC_RAW_LEN.saturating_sub(self.len());
+        let accepted = bytes.len().min(available);
+        let bytes_to_append = &bytes[..accepted];
+
+        if self.overflow.is_empty() {
+            let inline_available = OSC_FIXED_LEN - self.fixed_len;
+            if bytes_to_append.len() <= inline_available {
+                self.fixed[self.fixed_len..self.fixed_len + bytes_to_append.len()]
+                    .copy_from_slice(bytes_to_append);
+                self.fixed_len += bytes_to_append.len();
+                return accepted == bytes.len();
+            }
+            self.overflow
+                .extend_from_slice(&self.fixed[..self.fixed_len]);
+        }
+        self.overflow.extend_from_slice(bytes_to_append);
+        accepted == bytes.len()
     }
 
     #[inline]
@@ -150,6 +197,21 @@ impl Parser {
                 State::Ground => i += self.advance_ground(performer, &bytes[i..]),
                 State::CsiParam => {
                     i += self.advance_csi_param_run(performer, &bytes[i..])
+                }
+                State::OscString => {
+                    i += self.advance_osc_string_run(performer, &bytes[i..])
+                }
+                State::ApcString => {
+                    i += self.advance_apc_string_run(performer, &bytes[i..])
+                }
+                State::SosString => {
+                    i += self.advance_sos_string_run(performer, &bytes[i..])
+                }
+                State::PmString => {
+                    i += self.advance_pm_string_run(performer, &bytes[i..])
+                }
+                State::DcsPassthrough => {
+                    i += self.advance_dcs_passthrough_run(performer, &bytes[i..])
                 }
                 _ => {
                     // Inlining it results in worse codegen.
@@ -365,7 +427,7 @@ impl Parser {
         match byte {
             0x00..=0x17 | 0x19 | 0x1C..=0x7E => performer.put(byte),
             0x18 | 0x1A => {
-                performer.unhook();
+                performer.dcs_cancel();
                 performer.execute(byte);
                 self.state = State::Ground
             }
@@ -461,6 +523,91 @@ impl Parser {
     }
 
     #[inline(always)]
+    fn advance_osc_string_run<P: Perform>(
+        &mut self,
+        performer: &mut P,
+        bytes: &[u8],
+    ) -> usize {
+        let count = find_osc_boundary(bytes);
+        if count != 0
+            && !self.osc_overflowed
+            && !self.osc_raw.extend_from_slice(&bytes[..count])
+        {
+            self.osc_overflowed = true;
+            warn_oversized_osc();
+        }
+        if count == bytes.len() {
+            return count;
+        }
+        self.advance_osc_string(performer, bytes[count]);
+        count + 1
+    }
+
+    fn advance_apc_string_run<P: Perform>(
+        &mut self,
+        performer: &mut P,
+        bytes: &[u8],
+    ) -> usize {
+        let count = find_string_c0(bytes);
+        if count != 0 {
+            performer.apc_put_slice(&bytes[..count]);
+        }
+        if count == bytes.len() {
+            return count;
+        }
+        self.advance_apc_string(performer, bytes[count]);
+        count + 1
+    }
+
+    fn advance_sos_string_run<P: Perform>(
+        &mut self,
+        performer: &mut P,
+        bytes: &[u8],
+    ) -> usize {
+        let count = find_string_c0(bytes);
+        if count != 0 {
+            performer.sos_put_slice(&bytes[..count]);
+        }
+        if count == bytes.len() {
+            return count;
+        }
+        self.advance_sos_string(performer, bytes[count]);
+        count + 1
+    }
+
+    fn advance_pm_string_run<P: Perform>(
+        &mut self,
+        performer: &mut P,
+        bytes: &[u8],
+    ) -> usize {
+        let count = find_string_c0(bytes);
+        if count != 0 {
+            performer.pm_put_slice(&bytes[..count]);
+        }
+        if count == bytes.len() {
+            return count;
+        }
+        self.advance_pm_string(performer, bytes[count]);
+        count + 1
+    }
+
+    fn advance_dcs_passthrough_run<P: Perform>(
+        &mut self,
+        performer: &mut P,
+        bytes: &[u8],
+    ) -> usize {
+        let count = find_dcs_boundary(bytes);
+        if count != 0 {
+            performer.put_slice(&bytes[..count]);
+        }
+        if count == bytes.len() {
+            return count;
+        }
+        self.advance_dcs_passthrough(performer, bytes[count]);
+        count + 1
+    }
+
+    #[inline(always)]
     fn advance_osc_string<P: Perform>(&mut self, performer: &mut P, byte: u8) {
         match byte {
             0x00..=0x06 | 0x08..=0x17 | 0x19 | 0x1C..=0x1F => (),
@@ -469,7 +616,7 @@ impl Parser {
                 self.state = State::Ground
             }
             0x18 | 0x1A => {
-                self.osc_end(performer, byte);
+                self.osc_cancel();
                 performer.execute(byte);
                 self.state = State::Ground
             }
@@ -496,9 +643,8 @@ impl Parser {
                 self.state = State::Ground;
             }
             0x18 | 0x1A => {
-                // C0 termination (CAN or SUB).
-                performer.apc_put(byte);
-                performer.apc_end();
+                // CAN and SUB abort an APC without dispatching its payload.
+                performer.apc_cancel();
                 performer.execute(byte);
                 self.state = State::Ground;
             }
@@ -650,6 +796,10 @@ impl Parser {
     /// Add OSC param separator.
     #[inline]
     fn action_osc_put_param(&mut self) {
+        if self.osc_overflowed {
+            return;
+        }
+
         let idx = self.osc_raw.len();
 
         let param_idx = self.osc_num_params;
@@ -673,14 +823,24 @@ impl Parser {
 
     #[inline(always)]
     fn action_osc_put(&mut self, byte: u8) {
-        self.osc_raw.push(byte);
+        if !self.osc_overflowed && !self.osc_raw.push(byte) {
+            self.osc_overflowed = true;
+            warn_oversized_osc();
+        }
     }
 
     fn osc_end<P: Perform>(&mut self, performer: &mut P, byte: u8) {
-        self.action_osc_put_param();
-        self.osc_dispatch(performer, byte);
+        if !self.osc_overflowed {
+            self.action_osc_put_param();
+            self.osc_dispatch(performer, byte);
+        }
+        self.osc_cancel();
+    }
+
+    fn osc_cancel(&mut self) {
         self.osc_raw.clear();
         self.osc_num_params = 0;
+        self.osc_overflowed = false;
     }
 
     /// Reset escape sequence parameters and intermediates.
@@ -884,11 +1044,11 @@ impl Parser {
         }
     }
 
-    /// Scalar transcode for wasm, where the C++-backed `simdutf` cannot
+    /// Scalar transcode for wasm and Miri, where the C++-backed `simdutf` is unavailable and cannot
     /// build. Same contract as the SIMD path below: each invalid maximal
     /// subpart becomes one U+FFFD, except a lone C1 byte, which keeps its
     /// execute semantics through decode.
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", miri))]
     #[inline]
     fn decode_codepoints(&mut self, src: &[u8]) {
         self.decode_buf.clear();
@@ -923,7 +1083,7 @@ impl Parser {
     /// SIMD-transcode a UTF-8 byte slice into [`Self::decode_buf`] as `u32`
     /// codepoints, replacing each invalid UTF-8 maximal subpart with one
     /// U+FFFD inline (W3C/Unicode "Substitution of Maximal Subparts").
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), not(miri)))]
     #[inline]
     fn decode_codepoints(&mut self, src: &[u8]) {
         self.decode_buf.clear();
@@ -1031,6 +1191,90 @@ fn find_non_printable(bytes: &[u8]) -> usize {
         i += 1;
     }
     len
+}
+
+/// Find the first OSC control byte or `;` parameter boundary. SWAR
+/// examines eight lanes at once while preserving the exact first index.
+fn find_osc_boundary(bytes: &[u8]) -> usize {
+    const LO: u64 = 0x0101_0101_0101_0101;
+    const HI: u64 = 0x8080_8080_8080_8080;
+    let mut index = 0;
+    while index + 8 <= bytes.len() {
+        let word = u64::from_le_bytes(bytes[index..index + 8].try_into().unwrap());
+        let control = word.wrapping_sub(LO * 0x20) & !word & HI;
+        let semicolon = word ^ (LO * b';' as u64);
+        let semicolon = semicolon.wrapping_sub(LO) & !semicolon & HI;
+        let stop = control | semicolon;
+        if stop != 0 {
+            return index + stop.trailing_zeros() as usize / 8;
+        }
+        index += 8;
+    }
+    while index < bytes.len() {
+        if bytes[index] < 0x20 || bytes[index] == b';' {
+            return index;
+        }
+        index += 1;
+    }
+    bytes.len()
+}
+
+/// Find the first C0 byte ending or interrupting APC/SOS/PM payload.
+fn find_string_c0(bytes: &[u8]) -> usize {
+    const LO: u64 = 0x0101_0101_0101_0101;
+    const HI: u64 = 0x8080_8080_8080_8080;
+    let mut index = 0;
+    while index + 8 <= bytes.len() {
+        let word = u64::from_le_bytes(bytes[index..index + 8].try_into().unwrap());
+        let control = word.wrapping_sub(LO * 0x20) & !word & HI;
+        if control != 0 {
+            return index + control.trailing_zeros() as usize / 8;
+        }
+        index += 8;
+    }
+    while index < bytes.len() {
+        if bytes[index] < 0x20 {
+            return index;
+        }
+        index += 1;
+    }
+    bytes.len()
+}
+
+/// Find a byte that cannot be sent directly to DCS `put`.
+fn find_dcs_boundary(bytes: &[u8]) -> usize {
+    const LO: u64 = 0x0101_0101_0101_0101;
+    const HI: u64 = 0x8080_8080_8080_8080;
+    #[inline(always)]
+    fn equals(word: u64, byte: u8) -> u64 {
+        const LO: u64 = 0x0101_0101_0101_0101;
+        const HI: u64 = 0x8080_8080_8080_8080;
+        let value = word ^ (LO * byte as u64);
+        value.wrapping_sub(LO) & !value & HI
+    }
+
+    let mut index = 0;
+    while index + 8 <= bytes.len() {
+        let word = u64::from_le_bytes(bytes[index..index + 8].try_into().unwrap());
+        let value = word ^ (LO * 0x7f);
+        let stop = (word & HI)
+            | (value.wrapping_sub(LO) & !value & HI)
+            | equals(word, 0x18)
+            | equals(word, 0x1a)
+            | equals(word, 0x1b);
+        if stop != 0 {
+            return index + stop.trailing_zeros() as usize / 8;
+        }
+        index += 8;
+    }
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if matches!(byte, 0x18 | 0x1a | 0x1b | 0x7f) || byte >= 0x80 {
+            return index;
+        }
+        index += 1;
+    }
+    bytes.len()
 }
 
 /// Byte cap per decode chunk in `ground_dispatch`, bounding `decode_buf`
@@ -1221,11 +1465,22 @@ pub trait Perform {
     /// `hook`. C0 controls will also be passed to the handler.
     fn put(&mut self, _byte: u8) {}
 
+    /// Bulk form of `put`; the default preserves stateful handlers.
+    fn put_slice(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.put(byte);
+        }
+    }
+
     /// Called when a device control string is terminated.
     ///
     /// The previously selected handler should be notified that the DCS has
     /// terminated.
     fn unhook(&mut self) {}
+
+    /// Called when CAN or SUB aborts a device control string. Cancellation
+    /// must clear handler state without dispatching the partial payload.
+    fn dcs_cancel(&mut self) {}
 
     /// Dispatch an operating system command.
     fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {}
@@ -1258,6 +1513,12 @@ pub trait Perform {
     /// sequence.
     fn sos_put(&mut self, _byte: u8) {}
 
+    fn sos_put_slice(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.sos_put(byte);
+        }
+    }
+
     /// Invoked when the end of an SOS (Start of String) sequence is
     /// encountered.
     fn sos_end(&mut self) {}
@@ -1270,6 +1531,12 @@ pub trait Perform {
     /// sequence.
     fn pm_put(&mut self, _byte: u8) {}
 
+    fn pm_put_slice(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.pm_put(byte);
+        }
+    }
+
     /// Invoked when the end of a PM (Privacy Message) sequence is encountered.
     fn pm_end(&mut self) {}
 
@@ -1280,9 +1547,21 @@ pub trait Perform {
     /// Invoked for every valid byte (0x20-0xFF) in an APC (Application Program
     /// Command) sequence.
     fn apc_put(&mut self, _byte: u8) {}
+
+    /// Kitty image data is commonly large, so accumulation handlers can
+    /// override this to append the entire payload span in one operation.
+    fn apc_put_slice(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.apc_put(byte);
+        }
+    }
     /// Invoked when the end of an APC (Application Program Command) sequence is
     /// encountered.
     fn apc_end(&mut self) {}
+
+    /// Called when CAN or SUB aborts an APC. Cancellation must not parse or
+    /// dispatch the accumulated payload.
+    fn apc_cancel(&mut self) {}
 }
 
 #[cfg(test)]
@@ -1323,6 +1602,128 @@ mod tests {
         OpaquePut(OpaqueSequenceKind, u8),
         OpaqueEnd(OpaqueSequenceKind),
         DcsUnhook,
+    }
+
+    #[test]
+    fn boundary_scanners_match_scalar_state_machine() {
+        for byte in 0..=255u8 {
+            let mut dispatcher = Dispatcher::default();
+            let mut parser = Parser::new();
+            parser.advance(&mut dispatcher, b"\x1b]");
+            let before = parser.osc_raw.len();
+            parser.advance_osc_string(&mut dispatcher, byte);
+            let is_payload =
+                parser.osc_raw.len() > before && parser.state == State::OscString;
+            assert_eq!(
+                find_osc_boundary(&[byte]) == 1,
+                is_payload,
+                "OSC {byte:#04x}"
+            );
+            assert_eq!(
+                find_osc_boundary(&[byte; 16]) == 16,
+                is_payload,
+                "OSC SWAR {byte:#04x}"
+            );
+
+            for kind in ["apc", "sos", "pm"] {
+                let mut dispatcher = Dispatcher::default();
+                let mut parser = Parser::new();
+                match kind {
+                    "apc" => parser.advance(&mut dispatcher, b"\x1b_"),
+                    "sos" => parser.advance(&mut dispatcher, b"\x1bX"),
+                    _ => parser.advance(&mut dispatcher, b"\x1b^"),
+                }
+                let before = dispatcher.dispatched.len();
+                match kind {
+                    "apc" => parser.advance_apc_string(&mut dispatcher, byte),
+                    "sos" => parser.advance_sos_string(&mut dispatcher, byte),
+                    _ => parser.advance_pm_string(&mut dispatcher, byte),
+                }
+                let events = &dispatcher.dispatched[before..];
+                let is_payload = events.len() == 1
+                    && matches!(events[0], Sequence::OpaquePut(..))
+                    && parser.state != State::Ground
+                    && parser.state != State::Escape;
+                assert_eq!(
+                    find_string_c0(&[byte]) == 1,
+                    is_payload,
+                    "{kind} {byte:#04x}"
+                );
+                assert_eq!(
+                    find_string_c0(&[byte; 16]) == 16,
+                    is_payload,
+                    "{kind} SWAR {byte:#04x}"
+                );
+            }
+
+            let mut dispatcher = Dispatcher::default();
+            let mut parser = Parser::new();
+            parser.advance(&mut dispatcher, b"\x1bPq");
+            let before = dispatcher.dispatched.len();
+            parser.advance_dcs_passthrough(&mut dispatcher, byte);
+            let events = &dispatcher.dispatched[before..];
+            let is_payload = events.len() == 1
+                && matches!(events[0], Sequence::DcsPut(_))
+                && parser.state == State::DcsPassthrough;
+            assert_eq!(
+                find_dcs_boundary(&[byte]) == 1,
+                is_payload,
+                "DCS {byte:#04x}"
+            );
+            assert_eq!(
+                find_dcs_boundary(&[byte; 16]) == 16,
+                is_payload,
+                "DCS SWAR {byte:#04x}"
+            );
+        }
+    }
+
+    #[test]
+    fn bulk_string_runs_match_bytewise_and_fragmented_parsing() {
+        let payload = "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=".repeat(300);
+        let streams = vec![
+            format!("\x1b]52;c;{payload}\x07next").into_bytes(),
+            format!("\x1b]52;c;{payload}\x1b\\next").into_bytes(),
+            format!("\x1b_Gf=100,a=T;{payload}\x1b\\tail").into_bytes(),
+            b"\x1bP0;1q#0;2;0;0;0#1~~@@\x09data\x7fmore\x1b\\after".to_vec(),
+            b"\x1bXsos payload\x1b\\g\x1b^pm payload\x07g".to_vec(),
+            b"plain\x1b[31m\x1b]0;title\x07\x1b[0mtext".to_vec(),
+        ];
+
+        let mut seed = 0x5eed_cafe_u64;
+        for stream in streams {
+            let whole = {
+                let mut dispatcher = Dispatcher::default();
+                Parser::new().advance(&mut dispatcher, &stream);
+                dispatcher.dispatched
+            };
+            let bytewise = {
+                let mut dispatcher = Dispatcher::default();
+                let mut parser = Parser::new();
+                for byte in &stream {
+                    parser.advance(&mut dispatcher, std::slice::from_ref(byte));
+                }
+                dispatcher.dispatched
+            };
+            assert_eq!(whole, bytewise, "whole input differs from bytewise input");
+
+            for _ in 0..8 {
+                let mut dispatcher = Dispatcher::default();
+                let mut parser = Parser::new();
+                let mut offset = 0;
+                while offset < stream.len() {
+                    seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+                    let remaining = stream.len() - offset;
+                    let count = 1 + (seed as usize % remaining);
+                    parser.advance(&mut dispatcher, &stream[offset..offset + count]);
+                    offset += count;
+                }
+                assert_eq!(
+                    dispatcher.dispatched, whole,
+                    "fragmented input differs from whole input"
+                );
+            }
+        }
     }
 
     impl Perform for Dispatcher {
@@ -1592,6 +1993,70 @@ mod tests {
     }
 
     #[test]
+    fn osc_buffer_is_bounded_at_the_exact_limit_across_repeated_attacks() {
+        let mut buffer = OscBuffer::default();
+        let at_limit = vec![b'a'; MAX_OSC_RAW_LEN];
+
+        assert!(buffer.extend_from_slice(&at_limit));
+        assert_eq!(buffer.len(), MAX_OSC_RAW_LEN);
+        let bounded_capacity = buffer.overflow.capacity();
+        assert!(!buffer.push(b'b'));
+        assert_eq!(buffer.len(), MAX_OSC_RAW_LEN);
+
+        for _ in 0..3 {
+            buffer.clear();
+            assert!(!buffer.extend_from_slice(&vec![b'c'; MAX_OSC_RAW_LEN + 1]));
+            assert_eq!(buffer.len(), MAX_OSC_RAW_LEN);
+            assert_eq!(buffer.overflow.capacity(), bounded_capacity);
+        }
+    }
+
+    #[test]
+    fn cancelled_osc_is_not_dispatched_and_next_sequence_recovers() {
+        let mut dispatcher = Dispatcher::default();
+        let mut parser = Parser::default();
+
+        parser.advance(&mut dispatcher, b"\x1b]2;cancelled\x18\x1b]2;recovered\x07");
+
+        let osc: Vec<_> = dispatcher
+            .dispatched
+            .iter()
+            .filter(|sequence| matches!(sequence, Sequence::Osc(..)))
+            .collect();
+        assert_eq!(osc.len(), 1);
+        assert_eq!(
+            osc[0],
+            &Sequence::Osc(vec![b"2".to_vec(), b"recovered".to_vec()], true)
+        );
+        assert_eq!(parser.osc_raw.len(), 0);
+        assert!(!parser.osc_overflowed);
+    }
+
+    #[test]
+    fn oversized_osc_is_dropped_and_next_sequence_recovers() {
+        let mut dispatcher = Dispatcher::default();
+        let mut parser = Parser::default();
+
+        parser.advance(&mut dispatcher, b"\x1b]52;s;");
+        parser.advance(&mut dispatcher, &vec![b'a'; MAX_OSC_RAW_LEN + 64]);
+
+        assert!(parser.osc_overflowed);
+        assert_eq!(parser.osc_raw.len(), MAX_OSC_RAW_LEN);
+
+        // The oversized sequence is discarded at its terminator. A complete
+        // sequence arriving immediately afterward must still dispatch once.
+        parser.advance(&mut dispatcher, b"\x07\x1b]2;recovered\x07");
+
+        assert!(!parser.osc_overflowed);
+        assert_eq!(parser.osc_raw.len(), 0);
+        assert_eq!(dispatcher.dispatched.len(), 1);
+        assert_eq!(
+            dispatcher.dispatched[0],
+            Sequence::Osc(vec![b"2".to_vec(), b"recovered".to_vec()], true)
+        );
+    }
+
+    #[test]
     fn parse_csi_max_params() {
         // This will build a list of repeating '1;'s
         // The length is MAX_PARAMS - 1 because the last semicolon is interpreted
@@ -1713,7 +2178,7 @@ mod tests {
         match &dispatcher.dispatched[0] {
             Sequence::Csi(params, intermediates, ignore, _) => {
                 assert_eq!(params, &[vec![38, 2, 255, 0, 255], vec![1]]);
-                assert_eq!(intermediates, &[]);
+                assert!(intermediates.is_empty());
                 assert!(!ignore);
             }
             _ => panic!("expected csi sequence"),
@@ -1844,7 +2309,7 @@ mod tests {
         assert_eq!(dispatcher.dispatched.len(), 1);
         match &dispatcher.dispatched[0] {
             Sequence::Csi(params, intermediates, ignore, c) => {
-                assert_eq!(intermediates, &[]);
+                assert!(intermediates.is_empty());
                 assert_eq!(params, &[[0; 32]]);
                 assert_eq!(c, &'x');
                 assert!(ignore);

@@ -46,14 +46,53 @@ pub fn create_pty(
     columns: u16,
     rows: u16,
 ) -> Result<Pty, std::io::Error> {
-    let exec = shell.map(|shell| {
-        if args.is_empty() {
-            shell.to_string()
-        } else {
-            format!("{shell} {}", args.join(" "))
-        }
-    });
+    let exec = shell.map(|shell| build_command_line(shell, &args));
     conpty::new(exec.as_deref(), working_directory, env, columns, rows)
+}
+
+/// Build the single UTF-16 command line consumed by CreateProcessW using the
+/// documented CommandLineToArgvW/MSVC escaping rules. Joining argv with spaces
+/// corrupts paths, commands, and Unicode-adjacent quoting as soon as an
+/// argument contains whitespace or a literal quote.
+fn build_command_line(program: &str, args: &[String]) -> String {
+    std::iter::once(program)
+        .chain(args.iter().map(String::as_str))
+        .map(quote_windows_argument)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn quote_windows_argument(argument: &str) -> String {
+    if !argument.is_empty()
+        && !argument
+            .chars()
+            .any(|character| character.is_whitespace() || character == '"')
+    {
+        return argument.to_string();
+    }
+
+    let mut quoted = String::with_capacity(argument.len() + 2);
+    quoted.push('"');
+    let mut backslashes = 0usize;
+    for character in argument.chars() {
+        match character {
+            '\\' => backslashes += 1,
+            '"' => {
+                quoted.extend(std::iter::repeat_n('\\', backslashes * 2 + 1));
+                quoted.push('"');
+                backslashes = 0;
+            }
+            _ => {
+                quoted.extend(std::iter::repeat_n('\\', backslashes));
+                backslashes = 0;
+                quoted.push(character);
+            }
+        }
+    }
+    // Backslashes immediately before the closing quote must be doubled.
+    quoted.extend(std::iter::repeat_n('\\', backslashes * 2));
+    quoted.push('"');
+    quoted
 }
 
 impl Pty {
@@ -267,4 +306,32 @@ where
         .creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW)
         .spawn()
         .map(|_| ())
+}
+
+#[cfg(test)]
+mod command_line_tests {
+    use super::*;
+
+    #[test]
+    fn quotes_program_arguments_spaces_unicode_and_embedded_quotes() {
+        let args = vec![
+            "--cd".to_string(),
+            "/home/<REDACTED_LOCAL_VALUE>/work tree/项目".to_string(),
+            "say \"hello\"".to_string(),
+            r"C:\trailing path\".to_string(),
+            String::new(),
+        ];
+        assert_eq!(
+            build_command_line(r"C:\Program Files\PowerShell\7\pwsh.exe", &args),
+            r#""C:\Program Files\PowerShell\7\pwsh.exe" --cd "/home/<REDACTED_LOCAL_VALUE>/work tree/项目" "say \"hello\"" "C:\trailing path\\" """#
+        );
+    }
+
+    #[test]
+    fn leaves_simple_arguments_unquoted() {
+        assert_eq!(
+            build_command_line("wsl.exe", &["--distribution".into(), "Ubuntu".into()]),
+            "wsl.exe --distribution Ubuntu"
+        );
+    }
 }

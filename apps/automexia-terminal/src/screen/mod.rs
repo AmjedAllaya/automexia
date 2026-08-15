@@ -20,14 +20,14 @@ use crate::context::{next_rich_text_id, process_open_url, ContextManager};
 use crate::crosswords::{
     grid::{Dimensions, Scroll},
     pos::{Column, Pos, Side},
-    square::Hyperlink,
     vi_mode::ViMotion,
     Mode,
 };
 use crate::hints::HintState;
 use crate::layout::ContextDimension;
 use crate::mouse::{calculate_mouse_position, Mouse};
-use crate::renderer::island::{self, ChromeAction, TabStripLayout};
+use crate::renderer::island::{self, ChromeAction, LocalTabAction, TabStripLayout};
+use crate::renderer::session_footer;
 use crate::renderer::{utils::padding_top_from_config, Renderer};
 use crate::screen::hint::HintMatches;
 use crate::selection::{Selection, SelectionType};
@@ -62,6 +62,365 @@ const MAX_SEARCH_WHILE_TYPING: Option<usize> = Some(1000);
 /// Maximum number of search terms stored in the history.
 const MAX_SEARCH_HISTORY_SIZE: usize = 255;
 
+fn adjacent_preview_index(len: usize, current: Option<usize>, direction: isize) -> usize {
+    debug_assert!(len > 0);
+    match (current, direction.is_negative()) {
+        (Some(0), true) | (None, true) => len - 1,
+        (Some(index), true) => index - 1,
+        (Some(index), false) => (index + 1) % len,
+        (None, false) => 0,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SecondaryClickClipboardAction {
+    CopySelectionAndClear,
+    PasteClipboard,
+}
+
+fn secondary_click_clipboard_action(
+    has_selection: bool,
+) -> SecondaryClickClipboardAction {
+    if has_selection {
+        SecondaryClickClipboardAction::CopySelectionAndClear
+    } else {
+        SecondaryClickClipboardAction::PasteClipboard
+    }
+}
+
+fn should_copy_selection_on_ctrl_c(
+    key: &Key,
+    mods: ModifiersState,
+    has_selection: bool,
+) -> bool {
+    has_selection
+        && mods == ModifiersState::CONTROL
+        && matches!(key, Key::Character(character) if character.as_str().eq_ignore_ascii_case("c"))
+}
+
+#[cfg(any(test, feature = "native-gui-test-hooks"))]
+fn decode_native_test_hex(value: &str) -> Option<Vec<u8>> {
+    if !value.len().is_multiple_of(2)
+        || !value.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return None;
+    }
+    (0..value.len())
+        .step_by(2)
+        .map(|index| u8::from_str_radix(&value[index..index + 2], 16).ok())
+        .collect()
+}
+
+#[cfg(any(test, feature = "native-gui-test-hooks"))]
+fn native_test_text_input(text: &str, win32_input: bool) -> Vec<u8> {
+    #[cfg(windows)]
+    if win32_input {
+        use windows_sys::Win32::System::Console::{
+            LEFT_ALT_PRESSED, LEFT_CTRL_PRESSED, SHIFT_PRESSED,
+        };
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+            MapVirtualKeyW, VkKeyScanW, MAPVK_VK_TO_VSC,
+        };
+
+        let mut bytes = Vec::with_capacity(text.len().saturating_mul(36));
+        for unicode in text.encode_utf16() {
+            // Use the active Windows keyboard layout so the test hook produces
+            // the same Vk/scan/modifier record as physical typing. Raw UTF-8
+            // mixed with DECSET 9001 records is not a valid ConsoleHost event
+            // stream and can leave PSReadLine waiting indefinitely.
+            let mapped = unsafe { VkKeyScanW(unicode) };
+            let (virtual_key, control_state) = if mapped == -1 {
+                (0_u16, 0_u32)
+            } else {
+                let mapped = mapped as u16;
+                let modifiers = (mapped >> 8) as u8;
+                let mut state = 0_u32;
+                if modifiers & 1 != 0 {
+                    state |= SHIFT_PRESSED;
+                }
+                if modifiers & 2 != 0 {
+                    state |= LEFT_CTRL_PRESSED;
+                }
+                if modifiers & 4 != 0 {
+                    state |= LEFT_ALT_PRESSED;
+                }
+                (mapped & 0xff, state)
+            };
+            let scan =
+                unsafe { MapVirtualKeyW(virtual_key as u32, MAPVK_VK_TO_VSC) } & 0xff;
+            bytes.extend_from_slice(
+                format!(
+                    "\x1b[{virtual_key};{scan};{unicode};1;{control_state};1_\
+                     \x1b[{virtual_key};{scan};0;0;{control_state};1_"
+                )
+                .as_bytes(),
+            );
+        }
+        return bytes;
+    }
+
+    let _ = win32_input;
+    text.as_bytes().to_vec()
+}
+
+#[cfg(any(test, feature = "native-gui-test-hooks"))]
+fn native_test_line_input(line: &str, win32_input: bool) -> Vec<u8> {
+    let mut bytes = native_test_text_input(line, win32_input);
+    #[cfg(windows)]
+    if win32_input {
+        // Enter uses VK_RETURN / scan 0x1c. Key-up carries no text, matching
+        // the normal winit Win32-input path.
+        bytes.extend_from_slice(b"\x1b[13;28;13;1;0;1_\x1b[13;28;0;0;0;1_");
+        return bytes;
+    }
+    let _ = win32_input;
+    bytes.push(b'\r');
+    bytes
+}
+
+#[cfg(windows)]
+fn build_win32_key_sequence(key: &rio_window::event::KeyEvent) -> Option<Vec<u8>> {
+    use rio_window::keyboard::NamedKey::{Alt, Control, Shift, Super};
+    use rio_window::platform::windows::KeyEventExtWindows;
+
+    // Modifier state is included losslessly on the actual key record. Avoid
+    // forwarding standalone modifier events since an Automexia shortcut may
+    // consume the following key and must not leave ConPTY with a stuck Ctrl,
+    // Alt, Shift, or Windows key.
+    if matches!(key.logical_key, Key::Named(Alt | Control | Shift | Super)) {
+        return None;
+    }
+
+    let native = key.win32_key_event();
+    let unicode = key
+        .text_with_all_modifiers()
+        .and_then(|text| {
+            let mut characters = text.encode_utf16();
+            let first = characters.next()?;
+            characters.next().is_none().then_some(first)
+        })
+        .unwrap_or(0);
+    let key_down = u8::from(key.state == ElementState::Pressed);
+    Some(encode_win32_key_sequence(native, unicode, key_down))
+}
+
+#[cfg(windows)]
+fn encode_win32_key_sequence(
+    native: rio_window::platform::windows::Win32KeyEvent,
+    unicode: u16,
+    key_down: u8,
+) -> Vec<u8> {
+    let sequence = format!(
+        "\x1b[{};{};{};{};{};1_",
+        native.virtual_key,
+        native.scan_code & 0xff,
+        unicode,
+        key_down,
+        native.control_key_state,
+    );
+    sequence.into_bytes()
+}
+
+/// Emit a renderer-neutral state snapshot for the opt-in native resize driver.
+/// The feature is absent from product builds, so normal rendering performs no
+/// filesystem access and exposes no test-only environment surface.
+#[cfg(feature = "native-gui-test-hooks")]
+fn publish_native_resize_snapshot(
+    path: &std::path::Path,
+    payload: &[u8],
+) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let mut staged = tempfile::NamedTempFile::new_in(parent)?;
+    staged.write_all(payload)?;
+    staged.flush()?;
+    staged
+        .persist(path)
+        .map(|_| ())
+        .map_err(|error| error.error)
+}
+
+#[cfg(feature = "native-gui-test-hooks")]
+fn native_test_control_checkpoint() -> String {
+    std::env::var_os("AUTOMEXIA_NATIVE_TEST_CONTROL")
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .map(|control| control.trim().to_string())
+        .unwrap_or_default()
+}
+
+/// Claim one feature-gated native test command once for the whole process.
+/// A per-window checkpoint alone cannot close the race where a new Screen is
+/// constructed while the creating window is still processing the same token.
+#[cfg(feature = "native-gui-test-hooks")]
+fn claim_native_test_control(control: &str) -> bool {
+    static LAST_CLAIMED: std::sync::OnceLock<std::sync::Mutex<String>> =
+        std::sync::OnceLock::new();
+    let mut last = LAST_CLAIMED
+        .get_or_init(|| std::sync::Mutex::new(String::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if *last == control {
+        return false;
+    }
+    last.clear();
+    last.push_str(control);
+    true
+}
+
+#[cfg(feature = "native-gui-test-hooks")]
+struct NativeWindowSnapshot {
+    window_width: f32,
+    window_height: f32,
+    scale_factor: f32,
+    window_tab_count: usize,
+    active_window_tab_index: usize,
+    grid_width: f32,
+    grid_height: f32,
+    grid_margin: Margin,
+    active_tab_profile: Option<String>,
+    palette_enabled: bool,
+    confirm_quit_active: bool,
+}
+
+#[cfg(feature = "native-gui-test-hooks")]
+fn write_native_resize_snapshot(
+    content: &RenderableContent,
+    panels: Vec<serde_json::Value>,
+    window: NativeWindowSnapshot,
+    last_control: &str,
+    image_preview: crate::image_preview::NativeImagePreviewState,
+    pointer: serde_json::Value,
+) {
+    use rio_backend::crosswords::grid::row::SemanticPrompt;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+    #[cfg(target_os = "windows")]
+    let fullscreen_display_request_active =
+        crate::platform::windows::active_fullscreen_display_requests() > 0;
+    #[cfg(not(target_os = "windows"))]
+    let fullscreen_display_request_active = false;
+
+    let Some(path) = std::env::var_os("AUTOMEXIA_RESIZE_SNAPSHOT") else {
+        return;
+    };
+
+    let mut visible_text = String::new();
+    let mut visible_row_texts = Vec::with_capacity(content.visible_rows.len());
+    let mut prompt_ids = std::collections::BTreeSet::new();
+    let mut prompt_starts = 0_usize;
+    for row in &content.visible_rows {
+        if row.semantic_prompt == SemanticPrompt::Prompt {
+            prompt_starts += 1;
+        }
+        if let Some(id) = row.semantic_prompt_id {
+            prompt_ids.insert(id);
+        }
+        let row_text = row
+            .inner
+            .iter()
+            .map(|square| square.c())
+            .collect::<String>();
+        let row_text = row_text.trim_end_matches(['\0', ' ']).to_string();
+        visible_text.push_str(&row_text);
+        visible_row_texts.push(row_text);
+    }
+
+    let current_directory = content
+        .current_directory
+        .as_ref()
+        .map(|directory| directory.to_string_lossy().into_owned());
+    let full_path_visible = current_directory.as_ref().is_some_and(|directory| {
+        let visible = visible_text.replace('\\', "/");
+        let directory = directory.replace('\\', "/");
+        visible.contains(&directory)
+    });
+    let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed) + 1;
+    let latest_prompt_id = prompt_ids.last().copied();
+    let latest_prompt_start_count = latest_prompt_id.map_or(0, |latest| {
+        content
+            .visible_rows
+            .iter()
+            .filter(|row| {
+                row.semantic_prompt == SemanticPrompt::Prompt
+                    && row.semantic_prompt_id == Some(latest)
+            })
+            .count()
+    });
+    let active_prompt_gap_rows = latest_prompt_id.and_then(|latest| {
+        let prompt_start = content
+            .visible_rows
+            .iter()
+            .position(|row| row.semantic_prompt_id == Some(latest))?;
+        let previous_output = (0..prompt_start).rev().find(|index| {
+            content.visible_rows[*index].semantic_prompt_id != Some(latest)
+                && !visible_row_texts[*index].is_empty()
+        })?;
+        Some(prompt_start.saturating_sub(previous_output + 1))
+    });
+    let snapshot = serde_json::json!({
+        "sequence": sequence,
+        "columns": content.columns,
+        "rows": content.screen_lines,
+        "window_width": window.window_width,
+        "window_height": window.window_height,
+        "scale_factor": window.scale_factor,
+        "window_tab_count": window.window_tab_count,
+        "active_window_tab_index": window.active_window_tab_index,
+        "grid_width": window.grid_width,
+        "grid_height": window.grid_height,
+        "grid_margin": {
+            "top": window.grid_margin.top,
+            "right": window.grid_margin.right,
+            "bottom": window.grid_margin.bottom,
+            "left": window.grid_margin.left,
+        },
+        "active_tab_profile": window.active_tab_profile,
+        "cursor_column": content.cursor.state.pos.col.0,
+        "cursor_row": content.cursor.state.pos.row.0,
+        "current_directory": current_directory,
+        "full_path_visible": full_path_visible,
+        "prompt_active": content.shell_prompt_active,
+        "prompt_starts": prompt_starts,
+        "prompt_ids": prompt_ids,
+        "latest_prompt_id": latest_prompt_id,
+        "latest_prompt_start_count": latest_prompt_start_count,
+        "active_prompt_gap_rows": active_prompt_gap_rows,
+        "last_control": last_control,
+        "palette_enabled": window.palette_enabled,
+        "confirm_quit_active": window.confirm_quit_active,
+        "fullscreen_display_request_active": fullscreen_display_request_active,
+        "image_preview": {
+            "visible": image_preview.visible,
+            "overlay_present": image_preview.overlay_present,
+            "decoded_dimensions": image_preview.decoded_dimensions,
+            "pinned": image_preview.pinned,
+            "candidate": image_preview.candidate,
+            "overlay_rect": image_preview.overlay_rect,
+            "pixel_entries": image_preview.pixel_entries,
+            "overlay_entries": image_preview.overlay_entries,
+            "texture_entries": image_preview.texture_entries,
+            "texture_bytes": image_preview.texture_bytes,
+            "thumbnail_cache_entries": image_preview.thumbnail_cache_entries,
+            "thumbnail_cache_bytes": image_preview.thumbnail_cache_bytes,
+            "queued_requests": image_preview.queued_requests,
+            "completion_pending": image_preview.completion_pending,
+        },
+        "pointer": pointer,
+        "panel_count": panels.len(),
+        "panels": panels,
+    });
+
+    let payload = snapshot.to_string();
+    if let Err(error) =
+        publish_native_resize_snapshot(std::path::Path::new(&path), payload.as_bytes())
+    {
+        tracing::warn!("could not write native resize snapshot: {error}");
+    }
+}
+
 /// Reusable buffers for the hottest row-emission path. Keeping these on the
 /// screen avoids allocating foreground/background vectors after every command,
 /// shortcut, cursor animation, or split redraw. Their capacity grows to the
@@ -94,6 +453,7 @@ pub struct Screen<'screen> {
     pub touchpurpose: TouchPurpose,
     pub search_state: SearchState,
     pub hint_state: HintState,
+    image_preview: crate::image_preview::ImagePreview,
     pub renderer: Renderer,
     pub sugarloaf: Sugarloaf<'screen>,
     pub context_manager: context::ContextManager<EventProxy>,
@@ -109,6 +469,8 @@ pub struct Screen<'screen> {
     pub grids: rustc_hash::FxHashMap<usize, rio_backend::sugarloaf::grid::GridRenderer>,
     pub grid_rasterizer: crate::grid_emit::GridGlyphRasterizer,
     row_render_scratch: RowRenderScratch,
+    #[cfg(feature = "native-gui-test-hooks")]
+    native_test_last_control: String,
 }
 
 pub struct ChromePress {
@@ -156,7 +518,6 @@ impl Screen<'_> {
         let padding_y_top = padding_top_from_config(
             &config.navigation,
             config.margin.top,
-            1,
             config.window.macos_use_unified_titlebar,
             size.width as f32,
             size.height as f32,
@@ -246,6 +607,8 @@ impl Screen<'_> {
             dead_pty: false,
             cwd: config.navigation.current_working_directory,
             shell,
+            environment: context::launch::environment_overrides(&config.env_vars),
+            profile_identity: config.shell.program.clone(),
             working_dir,
             spawn_performer: true,
             #[cfg(not(target_os = "windows"))]
@@ -327,6 +690,7 @@ impl Screen<'_> {
         Ok(Screen {
             search_state: SearchState::default(),
             hint_state: HintState::new(config.hints.alphabet.clone()),
+            image_preview: crate::image_preview::ImagePreview::default(),
             hints_config: config
                 .hints
                 .rules
@@ -354,6 +718,8 @@ impl Screen<'_> {
             grids: rustc_hash::FxHashMap::default(),
             grid_rasterizer: crate::grid_emit::GridGlyphRasterizer::new(),
             row_render_scratch: RowRenderScratch::default(),
+            #[cfg(feature = "native-gui-test-hooks")]
+            native_test_last_control: native_test_control_checkpoint(),
         })
     }
 
@@ -397,6 +763,310 @@ impl Screen<'_> {
     }
 
     #[inline]
+    fn image_preview_pointer_allowed(&self) -> bool {
+        // Applications using terminal mouse reporting keep ownership. Shift is
+        // the established terminal override for selecting/interacting with
+        // host UI without leaking half a mouse event to the child process.
+        self.modifiers.state().shift_key() || !self.mouse_mode()
+    }
+
+    fn image_preview_candidate_at_pointer(
+        &self,
+    ) -> Option<crate::image_preview::PreviewCandidate> {
+        if !self.mouse.inside_text_area {
+            return None;
+        }
+
+        let point = self.mouse_position(self.display_offset());
+        let current = self.context_manager.current();
+        let mut cwd = current
+            .renderable_content
+            .current_directory
+            .clone()
+            .or_else(|| {
+                current
+                    .launch_descriptor
+                    .starting_directory()
+                    .map(Into::into)
+            });
+        let wsl_distro = current.renderable_content.shell_distro.clone().or_else(|| {
+            current
+                .launch_descriptor
+                .wsl_distro()
+                .map(ToOwned::to_owned)
+        });
+        let hinted = current
+            .renderable_content
+            .highlighted_hint
+            .as_ref()
+            .map(|hint| hint.text.clone());
+        let terminal = current.terminal.lock();
+        cwd = cwd.or_else(|| terminal.current_directory.clone());
+        if point.row >= terminal.grid.total_lines() as i32
+            || point.col.0 >= terminal.grid.columns()
+        {
+            return None;
+        }
+
+        let mut line = String::with_capacity(terminal.grid.columns());
+        let mut hovered_character = 0usize;
+        let mut character_index = 0usize;
+        for column in 0..terminal.grid.columns() {
+            if column == point.col.0 {
+                hovered_character = character_index;
+            }
+            let character = terminal.grid[point.row]
+                [rio_backend::crosswords::pos::Column(column)]
+            .c();
+            if character != '\0' {
+                line.push(character);
+                character_index += 1;
+            }
+        }
+        drop(terminal);
+
+        let text = hinted
+            .filter(|text| crate::image_preview::has_supported_extension(text))
+            .or_else(|| {
+                crate::image_preview::path_token_at_line(&line, hovered_character)
+            })?;
+        crate::image_preview::PreviewCandidate::new(text, cwd, wsl_distro)
+    }
+
+    /// Refresh plain-hover quick look without touching the filesystem on the
+    /// UI thread. Returns true when the overlay lifecycle changed.
+    pub fn update_image_preview_hover(&mut self) -> bool {
+        let candidate = if self.image_preview_pointer_allowed() {
+            self.image_preview_candidate_at_pointer()
+        } else {
+            None
+        };
+        let route_id = self.context_manager.current().route_id;
+        let changed = self.image_preview.arm_hover(
+            candidate,
+            route_id,
+            crate::image_preview::PreviewAnchor {
+                x: self.mouse.x as f32,
+                y: self.mouse.y as f32,
+            },
+            &mut self.sugarloaf,
+        );
+        if changed {
+            self.mark_dirty();
+        }
+        changed
+    }
+
+    /// Pin the image path currently under the pointer. A pinned preview owns
+    /// arrow-key browsing until Escape, typing, or an outside click dismisses
+    /// it. Returns false when the pointer is not over a safe image candidate.
+    pub fn activate_image_preview_at_pointer(&mut self) -> bool {
+        if !self.image_preview_pointer_allowed() {
+            return false;
+        }
+        let Some(candidate) = self.image_preview_candidate_at_pointer() else {
+            return false;
+        };
+        let route_id = self.context_manager.current().route_id;
+        self.image_preview.show_selection(
+            candidate,
+            route_id,
+            crate::image_preview::PreviewAnchor {
+                x: self.mouse.x as f32,
+                y: self.mouse.y as f32,
+            },
+            &mut self.sugarloaf,
+        );
+        self.mark_dirty();
+        self.context_manager.request_render();
+        true
+    }
+
+    #[inline]
+    pub fn image_preview_pointer_targeted(&self) -> bool {
+        self.image_preview.has_candidate()
+    }
+
+    pub fn dismiss_image_preview_hover(&mut self) -> bool {
+        let changed = self.image_preview.dismiss_hover(&mut self.sugarloaf);
+        if changed {
+            self.mark_dirty();
+        }
+        changed
+    }
+
+    fn visible_image_preview_candidates(
+        &self,
+    ) -> Vec<(
+        crate::image_preview::PreviewCandidate,
+        crate::image_preview::PreviewAnchor,
+    )> {
+        let current_grid = self.context_manager.current_grid();
+        let (current, margin) = current_grid.current_context_with_computed_dimension();
+        let mut cwd = current
+            .renderable_content
+            .current_directory
+            .clone()
+            .or_else(|| {
+                current
+                    .launch_descriptor
+                    .starting_directory()
+                    .map(Into::into)
+            });
+        let wsl_distro = current.renderable_content.shell_distro.clone().or_else(|| {
+            current
+                .launch_descriptor
+                .wsl_distro()
+                .map(ToOwned::to_owned)
+        });
+        let cell_width = current.dimension.cell.cell_width as f32;
+        let cell_height = current.dimension.cell.cell_height as f32;
+        let terminal = current.terminal.lock();
+        cwd = cwd.or_else(|| terminal.current_directory.clone());
+        let display_offset = terminal.grid.display_offset();
+        let visible_lines = terminal.grid.screen_lines();
+        let columns = terminal.grid.columns();
+        let mut candidates = Vec::new();
+
+        for visible_row in 0..visible_lines {
+            let line = Line(visible_row as i32 - display_offset as i32);
+            let text = (0..columns)
+                .map(|column| {
+                    let character = terminal.grid[line][Column(column)].c();
+                    if character == '\0' {
+                        ' '
+                    } else {
+                        character
+                    }
+                })
+                .collect::<String>();
+            for token in crate::image_preview::image_path_tokens_in_line(&text) {
+                let Some(candidate) = crate::image_preview::PreviewCandidate::new(
+                    token.text,
+                    cwd.clone(),
+                    wsl_distro.clone(),
+                ) else {
+                    continue;
+                };
+                candidates.push((
+                    candidate,
+                    crate::image_preview::PreviewAnchor {
+                        x: margin.left + (token.start as f32 + 0.5) * cell_width,
+                        y: margin.top + (visible_row as f32 + 0.5) * cell_height,
+                    },
+                ));
+            }
+        }
+        candidates
+    }
+
+    fn navigate_image_preview(&mut self, direction: isize) -> bool {
+        if !self.image_preview.is_pinned() {
+            return false;
+        }
+        let candidates = self.visible_image_preview_candidates();
+        if candidates.is_empty() {
+            return true;
+        }
+        let current = self.image_preview.current_candidate().cloned();
+        let current_index = current.as_ref().and_then(|candidate| {
+            candidates.iter().position(|item| &item.0 == candidate)
+        });
+        let index = adjacent_preview_index(candidates.len(), current_index, direction);
+        let (candidate, anchor) = candidates[index].clone();
+        let route_id = self.context_manager.current().route_id;
+        self.image_preview.show_selection(
+            candidate,
+            route_id,
+            anchor,
+            &mut self.sugarloaf,
+        );
+        self.mark_dirty();
+        self.context_manager.request_render();
+        true
+    }
+
+    fn handle_image_preview_key(&mut self, key: &rio_window::event::KeyEvent) -> bool {
+        if key.state != ElementState::Pressed {
+            return false;
+        }
+        if key.logical_key == Key::Named(NamedKey::Escape)
+            && self.image_preview.has_candidate()
+        {
+            let _ = self.dismiss_image_preview();
+            return true;
+        }
+        if self.modifiers.state() != ModifiersState::empty()
+            || !self.image_preview.is_pinned()
+        {
+            return false;
+        }
+        match key.logical_key {
+            Key::Named(NamedKey::ArrowDown) | Key::Named(NamedKey::ArrowRight) => {
+                self.navigate_image_preview(1)
+            }
+            Key::Named(NamedKey::ArrowUp) | Key::Named(NamedKey::ArrowLeft) => {
+                self.navigate_image_preview(-1)
+            }
+            _ => false,
+        }
+    }
+
+    pub fn preview_selected_image(&mut self) {
+        let (selection, cwd, wsl_distro, route_id) = {
+            let current = self.context_manager.current();
+            let terminal = current.terminal.lock();
+            let selection = terminal.selection_to_string();
+            let cwd = current
+                .renderable_content
+                .current_directory
+                .clone()
+                .or_else(|| terminal.current_directory.clone())
+                .or_else(|| {
+                    current
+                        .launch_descriptor
+                        .starting_directory()
+                        .map(Into::into)
+                });
+            let wsl_distro =
+                current.renderable_content.shell_distro.clone().or_else(|| {
+                    current
+                        .launch_descriptor
+                        .wsl_distro()
+                        .map(ToOwned::to_owned)
+                });
+            (selection, cwd, wsl_distro, current.route_id)
+        };
+        let candidate = selection
+            .and_then(|text| {
+                crate::image_preview::PreviewCandidate::new(text, cwd, wsl_distro)
+            })
+            .or_else(|| self.image_preview_candidate_at_pointer());
+        let Some(candidate) = candidate else {
+            let _ = self.dismiss_image_preview();
+            return;
+        };
+        self.image_preview.show_selection(
+            candidate,
+            route_id,
+            crate::image_preview::PreviewAnchor {
+                x: self.mouse.x as f32,
+                y: self.mouse.y as f32,
+            },
+            &mut self.sugarloaf,
+        );
+        self.mark_dirty();
+        self.context_manager.request_render();
+    }
+
+    pub fn dismiss_image_preview(&mut self) -> bool {
+        let changed = self.image_preview.dismiss(&mut self.sugarloaf);
+        if changed {
+            self.mark_dirty();
+        }
+        changed
+    }
+    #[inline]
     pub fn search_active(&self) -> bool {
         self.search_state.history_index.is_some()
     }
@@ -414,6 +1084,7 @@ impl Screen<'_> {
             .select_current_based_on_mouse(&self.mouse)
         {
             self.context_manager.select_route_from_current_grid();
+            self.resize_top_or_bottom_line();
             // The focusing click never reaches on_left_click, so a
             // selection left behind in the target panel would
             // drag-extend from its stale anchor; drop it on switch.
@@ -454,13 +1125,11 @@ impl Screen<'_> {
         font_library: &rio_backend::sugarloaf::font::FontLibrary,
         should_update_font_library: bool,
     ) {
-        let num_tabs = self.ctx().len();
         let window_size = self.sugarloaf.window_size();
         let scale = self.sugarloaf.scale_factor();
         let padding_y_top = padding_top_from_config(
             &config.navigation,
             config.margin.top,
-            num_tabs,
             config.window.macos_use_unified_titlebar,
             window_size.width,
             window_size.height,
@@ -599,8 +1268,9 @@ impl Screen<'_> {
         {
             self.clear_selection();
         }
+        self.renderer.trail_cursor.snap_after_geometry_change();
         self.sugarloaf.resize(new_size.width, new_size.height);
-        self.resize_top_or_bottom_line(self.context_manager.len());
+        self.resize_top_or_bottom_line();
         let width = new_size.width as f32;
         let height = new_size.height as f32;
 
@@ -634,6 +1304,7 @@ impl Screen<'_> {
         new_scale: f32,
         new_size: rio_window::dpi::PhysicalSize<u32>,
     ) -> &mut Self {
+        self.renderer.trail_cursor.snap_after_geometry_change();
         self.sugarloaf.rescale(new_scale);
         self.sugarloaf.resize(new_size.width, new_size.height);
 
@@ -673,7 +1344,7 @@ impl Screen<'_> {
         // Density can change independently of DPI. Recompute the logical top
         // reservation from the new viewport instead of preserving a stale
         // regular-height margin on a compact display.
-        self.resize_top_or_bottom_line(self.context_manager.len());
+        self.resize_top_or_bottom_line();
 
         let width = new_size.width as f32;
         let height = new_size.height as f32;
@@ -740,6 +1411,12 @@ impl Screen<'_> {
         key: &rio_window::event::KeyEvent,
         clipboard: &mut Clipboard,
     ) {
+        if self.handle_image_preview_key(key) {
+            return;
+        }
+        if key.state == ElementState::Pressed {
+            let _ = self.dismiss_image_preview();
+        }
         if self.context_manager.current().ime.preedit().is_some() {
             return;
         }
@@ -748,6 +1425,29 @@ impl Screen<'_> {
         let mods = self.modifiers.state();
 
         if key.state == ElementState::Released {
+            if !self.search_active()
+                && !self.hint_state.is_active()
+                && should_copy_selection_on_ctrl_c(
+                    &key.logical_key,
+                    mods,
+                    self.has_nonempty_selection(),
+                )
+            {
+                return;
+            }
+
+            #[cfg(windows)]
+            if mode.contains(Mode::WIN32_INPUT)
+                && !mode.contains(Mode::VI)
+                && !self.search_active()
+                && !self.hint_state.is_active()
+            {
+                if let Some(bytes) = build_win32_key_sequence(key) {
+                    self.ctx_mut().current_mut().messenger.send_write(bytes);
+                }
+                return;
+            }
+
             if !mode.contains(Mode::REPORT_EVENT_TYPES)
                 || mode.contains(Mode::VI)
                 || self.search_active()
@@ -832,6 +1532,17 @@ impl Screen<'_> {
             return;
         }
 
+        if !self.search_active()
+            && should_copy_selection_on_ctrl_c(
+                &key.logical_key,
+                mods,
+                self.has_nonempty_selection(),
+            )
+        {
+            self.copy_selection(ClipboardType::Clipboard, clipboard);
+            return;
+        }
+
         let text = key.text_with_all_modifiers().unwrap_or_default();
 
         if self.search_active() {
@@ -845,6 +1556,16 @@ impl Screen<'_> {
 
         // Vi mode on its own doesn't have any input, the search input was done before.
         if mode.contains(Mode::VI) {
+            return;
+        }
+
+        #[cfg(windows)]
+        if mode.contains(Mode::WIN32_INPUT) {
+            if let Some(bytes) = build_win32_key_sequence(key) {
+                self.scroll_bottom_when_cursor_not_visible();
+                self.clear_selection();
+                self.ctx_mut().current_mut().messenger.send_write(bytes);
+            }
             return;
         }
 
@@ -952,11 +1673,30 @@ impl Screen<'_> {
                 binding.mods |= ModifiersState::SHIFT;
             }
 
-            if binding.is_triggered_by(binding_mode.to_owned(), mods, &button)
-                && binding.action == Act::PasteSelection
-            {
-                let content = clipboard.get(ClipboardType::Selection);
-                self.paste(&content, true);
+            if binding.is_triggered_by(binding_mode.to_owned(), mods, &button) {
+                match binding.action {
+                    Act::PasteSelection => {
+                        let content = clipboard.get(ClipboardType::Selection);
+                        self.paste(&content, true);
+                    }
+                    Act::Paste if button == MouseButton::Right => {
+                        match secondary_click_clipboard_action(
+                            self.has_nonempty_selection(),
+                        ) {
+                            SecondaryClickClipboardAction::CopySelectionAndClear => {
+                                self.copy_selection(ClipboardType::Clipboard, clipboard);
+                                self.clear_selection();
+                            }
+                            SecondaryClickClipboardAction::PasteClipboard => {
+                                let content = clipboard.get(ClipboardType::Clipboard);
+                                if !content.is_empty() {
+                                    self.paste(&content, true);
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
     }
@@ -980,19 +1720,23 @@ impl Screen<'_> {
             // We don't want the key without modifier, because it means something else most of
             // the time. However what we want is to manually lowercase the character to account
             // for both small and capital letters on regular characters at the same time.
-            let logical_key = if let Key::Character(ch) = key.logical_key.as_ref() {
+            let logical_key = if cfg!(windows) && mods.control_key() && mods.alt_key() {
+                // Windows may expose Ctrl+Alt as AltGr and mangle the logical
+                // key into an unidentified/composed value. Normalize before
+                // character classification so Ctrl+Alt shell-control
+                // passthroughs and other application shortcuts remain
+                // reachable.
+                match key.key_without_modifiers() {
+                    Key::Character(character) => {
+                        Key::Character(character.to_lowercase().into())
+                    }
+                    key => key,
+                }
+            } else if let Key::Character(ch) = key.logical_key.as_ref() {
                 // Match `Alt` bindings without `Alt` being applied, otherwise they use the
                 // composed chars, which are not intuitive to bind.
                 //
-                // On Windows, the `Ctrl + Alt` mangles `logical_key` to unidentified values, thus
-                // preventing them from being used in bindings
-                //
-                // For more see https://github.com/rust-windowing/winit/issues/2945.
-                // if (cfg!(target_os = "macos") || (cfg!(windows) && mods.control_key()))
-                // && mods.alt_key()
-                if (mods.shift_key() || mods.alt_key())
-                    || mods.alt_key() && (cfg!(windows) && mods.control_key())
-                {
+                if mods.shift_key() || mods.alt_key() {
                     key.key_without_modifiers()
                 } else {
                     Key::Character(ch.to_lowercase().into())
@@ -1039,40 +1783,40 @@ impl Screen<'_> {
                     }
                     Act::SearchForward => {
                         self.start_search(Direction::Right);
-                        self.resize_top_or_bottom_line(self.ctx().len());
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::SearchBackward => {
                         self.start_search(Direction::Left);
-                        self.resize_top_or_bottom_line(self.ctx().len());
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::Search(SearchAction::SearchConfirm) => {
                         self.confirm_search(clipboard);
-                        self.resize_top_or_bottom_line(self.ctx().len());
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::Search(SearchAction::SearchCancel) => {
                         self.cancel_search(clipboard);
-                        self.resize_top_or_bottom_line(self.ctx().len());
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::Search(SearchAction::SearchClear) => {
                         let direction = self.search_state.direction;
                         self.cancel_search(clipboard);
                         self.start_search(direction);
-                        self.resize_top_or_bottom_line(self.ctx().len());
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::Search(SearchAction::SearchFocusNext) => {
                         self.advance_search_origin(self.search_state.direction);
-                        self.resize_top_or_bottom_line(self.ctx().len());
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::Search(SearchAction::SearchFocusPrevious) => {
                         let direction = self.search_state.direction.opposite();
                         self.advance_search_origin(direction);
-                        self.resize_top_or_bottom_line(self.ctx().len());
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::Search(SearchAction::SearchDeleteWord) => {
@@ -1207,6 +1951,12 @@ impl Screen<'_> {
                     Act::SplitDown => {
                         self.split_down();
                     }
+                    Act::CloneSplitRight => {
+                        self.clone_split_right();
+                    }
+                    Act::CloneSplitDown => {
+                        self.clone_split_down();
+                    }
                     Act::MoveDividerUp => {
                         // User wants divider to move up visually, which means expanding the bottom split
                         self.move_divider_down();
@@ -1223,9 +1973,16 @@ impl Screen<'_> {
                     }
                     Act::ConfigEditor => {
                         self.context_manager.switch_to_settings();
+                        self.resize_top_or_bottom_line();
                     }
                     Act::WindowCreateNew => {
                         self.context_manager.create_new_window();
+                    }
+                    Act::WindowClose => {
+                        self.context_manager.close_window();
+                    }
+                    Act::ReloadConfig => {
+                        self.context_manager.reload_config();
                     }
                     Act::ToggleQuake => {
                         self.context_manager.toggle_quake();
@@ -1235,6 +1992,9 @@ impl Screen<'_> {
                     }
                     Act::TabCreateNew => {
                         self.create_tab(clipboard);
+                    }
+                    Act::LocalTabCreateNew => {
+                        self.create_local_tab(clipboard);
                     }
                     Act::TabCloseCurrent => {
                         self.close_tab(clipboard);
@@ -1249,7 +2009,7 @@ impl Screen<'_> {
                         if let Some(ref mut island) = self.renderer.island {
                             island.dismiss_color_picker();
                         }
-                        self.resize_top_or_bottom_line(1);
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::Quit => {
@@ -1385,9 +2145,19 @@ impl Screen<'_> {
                         drop(terminal);
                         self.mark_dirty();
                     }
+                    Act::ClearScreen => {
+                        let mut terminal =
+                            self.context_manager.current_mut().terminal.lock();
+                        terminal.clear_screen_and_history();
+                        drop(terminal);
+                        self.mark_dirty();
+                    }
                     Act::ToggleFullscreen => self.context_manager.toggle_full_screen(),
                     Act::ToggleAppearanceTheme => {
                         self.context_manager.toggle_appearance_theme();
+                    }
+                    Act::PreviewSelectedImage => {
+                        self.preview_selected_image();
                     }
                     Act::OpenCommandPalette => {
                         // One-way "open": the action never closes an
@@ -1414,12 +2184,32 @@ impl Screen<'_> {
                     Act::SelectNextSplit => {
                         self.cancel_search(clipboard);
                         self.context_manager.select_next_split();
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::SelectPrevSplit => {
                         self.cancel_search(clipboard);
                         self.context_manager.select_prev_split();
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
+                    }
+                    Act::SelectPaneLeft
+                    | Act::SelectPaneRight
+                    | Act::SelectPaneUp
+                    | Act::SelectPaneDown => {
+                        self.cancel_search(clipboard);
+                        self.clear_selection();
+                        let direction = match &action {
+                            Act::SelectPaneLeft => crate::layout::PaneDirection::Left,
+                            Act::SelectPaneRight => crate::layout::PaneDirection::Right,
+                            Act::SelectPaneUp => crate::layout::PaneDirection::Up,
+                            Act::SelectPaneDown => crate::layout::PaneDirection::Down,
+                            _ => unreachable!(),
+                        };
+                        if self.context_manager.select_split_direction(direction) {
+                            self.resize_top_or_bottom_line();
+                            self.mark_dirty();
+                        }
                     }
                     Act::SelectNextSplitOrTab => {
                         self.cancel_search(clipboard);
@@ -1432,6 +2222,7 @@ impl Screen<'_> {
                             old_index,
                             new_index,
                         );
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::SelectPrevSplitOrTab => {
@@ -1445,6 +2236,7 @@ impl Screen<'_> {
                             old_index,
                             new_index,
                         );
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::SelectTab(tab_index) => {
@@ -1456,6 +2248,7 @@ impl Screen<'_> {
                             old_index,
                             new_index,
                         );
+                        self.resize_top_or_bottom_line();
                         self.cancel_search(clipboard);
                         self.mark_dirty();
                     }
@@ -1469,6 +2262,7 @@ impl Screen<'_> {
                             old_index,
                             new_index,
                         );
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::SelectNextTab => {
@@ -1482,7 +2276,30 @@ impl Screen<'_> {
                             old_index,
                             new_index,
                         );
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
+                    }
+                    Act::SelectNextLocalTab => {
+                        self.cancel_search(clipboard);
+                        self.clear_selection();
+                        if self
+                            .context_manager
+                            .select_next_local_tab(&mut self.sugarloaf)
+                        {
+                            self.resize_top_or_bottom_line();
+                            self.mark_dirty();
+                        }
+                    }
+                    Act::SelectPrevLocalTab => {
+                        self.cancel_search(clipboard);
+                        self.clear_selection();
+                        if self
+                            .context_manager
+                            .select_prev_local_tab(&mut self.sugarloaf)
+                        {
+                            self.resize_top_or_bottom_line();
+                            self.mark_dirty();
+                        }
                     }
                     Act::MoveCurrentTabToPrev => {
                         self.cancel_search(clipboard);
@@ -1531,6 +2348,7 @@ impl Screen<'_> {
                             old_index,
                             new_index,
                         );
+                        self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
                     Act::ReceiveChar | Act::None => (),
@@ -1545,8 +2363,6 @@ impl Screen<'_> {
     pub fn split_right_with_config(&mut self, config: rio_backend::config::Config) {
         // Allocate panel id; position lands on `ContextDimension`
         // through the Taffy layout pass (`apply_taffy_layout`).
-        let _ = self.renderer.margin.top
-            + self.renderer.island.as_ref().map_or(0.0, |i| i.height());
         let _ = config.margin.left;
         let rich_text_id = next_rich_text_id();
         self.context_manager.split_from_config(
@@ -1556,6 +2372,7 @@ impl Screen<'_> {
             &mut self.sugarloaf,
         );
 
+        self.resize_top_or_bottom_line();
         self.mark_dirty();
     }
 
@@ -1564,6 +2381,7 @@ impl Screen<'_> {
         self.context_manager
             .split(rich_text_id, false, &mut self.sugarloaf);
 
+        self.resize_top_or_bottom_line();
         self.mark_dirty();
     }
 
@@ -1572,7 +2390,30 @@ impl Screen<'_> {
         self.context_manager
             .split(rich_text_id, true, &mut self.sugarloaf);
 
+        self.resize_top_or_bottom_line();
         self.mark_dirty();
+    }
+
+    pub fn clone_split_right(&mut self) {
+        let rich_text_id = next_rich_text_id();
+        if self
+            .context_manager
+            .clone_split(rich_text_id, false, &mut self.sugarloaf)
+        {
+            self.resize_top_or_bottom_line();
+            self.mark_dirty();
+        }
+    }
+
+    pub fn clone_split_down(&mut self) {
+        let rich_text_id = next_rich_text_id();
+        if self
+            .context_manager
+            .clone_split(rich_text_id, true, &mut self.sugarloaf)
+        {
+            self.resize_top_or_bottom_line();
+            self.mark_dirty();
+        }
     }
 
     pub fn move_divider_up(&mut self) {
@@ -1616,13 +2457,22 @@ impl Screen<'_> {
     }
 
     pub fn create_tab(&mut self, clipboard: &mut Clipboard) {
+        if !self.create_tab_context() {
+            return;
+        }
+        self.cancel_search(clipboard);
+        self.mark_dirty();
+    }
+
+    /// Create and select a top-level tab whose first layout generation already
+    /// matches the current window viewport.
+    fn create_tab_context(&mut self) -> bool {
         let redirect = true;
 
         // We resize the current tab ahead to prepare the
         // dimensions to be copied to next tab.
-        let num_tabs = self.ctx().len();
         let old_index = self.context_manager.current_index();
-        self.resize_top_or_bottom_line(num_tabs + 1);
+        self.resize_top_or_bottom_line();
 
         // Update the old tab's rich text positions to reflect the new margin
         // (on Linux/Windows when hide_if_single transitions from hidden to visible)
@@ -1633,33 +2483,88 @@ impl Screen<'_> {
         // Allocate panel id; the layout pass handles positioning via
         // `ContextDimension` once the new tab's grid is built.
         let _ = self.context_manager.current_grid().scaled_margin.left;
-        let _ = self.renderer.margin.top
-            + self.renderer.island.as_ref().map_or(0.0, |i| i.height());
         let rich_text_id = next_rich_text_id();
+        let previous_len = self.context_manager.len();
         self.context_manager.add_context(redirect, rich_text_id);
+        if self.context_manager.len() == previous_len {
+            return false;
+        }
         let new_index = self.context_manager.current_index();
         self.context_manager.switch_context_visibility(
             &mut self.sugarloaf,
             old_index,
             new_index,
         );
+        // Reconcile global header margins for the new workspace tab. Pane
+        // rails are reserved independently inside their owning panes.
+        self.resize_top_or_bottom_line();
+        true
+    }
 
-        self.cancel_search(clipboard);
-        self.mark_dirty();
+    fn relayout_current_grid(&mut self) {
+        let current_dim = self.context_manager.current().dimension;
+        if current_dim.font_size <= 0.0 {
+            return;
+        }
+        let style = self.sugarloaf.style_mut();
+        style.font_size = current_dim.font_size;
+        style.line_height = current_dim.line_height;
+        self.context_manager
+            .current_grid_mut()
+            .update_dimensions(&mut self.sugarloaf);
+    }
+
+    pub fn create_local_tab(&mut self, clipboard: &mut Clipboard) {
+        let rich_text_id = next_rich_text_id();
+        if self
+            .context_manager
+            .clone_local_tab(rich_text_id, &mut self.sugarloaf)
+        {
+            self.relayout_current_grid();
+            self.clear_selection();
+            self.cancel_search(clipboard);
+            self.mark_dirty();
+        }
     }
 
     pub fn close_split_or_tab(&mut self, clipboard: &mut Clipboard) {
-        if self.context_manager.current_grid_len() > 1 {
+        if self
+            .context_manager
+            .close_current_local_tab(&mut self.sugarloaf)
+        {
+            self.relayout_current_grid();
+            self.clear_selection();
+            self.cancel_search(clipboard);
+            self.mark_dirty();
+        } else if self.context_manager.current_grid_len() > 1 {
             self.clear_selection();
             self.context_manager
                 .remove_current_grid(&mut self.sugarloaf);
+            self.resize_top_or_bottom_line();
             self.mark_dirty();
         } else {
-            self.close_tab(clipboard);
+            self.close_window_tab(clipboard);
         }
     }
 
     pub fn close_tab(&mut self, clipboard: &mut Clipboard) {
+        if self
+            .context_manager
+            .close_current_local_tab(&mut self.sugarloaf)
+        {
+            self.relayout_current_grid();
+            self.clear_selection();
+            self.cancel_search(clipboard);
+            self.mark_dirty();
+            return;
+        }
+        self.close_window_tab(clipboard);
+    }
+
+    /// Close a top-level tab in the current OS window. This is intentionally
+    /// separate from pane-local tab closure so chrome hit-testing can never
+    /// close the wrong scope.
+    pub fn close_window_tab(&mut self, clipboard: &mut Clipboard) {
         self.clear_selection();
         self.context_manager
             .close_current_context(&mut self.sugarloaf);
@@ -1673,7 +2578,7 @@ impl Screen<'_> {
             // (on Linux/Windows when hide_if_single transitions to hidden)
             #[cfg(not(target_os = "macos"))]
             {
-                self.resize_top_or_bottom_line(1);
+                self.resize_top_or_bottom_line();
                 self.context_manager
                     .current_grid_mut()
                     .update_dimensions(&mut self.sugarloaf);
@@ -1681,16 +2586,14 @@ impl Screen<'_> {
             }
             return;
         }
-        let num_tabs = self.ctx().len();
-        self.resize_top_or_bottom_line(num_tabs);
+        self.resize_top_or_bottom_line();
         self.mark_dirty();
     }
 
-    pub fn resize_top_or_bottom_line(&mut self, num_tabs: usize) {
+    pub fn resize_top_or_bottom_line(&mut self) {
         let padding_y_top = padding_top_from_config(
             &self.renderer.navigation,
             self.renderer.margin.top,
-            num_tabs,
             self.renderer.macos_use_unified_titlebar,
             self.sugarloaf.window_size().width,
             self.sugarloaf.window_size().height,
@@ -2000,17 +2903,7 @@ impl Screen<'_> {
             .is_some();
 
         if !should_highlight {
-            let current = self.context_manager.current_mut();
-
-            // Clear any previous hint damage
-            if current.renderable_content.highlighted_hint.is_some() {
-                let mut terminal = current.terminal.lock();
-                let display_offset = terminal.display_offset();
-                terminal.update_selection_damage(None, display_offset);
-            }
-
-            current.renderable_content.highlighted_hint = None;
-            return had_highlight;
+            return self.clear_highlighted_hint();
         }
 
         let terminal = self.context_manager.current().terminal.lock();
@@ -2068,6 +2961,49 @@ impl Screen<'_> {
             current.renderable_content.highlighted_hint = None;
             had_highlight
         }
+    }
+
+    pub fn highlighted_hint(&self) -> Option<&crate::hints::HintMatch> {
+        self.context_manager
+            .current()
+            .renderable_content
+            .highlighted_hint
+            .as_ref()
+    }
+
+    /// Clear a hover highlight and explicitly damage its row so actions
+    /// such as Copy, which do not steal focus, repaint immediately.
+    pub fn clear_highlighted_hint(&mut self) -> bool {
+        let current = self.context_manager.current_mut();
+        let had_highlight = current.renderable_content.highlighted_hint.is_some();
+        if had_highlight {
+            let mut terminal = current.terminal.lock();
+            let display_offset = terminal.display_offset();
+            terminal.update_selection_damage(None, display_offset);
+            current
+                .renderable_content
+                .pending_update
+                .set_terminal_damage(rio_backend::event::TerminalDamage::Full);
+        }
+        current.renderable_content.highlighted_hint = None;
+        had_highlight
+    }
+
+    pub fn latched_hint_still_highlighted(
+        &self,
+        latched: &crate::hints::HintMatch,
+    ) -> bool {
+        self.highlighted_hint()
+            .is_some_and(|current| current.same_visible_match(latched))
+    }
+
+    pub fn open_latched_hint(
+        &mut self,
+        latched: crate::hints::HintMatch,
+        clipboard: &mut Clipboard,
+    ) {
+        self.clear_highlighted_hint();
+        self.execute_hint_action(&latched, clipboard);
     }
 
     /// Check if current modifiers match the required modifiers
@@ -2283,65 +3219,6 @@ impl Screen<'_> {
         None
     }
 
-    #[inline]
-    pub fn trigger_hyperlink(&self) -> bool {
-        // Check if any hyperlink hint configuration has the required modifiers active
-        let mut is_hyperlink_key_active = false;
-        for hint_config in &self.hints_config {
-            if hint_config.hyperlinks && self.modifiers_match(&hint_config.mouse.mods) {
-                is_hyperlink_key_active = true;
-                break;
-            }
-        }
-
-        if !is_hyperlink_key_active
-            || !self.context_manager.current().has_hyperlink_range()
-        {
-            return false;
-        }
-
-        // Look up the cell under the mouse and dispatch open_hyperlink
-        // if it carries an OSC 8 link.
-        let terminal = self.context_manager.current().terminal.lock();
-        let display_offset = terminal.display_offset();
-        let pos = self.mouse_position(display_offset);
-        let pos_hyperlink = terminal.cell_hyperlink(pos.row, pos.col);
-        drop(terminal);
-
-        if let Some(hyperlink) = pos_hyperlink {
-            self.open_hyperlink(hyperlink);
-            return true;
-        }
-
-        false
-    }
-
-    /// Trigger hint action at mouse position
-    #[inline]
-    pub fn trigger_hint(&mut self, clipboard: &mut Clipboard) -> bool {
-        // Take the highlighted hint
-        let hint_match = self
-            .context_manager
-            .current_mut()
-            .renderable_content
-            .highlighted_hint
-            .take();
-
-        if let Some(hint_match) = hint_match {
-            self.execute_hint_action(&hint_match, clipboard);
-            true
-        } else {
-            false
-        }
-    }
-
-    fn open_hyperlink(&self, hyperlink: Hyperlink) {
-        // Apply post-processing to remove trailing delimiters and handle uneven brackets
-        let processed_uri = post_process_hyperlink_uri(hyperlink.uri());
-
-        self.open_with_default_handler(&processed_uri);
-    }
-
     /// Hand `target` to the platform's default handler.
     ///
     /// `target` comes from terminal output, so it is attacker-controlled and
@@ -2471,6 +3348,14 @@ impl Screen<'_> {
     }
 
     #[inline]
+    fn has_nonempty_selection(&self) -> bool {
+        let terminal = self.context_manager.current().terminal.lock();
+        terminal
+            .selection_to_string()
+            .is_some_and(|text| !text.is_empty())
+    }
+
+    #[inline]
     pub fn selection_is_empty(&self) -> bool {
         self.context_manager
             .current()
@@ -2554,7 +3439,7 @@ impl Screen<'_> {
                     }
                     SearchOverlayAction::Close => {
                         self.cancel_search(clipboard);
-                        self.resize_top_or_bottom_line(self.ctx().len());
+                        self.resize_top_or_bottom_line();
                     }
                 }
                 self.mark_dirty();
@@ -2643,7 +3528,11 @@ impl Screen<'_> {
             None => return false,
         };
 
-        let panel_rect = item.layout_rect;
+        let panel_rect = crate::layout::pane_terminal_rect(
+            item.layout_rect,
+            scale_factor,
+            item.tab_count(),
+        );
         let rich_text_id = item.context().rich_text_id;
 
         let terminal = item.context().terminal.lock();
@@ -2724,7 +3613,11 @@ impl Screen<'_> {
             None => return false,
         };
 
-        let panel_rect = item.layout_rect;
+        let panel_rect = crate::layout::pane_terminal_rect(
+            item.layout_rect,
+            scale_factor,
+            item.tab_count(),
+        );
 
         let terminal = item.context().terminal.lock();
         let display_offset = terminal.display_offset();
@@ -2755,8 +3648,10 @@ impl Screen<'_> {
             .as_ref()
             .map(|island| island.max_tab_width)
             .unwrap_or_else(rio_backend::config::navigation::default_max_tab_width);
-        island::tab_strip_layout(
-            self.sugarloaf.window_size().width,
+        let window_size = self.sugarloaf.window_size();
+        island::tab_strip_layout_for_viewport(
+            window_size.width,
+            window_size.height,
             self.sugarloaf.scale_factor(),
             num_tabs,
             max_tab_width,
@@ -2852,21 +3747,67 @@ impl Screen<'_> {
         self.apply_close_hover(false)
     }
 
+    fn local_tab_action_at_pointer(
+        &self,
+        mouse_x: f32,
+        mouse_y: f32,
+    ) -> Option<LocalTabAction> {
+        let scale = self.sugarloaf.scale_factor();
+        let grid = self.context_manager.current_grid();
+        let key = grid.find_context_at_position(mouse_x, mouse_y)?;
+        let item = grid.contexts().get(&key)?;
+        self.renderer.island.as_ref()?.local_tab_action_at(
+            item.layout_rect,
+            [grid.scaled_margin.left, grid.scaled_margin.top],
+            scale,
+            item.tab_count(),
+            mouse_x,
+            mouse_y,
+        )
+    }
+
+    pub fn is_hovering_local_tab_rail(&self, mouse_x: f64, mouse_y: f64) -> bool {
+        let scale = self.sugarloaf.scale_factor();
+        let grid = self.context_manager.current_grid();
+        let Some(key) = grid.find_context_at_position(mouse_x as f32, mouse_y as f32)
+        else {
+            return false;
+        };
+        let Some(item) = grid.contexts().get(&key) else {
+            return false;
+        };
+        self.renderer.island.as_ref().is_some_and(|island| {
+            island.local_tab_rail_contains(
+                item.layout_rect,
+                [grid.scaled_margin.left, grid.scaled_margin.top],
+                scale,
+                item.tab_count(),
+                mouse_x as f32,
+                mouse_y as f32,
+            )
+        })
+    }
+
     pub fn update_chrome_action_hover(&mut self, mouse_x: f64, mouse_y: f64) -> bool {
         let scale_factor = self.sugarloaf.scale_factor();
         let window_size = self.sugarloaf.window_size();
         let window_width = window_size.width;
         let num_tabs = self.context_manager.len();
-        let action = self.renderer.island.as_ref().and_then(|island| {
-            island.chrome_action_at(
-                window_width,
-                window_size.height,
-                scale_factor,
-                num_tabs,
-                mouse_x as f32 / scale_factor,
-                mouse_y as f32 / scale_factor,
-            )
-        });
+        let over_local_rail = self.is_hovering_local_tab_rail(mouse_x, mouse_y);
+        let action = if over_local_rail {
+            None
+        } else {
+            self.renderer.island.as_ref().and_then(|island| {
+                island.chrome_action_at(
+                    window_width,
+                    window_size.height,
+                    scale_factor,
+                    num_tabs,
+                    mouse_x as f32 / scale_factor,
+                    mouse_y as f32 / scale_factor,
+                )
+            })
+        };
         let changed = self
             .renderer
             .island
@@ -2888,6 +3829,40 @@ impl Screen<'_> {
             self.mark_dirty();
         }
         changed
+    }
+
+    #[inline]
+    pub fn is_hovering_session_footer(&self, mouse_x: f64, mouse_y: f64) -> bool {
+        let scale = self.sugarloaf.scale_factor().max(f32::EPSILON);
+        session_footer::hit_test(
+            &self.context_manager,
+            mouse_x as f32 / scale,
+            mouse_y as f32 / scale,
+            scale,
+        )
+        .is_some()
+    }
+
+    /// A footer is passive session status. Clicking it only focuses its pane
+    /// and never triggers search, scrolling, or another terminal command.
+    pub fn handle_session_footer_click(&mut self) -> bool {
+        let scale = self.sugarloaf.scale_factor().max(f32::EPSILON);
+        let Some(hit) = session_footer::hit_test(
+            &self.context_manager,
+            self.mouse.x as f32 / scale,
+            self.mouse.y as f32 / scale,
+            scale,
+        ) else {
+            return false;
+        };
+
+        if self.context_manager.current_route() != hit.route_id {
+            let _ = self.select_current_based_on_mouse();
+            self.context_manager.select_route_from_current_grid();
+        }
+
+        self.mark_dirty();
+        true
     }
 
     pub fn handle_island_click(
@@ -2912,18 +3887,55 @@ impl Screen<'_> {
         let window_width = window_size.width;
         let num_tabs = self.context_manager.len();
         let island_visible = self.renderer.navigation.island_visible(num_tabs);
+        let over_local_rail = self.is_hovering_local_tab_rail(mouse_x, mouse_y);
 
         if !is_right_click {
-            let action = self.renderer.island.as_ref().and_then(|island| {
-                island.chrome_action_at(
-                    window_width,
-                    window_size.height,
-                    scale_factor,
-                    num_tabs,
-                    mouse_x as f32 / scale_factor,
-                    mouse_y as f32 / scale_factor,
-                )
-            });
+            let local_action =
+                self.local_tab_action_at_pointer(mouse_x as f32, mouse_y as f32);
+            if let Some(action) = local_action {
+                // The action belongs to the pane under the pointer, not
+                // necessarily the pane that was selected before this click.
+                let _ = self.select_current_based_on_mouse();
+                let changed = match action {
+                    LocalTabAction::Select(index) => self
+                        .context_manager
+                        .select_local_tab(index, &mut self.sugarloaf),
+                    LocalTabAction::Close(index) => {
+                        let changed = self
+                            .context_manager
+                            .close_local_tab(index, &mut self.sugarloaf);
+                        if changed {
+                            self.relayout_current_grid();
+                        }
+                        changed
+                    }
+                    LocalTabAction::New => {
+                        self.create_local_tab(clipboard);
+                        true
+                    }
+                };
+                if changed {
+                    self.clear_selection();
+                    self.cancel_search(clipboard);
+                    self.mark_dirty();
+                }
+                return true;
+            }
+            let logical_y = mouse_y as f32 / scale_factor;
+            let action = (!over_local_rail)
+                .then(|| {
+                    self.renderer.island.as_ref().and_then(|island| {
+                        island.chrome_action_at(
+                            window_width,
+                            window_size.height,
+                            scale_factor,
+                            num_tabs,
+                            mouse_x as f32 / scale_factor,
+                            logical_y,
+                        )
+                    })
+                })
+                .flatten();
             if let Some(action) = action {
                 match action {
                     ChromeAction::NewTab => self.create_tab(clipboard),
@@ -2934,11 +3946,17 @@ impl Screen<'_> {
                     ChromeAction::Maximize => {
                         window.set_maximized(!window.is_maximized())
                     }
-                    ChromeAction::CloseWindow => self.context_manager.quit(),
+                    ChromeAction::CloseWindow => self.context_manager.close_window(),
                 }
                 self.mark_dirty();
                 return true;
             }
+        }
+
+        // Empty space inside a pane tab rail is pane chrome, never terminal
+        // input or a window-drag target.
+        if over_local_rail {
+            return true;
         }
 
         if let Some(ref mut island) = self.renderer.island {
@@ -3064,7 +4082,7 @@ impl Screen<'_> {
         {
             self.stop_hint_mode_if_active();
             self.last_close_press = Some((std::time::Instant::now(), mouse_x_unscaled));
-            self.close_tab(clipboard);
+            self.close_window_tab(clipboard);
             return true;
         }
 
@@ -3080,6 +4098,7 @@ impl Screen<'_> {
                 old_index,
                 new_index,
             );
+            self.resize_top_or_bottom_line();
 
             self.mark_dirty();
         }
@@ -3773,6 +4792,7 @@ impl Screen<'_> {
         use crate::renderer::command_palette::PaletteAction;
         match action {
             PaletteAction::TabCreate => self.create_tab(clipboard),
+            PaletteAction::LocalTabCreate => self.create_local_tab(clipboard),
             PaletteAction::TabClose => self.close_tab(clipboard),
             PaletteAction::TabCloseUnfocused => {
                 if self.ctx().len() > 1 {
@@ -3780,7 +4800,7 @@ impl Screen<'_> {
                     if let Some(ref mut island) = self.renderer.island {
                         island.dismiss_color_picker();
                     }
-                    self.resize_top_or_bottom_line(1);
+                    self.resize_top_or_bottom_line();
                 }
             }
             PaletteAction::SelectNextTab => {
@@ -3793,6 +4813,7 @@ impl Screen<'_> {
                     old,
                     new,
                 );
+                self.resize_top_or_bottom_line();
             }
             PaletteAction::SelectPrevTab => {
                 self.clear_selection();
@@ -3804,18 +4825,58 @@ impl Screen<'_> {
                     old,
                     new,
                 );
+                self.resize_top_or_bottom_line();
+            }
+            PaletteAction::SelectNextLocalTab => {
+                self.clear_selection();
+                if self
+                    .context_manager
+                    .select_next_local_tab(&mut self.sugarloaf)
+                {
+                    self.resize_top_or_bottom_line();
+                }
+            }
+            PaletteAction::SelectPrevLocalTab => {
+                self.clear_selection();
+                if self
+                    .context_manager
+                    .select_prev_local_tab(&mut self.sugarloaf)
+                {
+                    self.resize_top_or_bottom_line();
+                }
             }
             PaletteAction::SplitRight => self.split_right(),
             PaletteAction::SplitDown => self.split_down(),
+            PaletteAction::CloneSplitRight => self.clone_split_right(),
+            PaletteAction::CloneSplitDown => self.clone_split_down(),
             PaletteAction::SelectNextSplit => {
                 self.context_manager.select_next_split();
+                self.resize_top_or_bottom_line();
             }
             PaletteAction::SelectPrevSplit => {
                 self.context_manager.select_prev_split();
+                self.resize_top_or_bottom_line();
+            }
+            PaletteAction::SelectPaneLeft
+            | PaletteAction::SelectPaneRight
+            | PaletteAction::SelectPaneUp
+            | PaletteAction::SelectPaneDown => {
+                self.clear_selection();
+                let direction = match action {
+                    PaletteAction::SelectPaneLeft => crate::layout::PaneDirection::Left,
+                    PaletteAction::SelectPaneRight => crate::layout::PaneDirection::Right,
+                    PaletteAction::SelectPaneUp => crate::layout::PaneDirection::Up,
+                    PaletteAction::SelectPaneDown => crate::layout::PaneDirection::Down,
+                    _ => unreachable!(),
+                };
+                if self.context_manager.select_split_direction(direction) {
+                    self.resize_top_or_bottom_line();
+                }
             }
             PaletteAction::CloseCurrentSplitOrTab => self.close_split_or_tab(clipboard),
             PaletteAction::ConfigEditor => {
                 self.context_manager.switch_to_settings();
+                self.resize_top_or_bottom_line();
             }
             PaletteAction::WindowCreateNew => {
                 self.context_manager.create_new_window();
@@ -3858,9 +4919,12 @@ impl Screen<'_> {
             PaletteAction::SearchBackward => {
                 self.start_search(Direction::Left);
             }
-            PaletteAction::ClearHistory => {
+            PaletteAction::PreviewSelectedImage => {
+                self.preview_selected_image();
+            }
+            PaletteAction::ClearScreen => {
                 let mut terminal = self.context_manager.current_mut().terminal.lock();
-                terminal.clear_saved_history();
+                terminal.clear_screen_and_history();
             }
             PaletteAction::OpenMarket => {
                 // Handled by the router because it changes palette mode.
@@ -3880,6 +4944,18 @@ impl Screen<'_> {
 
     pub(crate) fn render(&mut self) -> Option<crate::context::renderable::WindowUpdate> {
         self.update_close_button_hover(self.mouse.x, self.mouse.y);
+
+        let preview_route_id = self.context_manager.current().route_id;
+        let completion = self
+            .context_manager
+            .devops_refresh_completion(preview_route_id);
+        let preview_changed = self
+            .image_preview
+            .poll_and_submit(&mut self.sugarloaf, |_| completion);
+        if let Some(delay) = self.image_preview.take_wake_in() {
+            let millis = u64::try_from(delay.as_millis().max(1)).unwrap_or(u64::MAX);
+            self.context_manager.schedule_render_on_route(millis);
+        }
 
         let is_search_active = self.search_active();
         if is_search_active {
@@ -3919,8 +4995,93 @@ impl Screen<'_> {
         let (window_update, any_panel_dirty) = self
             .renderer
             .run(&mut self.sugarloaf, &mut self.context_manager);
+        #[cfg(feature = "native-gui-test-hooks")]
+        {
+            self.process_native_test_control();
+            let window_size = self.sugarloaf.window_size();
+            let mut panels = self.context_manager.native_test_panel_snapshots();
+            for panel in &mut panels {
+                let Some(route_id) = panel
+                    .get("route_id")
+                    .and_then(serde_json::Value::as_u64)
+                    .and_then(|route| usize::try_from(route).ok())
+                else {
+                    continue;
+                };
+                let Some((context_session_id, segments)) =
+                    self.renderer.native_test_pane_context(route_id)
+                else {
+                    continue;
+                };
+                panel["context_session_id"] = serde_json::json!(context_session_id);
+                panel["context_segments"] = serde_json::json!(segments);
+            }
+            let pointer = serde_json::json!({
+                "x": self.mouse.x,
+                "y": self.mouse.y,
+                "raw_y": self.mouse.raw_y,
+                "inside_text_area": self.mouse.inside_text_area,
+                "last_cell": self.mouse.last_cell.as_ref().map(|point| {
+                    serde_json::json!({
+                        "column": point.col.0,
+                        "row": point.row.0,
+                    })
+                }),
+                "mouse_mode": self.mouse_mode(),
+                "preview_pointer_allowed": self.image_preview_pointer_allowed(),
+            });
+            write_native_resize_snapshot(
+                &self.context_manager.current().renderable_content,
+                panels,
+                NativeWindowSnapshot {
+                    window_width: window_size.width,
+                    window_height: window_size.height,
+                    scale_factor: self.sugarloaf.scale_factor(),
+                    window_tab_count: self.context_manager.len(),
+                    active_window_tab_index: self.context_manager.current_index(),
+                    grid_width: self.context_manager.current_grid().width,
+                    grid_height: self.context_manager.current_grid().height,
+                    grid_margin: self.context_manager.current_grid().scaled_margin,
+                    active_tab_profile: self
+                        .context_manager
+                        .tab_profile_identity(self.context_manager.current_index()),
+                    palette_enabled: self.renderer.command_palette.is_enabled(),
+                    confirm_quit_active: self.renderer.confirm_quit.is_active(),
+                },
+                &self.native_test_last_control,
+                self.image_preview.native_test_state(&self.sugarloaf),
+                pointer,
+            );
+            // The control file is intentionally not watched by product code.
+            // Keep feature-gated automation responsive while the window is
+            // otherwise idle so latency measurements cover PTY/shell/render
+            // work instead of the normal three-second DevOps refresh cadence.
+            if std::env::var_os("AUTOMEXIA_NATIVE_TEST_CONTROL").is_some() {
+                self.context_manager.schedule_render_on_route(10);
+            }
+        }
+        let preview_panel = {
+            let current_grid = self.context_manager.current_grid();
+            current_grid.current_item().map(|item| {
+                (
+                    item.val.route_id,
+                    item.val.rich_text_id,
+                    crate::layout::pane_terminal_rect(
+                        item.layout_rect,
+                        self.sugarloaf.scale_factor(),
+                        item.tab_count(),
+                    ),
+                )
+            })
+        };
+        if let Some((route_id, rich_text_id, pane)) = preview_panel {
+            self.image_preview
+                .draw(&mut self.sugarloaf, route_id, rich_text_id, pane);
+        }
+        let preview_visible = self.image_preview.is_visible();
         let has_animation = self.renderer.needs_redraw();
-        let should_present = any_panel_dirty || has_animation;
+        let should_present =
+            any_panel_dirty || has_animation || preview_changed || preview_visible;
 
         if self.renderer.custom_mouse_cursor {
             let scale = self.sugarloaf.scale_factor();
@@ -3944,7 +5105,11 @@ impl Screen<'_> {
                 let cell_height = layout.cell.cell_height as f32;
                 let scale_factor = self.sugarloaf.scale_factor();
 
-                let panel_rect = current_item.layout_rect;
+                let panel_rect = crate::layout::pane_terminal_rect(
+                    current_item.layout_rect,
+                    scale_factor,
+                    current_item.tab_count(),
+                );
                 let origin_x = panel_rect[0] + scaled_margin.left;
                 let origin_y = panel_rect[1] + scaled_margin.top;
 
@@ -4084,6 +5249,11 @@ impl Screen<'_> {
                 .contexts_mut()
                 .iter_mut()
             {
+                let terminal_rect = crate::layout::pane_terminal_rect(
+                    item.layout_rect,
+                    item.val.dimension.dimension.scale,
+                    item.tab_count(),
+                );
                 let ctx = &mut item.val;
                 let dim = ctx.dimension;
                 // Canonical integer cell stride — single source of
@@ -4183,7 +5353,7 @@ impl Screen<'_> {
                     .unwrap_or(self.renderer.named_colors.cursor);
                 panels.push(PanelFrame {
                     route_id: ctx.route_id,
-                    layout_rect: item.layout_rect,
+                    layout_rect: terminal_rect,
                     cols: ctx.renderable_content.columns.max(1) as u32,
                     rows: ctx.renderable_content.screen_lines.max(1) as u32,
                     cell_w,
@@ -4630,6 +5800,205 @@ impl Screen<'_> {
         window_update
     }
 
+    /// Renderer-neutral control surface for native GUI tests. It exists only
+    /// in explicitly feature-gated test builds, performs no work without the
+    /// environment opt-in, and avoids flaky OCR/focus-dependent automation.
+    #[cfg(feature = "native-gui-test-hooks")]
+    fn process_native_test_control(&mut self) {
+        let Some(path) = std::env::var_os("AUTOMEXIA_NATIVE_TEST_CONTROL") else {
+            return;
+        };
+        let Ok(control) = std::fs::read_to_string(path) else {
+            return;
+        };
+        let control = control.trim().to_string();
+        if control.is_empty() || control == self.native_test_last_control {
+            return;
+        }
+        self.native_test_last_control.clone_from(&control);
+        if !claim_native_test_control(&control) {
+            return;
+        }
+
+        let mut fields = control.splitn(3, ':');
+        let action = fields.next().unwrap_or_default();
+        let _sequence = fields.next();
+        match action {
+            "open-palette" => {
+                self.renderer.confirm_quit.set_active(false);
+                self.renderer.command_palette.set_enabled(true);
+                self.mark_dirty();
+            }
+            "confirm-quit" => {
+                self.renderer.command_palette.set_enabled(false);
+                self.renderer.confirm_quit.set_active(true);
+                self.mark_dirty();
+            }
+            "dismiss-modal" => {
+                self.renderer.command_palette.set_enabled(false);
+                self.renderer.confirm_quit.set_active(false);
+                self.mark_dirty();
+            }
+            "toggle-fullscreen" => self.context_manager.toggle_full_screen(),
+            "new-window" => {
+                self.context_manager.create_new_window();
+            }
+            "window-tab" => {
+                if self.create_tab_context() {
+                    self.mark_dirty();
+                }
+            }
+            "clone-right" => self.clone_split_right(),
+            "clone-down" => self.clone_split_down(),
+            "local-tab" => {
+                let rich_text_id = next_rich_text_id();
+                if self
+                    .context_manager
+                    .clone_local_tab(rich_text_id, &mut self.sugarloaf)
+                {
+                    self.relayout_current_grid();
+                    self.mark_dirty();
+                }
+            }
+            "select-local" => {
+                let index = fields.next().and_then(|value| value.parse::<usize>().ok());
+                if index.is_some_and(|index| {
+                    self.context_manager
+                        .select_local_tab(index, &mut self.sugarloaf)
+                }) {
+                    self.mark_dirty();
+                }
+            }
+            "select-local-next" => {
+                if self
+                    .context_manager
+                    .select_next_local_tab(&mut self.sugarloaf)
+                {
+                    self.resize_top_or_bottom_line();
+                    self.mark_dirty();
+                }
+            }
+            "select-local-prev" => {
+                if self
+                    .context_manager
+                    .select_prev_local_tab(&mut self.sugarloaf)
+                {
+                    self.resize_top_or_bottom_line();
+                    self.mark_dirty();
+                }
+            }
+            "close-local" => {
+                let index = fields.next().and_then(|value| value.parse::<usize>().ok());
+                if index.is_some_and(|index| {
+                    self.context_manager
+                        .close_local_tab(index, &mut self.sugarloaf)
+                }) {
+                    self.relayout_current_grid();
+                    self.mark_dirty();
+                }
+            }
+            "select-prev" => {
+                self.context_manager.select_prev_split();
+                self.resize_top_or_bottom_line();
+                self.mark_dirty();
+            }
+            "select-pane" => {
+                let direction = match fields.next() {
+                    Some("left") => Some(crate::layout::PaneDirection::Left),
+                    Some("right") => Some(crate::layout::PaneDirection::Right),
+                    Some("up") => Some(crate::layout::PaneDirection::Up),
+                    Some("down") => Some(crate::layout::PaneDirection::Down),
+                    _ => None,
+                };
+                if direction.is_some_and(|direction| {
+                    self.context_manager.select_split_direction(direction)
+                }) {
+                    self.resize_top_or_bottom_line();
+                    self.mark_dirty();
+                }
+            }
+            "preview-image" => {
+                let Some(path) = fields.next() else {
+                    return;
+                };
+                let Some(candidate) =
+                    crate::image_preview::PreviewCandidate::new(path, None, None)
+                else {
+                    tracing::warn!("ignored invalid native preview test path");
+                    return;
+                };
+                let Some((route_id, pane)) = self
+                    .context_manager
+                    .current_grid()
+                    .current_item()
+                    .map(|item| {
+                        (
+                            item.val.route_id,
+                            crate::layout::pane_terminal_rect(
+                                item.layout_rect,
+                                self.sugarloaf.scale_factor(),
+                                item.tab_count(),
+                            ),
+                        )
+                    })
+                else {
+                    return;
+                };
+                self.image_preview.show_selection(
+                    candidate,
+                    route_id,
+                    crate::image_preview::PreviewAnchor {
+                        x: pane[0] + pane[2] * 0.5,
+                        y: pane[1] + pane[3] * 0.5,
+                    },
+                    &mut self.sugarloaf,
+                );
+                self.mark_dirty();
+            }
+            "dismiss-preview" => {
+                if self.dismiss_image_preview() {
+                    self.mark_dirty();
+                }
+            }
+            "write-line" => {
+                let Some(line) = fields.next() else {
+                    return;
+                };
+                let win32_input = self.get_mode().contains(Mode::WIN32_INPUT);
+                let bytes = native_test_line_input(line, win32_input);
+                self.context_manager
+                    .current_mut()
+                    .messenger
+                    .send_write(bytes);
+            }
+            "write-text" => {
+                let Some(text) = fields.next() else {
+                    return;
+                };
+                let win32_input = self.get_mode().contains(Mode::WIN32_INPUT);
+                let bytes = native_test_text_input(text, win32_input);
+                self.context_manager
+                    .current_mut()
+                    .messenger
+                    .send_write(bytes);
+            }
+            "write-hex" => {
+                let Some(encoded) = fields.next() else {
+                    return;
+                };
+                let Some(bytes) = decode_native_test_hex(encoded) else {
+                    tracing::warn!("ignored malformed native test hex input");
+                    return;
+                };
+                self.context_manager
+                    .current_mut()
+                    .messenger
+                    .send_write(bytes);
+            }
+            _ => tracing::warn!("ignored unknown native test control {action:?}"),
+        }
+    }
+
     /// Update IME cursor position based on terminal cursor position
     /// This should be called after rendering to ensure cursor position is current
     pub fn update_ime_cursor_position_if_needed(
@@ -4668,7 +6037,11 @@ impl Screen<'_> {
 
         // Panel origin: layout_rect is relative to root container,
         // add scaled_margin to get absolute screen position
-        let panel_rect = current_item.layout_rect;
+        let panel_rect = crate::layout::pane_terminal_rect(
+            current_item.layout_rect,
+            self.sugarloaf.scale_factor(),
+            current_item.tab_count(),
+        );
         let origin_x = panel_rect[0] + scaled_margin.left;
         let origin_y = panel_rect[1] + scaled_margin.top;
 
@@ -5123,6 +6496,129 @@ fn post_process_hyperlink_uri(uri: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ctrl_c_copies_only_a_nonempty_selection_and_otherwise_remains_interrupt() {
+        let ctrl = ModifiersState::CONTROL;
+        let c = Key::Character("c".into());
+        let uppercase_c = Key::Character("C".into());
+
+        assert!(should_copy_selection_on_ctrl_c(&c, ctrl, true));
+        assert!(should_copy_selection_on_ctrl_c(&uppercase_c, ctrl, true));
+        assert!(!should_copy_selection_on_ctrl_c(&c, ctrl, false));
+        assert!(!should_copy_selection_on_ctrl_c(
+            &c,
+            ctrl | ModifiersState::SHIFT,
+            true,
+        ));
+        assert!(!should_copy_selection_on_ctrl_c(
+            &c,
+            ctrl | ModifiersState::ALT,
+            true,
+        ));
+        assert!(!should_copy_selection_on_ctrl_c(
+            &Key::Character("v".into()),
+            ctrl,
+            true,
+        ));
+        assert_eq!(crate::bindings::ctrl_seq(&c, "", ctrl), Some(0x03));
+    }
+
+    #[test]
+    fn secondary_click_copies_and_clears_selection_or_pastes_clipboard_exclusively() {
+        assert_eq!(
+            secondary_click_clipboard_action(true),
+            SecondaryClickClipboardAction::CopySelectionAndClear
+        );
+        assert_eq!(
+            secondary_click_clipboard_action(false),
+            SecondaryClickClipboardAction::PasteClipboard
+        );
+    }
+
+    #[test]
+    fn image_preview_navigation_wraps_and_handles_missing_current_target() {
+        assert_eq!(adjacent_preview_index(3, Some(0), -1), 2);
+        assert_eq!(adjacent_preview_index(3, Some(2), 1), 0);
+        assert_eq!(adjacent_preview_index(3, Some(1), 1), 2);
+        assert_eq!(adjacent_preview_index(3, None, 1), 0);
+        assert_eq!(adjacent_preview_index(3, None, -1), 2);
+    }
+
+    #[test]
+    fn native_test_hex_decoder_preserves_history_control_sequences() {
+        assert_eq!(decode_native_test_hex("1b5b41"), Some(b"\x1b[A".to_vec()));
+        assert_eq!(decode_native_test_hex("12"), Some(vec![0x12]));
+        assert_eq!(decode_native_test_hex("03"), Some(vec![0x03]));
+        assert_eq!(decode_native_test_hex("0"), None);
+        assert_eq!(decode_native_test_hex("zz"), None);
+    }
+
+    #[test]
+    fn native_test_line_input_uses_the_active_terminal_protocol() {
+        assert_eq!(native_test_text_input("echo ok", false), b"echo ok");
+        assert_eq!(native_test_line_input("echo ok", false), b"echo ok\r");
+        #[cfg(windows)]
+        {
+            let text = native_test_text_input("echo ok", true);
+            let native = native_test_line_input("echo ok", true);
+            assert!(native.starts_with(b"\x1b["));
+            assert!(native.starts_with(&text));
+            assert!(!text.ends_with(b"\x1b[13;28;13;1;0;1_\x1b[13;28;0;0;0;1_"));
+            assert!(native
+                .windows(b";101;1;".len())
+                .any(|part| part == b";101;1;"));
+            assert!(native.ends_with(b"\x1b[13;28;13;1;0;1_\x1b[13;28;0;0;0;1_"));
+            assert_eq!(
+                native_test_line_input("", true),
+                b"\x1b[13;28;13;1;0;1_\x1b[13;28;0;0;0;1_"
+            );
+        }
+    }
+
+    #[cfg(feature = "native-gui-test-hooks")]
+    #[test]
+    fn native_resize_snapshot_publication_replaces_only_complete_payloads() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("renderer.json");
+
+        publish_native_resize_snapshot(&path, br#"{"sequence":1}"#).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), br#"{"sequence":1}"#);
+
+        publish_native_resize_snapshot(&path, br#"{"sequence":279,"ready":true}"#)
+            .unwrap();
+        let payload = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&payload).unwrap(),
+            serde_json::json!({"sequence": 279, "ready": true})
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn win32_input_encoder_preserves_native_key_record_fields() {
+        use rio_window::platform::windows::Win32KeyEvent;
+
+        let up = Win32KeyEvent {
+            virtual_key: 38,
+            scan_code: 0xe048,
+            control_key_state: 0x0100,
+        };
+        assert_eq!(
+            encode_win32_key_sequence(up, 0, 1),
+            b"\x1b[38;72;0;1;256;1_"
+        );
+
+        let ctrl_r = Win32KeyEvent {
+            virtual_key: 82,
+            scan_code: 19,
+            control_key_state: 0x0008,
+        };
+        assert_eq!(
+            encode_win32_key_sequence(ctrl_r, 0x12, 1),
+            b"\x1b[82;19;18;1;8;1_"
+        );
+    }
 
     #[test]
     fn row_render_scratch_reuses_widest_panel_capacity() {

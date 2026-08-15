@@ -43,6 +43,14 @@ pub struct Mouse {
     /// within the same cell — replaces the old pixel-equality check
     /// that fired on every subpixel HiDPI jitter.
     pub last_cell: Option<Pos>,
+    /// Exact hint captured by a left press. The matching release uses
+    /// this pane-local latch so terminal applications receive neither
+    /// half of a modifier-link click, even if modifiers change mid-click.
+    pub hint_click_latched: Option<crate::hints::HintMatch>,
+    /// True when Automexia consumed a left press to pin a local image
+    /// preview. The matching release is consumed as well, so a child
+    /// application never receives a split mouse-event pair.
+    pub image_preview_click_latched: bool,
 }
 
 impl Default for Mouse {
@@ -64,6 +72,8 @@ impl Default for Mouse {
             y: 0.0,
             raw_y: 0.0,
             last_cell: None,
+            hint_click_latched: None,
+            image_preview_click_latched: false,
         }
     }
 }

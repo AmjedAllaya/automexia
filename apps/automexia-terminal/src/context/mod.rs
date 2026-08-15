@@ -1,5 +1,8 @@
+pub mod launch;
 pub mod renderable;
 pub mod title;
+
+use automexia_extension_api::{EnvironmentCapsule, OperationId, SessionId};
 
 use crate::ansi::CursorShape;
 use crate::context::title::{
@@ -11,10 +14,12 @@ use crate::ime::Ime;
 pub use crate::layout::{ContextDimension, ContextGrid, ContextGridItem};
 use crate::messenger::Messenger;
 use crate::performer::{self, Machine};
+use launch::{LiveSessionMetadata, SessionLaunchDescriptor};
 use renderable::Cursor;
 use renderable::RenderableContent;
 use rio_backend::config::layout::Margin;
 use rio_backend::config::Shell;
+use rustc_hash::FxHashSet;
 use smallvec::{smallvec, SmallVec};
 
 use rio_backend::crosswords::{Crosswords, MIN_COLUMNS, MIN_LINES};
@@ -53,6 +58,11 @@ pub struct Context<T: EventListener> {
     #[cfg(not(target_os = "windows"))]
     pub main_fd: Arc<i32>,
     pub shell_pid: u32,
+    /// Immutable launch intent used to create independent session clones.
+    pub launch_descriptor: SessionLaunchDescriptor,
+    /// Non-secret identity capsule owned by this route. Clones always receive
+    /// a new session ID and never share this object or extension cache state.
+    pub environment_capsule: EnvironmentCapsule,
     pub rich_text_id: usize,
     pub dimension: ContextDimension,
     pub title: ContextTitle,
@@ -129,6 +139,10 @@ pub struct ContextManagerConfig {
     #[cfg(test)]
     pub dead_pty: bool,
     pub shell: Shell,
+    /// Configuration-owned overrides only; the inherited process environment
+    /// remains owned by the OS launch path.
+    pub environment: Vec<(String, String)>,
+    pub profile_identity: Option<String>,
     #[cfg(not(target_os = "windows"))]
     pub use_fork: bool,
     pub working_dir: Option<String>,
@@ -156,6 +170,9 @@ pub struct ContextManager<T: EventListener> {
     window_id: WindowId,
     pub config: ContextManagerConfig,
     last_title_update: Option<Instant>,
+    /// PTYs intentionally removed by UI actions. Their asynchronous shutdown
+    /// events are acknowledgements, not requests to close another tab.
+    closing_routes: FxHashSet<usize>,
 }
 
 pub fn create_dead_context<T: rio_backend::event::EventListener>(
@@ -165,6 +182,10 @@ pub fn create_dead_context<T: rio_backend::event::EventListener>(
     rich_text_id: usize,
     dimension: ContextDimension,
 ) -> Context<T> {
+    let launch_descriptor = SessionLaunchDescriptor::default();
+    let environment_capsule = launch_descriptor
+        .environment_capsule(SessionId::new(route_id as u64), 1)
+        .expect("the default launch descriptor produces a valid capsule");
     let terminal = Crosswords::new(
         dimension,
         CursorShape::Block,
@@ -182,6 +203,8 @@ pub fn create_dead_context<T: rio_backend::event::EventListener>(
         #[cfg(not(target_os = "windows"))]
         main_fd: Arc::new(-1),
         shell_pid: 1,
+        launch_descriptor,
+        environment_capsule,
         messenger: Messenger::new(sender),
         renderable_content: RenderableContent::new(Cursor::default()),
         terminal,
@@ -219,6 +242,11 @@ pub fn create_mock_context<
 
 impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     #[inline]
+    fn acknowledge_intentional_close(&mut self, route_id: usize) -> bool {
+        self.closing_routes.remove(&route_id)
+    }
+
+    #[inline]
     fn create_context(
         cursor_state: (&Cursor, bool),
         event_proxy: T,
@@ -229,15 +257,46 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     ) -> Result<Context<T>, Box<dyn Error>> {
         let route_id = ROUTE_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
 
+        #[cfg(target_os = "windows")]
+        let launch_program =
+            crate::automexia::shell::normalized_program(config.shell.program.as_deref());
+        #[cfg(not(target_os = "windows"))]
+        let launch_program = config.shell.program.clone();
+
+        #[cfg(target_os = "windows")]
+        let launch_args = crate::automexia::shell::normalized_args(
+            launch_program.as_deref(),
+            &config.shell.args,
+        );
+        #[cfg(not(target_os = "windows"))]
+        let launch_args = config.shell.args.clone();
+
+        let launch_descriptor = SessionLaunchDescriptor::new(
+            launch_program,
+            launch_args,
+            config.environment.clone(),
+            config.profile_identity.clone(),
+            config.working_dir.clone(),
+        );
+        let environment_capsule =
+            launch_descriptor.environment_capsule(SessionId::new(route_id as u64), 1)?;
+        let _launch_contract = launch_descriptor.launch_contract(
+            OperationId::new(route_id as u64),
+            SessionId::new(route_id as u64),
+        );
+
         #[cfg(test)]
         if config.dead_pty {
-            return Ok(create_dead_context(
+            let mut context = create_dead_context(
                 event_proxy,
                 window_id,
                 route_id,
                 rich_text_id,
                 dimension,
-            ));
+            );
+            context.launch_descriptor = launch_descriptor;
+            context.environment_capsule = environment_capsule;
+            return Ok(context);
         }
 
         let cols: u16 = dimension.columns.try_into().unwrap_or(MIN_COLUMNS as u16);
@@ -278,10 +337,13 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             } else {
                 tracing::info!("automexia -> teletypewriter: create_pty_with_spawn");
                 pty = match create_pty_with_spawn(
-                    config.shell.program.as_deref(),
-                    config.shell.args.clone(),
-                    &config.working_dir,
-                    None,
+                    launch_descriptor.program(),
+                    launch_descriptor.args().to_vec(),
+                    &launch_descriptor
+                        .starting_directory()
+                        .map(ToOwned::to_owned),
+                    (!launch_descriptor.environment().is_empty())
+                        .then(|| launch_descriptor.environment().to_vec()),
                     cols,
                     rows,
                     initial_winsize.width,
@@ -301,22 +363,18 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         #[cfg(not(target_os = "windows"))]
         let shell_pid = *pty.child.pid.clone() as u32;
         #[cfg(target_os = "windows")]
-        let shell_pid = 0u32;
+        let shell_pid;
 
         #[cfg(target_os = "windows")]
         {
-            let automexia_shell_program = crate::automexia::shell::normalized_program(
-                config.shell.program.as_deref(),
-            );
-            let automexia_shell_args = crate::automexia::shell::normalized_args(
-                automexia_shell_program.as_deref(),
-                &config.shell.args,
-            );
             pty = match create_pty(
-                automexia_shell_program.as_deref(),
-                automexia_shell_args,
-                &config.working_dir,
-                None,
+                launch_descriptor.program(),
+                launch_descriptor.args().to_vec(),
+                &launch_descriptor
+                    .starting_directory()
+                    .map(ToOwned::to_owned),
+                (!launch_descriptor.environment().is_empty())
+                    .then(|| launch_descriptor.environment().to_vec()),
                 cols,
                 rows,
             ) {
@@ -325,7 +383,12 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                     tracing::error!("{err:?}");
                     return Err(Box::new(err));
                 }
-            }
+            };
+            shell_pid = pty
+                .child_watcher()
+                .pid()
+                .map(std::num::NonZeroU32::get)
+                .unwrap_or(0);
         }
 
         let machine = Machine::new(
@@ -349,6 +412,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             #[cfg(not(target_os = "windows"))]
             main_fd,
             shell_pid,
+            launch_descriptor,
+            environment_capsule,
             messenger,
             terminal,
             rich_text_id,
@@ -435,6 +500,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             window_id,
             config: ctx_config,
             last_title_update: None,
+            closing_routes: FxHashSet::default(),
         })
     }
 
@@ -473,6 +539,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             window_id,
             config,
             last_title_update: None,
+            closing_routes: FxHashSet::default(),
         })
     }
 
@@ -482,56 +549,54 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         route_id: usize,
         sugarloaf: &mut Sugarloaf,
     ) -> bool {
-        let requires_change_route = self.current_route == route_id;
-
-        // should_close_context_manager is only called when terminal.exit()
-        // is triggered. The terminal.exit() happens for any drop on context
-        // by tab removal or if the Pty is exited (e.g: exit/control+d)
-        //
-        // In the tab case we already have removed the context with the
-        // specified route_id so isn't gonna find anything. Then will be false.
-        //
-        // However if the tab is killed by Pty and not a tab action then
-        // it means we need to clean the context with the specified route_id.
-        // If there's no context then should return true and kill the window.
-        if !self.contexts.is_empty() {
-            // In case Grid has more than one item
-            if self.current_grid().len() > 1 {
-                if self.current().route_id == route_id {
-                    self.remove_current_grid(sugarloaf);
-                }
-
-                return false;
-            }
-
-            // In case Grid has only one item
-            if let Some(index_to_remove) = self
-                .contexts
-                .iter()
-                .position(|ctx| ctx.current().route_id == route_id)
-            {
-                let mut should_set_current = false;
-                if requires_change_route {
-                    if index_to_remove > 1 {
-                        self.set_current(index_to_remove - 1);
-                    } else {
-                        should_set_current = true;
-                    }
-                }
-                self.contexts[index_to_remove].remove_all_rich_text(sugarloaf);
-                self.contexts.remove(index_to_remove);
-
-                if should_set_current {
-                    self.set_current(0);
-                }
-
-                if !self.contexts.is_empty() {
-                    self.keep_only_active_context_visible(sugarloaf);
-                }
-            };
+        // Dropping an explicitly closed Context causes its IO worker to emit a
+        // delayed CloseTerminal. Consume that exact route once; never infer a
+        // close for whichever tab happens to be active by then.
+        if self.acknowledge_intentional_close(route_id) {
+            return false;
         }
 
-        self.contexts.is_empty()
+        let Some(grid_index) = self.contexts.iter().position(|grid| {
+            grid.contexts()
+                .values()
+                .any(|item| item.contains_route(route_id))
+        }) else {
+            return self.contexts.is_empty();
+        };
+
+        let local_tab_count = self.contexts[grid_index]
+            .tab_count_for_route(route_id)
+            .unwrap_or(0);
+        if local_tab_count > 1 {
+            self.contexts[grid_index].remove_local_route(route_id, sugarloaf);
+            if grid_index == self.current_index {
+                self.current_route = self.current().route_id;
+            }
+            return false;
+        }
+
+        if self.contexts[grid_index].len() > 1 {
+            self.contexts[grid_index].remove_pane_by_route(route_id, sugarloaf);
+            if grid_index == self.current_index {
+                self.current_route = self.current().route_id;
+            }
+            return false;
+        }
+
+        self.contexts[grid_index].remove_all_rich_text(sugarloaf);
+        self.contexts.remove(grid_index);
+        if self.contexts.is_empty() {
+            return true;
+        }
+
+        if grid_index < self.current_index {
+            self.current_index -= 1;
+        } else if self.current_index >= self.contexts.len() {
+            self.current_index = self.contexts.len() - 1;
+        }
+        self.current_route = self.current().route_id;
+        self.keep_only_active_context_visible(sugarloaf);
+        false
     }
 
     #[inline]
@@ -603,6 +668,13 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     #[inline]
     pub fn close_unfocused_tabs(&mut self) {
         let current_route_id = self.current().route_id;
+        let closing = self
+            .contexts
+            .iter()
+            .filter(|grid| grid.current().route_id != current_route_id)
+            .flat_map(ContextGrid::route_ids)
+            .collect::<Vec<_>>();
+        self.closing_routes.extend(closing);
         self.contexts
             .retain(|ctx| ctx.current().route_id == current_route_id);
         self.current_route = self.contexts[0].current().route_id;
@@ -624,6 +696,18 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     pub fn select_prev_split(&mut self) {
         self.contexts[self.current_index].select_prev_split();
         self.current_route = self.current().route_id;
+    }
+
+    #[inline]
+    pub fn select_split_direction(
+        &mut self,
+        direction: crate::layout::PaneDirection,
+    ) -> bool {
+        if !self.contexts[self.current_index].select_split_direction(direction) {
+            return false;
+        }
+        self.current_route = self.current().route_id;
+        true
     }
 
     #[inline]
@@ -695,6 +779,18 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    pub fn reload_config(&mut self) {
+        self.event_proxy
+            .send_event(RioEvent::UpdateConfig, self.window_id);
+    }
+
+    #[inline]
+    pub fn close_window(&mut self) {
+        self.event_proxy
+            .send_event(RioEvent::CloseWindow, self.window_id);
+    }
+
+    #[inline]
     pub fn toggle_appearance_theme(&mut self) {
         self.event_proxy
             .send_event(RioEvent::ToggleAppearanceTheme, self.window_id);
@@ -750,6 +846,15 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         self.contexts.len()
     }
 
+    /// Every PTY route owned by this OS window, including background
+    /// top-level tabs, splits, and pane-local tabs.
+    pub fn route_ids(&self) -> Vec<usize> {
+        self.contexts
+            .iter()
+            .flat_map(ContextGrid::route_ids)
+            .collect()
+    }
+
     #[inline]
     pub fn title(&self, index: usize) -> Option<&ContextTitle> {
         self.contexts.get(index).map(|grid| &grid.current().title)
@@ -764,6 +869,29 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             let title = grid.current().terminal.lock().title.to_string();
             (!title.trim().is_empty()).then_some(title)
         })
+    }
+
+    /// Stable launch/profile identity for the top-level tab strip.
+    ///
+    /// Shells may emit several transient OSC titles while loading profiles.
+    /// The tab must have a useful identity before that output arrives and must
+    /// not flicker through paths or environment setup commands. Live semantic
+    /// shell metadata wins once available (so entering CMD or WSL is reflected),
+    /// followed by the immutable launch descriptor used to create the PTY.
+    pub fn tab_profile_identity(&self, index: usize) -> Option<String> {
+        let context = self.contexts.get(index)?.current();
+        [
+            context.renderable_content.shell_distro.as_deref(),
+            context.renderable_content.shell_name.as_deref(),
+            context.launch_descriptor.wsl_distro(),
+            context.launch_descriptor.profile_identity(),
+            context.launch_descriptor.program(),
+        ]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
     }
 
     #[inline]
@@ -830,10 +958,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
-    pub fn get_by_route_id(
-        &mut self,
-        route_id: usize,
-    ) -> Option<&mut ContextGridItem<T>> {
+    pub fn get_by_route_id(&mut self, route_id: usize) -> Option<&mut Context<T>> {
         // Search every tab, current first: per-route events (damage marks,
         // titles, color/size requests) must reach panes in background tabs,
         // otherwise their state is silently dropped until the pane's own
@@ -862,7 +987,97 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    pub fn local_tab_count(&self) -> usize {
+        self.current_grid()
+            .current_item()
+            .map_or(0, ContextGridItem::tab_count)
+    }
+
+    pub fn select_local_tab(&mut self, index: usize, sugarloaf: &mut Sugarloaf) -> bool {
+        let Some(item) = self.contexts[self.current_index].current_item_mut() else {
+            return false;
+        };
+        if !item.select_tab(index, sugarloaf) {
+            return false;
+        }
+        self.current_route = item.val.route_id;
+        true
+    }
+
+    pub fn select_next_local_tab(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        let Some(item) = self.contexts[self.current_index].current_item_mut() else {
+            return false;
+        };
+        if !item.select_next_tab(sugarloaf) {
+            return false;
+        }
+        self.current_route = item.val.route_id;
+        true
+    }
+
+    pub fn select_prev_local_tab(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        let Some(item) = self.contexts[self.current_index].current_item_mut() else {
+            return false;
+        };
+        if !item.select_prev_tab(sugarloaf) {
+            return false;
+        }
+        self.current_route = item.val.route_id;
+        true
+    }
+
+    /// Close only the selected pane's active local tab. The last local tab is
+    /// intentionally retained; callers can then close the pane or window tab
+    /// according to their explicit scope.
+    pub fn close_current_local_tab(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        if self.local_tab_count() <= 1 {
+            return false;
+        }
+        let route_id = self.current().route_id;
+        self.closing_routes.insert(route_id);
+        let Some(item) = self.contexts[self.current_index].current_item_mut() else {
+            self.closing_routes.remove(&route_id);
+            return false;
+        };
+        if item.close_active_tab(sugarloaf).is_none() {
+            self.closing_routes.remove(&route_id);
+            return false;
+        }
+        self.current_route = item.val.route_id;
+        true
+    }
+
+    pub fn close_local_tab(&mut self, index: usize, sugarloaf: &mut Sugarloaf) -> bool {
+        if index >= self.local_tab_count() || self.local_tab_count() <= 1 {
+            return false;
+        }
+        let Some(route_id) = self
+            .contexts
+            .get(self.current_index)
+            .and_then(ContextGrid::current_item)
+            .and_then(|item| item.context_at(index))
+            .map(|context| context.route_id)
+        else {
+            return false;
+        };
+        self.closing_routes.insert(route_id);
+        let Some(item) = self.contexts[self.current_index].current_item_mut() else {
+            self.closing_routes.remove(&route_id);
+            return false;
+        };
+        if item.close_tab(index, sugarloaf).is_none() {
+            self.closing_routes.remove(&route_id);
+            return false;
+        }
+        self.current_route = item.val.route_id;
+        true
+    }
+
+    #[inline]
     pub fn remove_current_grid(&mut self, sugarloaf: &mut Sugarloaf) {
+        if let Some(item) = self.contexts[self.current_index].current_item() {
+            self.closing_routes.extend(item.route_ids());
+        }
         self.contexts[self.current_index].remove_current(sugarloaf);
         self.current_route = self.contexts[self.current_index].current().route_id;
     }
@@ -914,6 +1129,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         }
 
         let index_to_remove = self.current_index;
+        self.closing_routes
+            .extend(self.contexts[index_to_remove].route_ids());
         let mut should_set_current = false;
         if index_to_remove > 1 {
             self.set_current(self.current_index - 1);
@@ -950,6 +1167,138 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     #[inline]
     pub fn current_mut(&mut self) -> &mut Context<T> {
         self.contexts[self.current_index].current_mut()
+    }
+
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub fn native_test_panel_snapshots(&self) -> Vec<serde_json::Value> {
+        let active_route = self.current().route_id;
+        self.contexts[self.current_index]
+            .contexts()
+            .values()
+            .map(|item| {
+                let context = item.context();
+                let active_local_tab_index = item.active_tab_index();
+                let pane_scale = context.dimension.dimension.scale;
+                let terminal_rect = crate::layout::pane_terminal_rect(
+                    item.layout_rect,
+                    pane_scale,
+                    item.tab_count(),
+                );
+                let pane_rail_height = crate::layout::pane_tab_rail_reserved_height(
+                    item.layout_rect[3],
+                    pane_scale,
+                    item.tab_count(),
+                );
+                let grid_origin = [
+                    self.contexts[self.current_index].scaled_margin.left
+                        + item.layout_rect[0],
+                    self.contexts[self.current_index].scaled_margin.top
+                        + item.layout_rect[1]
+                        + pane_rail_height,
+                ];
+                let local_tab_rail_rect = crate::layout::pane_tab_rail_rect(
+                    item.layout_rect,
+                    pane_scale,
+                    item.tab_count(),
+                );
+                let local_tabs = item
+                    .contexts()
+                    .enumerate()
+                    .map(|(index, tab)| {
+                        serde_json::json!({
+                            "index": index,
+                            "route_id": tab.route_id,
+                            "shell_pid": tab.shell_pid,
+                            "active": index == active_local_tab_index,
+                            "launch_program": tab.launch_descriptor.program(),
+                            "launch_args": tab.launch_descriptor.args(),
+                            "profile_identity": tab.launch_descriptor.profile_identity(),
+                            "starting_directory": tab.launch_descriptor.starting_directory(),
+                            "current_directory": tab.renderable_content.current_directory.as_ref().map(|path| path.to_string_lossy().into_owned()),
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                let (raw_cursor_line_text, raw_damage) = {
+                    let terminal = context.terminal.lock();
+                    let cursor_row = terminal.cursor().pos.row;
+                    let raw_cursor_line_text = terminal.grid[cursor_row]
+                        .inner
+                        .iter()
+                        .map(|square| square.c())
+                        .collect::<String>()
+                        .trim_end_matches(['\0', ' '])
+                        .to_string();
+                    (raw_cursor_line_text, format!("{:?}", terminal.peek_damage_event()))
+                };
+                let visible_text = context
+                    .renderable_content
+                    .visible_rows
+                    .iter()
+                    .map(|row| {
+                        row.inner
+                            .iter()
+                            .map(|square| square.c())
+                            .collect::<String>()
+                            .trim_end_matches(['\0', ' '])
+                            .to_string()
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let cursor_row = context
+                    .renderable_content
+                    .cursor
+                    .state
+                    .pos
+                    .row
+                    .0;
+                let cursor_line_text = usize::try_from(cursor_row)
+                    .ok()
+                    .and_then(|row| context.renderable_content.visible_rows.get(row))
+                    .map(|row| {
+                        row.inner
+                            .iter()
+                            .map(|square| square.c())
+                            .collect::<String>()
+                            .trim_end_matches(['\0', ' '])
+                            .to_string()
+                    });
+                serde_json::json!({
+                    "route_id": context.route_id,
+                    "active": context.route_id == active_route,
+                    "layout_rect": item.layout_rect,
+                    "terminal_rect": terminal_rect,
+                    "grid_origin": grid_origin,
+                    "cell_width": context.dimension.cell.cell_width,
+                    "cell_height": context.dimension.cell.cell_height,
+                    "font_size": context.dimension.font_size,
+                    "original_font_size": context.dimension.original_font_size,
+                    "scaled_font_size": context.dimension.scaled_font_size,
+                    "line_height": context.dimension.line_height,
+                    "local_tab_rail_rect": local_tab_rail_rect,
+                    "local_tab_count": item.tab_count(),
+                    "active_local_tab_index": active_local_tab_index,
+                    "local_tabs": local_tabs,
+                    "shell_pid": context.shell_pid,
+                    "launch_program": context.launch_descriptor.program(),
+                    "launch_args": context.launch_descriptor.args(),
+                    "profile_identity": context.launch_descriptor.profile_identity(),
+                    "starting_directory": context.launch_descriptor.starting_directory(),
+                    "current_directory": context.renderable_content.current_directory.as_ref().map(|path| path.to_string_lossy().into_owned()),
+                    "shell_distro": context.renderable_content.shell_distro.as_deref(),
+                    "shell_os_version": context.renderable_content.shell_os_version.as_deref(),
+                    "shell_name": context.renderable_content.shell_name.as_deref(),
+                    "shell_user": context.renderable_content.shell_user.as_deref(),
+                    "shell_path": context.renderable_content.shell_path.as_deref(),
+                    "shell_integration": context.renderable_content.shell_integration,
+                    "shell_prompt_active": context.renderable_content.shell_prompt_active,
+                    "cursor_row": cursor_row,
+                    "cursor_line_text": cursor_line_text,
+                    "raw_cursor_line_text": raw_cursor_line_text,
+                    "raw_damage": raw_damage,
+                    "visible_text": visible_text,
+                })
+            })
+            .collect()
     }
 
     #[inline]
@@ -1089,6 +1438,143 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         }
     }
 
+    /// Create a new, independent PTY from the active session's launch intent.
+    /// Only immutable launch data and strictly equivalent display metadata are
+    /// carried across; terminal/process/editor state remains session-local.
+    pub fn clone_split(
+        &mut self,
+        rich_text_id: usize,
+        split_down: bool,
+        sugarloaf: &mut Sugarloaf,
+    ) -> bool {
+        match self.create_cloned_context(rich_text_id) {
+            Ok(new_context) => {
+                let new_route_id = new_context.route_id;
+                if split_down {
+                    self.contexts[self.current_index].split_down(new_context, sugarloaf);
+                } else {
+                    self.contexts[self.current_index].split_right(new_context, sugarloaf);
+                }
+                self.current_route = new_route_id;
+                true
+            }
+            Err(error) => {
+                self.report_clone_error(error);
+                false
+            }
+        }
+    }
+
+    /// Add an independent tab to the selected pane. It starts from the same
+    /// shell/profile/distro/user/current-directory intent as the visible tab,
+    /// but owns a separate PTY, terminal grid, history and input queue.
+    pub fn clone_local_tab(
+        &mut self,
+        rich_text_id: usize,
+        sugarloaf: &mut Sugarloaf,
+    ) -> bool {
+        if self.local_tab_count() >= self.capacity {
+            self.report_clone_error(format!(
+                "The selected pane has reached its {}-tab safety limit.",
+                self.capacity
+            ));
+            return false;
+        }
+        match self.create_cloned_context(rich_text_id) {
+            Ok(new_context) => {
+                let new_route_id = new_context.route_id;
+                let Some(item) = self.contexts[self.current_index].current_item_mut()
+                else {
+                    self.report_clone_error("The selected pane no longer exists.".into());
+                    return false;
+                };
+                item.push_tab(new_context, sugarloaf);
+                self.current_route = new_route_id;
+                true
+            }
+            Err(error) => {
+                self.report_clone_error(error);
+                false
+            }
+        }
+    }
+
+    fn create_cloned_context(&self, rich_text_id: usize) -> Result<Context<T>, String> {
+        let (launch, cursor, blinking, dimension, seed, source_capsule_id) = {
+            let source = self.current();
+            let live = LiveSessionMetadata {
+                current_directory: source.renderable_content.current_directory.clone(),
+                distro: source.renderable_content.shell_distro.clone(),
+                user: source.renderable_content.shell_user.clone(),
+                shell_name: source.renderable_content.shell_name.clone(),
+                shell_path: source.renderable_content.shell_path.clone(),
+            };
+            let launch = source
+                .launch_descriptor
+                .fresh_clone(&live)
+                .map_err(|error| error.to_string())?;
+            (
+                launch,
+                source.cursor_from_ref(),
+                source.renderable_content.has_blinking_enabled,
+                source.dimension,
+                source.renderable_content.session_metadata_seed(),
+                source.environment_capsule.session_id,
+            )
+        };
+
+        #[cfg(all(target_os = "windows", not(test)))]
+        launch::validate_wsl_distribution(&launch).map_err(|error| error.to_string())?;
+
+        let mut cloned_config = self.config.clone();
+        cloned_config.shell = Shell {
+            program: launch.program().map(ToOwned::to_owned),
+            args: launch.args().to_vec(),
+        };
+        cloned_config.environment = launch.environment().to_vec();
+        cloned_config.profile_identity = launch.profile_identity().map(ToOwned::to_owned);
+        cloned_config.working_dir = launch.starting_directory().map(ToOwned::to_owned);
+        #[cfg(not(target_os = "windows"))]
+        {
+            // Spawn is required for a per-clone working directory and explicit
+            // environment. Fork mode remains available for ordinary sessions.
+            cloned_config.use_fork = false;
+        }
+
+        let mut new_context = ContextManager::create_context(
+            (&cursor, blinking),
+            self.event_proxy.clone(),
+            self.window_id,
+            rich_text_id,
+            dimension,
+            &cloned_config,
+        )
+        .map_err(|error| format!("Could not create the independent session: {error}"))?;
+        // Seed chrome only; the terminal grid, scrollback and input queue stay
+        // empty and independent.
+        new_context
+            .renderable_content
+            .apply_session_metadata_seed(seed);
+        debug_assert_ne!(
+            new_context.environment_capsule.session_id, source_capsule_id,
+            "independent session clones must never share an environment capsule"
+        );
+        Ok(new_context)
+    }
+
+    fn report_clone_error(&self, message: String) {
+        tracing::error!("Automexia session clone failed: {message}");
+        self.event_proxy.send_event(
+            RioEvent::ReportToAssistant(RioError {
+                report: RioErrorType::InitializationError(format!(
+                    "Automexia session clone failed. {message}"
+                )),
+                level: RioErrorLevel::Error,
+            }),
+            self.window_id,
+        );
+    }
+
     pub fn split_from_config(
         &mut self,
         rich_text_id: usize,
@@ -1108,6 +1594,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             dead_pty: false,
             cwd: config.navigation.current_working_directory,
             shell,
+            environment: launch::environment_overrides(&config.env_vars),
+            profile_identity: config.shell.program.clone(),
             working_dir,
             spawn_performer: true,
             #[cfg(not(target_os = "windows"))]
@@ -1185,6 +1673,14 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         let size = self.contexts.len();
         if size < self.capacity {
             let last_index = self.contexts.len();
+            // Context dimensions become pane-local after layout, whereas a
+            // ContextGrid root is window-local. Preserve the latter so Ctrl+T
+            // cannot inherit a shortened PTY height and place its footer in
+            // the middle of the window until another OS resize arrives.
+            let viewport = (
+                self.contexts[self.current_index].width,
+                self.contexts[self.current_index].height,
+            );
 
             let mut cloned_config = self.config.clone();
             if working_dir.is_some() {
@@ -1211,12 +1707,14 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                 Ok(new_context) => {
                     let previous_scaled_margin =
                         self.contexts[self.current_index].scaled_margin;
-                    self.contexts.push(ContextGrid::new(
+                    self.contexts.push(ContextGrid::new_with_viewport(
                         new_context,
                         previous_scaled_margin,
                         self.config.split_color,
                         self.config.split_active_color,
                         self.config.panel,
+                        viewport.0,
+                        viewport.1,
                     ));
                     if redirect {
                         self.current_index = last_index;
@@ -1317,9 +1815,24 @@ pub mod test {
         let context_manager =
             ContextManager::start_with_capacity(1, listener.clone(), window_id).unwrap();
 
-        context_manager.devops_refresh_completion(912)();
+        context_manager.devops_refresh_completion(912).wake();
 
         assert_eq!(*listener.renders.lock().unwrap(), [(912, window_id)]);
+    }
+
+    #[test]
+    fn intentional_close_acknowledges_only_the_exact_route_once() {
+        let window_id = WindowId::from(74);
+        let mut context_manager =
+            ContextManager::start_with_capacity(3, VoidListener {}, window_id).unwrap();
+        let surviving_route = context_manager.current().route_id;
+        context_manager.closing_routes.insert(9_001);
+
+        assert!(context_manager.acknowledge_intentional_close(9_001));
+        assert!(!context_manager.acknowledge_intentional_close(9_001));
+        assert!(!context_manager.acknowledge_intentional_close(9_002));
+        assert_eq!(context_manager.len(), 1);
+        assert_eq!(context_manager.current().route_id, surviving_route);
     }
 
     #[test]
@@ -1354,6 +1867,16 @@ pub mod test {
         context_manager.add_context(should_redirect, 0);
         assert_eq!(context_manager.capacity, 5);
         assert_eq!(context_manager.current_index, 2);
+        let route_ids = context_manager.route_ids();
+        assert_eq!(route_ids.len(), 3);
+        assert_eq!(
+            route_ids
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            3
+        );
     }
 
     #[test]
@@ -1376,6 +1899,66 @@ pub mod test {
 
         assert_eq!(context_manager.len(), 3);
         assert_eq!(context_manager.capacity, 3);
+    }
+
+    #[test]
+    fn top_level_tab_inherits_the_window_viewport_not_the_terminal_extent() {
+        let window_id = WindowId::from(81);
+        let mut context_manager =
+            ContextManager::start_with_capacity(3, VoidListener {}, window_id).unwrap();
+
+        // Reproduce a maximized window whose active ContextDimension has
+        // already been reduced to the terminal surface below chrome/footer.
+        context_manager.current_grid_mut().width = 1_919.0;
+        context_manager.current_grid_mut().height = 1_024.0;
+        context_manager.current_mut().dimension.width = 1_600.0;
+        context_manager.current_mut().dimension.height = 320.0;
+
+        context_manager.add_context(true, 99);
+
+        let grid = context_manager.current_grid();
+        assert_eq!((grid.width, grid.height), (1_919.0, 1_024.0));
+        assert_eq!(grid.current().dimension.height, 320.0);
+        let rect = grid.current_item().expect("new tab pane").layout_rect;
+        assert!(rect[2] > 1_850.0);
+        assert!(rect[3] > 950.0);
+        let configured_bottom_inset = grid.height - (rect[1] + rect[3]);
+        assert!((0.0..=32.0).contains(&configured_bottom_inset));
+    }
+
+    #[test]
+    fn top_level_tab_has_a_stable_profile_before_shell_output() {
+        let window_id = WindowId::from(82);
+        let mut context_manager =
+            ContextManager::start_with_capacity(2, VoidListener {}, window_id).unwrap();
+        context_manager.current_mut().launch_descriptor = SessionLaunchDescriptor::new(
+            Some("powershell.exe".to_string()),
+            vec!["-NoLogo".to_string()],
+            Vec::new(),
+            None,
+            None,
+        );
+
+        assert_eq!(
+            context_manager.tab_profile_identity(0).as_deref(),
+            Some("powershell.exe")
+        );
+
+        context_manager.current_mut().renderable_content.shell_name =
+            Some("CMD".to_string());
+        assert_eq!(
+            context_manager.tab_profile_identity(0).as_deref(),
+            Some("CMD")
+        );
+
+        context_manager
+            .current_mut()
+            .renderable_content
+            .shell_distro = Some("Ubuntu-24.04".to_string());
+        assert_eq!(
+            context_manager.tab_profile_identity(0).as_deref(),
+            Some("Ubuntu-24.04")
+        );
     }
 
     #[test]
@@ -1664,5 +2247,36 @@ pub mod test {
         context_manager.move_current_tab_to(5);
         assert_eq!(context_manager.current_index, 2);
         assert_eq!(order(&mut context_manager), vec![1, 0, 2, 3, 4]);
+    }
+}
+
+#[cfg(test)]
+mod capsule_contract_tests {
+    use super::*;
+    use crate::event::VoidListener;
+
+    #[test]
+    fn every_fresh_and_cloned_context_owns_a_distinct_capsule() {
+        let window_id = WindowId::from(9_991);
+        let manager =
+            ContextManager::start_with_capacity(4, VoidListener {}, window_id).unwrap();
+        let original = manager.current();
+        assert_eq!(
+            original.environment_capsule.session_id,
+            SessionId::new(original.route_id as u64)
+        );
+        assert_eq!(original.environment_capsule.revision, 1);
+
+        let cloned = manager.create_cloned_context(next_rich_text_id()).unwrap();
+        assert_ne!(cloned.route_id, original.route_id);
+        assert_ne!(
+            cloned.environment_capsule.session_id,
+            original.environment_capsule.session_id
+        );
+        assert_eq!(
+            cloned.environment_capsule.session_id,
+            SessionId::new(cloned.route_id as u64)
+        );
+        assert_eq!(cloned.environment_capsule.revision, 1);
     }
 }

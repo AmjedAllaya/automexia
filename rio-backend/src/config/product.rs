@@ -20,6 +20,15 @@ pub const LEGACY_CONFIG_HOME_ENV: &str = "RIO_CONFIG_HOME";
 pub const LEGACY_LOG_LEVEL_ENV: &str = "RIO_LOG_LEVEL";
 pub const TERMINFO_NAME: &str = "automexia";
 pub const TERMINFO_EXTENDED_NAME: &str = "xterm-automexia";
+pub const MAX_CONFIG_FILE_BYTES: u64 = 4 * 1024 * 1024;
+pub const MAX_THEME_FILE_BYTES: u64 = 1024 * 1024;
+
+/// Parse a legacy configuration before any migration writes occur.
+pub fn validate_legacy_config(config: &str) -> Result<(), String> {
+    toml::from_str::<toml::Value>(config)
+        .map(|_| ())
+        .map_err(|error| format!("legacy config is malformed: {error}"))
+}
 
 static LEGACY_CONFIG_WARNING: Once = Once::new();
 static LEGACY_LOG_WARNING: Once = Once::new();
@@ -118,5 +127,11 @@ mod tests {
         assert!(APPLICATION_ID.ends_with(".AutomexiaTerminal"));
         assert_eq!(URL_SCHEME, "automexia");
         assert_eq!(WM_CLASS, "AutomexiaTerminal");
+    }
+
+    #[test]
+    fn legacy_validation_accepts_toml_and_rejects_malformed_input() {
+        assert!(validate_legacy_config("[navigation]\nmode = 'Bookmark'").is_ok());
+        assert!(validate_legacy_config("[navigation").is_err());
     }
 }

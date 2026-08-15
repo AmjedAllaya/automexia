@@ -6,9 +6,7 @@ use core_graphics::display::{CGDisplay, CGPoint};
 use monitor::VideoModeHandle;
 use objc2::rc::{autoreleasepool, Retained};
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{
-    declare_class, msg_send, msg_send_id, mutability, sel, ClassType, DeclaredClass,
-};
+use objc2::{define_class, msg_send, msg_send_id, sel, DefinedClass, MainThreadOnly};
 use objc2_app_kit::{
     NSAppKitVersionNumber, NSAppKitVersionNumber10_12, NSAppearance, NSApplication,
     NSApplicationPresentationOptions, NSBackingStoreType, NSColor, NSDraggingDestination,
@@ -160,30 +158,24 @@ pub(crate) struct State {
     glass_opacity: Cell<f64>,
 }
 
-declare_class!(
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "WinitWindowDelegate"]
+    #[ivars = State]
     pub(crate) struct WindowDelegate;
-
-    unsafe impl ClassType for WindowDelegate {
-        type Super = NSObject;
-        type Mutability = mutability::MainThreadOnly;
-        const NAME: &'static str = "WinitWindowDelegate";
-    }
-
-    impl DeclaredClass for WindowDelegate {
-        type Ivars = State;
-    }
 
     unsafe impl NSObjectProtocol for WindowDelegate {}
 
     unsafe impl NSWindowDelegate for WindowDelegate {
-        #[method(windowShouldClose:)]
+        #[unsafe(method(windowShouldClose:))]
         fn window_should_close(&self, _: Option<&AnyObject>) -> bool {
             trace_scope!("windowShouldClose:");
             self.queue_event(WindowEvent::CloseRequested);
             false
         }
 
-        #[method(windowWillClose:)]
+        #[unsafe(method(windowWillClose:))]
         fn window_will_close(&self, _: Option<&AnyObject>) {
             trace_scope!("windowWillClose:");
 
@@ -201,7 +193,7 @@ declare_class!(
             self.queue_event(WindowEvent::Destroyed);
         }
 
-        #[method(windowDidResize:)]
+        #[unsafe(method(windowDidResize:))]
         fn window_did_resize(&self, _: Option<&AnyObject>) {
             trace_scope!("windowDidResize:");
             // NOTE: WindowEvent::Resized is reported in frameDidChange.
@@ -210,7 +202,7 @@ declare_class!(
             self.move_traffic_light();
         }
 
-        #[method(windowWillStartLiveResize:)]
+        #[unsafe(method(windowWillStartLiveResize:))]
         fn window_will_start_live_resize(&self, _: Option<&AnyObject>) {
             trace_scope!("windowWillStartLiveResize:");
 
@@ -218,26 +210,26 @@ declare_class!(
             self.set_resize_increments_inner(increments);
         }
 
-        #[method(windowDidEndLiveResize:)]
+        #[unsafe(method(windowDidEndLiveResize:))]
         fn window_did_end_live_resize(&self, _: Option<&AnyObject>) {
             trace_scope!("windowDidEndLiveResize:");
             self.set_resize_increments_inner(NSSize::new(1., 1.));
         }
 
         // This won't be triggered if the move was part of a resize.
-        #[method(windowDidMove:)]
+        #[unsafe(method(windowDidMove:))]
         fn window_did_move(&self, _: Option<&AnyObject>) {
             trace_scope!("windowDidMove:");
             self.emit_move_event();
         }
 
-        #[method(windowDidChangeBackingProperties:)]
+        #[unsafe(method(windowDidChangeBackingProperties:))]
         fn window_did_change_backing_properties(&self, _: Option<&AnyObject>) {
             trace_scope!("windowDidChangeBackingProperties:");
             self.queue_static_scale_factor_changed_event();
         }
 
-        #[method(windowDidBecomeKey:)]
+        #[unsafe(method(windowDidBecomeKey:))]
         fn window_did_become_key(&self, _: Option<&AnyObject>) {
             trace_scope!("windowDidBecomeKey:");
             // TODO: center the cursor if the window had mouse grab when it
@@ -247,7 +239,7 @@ declare_class!(
             self.move_traffic_light();
         }
 
-        #[method(windowDidResignKey:)]
+        #[unsafe(method(windowDidResignKey:))]
         fn window_did_resign_key(&self, _: Option<&AnyObject>) {
             trace_scope!("windowDidResignKey:");
             // It happens rather often, e.g. when the user is Cmd+Tabbing, that the
@@ -263,7 +255,7 @@ declare_class!(
         }
 
         /// Invoked when before enter fullscreen
-        #[method(windowWillEnterFullScreen:)]
+        #[unsafe(method(windowWillEnterFullScreen:))]
         fn window_will_enter_fullscreen(&self, _: Option<&AnyObject>) {
             trace_scope!("windowWillEnterFullScreen:");
 
@@ -289,14 +281,14 @@ declare_class!(
         }
 
         /// Invoked when before exit fullscreen
-        #[method(windowWillExitFullScreen:)]
+        #[unsafe(method(windowWillExitFullScreen:))]
         fn window_will_exit_fullscreen(&self, _: Option<&AnyObject>) {
             trace_scope!("windowWillExitFullScreen:");
 
             self.ivars().in_fullscreen_transition.set(true);
         }
 
-        #[method(window:willUseFullScreenPresentationOptions:)]
+        #[unsafe(method(window:willUseFullScreenPresentationOptions:))]
         fn window_will_use_fullscreen_presentation_options(
             &self,
             _: Option<&AnyObject>,
@@ -323,7 +315,7 @@ declare_class!(
         }
 
         /// Invoked when entered fullscreen
-        #[method(windowDidEnterFullScreen:)]
+        #[unsafe(method(windowDidEnterFullScreen:))]
         fn window_did_enter_fullscreen(&self, _: Option<&AnyObject>) {
             trace_scope!("windowDidEnterFullScreen:");
             self.ivars().initial_fullscreen.set(false);
@@ -334,7 +326,7 @@ declare_class!(
         }
 
         /// Invoked when exited fullscreen
-        #[method(windowDidExitFullScreen:)]
+        #[unsafe(method(windowDidExitFullScreen:))]
         fn window_did_exit_fullscreen(&self, _: Option<&AnyObject>) {
             trace_scope!("windowDidExitFullScreen:");
 
@@ -361,7 +353,7 @@ declare_class!(
         /// due to being in the midst of handling some other animation or user gesture.
         /// This method indicates that there was an error, and you should clean up any
         /// work you may have done to prepare to enter full-screen mode.
-        #[method(windowDidFailToEnterFullScreen:)]
+        #[unsafe(method(windowDidFailToEnterFullScreen:))]
         fn window_did_fail_to_enter_fullscreen(&self, _: Option<&AnyObject>) {
             trace_scope!("windowDidFailToEnterFullScreen:");
             self.ivars().in_fullscreen_transition.set(false);
@@ -380,7 +372,7 @@ declare_class!(
         }
 
         // Invoked when the occlusion state of the window changes
-        #[method(windowDidChangeOcclusionState:)]
+        #[unsafe(method(windowDidChangeOcclusionState:))]
         fn window_did_change_occlusion_state(&self, _: Option<&AnyObject>) {
             trace_scope!("windowDidChangeOcclusionState:");
             let visible = self.window().occlusionState().contains(NSWindowOcclusionState::Visible);
@@ -399,7 +391,7 @@ declare_class!(
             self.queue_event(WindowEvent::Occluded(!visible));
         }
 
-        #[method(windowDidChangeScreen:)]
+        #[unsafe(method(windowDidChangeScreen:))]
         fn window_did_change_screen(&self, _: Option<&AnyObject>) {
             trace_scope!("windowDidChangeScreen:");
             let is_simple_fullscreen = self.ivars().is_simple_fullscreen.get();
@@ -436,7 +428,7 @@ declare_class!(
 
     unsafe impl NSDraggingDestination for WindowDelegate {
         /// Invoked when the dragged image enters destination bounds or frame
-        #[method(draggingEntered:)]
+        #[unsafe(method(draggingEntered:))]
         fn dragging_entered(&self, sender: &NSObject) -> bool {
             trace_scope!("draggingEntered:");
 
@@ -455,14 +447,14 @@ declare_class!(
         }
 
         /// Invoked when the image is released
-        #[method(prepareForDragOperation:)]
+        #[unsafe(method(prepareForDragOperation:))]
         fn prepare_for_drag_operation(&self, _sender: &NSObject) -> bool {
             trace_scope!("prepareForDragOperation:");
             true
         }
 
         /// Invoked after the released image has been removed from the screen
-        #[method(performDragOperation:)]
+        #[unsafe(method(performDragOperation:))]
         fn perform_drag_operation(&self, sender: &NSObject) -> bool {
             trace_scope!("performDragOperation:");
 
@@ -481,22 +473,22 @@ declare_class!(
         }
 
         /// Invoked when the dragging operation is complete
-        #[method(concludeDragOperation:)]
+        #[unsafe(method(concludeDragOperation:))]
         fn conclude_drag_operation(&self, _sender: Option<&NSObject>) {
             trace_scope!("concludeDragOperation:");
         }
 
         /// Invoked when the dragging operation is cancelled
-        #[method(draggingExited:)]
+        #[unsafe(method(draggingExited:))]
         fn dragging_exited(&self, _sender: Option<&NSObject>) {
             trace_scope!("draggingExited:");
             self.queue_event(WindowEvent::HoveredFileCancelled);
         }
     }
 
-    unsafe impl WindowDelegate {
+    impl WindowDelegate {
         // Observe theme change
-        #[method(effectiveAppearanceDidChange:)]
+        #[unsafe(method(effectiveAppearanceDidChange:))]
         fn effective_appearance_did_change(&self, sender: Option<&AnyObject>) {
             trace_scope!("effectiveAppearanceDidChange:");
             unsafe {
@@ -508,7 +500,7 @@ declare_class!(
             };
         }
 
-        #[method(effectiveAppearanceDidChangedOnMainThread:)]
+        #[unsafe(method(effectiveAppearanceDidChangedOnMainThread:))]
         fn effective_appearance_did_changed_on_main_thread(&self, _: Option<&AnyObject>) {
             let mtm = MainThreadMarker::from(self);
             let theme = get_ns_theme(mtm);

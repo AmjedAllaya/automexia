@@ -10,6 +10,7 @@ use crate::time::Instant;
 use cursor_icon::CursorIcon;
 use rio_graphics::GraphicData;
 use std::mem;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tracing::{debug, warn};
 
@@ -20,7 +21,6 @@ use crate::ansi::{
     mode::{Mode, NamedPrivateMode, PrivateMode},
     ClearMode, LineClearMode, TabulationClearMode,
 };
-use std::fmt::Write;
 
 // https://vt100.net/emu/dec_ansi_parser
 use super::osc;
@@ -32,14 +32,46 @@ const SYNC_UPDATE_TIMEOUT: Duration = Duration::from_millis(150);
 /// Maximum number of bytes read in one synchronized update (2MiB).
 const SYNC_BUFFER_SIZE: usize = 0x20_0000;
 
+/// A legitimate XTGETTCAP request contains short hexadecimal capability names.
+/// Bound the complete DCS so a child process cannot retain arbitrary input.
+const MAX_XTGETTCAP_REQUEST_LEN: usize = 4 * 1024;
+
+/// Kitty graphics requires at most 4096 payload bytes per APC. The larger cap
+/// also accommodates a base64-encoded 64 KiB Glyph Protocol registration plus
+/// control metadata while still bounding memory owned by an untrusted PTY.
+const MAX_APC_SEQUENCE_LEN: usize = 96 * 1024;
+
+static XTGETTCAP_OVERFLOW_COUNT: AtomicUsize = AtomicUsize::new(0);
+static APC_OVERFLOW_COUNT: AtomicUsize = AtomicUsize::new(0);
+static UNHANDLED_OSC_COUNT: AtomicUsize = AtomicUsize::new(0);
+static UNHANDLED_APC_COUNT: AtomicUsize = AtomicUsize::new(0);
+static MALFORMED_KITTY_APC_COUNT: AtomicUsize = AtomicUsize::new(0);
+static MALFORMED_GLYPH_APC_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+fn warn_control_string_discard(counter: &AtomicUsize, reason: &str) {
+    let occurrence = counter.fetch_add(1, Ordering::Relaxed) + 1;
+    if occurrence == 1 || occurrence.is_power_of_two() {
+        warn!(
+            "{reason} discarded (occurrence {occurrence}; further reports are exponentially rate-limited)"
+        );
+    }
+}
+
 /// Number of bytes in the BSU/ESU CSI sequences.
 const SYNC_ESCAPE_LEN: usize = 8;
 
 /// BSU CSI sequence for beginning or extending synchronized updates.
 const BSU_CSI: [u8; SYNC_ESCAPE_LEN] = *b"\x1b[?2026h";
 
+/// Length of the legacy iTerm2 DCS synchronized-update marker.
+const SYNC_ESCAPE_MIN_LEN: usize = 7;
+
+const BSU_DCS: [u8; SYNC_ESCAPE_MIN_LEN] = *b"\x1bP=1s\x1b\\";
+
 /// ESU CSI sequence for terminating synchronized updates.
 const ESU_CSI: [u8; SYNC_ESCAPE_LEN] = *b"\x1b[?2026l";
+
+const ESU_DCS: [u8; SYNC_ESCAPE_MIN_LEN] = *b"\x1bP=2s\x1b\\";
 
 fn parse_sgr_color(params: &mut dyn Iterator<Item = u16>) -> Option<AnsiColor> {
     match params.next() {
@@ -103,6 +135,9 @@ pub trait Handler {
     ) {
     }
 
+    /// OSC 133 `B`: the prompt has entered its editable input phase.
+    fn semantic_prompt_input(&mut self) {}
+
     /// OSC 133 `C`: the command associated with the latest prompt started.
     fn semantic_command_start(&mut self) {}
 
@@ -111,6 +146,12 @@ pub trait Handler {
 
     /// OSC 1337 SetUserVar: record a shell-provided variable.
     fn set_user_var(&mut self, _name: String, _value: String) {}
+
+    /// Reconcile terminal-owned semantic state after one PTY byte batch.
+    /// Shell editors often repaint with cursor/erase sequences after SIGWINCH;
+    /// implementations can repair protected prompt rows once that repaint is
+    /// complete instead of fighting each intermediate escape independently.
+    fn finish_pty_batch(&mut self) {}
 
     /// Set the cursor style.
     fn set_cursor_style(&mut self, _style: Option<CursorShape>, _blinking: bool) {}
@@ -389,8 +430,15 @@ pub trait Handler {
     ) {
     }
 
-    /// Place an existing graphic at a specific location (for a=p).
-    fn place_graphic(&mut self, _placement: kitty_graphics_protocol::PlacementRequest) {}
+    /// Place an existing graphic at a specific location (for `a=p`).
+    /// Returns whether the image exists so the dispatcher can answer
+    /// ENOENT and let clients retransmit an evicted image.
+    fn place_graphic(
+        &mut self,
+        _placement: kitty_graphics_protocol::PlacementRequest,
+    ) -> bool {
+        false
+    }
 
     /// Delete graphics based on the specified criteria.
     fn delete_graphics(&mut self, _delete: kitty_graphics_protocol::DeleteRequest) {}
@@ -514,6 +562,10 @@ struct XtgettcapState {
 
     /// Buffer for collecting hex-encoded capability names.
     buffer: Vec<u8>,
+
+    /// Set once the request exceeds its hard limit; bytes are discarded until
+    /// DCS unhook and the request produces no response.
+    overflowed: bool,
 }
 
 /// State for accumulating APC (Application Program Command) sequences.
@@ -526,6 +578,10 @@ struct ApcState {
     /// Buffer for accumulating APC data.
     /// Pre-allocated to a reasonable size for Kitty graphics chunks.
     buffer: Vec<u8>,
+
+    /// Set once the current APC exceeds its hard limit. The parser continues
+    /// to consume through the terminator without retaining or dispatching it.
+    overflowed: bool,
 }
 
 impl Default for SyncState {
@@ -607,6 +663,7 @@ impl Processor {
             let mut performer = Performer::new(&mut self.state, handler);
             self.parser.advance(&mut performer, bytes);
         }
+        handler.finish_pty_batch();
     }
 
     /// End a synchronized update.
@@ -615,6 +672,7 @@ impl Processor {
         H: Handler,
     {
         self.stop_sync_internal(handler, None);
+        handler.finish_pty_batch();
     }
 
     /// End a synchronized update.
@@ -691,10 +749,10 @@ impl Processor {
     where
         H: Handler,
     {
-        // Get constraints within which a new escape character might be relevant.
+        // Look back far enough for a marker fragmented across PTY reads.
         let buffer_len = self.state.sync_state.buffer.len();
         let start_offset = (buffer_len - new_bytes).saturating_sub(SYNC_ESCAPE_LEN - 1);
-        let end_offset = buffer_len.saturating_sub(SYNC_ESCAPE_LEN - 1);
+        let end_offset = buffer_len.saturating_sub(SYNC_ESCAPE_MIN_LEN - 1);
         let search_buffer = &self.state.sync_state.buffer[start_offset..end_offset];
 
         // Search for termination/extension escapes in the added bytes.
@@ -705,15 +763,23 @@ impl Processor {
         let mut bsu_offset = None;
         for index in memchr::memchr_iter(0x1B, search_buffer).rev() {
             let offset = start_offset + index;
-            let escape = &self.state.sync_state.buffer[offset..offset + SYNC_ESCAPE_LEN];
+            let buffer = &self.state.sync_state.buffer;
+            let is_bsu = buffer.get(offset..offset + SYNC_ESCAPE_LEN)
+                == Some(BSU_CSI.as_slice())
+                || buffer.get(offset..offset + SYNC_ESCAPE_MIN_LEN)
+                    == Some(BSU_DCS.as_slice());
+            let is_esu = buffer.get(offset..offset + SYNC_ESCAPE_LEN)
+                == Some(ESU_CSI.as_slice())
+                || buffer.get(offset..offset + SYNC_ESCAPE_MIN_LEN)
+                    == Some(ESU_DCS.as_slice());
 
-            if escape == BSU_CSI {
+            if is_bsu {
                 self.state
                     .sync_state
                     .timeout
                     .set_timeout(SYNC_UPDATE_TIMEOUT);
                 bsu_offset = Some(offset);
-            } else if escape == ESU_CSI {
+            } else if is_esu {
                 self.stop_sync_internal(handler, bsu_offset);
                 break;
             }
@@ -823,7 +889,7 @@ impl<'a, H: Handler + 'a> Performer<'a, H> {
                 return;
             };
 
-            if let Some(response) =
+            if let Some(mut response) =
                 kitty_graphics_protocol::parse(&kitty_params, chunking_state)
             {
                 if response.incomplete {
@@ -859,8 +925,11 @@ impl<'a, H: Handler + 'a> Performer<'a, H> {
                         placement.image_id
                     );
 
-                    // a=p: Display previously stored image
-                    self.handler.place_graphic(placement);
+                    // a=p: select the parser's quiet-aware ENOENT reply
+                    // when the terminal image store no longer has it.
+                    if !self.handler.place_graphic(placement) {
+                        response.response = response.error_response.take();
+                    }
                 }
 
                 if let Some(delete) = response.delete_request {
@@ -872,14 +941,14 @@ impl<'a, H: Handler + 'a> Performer<'a, H> {
                     self.handler.kitty_graphics_response(response_str);
                 }
             } else {
-                warn!("[process_apc_buffer] Failed to parse kitty graphics protocol");
+                warn_control_string_discard(
+                    &MALFORMED_KITTY_APC_COUNT,
+                    "malformed Kitty graphics APC",
+                );
             }
         } else {
             // Unknown APC sequence
-            warn!(
-                "[process_apc_buffer] Unknown APC sequence: {}",
-                String::from_utf8_lossy(&buffer[..buffer.len().min(20)])
-            );
+            warn_control_string_discard(&UNHANDLED_APC_COUNT, "unhandled APC sequence");
         }
     }
 
@@ -941,7 +1010,11 @@ impl<'a, H: Handler + 'a> Performer<'a, H> {
                 self.handler.glyph_protocol_response(resp);
             }
             Err(glyph_protocol::ParseError::Malformed(why)) => {
-                warn!("[glyph_protocol] malformed APC: {why}");
+                let _ = why;
+                warn_control_string_discard(
+                    &MALFORMED_GLYPH_APC_COUNT,
+                    "malformed Glyph Protocol APC",
+                );
             }
         }
     }
@@ -1005,6 +1078,28 @@ impl<U: Handler> Perform for Performer<'_, U> {
                 // XTGETTCAP request: DCS + q <hex-encoded-names> ST
                 self.state.xtgettcap_state.active = true;
                 self.state.xtgettcap_state.buffer.clear();
+                self.state.xtgettcap_state.overflowed = false;
+            }
+            // Legacy iTerm2 synchronized updates. Existing terminfo and
+            // tmux installations may emit this form instead of CSI ?2026.
+            ('s', [b'=']) => {
+                let parameter = params.iter().next().map(|p| p[0]).unwrap_or(0);
+                match parameter {
+                    1 => {
+                        self.state
+                            .sync_state
+                            .timeout
+                            .set_timeout(SYNC_UPDATE_TIMEOUT);
+                        self.handler
+                            .set_private_mode(NamedPrivateMode::SyncUpdate.into());
+                    }
+                    2 => {
+                        self.state.sync_state.timeout.clear_timeout();
+                        self.handler
+                            .unset_private_mode(NamedPrivateMode::SyncUpdate.into());
+                    }
+                    _ => {}
+                }
             }
             _ => debug!(
                 "[unhandled hook] params={:?}, ints: {:?}, ignore: {:?}, action: {:?}",
@@ -1020,11 +1115,33 @@ impl<U: Handler> Perform for Performer<'_, U> {
                 self.handler.sixel_graphic_reset();
             }
         } else if self.state.xtgettcap_state.active {
-            // Collect hex-encoded capability names for XTGETTCAP
-            self.state.xtgettcap_state.buffer.push(byte);
+            // Collect hex-encoded capability names for XTGETTCAP. Once the
+            // request is too large, retain no more bytes until DCS unhook.
+            let state = &mut self.state.xtgettcap_state;
+            if !state.overflowed {
+                if state.buffer.len() < MAX_XTGETTCAP_REQUEST_LEN {
+                    state.buffer.push(byte);
+                } else {
+                    state.overflowed = true;
+                    warn_control_string_discard(
+                        &XTGETTCAP_OVERFLOW_COUNT,
+                        "oversized XTGETTCAP request",
+                    );
+                }
+            }
         } else {
             debug!("[unhandled put] byte={:?}", byte);
         }
+    }
+
+    #[inline]
+    fn dcs_cancel(&mut self) {
+        if self.handler.is_sixel_graphic_active() {
+            self.handler.sixel_graphic_reset();
+        }
+        self.state.xtgettcap_state.active = false;
+        self.state.xtgettcap_state.buffer.clear();
+        self.state.xtgettcap_state.overflowed = false;
     }
 
     #[inline]
@@ -1032,33 +1149,31 @@ impl<U: Handler> Perform for Performer<'_, U> {
         if self.handler.is_sixel_graphic_active() {
             self.handler.sixel_graphic_finish();
         } else if self.state.xtgettcap_state.active {
-            // Process XTGETTCAP request
-            let response = process_xtgettcap_request(&self.state.xtgettcap_state.buffer);
-            self.handler.xtgettcap_response(response);
+            if !self.state.xtgettcap_state.overflowed {
+                let response =
+                    process_xtgettcap_request(&self.state.xtgettcap_state.buffer);
+                self.handler.xtgettcap_response(response);
+            }
 
-            // Reset state
+            // Reset state so the next request recovers without retained data.
             self.state.xtgettcap_state.active = false;
             self.state.xtgettcap_state.buffer.clear();
+            self.state.xtgettcap_state.overflowed = false;
         } else {
             debug!("[unhandled dcs_unhook]");
         }
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
-        debug!("[osc_dispatch] params={params:?} bell_terminated={bell_terminated}");
+        debug!(
+            "[osc_dispatch] parameter_count={} bell_terminated={bell_terminated}",
+            params.len()
+        );
 
         let terminator = if bell_terminated { "\x07" } else { "\x1b\\" };
 
-        fn unhandled(params: &[&[u8]]) {
-            let mut buf = String::new();
-            for items in params {
-                buf.push('[');
-                for item in *items {
-                    let _ = write!(buf, "{:?}", *item as char);
-                }
-                buf.push_str("],");
-            }
-            warn!("[unhandled osc_dispatch]: [{}] at line {}", &buf, line!());
+        fn unhandled(_params: &[&[u8]]) {
+            warn_control_string_discard(&UNHANDLED_OSC_COUNT, "unhandled OSC sequence");
         }
 
         if params.is_empty() || params[0].is_empty() {
@@ -1126,6 +1241,9 @@ impl<U: Handler> Perform for Performer<'_, U> {
                     self.handler.set_semantic_prompt(mark, prompt_id);
                 } else if let Some(command) = osc::parse_semantic_command(params) {
                     match command {
+                        osc::SemanticCommand::Input => {
+                            self.handler.semantic_prompt_input();
+                        }
                         osc::SemanticCommand::Start => {
                             self.handler.semantic_command_start();
                         }
@@ -1559,6 +1677,7 @@ impl<U: Handler> Perform for Performer<'_, U> {
     fn apc_start(&mut self) {
         debug!("[apc_start] Beginning APC accumulation");
         self.state.apc_state.buffer.clear();
+        self.state.apc_state.overflowed = false;
         // Pre-allocate reasonable size for Kitty graphics chunks (typically 4KB)
         self.state.apc_state.buffer.reserve(4096);
     }
@@ -1568,7 +1687,31 @@ impl<U: Handler> Perform for Performer<'_, U> {
     /// We accumulate all bytes here to handle large sequences that exceed Copa's
     /// default OSC buffer size (1024 bytes).
     fn apc_put(&mut self, byte: u8) {
-        self.state.apc_state.buffer.push(byte);
+        let state = &mut self.state.apc_state;
+        if state.overflowed {
+            return;
+        }
+        if state.buffer.len() < MAX_APC_SEQUENCE_LEN {
+            state.buffer.push(byte);
+        } else {
+            state.overflowed = true;
+            warn_control_string_discard(&APC_OVERFLOW_COUNT, "oversized APC sequence");
+        }
+    }
+
+    fn apc_put_slice(&mut self, bytes: &[u8]) {
+        let state = &mut self.state.apc_state;
+        if state.overflowed {
+            return;
+        }
+
+        let remaining = MAX_APC_SEQUENCE_LEN.saturating_sub(state.buffer.len());
+        let accepted = remaining.min(bytes.len());
+        state.buffer.extend_from_slice(&bytes[..accepted]);
+        if accepted != bytes.len() {
+            state.overflowed = true;
+            warn_control_string_discard(&APC_OVERFLOW_COUNT, "oversized APC sequence");
+        }
     }
 
     /// Called when the APC sequence ends. Processes the accumulated APC data.
@@ -1578,8 +1721,15 @@ impl<U: Handler> Perform for Performer<'_, U> {
             self.state.apc_state.buffer.len()
         );
 
-        // Process the accumulated buffer
-        self.process_apc_buffer();
+        if !self.state.apc_state.overflowed {
+            self.process_apc_buffer();
+        }
+        self.state.apc_state.buffer.clear();
+        self.state.apc_state.overflowed = false;
+    }
+    fn apc_cancel(&mut self) {
+        self.state.apc_state.buffer.clear();
+        self.state.apc_state.overflowed = false;
     }
 }
 
@@ -1675,7 +1825,7 @@ fn attrs_from_sgr_parameters(
 /// Multiple capability queries can be separated by `;` in a single request.
 /// Each capability gets its own DCS response (like xterm).
 fn process_xtgettcap_request(buffer: &[u8]) -> String {
-    debug!("Processing XTGETTCAP request: {:?}", buffer);
+    debug!("Processing XTGETTCAP request ({} bytes)", buffer.len());
 
     let mut response = String::new();
 
@@ -1691,7 +1841,7 @@ fn process_xtgettcap_request(buffer: &[u8]) -> String {
                 continue;
             }
         };
-        debug!("XTGETTCAP query for: {}", capability_name);
+        debug!("XTGETTCAP query decoded ({} bytes)", capability_name.len());
 
         let hex_name = encode_hex_string(&capability_name);
         if let Some(value) = get_termcap_capability(&capability_name) {
@@ -1802,13 +1952,13 @@ fn encode_hex_string(s: &str) -> String {
     s.bytes().map(|b| format!("{b:02X}")).collect()
 }
 
-/// Get termcap/terminfo capability value for Rio terminal.
+/// Get termcap/terminfo capability value for Automexia Terminal.
 /// Based on misc/rio.termcap and misc/rio.terminfo files.
 fn get_termcap_capability(name: &str) -> Option<String> {
     debug!("XTGETTCAP query for capability: {}", name);
     match name {
         // Terminal name
-        "TN" | "name" => Some("rio".to_string()),
+        "TN" | "name" => Some("automexia".to_string()),
 
         // Colors capability - from terminfo: colors#0x100 (256), pairs#0x7FFF
         "Co" | "colors" => Some("256".to_string()),
@@ -2196,6 +2346,196 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct KittyReplyHandler {
+        stored: std::collections::HashSet<u32>,
+        replies: Vec<String>,
+        chunking: kitty_graphics_protocol::KittyGraphicsState,
+    }
+
+    impl Handler for KittyReplyHandler {
+        fn place_graphic(
+            &mut self,
+            placement: kitty_graphics_protocol::PlacementRequest,
+        ) -> bool {
+            self.stored.contains(&placement.image_id)
+        }
+
+        fn kitty_graphics_response(&mut self, response: String) {
+            self.replies.push(response);
+        }
+
+        fn kitty_chunking_state_mut(
+            &mut self,
+        ) -> Option<&mut kitty_graphics_protocol::KittyGraphicsState> {
+            Some(&mut self.chunking)
+        }
+    }
+
+    #[derive(Default)]
+    struct ProtocolBoundaryHandler {
+        xtgettcap_responses: Vec<String>,
+        glyph_responses: Vec<String>,
+    }
+
+    impl Handler for ProtocolBoundaryHandler {
+        fn xtgettcap_response(&mut self, response: String) {
+            self.xtgettcap_responses.push(response);
+        }
+
+        fn glyph_protocol_response(&mut self, response: String) {
+            self.glyph_responses.push(response);
+        }
+    }
+
+    #[test]
+    fn xtgettcap_limit_is_exact_and_cancellation_clears_state() {
+        let mut handler = ProtocolBoundaryHandler::default();
+        let mut processor = Processor::default();
+
+        processor.advance(&mut handler, b"\x1bP+q");
+        processor.advance(&mut handler, &vec![b'A'; MAX_XTGETTCAP_REQUEST_LEN]);
+        assert_eq!(
+            processor.state.xtgettcap_state.buffer.len(),
+            MAX_XTGETTCAP_REQUEST_LEN
+        );
+        assert!(!processor.state.xtgettcap_state.overflowed);
+
+        processor.advance(&mut handler, b"B");
+        assert!(processor.state.xtgettcap_state.overflowed);
+        assert_eq!(
+            processor.state.xtgettcap_state.buffer.len(),
+            MAX_XTGETTCAP_REQUEST_LEN
+        );
+        processor.advance(&mut handler, b"\x18");
+
+        assert!(handler.xtgettcap_responses.is_empty());
+        assert!(!processor.state.xtgettcap_state.active);
+        assert!(!processor.state.xtgettcap_state.overflowed);
+        assert!(processor.state.xtgettcap_state.buffer.is_empty());
+    }
+
+    #[test]
+    fn cancelled_xtgettcap_is_not_dispatched_and_next_request_recovers() {
+        let mut handler = ProtocolBoundaryHandler::default();
+        let mut processor = Processor::default();
+
+        processor.advance(&mut handler, b"\x1bP+q544E\x18\x1bP+q544E\x1b\\");
+
+        assert_eq!(handler.xtgettcap_responses.len(), 1);
+        assert_eq!(
+            handler.xtgettcap_responses[0],
+            "\x1bP1+r544E=6175746F6D65786961\x1b\\"
+        );
+    }
+
+    #[test]
+    fn oversized_xtgettcap_is_discarded_and_next_request_recovers() {
+        let mut handler = ProtocolBoundaryHandler::default();
+        let mut processor = Processor::default();
+        let mut oversized = Vec::with_capacity(MAX_XTGETTCAP_REQUEST_LEN + 16);
+        oversized.extend_from_slice(b"\x1bP+q");
+        oversized.extend(std::iter::repeat_n(b'A', MAX_XTGETTCAP_REQUEST_LEN + 1));
+        oversized.extend_from_slice(b"\x1b\\");
+        oversized.extend_from_slice(b"\x1bP+q544E\x1b\\");
+
+        processor.advance(&mut handler, &oversized);
+
+        assert_eq!(handler.xtgettcap_responses.len(), 1);
+        assert_eq!(
+            handler.xtgettcap_responses[0],
+            "\x1bP1+r544E=6175746F6D65786961\x1b\\"
+        );
+        assert!(!processor.state.xtgettcap_state.active);
+        assert!(!processor.state.xtgettcap_state.overflowed);
+        assert!(processor.state.xtgettcap_state.buffer.is_empty());
+    }
+
+    #[test]
+    fn apc_limit_is_exact_and_cancellation_clears_state() {
+        let mut handler = ProtocolBoundaryHandler::default();
+        let mut processor = Processor::default();
+
+        processor.advance(&mut handler, b"\x1b_");
+        processor.advance(&mut handler, &vec![b'A'; MAX_APC_SEQUENCE_LEN]);
+        assert_eq!(processor.state.apc_state.buffer.len(), MAX_APC_SEQUENCE_LEN);
+        assert!(!processor.state.apc_state.overflowed);
+
+        processor.advance(&mut handler, b"B");
+        assert!(processor.state.apc_state.overflowed);
+        assert_eq!(processor.state.apc_state.buffer.len(), MAX_APC_SEQUENCE_LEN);
+        processor.advance(&mut handler, b"\x1a");
+
+        assert!(handler.glyph_responses.is_empty());
+        assert!(!processor.state.apc_state.overflowed);
+        assert!(processor.state.apc_state.buffer.is_empty());
+    }
+
+    #[test]
+    fn cancelled_apc_is_not_dispatched_and_next_request_recovers() {
+        let mut handler = ProtocolBoundaryHandler::default();
+        let mut processor = Processor::default();
+
+        processor.advance(&mut handler, b"\x1b_25a1;s\x18\x1b_25a1;s\x1b\\");
+
+        assert_eq!(handler.glyph_responses.len(), 1);
+        assert_eq!(
+            handler.glyph_responses[0],
+            glyph_protocol::format_support_response(glyph_protocol::SUPPORTED_FORMATS)
+        );
+    }
+
+    #[test]
+    fn oversized_apc_is_discarded_and_next_glyph_request_recovers() {
+        let mut handler = ProtocolBoundaryHandler::default();
+        let mut processor = Processor::default();
+        let mut oversized = Vec::with_capacity(MAX_APC_SEQUENCE_LEN + 32);
+        oversized.extend_from_slice(b"\x1b_25a1;s;");
+        oversized.extend(std::iter::repeat_n(b'A', MAX_APC_SEQUENCE_LEN));
+        oversized.extend_from_slice(b"\x1b\\");
+        oversized.extend_from_slice(b"\x1b_25a1;s\x1b\\");
+
+        processor.advance(&mut handler, &oversized);
+
+        assert_eq!(handler.glyph_responses.len(), 1);
+        assert_eq!(
+            handler.glyph_responses[0],
+            glyph_protocol::format_support_response(glyph_protocol::SUPPORTED_FORMATS)
+        );
+        assert!(!processor.state.apc_state.overflowed);
+        assert!(processor.state.apc_state.buffer.is_empty());
+    }
+
+    #[test]
+    fn kitty_placement_reply_reflects_image_store_state() {
+        let mut handler = KittyReplyHandler::default();
+        let mut processor = Processor::default();
+
+        processor.advance(&mut handler, b"\x1b_Ga=p,i=99\x1b\x5c");
+        assert_eq!(handler.replies.len(), 1);
+        assert!(handler.replies[0].contains("ENOENT"));
+        assert!(handler.replies[0].contains("i=99"));
+
+        handler.replies.clear();
+        handler.stored.insert(99);
+        processor.advance(&mut handler, b"\x1b_Ga=p,i=99\x1b\x5c");
+        assert_eq!(handler.replies.len(), 1);
+        assert!(handler.replies[0].contains(";OK"));
+    }
+
+    #[test]
+    fn kitty_placement_reply_honors_quiet_levels() {
+        let mut handler = KittyReplyHandler::default();
+        let mut processor = Processor::default();
+
+        processor.advance(&mut handler, b"\x1b_Ga=p,i=7,q=2\x1b\x5c");
+        assert!(handler.replies.is_empty());
+
+        processor.advance(&mut handler, b"\x1b_Ga=p,i=7,q=1\x1b\x5c");
+        assert_eq!(handler.replies.len(), 1);
+        assert!(handler.replies[0].contains("ENOENT"));
+    }
+
     #[test]
     fn sync_update_inline_bsu_esu_disarms_timeout() {
         let mut handler = SyncHandler::default();
@@ -2223,6 +2563,52 @@ mod tests {
         assert_eq!(handler.printed, "hidden");
         assert!(processor.sync_timeout().sync_timeout().is_none());
         assert_eq!(processor.sync_bytes_count(), 0);
+    }
+
+    #[test]
+    fn sync_update_dcs_form_buffers_and_flushes() {
+        let mut handler = SyncHandler::default();
+        let mut processor = Processor::default();
+
+        processor.advance(&mut handler, b"\x1bP=1s\x1b\x5c");
+        assert!(processor.sync_timeout().sync_timeout().is_some());
+        processor.advance(&mut handler, b"hidden");
+        assert_eq!(handler.printed, "");
+        processor.advance(&mut handler, b"\x1bP=2s\x1b\x5c");
+
+        assert_eq!(handler.printed, "hidden");
+        assert!(processor.sync_timeout().sync_timeout().is_none());
+        assert_eq!(processor.sync_bytes_count(), 0);
+    }
+
+    #[test]
+    fn sync_update_csi_and_dcs_forms_interoperate() {
+        let mut handler = SyncHandler::default();
+        let mut processor = Processor::default();
+
+        processor.advance(&mut handler, b"\x1b[?2026h");
+        processor.advance(&mut handler, b"one");
+        processor.advance(&mut handler, b"\x1bP=2s\x1b\x5c");
+        assert_eq!(handler.printed, "one");
+
+        processor.advance(&mut handler, b"\x1bP=1s\x1b\x5c");
+        processor.advance(&mut handler, b"two");
+        processor.advance(&mut handler, b"\x1b[?2026l");
+        assert_eq!(handler.printed, "onetwo");
+        assert!(processor.sync_timeout().sync_timeout().is_none());
+    }
+
+    #[test]
+    fn sync_update_dcs_marker_survives_fragmented_reads() {
+        let mut handler = SyncHandler::default();
+        let mut processor = Processor::default();
+
+        processor.advance(&mut handler, b"\x1bP=1s\x1b\x5c");
+        processor.advance(&mut handler, b"hidden\x1bP=2");
+        assert_eq!(handler.printed, "");
+        processor.advance(&mut handler, b"s\x1b\x5cafter");
+        assert_eq!(handler.printed, "hiddenafter");
+        assert!(processor.sync_timeout().sync_timeout().is_none());
     }
 
     #[test]
@@ -2328,6 +2714,7 @@ mod tests {
     fn semantic_command_lifecycle_parsing() {
         use crate::performer::osc::{parse_semantic_command as parse, SemanticCommand};
 
+        assert_eq!(parse(&[b"133", b"B"]), Some(SemanticCommand::Input));
         assert_eq!(parse(&[b"133", b"C"]), Some(SemanticCommand::Start));
         assert_eq!(
             parse(&[b"133", b"D", b"17"]),
@@ -2341,7 +2728,7 @@ mod tests {
             parse(&[b"133", b"D", b"invalid"]),
             Some(SemanticCommand::End { exit_code: 0 })
         );
-        assert_eq!(parse(&[b"133", b"B"]), None);
+        assert_eq!(parse(&[b"133", b"A"]), None);
     }
 
     #[test]
@@ -2404,7 +2791,7 @@ mod tests {
     fn test_single_capability_requests() {
         // Test terminal name
         let response = process_xtgettcap_request(b"544E"); // "TN"
-        assert_eq!(response, "\x1bP1+r544E=72696F\x1b\\");
+        assert_eq!(response, "\x1bP1+r544E=6175746F6D65786961\x1b\\");
 
         // Test colors capability
         let response = process_xtgettcap_request(b"436F"); // "Co"
@@ -2483,7 +2870,7 @@ mod tests {
 
     #[test]
     fn test_capability_lookup() {
-        assert_eq!(get_termcap_capability("TN"), Some("rio".to_string()));
+        assert_eq!(get_termcap_capability("TN"), Some("automexia".to_string()));
         assert_eq!(get_termcap_capability("Co"), Some("256".to_string()));
         assert_eq!(get_termcap_capability("RGB"), Some("8/8/8".to_string()));
         assert_eq!(get_termcap_capability("invalid"), None);

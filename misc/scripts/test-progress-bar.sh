@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Manual repro for OSC 9;4 progress-bar handling (issue #1509).
-# Run inside a Rio window. The fix is verified visually if the
+# Run inside an Automexia window. The fix is verified visually if the
 # indeterminate bar in phase 2 *moves* across the window — before
 # the fix it froze at the left edge because every heartbeat OSC
 # yanked the animation phase back to t=0.

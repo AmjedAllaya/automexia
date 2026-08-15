@@ -25,7 +25,7 @@ documentation = "https://docs.rs/crate/sugarloaf/latest"
 repository = "https://github.com/raphamorim/sugarloaf"
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -134,6 +134,7 @@ naga = { version = "30.0.0", features = ["wgsl-in"] }
 default = ["scale", "render"]
 scale = ["yazi"]
 render = ["scale", "zeno/eval"]
+native-gui-test-hooks = []
 # Pull in `wgpu` + the librashader filter chain. Required on Windows
 # and WASM (no native backend yet); optional on Linux + macOS where
 # the native Vulkan / Metal backends cover everything except the

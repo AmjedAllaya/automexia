@@ -11,6 +11,9 @@ description = "Font assets and glyph placement rules shared by Rio's renderers (
 
 [dependencies]
 
+[dev-dependencies]
+ttf-parser = { version = "0.25.1", default-features = false, features = ["std"] }
+
 [features]
 default = []
 # Embed the symbols-only Nerd Font (~1.9 MB) for renderers that want a

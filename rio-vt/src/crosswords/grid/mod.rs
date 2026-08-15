@@ -84,11 +84,6 @@ pub struct Grid<T> {
     /// placements exist.
     pub track_reflow_remap: bool,
 
-    /// Stable prompt identity whose editable rows must be left for the shell
-    /// line editor to redraw after SIGWINCH. Reflowing the live Readline/ZLE
-    /// buffer and then letting the shell redraw it duplicates wrapped prompt
-    /// fragments; historical rows continue to use normal terminal reflow.
-
     /// Output of the last tracked column reflow; `None` when tracking
     /// was off or the column count did not change.
     pub reflow_remap: Option<ReflowRemap>,
@@ -382,14 +377,14 @@ impl<T: GridSquare + Default + PartialEq + Clone> Grid<T> {
             return;
         }
 
-        // Update display offset when not pinned to active area.
-        if self.display_offset != 0 {
-            self.display_offset =
-                min(self.display_offset + positions, self.max_scroll_limit);
-        }
-
         // Only rotate the entire history if the active region starts at the top.
         if region.start == 0 {
+            // Only a top-anchored scroll adds history. Sub-region IL/DL
+            // must not move a viewport pinned to absolute history rows.
+            if self.display_offset != 0 {
+                self.display_offset =
+                    min(self.display_offset + positions, self.max_scroll_limit);
+            }
             // Create scrollback for the new lines. Whatever the cap
             // refuses to grow is evicted off the ring instead.
             let grown = min(positions, self.max_scroll_limit - self.history_size());

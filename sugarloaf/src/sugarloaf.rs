@@ -77,6 +77,15 @@ pub struct SugarloafWithErrors<'a> {
     pub errors: SugarloafErrors,
 }
 
+#[cfg(feature = "native-gui-test-hooks")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NativeImageResourceStats {
+    pub pixel_entries: usize,
+    pub overlay_entries: usize,
+    pub texture_entries: usize,
+    pub texture_bytes: usize,
+}
+
 impl Debug for SugarloafWithErrors<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.errors)
@@ -788,6 +797,20 @@ impl Sugarloaf<'_> {
         &mut self.text
     }
 
+    /// Begin a modal composition phase. All primitives and labels recorded
+    /// until end_modal_layer are painted after normal UI chrome and text.
+    #[inline]
+    pub fn begin_modal_layer(&mut self) {
+        self.renderer.begin_modal_layer();
+        self.text.begin_modal_layer();
+    }
+
+    #[inline]
+    pub fn end_modal_layer(&mut self) {
+        self.renderer.end_modal_layer();
+        self.text.end_modal_layer();
+    }
+
     /// Register an image overlay anchored to `panel_id` (a
     /// `rich_text_id`). Driven by the kitty graphics frontend; read
     /// by the renderer's image pass.
@@ -861,6 +884,36 @@ impl Sugarloaf<'_> {
         self.renderer.evict_image_texture(key);
     }
 
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub fn native_image_resource_stats(
+        &self,
+        namespace: u64,
+        namespace_mask: u64,
+    ) -> NativeImageResourceStats {
+        let pixel_entries = self
+            .image_data
+            .keys()
+            .filter(|key| **key & namespace_mask == namespace & namespace_mask)
+            .count();
+        let overlay_entries = self
+            .image_overlays
+            .values()
+            .flatten()
+            .filter(|overlay| {
+                overlay.image_id & namespace_mask == namespace & namespace_mask
+            })
+            .count();
+        let (texture_entries, texture_bytes) = self
+            .renderer
+            .native_image_texture_usage(namespace, namespace_mask);
+        NativeImageResourceStats {
+            pixel_entries,
+            overlay_entries,
+            texture_entries,
+            texture_bytes,
+        }
+    }
+
     /// Drop everything this frame's immediate-mode producers pushed
     /// without submitting a draw. Callers use this when they
     /// decided mid-frame to skip `render` / `render_with_grids`
@@ -901,6 +954,7 @@ impl Sugarloaf<'_> {
         &mut self,
         grids: &mut [(&mut crate::grid::GridRenderer, crate::grid::GridUniforms)],
     ) {
+        self.text.finalize_modal_layer();
         self.state.compute_dimensions();
         self.state.compute_updates(
             &mut self.renderer,
@@ -1091,7 +1145,15 @@ impl Sugarloaf<'_> {
         // UI text overlay (tab titles, search overlay labels,
         // command palette items, etc.). Drawn last so labels sit on
         // top of the panel chrome.
-        self.text.render_vulkan(
+        self.text.render_vulkan_base(
+            cmd,
+            frame.slot,
+            [frame.extent.width as f32, frame.extent.height as f32],
+        );
+
+        // Final modal phase: opaque scrim/card first, then dialog labels.
+        self.renderer.render_vulkan_modal(cmd, &frame);
+        self.text.render_vulkan_modal(
             cmd,
             frame.slot,
             [frame.extent.width as f32, frame.extent.height as f32],
@@ -1188,7 +1250,37 @@ impl Sugarloaf<'_> {
             {
                 self.text.init_wgpu(&ctx.device, &ctx.queue, ctx.format);
                 self.text
-                    .render_wgpu(&mut rpass, [ctx.size.width, ctx.size.height]);
+                    .render_wgpu_base(&mut rpass, [ctx.size.width, ctx.size.height]);
+            }
+        }
+
+        // A second load-preserving pass gives the modal phase exclusive
+        // topmost ownership without clearing or replaying base UI labels.
+        // It is created only while a modal is visible, so ordinary frames
+        // keep the original single-pass cost.
+        let has_modal =
+            self.renderer.has_modal_layer() || self.text.modal_instance_count() > 0;
+        if has_modal {
+            let mut modal_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                label: Some("sugarloaf.modal"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                multiview_mask: None,
+            });
+            self.renderer.render_modal(ctx, &mut modal_pass);
+            #[cfg(not(target_os = "macos"))]
+            {
+                self.text.render_wgpu_modal(&mut modal_pass);
             }
         }
 

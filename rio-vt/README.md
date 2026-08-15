@@ -152,8 +152,8 @@ cursor and selection state), see
 
 To embed from a non-Rust UI, use [`librio`](../librio). It builds this
 crate as a `staticlib` and exposes an engine/surface/render-state C API
-(`rio_engine_new`, `rio_surface_text`, `rio_render_state_cell`, ...). Rio's
-SwiftUI + Metal frontend drives it that way.
+(`rio_engine_new`, `rio_surface_text`, `rio_render_state_cell`, ...). Inherited
+frontends can drive the core through this compatibility ABI.
 
 ## Architecture
 
@@ -164,7 +164,7 @@ rio-graphics   image/graphic value types + glyph decoder (leaf, no GPU)
      |     \
 rio-backend   librio (C ABI)
      |
-  rioterm     Rio's terminal app (adds the sugarloaf renderer + config)
+Automexia app desktop frontend (adds the Sugarloaf renderer + config)
 ```
 
 `rio-backend` builds on `rio-vt` and re-exports every module at the same

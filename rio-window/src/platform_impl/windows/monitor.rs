@@ -18,6 +18,15 @@ use crate::platform_impl::platform::dpi::{dpi_to_scale_factor, get_monitor_dpi};
 use crate::platform_impl::platform::util::has_flag;
 use crate::platform_impl::platform::window::Window;
 
+/// Convert Win32's `DEVMODE::dmDisplayFrequency` to the public millihertz
+/// representation. Windows reserves both 0 and 1 to mean "the hardware
+/// default", so exposing either as a measured refresh rate would make frame
+/// pacing run at zero or one hertz.
+#[inline]
+fn refresh_rate_millihertz_from_devmode(frequency_hz: u32) -> Option<u32> {
+    (frequency_hz > 1).then(|| frequency_hz.saturating_mul(1000))
+}
+
 #[derive(Clone)]
 pub struct VideoModeHandle {
     pub(crate) size: (u32, u32),
@@ -193,7 +202,7 @@ impl MonitorHandle {
             {
                 None
             } else {
-                Some(mode.dmDisplayFrequency * 1000)
+                refresh_rate_millihertz_from_devmode(mode.dmDisplayFrequency)
             }
         }
     }
@@ -263,5 +272,25 @@ impl MonitorHandle {
         }
 
         modes.into_iter().map(mod_map)
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::refresh_rate_millihertz_from_devmode;
+
+    #[test]
+    fn devmode_default_refresh_sentinels_are_not_reported_as_real_rates() {
+        assert_eq!(refresh_rate_millihertz_from_devmode(0), None);
+        assert_eq!(refresh_rate_millihertz_from_devmode(1), None);
+    }
+
+    #[test]
+    fn devmode_refresh_rate_is_converted_to_millihertz() {
+        assert_eq!(refresh_rate_millihertz_from_devmode(60), Some(60_000));
+        assert_eq!(refresh_rate_millihertz_from_devmode(144), Some(144_000));
+        assert_eq!(
+            refresh_rate_millihertz_from_devmode(u32::MAX),
+            Some(u32::MAX)
+        );
     }
 }

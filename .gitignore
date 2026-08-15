@@ -7,6 +7,12 @@ result/
 /result
 
 target/
+# Opt-in native screenshots, reports, and other local QA evidence.
+artifacts/
+# Local libFuzzer output is generated per campaign. Crash artifacts are CI
+# evidence, not source; preserve/report them before cleaning a failed run.
+fuzz/corpus/
+fuzz/artifacts/
 .cargo-packager/
 .DS_Store
 rls/
@@ -19,6 +25,11 @@ release
 NOTES
 *.log
 lcov.info
+
+# Python QA/test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
 
 # for nix users
 .direnv/

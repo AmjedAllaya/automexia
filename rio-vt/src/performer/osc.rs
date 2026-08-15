@@ -77,6 +77,7 @@ pub(super) fn parse_semantic_prompt(
 /// Non-row-marking parts of the OSC 133 command lifecycle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SemanticCommand {
+    Input,
     Start,
     End { exit_code: i32 },
 }
@@ -86,6 +87,7 @@ pub(super) enum SemanticCommand {
 /// use `0`, matching shells that emit a bare `D` for success.
 pub(super) fn parse_semantic_command(params: &[&[u8]]) -> Option<SemanticCommand> {
     match *params.get(1)?.first()? {
+        b'B' => Some(SemanticCommand::Input),
         b'C' => Some(SemanticCommand::Start),
         b'D' => {
             let exit_code = params
@@ -261,9 +263,18 @@ pub(super) fn parse_current_directory(param: &[u8]) -> Option<String> {
     // A query or fragment is not part of the path.
     let path = &path[..path.find(['?', '#']).unwrap_or(path.len())];
 
-    // Windows paths arrive as `/C:/...`; drop the leading slash.
+    // Native Windows paths arrive as `/C:/...`; drop the leading slash only
+    // for that drive-letter shape. WSL shells use ordinary `/home/...` paths
+    // even though Automexia itself is a Windows process, and clones need that
+    // leading slash for `wsl.exe --cd`.
     #[cfg(windows)]
-    let path = path.strip_prefix('/').unwrap_or(path);
+    let path = if path.as_bytes().get(2) == Some(&b':')
+        && path.as_bytes().get(1).is_some_and(u8::is_ascii_alphabetic)
+    {
+        &path[1..]
+    } else {
+        path
+    };
 
     percent_decode(path)
 }
@@ -503,6 +514,10 @@ mod tests {
     #[test]
     fn current_directory_strips_windows_leading_slash() {
         assert_eq!(cwd("file:///C:/Users/user"), Some("C:/Users/user".into()));
+        assert_eq!(
+            cwd("file:///home/<REDACTED_LOCAL_VALUE>/work%20tree"),
+            Some("/home/<REDACTED_LOCAL_VALUE>/work tree".into())
+        );
     }
 
     #[cfg(unix)]

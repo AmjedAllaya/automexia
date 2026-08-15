@@ -42,6 +42,11 @@ name = "automexia"
 path = "src/main.rs"
 
 [dependencies]
+automexia-extension-api = { workspace = true }
+automexia-extension-runtime = { workspace = true }
+automexia-devops = { workspace = true }
+automexia-image = { workspace = true }
+automexia-ui-model = { workspace = true }
 global-hotkey = "0.8.0"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "registry"] }
@@ -51,6 +56,9 @@ rio-backend = { workspace = true }
 [dev-dependencies]
 pretty_assertions = "1.4.1"
 criterion = { workspace = true }
+image_rs = { workspace = true }
+insta = { workspace = true }
+proptest = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 bitflags = { workspace = true }
@@ -64,7 +72,6 @@ dirs = "6.0.0"
 notify = "8.2.0"
 rustc-hash = { workspace = true }
 rapidhash = { version = "4.4.1", default-features = false }
-image_rs = { workspace = true }
 libc = { workspace = true }
 parking_lot = { workspace = true }
 serde = { workspace = true }
@@ -94,12 +101,15 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_System_LibraryLoader",
+    "Win32_System_Power",
+    "Win32_System_SystemServices",
     "Win32_System_Threading",
     "Win32_System_WindowsProgramming",
     "Win32_System_IO",
     "Win32_System_SystemInformation",
     "Win32_Graphics_Gdi",
     "Win32_UI_Shell",
+    "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
     "Win32_System_Diagnostics_Debug",
 ]}
@@ -125,6 +135,7 @@ features = ["wgpu"]
 
 [features]
 default = ["wayland", "x11"]
+native-gui-test-hooks = ["rio-backend/native-gui-test-hooks", "sugarloaf/native-gui-test-hooks"]
 audio = ["cpal"]
 x11 = [
     "rio-backend/x11",
@@ -136,5 +147,13 @@ wayland = [
     "rio-window/wayland-dlopen",
 ]
 wgpu = ["sugarloaf/wgpu", "rio-backend/wgpu"]
+
+[[bench]]
+name = "automexia_services"
+harness = false
+
+[[bench]]
+name = "image_preview"
+harness = false
 
 # "rio-window/wayland-csd-adwaita-crossfont",

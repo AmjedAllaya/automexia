@@ -14,7 +14,31 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
+  native-gui-resilience:
+    name: Release Windows GUI resize and clone resilience
+    if: vars.AUTOMEXIA_NATIVE_GUI_RUNNER == '1'
+    runs-on: [self-hosted, Windows, X64, automexia-gpu]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Exercise prompt history, independent clones, ConPTY, and resize storms
+        shell: pwsh
+        run: cargo xtask test session-clone --native-windows
+
+  native-wsl-resilience:
+    name: Release WSL clone identity and resize resilience
+    if: vars.AUTOMEXIA_WSL_RUNNER == '1'
+    runs-on: [self-hosted, Windows, X64, automexia-wsl]
+    env:
+      AUTOMEXIA_TEST_WSL_DISTRO: ${{ vars.AUTOMEXIA_TEST_WSL_DISTRO }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Preserve distro, user, shell, directory, and independent PTY state
+        shell: pwsh
+        run: cargo xtask test session-clone --native-wsl
+
   preflight:
+    needs: [native-gui-resilience, native-wsl-resilience]
+    if: needs.native-gui-resilience.result == 'success' && needs.native-wsl-resilience.result == 'success'
     runs-on: ubuntu-latest
     environment: stable-release
     env:
@@ -33,7 +57,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install Linux build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
+        run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev python3-yaml shellcheck zsh
       - name: Protected-main and tag preconditions
         id: version
         run: |
@@ -75,7 +99,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
+        run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
       - run: rustup target add ${{ matrix.target }}
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:
@@ -140,6 +164,7 @@ jobs:
           name: ${{ matrix.artifact }}
           path: staged
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+        if: matrix.target == 'x86_64-pc-windows-msvc'
         with:
           tool: cargo-packager@0.11.8
       - name: Import certificate and sign executable
@@ -175,7 +200,26 @@ jobs:
       - name: Clean install, identity, and uninstall smoke
         if: matrix.target == 'x86_64-pc-windows-msvc'
         shell: pwsh
-        run: tools/ci/test_windows_installer.ps1 -MsiPath (Get-ChildItem signed -Filter *.msi | Select-Object -First 1).FullName -Version $env:AUTOMEXIA_VERSION
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $previous = $null
+          $previousTag = gh release list --exclude-drafts --exclude-pre-releases --limit 20 --json tagName --jq '.[].tagName' |
+            Where-Object { $_ -ne $env:GITHUB_REF_NAME } | Select-Object -First 1
+          if ($previousTag) {
+            New-Item -ItemType Directory -Force previous | Out-Null
+            gh release download $previousTag --pattern '*x86_64-pc-windows-msvc.msi' --dir previous
+            if ($LASTEXITCODE -eq 0) {
+              $previous = (Get-ChildItem previous -Filter *.msi | Select-Object -First 1).FullName
+            }
+          }
+          $arguments = @{
+            MsiPath = (Get-ChildItem signed -Filter *.msi | Select-Object -First 1).FullName
+            PortableZipPath = (Get-ChildItem signed -Filter *.zip | Select-Object -First 1).FullName
+            Version = $env:AUTOMEXIA_VERSION
+          }
+          if ($previous) { $arguments.PreviousMsiPath = $previous }
+          tools/ci/test_windows_installer.ps1 @arguments
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: packages-${{ matrix.artifact }}
@@ -263,9 +307,10 @@ jobs:
           path: staged
       - name: Install Linux package validators
         run: sudo apt-get update && sudo apt-get install -y appstream cpio desktop-file-utils lintian ncurses-bin rpm scdoc
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
-        with:
-          tool: nfpm@v2.43.4
+      - name: Install pinned nFPM
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Build DEB, RPM, and portable archive
         run: |
           set -euo pipefail

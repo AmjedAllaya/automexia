@@ -8,7 +8,6 @@ use rio_window::window::Theme;
 pub fn padding_top_from_config(
     navigation: &Navigation,
     padding_y_top: f32,
-    #[allow(unused)] num_tabs: usize,
     #[allow(unused)] macos_use_unified_titlebar: bool,
     window_width: f32,
     window_height: f32,
@@ -21,7 +20,7 @@ pub fn padding_top_from_config(
             window_height,
             scale_factor,
         );
-        return chrome.chrome_height + padding_y_top;
+        return chrome.content_top() + padding_y_top;
     }
 
     let default_padding = constants::PADDING_Y + padding_y_top;

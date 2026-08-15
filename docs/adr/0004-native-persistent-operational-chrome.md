@@ -1,6 +1,6 @@
 # ADR 0004: Native persistent operational chrome
 
-Status: Accepted
+Status: Superseded by ADR 0006
 
 Automexia reserves renderer-owned space above the VT grid for profile tabs and
 live operational context. Every shell prompt also reserves an empty semantic
@@ -17,8 +17,10 @@ resize. Shell/context discovery remains asynchronous and local-only. Explicit
 ANSI application styling, selection and search retain precedence over semantic
 decoration.
 
-Consequences: the application reserves 148 logical pixels when tab navigation
-is enabled and three semantic rows for every prompt. Readline, ZLE, and
+Consequences: the current responsive policy reserves 56 logical pixels for the
+comfortable window header. A pane with multiple local tabs separately reserves
+36 logical pixels inside its own bounds; no sibling or window-wide content root
+moves. Prompts retain their three semantic rows. Readline, ZLE, and
 PSReadLine own the complete-path and short command rows as one multiline
 prompt, while the renderer alone owns the context row. This makes the editor
 restore the complete path after SIGWINCH instead of stranding its head in
