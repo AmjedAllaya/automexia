@@ -3245,6 +3245,15 @@ fn package_windows_arm64(
     )?;
     run("dotnet", &["tool", "restore"])?;
 
+    // WiX is a .NET application and interprets its source argument as a URI.
+    // `std::fs::canonicalize` adds the Windows `\\?\` verbatim prefix used by
+    // `root()` which `System.Uri` rejects before WiX can parse the source.
+    // Keep filesystem resolution canonical while presenting regular Win32
+    // paths to this external tool.
+    let workspace = normalize_canonical_path(root());
+    let binary = normalize_canonical_path(binary.to_path_buf());
+    let output = normalize_canonical_path(output.to_path_buf());
+
     let msi = output.join(format!(
         "automexia-terminal-{}-{target}.msi",
         identity.version
@@ -3273,25 +3282,25 @@ fn package_windows_arm64(
     ]);
     command.arg(&intermediate);
     command.args(["-d", &format!("ProductVersion={}", identity.version)]);
-    command.args(["-d", &define("BinaryPath", binary)]);
+    command.args(["-d", &define("BinaryPath", &binary)]);
     command.args([
         "-d",
         &define(
             "IconPath",
-            &root().join("assets/brand/automexia-terminal.ico"),
+            &workspace.join("assets/brand/automexia-terminal.ico"),
         ),
     ]);
-    command.args(["-d", &define("LicensePath", &root().join("LICENSE"))]);
-    command.args(["-d", &define("NoticePath", &root().join("NOTICE.md"))]);
+    command.args(["-d", &define("LicensePath", &workspace.join("LICENSE"))]);
+    command.args(["-d", &define("NoticePath", &workspace.join("NOTICE.md"))]);
     command.args([
         "-d",
-        &define("ThirdPartyPath", &root().join("THIRD_PARTY_NOTICES.md")),
+        &define("ThirdPartyPath", &workspace.join("THIRD_PARTY_NOTICES.md")),
     ]);
-    command.args(["-d", &define("ReadmePath", &root().join("README.md"))]);
+    command.args(["-d", &define("ReadmePath", &workspace.join("README.md"))]);
     command.args(["-o"]);
     command.arg(&msi);
-    command.arg(root().join("packaging/windows/automexia-arm64.wxs"));
-    command.current_dir(root());
+    command.arg(workspace.join("packaging/windows/automexia-arm64.wxs"));
+    command.current_dir(&workspace);
     run_command(command, "WiX 5 ARM64 MSI")?;
     require(
         msi.is_file(),
