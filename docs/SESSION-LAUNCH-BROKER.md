@@ -38,7 +38,7 @@ The eventual SSH process is the platform's system OpenSSH client. Automexia
 does not implement SSH cryptography, host-key storage, key custody, agent
 protocols, or configuration evaluation. This keeps OpenSSH authoritative and
 follows the allowlist-plus-parameterization guidance in the
-[OWASP injection prevention guidance](https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html).
+[OWASP OS-command injection guidance](https://cheatsheetseries.owasp.org/cheatsheets/OS_Command_Injection_Defense_Cheat_Sheet.html).
 
 ## Trust and data flow
 
@@ -67,16 +67,22 @@ A request is rejected unless all of these conditions hold:
 
 1. The broker is in the test-only review harness. The production/pending
    constructor always returns `PendingSecurityReview` before path resolution.
-2. The verified principal is exactly the repository-owned
-   `automexia.devops-ssh` publisher and build version.
+2. The verified principal matches the repository-owned
+   `automexia.devops-ssh` ID, publisher, and build version. Package digest,
+   signature, compatibility, and revocation proof remain activation gates
+   until the D4 package exists.
 3. Capability, decision, launch, executable resource, operation ID, session ID,
    and non-zero capsule revision all match.
-4. The decision is not `Deny` and is not timestamped in the future.
-5. Neither the exact extension nor session has been revoked.
-6. The request is native, has no local shell profile, does not request inherited
+4. The application has registered that exact session/capsule; closed session
+   IDs cannot be reused and a rebind advances the capsule monotonically.
+5. The decision is not `Deny`, future-dated, or expired. Its extension,
+   capability, resource, operation, session, and capsule fields match exactly.
+6. The operation ID is greater than the last successfully authorized operation
+   in that session and is not already active.
+7. The exact extension has not been revoked.
+8. The request is native, has no local shell profile, does not request inherited
    environment names, and contains no secret references.
-7. The executable and operation grammar are explicitly supported.
-8. The operation ID is not already active.
+9. The executable and operation grammar are explicitly supported.
 
 Broad `process.spawn`, wildcard executable paths, WSL shell creation,
 third-party principals, and silent fallback are rejected. Recognizing the
@@ -96,6 +102,9 @@ The resolver checks fixed absolute system locations and explicitly configured
 absolute paths. It never searches `PATH` or the current working directory.
 Configured paths must have the exact platform filename; `.cmd`, `.bat`, shell
 scripts, renamed binaries, relative paths, and wildcard names are rejected.
+An explicit configured path replaces the defaults for that executable ID: if
+it is missing or changed, resolution fails instead of silently using another
+system candidate.
 
 Windows obtains the system directory from `GetSystemDirectoryW`, then checks
 its `OpenSSH` directory. Microsoft documents the in-box client under
@@ -117,6 +126,13 @@ cannot omit those checks. A rename-and-replace attack is rejected even when the
 new file has the same name and byte length. Activation still requires the
 process owner to close the remaining check-to-spawn race with a platform-owned
 handle or equivalent native primitive and native adversarial evidence.
+[POSIX defines `fexecve`](https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html)
+specifically so a verified file cannot be exchanged between inspection and
+execution. Windows activation must likewise use an explicit application path
+and prove the exact executable/handle strategy; Microsoft
+[warns for `CreateProcessW`](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw)
+that leaving `lpApplicationName` null can execute an unintended binary when
+paths contain spaces.
 
 ## Argument, environment, and cwd limits
 
@@ -148,17 +164,21 @@ extension request, diagnostic, or audit record.
 
 The requested working directory must be absolute. A valid directory is
 canonicalized. If an absolute requested directory vanished, the broker uses
-the already validated core-owned safe default. A relative or invalid safe
+the canonical core-owned safe default captured during authorization; conversion
+does not accept a second caller-supplied fallback. A relative or invalid safe
 default is denied. No failure changes the executable, shell, remote target, or
 session.
 
 ## Lifecycle and audit contract
 
 Authorization reserves an immutable operation lease containing operation ID,
-session ID, capsule revision, and a monotonically changing nonce. Duplicate
-operations fail. Completion and cancellation remove only an exact lease. A
-stale lease cannot cancel a reused operation ID, and revoking one extension or
-session cannot remove a sibling binding.
+session ID, capsule revision, and a monotonically changing nonce. Lease nonce
+exhaustion fails closed. Duplicate active operations and replayed completed or
+cancelled operation IDs fail. Completion and cancellation remove only an exact
+lease. Rebind cancels only the old session revision, and revoking one extension
+or session cannot remove a sibling binding. Session-close state is removed from
+the active registry while one scalar high-water mark prevents ID reuse, avoiding
+an unbounded revoked-session tombstone set.
 
 The current lifecycle is a pure model: it owns no child, listener, PID, route,
 or PTY. Actual graceful termination, bounded force termination, listener
@@ -183,13 +203,15 @@ cargo xtask verify architecture
 ```
 
 The suite covers hard production denial, exact principal/capability/decision
-scope, future and denied decisions, broad-spawn rejection, shell/WSL rejection,
+scope, future/expired and denied decisions, capsule registration/rebind,
+operation replay and nonce exhaustion, broad-spawn rejection, shell/WSL rejection,
 leading-dash and extra-argument rejection, literal native argument preservation,
-fixed absolute resolution, unsupported tools, native file replacement,
+fixed absolute and fail-closed configured resolution, unsupported tools, native file replacement,
 vanished and relative cwd behavior, bounded environment validation, redaction
-canaries, duplicates, revocation, cancellation, stale leases, and cross-scope
-isolation. Native Windows uses file-index evidence; native Linux/macOS test
-jobs compile and run the Unix device/inode path.
+canaries, duplicates, revocation, cancellation, stale leases, cross-scope
+isolation, and cleanup after 1/10/50 pure lifecycle cycles. Native Windows uses
+file-index evidence; native Linux/macOS test jobs compile and run the Unix
+device/inode path.
 
 ## Remaining activation gates
 
@@ -197,14 +219,19 @@ This phase is not complete as a shipped feature. Before removing the test-only
 module gate, maintainers must:
 
 1. accept ADR 0012 with the two protected-path approvals required by ADR 0003;
-2. implement a visible, accessible capability decision UI and deterministic
+2. verify the real first-party package digest/signature, publisher,
+   compatibility, and revocation state before constructing a principal;
+3. implement a visible, accessible capability decision UI and deterministic
    persisted/session grant policy if persistence is supported;
-3. bind process, PTY, route, capsule, operation, and tunnels before publication
+4. bind process, PTY, route, capsule, operation, and tunnels before publication
    through the existing application launch path;
-4. add native Windows, Linux, and macOS spawn/cancel/teardown and hostile-argv
+5. add native Windows, Linux, and macOS spawn/cancel/teardown and hostile-argv
    evidence, including PID reuse and application close;
-5. complete D4 OpenSSH inventory/security work and the redaction matrix;
-6. pass the controlled 1/10/50-session performance and leak gates.
+6. close the executable check-to-spawn race with a reviewed native mechanism;
+7. complete D4 OpenSSH inventory/security work and the redaction matrix;
+8. pass the controlled 1/10/50-session process, PTY, renderer, performance,
+   and leak gates. The pure broker lifecycle test is necessary but not a
+   substitute for those native measurements.
 
 No roadmap or test result may describe managed SSH/session launch as available
 until every activation gate passes.

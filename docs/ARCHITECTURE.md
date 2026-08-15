@@ -224,7 +224,7 @@ v0.5 broker replaces broad `ProcessSpawn` authority with a scoped request:
 CapabilityRequest
   extension_id + publisher + version
   operation_id + exact session/capsule scope
-  capability = process.launch
+  capability = session.launch
   executable_id
   ordered argv
   allowlisted public environment deltas
@@ -527,7 +527,7 @@ v0.4 boundary. New capabilities require security review, CODEOWNERS approval,
 two protected-path approvals, and an ADR.
 
 v0.5.0 adds only the replacement-ADR-approved first-party
-`process.launch`/session capability required by `devops-ssh`. A grant is
+`session.launch` capability required by `devops-ssh`. A grant is
 scoped to publisher/extension/version, executable ID, operation kind, session
 and capsule, allowed public environment deltas, and interactive mode. It is
 checked at operation time, revocable, and audited without secrets. It is not a
