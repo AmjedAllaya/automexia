@@ -10,6 +10,8 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 automexia-image = { path = "../automexia-image" }
+automexia-devops = { path = "../automexia-devops" }
+rio-backend = { path = "../rio-backend", default-features = false }
 rio-vt = { path = "../rio-vt", default-features = false }
 
 [workspace]

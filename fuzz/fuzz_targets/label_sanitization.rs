@@ -1,6 +1,6 @@
 #![no_main]
 
-use automexia_terminal::automexia::builtins::devops::sanitize_label;
+use automexia_devops::sanitize_label;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
