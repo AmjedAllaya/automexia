@@ -2248,6 +2248,25 @@ fn verify_architecture() -> TaskResult {
     let renderer_utils = read(&app.join("src/renderer/utils.rs"))?;
     let screen = read(&app.join("src/screen/mod.rs"))?;
     require(
+        screen.contains("fn should_copy_selection_on_ctrl_c")
+            && screen.contains("fn has_nonempty_selection")
+            && screen.contains("SecondaryClickClipboardAction::CopySelectionAndClear")
+            && screen.contains(
+                "ctrl_c_copies_only_a_nonempty_selection_and_otherwise_remains_interrupt",
+            )
+            && screen.contains(
+                "secondary_click_copies_and_clears_selection_or_pastes_clipboard_exclusively",
+            )
+            && bindings.contains(
+                "MouseButton::Right,  ~BindingMode::VI;         Action::Paste;",
+            )
+            && bindings.contains(
+                "default_mouse_clipboard_bindings_preserve_primary_selection_ownership",
+            ),
+        "selection-aware Ctrl+C or safe secondary-click clipboard ownership regressed",
+    )?;
+
+    require(
         !island_renderer.contains("UTILITY_ACTIONS")
             && !island_renderer.contains("UtilityActionGeometry")
             && !island_renderer.contains("ChromeAction::Search")

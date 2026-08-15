@@ -72,6 +72,32 @@ fn adjacent_preview_index(len: usize, current: Option<usize>, direction: isize) 
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SecondaryClickClipboardAction {
+    CopySelectionAndClear,
+    PasteClipboard,
+}
+
+fn secondary_click_clipboard_action(
+    has_selection: bool,
+) -> SecondaryClickClipboardAction {
+    if has_selection {
+        SecondaryClickClipboardAction::CopySelectionAndClear
+    } else {
+        SecondaryClickClipboardAction::PasteClipboard
+    }
+}
+
+fn should_copy_selection_on_ctrl_c(
+    key: &Key,
+    mods: ModifiersState,
+    has_selection: bool,
+) -> bool {
+    has_selection
+        && mods == ModifiersState::CONTROL
+        && matches!(key, Key::Character(character) if character.as_str().eq_ignore_ascii_case("c"))
+}
+
 #[cfg(any(test, feature = "native-gui-test-hooks"))]
 fn decode_native_test_hex(value: &str) -> Option<Vec<u8>> {
     if !value.len().is_multiple_of(2)
@@ -1397,6 +1423,17 @@ impl Screen<'_> {
         let mods = self.modifiers.state();
 
         if key.state == ElementState::Released {
+            if !self.search_active()
+                && !self.hint_state.is_active()
+                && should_copy_selection_on_ctrl_c(
+                    &key.logical_key,
+                    mods,
+                    self.has_nonempty_selection(),
+                )
+            {
+                return;
+            }
+
             #[cfg(windows)]
             if mode.contains(Mode::WIN32_INPUT)
                 && !mode.contains(Mode::VI)
@@ -1490,6 +1527,17 @@ impl Screen<'_> {
 
         let ignore_chars = self.process_key_bindings(key, &mode, mods, clipboard);
         if ignore_chars {
+            return;
+        }
+
+        if !self.search_active()
+            && should_copy_selection_on_ctrl_c(
+                &key.logical_key,
+                mods,
+                self.has_nonempty_selection(),
+            )
+        {
+            self.copy_selection(ClipboardType::Clipboard, clipboard);
             return;
         }
 
@@ -1623,11 +1671,30 @@ impl Screen<'_> {
                 binding.mods |= ModifiersState::SHIFT;
             }
 
-            if binding.is_triggered_by(binding_mode.to_owned(), mods, &button)
-                && binding.action == Act::PasteSelection
-            {
-                let content = clipboard.get(ClipboardType::Selection);
-                self.paste(&content, true);
+            if binding.is_triggered_by(binding_mode.to_owned(), mods, &button) {
+                match binding.action {
+                    Act::PasteSelection => {
+                        let content = clipboard.get(ClipboardType::Selection);
+                        self.paste(&content, true);
+                    }
+                    Act::Paste if button == MouseButton::Right => {
+                        match secondary_click_clipboard_action(
+                            self.has_nonempty_selection(),
+                        ) {
+                            SecondaryClickClipboardAction::CopySelectionAndClear => {
+                                self.copy_selection(ClipboardType::Clipboard, clipboard);
+                                self.clear_selection();
+                            }
+                            SecondaryClickClipboardAction::PasteClipboard => {
+                                let content = clipboard.get(ClipboardType::Clipboard);
+                                if !content.is_empty() {
+                                    self.paste(&content, true);
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
     }
@@ -3276,6 +3343,14 @@ impl Screen<'_> {
             layout.cell.cell_width,
             layout.width,
         )
+    }
+
+    #[inline]
+    fn has_nonempty_selection(&self) -> bool {
+        let terminal = self.context_manager.current().terminal.lock();
+        terminal
+            .selection_to_string()
+            .is_some_and(|text| !text.is_empty())
     }
 
     #[inline]
@@ -6407,6 +6482,45 @@ fn post_process_hyperlink_uri(uri: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ctrl_c_copies_only_a_nonempty_selection_and_otherwise_remains_interrupt() {
+        let ctrl = ModifiersState::CONTROL;
+        let c = Key::Character("c".into());
+        let uppercase_c = Key::Character("C".into());
+
+        assert!(should_copy_selection_on_ctrl_c(&c, ctrl, true));
+        assert!(should_copy_selection_on_ctrl_c(&uppercase_c, ctrl, true));
+        assert!(!should_copy_selection_on_ctrl_c(&c, ctrl, false));
+        assert!(!should_copy_selection_on_ctrl_c(
+            &c,
+            ctrl | ModifiersState::SHIFT,
+            true,
+        ));
+        assert!(!should_copy_selection_on_ctrl_c(
+            &c,
+            ctrl | ModifiersState::ALT,
+            true,
+        ));
+        assert!(!should_copy_selection_on_ctrl_c(
+            &Key::Character("v".into()),
+            ctrl,
+            true,
+        ));
+        assert_eq!(crate::bindings::ctrl_seq(&c, "", ctrl), Some(0x03));
+    }
+
+    #[test]
+    fn secondary_click_copies_and_clears_selection_or_pastes_clipboard_exclusively() {
+        assert_eq!(
+            secondary_click_clipboard_action(true),
+            SecondaryClickClipboardAction::CopySelectionAndClear
+        );
+        assert_eq!(
+            secondary_click_clipboard_action(false),
+            SecondaryClickClipboardAction::PasteClipboard
+        );
+    }
 
     #[test]
     fn image_preview_navigation_wraps_and_handles_missing_current_target() {

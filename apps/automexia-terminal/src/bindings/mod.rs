@@ -678,7 +678,7 @@ macro_rules! trigger {
 pub fn default_mouse_bindings() -> Vec<MouseBinding> {
     bindings!(
         MouseBinding;
-        MouseButton::Right;                            MouseAction::ExpandSelection;
+        MouseButton::Right,  ~BindingMode::VI;         Action::Paste;
         MouseButton::Right,   ModifiersState::CONTROL; MouseAction::ExpandSelection;
         MouseButton::Middle, ~BindingMode::VI;         Action::PasteSelection;
     )
@@ -1511,6 +1511,29 @@ mod tests {
 
         assert!(binding.triggers_match(&different_action));
         assert!(different_action.triggers_match(&binding));
+    }
+
+    #[test]
+    fn default_mouse_clipboard_bindings_preserve_primary_selection_ownership() {
+        let bindings = default_mouse_bindings();
+        let right_paste = bindings.iter().find(|binding| {
+            binding.trigger == MouseButton::Right
+                && binding.mods.is_empty()
+                && binding.action == Action::Paste
+        });
+        assert_eq!(
+            right_paste.map(|binding| binding.notmode.clone()),
+            Some(BindingMode::VI)
+        );
+        assert!(bindings.iter().any(|binding| {
+            binding.trigger == MouseButton::Middle
+                && binding.action == Action::PasteSelection
+                && binding.notmode == BindingMode::VI
+        }));
+        assert!(!bindings.iter().any(|binding| {
+            binding.trigger == MouseButton::Left
+                && matches!(binding.action, Action::Paste | Action::PasteSelection)
+        }));
     }
 
     #[test]

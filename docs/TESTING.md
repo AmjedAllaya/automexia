@@ -142,6 +142,25 @@ origin, exact single-pane edge connection, and gap-free adjacent split-footer
 tiling. The
 full frontend and workspace gates additionally cover PTY route isolation and
 teardown behavior.
+Focused clipboard-input regressions can be run with:
+
+```text
+cargo test -p automexia-terminal --bin automexia --locked ctrl_c_copies_only_a_nonempty_selection_and_otherwise_remains_interrupt
+cargo test -p automexia-terminal --bin automexia --locked secondary_click_copies_and_clears_selection_or_pastes_clipboard_exclusively
+cargo test -p automexia-terminal --bin automexia --locked default_mouse_clipboard_bindings_preserve_primary_selection_ownership
+cargo xtask verify architecture
+```
+
+These checks prove that bare `Ctrl+C` copies only a non-empty terminal
+selection, still encodes ETX (`0x03`) with no selection, and consumes the
+matching key release instead of leaking a Win32 input event. They also prove
+that secondary click chooses exactly one copy-and-clear-or-paste action, middle-click
+retains primary-selection paste, and no left-click binding can paste. Search,
+Vi-mode, user binding, application mouse-reporting, bracketed-paste filtering,
+and empty-clipboard behavior remain owned by their established paths. Manual
+native verification should additionally cover drag selection, touchpad
+secondary click, a running command interrupted with no selection, and a
+mouse-reporting TUI.
 
 Focused regressions for the 2026-08 upstream correctness adaptation are:
 
