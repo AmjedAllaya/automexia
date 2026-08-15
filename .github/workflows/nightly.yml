@@ -76,6 +76,10 @@ jobs:
 
   miri:
     runs-on: ubuntu-latest
+    env:
+      # rio-vt intentionally tests bounded temporary-file image transports.
+      # Miri still checks UB; the ephemeral runner supplies the filesystem sandbox.
+      MIRIFLAGS: -Zmiri-disable-isolation
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install nightly --profile minimal --component miri
@@ -88,11 +92,12 @@ jobs:
   sanitizers:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         sanitizer: [address, thread]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: rustup toolchain install nightly --profile minimal
+      - run: rustup toolchain install nightly --profile minimal --component rust-src
       - env:
           RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
           RUSTDOCFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
@@ -140,6 +145,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup target add ${{ matrix.target }}
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+        if: matrix.target == 'x86_64-pc-windows-msvc'
         with:
           tool: cargo-packager@0.11.8
       - run: cargo build --release --locked -p automexia-terminal --target ${{ matrix.target }}
@@ -174,7 +180,7 @@ jobs:
       - run: rustup target add ${{ matrix.target }}
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:
-          tool: cross@0.2.5,nfpm@v2.43.4
+          tool: cross@0.2.5,nfpm@2.43.4
       - name: Build release binary
         run: |
           if [[ "${{ matrix.target }}" == aarch64-* ]]; then
