@@ -37,6 +37,8 @@ jobs:
         run: cargo xtask verify all
       - name: Validate TOML, YAML, JSON, XML, and desktop metadata
         run: python tools/ci/validate_repository.py
+      - name: Command productivity CP0 policy mutation tests
+        run: python tools/ci/test_command_productivity.py
       - name: QA evidence runner contracts
         run: python tools/ci/test_qa.py
       - name: Cross-platform workflow coverage regression tests

@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "phase": "CP0",
+  "status": "accepted",
+  "assets": [
+    "shell-editor-state",
+    "user-profile-and-native-definitions",
+    "action-source-and-generated-artifacts",
+    "credentials-and-secret-references",
+    "capability-and-audit-integrity",
+    "latency-memory-storage-and-lifecycle",
+    "session-capsule-workspace-isolation"
+  ],
+  "boundaries": [
+    "action-input-to-typed-model",
+    "provider-generator-to-managed-artifact",
+    "typed-action-to-shell-editor",
+    "typed-exact-action-to-D3-broker",
+    "scoped-layer-to-session-index",
+    "generated-file-to-shell-startup",
+    "private-state-to-diagnostics"
+  ],
+  "threats": [
+    {"id": "CP-T01", "category": "injection", "title": "action-source-code-injection", "controls": ["typed-deny-unknown-schema", "resource-limits", "raw-insert-only"], "verification": ["schema-mutation", "hostile-template-fixtures"]},
+    {"id": "CP-T02", "category": "authorization", "title": "untrusted-workspace-escalation", "controls": ["explicit-workspace-trust", "separate-exact-launch-grant", "revocation"], "verification": ["workspace-trust-state-model"]},
+    {"id": "CP-T03", "category": "spoofing", "title": "alias-completion-hijacking", "controls": ["native-definitions-win", "collision-report", "reversible-override"], "verification": ["precedence-collision-matrix"]},
+    {"id": "CP-T04", "category": "supply-chain", "title": "provider-generator-output-injection", "controls": ["executable-identity", "exact-argv", "time-output-bounds", "atomic-staging"], "verification": ["generator-hostile-output-tests"]},
+    {"id": "CP-T05", "category": "execution", "title": "dynamic-completion-plugin-execution", "controls": ["disabled-by-default", "explicit-plugin-consent", "no-input-render-callback"], "verification": ["plugin-nonactivation-test"]},
+    {"id": "CP-T06", "category": "privacy-availability", "title": "per-keystroke-provider-auth-work", "controls": ["cached-public-data-only", "explicit-refresh", "deadline-cancellation", "off-interactive-threads"], "verification": ["preactivation-source-ratchet", "latency-tests"]},
+    {"id": "CP-T07", "category": "disclosure", "title": "secret-history-disclosure", "controls": ["opaque-secret-references", "public-allowlist", "negative-artifact-scan"], "verification": ["secret-negative-tests"]},
+    {"id": "CP-T08", "category": "injection", "title": "shell-quoting-argument-injection", "controls": ["per-shell-serializer", "typed-argv", "no-shell-evaluation"], "verification": ["property-and-native-hostile-argv-tests"]},
+    {"id": "CP-T09", "category": "filesystem", "title": "path-link-permission-attack", "controls": ["exact-canonical-root", "no-follow", "user-only-permissions", "atomic-replace"], "verification": ["link-race-permission-tests"]},
+    {"id": "CP-T10", "category": "integrity", "title": "partial-write-rollback-tamper-loss", "controls": ["complete-candidate-validation", "serialized-atomic-write", "last-known-good", "source-digest"], "verification": ["fault-injection-and-recovery-tests"]},
+    {"id": "CP-T11", "category": "denial-of-service", "title": "resource-exhaustion-lifecycle-leak", "controls": ["fixed-limits", "bounded-queue-cache", "coalescing-cancellation", "joined-cleanup"], "verification": ["limit-storm-benchmark-leak-tests"]},
+    {"id": "CP-T12", "category": "isolation", "title": "stale-cross-session-publication", "controls": ["full-route-generation-key", "late-result-rejection", "rebind-cancellation"], "verification": ["parallel-session-state-model"]},
+    {"id": "CP-T13", "category": "integrity", "title": "generated-file-substitution", "controls": ["schema-version-digest", "shell-tool-identity", "native-fallback"], "verification": ["tamper-version-mismatch-tests"]},
+    {"id": "CP-T14", "category": "destructive-change", "title": "uninstall-profile-corruption", "controls": ["unique-managed-block", "exact-owned-files", "transactional-idempotency"], "verification": ["surrounding-profile-uninstall-tests"]},
+    {"id": "CP-T15", "category": "spoofing", "title": "misleading-action-production-target", "controls": ["stable-id-provenance", "visible-target-risk", "non-color-label"], "verification": ["risk-context-accessibility-tests"]},
+    {"id": "CP-T16", "category": "integrity-privacy", "title": "terminal-grid-inference-redraw-race", "controls": ["shell-editor-ownership", "no-grid-command-inference", "versioned-editor-bridge-only"], "verification": ["preactivation-source-ratchet", "CP5-editor-bridge-tests"]}
+  ],
+  "review_triggers": [
+    "schema-limit-or-precedence-change",
+    "new-persistence-profile-or-generated-root",
+    "new-shell-provider-plugin-or-generator",
+    "new-process-network-secret-clipboard-history-capability",
+    "rich-completion-editor-bridge",
+    "remote-install-sync-or-pack-distribution",
+    "telemetry-or-crash-payload-change",
+    "exact-launch-activation",
+    "security-incident"
+  ]
+}

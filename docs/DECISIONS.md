@@ -22,7 +22,7 @@ decision supersedes an old one instead of silently rewriting history.
 | [0012](adr/0012-first-party-ssh-and-session-launch-boundary.md) | SSH/session launch boundary (proposed) | Proposes exact argv and system OpenSSH with provider-neutral descriptors; no capability is enabled until its protected review and evidence gates pass. |
 | [0013](adr/0013-renderer-independent-accessibility-model.md) | Renderer-independent accessibility model | Semantic accessibility state must not depend on pixels, GPU backends, OCR, or one window-system adapter. |
 | [0014](adr/0014-explicit-bounded-image-quick-look.md) | Bounded local image Quick Look | IO-free targeting plus bounded asynchronous decode gives direct preview without remote fetches, UI-thread IO, or unbounded cache/queue risk. |
-| [0015](adr/0015-shell-native-completion-and-typed-quick-actions.md) | Shell-native completion and typed Quick Actions (proposed) | Preserve native editor semantics while providing one bounded persistent action model, opt-in alias projections, and brokered exact execution. |
+| [0015](adr/0015-shell-native-completion-and-typed-quick-actions.md) | Shell-native completion and typed Quick Actions | Preserve native editor semantics while providing one bounded persistent action model, opt-in alias projections, and brokered exact execution. |
 
 ## When an ADR is required
 

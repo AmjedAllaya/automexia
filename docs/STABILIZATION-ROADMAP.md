@@ -515,6 +515,21 @@ not authorize shell evaluation, provider access, or arbitrary process launch.
 | CP5 optional rich completion | CP1 plus a separately reviewed editor bridge | Versioned buffer/cursor/replacement/generation/cancellation bridge; renderer-neutral accessible popup; native fallback. | IME/grapheme, screen-reader, resize, shell parity, latency, cancellation, and disabled-fallback evidence proves a benefit. Not a v0.5.0 blocker. |
 | CP6 ecosystem packs | v0.6 capability/sandbox/signing gates | Signed third-party packs and separate opt-in AI tools only through provenance, capability, quota, revocation, and privacy policy. | Malicious-package/sandbox/supply-chain/data-flow gates pass; no ambient terminal, secret, provider, or process authority. |
 
+#### CP0 implementation ledger
+
+| CP0 step | Audit before implementation | Implemented evidence | Remaining gate |
+|---|---|---|---|
+| Decision and terminology | Partial: ADR 0015 was proposed and the canonical roadmap defined intended ownership | ADR 0015 accepted; shell-native completion, typed Quick Action, alias projection, provider pack, insert, and D3 exact-launch terms are fixed | Reopen only on a mandatory threat-model trigger |
+| Shell/editor/platform compatibility | Partial prose without a machine authority | Compatibility baseline plus schema-1 fixture covers PowerShell/Bash/Zsh/Fish/CMD, Windows/Linux/macOS/WSL, native fallback, provider support, versions, profiles, conflicts, and uninstall | CP1 must implement and prove adapters natively |
+| Threat/privacy model | General security bullets only | Threat model and schema-1 fixture define seven boundaries, 16 threats, assets, controls, verification, residual risks, and review triggers | Each later CP phase adds runtime evidence for activated boundaries |
+| Precedence and ceilings | Defined in prose but not mutation-tested | Exact precedence, native-wins policy, execution modes, 11 compatibility cases, and 11 hard ceilings are machine validated | Changes require ADR/threat/schema review |
+| Architecture nonactivation | Documented but not enforced | Policy rejects provider/completion hooks in shell startup or interactive renderer/screen/VT/PTY paths and rejects command-productivity code coupled to grid inference | CP1 must update phase gate before intentional adapter activation |
+| CI and regression ownership | Missing | Repository validation, architecture verification, PR policy, eleven mutation tests, shell contracts, and feature-assurance traceability own CP0 | Hosted CI must pass on pushed commit |
+
+CP0 result: satisfied at the source/policy boundary. It grants no runtime
+capability and does not claim CP1 completion, Fish support, Quick Action
+persistence, generated aliases, provider execution, or a custom completion UI.
+
 CP0-CP3 may proceed alongside D5 without delaying safe system-OpenSSH work. CP4
 must not precede D6 capsule isolation. CP5 and CP6 cannot be pulled into the
 release merely because a candidate UI or pack parses locally. A completed stage

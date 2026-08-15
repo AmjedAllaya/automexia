@@ -1,0 +1,115 @@
+{
+  "schema": 1,
+  "phase": "CP0",
+  "status": "accepted",
+  "activation": "non-runtime",
+  "native_definition_policy": "native-wins-unless-explicit-reversible-override",
+  "shells": [
+    {
+      "id": "powershell",
+      "editor": "PSReadLine",
+      "platforms": ["windows", "linux", "macos"],
+      "implementation_stage": "CP1",
+      "completion_owner": "shell-editor",
+      "alias_projection": "Set-Alias-simple-function-complex",
+      "native_fallback": "preserved"
+    },
+    {
+      "id": "bash",
+      "editor": "Readline",
+      "platforms": ["linux", "macos", "wsl"],
+      "implementation_stage": "CP1",
+      "completion_owner": "shell-editor",
+      "alias_projection": "function-for-arguments",
+      "native_fallback": "preserved"
+    },
+    {
+      "id": "zsh",
+      "editor": "ZLE-compsys",
+      "platforms": ["linux", "macos", "wsl"],
+      "implementation_stage": "CP1",
+      "completion_owner": "shell-editor",
+      "alias_projection": "namespaced-function",
+      "native_fallback": "preserved"
+    },
+    {
+      "id": "fish",
+      "editor": "Fish-editor",
+      "platforms": ["linux", "macos", "wsl"],
+      "implementation_stage": "CP1",
+      "completion_owner": "shell-editor",
+      "alias_projection": "abbreviation-or-function",
+      "native_fallback": "preserved"
+    },
+    {
+      "id": "cmd",
+      "editor": "Console-DOSKEY",
+      "platforms": ["windows"],
+      "implementation_stage": "CP1",
+      "completion_owner": "shell-editor",
+      "alias_projection": "DOSKEY-macrofile-compatible-only",
+      "native_fallback": "preserved-no-rich-parity-claim"
+    }
+  ],
+  "providers": [
+    {"id": "git", "contract": "platform-packaged", "shells": ["powershell", "bash", "zsh", "fish"], "trigger": "explicit-refresh-only", "startup": false, "keystroke": false},
+    {"id": "docker", "contract": "docker completion", "shells": ["bash", "zsh", "fish"], "trigger": "explicit-refresh-only", "startup": false, "keystroke": false},
+    {"id": "kubernetes", "contract": "kubectl completion", "shells": ["powershell", "bash", "zsh", "fish"], "trigger": "explicit-refresh-only", "startup": false, "keystroke": false},
+    {"id": "openshift", "contract": "installed-cli-capability", "shells": ["powershell", "bash", "zsh", "fish"], "trigger": "explicit-refresh-only", "startup": false, "keystroke": false},
+    {"id": "helm", "contract": "helm completion", "shells": ["powershell", "bash", "zsh", "fish"], "trigger": "explicit-refresh-only", "startup": false, "keystroke": false},
+    {"id": "terraform", "contract": "terraform install-autocomplete", "shells": ["bash", "zsh"], "trigger": "explicit-consent-only", "startup": false, "keystroke": false},
+    {"id": "opentofu", "contract": "installed-cli-capability", "shells": ["bash", "zsh"], "trigger": "explicit-refresh-only", "startup": false, "keystroke": false},
+    {"id": "aws", "contract": "aws_completer", "shells": ["bash", "zsh"], "trigger": "explicit-refresh-only", "startup": false, "keystroke": false},
+    {"id": "azure", "contract": "installed-cli-capability", "shells": ["powershell", "bash", "zsh"], "trigger": "explicit-refresh-only", "startup": false, "keystroke": false},
+    {"id": "gcp", "contract": "official-sdk-completion", "shells": ["bash", "zsh"], "trigger": "explicit-refresh-only", "startup": false, "keystroke": false},
+    {"id": "openssh", "contract": "native-shell-plus-bounded-public-inventory", "shells": ["powershell", "bash", "zsh", "fish"], "trigger": "explicit-refresh-only", "startup": false, "keystroke": false}
+  ],
+  "precedence": [
+    "session",
+    "capsule",
+    "trusted-workspace",
+    "shell-user",
+    "global-user",
+    "builtin-disabled"
+  ],
+  "execution_modes": {
+    "default": "insert-without-enter",
+    "copy": "explicit-only",
+    "raw": "shell-scoped-insert-only",
+    "exact_launch": "D3-broker-only"
+  },
+  "limits": {
+    "source_file_bytes": 1048576,
+    "active_actions": 1024,
+    "enabled_aliases": 256,
+    "arguments_per_action": 64,
+    "placeholders_per_action": 32,
+    "string_bytes": 4096,
+    "candidates_per_request": 512,
+    "candidate_bytes": 1024,
+    "candidate_response_bytes": 524288,
+    "generated_file_bytes": 1048576,
+    "in_process_cache_bytes": 8388608
+  },
+  "forbidden_runtime_paths": [
+    "renderer",
+    "screen-input",
+    "vt-parser",
+    "pty-reader",
+    "startup",
+    "keystroke"
+  ],
+  "compatibility_cases": [
+    {"id": "native-definition-collision", "expected": "reject-unless-explicit-reversible-override"},
+    {"id": "duplicate-id-same-layer", "expected": "reject-candidate-retain-last-good"},
+    {"id": "same-id-different-layer", "expected": "deterministic-precedence-with-shadow-details"},
+    {"id": "unsupported-shell-version", "expected": "diagnostic-native-fallback"},
+    {"id": "integration-disabled", "expected": "native-behavior-unchanged"},
+    {"id": "provider-missing", "expected": "disable-only-provider-adapter"},
+    {"id": "provider-timeout", "expected": "cancel-retain-last-good-native-fallback"},
+    {"id": "generated-file-tamper", "expected": "reject-and-require-explicit-regeneration"},
+    {"id": "workspace-trust-revoked", "expected": "remove-layer-and-revoke-grants"},
+    {"id": "session-capsule-rebind", "expected": "cancel-stale-and-isolate-new-generation"},
+    {"id": "uninstall", "expected": "remove-exact-managed-state-only"}
+  ]
+}

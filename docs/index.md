@@ -67,6 +67,15 @@ The documentation is organized by reader intent:
   non-activated D3 contracts, limits, tests, and activation gates.
 - [OpenSSH inventory](SSH-INVENTORY.md): implemented non-executing D4 parser,
   persistence, refresh, threat model, and verification contract.
+- [Command productivity](COMMAND-PRODUCTIVITY.md): CP0 architecture baseline
+  and the ordered CP1-CP6 delivery plan for native completion and typed Quick
+  Actions.
+- [Command-productivity compatibility](COMMAND-PRODUCTIVITY-COMPATIBILITY.md):
+  accepted shell/editor ownership, provider, precedence, fallback, and
+  platform contract.
+- [Command-productivity threat model](COMMAND-PRODUCTIVITY-THREAT-MODEL.md):
+  accepted trust boundaries, threats, controls, resource ceilings, and review
+  triggers.
 - [Feature assurance ledger](../tests/assurance/feature-matrix.json):
   machine-checked mapping from each feature to quality, platform, and
   documentation evidence.

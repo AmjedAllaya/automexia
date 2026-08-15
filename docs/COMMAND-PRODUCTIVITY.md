@@ -1,7 +1,8 @@
 # Command Productivity: Completion and Quick Actions
 
-Status: planned for v0.5.x. This document defines the product and engineering
-contract; it does not claim that the feature is currently shipped.
+Status: CP0 architecture baseline accepted; CP1-CP6 runtime capabilities remain
+planned for v0.5.x and later. This document does not claim that autocomplete,
+Quick Actions, generated aliases, or provider-aware candidates currently ship.
 
 ## Purpose
 
@@ -37,6 +38,10 @@ completion into an implicit network, authentication, or secret-reading channel.
 
 The architectural decision is recorded in
 [ADR 0015](adr/0015-shell-native-completion-and-typed-quick-actions.md).
+The accepted native-shell/provider matrix is
+[Command Productivity Compatibility](COMMAND-PRODUCTIVITY-COMPATIBILITY.md);
+security and privacy boundaries are in the
+[Command Productivity Threat Model](COMMAND-PRODUCTIVITY-THREAT-MODEL.md).
 
 ## Terminology
 
@@ -368,6 +373,15 @@ watchers, temporary files, or provider handles.
 
 Exit: decision, threat model, versioned fixtures, and conflict/precedence matrix
 are approved. This work may proceed in parallel with D5.
+
+CP0 status (2026-08-15): complete at the non-runtime policy boundary. ADR 0015
+is accepted; the native shell/provider and conflict/fallback matrix, 16-threat
+model, schema-1 fixtures, resource ceilings, pre-activation scanner, eleven
+mutation tests, repository-policy integration, and architecture gate are implemented.
+The current shell integration is also proven not to register provider
+completions or DevOps short aliases. CP1 remains unimplemented: there is still
+no Fish adapter, completion health UI, provider generator execution, action
+store, or generated alias surface.
 
 ### CP1 — completion health and shell adapters
 

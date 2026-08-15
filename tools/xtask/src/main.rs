@@ -2159,6 +2159,7 @@ fn product_identity() -> TaskResult<ProductIdentity> {
 }
 
 fn verify_architecture() -> TaskResult {
+    run_python("tools/ci/check_command_productivity.py")?;
     let identity = product_identity()?;
     let metadata = metadata()?;
     let packages = metadata["packages"]

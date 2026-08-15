@@ -17,6 +17,9 @@ import xml.etree.ElementTree as element_tree
 
 import yaml
 
+from check_command_productivity import (
+    validate_repository as validate_command_productivity,
+)
 from check_documentation_coverage import validate as validate_documentation_coverage
 from check_feature_assurance import load_and_validate as validate_feature_assurance
 from check_platform_coverage import validate_repository_workflows
@@ -274,6 +277,9 @@ def validate() -> None:
         for kind, count in documentation_counts.items()
         if kind != "pages"
     )
+
+    command_productivity_counts = validate_command_productivity()
+    counts["command productivity CP0"] = command_productivity_counts["threats"]
 
     validate_brand_assets()
     counts["brand assets"] = 1

@@ -309,7 +309,9 @@ insert-only; exact execution uses only the D3 typed launch broker. Native user
 definitions win unless the user chooses a visible reversible override.
 Provider-aware actions consume bounded cached public capsule context only after
 D6, with session/generation keys, freshness, cancellation, and stale-result
-rejection. See [Command Productivity](COMMAND-PRODUCTIVITY.md) and
+rejection. See [Command Productivity](COMMAND-PRODUCTIVITY.md), the accepted
+[compatibility baseline](COMMAND-PRODUCTIVITY-COMPATIBILITY.md), the
+[threat model](COMMAND-PRODUCTIVITY-THREAT-MODEL.md), and
 [ADR 0015](adr/0015-shell-native-completion-and-typed-quick-actions.md).
 
 ## Dependency rules

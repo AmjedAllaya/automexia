@@ -209,6 +209,17 @@ D5/D6; CP5's optional rich completion surface is not a v0.5.0 blocker and may
 ship only through a versioned shell-editor bridge. This plan does not claim that
 autocomplete, Quick Actions, or generated aliases are shipped in v0.4.
 
+#### CP0 command-productivity status (2026-08-15)
+
+CP0 is complete as a non-runtime architecture gate. ADR 0015 is accepted; the
+native shell/provider compatibility baseline, conflict/precedence matrix,
+versioned schema-1 fixtures, 16-threat model, exact ceilings, architecture
+ratchets, mutation tests, CI ownership, and documentation are in place. Current
+shell integration is proven not to activate provider completion or DevOps short
+aliases. CP1 is the next command-productivity phase and remains unimplemented;
+CP0 adds no process, network, secret, clipboard, terminal-output, provider,
+profile-generation, or exact-launch authority.
+
 ### v0.5.0 first-party SSH extension
 
 1. Ship `devops-ssh` as an optional, signed or compiled-in first-party

@@ -288,6 +288,31 @@
       }
     },
     {
+      "id": "command-productivity-cp0-policy",
+      "title": "Accepted shell-native completion and typed Quick Action architecture, threat model, compatibility, and non-activation",
+      "components": ["tools/ci", "tests/fixtures/command-productivity"],
+      "documentation": {
+        "guide": ["docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md"],
+        "reference": ["docs/COMMAND-PRODUCTIVITY.md#delivery-phases"],
+        "explanation": ["docs/COMMAND-PRODUCTIVITY-THREAT-MODEL.md", "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "CP0 activates no UI; CP1 and CP5 retain explicit native and renderer accessibility gates."},
+        "correctness": {"level": "pr", "evidence": ["tools/ci/check_command_productivity.py", "tools/ci/test_command_productivity.py", "tests/fixtures/command-productivity/cp0-contract-v1.json"]},
+        "security": {"level": "pr", "evidence": ["tools/ci/check_command_productivity.py", "tools/ci/test_command_productivity.py", "tests/fixtures/command-productivity/cp0-threats-v1.json"]},
+        "performance": {"level": "not_applicable", "evidence": [], "rationale": "CP0 is a non-runtime policy gate; executable latency and resource budgets begin with CP1 and CP2."},
+        "resource_lifetime": {"level": "not_applicable", "evidence": [], "rationale": "CP0 starts no workers, watchers, providers, processes, or caches; later phases require lifecycle tests before activation."},
+        "storage_hygiene": {"level": "pr", "evidence": ["tools/ci/check_command_productivity.py", "tests/fixtures/command-productivity/cp0-contract-v1.json"]},
+        "resilience": {"level": "pr", "evidence": ["tools/ci/test_command_productivity.py", "docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md#version-and-fallback-policy"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "CP0 draws no product UI; later candidate/action surfaces require visual and accessibility evidence."}
+      },
+      "platforms": {
+        "windows": {"level": "not_applicable", "evidence": [], "rationale": "CP0 activates no Windows runtime behavior; CP1 requires native PowerShell, CMD, and ConPTY evidence."},
+        "linux": {"level": "not_applicable", "evidence": [], "rationale": "CP0 activates no Linux runtime behavior; CP1 requires native Bash, Zsh, Fish, PTY, X11, and Wayland evidence."},
+        "macos": {"level": "not_applicable", "evidence": [], "rationale": "CP0 activates no macOS runtime behavior; CP1 requires native Zsh plus installed Bash/Fish and PTY evidence."}
+      }
+    },
+    {
       "id": "contributor-automation-quality-policy",
       "title": "Single-command workflow, architecture, identity, coverage, QA evidence, and dependency policy",
       "components": ["tools/xtask"],

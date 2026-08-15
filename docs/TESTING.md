@@ -942,6 +942,32 @@ calls, missing resource ceilings, weakened private permissions, or loss of
 fuzz/benchmark ownership. Full threat model, limits, and manual interpretation
 are in [OpenSSH inventory](SSH-INVENTORY.md).
 
+## Command-productivity CP0 contract
+
+CP0 is a non-runtime policy boundary. It does not enable managed completion,
+aliases, or Quick Actions. Run the focused contract and mutation suite with:
+
+    python tools/ci/check_command_productivity.py
+    python tools/ci/test_command_productivity.py
+    cargo xtask verify architecture
+
+The checker validates the accepted five-shell and eleven-provider matrix,
+native-editor ownership, deterministic precedence and fallback, exact resource
+ceilings, eleven conflict fixtures, sixteen threats, and seven trust
+boundaries. It also scans shell startup and interactive renderer/screen/VT/PTY
+paths to reject premature provider execution or terminal-grid command
+inference. Eleven mutation tests prove that weakened contracts, threat
+catalogs, activation status, source boundaries, and CI wiring fail closed.
+
+The machine-readable sources are
+[the compatibility fixture](../tests/fixtures/command-productivity/cp0-contract-v1.json)
+and [the threat fixture](../tests/fixtures/command-productivity/cp0-threats-v1.json).
+Human interpretation belongs in the
+[compatibility baseline](COMMAND-PRODUCTIVITY-COMPATIBILITY.md) and
+[threat model](COMMAND-PRODUCTIVITY-THREAT-MODEL.md). CP1 must add real
+shell/platform integration tests before any runtime capability may be marked
+implemented.
+
 ## Assurance status and remaining expansion
 
 The Phase 0 local baseline now includes pinned Nextest/JUnit/doctests, a

@@ -1,6 +1,6 @@
 # ADR 0015: Shell-native completion and typed Quick Actions
 
-- Status: Proposed for v0.5
+- Status: Accepted for v0.5
 - Date: 2026-08-15
 
 ## Context
@@ -97,3 +97,7 @@ search, insertion, and managed shell adapters. It does not authorize arbitrary
 process execution, direct network access, secret reads, third-party pack
 downloads, or AI command generation. Exact launch remains blocked until the D3
 broker ADR and protected activation gates are accepted.
+
+CP0 acceptance is limited to the documented architecture, threat model,
+compatibility fixtures, and non-activation ratchets. It does not itself ship a
+completion adapter, Quick Action store, generated alias, or provider invocation.
