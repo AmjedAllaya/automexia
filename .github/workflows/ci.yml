@@ -39,6 +39,14 @@ jobs:
         run: python tools/ci/validate_repository.py
       - name: QA evidence runner contracts
         run: python tools/ci/test_qa.py
+      - name: Cross-platform workflow coverage regression tests
+        run: |
+          python tools/ci/check_platform_coverage.py
+          python tools/ci/test_platform_coverage.py
+      - name: Feature assurance traceability regression tests
+        run: |
+          python tools/ci/check_feature_assurance.py
+          python tools/ci/test_feature_assurance.py
       - name: Shell syntax
         run: bash tools/ci/test_shell_sources.sh
       - name: PowerShell syntax

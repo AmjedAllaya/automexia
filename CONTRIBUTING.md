@@ -92,7 +92,13 @@ contributors do not need to assemble the normal gate manually. Platform-specific
 changes must also run on their native OS. See `docs/TESTING.md` for X11/Wayland,
 MSVC/ARM64, macOS universal, coverage, sanitizer, fuzz, benchmark, and package
 matrices.
-Image decoder, preview, renderer, or graphics-protocol changes must additionally
+
+New or materially changed product features must update
+`tests/assurance/feature-matrix.json` with correctness, security, performance,
+resource-lifetime, storage, resilience, accessibility, visual, and native-host
+evidence. Repository validation rejects unowned workspace members, benchmark
+targets, fuzz targets, workflow jobs, and evidence paths. Image decoder,
+preview, renderer, or graphics-protocol changes must additionally
 run `cargo xtask test image-rendering`; Windows rendering/lifecycle changes run
 `cargo xtask test image-rendering --native-gui` before review.
 
