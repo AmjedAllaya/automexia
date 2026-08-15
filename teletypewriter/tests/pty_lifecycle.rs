@@ -1,4 +1,6 @@
-use std::io::{ErrorKind, Read, Write};
+#[cfg(windows)]
+use std::io::Write;
+use std::io::{ErrorKind, Read};
 use std::thread;
 use std::time::{Duration, Instant};
 
