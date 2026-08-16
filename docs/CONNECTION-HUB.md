@@ -76,6 +76,7 @@ The implementation adapts to the existing structure:
 | OpenSSH inventory and public metadata | private `automexia-devops-ssh` extension | Process launch, direct network, raw keys, `ssh -G`, executable config evaluation |
 | Provider inventory and capsule templates | independently enabled D6 provider extensions | Renderer access, ambient environment, another provider's cache |
 | Capability decision and exact launch | application-owned D3 broker | Shell command strings, wildcard executables, extension-owned PTYs |
+| External process execution | one application-owned `ExternalToolRunner` used by every adapter | Provider-specific launchers, ambient environment, unbounded output, render/resize/startup/keystroke invocation |
 | Modal composition, virtualized rows, focus, responsive layout | `apps/automexia-terminal` adapter over renderer-neutral models | Provider-specific business logic or credentials |
 | Authentication and connection process | system OpenSSH or reviewed official CLI in a normal Automexia PTY | Hidden password capture, token parsing, silent fallback |
 
@@ -658,10 +659,12 @@ manifest/ADR/threat-model review.
 | System OpenSSH | Adopt as D5 transport | Mature config, agents, host keys, hardware, certificates, jumps, and tunnels with no new protocol engine |
 | Official `aws`, `az`, `gcloud`, `kubectl`, and `oc` | Adopt first in D6 | Preserve supported authentication/MFA and minimize provider dependencies in core |
 | AccessKit | Reuse for the renderer-neutral accessibility tree | Already aligned with the project accessibility plan; avoid a second accessibility model |
+| `nucleo` | Adopt for measured large host/action/context lists after the D5 benchmark gate | Concurrent bounded search and immutable completed snapshots without blocking UI; preserve the current matcher as deterministic fallback |
+| `schemars`, `clap_complete`, and `clap_mangen` | Adopt with the typed operation registry | Generate schemas, static native-shell completion, and manuals from one source instead of hand-maintained copies |
 | Existing Automexia bounded worker/cache/runtime | Reuse | Generation cancellation, session isolation, and no UI-thread I/O are already architectural requirements |
 | Teleport `tsh` | Optional built-in external adapter after D5 | Short-lived SSH/Kubernetes identity remains organization-owned |
 | OpenBao `bao` SSH signer | Optional built-in external adapter after D5 | Signs a public key while OpenBao owns tokens/policy and OpenSSH owns the key/connection |
-| `keyring-rs` | Defer until a custody ADR proves a required opaque item cannot stay with an agent/CLI | Cross-platform abstraction is useful, but backend behavior and secret custody expand the trusted boundary; select `keyring-core` plus exact backends rather than broad defaults if adopted |
+| `keyring-core` plus exact platform stores | Defer until a custody ADR proves a required opaque item cannot stay with an agent/CLI | Cross-platform abstraction is useful, but backend behavior and secret custody expand the trusted boundary; never enable a broad default backend set |
 | `secrecy` and `zeroize` | Defense in depth only if a future approved adapter must transiently hold a secret | They reduce accidental formatting/lifetime but do not create secure custody |
 | Rust SSH libraries or embedded Termix/Electron | Reject for D5 | Duplicate protocol/renderer/session behavior and increase credential/web attack surface |
 | Provider Rust SDKs / `kube-rs` | Defer to lazy, out-of-process inventory proven impossible through config/CLI | Avoid core dependency growth, hidden network, auth incompatibility, and cross-provider coupling |
@@ -670,6 +673,8 @@ Search should first reuse the project's deterministic local matcher and measured
 10,000-entry inventory path. A new fuzzy-search crate is accepted only when a
 benchmark, binary-size/license/security review, Unicode corpus, and cancellation
 test demonstrate a material benefit.
+The complete ownership matrix and protected dependency order are in
+[Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md).
 
 ## Recovery, backup, migration, and export
 

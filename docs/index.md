@@ -68,6 +68,9 @@ The documentation is organized by reader intent:
 
 - [Architecture](ARCHITECTURE.md): layers, dependency rules, threading,
   persistence, trust boundaries, and performance invariants.
+- [Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md):
+  canonical core/first-party-extension/external-authority ownership, technology
+  decisions, protected dependency sequence, and adapter verification contract.
 - [Decision index](DECISIONS.md): every accepted ADR, its rationale, rejected
   alternatives, and consequences.
 - [SSH, DevOps, and multi-cloud architecture](SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md):

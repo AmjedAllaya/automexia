@@ -88,6 +88,24 @@ Core owns:
 - generic status-segment layout, semantics, accessibility, and details routing;
 - hostile-output limits, redaction, and protected local IPC when a later
   extension host is required.
+
+First-party extensions own provider and transport interpretation: safe
+configuration parsing, version-aware public-output normalization, exact launch
+request construction, inventory and context refresh, and domain-specific
+workflows. They never receive renderer, VT, PTY, window, unrestricted process,
+or ambient credential authority. Mature protocol, authentication, secret,
+provider, and collaboration systems remain external authorities.
+
+The complete build-versus-adopt matrix and dependency sequence are defined in
+[Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md) and
+[ADR 0020](adr/0020-hybrid-build-wrap-adopt-boundary.md). In particular, all
+OpenSSH, provider CLI, Mosh, Git, Upterm, SOPS/age, and task-runner adapters use
+one application-owned `ExternalToolRunner`; an extension may not create a
+second process-launch path. The runner accepts only a canonical executable,
+exact argv, validated cwd, and bounded allowlisted environment, and owns
+deadlines, output caps, cancellation, descendant cleanup, session identity,
+version state, and redacted diagnostics.
+
 ### VT control-string trust boundary
 
 Child-process output is untrusted. The VT parser caps retained OSC, APC, and

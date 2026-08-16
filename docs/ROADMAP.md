@@ -123,6 +123,45 @@ layer, and acceptance criterion. Roadmap examples remain non-shipped until the
 feature catalog, public CLI/configuration/keyboard references, feature assurance
 ledger, native evidence, and release gate are updated together.
 
+## Build, wrap, and adopt sequence
+
+The cross-feature technology and ownership policy is
+[Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md);
+[ADR 0020](adr/0020-hybrid-build-wrap-adopt-boundary.md) records why. The
+terminal core owns product policy and the single capability/process boundary;
+first-party extensions own provider-specific parsing and workflows; installed
+tools and organization services retain protocol, authentication, credential,
+and remote-authorization authority. A named dependency is planned, not shipped,
+until its protected slice passes review and evidence.
+
+| Release/phase | Terminal-core work | First-party extension work | Adopted/wrapped authority | Explicit hold |
+|---|---|---|---|---|
+| v0.5.0 D3-D5 and CP2-CP3 | Finish one `ExternalToolRunner`; generate CLI/help/completion/schema artifacts from typed registries; add bounded search and application-chrome accessibility adapters only after review; preserve exact launch, session, capsule, risk, redaction, and resource policy | Safe OpenSSH inventory; exact SSH/jump/tunnel requests; Connection Review; typed actions, aliases, and first-party packs | System OpenSSH; shell-native editors/completion; planned `clap_complete`, `clap_mangen`, `schemars`, measured `nucleo`, and AccessKit | Native SSH stack, provider SDK bundle, secret vault, structured SFTP, untrusted extensions |
+| Protected credential slice | Opaque identity references, public auth state, protected input, approval/revocation, and canary/redaction rules | Version-aware Teleport/OpenBao/agent integration returning public state only | Agents, FIDO, external vaults, `tsh`, OpenBao/Smallstep; exact `keyring-core` stores plus `secrecy`/`zeroize` only after a custody ADR | Private-key formats, CA, password manager, credential sync, recovery claims |
+| v0.5.1 D6 and CP4 | Immutable per-pane Capsules, explicit refresh, last-known-good state, provider-neutral inventory, provenance/freshness/risk, and cross-pane isolation | Separately enabled AWS, Azure, GCP, Kubernetes, OpenShift, infrastructure, and enterprise-policy adapters | Official provider CLIs/config first; OPA only for an existing organization policy service | Direct provider SDK until CLI/config cannot meet a measured pagination/watch/cancellation/performance need |
+| v0.6+ D7 and CP5-CP6 protected features | Storage/redaction contracts, file-operation states, WIT capabilities, quotas, signed-bundle policy, AI risk/approval boundary | Transfer, Mosh, serial, logs/search, team Git, collaboration, local policy, sandboxed ecosystem, and AI adapters as separate slices | System `sftp`/`scp`, Mosh, Git, SOPS/age, Upterm, optional `rusqlite`, `openssh-sftp-client`, `serialport`, Cedar, Wasmtime/WASI | Telnet disabled by default; custom relay, embedded inference, SQLCipher, and direct SDKs require independent justification |
+
+The core never embeds another terminal UI framework, shell editor, SSH engine,
+cloud-login implementation, password vault, policy language, database engine,
+WebAssembly runtime, model runtime, or collaboration relay as product logic.
+Adopted libraries remain replaceable behind typed bounded contracts. Wrapped
+tools all use the same exact-argv runner, and disabling an extension must remove
+its process/network/file authority without degrading ordinary terminal use.
+
+Before a dependency or external adapter enters a milestone:
+
+1. pin version and minimal features; review license, source, advisories,
+   provenance, binary/startup cost, platform support, owner, and update policy;
+2. add fake-executable exact argv/environment/version/output/deadline/cleanup
+   tests plus malformed, hostile, Unicode, offline, cancellation, and
+   cross-session cases;
+3. add the applicable property/model/fuzz/mutation tests, cold/warm and cleanup
+   benchmarks, controlled native real-tool evidence, feature-disable behavior,
+   accessibility semantics, responsive goldens, and documentation;
+4. keep provider/network work off render, resize, startup, and keystroke paths;
+5. record the activation and remaining external evidence in the phase audit and
+   feature assurance ledger.
+
 ## v0.5 — DevOps foundation and production SSH
 
 v0.5 combines the smallest necessary internal modularization with the earliest

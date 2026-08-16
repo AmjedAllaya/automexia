@@ -55,6 +55,24 @@ The complete CP2/CP3 product contract for user-created aliases, first-party
 DevOps packs, persistence, projection compilers, UX, and verification is
 [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md).
 
+Technology placement follows the canonical
+[build, wrap, and adopt boundary](BUILD-WRAP-ADOPT-ARCHITECTURE.md):
+
+- core owns the operation/action schema, static completion generation,
+  replacement-span/escaping contracts, bounded search service, editor bridge,
+  persistence/projection, collision policy, and insert-versus-execute review;
+- first-party packs contribute immutable typed records and explicit refresh
+  adapters, but receive no shell-editor, renderer, PTY, process, network, or
+  ambient credential authority;
+- PSReadLine, Readline, ZLE, Fish, and CMD retain native editing; Carapace is an
+  optional external compatibility bridge;
+- `clap_complete`, `clap_mangen`, and `schemars` are planned generated-
+  artifact dependencies, while `nucleo` is accepted only after the large-list
+  benchmark, Unicode, cancellation, memory, binary-size, and fallback gate;
+- provider CLIs are never invoked at startup or per keystroke. Explicit refresh
+  runs through the core ExternalToolRunner and publishes a bounded immutable
+  last-known-good snapshot.
+
 ## Terminology
 
 - **Native completion**: candidates and insertion behavior owned by the active

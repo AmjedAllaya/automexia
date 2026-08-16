@@ -20,6 +20,7 @@ Authoritative design sources:
 
 - [Product roadmap](ROADMAP.md)
 - [Stabilization roadmap](STABILIZATION-ROADMAP.md)
+- [Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md)
 - [Readiness audit](READINESS-AUDIT.md)
 - [SSH, DevOps, and multi-cloud architecture](SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md)
 - [Connection Hub](CONNECTION-HUB.md)
@@ -47,6 +48,14 @@ pass. No mock substitutes for required controlled native evidence.
 The audit cross-checked phase claims against workspace membership, source
 ownership, architecture allowlists, feature assurance, workflows,
 documentation coverage, tests, benchmarks, fuzz ownership, and release policy.
+
+ADR 0020 now fixes the cross-phase technology boundary: core owns product
+policy and the single ExternalToolRunner, first-party extensions own bounded
+domain adapters, and mature protocol/authentication/custody systems stay
+external. This planning decision does not advance a D, CP, or S implementation
+status. In particular, the named AccessKit, nucleo, schema/generation, storage,
+transfer, serial, policy, sandbox, provider-SDK, vet, and mutation additions
+remain subject to their documented protected milestones and evidence.
 
 | Check | Result on the audited commit |
 |---|---|

@@ -43,6 +43,15 @@ wins and the product must offer an accessible remapping path. Bare
 and cursor movement remain owned by the active shell except while an explicit
 Automexia overlay or terminal selection owns focus.
 
+The technology boundary is equally explicit. Core owns the typed registry,
+interaction and review state, generic capabilities, exact-launch policy,
+Capsules, pane/workspace composition, UI semantics, redaction, and resource
+limits. First-party extensions own safe SSH/provider/file/collaboration domain
+adapters. OpenSSH, provider CLIs, agents/vaults, Git, Mosh, Upterm, policy
+services, and model endpoints retain their mature authority and are reached
+only through the core runner. The complete decision matrix is
+[Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md).
+
 ## Non-goals
 
 - Recreate Termius screens, account model, pricing, or proprietary protocols.
@@ -886,4 +895,6 @@ feature ledger and evidence gates.
 - [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md)
 - [Exact-argument session launch broker](SESSION-LAUNCH-BROKER.md)
 - [OpenSSH inventory](SSH-INVENTORY.md)
+- [Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md)
 - [ADR 0018](adr/0018-terminal-first-remote-operations.md)
+- [ADR 0020](adr/0020-hybrid-build-wrap-adopt-boundary.md)

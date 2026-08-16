@@ -287,18 +287,29 @@ published with native smoke evidence. Full accessibility remains a v0.5 gate.
 | Existing `image` crate | v0.4 S1 reused dependency | Decode/capture/difference implementation with exact geometry and controlled tolerance; add no image-diff crate until a measured need survives review. |
 | Windows Application Verifier and WPT/WPR | v0.4 S1 controlled-host tools | Administrator-only native heap/handle/lock/resource/performance profiles with guaranteed cleanup and redacted artifacts. |
 | AccessKit and its winit adapter | v0.5 reviewed runtime dependencies | Renderer-independent roles/text/focus/actions, privacy and update rules, native adapters, and assistive-technology tests. |
+| `clap_complete` and `clap_mangen` | v0.5 CP2/CP3 reviewed generation dependencies | One typed operation grammar generates static native-shell completion and man pages through non-mutating `xtask` generation/check commands; generated artifacts must not drift from CLI help. |
+| `schemars` | v0.5 D/CP typed-model slice | Generate versioned schemas from the same bounded Serde models used for operations, actions, inventory, routes, hooks, workspaces, and policy input; schema diffs and compatibility fixtures are reviewed. |
+| `nucleo` | v0.5 D5/CP3 only after benchmark and dependency review | Bounded cancellable worker, immutable completed snapshots, stable item identity, Unicode corpus, stale-generation rejection, 10k/100k record latency and memory evidence, and deterministic fallback to the current matcher. |
 | `cargo-mutants` | v0.5 pinned weekly tool | Scoped Automexia-owned pure modules, survivor triage, time budgets, and informational rollout before any threshold. |
 | `cargo-vet` | v0.5 pinned governance tool | Named audit owner, imported-audit trust, criteria/exemptions/renewal policy; complements existing dependency controls. |
 | System OpenSSH client | v0.5.0 external runtime dependency for `devops-ssh` | Platform-detected and version-reported; exact-argv PTY launch; Automexia never silently downloads or substitutes an SSH engine. |
 | Mocked deterministic SSH server/fixtures | v0.5.0 test-only infrastructure | Hermetic host-key/auth/jump/tunnel/failure/control-string cases for PRs; controlled native OpenSSH/server evidence remains a release gate. |
 | AWS/Azure/Google/Kubernetes/OpenShift official CLIs | v0.5.1 optional provider runtime dependencies | Detected lazily, invoked visibly or through exact reviewed argv, never installed at terminal startup, and absent tools degrade only their extension. |
-| `keyring-rs`, `secrecy`, and `zeroize` | Deferred until a secret-reference/custody ADR proves a need | Defense in depth only; no dependency may turn Automexia into a plaintext or general-purpose credential vault. |
+| `keyring-core` plus exact platform stores, `secrecy`, and `zeroize` | Deferred until a secret-reference/custody ADR proves a need | Select no broad default backend set; use only for unavoidable custody and defense in depth; no dependency may turn Automexia into a plaintext or general-purpose credential vault. |
 | Cedar or OPA adapter | v0.5.1/v0.6 policy evaluation after ADR | Local typed policy and enterprise integration; provider IAM/RBAC/remote policy remains authoritative. |
+| `rusqlite` plus SQLite FTS | v0.6 bounded session-memory milestone | Public high-cardinality metadata/search only, separate bounded event chunks, quotas, full-disk/crash rebuild, delete/export, redaction, canary, and storage benchmarks; no credentials, clipboard, raw environment, or unrestricted input. |
+| `openssh-sftp-client` | v0.6 isolated structured-transfer milestone | Adopt only after system `sftp`/`scp`; model ambiguous mutation cancellation, atomic finalize, containment, symlinks, hostile filenames, integrity, quotas, cleanup, and real-server evidence. |
+| `serialport` | v0.6 optional transport milestone | Blocking worker per session, bounded buffers and teardown, device removal/reconnect, and real-device Windows/Linux/macOS evidence before a platform support claim. |
+| Wasmtime/WASI Component Model | D7 third-party extension milestone | WIT contracts, no ambient capability, fuel/deadline/memory/output/file/network/concurrency quotas, signatures/revocation, guest-output sanitization, crash isolation, and sandbox escape review. |
+| External Git, Mosh, Upterm, SOPS/age, task/session and advanced sync tools | Feature-specific optional adapters | All invocations use the central exact-argv runner; tool absence is isolated; authority and credentials stay with the external tool; no automatic directory-open or background network work. |
 
 Every added crate/tool must have a pinned version, license/source/advisory
 review, lockfile or installer provenance, minimal enabled features, documented
 host support, update owner, and `cargo xtask doctor` classification. Do not add
 a tool merely because it is popular; it must close one of the contracts above.
+The canonical core/first-party-extension/external-authority split and complete
+feature placement are in
+[Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md).
 
 ### S1 — Nextest, JUnit, and deterministic ownership
 
@@ -873,8 +884,9 @@ integration, and controlled 1/10/50-session performance/leak results. See the
    renderer/input/PTY code and never starts a network connection.
 7. Prefer existing `ssh-agent`, OS agents/keychains, FIDO2/PIV/PKCS#11 devices,
    encrypted key files referenced by OpenSSH, and short-lived certificates.
-   `keyring-rs`, `secrecy`, and `zeroize` may enter only after a separate
-   dependency and custody review; none justifies a new Automexia vault.
+   `keyring-core` plus exact stores, `secrecy`, and `zeroize` may enter only
+   after a separate dependency and custody review; none justifies a new
+   Automexia vault or broad default backend set.
 
 Exit gate: malicious, recursive, oversized, changing, and permission-denied
 configuration stays bounded; disabling/removing the extension removes its UI

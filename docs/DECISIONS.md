@@ -26,6 +26,8 @@ decision supersedes an old one instead of silently rewriting history.
 | [0016](adr/0016-final-artifact-release-trust.md) | Final-artifact release trust | Sign and scan only protected final artifacts, attest the bytes users install, and handle false positives through vendor review rather than security exclusions. |
 | [0017](adr/0017-session-only-shell-integration.md) | Session-only shell integration | Normal launch injects bounded integration into the child session without persistent profile changes or execution-policy bypass. |
 | [0018](adr/0018-terminal-first-remote-operations.md) | Terminal-first remote operations | One typed registry powers CLI, leader-key, palette, and accessible overlays while preserving native shell ownership and external secret custody. |
+| [0019](adr/0019-acyclic-owned-crate-dependencies.md) | Acyclic Automexia-owned crate dependencies | Keep shared contracts in the lowest cohesive owner and make the desktop frontend the composition root without reverse dependencies. |
+| [0020](adr/0020-hybrid-build-wrap-adopt-boundary.md) | Hybrid build, wrap, and adopt boundary | Core owns product policy and one process boundary; extensions own domain adapters; mature protocols, authentication, custody, and services remain external. |
 
 ## When an ADR is required
 

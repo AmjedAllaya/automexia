@@ -26,6 +26,8 @@ the claim.
 - `docs/CONFIGURATION.md`, `docs/KEYBOARD.md`, and
   `docs/CLI-REFERENCE.md` own exact public reference.
 - `docs/ARCHITECTURE.md` and `docs/adr/` own technical rationale.
+- `docs/BUILD-WRAP-ADOPT-ARCHITECTURE.md` owns the planned technology
+  decision matrix and the core/first-party-extension/external-authority split.
 - `docs/TESTING.md` owns evidence levels and commands.
 - `docs/ROADMAP.md` owns release sequencing.
 - `docs/TERMINAL-FIRST-OPERATIONS.md` owns the planned command-first remote

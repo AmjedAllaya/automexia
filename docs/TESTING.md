@@ -1215,6 +1215,39 @@ provider/network/authentication work during startup and typing. Benchmarks must
 publish distribution, machine identity, corpus, cold/warm state, sample count,
 and peak memory; a single fast local run is not release evidence.
 
+## External-tool and adopted-dependency assurance
+
+The canonical ownership policy is
+[Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md).
+Every OpenSSH, provider CLI, Mosh, Git, Upterm, SOPS/age, task-runner, transfer,
+policy, collaboration, or AI adapter must use the one core ExternalToolRunner.
+Each adapter's protected milestone adds all applicable evidence below.
+
+| Layer | Required deterministic evidence |
+|---|---|
+| Core runner | Canonical executable identity; exact argv; validated cwd; allowlisted environment; null/protected stdin; byte/line caps; startup/idle/total deadlines; cancellation; descendant termination; redacted events; version state; session/extension/operation ownership |
+| Extension adapter | Fake executable contract; supported/unsupported version fixtures; truncated, malformed, oversized, hostile, and Unicode output; bounded parser; typed normalization; no shell concatenation; no direct spawn; no ambient credential/environment; extension-disable fallback |
+| Lifecycle/state | Offline, locked, expired, MFA, denied, cancelled, timeout, crash, stale/last-known-good, ambiguous outcome, repeated create/drop, owner close, and cross-pane/window/process isolation |
+| Native integration | One controlled real-tool job on every claimed OS; platform-specific agent/keychain/PTY/process-tree behavior; clean absence and unsupported-version behavior; no silent fallback |
+| Performance/resources | Cold and warm launch, output parsing, search/cache refresh, cancellation, cleanup, peak memory/handles/threads/files, binary-size delta, queue saturation, and 10/50/100-session evidence where relevant |
+| Security/privacy | Secret canaries, hostile executable/path/argument/output, log and bundle redaction, capability denial/revocation, production review, no startup/typing/render/resize invocation, and no retained raw provider output |
+| UI/accessibility | Renderer-neutral state, stable item identity, focus restoration, keyboard-only operation, screen-reader roles/names/states/actions, responsive goldens, stale/error/permission presentation, and reduced-motion/high-contrast behavior |
+
+Parsers for external JSON, safe SSH inventory, route graphs, policy input, file
+operations, log frames, and collaboration messages receive property and fuzz
+coverage. Pure security decisions and state machines receive scoped mutation
+testing. cargo-vet is introduced only with a named audit owner, trusted-import
+policy, explicit criteria, ratcheted exemptions, and renewal process; it
+complements rather than replaces cargo-deny, dependency review, CodeQL, SBOMs,
+attestations, or release signing. Diagnostic Nextest retries remain reported
+flaky failures.
+
+An adopted runtime crate also needs pinned minimal features, license/source/
+advisory/provenance review, an update owner, platform declaration, measured
+startup/binary/resource cost, cargo xtask doctor classification, and tests
+showing that disabling or uninstalling its feature leaves ordinary terminal
+behavior intact. Naming a crate in a roadmap does not satisfy this gate.
+
 ## Assurance status and remaining expansion
 
 The Phase 0 local baseline now includes pinned Nextest/JUnit/doctests, a

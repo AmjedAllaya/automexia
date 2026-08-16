@@ -174,6 +174,24 @@ Extensions own domain behavior:
 - explaining stale, expired, unavailable, or conflicting state;
 - implementing domain-specific commands, search, and workflows.
 
+### Shared external-tool boundary
+
+Provider ownership does not permit provider-specific process launch. System
+OpenSSH, official cloud/Kubernetes CLIs, Mosh, Git, Upterm, SOPS/age, and later
+external adapters all pass through one core-owned `ExternalToolRunner`. Its
+request names the extension, operation, session, capsule, reviewed capability,
+canonical executable, exact argv, validated working directory, and bounded
+allowlisted environment. It provides protected/null stdin policy, startup/idle/
+total deadlines, output byte and line caps, generation cancellation, descendant
+termination, version compatibility, and redacted structured events.
+
+Extensions construct typed requests and parse bounded versioned public results.
+They do not call a shell, concatenate command text, spawn independently, retain
+raw provider output without limits, or access an ambient environment. The
+runner never executes on render, resize, terminal startup, or keystroke paths.
+The complete split, technology matrix, and adoption order are in
+[Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md).
+
 ### Why SSH is not core
 
 Raw terminal use already supports the `ssh` executable. Making saved hosts,
@@ -491,10 +509,11 @@ store or agent, verify success, and discard all Automexia copies. Key material
 must never enter general config, SQLite, logs, crash reports, telemetry,
 renderer snapshots, clipboard history, or AI prompts.
 
-`keyring-rs` can provide a Rust abstraction over OS credential stores, while
-`secrecy` reduces accidental secret exposure and `zeroize` clears supported
-in-memory buffers. These are defense-in-depth tools, not justification for
-long-term in-process custody.
+`keyring-core` plus only the required platform stores can provide a Rust
+abstraction over OS credential stores, while `secrecy` reduces accidental
+secret exposure and `zeroize` clears supported in-memory buffers. These are
+defense-in-depth tools, not justification for long-term in-process custody or a
+broad default backend set.
 
 ### Host-key verification
 
@@ -678,7 +697,10 @@ SSH remains essential for generic systems and as a transparent fallback.
 ## Broker-process architecture
 
 Network- and credential-adjacent first-party adapters should run outside the
-renderer/VT process in a small provider broker or extension host. The broker:
+renderer/VT process in a small provider broker or extension host when the
+protected isolation gate requires it. In-process trusted adapters still use the
+same application-owned ExternalToolRunner and receive no direct process
+authority. The broker:
 
 - communicates over a user-scoped named pipe on Windows or Unix-domain socket;
 - never opens a general TCP control port;
@@ -950,7 +972,7 @@ credentials part of Automexia core.
 | Project | Recommended use | Boundary/caution |
 |---|---|---|
 | System OpenSSH | Primary SSH execution engine | Launch with exact argv in a PTY; preserve native config and policy. |
-| `keyring-rs` | Optional OS secret-store abstraction | Prefer opaque references and agents; backend behavior varies by platform. |
+| `keyring-core` plus exact stores | Optional OS secret-store abstraction | Prefer opaque references and agents; enable no unused platform/backend surface. |
 | `secrecy` | Reduce accidental secret formatting/logging in Rust | Does not solve storage, access control, or compromise by itself. |
 | `zeroize` | Clear supported in-memory secret buffers | Copies and OS/provider caches still require careful design. |
 | `kube-rs` | Later structured Kubernetes inventory and watches | Use only in a provider extension/broker; CLI/config-first is simpler initially. |
