@@ -2170,7 +2170,10 @@ fn verify_architecture() -> TaskResult {
     )?;
 
     let private_crates: [(&str, &[&str]); 6] = [
-        ("automexia-extension-api", &["serde", "serde_json"]),
+        (
+            "automexia-extension-api",
+            &["serde", "serde_json", "unicode-segmentation"],
+        ),
         (
             "automexia-extension-runtime",
             &["automexia-extension-api", "loom"],
@@ -2179,7 +2182,6 @@ fn verify_architecture() -> TaskResult {
             "automexia-devops",
             &[
                 "automexia-extension-api",
-                "automexia-ui-model",
                 "criterion",
                 "dirs",
                 "serde",

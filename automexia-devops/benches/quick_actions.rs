@@ -2,6 +2,7 @@ use automexia_devops::actions::{
     ActionProvenance, ActionScope, ActionTemplate, ExecutionMode, QuickAction,
     QuickActionDocument, RiskClass, ShellKind,
 };
+use automexia_extension_api::{compact_label, compact_middle};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::hint::black_box;
 
@@ -56,5 +57,15 @@ fn quick_action_parsing(criterion: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, quick_action_parsing);
+fn context_label_compaction(criterion: &mut Criterion) {
+    let label = "feature/\u{1f468}\u{200d}\u{1f4bb}-multi-cloud-production-environment";
+    criterion.bench_function("context_label_compaction", |bencher| {
+        bencher.iter(|| black_box(compact_label(black_box(label), black_box(22))))
+    });
+    criterion.bench_function("context_middle_compaction", |bencher| {
+        bencher.iter(|| black_box(compact_middle(black_box(label), black_box(24))))
+    });
+}
+
+criterion_group!(benches, quick_action_parsing, context_label_compaction);
 criterion_main!(benches);
