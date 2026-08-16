@@ -4,6 +4,10 @@
 //! construction and rejects unknown fields or unsupported schema versions.
 //! Secret material is represented only by opaque references.
 
+mod text;
+
+pub use text::{compact_label, compact_middle};
+
 use std::fmt;
 use std::path::PathBuf;
 

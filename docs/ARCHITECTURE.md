@@ -9,21 +9,16 @@ engine directories or creating a second PTY/process owner.
 ```text
 apps/automexia-terminal
   product lifecycle, CLI, windows, PTY/session owner, renderer adapter
-                 |
-                 | compatibility facades and typed adapters
-                 v
-automexia-extension-api / automexia-extension-runtime
-  bounded versioned contracts, cache/queue/cancellation lifecycle
-automexia-devops / automexia-ui-model
-  local provider adapter, generic status/layout/accessibility policy
-                 |
-                 v
-rio-backend / rio-vt / teletypewriter / rio-window
-  config parsing, VT/grid, PTY, platform event/window contracts
-                 |
-                 v
-sugarloaf / rio-graphics / rio-fonts
-  GPU and font rendering engines
+  |-- automexia-devops ------------> automexia-extension-api
+  |     local providers                 bounded contracts/text policy
+  |-- automexia-extension-runtime --> automexia-extension-api
+  |     queue/cache/cancellation
+  |-- automexia-ui-model ----------> automexia-extension-api
+  |     layout/accessibility/color; contract consumer only
+  `-- rio-backend / rio-vt / teletypewriter / rio-window
+          config, VT/grid, PTY, platform window/event contracts
+            `--> sugarloaf / rio-graphics / rio-fonts
+                   GPU and font rendering engines
 ```
 
 `rio_backend::config::product` is the single v0.4 compatibility adapter for
@@ -44,7 +39,8 @@ apps/automexia-terminal
           | typed, versioned contracts only
           v
 automexia-extension-api
-  IDs, manifests, capabilities, launch requests, capsules, contributions
+  IDs, manifests, capabilities, launch requests, capsules, contributions,
+  Unicode-safe bounded contract text normalization
 
 automexia-extension-runtime
   bounded work queues, immutable caches, cancellation, operation lifecycle
@@ -353,6 +349,15 @@ See [Command Productivity](COMMAND-PRODUCTIVITY.md), the accepted
 
 ## Dependency rules
 
+- Automexia-owned crates form an acyclic graph. The extension API is the lowest
+  shared contract layer; provider/domain crates never depend on the UI model,
+  renderer, PTY, GPU, window, or application crates. The desktop frontend is the
+  composition root. See [ADR 0019](adr/0019-acyclic-owned-crate-dependencies.md).
+- Shared behavior belongs to the lowest cohesive owner. Contract normalization
+  is implemented once in `automexia-extension-api`; responsive projection,
+  accessibility, icon optics, and color policy remain in `automexia-ui-model`.
+  A new utility crate is added only when it represents a durable independent
+  boundary rather than a place for unrelated helpers.
 - Engine crates never depend on the desktop frontend.
 - VT parsing and PTY paths contain no extension or product-state logic.
 - Extension API/model code is renderer-, GPU-, and PTY-independent.
