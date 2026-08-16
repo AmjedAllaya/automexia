@@ -56,6 +56,7 @@ REQUIRED_PAGES = {
     "docs/PLATFORMS.md",
     "docs/DECISIONS.md",
     "docs/DOCUMENTATION.md",
+    "docs/PHASE-IMPLEMENTATION-AUDIT.md",
 }
 
 

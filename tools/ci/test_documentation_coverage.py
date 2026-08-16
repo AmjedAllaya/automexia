@@ -22,7 +22,7 @@ SPEC.loader.exec_module(COVERAGE)
 class DocumentationCoverageTests(unittest.TestCase):
     def test_canonical_documentation_covers_source_registries(self) -> None:
         counts = COVERAGE.validate()
-        self.assertGreaterEqual(counts["pages"], 11)
+        self.assertGreaterEqual(counts["pages"], 12)
         self.assertGreaterEqual(counts["config_keys"], 100)
         self.assertGreaterEqual(counts["binding_actions"], 60)
         self.assertEqual(counts["cli_flags"], 6)

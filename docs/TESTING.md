@@ -102,17 +102,28 @@ python tools/ci/check_feature_assurance.py
 python tools/ci/test_feature_assurance.py
 python tools/ci/check_documentation_coverage.py
 python tools/ci/test_documentation_coverage.py
+python tools/ci/check_phase_implementation_audit.py
+python tools/ci/test_phase_implementation_audit.py
 python tools/ci/check_platform_coverage.py
 python tools/ci/test_platform_coverage.py
 ```
 
-The canonical ledger and platform matrix are also part of repository
+The phase-audit contract also compares the implementation audit with every
+canonical roadmap. It requires an explicit status for each declared phase,
+links to all roadmap sources, a pinned audited source baseline, and the shared
+correctness, security, performance, resource, storage, resilience, retry,
+cross-platform, accessibility, visual, test, benchmark, fuzz, coverage, and
+release evidence vocabulary. Its mutation suite proves that missing phases,
+statuses, sources, or evidence dimensions fail closed.
+
+The canonical ledger, phase audit, and platform matrix are part of repository
 validation, so `cargo ready`, `cargo ci`, and every pull request fail when a
-workspace member, required repository surface, quality dimension, native host,
-shell contract, display feature, architecture check, package validator, or
-referenced evidence path/job/heading loses ownership. A pull request that adds
-or materially changes a feature must update the ledger in the same change; the
-ledger does not replace the tests it references.
+workspace member, roadmap phase, required repository surface, quality
+dimension, native host, shell contract, display feature, architecture check,
+package validator, or referenced evidence path/job/heading loses ownership. A
+pull request that adds or materially changes a feature or phase must update the
+ledger and phase audit in the same change; neither document replaces the tests
+it references.
 
 On Windows, the contributor gate scopes RustSec's Git fetch to Git for
 Windows' `schannel` backend when the caller has not supplied an explicit

@@ -67,6 +67,10 @@ jobs:
         run: |
           python tools/ci/check_documentation_coverage.py
           python tools/ci/test_documentation_coverage.py
+      - name: Roadmap phase-audit coverage tests
+        run: |
+          python tools/ci/check_phase_implementation_audit.py
+          python tools/ci/test_phase_implementation_audit.py
       - name: Shell syntax
         run: bash tools/ci/test_shell_sources.sh
       - name: PowerShell syntax
