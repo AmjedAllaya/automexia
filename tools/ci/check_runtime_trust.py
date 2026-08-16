@@ -79,6 +79,11 @@ def validate_application(main: str, shell: str, integration: str, cmd: str) -> N
         "arbitrary integration roots must be accepted only by debug builds",
     )
     require(
+        "dunce::canonicalize(path)" in integration
+        and "#[cfg(not(windows))]\n    let canonical = path.canonicalize()" in integration,
+        "validated Windows integration roots must use a PowerShell-compatible canonical path",
+    )
+    require(
         '"-ExecutionPolicy"' not in integration
         and '"Bypass"' not in integration
         and 'Command::new("powershell.exe")' in integration,
@@ -89,6 +94,17 @@ def validate_application(main: str, shell: str, integration: str, cmd: str) -> N
         and "AUTOMEXIA_SHELL_INTEGRATION_ROOT" in shell
         and "LOCALAPPDATA" not in shell,
         "child shell injection must be gated and use validated session resources",
+    )
+    bootstrap = section(
+        shell, "const POWERSHELL_SESSION_BOOTSTRAP", "pub fn normalized_program"
+    )
+    require(
+        bootstrap.count("Test-Path -LiteralPath $p") == 2
+        and "PSSecurityException" in bootstrap
+        and "$env:AUTOMEXIA_SHELL_INTEGRATION='0'" in bootstrap
+        and "ExecutionPolicy" not in bootstrap
+        and "Invoke-Expression" not in bootstrap,
+        "PowerShell bootstrap must use literal paths, preserve policy, and fail quietly",
     )
     require(
         "ExecutionPolicy Bypass" not in cmd,

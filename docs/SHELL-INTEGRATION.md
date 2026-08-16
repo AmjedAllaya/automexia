@@ -48,6 +48,16 @@ creation. The compatibility installer retains atomic/idempotent profile-block
 handling, precise OneDrive Cloud Files reparse-tag acceptance, and strict
 symlink/junction rejection.
 
+For session-only Windows integration, Automexia canonicalizes and validates the
+resource directory before launch, then uses a normal local drive path when that
+path has an equivalent safe representation. This avoids presenting a local
+development script as a verbatim/UNC-like path under RemoteSigned. Automexia
+does not alter any execution-policy scope, unblock files, or evaluate script
+text. If an authoritative policy still denies the script (for example,
+AllSigned with an unsigned developer checkout), startup falls back quietly to
+the native shell; the shell-integration doctor reports the resource boundary
+and signed release packages provide the supported integrated path.
+
 ## Native command completion
 
 Automexia provisions shell adapters but never computes candidates from rendered
