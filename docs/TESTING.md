@@ -385,10 +385,13 @@ Control-string and reload hardening has a focused local gate:
 
 ```text
 cargo test -p rio-vt performer:: --locked
+cargo test -p rio-vt --lib --locked control_string_buffers_allocate_lazily_and_release_large_high_water
+cargo test -p rio-vt --lib --locked osc_buffer_is_bounded_and_releases_attack_high_water
 cargo test -p automexia-terminal application::custom_chrome_tests --locked
 cargo test -p automexia-terminal global_hotkey::tests --locked
 cargo xtask verify architecture
 cargo xtask verify identity
+cargo bench -p rio-vt --bench vt_input --locked -- processor_default_lazy_control_buffers --quick --noplot
 ```
 
 OSC retains at most 1 MiB, APC/graphics 96 KiB, and XTGETTCAP 4 KiB. Tests
@@ -397,7 +400,14 @@ state, repeated attacks, memory bounds, non-dispatching CAN/SUB cancellation,
 and valid recovery. `fuzz/fuzz_targets/control_string_bounds.rs` drives mixed,
 fragmented oversized streams and is part of the nightly fuzz matrix. Sixel data
 streams through its dimension-bounded decoder, and synchronized-update storage
-keeps its existing 2 MiB cap.
+keeps its existing 2 MiB cap. A new processor performs no control-string heap
+allocation. Completed unusually large sequences release their high-water
+allocation; ordinary OSC/APC/synchronized-update traffic retains only 64 KiB,
+8 KiB, and 64 KiB respectively for reuse. Tests verify lazy allocation,
+overflow-safe size arithmetic, ordinary-buffer reuse, repeated attack cleanup,
+and recovery. The construction Criterion case detects accidental restoration
+of eager per-pane allocation; its result is informational until the controlled
+30-day baseline is ratified.
 
 Reload tests require malformed config, malformed theme, missing path, missing
 font, and global-hotkey registration failures to leave the logical

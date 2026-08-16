@@ -2645,13 +2645,20 @@ fn verify_architecture() -> TaskResult {
         vt_handler.contains(r#""TN" | "name" => Some("automexia".to_string())"#)
             && vt_handler.contains("MAX_XTGETTCAP_REQUEST_LEN")
             && vt_handler.contains("MAX_APC_SEQUENCE_LEN")
+            && vt_handler.contains("MAX_RETAINED_SYNC_BUFFER_CAPACITY")
+            && vt_handler.contains("MAX_RETAINED_APC_BUFFER_CAPACITY")
+            && vt_handler.contains(
+                "control_string_buffers_allocate_lazily_and_release_large_high_water",
+            )
             && vt_handler.contains("warn_control_string_discard")
             && vt_handler.contains("further reports are exponentially rate-limited")
             && !vt_handler.contains("[unhandled osc_dispatch]")
             && vt_parser.contains("MAX_OSC_RAW_LEN")
+            && vt_parser.contains("MAX_RETAINED_OSC_HEAP_CAPACITY")
             && vt_parser.contains("osc_overflowed")
             && vt_parser.contains("warn_oversized_osc")
             && vt_parser.contains("oversized_osc_is_dropped_and_next_sequence_recovers")
+            && vt_parser.contains("osc_buffer_is_bounded_and_releases_attack_high_water")
             && vt_parser.contains("cancelled_osc_is_not_dispatched_and_next_sequence_recovers")
             && vt_handler.contains("cancelled_xtgettcap_is_not_dispatched_and_next_request_recovers")
             && vt_handler.contains("cancelled_apc_is_not_dispatched_and_next_request_recovers"),

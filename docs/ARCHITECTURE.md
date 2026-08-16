@@ -98,8 +98,13 @@ Child-process output is untrusted. The VT parser caps retained OSC, APC, and
 XTGETTCAP payloads, discards overflow through a terminator, treats CAN/SUB as
 cancellation rather than successful dispatch, and never logs rejected payload
 contents. Sixel decoding is streamed and dimension-bounded; synchronized update
-storage is separately capped. The architecture gate requires deterministic
-boundary/recovery tests and the nightly mixed-control-string fuzz target.
+storage is separately capped. Synchronized-update storage is allocated only
+when the mode is used instead of reserving its 2 MiB ceiling per pane. After a
+sequence completes, unusually large OSC, APC, and synchronized-update
+allocations are released; normal OSC spills up to 64 KiB, APC chunks up to
+8 KiB, and synchronized updates up to 64 KiB retain capacity for reuse. The
+architecture gate requires deterministic boundary/recovery/allocation tests,
+the construction benchmark, and the nightly mixed-control-string fuzz target.
 
 ### Image protocol and quick-look boundaries
 

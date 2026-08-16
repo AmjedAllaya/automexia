@@ -130,10 +130,16 @@ repository administration. These do not reopen source implementation.
 
 - OSC retention is capped at 1 MiB, APC/graphics at 96 KiB, XTGETTCAP at 4 KiB,
   synchronized updates at 2 MiB, and Sixel uses bounded streaming.
+- Synchronized-update storage is lazy rather than a 2 MiB reservation per
+  pane. Completed large OSC/APC/synchronized-update allocations release their
+  high-water capacity, while small common buffers remain reusable under
+  explicit 64 KiB/8 KiB/64 KiB retention ceilings.
 - Overflow discards to the correct terminator; CAN/SUB cancels without
   dispatch; diagnostics omit hostile payloads and are rate-limited.
 - Tests cover exact limits, limit-plus-one, fragmentation, unterminated state,
-  cancellation, recovery, repeated attack, and retained memory.
+  cancellation, recovery, repeated attack, lazy allocation, ordinary-buffer
+  reuse, saturating size arithmetic, and retained-memory release. A dedicated
+  parser-construction Criterion case protects the allocation fast path.
 - Eight assurance-owned fuzz targets cover VT, OSC, control strings, images,
   migration, sanitization, semantic classification, and OpenSSH inventory.
 

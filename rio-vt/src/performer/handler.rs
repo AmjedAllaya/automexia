@@ -31,6 +31,9 @@ const SYNC_UPDATE_TIMEOUT: Duration = Duration::from_millis(150);
 
 /// Maximum number of bytes read in one synchronized update (2MiB).
 const SYNC_BUFFER_SIZE: usize = 0x20_0000;
+/// Retain enough capacity for normal batched redraws while releasing an
+/// unusual large update after it is applied.
+const MAX_RETAINED_SYNC_BUFFER_CAPACITY: usize = 64 * 1024;
 
 /// A legitimate XTGETTCAP request contains short hexadecimal capability names.
 /// Bound the complete DCS so a child process cannot retain arbitrary input.
@@ -40,6 +43,10 @@ const MAX_XTGETTCAP_REQUEST_LEN: usize = 4 * 1024;
 /// also accommodates a base64-encoded 64 KiB Glyph Protocol registration plus
 /// control metadata while still bounding memory owned by an untrusted PTY.
 const MAX_APC_SEQUENCE_LEN: usize = 96 * 1024;
+/// Kitty normally transports graphics in roughly 4 KiB APC chunks. Retaining
+/// more than twice that after termination only amplifies hostile high-water
+/// memory across panes.
+const MAX_RETAINED_APC_BUFFER_CAPACITY: usize = 8 * 1024;
 
 static XTGETTCAP_OVERFLOW_COUNT: AtomicUsize = AtomicUsize::new(0);
 static APC_OVERFLOW_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -54,6 +61,15 @@ fn warn_control_string_discard(counter: &AtomicUsize, reason: &str) {
         warn!(
             "{reason} discarded (occurrence {occurrence}; further reports are exponentially rate-limited)"
         );
+    }
+}
+
+#[inline]
+fn clear_with_retention_limit(buffer: &mut Vec<u8>, max_retained_capacity: usize) {
+    if buffer.capacity() > max_retained_capacity {
+        *buffer = Vec::new();
+    } else {
+        buffer.clear();
     }
 }
 
@@ -546,12 +562,13 @@ struct ProcessorState {
     apc_state: ApcState,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct SyncState {
     /// Expiration time of the synchronized update.
     timeout: StdSyncHandler,
 
     /// Bytes read during the synchronized update.
+    /// Starts empty because most panes never enable this mode.
     buffer: Vec<u8>,
 }
 
@@ -582,15 +599,6 @@ struct ApcState {
     /// Set once the current APC exceeds its hard limit. The parser continues
     /// to consume through the terminator without retaining or dispatching it.
     overflowed: bool,
-}
-
-impl Default for SyncState {
-    fn default() -> Self {
-        Self {
-            buffer: Vec::with_capacity(SYNC_BUFFER_SIZE),
-            timeout: Default::default(),
-        }
-    }
 }
 
 #[derive(Debug, Default)]
@@ -713,7 +721,10 @@ impl Processor {
             None => {
                 handler.unset_private_mode(NamedPrivateMode::SyncUpdate.into());
                 self.state.sync_state.timeout.clear_timeout();
-                self.state.sync_state.buffer.clear();
+                clear_with_retention_limit(
+                    &mut self.state.sync_state.buffer,
+                    MAX_RETAINED_SYNC_BUFFER_CAPACITY,
+                );
             }
         }
     }
@@ -731,7 +742,14 @@ impl Processor {
         H: Handler,
     {
         // Advance sync parser or stop sync if we'd exceed the maximum buffer size.
-        if self.state.sync_state.buffer.len() + bytes.len() >= SYNC_BUFFER_SIZE - 1 {
+        if self
+            .state
+            .sync_state
+            .buffer
+            .len()
+            .saturating_add(bytes.len())
+            >= SYNC_BUFFER_SIZE - 1
+        {
             // Terminate the synchronized update.
             self.stop_sync_internal(handler, None);
 
@@ -1676,7 +1694,10 @@ impl<U: Handler> Perform for Performer<'_, U> {
     /// OSC-style parameter parsing.
     fn apc_start(&mut self) {
         debug!("[apc_start] Beginning APC accumulation");
-        self.state.apc_state.buffer.clear();
+        clear_with_retention_limit(
+            &mut self.state.apc_state.buffer,
+            MAX_RETAINED_APC_BUFFER_CAPACITY,
+        );
         self.state.apc_state.overflowed = false;
         // Pre-allocate reasonable size for Kitty graphics chunks (typically 4KB)
         self.state.apc_state.buffer.reserve(4096);
@@ -1724,11 +1745,17 @@ impl<U: Handler> Perform for Performer<'_, U> {
         if !self.state.apc_state.overflowed {
             self.process_apc_buffer();
         }
-        self.state.apc_state.buffer.clear();
+        clear_with_retention_limit(
+            &mut self.state.apc_state.buffer,
+            MAX_RETAINED_APC_BUFFER_CAPACITY,
+        );
         self.state.apc_state.overflowed = false;
     }
     fn apc_cancel(&mut self) {
-        self.state.apc_state.buffer.clear();
+        clear_with_retention_limit(
+            &mut self.state.apc_state.buffer,
+            MAX_RETAINED_APC_BUFFER_CAPACITY,
+        );
         self.state.apc_state.overflowed = false;
     }
 }
@@ -2469,6 +2496,7 @@ mod tests {
         assert!(handler.glyph_responses.is_empty());
         assert!(!processor.state.apc_state.overflowed);
         assert!(processor.state.apc_state.buffer.is_empty());
+        assert_eq!(processor.state.apc_state.buffer.capacity(), 0);
     }
 
     #[test]
@@ -2493,9 +2521,15 @@ mod tests {
         oversized.extend_from_slice(b"\x1b_25a1;s;");
         oversized.extend(std::iter::repeat_n(b'A', MAX_APC_SEQUENCE_LEN));
         oversized.extend_from_slice(b"\x1b\\");
-        oversized.extend_from_slice(b"\x1b_25a1;s\x1b\\");
 
         processor.advance(&mut handler, &oversized);
+
+        assert!(handler.glyph_responses.is_empty());
+        assert!(!processor.state.apc_state.overflowed);
+        assert!(processor.state.apc_state.buffer.is_empty());
+        assert_eq!(processor.state.apc_state.buffer.capacity(), 0);
+
+        processor.advance(&mut handler, b"\x1b_25a1;s\x1b\\");
 
         assert_eq!(handler.glyph_responses.len(), 1);
         assert_eq!(
@@ -2504,6 +2538,10 @@ mod tests {
         );
         assert!(!processor.state.apc_state.overflowed);
         assert!(processor.state.apc_state.buffer.is_empty());
+        assert!(
+            processor.state.apc_state.buffer.capacity()
+                <= MAX_RETAINED_APC_BUFFER_CAPACITY
+        );
     }
 
     #[test]
@@ -2546,6 +2584,31 @@ mod tests {
         assert_eq!(handler.printed, "abc");
         assert!(processor.sync_timeout().sync_timeout().is_none());
         assert_eq!(processor.sync_bytes_count(), 0);
+    }
+
+    #[test]
+    fn control_string_buffers_allocate_lazily_and_release_large_high_water() {
+        let mut handler = SyncHandler::default();
+        let mut processor = Processor::default();
+
+        assert_eq!(processor.state.sync_state.buffer.capacity(), 0);
+        assert_eq!(processor.state.xtgettcap_state.buffer.capacity(), 0);
+        assert_eq!(processor.state.apc_state.buffer.capacity(), 0);
+
+        processor.advance(&mut handler, b"\x1b[?2026h");
+        processor.advance(
+            &mut handler,
+            &vec![b'x'; MAX_RETAINED_SYNC_BUFFER_CAPACITY + 1],
+        );
+        assert!(
+            processor.state.sync_state.buffer.capacity()
+                > MAX_RETAINED_SYNC_BUFFER_CAPACITY
+        );
+        processor.stop_sync(&mut handler);
+
+        assert_eq!(processor.state.sync_state.buffer.capacity(), 0);
+        assert_eq!(processor.sync_bytes_count(), 0);
+        assert_eq!(handler.printed.len(), MAX_RETAINED_SYNC_BUFFER_CAPACITY + 1);
     }
 
     #[test]

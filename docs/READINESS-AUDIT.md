@@ -59,7 +59,10 @@ The 2026-08-14 audit closed the three previously open v0.4 source blockers:
    terminator; CAN/SUB cancels without dispatch; diagnostics are payload-free
    and exponentially rate-limited. Exact-limit, limit-plus-one, fragmented,
    repeated-attack, cancellation, bounded-memory, recovery, and dedicated
-   nightly fuzz coverage are present.
+   nightly fuzz coverage are present. Synchronized-update storage no longer
+   reserves its 2 MiB ceiling per pane, and large completed OSC/APC/synchronized
+   sequences release high-water allocations while small normal buffers remain
+   reusable.
 3. Runtime reload validates a complete candidate and keeps the last-known-good
    configuration after parse/theme/font/global-hotkey failure. Hotkey additions
    and removals have rollback tests, and no failed reload recreates PTYs.
@@ -129,6 +132,10 @@ and acceptance criteria are in the
   parser-only throughput was 1.9533-2.0386 GiB/s. These uncontrolled laptop
   values prove harness execution only and do not satisfy the named-runner or
   30-day baseline gates.
+- The 2026-08-16 lazy control-buffer construction smoke measured
+  `Processor::default` at 29.964-30.073 ns after removing its unconditional
+  2 MiB synchronized-update reservation. This proves the focused harness and
+  zero-capacity regression locally; it is not a controlled baseline ratchet.
 
 - Composite-folder/path follow-up: PowerShell/CMD formatter contracts, Bash and
   Zsh integration tests, focused ShellCheck/Perl syntax, a real WSL pseudo-TTY

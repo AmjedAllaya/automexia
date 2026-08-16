@@ -31,6 +31,10 @@ const MAX_OSC_PARAMS: usize = 16;
 /// process from growing the parser heap without bound. Oversized strings are
 /// discarded through their terminator and the next OSC starts cleanly.
 const MAX_OSC_RAW_LEN: usize = 1024 * 1024;
+/// Keep ordinary medium OSC payloads allocation-efficient, but do not let one
+/// hostile clipboard/control sequence permanently pin the 1 MiB high-water
+/// allocation in every terminal parser.
+const MAX_RETAINED_OSC_HEAP_CAPACITY: usize = 64 * 1024;
 static OSC_OVERFLOW_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 fn warn_oversized_osc() {
@@ -158,9 +162,14 @@ impl OscBuffer {
     #[inline]
     fn clear(&mut self) {
         self.fixed_len = 0;
-        // Keep `overflow`'s capacity so a session that hits one large paste
-        // doesn't re-allocate on the next one.
-        self.overflow.clear();
+        if self.overflow.capacity() > MAX_RETAINED_OSC_HEAP_CAPACITY {
+            // `Vec::clear` preserves capacity. Replace unusually large
+            // allocations so one untrusted sequence cannot permanently
+            // multiply retained memory across many panes.
+            self.overflow = Vec::new();
+        } else {
+            self.overflow.clear();
+        }
     }
 }
 
@@ -1993,22 +2002,38 @@ mod tests {
     }
 
     #[test]
-    fn osc_buffer_is_bounded_at_the_exact_limit_across_repeated_attacks() {
+    fn osc_buffer_is_bounded_and_releases_attack_high_water() {
         let mut buffer = OscBuffer::default();
         let at_limit = vec![b'a'; MAX_OSC_RAW_LEN];
 
         assert!(buffer.extend_from_slice(&at_limit));
         assert_eq!(buffer.len(), MAX_OSC_RAW_LEN);
-        let bounded_capacity = buffer.overflow.capacity();
+        assert!(buffer.overflow.capacity() >= MAX_OSC_RAW_LEN);
         assert!(!buffer.push(b'b'));
         assert_eq!(buffer.len(), MAX_OSC_RAW_LEN);
 
         for _ in 0..3 {
             buffer.clear();
+            assert_eq!(buffer.overflow.capacity(), 0);
             assert!(!buffer.extend_from_slice(&vec![b'c'; MAX_OSC_RAW_LEN + 1]));
             assert_eq!(buffer.len(), MAX_OSC_RAW_LEN);
-            assert_eq!(buffer.overflow.capacity(), bounded_capacity);
         }
+        buffer.clear();
+        assert_eq!(buffer.overflow.capacity(), 0);
+    }
+
+    #[test]
+    fn osc_buffer_reuses_ordinary_spill_capacity() {
+        let mut buffer = OscBuffer::default();
+        let ordinary = vec![b'a'; OSC_FIXED_LEN + 512];
+
+        assert!(buffer.extend_from_slice(&ordinary));
+        let capacity = buffer.overflow.capacity();
+        assert!(capacity >= ordinary.len());
+        assert!(capacity <= MAX_RETAINED_OSC_HEAP_CAPACITY);
+
+        buffer.clear();
+        assert_eq!(buffer.overflow.capacity(), capacity);
     }
 
     #[test]
@@ -2049,6 +2074,7 @@ mod tests {
 
         assert!(!parser.osc_overflowed);
         assert_eq!(parser.osc_raw.len(), 0);
+        assert_eq!(parser.osc_raw.overflow.capacity(), 0);
         assert_eq!(dispatcher.dispatched.len(), 1);
         assert_eq!(
             dispatcher.dispatched[0],

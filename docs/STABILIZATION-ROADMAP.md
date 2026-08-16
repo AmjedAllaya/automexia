@@ -29,7 +29,7 @@ skipped external gate is never reported as a pass.
 
 | Phase 0 step | Audit before this pass | Implemented or preserved now | Remaining gate |
 |---|---|---|---|
-| Protocol identity and bounded hostile control strings | Complete locally | Existing hard caps, cancellation/discard/recovery, non-payload diagnostics, architecture checks, seven fuzz targets, and exact-boundary regressions are preserved. | Hosted fuzz, sanitizer, Miri, and cross-platform hostile PTY evidence. |
+| Protocol identity and bounded hostile control strings | Complete locally | Existing hard caps, cancellation/discard/recovery, non-payload diagnostics, architecture checks, seven fuzz targets, and exact-boundary regressions are preserved. Synchronized-update storage is now lazy instead of reserving 2 MiB per pane, large OSC/APC/synchronized-update high-water allocations are released after termination, small common buffers remain reusable, and a construction benchmark plus regression contract protects the boundary. | Hosted fuzz, sanitizer, Miri, and cross-platform hostile PTY evidence. |
 | Terminal image protocols and quick look | Missing direct local filename UX; iTerm2 decode was less bounded than Kitty/Sixel | Sixel, Kitty placements/placeholders, and iTerm2 inline images are preserved. IO-free visible-path discovery, 100 ms plain hover, click-to-pin, wraparound arrow browsing, Escape dismissal, mouse-reporting ownership, selection/palette access, a 16-owner latest-generation queue, strict predecode dimension/magic/file-version gates, a 16-entry/32 MiB LRU, shared stable renderer identity, WSL validation, responsive overlay, and tested decoder limits are implemented. The required focused PR command exercises every enabled codec and renderer/protocol suite. Windows native automation drives real hover/click/key events, repeats exact WGPU/CPU resource lifecycle checks, enforces process-growth ceilings, rejects blank output, and compares backend capture distributions. | Controlled native visual/protocol evidence on Linux and macOS; retain extended fuzz/sanitizer soak and multiplexer/client compatibility evidence. |
 | Reviewed local-only v0.4 extension boundary | Complete locally | Capability manifest remains filesystem/environment/terminal-output/UI-overlay only; architecture policy continues to reject network, process-spawn, and clipboard grants. | Hosted policy/security checks must pass before release. |
 | Managed remote-session claims | Correctly absent | Documentation and release gates continue to forbid advertising managed remote sessions in v0.4. | v0.5 capability model plus hosted hostile-output and native evidence. |
@@ -121,6 +121,11 @@ multiplexers, and WSL.
   XTGETTCAP requests at 4 KiB. Sixel is streamed through its dimension-bounded
   decoder rather than retained as one raw DCS; synchronized updates retain the
   existing 2 MiB cap.
+- A new terminal parser allocates no control-string heap storage. Normal OSC,
+  APC, and synchronized-update capacities are reused up to 64 KiB, 8 KiB, and
+  64 KiB respectively, while larger completed/cancelled sequences release
+  their high-water allocation. Saturating size arithmetic keeps oversized
+  chunk checks safe on every target width.
 - Limit overflow retains no additional bytes and consumes through BEL/ST or the
   applicable terminator. CAN/SUB clears OSC, APC, DCS/XTGETTCAP, and Sixel state
   without dispatching a partial payload.
@@ -129,11 +134,13 @@ multiplexers, and WSL.
   state, fragmentation, cancellation, valid recovery, repeated attacks, and
   retained-memory bounds. The dedicated `control_string_bounds` fuzz target is
   routed through the nightly matrix.
-- Normal short streams retain the inline/bulk fast paths and the existing VT
-  Criterion cases. Executed controlled-hardware comparisons remain an S1
+- Normal short streams retain the inline/bulk fast paths. The
+  `processor_default_lazy_control_buffers` Criterion case measures parser
+  construction independently; the 2026-08-16 Windows quick sample was
+  29.964-30.073 ns. Executed controlled-hardware comparisons remain an S1
   performance-evidence gate, not an open memory-safety implementation task.
 
-Local correctness/security exit: passed with 106 performer regressions. Hosted
+Local correctness/security exit: passed with 108 performer regressions. Hosted
 fuzz corpora, sanitizers, cross-platform native jobs, and performance baselines
 must still pass before stable release.
 
