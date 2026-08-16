@@ -178,6 +178,10 @@ impl Route<'_> {
             if key_event.state == ElementState::Pressed {
                 match &key_event.logical_key {
                     Key::Named(NamedKey::Escape) => {
+                        if self.window.screen.leave_action_detail() {
+                            self.request_overlay_redraw();
+                            return true;
+                        }
                         self.window
                             .screen
                             .renderer
@@ -233,7 +237,45 @@ impl Route<'_> {
                             .renderer
                             .command_palette
                             .get_selected_action();
+                        let selected_quick_action = self
+                            .window
+                            .screen
+                            .renderer
+                            .command_palette
+                            .get_selected_action_item_id();
+                        let quick_action_review = self
+                            .window
+                            .screen
+                            .renderer
+                            .command_palette
+                            .get_review_choice();
+                        let is_quick_action_placeholder = self
+                            .window
+                            .screen
+                            .renderer
+                            .command_palette
+                            .is_action_placeholder();
                         use crate::renderer::command_palette::PaletteAction;
+
+                        if is_quick_action_placeholder {
+                            let value =
+                                self.window.screen.renderer.command_palette.query.clone();
+                            self.window.screen.submit_action_placeholder(value);
+                            self.request_overlay_redraw();
+                            return true;
+                        }
+
+                        if let Some(action_id) = selected_quick_action {
+                            self.window.screen.begin_action_review(&action_id);
+                            self.request_overlay_redraw();
+                            return true;
+                        }
+
+                        if let Some(choice) = quick_action_review {
+                            self.window.screen.apply_reviewed_action(choice, clipboard);
+                            self.request_overlay_redraw();
+                            return true;
+                        }
 
                         // Fonts-mode Enter: copy the family name to
                         // the system clipboard and close. The copy
@@ -284,6 +326,9 @@ impl Route<'_> {
                                     .command_palette
                                     .enter_market_mode(items);
                             }
+                            Some(PaletteAction::OpenActions) => {
+                                self.window.screen.open_action_center();
+                            }
                             // `ListFonts` stays inside the palette —
                             // swap the palette's contents from the
                             // command list to the registered font
@@ -326,11 +371,22 @@ impl Route<'_> {
                         if !current_query.is_empty() {
                             let mut chars = current_query.chars().collect::<Vec<_>>();
                             chars.pop();
-                            self.window
+                            let next = chars.into_iter().collect();
+                            if self
+                                .window
                                 .screen
                                 .renderer
                                 .command_palette
-                                .set_query(chars.into_iter().collect());
+                                .is_action_search()
+                            {
+                                self.window.screen.set_action_query(next);
+                            } else {
+                                self.window
+                                    .screen
+                                    .renderer
+                                    .command_palette
+                                    .set_query(next);
+                            }
                             self.request_overlay_redraw();
                         }
                     }
@@ -348,11 +404,22 @@ impl Route<'_> {
                                     .command_palette
                                     .query
                                     .clone();
-                                self.window
+                                let next = format!("{}{}", current_query, text_str);
+                                if self
+                                    .window
                                     .screen
                                     .renderer
                                     .command_palette
-                                    .set_query(format!("{}{}", current_query, text_str));
+                                    .is_action_search()
+                                {
+                                    self.window.screen.set_action_query(next);
+                                } else {
+                                    self.window
+                                        .screen
+                                        .renderer
+                                        .command_palette
+                                        .set_query(next);
+                                }
                                 self.request_overlay_redraw();
                             }
                         }
@@ -416,6 +483,7 @@ pub struct Router<'a> {
     pub quake_window_id: Option<WindowId>,
     pub clipboard: Clipboard,
     current_tab_id: u64,
+    quick_actions: crate::automexia::quick_actions::QuickActionRuntime,
 }
 
 impl Router<'_> {
@@ -443,6 +511,8 @@ impl Router<'_> {
             font_library: Box::new(font_library),
             clipboard,
             current_tab_id: 0,
+            quick_actions:
+                crate::automexia::quick_actions::QuickActionRuntime::open_default(),
         }
     }
 
@@ -523,6 +593,7 @@ impl Router<'_> {
             None,
             None,
             false,
+            self.quick_actions.clone(),
         );
         let id: WindowId = window.winit_window.id().into();
         let route = Route::new(Assistant::new(), RoutePath::Terminal, window);
@@ -587,6 +658,7 @@ impl Router<'_> {
             open_url,
             app_id,
             false,
+            self.quick_actions.clone(),
         );
         let id: WindowId = window.winit_window.id().into();
 
@@ -623,6 +695,7 @@ impl Router<'_> {
             None,
             None,
             true,
+            self.quick_actions.clone(),
         );
         let id: WindowId = window.winit_window.id().into();
         self.routes.insert(
@@ -656,6 +729,7 @@ impl Router<'_> {
             open_url,
             None,
             false,
+            self.quick_actions.clone(),
         );
         self.routes.insert(
             window.winit_window.id().into(),
@@ -784,6 +858,7 @@ impl<'a> RouteWindow<'a> {
         open_url: Option<String>,
         app_id: Option<&str>,
         quake: bool,
+        quick_actions: crate::automexia::quick_actions::QuickActionRuntime,
     ) -> RouteWindow<'a> {
         #[allow(unused_mut)]
         let mut window_builder =
@@ -816,8 +891,15 @@ impl<'a> RouteWindow<'a> {
             window_id: winit_window.id(),
         };
 
-        let screen = Screen::new(properties, config, event_proxy, font_library, open_url)
-            .expect("Screen not created");
+        let screen = Screen::new(
+            properties,
+            config,
+            event_proxy,
+            font_library,
+            open_url,
+            crate::screen::action_surface::Controller::new(quick_actions),
+        )
+        .expect("Screen not created");
 
         #[cfg(target_os = "windows")]
         let fullscreen_display_request =

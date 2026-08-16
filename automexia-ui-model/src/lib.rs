@@ -11,6 +11,8 @@ use automexia_extension_api::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
+pub mod quick_actions;
+
 pub const MIN_TEXT_CONTRAST: f32 = 4.55;
 /// Context tags use a restrained semantic tint so they read as passive
 /// metadata instead of interactive controls.

@@ -2150,6 +2150,7 @@ fn product_identity() -> TaskResult<ProductIdentity> {
 fn verify_architecture() -> TaskResult {
     run_python("tools/ci/check_command_productivity.py")?;
     run_python("tools/ci/check_command_productivity_cp1.py")?;
+    run_python("tools/ci/check_command_productivity_cp22.py")?;
     run_python("tools/ci/check_runtime_trust.py")?;
     let identity = product_identity()?;
     let metadata = metadata()?;

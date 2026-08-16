@@ -318,7 +318,7 @@
       "components": ["apps/automexia-terminal", "automexia-devops"],
       "documentation": {
         "guide": ["docs/DEVOPS-ALIASES.md"],
-        "reference": ["docs/COMMAND-PRODUCTIVITY.md#delivery-phases", "docs/TESTING.md#cp20-model-and-cp21-persistence-only-quick-action-assurance"],
+        "reference": ["docs/COMMAND-PRODUCTIVITY.md#delivery-phases", "docs/TESTING.md#cp20-cp22-quick-action-assurance"],
         "explanation": ["docs/ARCHITECTURE.md#command-productivity-boundary", "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md"]
       },
       "quality": {
@@ -336,7 +336,33 @@
         "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "apps/automexia-terminal/tests/quick_action_persistence.rs"]},
         "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "apps/automexia-terminal/tests/quick_action_persistence.rs"]}
       }
-    },    {
+    },
+    {
+      "id": "command-productivity-cp22-quick-actions",
+      "title": "Reviewed bounded Quick Action search, administration, import/export, and insert/copy",
+      "components": ["apps/automexia-terminal", "automexia-devops", "automexia-ui-model"],
+      "documentation": {
+        "guide": ["docs/DEVOPS-ALIASES.md#cp22-action-search-editor-and-insertcopy"],
+        "reference": ["docs/CLI-REFERENCE.md#application-command", "docs/TESTING.md#cp20-cp22-quick-action-assurance"],
+        "explanation": ["docs/ARCHITECTURE.md#command-productivity-boundary", "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "controlled", "evidence": ["automexia-ui-model/src/quick_actions.rs", "apps/automexia-terminal/src/renderer/command_palette.rs", "docs/ACCESSIBILITY.md"], "rationale": "Renderer-neutral labels, keyboard flow, and 400 percent layout are PR-tested; Narrator/NVDA/VoiceOver/Orca remain controlled release evidence."},
+        "correctness": {"level": "pr", "evidence": ["automexia-devops/tests/quick_action_activation.rs", "apps/automexia-terminal/tests/quick_action_transfer.rs", "apps/automexia-terminal/src/automexia/quick_actions/worker.rs", "apps/automexia-terminal/src/renderer/command_palette.rs"]},
+        "security": {"level": "pr", "evidence": ["tools/ci/check_command_productivity_cp22.py", "tools/ci/test_command_productivity_cp22.py", "tests/fixtures/command-productivity/cp22-contract-v1.json", "automexia-devops/src/actions/activation.rs", "apps/automexia-terminal/src/automexia/quick_actions/transfer.rs"]},
+        "performance": {"level": "controlled", "evidence": ["automexia-devops/benches/quick_actions.rs", ".github/workflows/nightly.yml#benchmarks-controlled", "tools/ci/qa.py"], "rationale": "Short local Criterion evidence and nightly ownership exist; the named-hardware 30-day baseline remains controlled."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/worker.rs", "apps/automexia-terminal/tests/quick_action_persistence.rs"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/secure_fs.rs", "apps/automexia-terminal/src/automexia/quick_actions/transfer.rs", "apps/automexia-terminal/tests/quick_action_transfer.rs"]},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/worker.rs", "apps/automexia-terminal/src/automexia/quick_actions/service.rs", "apps/automexia-terminal/src/screen/action_surface.rs"]},
+        "visual_quality": {"level": "controlled", "evidence": ["automexia-ui-model/src/quick_actions.rs", "apps/automexia-terminal/src/renderer/command_palette.rs", "docs/LIQUID-HACKER-UX.md"], "rationale": "Geometry and interaction are deterministic; native frame review remains controlled."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-devops/tests/quick_action_activation.rs", "apps/automexia-terminal/tests/quick_action_transfer.rs"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-devops/tests/quick_action_activation.rs", "apps/automexia-terminal/tests/quick_action_transfer.rs"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-devops/tests/quick_action_activation.rs", "apps/automexia-terminal/tests/quick_action_transfer.rs"]}
+      }
+    },
+    {
       "id": "command-productivity-cp1-native-completion",
       "title": "Bounded native-shell completion adapters, health, explicit provider refresh, and exact lifecycle",
       "components": ["tools/xtask", "shell-integration", "tests/fixtures/command-productivity"],

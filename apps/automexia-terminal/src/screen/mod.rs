@@ -6,6 +6,7 @@
 // were retired from https://github.com/alacritty/alacritty/blob/c39c3c97f1a1213418c3629cc59a1d46e34070e0/alacritty/src/input.rs
 // which is licensed under Apache 2.0 license.
 
+pub(crate) mod action_surface;
 pub mod hint;
 pub mod touch;
 
@@ -494,6 +495,7 @@ pub struct Screen<'screen> {
     pub search_state: SearchState,
     pub hint_state: HintState,
     image_preview: crate::image_preview::ImagePreview,
+    action_surface: action_surface::Controller,
     pub renderer: Renderer,
     pub sugarloaf: Sugarloaf<'screen>,
     pub context_manager: context::ContextManager<EventProxy>,
@@ -548,6 +550,7 @@ impl Screen<'_> {
         event_proxy: EventProxy,
         font_library: &rio_backend::sugarloaf::font::FontLibrary,
         open_url: Option<String>,
+        action_surface: action_surface::Controller,
     ) -> Result<Screen<'screen>, Box<dyn Error>> {
         let size = window_properties.size;
         let scale = window_properties.scale;
@@ -731,6 +734,7 @@ impl Screen<'_> {
             search_state: SearchState::default(),
             hint_state: HintState::new(config.hints.alphabet.clone()),
             image_preview: crate::image_preview::ImagePreview::default(),
+            action_surface,
             hints_config: config
                 .hints
                 .rules
@@ -3480,14 +3484,29 @@ impl Screen<'_> {
             scale_factor,
         ) {
             Ok(Some(index)) => {
-                // Clicked a result row — select and execute
-                if let Some(action) = {
-                    // Temporarily set selected index to the clicked row
-                    self.renderer.command_palette.selected_index = index;
+                self.renderer.command_palette.selected_index = index;
+                if self.renderer.command_palette.is_action_placeholder() {
+                    let value = self.renderer.command_palette.query.clone();
+                    self.submit_action_placeholder(value);
+                } else if let Some(action_id) =
+                    self.renderer.command_palette.get_selected_action_item_id()
+                {
+                    self.begin_action_review(&action_id);
+                } else if let Some(choice) =
+                    self.renderer.command_palette.get_review_choice()
+                {
+                    self.apply_reviewed_action(choice, clipboard);
+                } else if let Some(action) =
                     self.renderer.command_palette.get_selected_action()
-                } {
-                    self.renderer.command_palette.set_enabled(false);
-                    self.execute_palette_action(action, clipboard);
+                {
+                    if action
+                        == crate::renderer::command_palette::PaletteAction::OpenActions
+                    {
+                        self.open_action_center();
+                    } else {
+                        self.renderer.command_palette.set_enabled(false);
+                        self.execute_palette_action(action, clipboard);
+                    }
                 }
                 self.mark_dirty();
                 true
@@ -5038,6 +5057,10 @@ impl Screen<'_> {
             PaletteAction::OpenMarket => {
                 // Handled by the router because it changes palette mode.
             }
+            PaletteAction::OpenActions => {
+                // Handled by the router because it enters a route-scoped,
+                // asynchronous review flow.
+            }
             PaletteAction::ListFonts => {
                 // Handled in the router: switches the palette into fonts
                 // mode and keeps it open. If we land here it's either a
@@ -5053,6 +5076,7 @@ impl Screen<'_> {
 
     pub(crate) fn render(&mut self) -> Option<crate::context::renderable::WindowUpdate> {
         self.update_close_button_hover(self.mouse.x, self.mouse.y);
+        self.sync_action_surface();
 
         let preview_route_id = self.context_manager.current().route_id;
         let completion = self

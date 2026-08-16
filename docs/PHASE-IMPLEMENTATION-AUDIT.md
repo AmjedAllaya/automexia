@@ -89,7 +89,7 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Productivity | CP1 | **Fully implemented** | **Partial** | Shell-native completion and bounded explicit refresh exist; hosted native evidence remains. |
 | Productivity | CP2.0 | **Fully implemented** | **Partial** | Bounded typed Quick Action model and hostile corpus exist with no runtime authority. |
 | Productivity | CP2.1 | **Fully implemented as internal library** | **Partial** | Private atomic persistence, CAS, recovery, watches, and benchmarks exist; no startup/UI activation. |
-| Productivity | CP2.2 | **Not implemented** | **Not started** | Search/editor/review, scopes, import/export, placeholders, and insert/copy UI are next. |
+| Productivity | CP2.2 | **Implemented locally** | **Partial** | Layered search, placeholder/risk/conflict review, bounded import/export/CRUD/recovery, and explicit insert/copy UI are present. Hosted native shells, controlled screen readers, and 30-day performance/resource evidence remain release gates. |
 | Productivity | CP3.0-CP3.3 | **Not implemented** | **Not started** | Projection compiler, aliases, static packs, and trusted import/task bridges remain. |
 | Productivity | CP4 | **Not implemented** | **Blocked** | Requires activated D3 and D5/D6 capsule/provider context. |
 | Productivity | CP5.0-CP5.6 | **Not implemented** | **Not started** | Detailed bridge/sources/ranking/UI/release plan exists; CP1 remains fallback. |
@@ -526,15 +526,30 @@ allowlists, and mutation tests exist. It has zero runtime authority.
 - Permission/concurrency/recovery/Unicode/1,000-cycle/storage/storm/property
   tests and controlled 1/256/1,024-action benchmarks exist.
 
-Remaining: hosted native matrix, crash/power-loss injection, 30-day baseline,
-and CP2.2 app/UI activation.
+Remaining: hosted native matrix, crash/power-loss injection, and the 30-day
+baseline. CP2.2 now consumes this foundation through a joined app worker.
 
 ### CP2.2 — search, editor, review, and insertion
 
-**Not implemented.** Needs app worker, layered scopes, import/export,
-placeholder/risk/conflict review, accessible responsive search/editor, exact
-shell-native insert/copy without Enter, privacy, rollback, native quoting/
-Unicode/resource/performance evidence. Execution stays blocked on D3.
+**Implemented locally; release evidence partial.** The app owns one joined,
+latest-only worker and immutable last-known-good snapshot. The pure index applies
+deterministic scope precedence and stable bounded search; workspace activation,
+secret reads, providers, network, shell evaluation, and exact launch stay
+disabled. The pane-neutral Command Center flow provides responsive search,
+placeholder entry, risk/conflict/exact-command review, and explicit insert or
+copy. Insert uses bracketed paste and never Enter. The CLI provides bounded
+list/show/doctor, dry-run-by-default put/import/remove/recover, digest-checked
+export, CAS, explicit conflict replacement, and conservative machine-path
+consent.
+
+Automated evidence covers five shell serializers, Unicode and hostile text,
+scope shadowing, workspace/secret/exact-launch denial, transfer tampering,
+native file security, worker storms/shutdown, route isolation, palette keyboard
+flow, 400% responsive layout, dry-run mutation safety, policy mutations, and
+search/expansion benchmarks. Remaining release evidence is hosted native
+Windows/Linux/macOS shell insertion, controlled Narrator/NVDA/VoiceOver/Orca,
+and the 30-day named-hardware performance/resource baseline. D3 exact execution
+remains blocked.
 
 ### CP3.0 — projection compiler
 
@@ -821,7 +836,8 @@ malformed input, expired grants, and policy failure.
 1. Close v0.4 external evidence: restore hosted Actions, assets/rights/contact/
    repository policy, Linux/macOS native visual/GPU/accessibility, elevated
    Windows tools, and the 30-day baseline.
-2. Finish CP2.2 over the complete CP2 foundations.
+2. Close CP2.2 hosted native shell, controlled accessibility, and longitudinal
+   performance evidence; keep exact launch disabled.
 3. Accept D0/ADR 0012 or keep D3 disabled; freeze package identity, grants, and
    native SSH fixtures first.
 4. Implement D5.0 then read-only D5.1.

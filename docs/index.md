@@ -86,8 +86,9 @@ The documentation is organized by reader intent:
 - [OpenSSH inventory](SSH-INVENTORY.md): implemented non-executing D4 parser,
   persistence, refresh, threat model, and verification contract.
 - [Command productivity](COMMAND-PRODUCTIVITY.md): CP0 architecture baseline,
-  shipped CP1 native completion, and the ordered CP2-CP6 delivery plan for typed
-  Quick Actions plus CP5 local-only Shell Completion and Suggestions.
+  shipped CP1 native completion, locally implemented CP2.2 reviewed Quick
+  Actions, and the ordered CP3-CP6 delivery plan including CP5 local-only Shell
+  Completion and Suggestions.
 - [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md): the
   implementation-ready CP2/CP3 model, persistent user workflow, native-shell
   projections, first-party packs, security budgets, and verification gates.

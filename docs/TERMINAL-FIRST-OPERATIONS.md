@@ -795,7 +795,8 @@ cross-platform release gate.
 Reuse D5 and CP2/CP3 to deliver:
 
 1. The generated operation registry and canonical `automexia` command grammar.
-2. CP2.2 action search/review/insert and CP3 collision-safe optional aliases.
+2. Reuse implemented CP2.2 action search/review/insert and add CP3
+   collision-safe optional aliases after its separate gates pass.
 3. Read-only host/group/tag/recent/favorite inventory over D4.
 4. Connection Review, quick connect, destination selection, independent PTYs,
    cancellation, reconnect, route explanation, jump hosts, and typed tunnels.

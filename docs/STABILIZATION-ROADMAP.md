@@ -529,7 +529,7 @@ CP2/CP3 implementation details and exit evidence are canonical in
 |---|---|---|---|
 | CP0 decisions/threats | May run beside D5 design | Accept shell/editor ownership, typed schema, precedence, trust, privacy, ceilings, native support matrix, and terminal-grid-inference prohibition. | ADR accepted; hostile fixtures, precedence/collision matrix, and architecture ratchets reviewed. |
 | CP1 native completion | CP0 | Idempotent PowerShell/Bash/Zsh/Fish/CMD/WSL adapters; read-only doctor health; official provider generator discovery/cache; clean uninstall and disabled-integration behavior. | Native cursor/history/quoting/exit-status/profile, collision, startup, update/uninstall, and shell-disabled tests pass on supported hosts. |
-| CP2 typed Quick Actions | CP0; **CP2.0 pure model and CP2.1 persistence foundation complete**; D3 not required for insert/copy | CP2.2+: worker activation, layered scopes, import/export, placeholder review, accessible search/editor, shell-native insert/copy only. | CP2.0 parser/model hostile and capability gates pass. CP2.1 private atomic/CAS/recovery/watch tests, 26 Windows or 27 Unix unit plus four public integration/property cases, policy mutations, and controlled benchmark ownership pass locally; hosted native matrix remains required. CP2.2 still requires UI/accessibility/insertion and controlled lifecycle evidence. |
+| CP2 typed Quick Actions | CP0; **CP2.0-CP2.2 implemented locally**; D3 not required for insert/copy | Close hosted native insertion, controlled screen-reader, and longitudinal performance/resource evidence; exact launch stays disabled. | Pure model, private atomic/CAS/recovery/watch storage, joined latest-only worker, deterministic scope/search, bounded transfer/CLI, responsive review, five-shell quoting, and insert/copy gates pass locally. Hosted native matrix and controlled evidence remain required. |
 | CP3 aliases and static packs | CP1/CP2 | Reversible opt-in aliases/functions/abbreviations plus Git, Docker, Kubernetes/OpenShift, Helm, Terraform/OpenTofu, AWS, Azure, GCP, and SSH packs; no default short alias. | Native definitions win; projections round-trip/remove cleanly; completion follows aliases; risk and tool/version states are truthful. |
 | CP4 capsule-aware actions | D3 activation plus D5/D6 | Bind cached public capsule/target context with freshness; explicit refresh; reviewed exact launch only through the broker. | Mixed-pane/session isolation, offline/stale/revocation/cancellation, production-risk, provider-native, audit-redaction, and resource tests pass. |
 | CP5 Shell Completion and Suggestions | CP1 plus a separately reviewed bridge ADR/threat fixture; CP2/CP3 for action candidates; CP4/D6 for provider context | CP5.0 baseline/dependency evaluation; CP5.1 authenticated local buffer/cursor/span/generation bridge; CP5.2 local-only source broker; CP5.3 deterministic bounded ranking; CP5.4 pane-owned accessible UI; CP5.5 per-shell activation; CP5.6 preview/rollback gate. Native completion remains default. | No grid/history-file/remote-output inference, network/auth/secret work, or per-keystroke process. Protocol/fuzz/security, exact insertion, IME/grapheme, accessibility, responsive layout, native shell/OS, cancellation, latency, memory/handle/socket/storage leak, 30-day baseline, disable and uninstall evidence proves a measurable benefit. Not a v0.5.0 blocker. |
@@ -580,8 +580,8 @@ persistence, generated aliases, provider execution, or a custom completion UI.
 CP1 result: implemented at the source and locally available native-host
 boundaries. It intentionally adds no Quick Action store, generated alias,
 provider authentication/network call, custom candidate UI, or exact launch.
-CP2.0 model and CP2.1 persistence-only foundation are complete; CP2.2
-user-facing activation is next. Stable release claims still require the pushed hosted Windows,
+CP2.0-CP2.2 are implemented locally through reviewed insert/copy. Stable release
+claims still require the pushed hosted Windows,
 Linux, and macOS checks plus the existing controlled release gates.
 
 #### CP2.0 implementation ledger
@@ -591,8 +591,8 @@ Linux, and macOS checks plus the existing controlled release gates.
 | Typed model | Machine prose/JSON contract existed; no Rust model | Schema-1 `QuickActionDocument`, typed scopes/shells/templates/argv/placeholders/working-directory/risk/execution/provenance/alias projection, deny-unknown-fields, and validated-only wrapper in `automexia-devops::actions` | Schema changes require fixture, validator, threat, and ADR review |
 | Bounded validation | Top-level ceilings were frozen but nested tags and mutating acknowledgement were implicit | 1 MiB pre-decode limit; 1,024 actions; 256 enabled aliases; 64 arguments/tags; 32 placeholders; 4 KiB strings; portable IDs; duplicate/reference/shell/mode/risk/secret/raw-insert/control/bidi rejection | CP2.1 reuses the validated-only model before every write/load; schema changes remain review-gated |
 | Hostile evidence | Policy mutation fixture only | Readable valid TOML plus 11 versioned hostile TOML cases with stable failure codes; boundary and round-trip tests cover limits and safe Unicode | Parser fuzz and long-running resource campaigns continue in nightly/release depth |
-| Architecture | CP0 rejected all Quick Action runtime vocabulary | Exact three-file pure-model and five-file persistence allowlists; capability mutations reject filesystem in the model and process/network/environment/UI/PTY/execution/unsafe drift in persistence | CP2.2 UI/worker and later projection/provider/execution authority require separate gates |
-| Status truth | CP2/CP3 documented only as planned | Machine contract says `CP2.1-persistence-library`; feature catalog distinguishes internal foundation from unshipped UI, aliases, and exact launch | CP2.2 is the next implementation phase |
+| Architecture | CP0 rejected all Quick Action runtime vocabulary | Exact four-file pure model and eight-file application boundaries plus separate UI adapter allowlist; capability mutations reject filesystem/process/network/secret/grid/execution drift | CP3 projection/provider and D3 exact-execution authority require separate gates |
+| Status truth | CP2/CP3 documented only as planned | Machine contracts say `CP2.2-action-search-review-insert-copy`; feature catalog distinguishes local reviewed UI from unshipped aliases and exact launch | Hosted/controlled CP2.2 evidence remains before a stable release claim |
 
 CP2.0 result: satisfied at the pure source/model boundary. It adds no filesystem,
 watcher, process, network, secret, UI, PTY, shell-profile, provider, alias, or
@@ -604,13 +604,27 @@ execution capability.
 |---|---|---|---|
 | Private bounded storage | Persistence existed only as prose | Explicit root; 1 MiB no-follow stable regular-file read; 8 MiB cache estimate; private Windows DACL and Unix 0700/0600; same-directory durable primary plus one previous revision | Hosted native permission/link cases on all release hosts |
 | Concurrent atomic writes | No cross-window implementation | Standard-library nonblocking file lock, revision CAS, staged validation, atomic replacement, cleanup only under writer ownership | Controlled crash/power-loss injection remains release-depth evidence |
-| Recovery and publication | No runtime snapshot | Immutable fingerprinted `Arc` snapshot, malformed/oversized last-known-good retention, same-revision tamper and valid rollback rejection, explicit previous recovery, fixed redacted errors | CP2.2 must surface recovery/status accessibly without leaking content or paths |
-| Exact refresh | Watcher was specified only | Nonrecursive parent watch with exact source filtering, bounded 64-event queue/drain, burst coalescing, periodic dropped-event reconciliation, 24 lifecycle and 1,000-event tests | App worker activation remains CP2.2; never renderer/input/VT/PTY |
+| Recovery and publication | No runtime snapshot | Immutable fingerprinted `Arc` snapshot, malformed/oversized last-known-good retention, same-revision tamper and valid rollback rejection, explicit previous recovery, fixed redacted errors; CP2.2 CLI surfaces status/recovery without command content in list output | Controlled crash/power-loss and accessibility evidence remain |
+| Exact refresh | Watcher was specified only | Nonrecursive parent watch with exact source filtering, bounded 64-event queue/drain, burst coalescing, periodic reconciliation, and one joined app worker with route generations/latest-only search | Hosted lifecycle/resource evidence remains; work never enters renderer/input/VT/PTY paths |
 | CRUD and assurance | Pure parser only | Revisioned create/update/delete/replace/recover; 26 Windows / 27 Ubuntu-WSL unit and four public integration/property tests per host; protected Windows DACL and Unix mode assertions; 1,000 load cycles; Unicode/spaced roots; policy allowlists/mutations; nightly-compiled controlled Criterion benchmark | Hosted Windows/Linux/macOS and 30-day named-hardware evidence before release claim |
 
-CP2.1 result: satisfied as an internal persistence library. It is not
-instantiated at startup, rendered, projected into shell profiles, or allowed to
-insert/execute commands. CP2.2 is the next phase.
+CP2.1 result: satisfied as an internal persistence library. CP2.2 consumes it
+without granting provider, profile, network, secret, or exact-execution
+authority.
+
+#### CP2.2 implementation ledger
+
+| CP2.2 step | Audit before implementation | Implemented evidence | Remaining gate |
+|---|---|---|---|
+| Worker and publication | CP2.1 was never started | One process-owned, joined worker; immutable LKG snapshots; exact watch/reconciliation; bounded latest-only search; route/generation isolation and close cleanup | Hosted native lifecycle/resource runs |
+| Scope and search | No activated index | Capability-free deterministic session/capsule/trusted-workspace/shell/global/built-in merge, stable IDs, 4 KiB query and 128-result caps; untrusted workspace disabled | Future workspace trust requires its own authority |
+| Administration and transfer | Store API only | Versioned CLI list/show/doctor; dry-run put/import/remove/recover; apply plus CAS; digest-checked bounded no-follow import/export; conflict and machine-path consent | Native help/package smoke on pushed artifacts |
+| Review and insertion | No UI | Pane-neutral responsive search/placeholder/review; risk/source/conflict text; exact command preview; explicit Insert without Enter or copy; bracketed-paste insertion; exact/secret operations disabled | Controlled native screen-reader and shell-editor evidence |
+| Assurance | CP2.1 storage benchmark only | Five-shell quoting/Unicode/hostile cases, transfer tamper/scope cases, worker storms/shutdown, palette/400% layout, dry-run CLI, architecture/mutation gates, 1,024-action search and expansion Criterion targets | 30-day named-hardware latency/resource baseline |
+
+CP2.2 result: implemented locally with a partial release gate. It is not CP3
+alias projection and does not authorize D3 exact launch, provider work, secrets,
+or trusted-workspace activation.
 
 CP0-CP3 may proceed alongside D5 without delaying safe system-OpenSSH work. CP4
 must not precede D6 capsule isolation. CP5 and CP6 cannot be pulled into the

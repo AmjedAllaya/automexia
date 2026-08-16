@@ -8,9 +8,9 @@ use std::{
 };
 
 use automexia_devops::actions::{
-    validate_quick_actions, ActionProvenance, ActionTemplate, ArgumentToken, QuickAction,
-    QuickActionDocument, ValidatedQuickActions, WorkingDirectoryPolicy, MAX_SOURCE_BYTES,
-    QUICK_ACTION_SCHEMA_VERSION,
+    validate_quick_actions, ActionProvenance, ActionScope, ActionTemplate, ArgumentToken,
+    QuickAction, QuickActionDocument, ValidatedQuickActions, WorkingDirectoryPolicy,
+    MAX_SOURCE_BYTES, QUICK_ACTION_SCHEMA_VERSION,
 };
 use tempfile::{Builder, NamedTempFile};
 
@@ -45,6 +45,7 @@ pub enum StoreErrorCode {
     ActionNotFound,
     ActionIdMismatch,
     StateDirectoryLimit,
+    UnsupportedPersistentScope,
 }
 
 impl StoreErrorCode {
@@ -70,6 +71,7 @@ impl StoreErrorCode {
             Self::ActionNotFound => "action-not-found",
             Self::ActionIdMismatch => "action-id-mismatch",
             Self::StateDirectoryLimit => "state-directory-limit",
+            Self::UnsupportedPersistentScope => "unsupported-persistent-scope",
         }
     }
 }
@@ -162,6 +164,10 @@ impl fmt::Debug for QuickActionSnapshot {
 }
 
 impl QuickActionSnapshot {
+    pub(crate) fn empty() -> Result<Self, StoreError> {
+        empty_snapshot()
+    }
+
     pub fn actions(&self) -> &ValidatedQuickActions {
         &self.actions
     }
@@ -566,6 +572,7 @@ fn snapshot_from_validated(
     source: &[u8],
     origin: LoadOrigin,
 ) -> Result<QuickActionSnapshot, StoreError> {
+    validate_persistent_actions(validated.document())?;
     let resident_bytes =
         estimated_resident_bytes(validated.document()).saturating_add(source.len());
     if resident_bytes > MAX_CACHED_ACTION_BYTES {
@@ -577,6 +584,18 @@ fn snapshot_from_validated(
         resident_bytes,
         origin,
     })
+}
+
+fn validate_persistent_actions(document: &QuickActionDocument) -> Result<(), StoreError> {
+    if document.actions.iter().any(|action| {
+        !matches!(
+            action.scope,
+            ActionScope::ShellUser | ActionScope::GlobalUser
+        )
+    }) {
+        return Err(StoreError::new(StoreErrorCode::UnsupportedPersistentScope));
+    }
+    Ok(())
 }
 
 fn estimated_resident_bytes(document: &QuickActionDocument) -> usize {

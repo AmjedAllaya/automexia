@@ -6,7 +6,7 @@ repository-owned `cargo`/`cargo xtask` contributor automation.
 ## Application command
 
 ```text
-automexia [OPTIONS]
+automexia [OPTIONS] [COMMAND]
 ```
 
 | Option | Meaning |
@@ -30,6 +30,26 @@ Non-GUI shell maintenance commands are explicit:
 
 On Windows these commands honor the effective PowerShell execution policy;
 Automexia never supplies an execution-policy bypass.
+
+Quick Action administration is bounded and dry-run first:
+
+| Command | Mutation and disclosure |
+|---|---|
+| `automexia actions list [--json]` | None. Lists metadata and revision; command templates are omitted. |
+| `automexia actions show ACTION_ID [--json]` | None. Explicitly reveals the selected reviewed template. |
+| `automexia actions put ONE_ACTION.toml` | None. Validates and previews exactly one global-user or shell-user action. |
+| `automexia actions put ONE_ACTION.toml --apply --expected-revision N [--replace]` | CAS-protected create/update after explicit review. |
+| `automexia actions import EXPORT.toml` | None. Validates size, schema, digest, scopes, paths, and conflicts. |
+| `automexia actions import EXPORT.toml --apply --expected-revision N [--replace-conflicts] [--allow-machine-paths]` | CAS-protected import with separate conflict/path consent. |
+| `automexia actions export DESTINATION [--overwrite] [--include-machine-paths] [--json]` | Writes one private atomic portable transfer; machine paths are excluded by default. |
+| `automexia actions remove ACTION_ID [--apply --expected-revision N]` | Preview by default; CAS-protected removal only with both apply and revision. |
+| `automexia actions recover PREVIOUS_REVISION [--apply]` | Preview by default; explicitly restore only the validated private previous generation. |
+| `automexia actions doctor [--json]` | None. Reports redacted health, revision, and count. |
+
+The Command Center's **Quick Actions** entry provides search, placeholders,
+risk/conflict review, and explicit **Insert without Enter** or copy. It never
+executes a command. Workspace actions, secret expansion, and exact launch are
+disabled in CP2.2.
 
 Example:
 

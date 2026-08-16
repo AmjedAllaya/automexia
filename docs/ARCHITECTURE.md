@@ -326,18 +326,23 @@ generators run only through bounded, explicit refresh; provider, network,
 authentication, plugin, and secret-store work is forbidden on startup,
 keystroke, render, VT, and PTY paths.
 
-CP2.0 provides a renderer-/PTY-independent typed Quick Action model, bounded
-in-memory TOML parser, and deterministic validator in the exact three-file
-`automexia-devops::actions` allowlist. CP2.1 adds an exact five-file,
-application-owned persistence boundary under `automexia::quick_actions`: bounded
+CP2.0/CP2.2 provide a renderer-/PTY-independent typed Quick Action model,
+bounded in-memory TOML parser, deterministic validator, layered index, search,
+and shell serializer in the exact four-file `automexia-devops::actions`
+allowlist. CP2.1/CP2.2 use an exact eight-file, application-owned boundary under
+`automexia::quick_actions`: bounded
 no-follow private storage, atomic primary/one-previous recovery, nonblocking
 cross-process CAS, immutable fingerprinted last-known-good snapshots, exact
 parent watch filtering, bounded coalescing, periodic reconciliation, and CRUD.
-It is not wired to startup, rendering, shell profiles, providers, or execution.
-Later shell aliases, functions, abbreviations, and completion adapters remain
-removable generated artifacts.
-Actions insert for review without Enter by default. Raw shell snippets are
-insert-only; exact execution uses only the D3 typed launch broker. Native user
+CP2.2 activates that store only through one joined, latest-only application
+worker and a narrow screen adapter. `automexia-ui-model` owns the responsive
+list/review projection; the grid-owning screen module contains no Quick Action
+domain model. It is not wired to shell profiles, providers, network, secrets, or
+execution. Later shell aliases, functions, abbreviations, and completion
+adapters remain removable generated artifacts. Actions insert for review
+without Enter by default through the shell editor's bracketed-paste path. Raw
+shell snippets are insert-only; exact execution uses only the future D3 typed
+launch broker. Native user
 definitions win unless the user chooses a visible reversible override.
 Provider-aware actions consume bounded cached public capsule context only after
 D6, with session/generation keys, freshness, cancellation, and stale-result

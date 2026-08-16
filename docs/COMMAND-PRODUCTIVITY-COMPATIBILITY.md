@@ -1,8 +1,9 @@
 # Command Productivity Compatibility Baseline
 
-Status: CP0 baseline and CP1 native completion accepted, 2026-08-16. CP2.0 model
-and CP2.1 internal persistence foundation are implemented; CP2.2 user-facing
-Quick Actions, CP3 aliases, and CP5 Automexia-rendered suggestions are not shipped.
+Status: CP0/CP1 are accepted and CP2.0/CP2.1 are complete. CP2.2 reviewed Quick
+Action search, administration, import/export, and insert/copy are implemented
+locally; stable release evidence is partial. CP3 aliases and CP5 Automexia-
+rendered suggestions are not shipped.
 
 ## Purpose
 
@@ -16,13 +17,13 @@ machine-readable authority is
 
 | Surface | Current v0.4 state | CP0 classification | Next implementation |
 |---|---|---|---|
-| PowerShell | Idempotent prompt/listing plus explicit-consent, digest-verified cached completers; PSReadLine owns input/history/candidates | CP1 complete | CP2 typed action insertion |
-| Bash/WSL | Native-first fixed-path completion adapter; Readline and existing compspecs remain authoritative | CP1 complete | CP2 typed action insertion |
-| Zsh/WSL/macOS | Native-first fixed-path adapter that never invokes `compinit`; ZLE/compsys remain authoritative | CP1 complete | CP2 typed action insertion |
-| Fish | First-class metadata integration plus native-first completion adapter; Fish owns prompt/editor/history/autosuggestions | CP1 complete | CP2 typed action insertion |
-| CMD | Prompt/listing DOSKEY helpers and truthful native fallback; no programmable-completion parity claim | CP1 complete by explicit fallback | CP2 insert-only action support |
+| PowerShell | Idempotent prompt/listing plus explicit-consent, digest-verified cached completers; PSReadLine owns input/history/candidates and receives reviewed action insertion | CP1 complete; CP2.2 local | Hosted native insertion/accessibility evidence |
+| Bash/WSL | Native-first fixed-path completion adapter; Readline remains authoritative and receives reviewed action insertion | CP1 complete; CP2.2 local | Hosted native insertion/accessibility evidence |
+| Zsh/WSL/macOS | Native-first adapter never invokes `compinit`; ZLE remains authoritative and receives reviewed action insertion | CP1 complete; CP2.2 local | Hosted native insertion/accessibility evidence |
+| Fish | Fish owns prompt/editor/history/autosuggestions and receives reviewed action insertion | CP1 complete; CP2.2 local | Hosted native insertion/accessibility evidence |
+| CMD | Prompt/listing DOSKEY helpers, truthful native fallback, and conservative reviewed insertion | CP1 fallback; CP2.2 local | Hosted native insertion/accessibility evidence |
 | DevOps short aliases | None supplied by Automexia | Correct CP0 nonactivation | CP3 opt-in generation only |
-| Persistent Quick Actions | Private bounded atomic/CAS/last-known-good store library exists but is not started or exposed | CP2.1 foundation implemented, non-shipped | CP2.2 UI and insertion |
+| Persistent Quick Actions | Bounded private store, joined application worker, layered local search, reviewed placeholders, dry-run CLI/import/export, and explicit insert/copy | CP2.2 implemented locally | Hosted native and controlled accessibility/performance evidence |
 | Provider-aware candidates | Existing status context only, not completion | Not implemented and forbidden on input | CP4 after D6 |
 
 This audit is deliberately strict: prompt path styling, icon-aware `ls`, command

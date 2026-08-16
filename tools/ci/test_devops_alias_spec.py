@@ -38,8 +38,8 @@ class AliasSpecificationTests(unittest.TestCase):
                 "scopes": 6,
                 "verification_domains": 10,
                 "ux_invariants": 8,
-                "model_files": 3,
-                "persistence_files": 5,
+                "model_files": 4,
+                "persistence_files": 8,
                 "hostile_cases": 11,
                 "wiring": 10,
             },
@@ -51,12 +51,12 @@ class AliasSpecificationTests(unittest.TestCase):
         with self.assertRaisesRegex(POLICY.AliasSpecError, "remain planned"):
             POLICY.validate_contract(changed)
 
-    def test_cp2_persistence_stage_cannot_regress_or_claim_ui(self) -> None:
-        for stage in ("CP2.0-model-only", "CP2.2-action-ui"):
+    def test_cp22_stage_cannot_regress_or_overclaim_execution(self) -> None:
+        for stage in ("CP2.1-persistence-library", "CP2.3-exact-launch"):
             with self.subTest(stage=stage):
                 changed = deepcopy(CONTRACT)
                 changed["implemented_stage"] = stage
-                with self.assertRaisesRegex(POLICY.AliasSpecError, "CP2.1 persistence-library"):
+                with self.assertRaisesRegex(POLICY.AliasSpecError, "CP2.2 reviewed insert/copy"):
                     POLICY.validate_contract(changed)
 
     def test_pure_model_source_boundary_cannot_expand(self) -> None:
@@ -71,10 +71,10 @@ class AliasSpecificationTests(unittest.TestCase):
         with self.assertRaisesRegex(POLICY.AliasSpecError, "hostile fixture authority"):
             POLICY.validate_contract(changed)
 
-    def test_persistence_source_boundary_cannot_expand(self) -> None:
+    def test_cp22_application_source_boundary_cannot_expand(self) -> None:
         changed = deepcopy(CONTRACT)
         changed["activation_files"].append("shell-integration/aliases.sh")
-        with self.assertRaisesRegex(POLICY.AliasSpecError, "persistence source"):
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "application source"):
             POLICY.validate_contract(changed)
 
     def test_missing_shell_is_rejected(self) -> None:

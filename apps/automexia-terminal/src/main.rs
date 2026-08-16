@@ -6,8 +6,8 @@
 
 mod application;
 pub use automexia_terminal::automexia;
+use automexia_terminal::cli;
 mod bindings;
-mod cli;
 mod constants;
 mod context;
 mod global_hotkey;
@@ -145,6 +145,9 @@ fn execute_cli_command(
                 Ok(())
             }
         },
+        CliCommand::Actions(command) => {
+            automexia::quick_actions::execute_actions_command(command)
+        }
     }
 }
 

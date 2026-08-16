@@ -169,19 +169,34 @@ CP1_ALLOWED_SHELL_FILES = {
     "shell-integration/uninstall-windows.ps1",
 }
 CP2_PURE_ACTION_FILES = {
+    "automexia-devops/src/actions/activation.rs",
     "automexia-devops/src/actions/mod.rs",
     "automexia-devops/src/actions/model.rs",
     "automexia-devops/src/actions/validation.rs",
 }
 CP2_PERSISTENCE_FILES = {
+    "apps/automexia-terminal/src/automexia/quick_actions/cli.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/mod.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/refresh.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/secure_fs.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/service.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/store.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/transfer.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/worker.rs",
 }
 CP2_PERSISTENCE_WIRING_FILES = {
     "apps/automexia-terminal/src/automexia/mod.rs",
+}
+CP2_ACTIVATION_WIRING_FILES = {
+    "apps/automexia-terminal/src/cli.rs",
+    "apps/automexia-terminal/src/lib.rs",
+    "apps/automexia-terminal/src/main.rs",
+    "apps/automexia-terminal/src/renderer/command_palette.rs",
+    "apps/automexia-terminal/src/router/mod.rs",
+    "apps/automexia-terminal/src/screen/mod.rs",
+    "apps/automexia-terminal/src/screen/action_surface.rs",
+    "automexia-ui-model/src/lib.rs",
+    "automexia-ui-model/src/quick_actions.rs",
 }
 CP2_PERSISTENCE_FORBIDDEN_MARKERS = {
     "std::net",
@@ -859,6 +874,7 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
         pure_action_files
         | persistence_files
         | CP2_PERSISTENCE_WIRING_FILES
+        | CP2_ACTIVATION_WIRING_FILES
     )
     for path in runtime_files:
         content = read_lower(path)
@@ -1013,7 +1029,7 @@ def main() -> int:
         print(f"command productivity CP0 validation failed: {error}", file=sys.stderr)
         return 1
     print(
-        "PASS: command productivity CP0 contract is accepted; CP1 activation, the capability-free CP2.0 model, and the CP2.1 persistence-only service are confined to reviewed allowlists "
+        "PASS: command productivity CP0/CP1 and the bounded CP2.0-CP2.2 model/application boundaries are confined to reviewed allowlists "
         f"(shells={counts['shells']}, providers={counts['providers']}, "
         f"discoveries={counts['discoveries']}, "
         f"cases={counts['cases']}, threats={counts['threats']}, "

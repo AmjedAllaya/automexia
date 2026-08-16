@@ -1,12 +1,12 @@
 # Command Productivity: Completion and Quick Actions
 
-Status: CP0 architecture baseline and CP1 shell-native completion activation
-accepted; the CP2.0 capability-free model and CP2.1 internal persistence
-foundation are implemented. CP2.2-CP6 user-facing capabilities remain planned
-for v0.5.x and later. CP1 ships managed native completion, not Automexia-
-rendered inline suggestions or a rich candidate popup. A user-facing Quick
-Action surface, generated aliases, provider-aware candidates, and the CP5
-suggestion surface do not currently ship.
+Status: CP0, CP1, CP2.0, and CP2.1 are complete at their defined source
+boundaries. CP2.2 search, placeholder review, dry-run administration,
+import/export, and explicit insert/copy are implemented locally. Its stable
+release gate remains partial until hosted native Windows/Linux/macOS and
+controlled screen-reader/performance evidence pass. Exact launch, trusted
+workspace activation, secret expansion, generated aliases, provider-aware
+candidates, and the CP5 suggestion surface remain disabled or planned.
 
 The complete command-first product vocabulary that consumes this track is
 specified in [Terminal-first remote operations](TERMINAL-FIRST-OPERATIONS.md).
@@ -488,11 +488,10 @@ The schema-1 CP1 authority is
 [`cp1-contract-v1.json`](../tests/fixtures/command-productivity/cp1-contract-v1.json).
 Its validator keeps the 12-file activation allowlist, provider policy, five
 shell outcomes, six hard resource limits, and zero network/secret/grid/provider-
-startup capability machine-enforced. CP2.0 is complete at the pure model
-boundary and the CP2.1 persistence-only library is complete; CP2.2 is next.
-CP1 does not
-add Quick Actions, generated aliases, provider authentication, a custom popup,
-or exact command launch.
+startup capability machine-enforced. CP2.0 and CP2.1 remain the model and
+persistence foundations; CP2.2 adds only reviewed Quick Action search,
+administration, and insert/copy. CP1 itself does not add Quick Actions,
+generated aliases, provider authentication, a custom popup, or exact launch.
 
 ### CP2 — persistent typed Quick Actions
 
@@ -508,16 +507,32 @@ one previous revision, cross-process nonblocking lock/CAS, immutable fingerprint
 last-known-good snapshots, exact parent-directory watch filtering, bounded burst
 coalescing, periodic reconciliation, CRUD, and explicit recovery. It has no
 provider/process/network/secret/profile/clipboard/PTY/UI or execution authority
-and is not started or shown to users yet.
+and grants no provider, process, network, secret, profile, PTY, UI, or execution
+authority by itself.
 
-**CP2.2 pending:** activate the service through an application worker and build
-the in-memory layered index, explicit import/export, placeholder review,
-palette/search/conflict UI, and shell-native insert/copy modes. Keep exact launch
-disabled until D3 activation is accepted.
+**CP2.2 implemented locally:** one application-owned worker starts the store,
+publishes immutable last-known-good snapshots, coalesces latest-only searches,
+and is joined on shutdown. A capability-free layered index applies deterministic
+session, capsule, trusted-workspace, shell-user, global-user, and built-in
+precedence. Workspace entries remain fail-closed because workspace trust is not
+activated. The Command Center provides a keyboard-complete responsive search,
+placeholder, risk/conflict, exact-command review, and explicit
+**Insert without Enter** or copy flow. Insertion uses the shell-owned editor's bracketed-paste
+path and never synthesizes Enter. Exact launch and secret-reference expansion
+remain unavailable.
 
-Exit for the remaining CP2 work: responsive/accessibility and shell insertion
-evidence, deterministic scope ordering, native Windows/Linux/macOS lifecycle
-CI, controlled leak/performance baselines, and disable/rollback behavior pass.
+The versioned `automexia actions` interface provides read-only `list`, `show`,
+and `doctor`; dry-run-by-default `put`, `actions import`, `remove`, and
+`recover`; and bounded digest-checked `export`. Mutations require `--apply` and
+revision compare-and-swap; import conflicts and machine-specific fixed paths
+require separate explicit consent.
+
+Exit still required for a stable cross-platform claim: the pushed hosted native
+Windows/Linux/macOS matrix, controlled Narrator/NVDA/VoiceOver/Orca interaction,
+native shell insertion evidence, and the named-hardware 30-day latency/resource
+baseline. Renderer-neutral layout/accessibility labels, quoting/Unicode,
+privacy, worker lifecycle, storage/recovery, mutation, and short benchmark gates
+are automated now.
 
 ### CP3 — aliases and first-party DevOps packs
 
