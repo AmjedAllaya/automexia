@@ -70,6 +70,13 @@ macOS, and `${XDG_CONFIG_HOME:-$HOME/.config}/automexia` on Linux/BSD. Managed
 profile blocks are updated in place when their owned source line becomes stale;
 uninstall validates every exact owned target before changing profiles or files.
 
+Persistent user aliases are not part of the shipped CP1 completion adapter.
+CP2/CP3 will reuse the existing managed integration lifecycle when persistent
+integration is enabled rather than install a second startup hook. Its typed
+source, opt-in generation, shell
+semantics, collision policy, and uninstall contract are specified in
+[DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md).
+
 On Windows, detected PowerShell profiles may live below a OneDrive-redirected
 Documents folder. Provisioning inspects the native reparse tag of every existing
 profile-path component: Microsoft Cloud Files tags are allowed, while symbolic
