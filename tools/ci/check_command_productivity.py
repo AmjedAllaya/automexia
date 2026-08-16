@@ -168,6 +168,36 @@ CP1_ALLOWED_SHELL_FILES = {
     "shell-integration/uninstall-unix.sh",
     "shell-integration/uninstall-windows.ps1",
 }
+CP2_PURE_ACTION_FILES = {
+    "automexia-devops/src/actions/mod.rs",
+    "automexia-devops/src/actions/model.rs",
+    "automexia-devops/src/actions/validation.rs",
+}
+CP2_PURE_FORBIDDEN_MARKERS = {
+    "std::env",
+    "std::fs",
+    "std::net",
+    "std::process",
+    "command::new",
+    "dirs::",
+    "filesystemread",
+    "environmentread",
+    "terminaloutputread",
+    "network",
+    "clipboard",
+    "launch_broker",
+    "shell_integration",
+    "tokio::",
+    "async_std::",
+    "ureq::",
+    "hyper::",
+    "notify::",
+    "automexia_ui_model::",
+    "rio_vt::",
+    "teletypewriter::",
+    "reqwest",
+    "unsafe {",
+}
 SHELL_RECORD_KEYS = {
     "id",
     "editor",
@@ -584,6 +614,34 @@ def workspace_runtime_files(root: Path) -> list[Path]:
     return sorted(files)
 
 
+def validate_pure_action_sources(root: Path, runtime_files: list[Path]) -> set[str]:
+    present = {
+        path.relative_to(root).as_posix()
+        for path in runtime_files
+        if path.relative_to(root).as_posix().startswith(
+            "automexia-devops/src/actions/"
+        )
+    }
+    if not present:
+        return set()
+    if present != CP2_PURE_ACTION_FILES:
+        unexpected = sorted(present.symmetric_difference(CP2_PURE_ACTION_FILES))
+        raise CommandProductivityError(
+            f"CP2 pure action source set is not the exact reviewed boundary: {unexpected}"
+        )
+    for relative in sorted(present):
+        content = read_lower(root / relative)
+        marker = next(
+            (item for item in sorted(CP2_PURE_FORBIDDEN_MARKERS) if item in content),
+            None,
+        )
+        if marker is not None:
+            raise CommandProductivityError(
+                f"{relative} crosses the capability-free CP2 model boundary: {marker!r}"
+            )
+    return present
+
+
 def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
     shell_files = source_files(root, "shell-integration")
     for path in shell_files:
@@ -626,14 +684,17 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
             )
 
     runtime_files = workspace_runtime_files(root)
+    pure_action_files = validate_pure_action_sources(root, runtime_files)
     for path in runtime_files:
         content = read_lower(path)
         normalized = re.sub(r"\s+", " ", content)
         for hook in sorted(SHELL_PROVIDER_HOOKS):
             if hook in normalized:
                 raise CommandProductivityError(
-                    f"{path.relative_to(root).as_posix()} activates a completion/provider hook before CP1: {hook!r}"
-                )
+                f"{path.relative_to(root).as_posix()} activates a completion/provider hook before CP1: {hook!r}"
+            )
+        if path.relative_to(root).as_posix() in pure_action_files:
+            continue
         marker = next(
             (item for item in sorted(PRODUCTIVITY_MARKERS) if item in content),
             None,
@@ -652,6 +713,7 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
     return {
         "shell_files": len(shell_files),
         "cp1_allowed_shell_files": len(CP1_ALLOWED_SHELL_FILES),
+        "cp2_pure_action_files": len(pure_action_files),
         "interactive_files": len(interactive_files),
         "runtime_files": len(runtime_files),
     }
@@ -775,13 +837,14 @@ def main() -> int:
         print(f"command productivity CP0 validation failed: {error}", file=sys.stderr)
         return 1
     print(
-        "PASS: command productivity CP0 contract is accepted; CP1 activation is confined to its reviewed allowlist "
+        "PASS: command productivity CP0 contract is accepted; CP1 activation and the capability-free CP2.0 model are confined to reviewed allowlists "
         f"(shells={counts['shells']}, providers={counts['providers']}, "
         f"discoveries={counts['discoveries']}, "
         f"cases={counts['cases']}, threats={counts['threats']}, "
         f"shell_files={counts['shell_files']}, "
         f"interactive_files={counts['interactive_files']}, "
-        f"runtime_files={counts['runtime_files']})"
+        f"runtime_files={counts['runtime_files']}, "
+        f"cp2_pure_action_files={counts['cp2_pure_action_files']})"
     )
     return 0
 

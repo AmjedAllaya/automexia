@@ -148,6 +148,9 @@ class QaRunnerTests(unittest.TestCase):
             '"benchmark-ssh-inventory"',
             '"automexia-devops-ssh"',
             '"openssh_inventory"',
+            '"benchmark-quick-actions"',
+            '"automexia-devops"',
+            '"quick_actions"',
         )
         for contract in expected:
             self.assertIn(contract, source)
@@ -155,6 +158,9 @@ class QaRunnerTests(unittest.TestCase):
         self.assertEqual(QA.STEP_TIMEOUT_SECONDS["benchmark-pty"], 7200)
         self.assertEqual(
             QA.STEP_TIMEOUT_SECONDS["benchmark-ssh-inventory"], 7200
+        )
+        self.assertEqual(
+            QA.STEP_TIMEOUT_SECONDS["benchmark-quick-actions"], 7200
         )
 
 

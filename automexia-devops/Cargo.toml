@@ -13,4 +13,13 @@ repository.workspace = true
 automexia-extension-api = { workspace = true }
 automexia-ui-model = { workspace = true }
 dirs = "6.0.0"
+serde = { workspace = true }
 serde_json = { workspace = true }
+toml = "1.1.4"
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "quick_actions"
+harness = false

@@ -121,7 +121,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install benchmark build dependencies
         run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
-      - run: cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-devops-ssh --no-run --locked
+      - run: cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-devops -p automexia-devops-ssh --no-run --locked
 
   benchmarks-controlled:
     name: Execute benchmarks on named controlled hardware

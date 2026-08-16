@@ -161,26 +161,30 @@ accepted Quick Action model with a separate alias projection; it does not store
 generated code.
 
 ```text
+QuickActionDocument {
+  schema_version: 1
+  revision
+  actions[]
+}
+
 QuickAction {
-  schema_version
   id
   display_name
   description
   tags[]
-  scope: Global | Shell | Workspace | Capsule | Session
-  shells[]
-  template: TypedArgv | RawInsertOnly
-  executable_id?
-  arguments[]
-  argument_bindings[]
+  scope: Session | Capsule | TrustedWorkspace | ShellUser | GlobalUser | BuiltinDisabled
+  shells: Powershell | Bash | Zsh | Fish | Cmd
+  template: TypedArgv(executable_id, ArgumentToken[]) | RawInsertOnly(shell, text)
   placeholders[]
-  working_directory_policy
+  working_directory_policy: Inherit | WorkspaceRoot | Fixed(path)
   risk: ReadOnly | Mutating | Destructive | Privileged
   execution: Insert | Copy | ExactLaunch
-  provenance: BuiltIn(pack_id, version) | User | Imported(source_digest)
+  provenance: User | BuiltIn(pack_id, version) | Imported(source_digest)
   enabled
   alias_projection?
 }
+
+ArgumentToken = Literal(value) | Placeholder(name)
 
 AliasProjection {
   requested_name
@@ -189,6 +193,7 @@ AliasProjection {
   argument_policy: None | ForwardAll | TypedBindings
   completion: Required | BestEffort | Disabled
   override_policy: NativeWins | ExplicitExactOverride
+  mutating_acknowledged
   enabled
 }
 
@@ -822,7 +827,7 @@ are not current v0.4 claims.
 | Watchers | Exact canonical source, exact generated files, and reliable parents only; no recursive workspace/home watch |
 
 Hard existing limits remain: 1,024 actions across active layers, 256 enabled
-alias bindings, 64 arguments/action, 32 placeholders/action, 4 KiB/string, and
+alias bindings, 64 arguments/action, 32 placeholders/action, 64 tags/action, 4 KiB/string, and
 1 MiB/generated adapter. CP3 must define lower pack/name/token limits in its
 machine contract; it may never raise CP0 ceilings.
 
@@ -859,16 +864,21 @@ loop rewrites files continuously; backoff is bounded and repair is explicit.
 
 ## Verification plan
 
-The planned boundary is already protected by the versioned
+The planned boundary is protected by the versioned
 [`CP2/CP3 alias specification fixture`](../tests/fixtures/command-productivity/cp2-cp3-alias-spec-v1.json),
 [`check_devops_alias_spec.py`](../tools/ci/check_devops_alias_spec.py), and its
-mutation suite. They freeze the non-activated status, supported shells and
-providers, typed model enums, alias grammar, projection and health states,
-precedence, safe defaults, resource ceilings, numeric performance targets,
-persistence, capability denials, responsive/accessibility invariants, PR-CI
-ownership, documentation wiring, and all assurance domains. Runtime
-activation still requires the phase-specific implementation and native evidence
-below; passing this prose/fixture gate is not evidence that aliases are shipped.
+mutation suite. CP2.0 additionally provides the capability-free
+`automexia-devops::actions` model, bounded in-memory TOML parser, deterministic
+validator, readable valid fixture, and an eleven-case hostile TOML corpus. The
+machine gates freeze the exact three-file source allowlist and reject filesystem,
+process, network, environment, UI, PTY, shell-profile, async-runtime, and unsafe
+code authority in that boundary.
+
+The overall CP2/CP3 status remains planned and non-activated. There is no action
+store, watcher, runtime alias, generated shell file, provider call, UI, or exact
+launch in CP2.0. Those capabilities still require the later phase-specific
+implementation and native evidence below; a valid model is not evidence that
+aliases are shipped.
 
 ### Pure model and persistence tests
 
@@ -990,15 +1000,39 @@ preflight and records redacted evidence.
 
 ## Delivery phases
 
-### CP2.0 - contract and fixtures
+### CP2.0 - contract and fixtures (implemented)
 
-- Freeze schema, scopes, limits, persistence, revision/CAS, import/export,
-  placeholder, risk, and execution-mode behavior in a versioned machine fixture.
-- Add hostile/mutation corpus and architecture rules; update ADR 0015 only if
-  the implementation requires new process, network, secret, or profile authority.
+- Schema 1, revision metadata, scopes, limits, typed argv/raw-insert templates,
+  placeholders, risk, execution, provenance, and alias eligibility are frozen in
+  the versioned machine fixture and pure Rust model.
+- Parsing rejects sources above 1 MiB before TOML decoding, unknown fields,
+  unbounded nested collections, duplicate IDs/shells/tags/placeholders, controls
+  and bidi text, unsafe command IDs, invalid references, secret/default leakage,
+  raw alias projection, risky aliases, and unreviewed mutating aliases.
+- The eleven-case hostile TOML corpus, 34 alias-policy mutations, 19 command-
+  productivity mutations, and exact three-file architecture allowlist fail
+  closed without adding process, network, filesystem, secret, profile, UI, PTY,
+  async-runtime, or unsafe-code authority.
 
-Exit: pure parsers/models and policy mutation tests pass; no runtime store or
-alias exists.
+Exit: satisfied at the pure source/model boundary. The focused commands are:
+
+```text
+cargo test -p automexia-devops --all-targets --locked
+cargo clippy -p automexia-devops --all-targets --locked -- -D warnings
+python tools/ci/check_devops_alias_spec.py
+python tools/ci/test_devops_alias_spec.py
+python tools/ci/check_command_productivity.py
+python tools/ci/test_command_productivity.py
+```
+
+No runtime store, watcher, alias, shell projection, UI, or execution path exists;
+CP2.1 is the next activation boundary.
+
+A short 2026-08-16 local Windows Criterion smoke measured median validated TOML
+parsing at 7.46 us for one action, 3.37 ms for 256 actions, and 18.36 ms for the
+1,024-action ceiling. The maximum case remains below the provisional 25 ms warm-
+load budget. This deliberately short, noisy run proves the benchmark works; it
+is not the required controlled 30-day cross-host baseline or a release ratchet.
 
 ### CP2.1 - user-private action store
 

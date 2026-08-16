@@ -1,0 +1,13 @@
+schema_version = 1
+revision = 0
+
+[[actions]]
+id = "docker.inspect"
+display_name = "Inspect container"
+scope = "global-user"
+shells = ["powershell", "bash"]
+risk = "read-only"
+[actions.template]
+kind = "typed-argv"
+executable_id = "docker"
+arguments = [{ kind = "placeholder", name = "container" }]

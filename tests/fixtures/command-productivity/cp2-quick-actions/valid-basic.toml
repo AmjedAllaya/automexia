@@ -1,0 +1,56 @@
+schema_version = 1
+revision = 7
+
+[[actions]]
+id = "kubernetes.get-resource"
+display_name = "Get a Kubernetes resource"
+description = "Insert a reviewed kubectl query without executing it."
+tags = ["kubernetes", "read-only"]
+scope = "global-user"
+shells = ["powershell", "bash", "zsh", "fish"]
+risk = "read-only"
+execution = "insert"
+enabled = true
+
+[actions.template]
+kind = "typed-argv"
+executable_id = "kubectl"
+arguments = [
+  { kind = "literal", value = "get" },
+  { kind = "placeholder", name = "resource" },
+]
+
+[[actions.placeholders]]
+name = "resource"
+prompt = "Resource type"
+sensitivity = "public"
+required = true
+default = "pods"
+
+[actions.working_directory_policy]
+kind = "inherit"
+
+[actions.provenance]
+kind = "user"
+
+[actions.alias_projection]
+requested_name = "kg"
+shells = ["powershell", "bash", "zsh", "fish"]
+mode = "wrapper-function"
+argument_policy = "typed-bindings"
+completion = "required"
+override_policy = "native-wins"
+enabled = true
+
+[[actions]]
+id = "shell.show-location"
+display_name = "Show current location"
+scope = "shell-user"
+shells = ["powershell"]
+risk = "read-only"
+execution = "insert"
+
+[actions.template]
+kind = "raw-insert-only"
+shell = "powershell"
+text = "Get-Location"

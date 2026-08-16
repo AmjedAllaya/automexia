@@ -1,0 +1,17 @@
+schema_version = 1
+revision = 0
+
+[[actions]]
+id = "git.status"
+display_name = "Git status"
+scope = "global-user"
+shells = ["powershell"]
+risk = "read-only"
+[actions.template]
+kind = "typed-argv"
+executable_id = "git"
+arguments = []
+[actions.alias_projection]
+requested_name = "gs"
+shells = ["bash"]
+mode = "command-alias"

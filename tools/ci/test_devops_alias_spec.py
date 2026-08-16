@@ -38,6 +38,8 @@ class AliasSpecificationTests(unittest.TestCase):
                 "scopes": 6,
                 "verification_domains": 10,
                 "ux_invariants": 8,
+                "model_files": 3,
+                "hostile_cases": 11,
                 "wiring": 10,
             },
         )
@@ -46,6 +48,24 @@ class AliasSpecificationTests(unittest.TestCase):
         changed = deepcopy(CONTRACT)
         changed["status"] = "active"
         with self.assertRaisesRegex(POLICY.AliasSpecError, "remain planned"):
+            POLICY.validate_contract(changed)
+
+    def test_cp2_model_only_stage_cannot_claim_persistence(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["implemented_stage"] = "CP2.1-persistence"
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "only CP2.0 model"):
+            POLICY.validate_contract(changed)
+
+    def test_pure_model_source_boundary_cannot_expand(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["model_files"].append("automexia-devops/src/actions/runtime.rs")
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "pure model source"):
+            POLICY.validate_contract(changed)
+
+    def test_hostile_fixture_authority_cannot_move(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["hostile_fixture"] = "tests/fixtures/unreviewed.json"
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "hostile fixture authority"):
             POLICY.validate_contract(changed)
 
     def test_activation_file_is_rejected(self) -> None:
@@ -106,6 +126,12 @@ class AliasSpecificationTests(unittest.TestCase):
         changed = deepcopy(CONTRACT)
         changed["required_action_fields"].remove("risk")
         with self.assertRaisesRegex(POLICY.AliasSpecError, "typed action fields"):
+            POLICY.validate_contract(changed)
+
+    def test_typed_document_field_removal_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["required_document_fields"].remove("revision")
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "typed document fields"):
             POLICY.validate_contract(changed)
 
     def test_non_atomic_persistence_is_rejected(self) -> None:

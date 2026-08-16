@@ -1,0 +1,18 @@
+schema_version = 1
+revision = 0
+
+[[actions]]
+id = "deployment.restart"
+display_name = "Restart deployment"
+scope = "global-user"
+shells = ["powershell"]
+risk = "mutating"
+[actions.template]
+kind = "typed-argv"
+executable_id = "kubectl"
+arguments = []
+[actions.alias_projection]
+requested_name = "kr"
+shells = ["powershell"]
+mode = "command-alias"
+mutating_acknowledged = false
