@@ -11,9 +11,10 @@ mod validation;
 use std::fmt;
 
 pub use activation::{
-    expand_for_shell, ActionConflict, ActionIndex, ActionLayer, ActionSearchHit,
-    ExpandedAction, ExpansionError, IndexError, LayerIdentity, PlaceholderBindings,
-    SearchContext, MAX_EXPANDED_COMMAND_BYTES, MAX_QUERY_BYTES, MAX_SEARCH_RESULTS,
+    expand_for_shell, validate_search_query, ActionConflict, ActionIndex, ActionLayer,
+    ActionSearchHit, ExpandedAction, ExpansionError, IndexError, LayerIdentity,
+    PlaceholderBindings, SearchContext, MAX_EXPANDED_COMMAND_BYTES, MAX_QUERY_BYTES,
+    MAX_SEARCH_RESULTS,
 };
 pub use model::{
     ActionProvenance, ActionScope, ActionTemplate, AliasArgumentPolicy, AliasProjection,

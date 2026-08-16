@@ -334,11 +334,15 @@ allowlist. CP2.1/CP2.2 use an exact eight-file, application-owned boundary under
 no-follow private storage, atomic primary/one-previous recovery, nonblocking
 cross-process CAS, immutable fingerprinted last-known-good snapshots, exact
 parent watch filtering, bounded coalescing, periodic reconciliation, and CRUD.
-CP2.2 activates that store only through one joined, latest-only application
-worker and a narrow screen adapter. `automexia-ui-model` owns the responsive
+CP2.2 activates that store only through one joined application worker with
+bounded per-route latest-query coalescing, a 32-route admission ceiling, fair
+multi-pane publication, exact close cleanup, and a narrow screen adapter. The
+capability-free index revalidates every layer and keeps shell-user/global-user
+precedence distinct. `automexia-ui-model` owns the responsive
 list/review projection; the grid-owning screen module contains no Quick Action
 domain model. It is not wired to shell profiles, providers, network, secrets, or
-execution. Later shell aliases, functions, abbreviations, and completion
+execution; secret and exact-launch actions are rejected before placeholder
+collection. Later shell aliases, functions, abbreviations, and completion
 adapters remain removable generated artifacts. Actions insert for review
 without Enter by default through the shell editor's bracketed-paste path. Raw
 shell snippets are insert-only; exact execution uses only the future D3 typed

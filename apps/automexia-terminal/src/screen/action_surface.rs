@@ -8,8 +8,9 @@
 use std::sync::Arc;
 
 use automexia_devops::actions::{
-    ActionSearchHit, ExecutionMode, ExpandedAction, PlaceholderBindings, QuickAction,
-    RiskClass, SearchContext, ShellKind, MAX_QUERY_BYTES, MAX_STRING_BYTES,
+    ActionSearchHit, ExecutionMode, ExpandedAction, PlaceholderBindings,
+    PlaceholderSensitivity, QuickAction, RiskClass, SearchContext, ShellKind,
+    MAX_QUERY_BYTES, MAX_STRING_BYTES,
 };
 use automexia_ui_model::quick_actions::{
     QuickActionListItem, QuickActionMode, QuickActionReviewView, QuickActionRisk,
@@ -53,6 +54,7 @@ struct State {
     expanded: Option<ExpandedAction>,
     requires_second_confirmation: bool,
     confirmation_armed: bool,
+    runtime_status: Option<crate::automexia::quick_actions::QuickActionRuntimeStatus>,
 }
 
 impl Screen<'_> {
@@ -84,7 +86,10 @@ impl Screen<'_> {
         self.action_surface.state.placeholder_index = 0;
         self.action_surface.state.confirmation_armed = false;
         self.renderer.command_palette.enter_action_search(
-            list_items(&self.action_surface.state.hits),
+            list_items(
+                &self.action_surface.state.hits,
+                self.action_surface.state.runtime_status,
+            ),
             self.action_surface.state.search_query.clone(),
         );
         true
@@ -189,10 +194,19 @@ impl Screen<'_> {
         if result.query != self.action_surface.state.search_query {
             return;
         }
+        self.action_surface.state.runtime_status = Some(result.status);
         self.action_surface.state.hits = result.hits;
-        self.renderer
-            .command_palette
-            .update_action_items(list_items(&self.action_surface.state.hits));
+        let notice = action_notice(
+            self.action_surface.state.runtime_status,
+            self.action_surface.state.hits.is_empty(),
+        );
+        self.renderer.command_palette.update_action_items(
+            list_items(
+                &self.action_surface.state.hits,
+                self.action_surface.state.runtime_status,
+            ),
+            notice,
+        );
     }
 
     fn submit_action_search(&mut self, query: String) {
@@ -210,6 +224,10 @@ impl Screen<'_> {
             }
             crate::automexia::quick_actions::SearchSubmission::Disabled { error } => {
                 tracing::warn!("Quick Action search disabled: {error}");
+                self.renderer.command_palette.update_action_items(
+                    Vec::new(),
+                    format!("Quick Actions unavailable ({error})"),
+                );
             }
         }
     }
@@ -218,6 +236,18 @@ impl Screen<'_> {
         let Some(action) = self.action_surface.state.selected.as_ref() else {
             return;
         };
+        if let Some(reason) = unavailable_before_placeholder(action) {
+            let view = QuickActionReviewView::new(
+                action.id.clone(),
+                action.display_name.clone(),
+                reason.into(),
+                risk(action.risk),
+                QuickActionMode::Unavailable,
+            );
+            self.action_surface.state.expanded = None;
+            self.renderer.command_palette.enter_action_review(view);
+            return;
+        }
         if let Some(placeholder) = action
             .placeholders
             .get(self.action_surface.state.placeholder_index)
@@ -281,19 +311,77 @@ impl Screen<'_> {
     }
 }
 
-fn list_items(hits: &[ActionSearchHit]) -> Vec<QuickActionListItem> {
+fn list_items(
+    hits: &[ActionSearchHit],
+    status: Option<crate::automexia::quick_actions::QuickActionRuntimeStatus>,
+) -> Vec<QuickActionListItem> {
+    let health = action_health(status);
     hits.iter()
         .map(|hit| {
-            QuickActionListItem::new(
+            let item = QuickActionListItem::new(
                 hit.action.id.clone(),
                 hit.action.display_name.clone(),
                 hit.action.description.clone(),
                 hit.source.to_owned(),
                 risk(hit.action.risk),
                 hit.shadowed_count,
-            )
+            );
+            match health {
+                Some(health) => item.with_health(health),
+                None => item,
+            }
         })
         .collect()
+}
+
+fn unavailable_before_placeholder(action: &QuickAction) -> Option<&'static str> {
+    if action.execution == ExecutionMode::ExactLaunch {
+        return Some("Exact launch remains disabled until the D3 broker is accepted");
+    }
+    action
+        .placeholders
+        .iter()
+        .any(|placeholder| {
+            placeholder.sensitivity == PlaceholderSensitivity::SecretReference
+        })
+        .then_some(
+            "Secret references remain disabled until the secret broker is accepted",
+        )
+}
+
+fn action_health(
+    status: Option<crate::automexia::quick_actions::QuickActionRuntimeStatus>,
+) -> Option<&'static str> {
+    use crate::automexia::quick_actions::QuickActionRuntimeStatus;
+    match status {
+        Some(QuickActionRuntimeStatus::Recovered { .. }) => Some("Recovered"),
+        Some(QuickActionRuntimeStatus::Stale { .. }) => Some("Last-known-good"),
+        Some(QuickActionRuntimeStatus::Ready { .. })
+        | Some(QuickActionRuntimeStatus::Disabled { .. })
+        | None => None,
+    }
+}
+
+fn action_notice(
+    status: Option<crate::automexia::quick_actions::QuickActionRuntimeStatus>,
+    empty: bool,
+) -> String {
+    use crate::automexia::quick_actions::QuickActionRuntimeStatus;
+    match status {
+        Some(QuickActionRuntimeStatus::Recovered { .. }) => {
+            "Using recovered Quick Actions".into()
+        }
+        Some(QuickActionRuntimeStatus::Stale { error, .. }) => {
+            format!("Using last-known-good Quick Actions ({})", error.as_str())
+        }
+        Some(QuickActionRuntimeStatus::Disabled { error }) => {
+            format!("Quick Actions unavailable ({error})")
+        }
+        Some(QuickActionRuntimeStatus::Ready { .. }) | None if empty => {
+            "No matching Quick Actions".into()
+        }
+        Some(QuickActionRuntimeStatus::Ready { .. }) | None => String::new(),
+    }
 }
 
 const fn risk(value: RiskClass) -> QuickActionRisk {
@@ -347,6 +435,38 @@ fn shell_kind(identity: &str, wsl_distro: Option<&str>) -> ShellKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use automexia_devops::actions::{
+        ActionProvenance, ActionScope, ActionTemplate, Placeholder, RiskClass,
+        WorkingDirectoryPolicy,
+    };
+
+    fn action_for_preflight() -> QuickAction {
+        QuickAction {
+            id: "test.action".into(),
+            display_name: "Test action".into(),
+            description: String::new(),
+            tags: Vec::new(),
+            scope: ActionScope::GlobalUser,
+            shells: vec![ShellKind::Bash],
+            template: ActionTemplate::TypedArgv {
+                executable_id: "printf".into(),
+                arguments: Vec::new(),
+            },
+            placeholders: vec![Placeholder {
+                name: "target".into(),
+                prompt: "Target".into(),
+                sensitivity: PlaceholderSensitivity::Public,
+                required: true,
+                default: None,
+            }],
+            working_directory_policy: WorkingDirectoryPolicy::Inherit,
+            risk: RiskClass::ReadOnly,
+            execution: ExecutionMode::Insert,
+            provenance: ActionProvenance::User,
+            enabled: true,
+            alias_projection: None,
+        }
+    }
 
     #[test]
     fn shell_detection_covers_every_supported_editor() {
@@ -359,5 +479,38 @@ mod tests {
         assert_eq!(shell_kind("/bin/zsh", None), ShellKind::Zsh);
         assert_eq!(shell_kind("fish", None), ShellKind::Fish);
         assert_eq!(shell_kind("wsl.exe", Some("Ubuntu-24.04")), ShellKind::Bash);
+    }
+
+    #[test]
+    fn secret_and_exact_actions_are_rejected_before_placeholder_collection() {
+        let mut action = action_for_preflight();
+        action.placeholders[0].sensitivity = PlaceholderSensitivity::SecretReference;
+        assert!(unavailable_before_placeholder(&action)
+            .unwrap()
+            .contains("Secret references"));
+
+        action.placeholders[0].sensitivity = PlaceholderSensitivity::Public;
+        action.execution = ExecutionMode::ExactLaunch;
+        assert!(unavailable_before_placeholder(&action)
+            .unwrap()
+            .contains("Exact launch"));
+    }
+
+    #[test]
+    fn status_notices_are_redacted_and_health_is_visible() {
+        use crate::automexia::quick_actions::{QuickActionRuntimeStatus, StoreErrorCode};
+        let stale = QuickActionRuntimeStatus::Stale {
+            revision: 4,
+            error: StoreErrorCode::ModelRejected,
+        };
+        assert_eq!(action_health(Some(stale)), Some("Last-known-good"));
+        assert_eq!(
+            action_notice(Some(stale), true),
+            "Using last-known-good Quick Actions (model-rejected)"
+        );
+        assert_eq!(
+            action_notice(Some(QuickActionRuntimeStatus::Ready { revision: 5 }), true),
+            "No matching Quick Actions"
+        );
     }
 }

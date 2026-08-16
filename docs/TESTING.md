@@ -1057,10 +1057,13 @@ shell-profile, UI, VT, PTY, async-runtime, execution, and unsafe code outside th
 reviewed platform permission adapter.
 
 CP2.2 starts one joined application worker and provides bounded layered search,
-responsive placeholder/risk/conflict review, dry-run administration and
+per-route latest-query coalescing with a 32-route ceiling and fair multi-pane
+publication, activation-time model revalidation, responsive
+placeholder/risk/conflict/health review, explicit empty/error states, dry-run administration and
 digest-checked transfer, plus explicit copy or bracketed-paste insertion without
-Enter. It adds no alias projection, provider work, trusted-workspace activation,
-secret expansion, or exact execution. Native-host and controlled accessibility
+Enter. Secret and exact operations are rejected before placeholder input. It
+adds no alias projection, provider work, trusted-workspace activation, secret
+expansion, or exact execution. Native-host and controlled accessibility
 evidence remains as described in [DevOps Quick Actions and persistent
 aliases](DEVOPS-ALIASES.md#verification-plan).
 
@@ -1083,7 +1086,10 @@ python tools/ci/check_command_productivity_cp22.py
 python tools/ci/test_command_productivity_cp22.py
 ```
 
-The `automexia-devops` target owns both `quick_action_search_1024` and
+The active schema-1 CP2.2 contract now names 13 mandatory evidence categories,
+including multi-route fairness/capacity, visible health/empty state,
+activation-time revalidation, and pre-prompt secret denial. The
+`automexia-devops` target owns both `quick_action_search_1024` and
 `quick_action_expand_and_quote`; controlled QA executes the same target so these
 measurements cannot become orphaned compile-only benchmarks.
 

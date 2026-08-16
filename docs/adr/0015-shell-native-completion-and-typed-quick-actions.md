@@ -10,6 +10,14 @@ trusted-workspace activation, aliases, and provider-aware candidates remain
 outside that authority. Stable publication still requires hosted native and
 controlled accessibility/performance evidence.
 
+Verification note (2026-08-17): the CP2.2 re-audit made shell-user and
+global-user precedence structurally distinct, revalidates every activation
+layer, and replaces the process-global pending search slot with bounded fair
+per-route coalescing. Secret-reference and exact-launch actions now fail before
+placeholder collection, and the Command Center exposes textual risk, source,
+conflict, loading, empty, recovered, stale, and unavailable states rather than
+encoding meaning only through color or an empty list.
+
 ## Context
 
 Automexia needs command completion and persistent DevOps shortcuts without

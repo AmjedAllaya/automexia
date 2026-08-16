@@ -33,6 +33,7 @@ pub struct QuickActionListItem {
     pub source: String,
     pub risk: QuickActionRisk,
     pub shadowed_count: usize,
+    pub metadata_label: String,
     pub accessibility_label: String,
 }
 
@@ -51,10 +52,16 @@ impl QuickActionListItem {
         } else {
             format!(", shadows {shadowed_count} lower-priority definition(s)")
         };
+        let visible_conflict = if shadowed_count == 0 {
+            String::new()
+        } else {
+            format!(" · {shadowed_count} conflict(s)")
+        };
         Self {
             accessibility_label: format!(
                 "{name}, {risk_name} risk, source {source}{conflict}"
             ),
+            metadata_label: format!("{risk_name} · {source}{visible_conflict}"),
             id,
             name,
             description,
@@ -62,6 +69,14 @@ impl QuickActionListItem {
             risk,
             shadowed_count,
         }
+    }
+
+    pub fn with_health(mut self, health: &'static str) -> Self {
+        self.metadata_label.push_str(" · ");
+        self.metadata_label.push_str(health);
+        self.accessibility_label.push_str(", status ");
+        self.accessibility_label.push_str(health);
+        self
     }
 }
 
@@ -160,6 +175,12 @@ mod tests {
             1,
         );
         assert_eq!(item.accessibility_label, "Inspect cluster, Mutating risk, source User, shadows 1 lower-priority definition(s)");
+        assert_eq!(item.metadata_label, "Mutating · User · 1 conflict(s)");
+        let stale = item.with_health("Last-known-good");
+        assert!(stale.metadata_label.ends_with(" · Last-known-good"));
+        assert!(stale
+            .accessibility_label
+            .ends_with(", status Last-known-good"));
     }
 
     #[test]

@@ -511,15 +511,18 @@ and grants no provider, process, network, secret, profile, PTY, UI, or execution
 authority by itself.
 
 **CP2.2 implemented locally:** one application-owned worker starts the store,
-publishes immutable last-known-good snapshots, coalesces latest-only searches,
-and is joined on shutdown. A capability-free layered index applies deterministic
-session, capsule, trusted-workspace, shell-user, global-user, and built-in
-precedence. Workspace entries remain fail-closed because workspace trust is not
-activated. The Command Center provides a keyboard-complete responsive search,
-placeholder, risk/conflict, exact-command review, and explicit
+publishes immutable last-known-good snapshots, coalesces the latest query per
+route, admits at most 32 live routes, publishes every admitted pane fairly, and
+is joined on shutdown. A capability-free layered index revalidates each layer
+and applies distinct deterministic session, capsule, trusted-workspace,
+shell-user, global-user, and built-in precedence. Workspace entries remain
+fail-closed because workspace trust is not activated. The Command Center
+provides a keyboard-complete responsive search, placeholder, visible
+risk/source/conflict/health, explicit empty and unavailable states,
+exact-command review, and explicit
 **Insert without Enter** or copy flow. Insertion uses the shell-owned editor's bracketed-paste
 path and never synthesizes Enter. Exact launch and secret-reference expansion
-remain unavailable.
+remain unavailable and are rejected before placeholder collection.
 
 The versioned `automexia actions` interface provides read-only `list`, `show`,
 and `doctor`; dry-run-by-default `put`, `actions import`, `remove`, and

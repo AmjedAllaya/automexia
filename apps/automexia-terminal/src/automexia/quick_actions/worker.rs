@@ -13,7 +13,8 @@ use std::{
 };
 
 use automexia_devops::actions::{
-    ActionIndex, ActionLayer, ActionSearchHit, IndexError, LayerIdentity, SearchContext,
+    validate_search_query, ActionIndex, ActionLayer, ActionScope, ActionSearchHit,
+    IndexError, LayerIdentity, SearchContext,
 };
 use automexia_extension_runtime::CompletionWake;
 
@@ -32,6 +33,8 @@ const MAX_RESULT_ROUTES: usize = 32;
 pub enum QuickActionRuntimeErrorCode {
     Store(StoreErrorCode),
     Index,
+    InvalidQuery,
+    RouteCapacity,
     WorkerUnavailable,
 }
 
@@ -40,6 +43,8 @@ impl fmt::Display for QuickActionRuntimeErrorCode {
         match self {
             Self::Store(code) => write!(formatter, "store-{}", code.as_str()),
             Self::Index => formatter.write_str("index-error"),
+            Self::InvalidQuery => formatter.write_str("invalid-query"),
+            Self::RouteCapacity => formatter.write_str("route-capacity"),
             Self::WorkerUnavailable => formatter.write_str("worker-unavailable"),
         }
     }
@@ -93,7 +98,7 @@ struct SearchRequest {
 
 #[derive(Default)]
 struct PendingState {
-    latest: Option<SearchRequest>,
+    latest_by_route: BTreeMap<usize, SearchRequest>,
     shutdown: bool,
 }
 
@@ -113,7 +118,7 @@ impl Drop for RuntimeInner {
             let (pending, condition) = &*self.pending;
             let mut state = lock(pending);
             state.shutdown = true;
-            state.latest = None;
+            state.latest_by_route.clear();
             condition.notify_all();
         }
         if let Some(handle) = lock(&self.handle).take() {
@@ -192,6 +197,14 @@ impl QuickActionRuntime {
         if let Some(error) = self.0.disabled {
             return QuickActionRuntimeStatus::Disabled { error };
         }
+        if lock(&self.0.handle)
+            .as_ref()
+            .is_none_or(JoinHandle::is_finished)
+        {
+            return QuickActionRuntimeStatus::Disabled {
+                error: QuickActionRuntimeErrorCode::WorkerUnavailable,
+            };
+        }
         let Some(service) = &self.0.service else {
             return QuickActionRuntimeStatus::Disabled {
                 error: QuickActionRuntimeErrorCode::WorkerUnavailable,
@@ -210,13 +223,19 @@ impl QuickActionRuntime {
         if let Some(error) = self.0.disabled {
             return SearchSubmission::Disabled { error };
         }
-        if lock(&self.0.handle).is_none() {
+        if validate_search_query(&query).is_err() {
+            return SearchSubmission::Disabled {
+                error: QuickActionRuntimeErrorCode::InvalidQuery,
+            };
+        }
+        if lock(&self.0.handle)
+            .as_ref()
+            .is_none_or(JoinHandle::is_finished)
+        {
             return SearchSubmission::Disabled {
                 error: QuickActionRuntimeErrorCode::WorkerUnavailable,
             };
         }
-        let request_id = self.0.next_request.fetch_add(1, Ordering::AcqRel);
-        lock(&self.0.latest_requested).insert(route_id, request_id);
         let (pending, condition) = &*self.0.pending;
         let mut state = lock(pending);
         if state.shutdown {
@@ -224,13 +243,27 @@ impl QuickActionRuntime {
                 error: QuickActionRuntimeErrorCode::WorkerUnavailable,
             };
         }
-        state.latest = Some(SearchRequest {
-            request_id,
+        let mut latest_requested = lock(&self.0.latest_requested);
+        if !latest_requested.contains_key(&route_id)
+            && latest_requested.len() >= MAX_RESULT_ROUTES
+        {
+            return SearchSubmission::Disabled {
+                error: QuickActionRuntimeErrorCode::RouteCapacity,
+            };
+        }
+        let request_id = self.0.next_request.fetch_add(1, Ordering::AcqRel);
+        latest_requested.insert(route_id, request_id);
+        drop(latest_requested);
+        state.latest_by_route.insert(
             route_id,
-            query,
-            context,
-            wake,
-        });
+            SearchRequest {
+                request_id,
+                route_id,
+                query,
+                context,
+                wake,
+            },
+        );
         condition.notify_one();
         SearchSubmission::Queued { request_id }
     }
@@ -246,6 +279,8 @@ impl QuickActionRuntime {
     }
 
     pub fn forget_route(&self, route_id: usize) {
+        let (pending, _) = &*self.0.pending;
+        lock(pending).latest_by_route.remove(&route_id);
         lock(&self.0.latest_requested).remove(&route_id);
         lock(&self.0.results).remove(&route_id);
     }
@@ -276,7 +311,7 @@ fn spawn_worker(
                 let state = lock(slot);
                 let (mut state, _) = condition
                     .wait_timeout_while(state, SEARCH_POLL_INTERVAL, |state| {
-                        !state.shutdown && state.latest.is_none()
+                        !state.shutdown && state.latest_by_route.is_empty()
                     })
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
                 if state.shutdown {
@@ -300,37 +335,30 @@ fn spawn_worker(
                 if state.shutdown {
                     break;
                 }
-                state.latest.take()
+                std::mem::take(&mut state.latest_by_route)
             };
-            let Some(request) = request else {
-                continue;
-            };
-            let hits = index
-                .search(&request.query, &request.context)
-                .unwrap_or_default();
-            if lock(&latest_requested).get(&request.route_id).copied()
-                != Some(request.request_id)
-            {
+            if request.is_empty() {
                 continue;
             }
-            let result = QuickActionSearchResult {
-                request_id: request.request_id,
-                route_id: request.route_id,
-                query: request.query,
-                hits,
-                status: status_from_service(monitor.service().status()),
-            };
-            let mut published = lock(&results);
-            if published.len() >= MAX_RESULT_ROUTES
-                && !published.contains_key(&request.route_id)
-            {
-                if let Some(oldest) = published.keys().next().copied() {
-                    published.remove(&oldest);
+            for (_, request) in request {
+                let hits = index
+                    .search(&request.query, &request.context)
+                    .unwrap_or_default();
+                if lock(&latest_requested).get(&request.route_id).copied()
+                    != Some(request.request_id)
+                {
+                    continue;
                 }
+                let result = QuickActionSearchResult {
+                    request_id: request.request_id,
+                    route_id: request.route_id,
+                    query: request.query,
+                    hits,
+                    status: status_from_service(monitor.service().status()),
+                };
+                lock(&results).insert(request.route_id, result);
+                request.wake.wake();
             }
-            published.insert(request.route_id, result);
-            drop(published);
-            request.wake.wake();
         })
         .ok()
 }
@@ -339,11 +367,27 @@ fn index_for_service(
     service: &QuickActionService,
 ) -> Result<ActionIndex, QuickActionRuntimeErrorCode> {
     let snapshot = service.snapshot();
-    ActionIndex::build(vec![ActionLayer {
-        identity: LayerIdentity::User,
-        revision: snapshot.revision(),
-        actions: snapshot.actions().document().actions.clone(),
-    }])
+    let mut shell_user = Vec::new();
+    let mut global_user = Vec::new();
+    for action in &snapshot.actions().document().actions {
+        match action.scope {
+            ActionScope::ShellUser => shell_user.push(action.clone()),
+            ActionScope::GlobalUser => global_user.push(action.clone()),
+            _ => return Err(QuickActionRuntimeErrorCode::Index),
+        }
+    }
+    ActionIndex::build(vec![
+        ActionLayer {
+            identity: LayerIdentity::ShellUser,
+            revision: snapshot.revision(),
+            actions: shell_user,
+        },
+        ActionLayer {
+            identity: LayerIdentity::GlobalUser,
+            revision: snapshot.revision(),
+            actions: global_user,
+        },
+    ])
     .map_err(|_: IndexError| QuickActionRuntimeErrorCode::Index)
 }
 
@@ -476,5 +520,73 @@ mod tests {
         receiver.recv_timeout(Duration::from_secs(2)).unwrap();
         runtime.forget_route(55);
         assert!(runtime.take_result(55, 0).is_none());
+    }
+
+    #[test]
+    fn simultaneous_routes_are_coalesced_independently_without_starvation() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = QuickActionRuntime::open(root.path().join("actions")).unwrap();
+        let (sender, receiver) = mpsc::channel();
+        for route_id in [11, 22] {
+            let sender = sender.clone();
+            assert!(matches!(
+                runtime.submit(
+                    route_id,
+                    String::new(),
+                    context(),
+                    Box::new(move || {
+                        let _ = sender.send(route_id);
+                    }),
+                ),
+                SearchSubmission::Queued { .. }
+            ));
+        }
+        let mut woke = [
+            receiver.recv_timeout(Duration::from_secs(2)).unwrap(),
+            receiver.recv_timeout(Duration::from_secs(2)).unwrap(),
+        ];
+        woke.sort_unstable();
+        assert_eq!(woke, [11, 22]);
+        assert!(runtime.take_result(11, 0).is_some());
+        assert!(runtime.take_result(22, 0).is_some());
+    }
+
+    #[test]
+    fn route_capacity_and_query_limits_fail_closed_and_recover_after_close() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = QuickActionRuntime::open(root.path().join("actions")).unwrap();
+        for route_id in 1..=MAX_RESULT_ROUTES {
+            assert!(matches!(
+                runtime.submit(route_id, String::new(), context(), Box::new(|| {})),
+                SearchSubmission::Queued { .. }
+            ));
+        }
+        assert_eq!(
+            runtime.submit(
+                MAX_RESULT_ROUTES + 1,
+                String::new(),
+                context(),
+                Box::new(|| {}),
+            ),
+            SearchSubmission::Disabled {
+                error: QuickActionRuntimeErrorCode::RouteCapacity
+            }
+        );
+        runtime.forget_route(1);
+        assert!(matches!(
+            runtime.submit(
+                MAX_RESULT_ROUTES + 1,
+                String::new(),
+                context(),
+                Box::new(|| {}),
+            ),
+            SearchSubmission::Queued { .. }
+        ));
+        assert_eq!(
+            runtime.submit(2, "bad\u{202e}query".into(), context(), Box::new(|| {})),
+            SearchSubmission::Disabled {
+                error: QuickActionRuntimeErrorCode::InvalidQuery
+            }
+        );
     }
 }

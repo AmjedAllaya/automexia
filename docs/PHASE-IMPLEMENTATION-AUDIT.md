@@ -532,12 +532,18 @@ baseline. CP2.2 now consumes this foundation through a joined app worker.
 ### CP2.2 — search, editor, review, and insertion
 
 **Implemented locally; release evidence partial.** The app owns one joined,
-latest-only worker and immutable last-known-good snapshot. The pure index applies
-deterministic scope precedence and stable bounded search; workspace activation,
+per-route latest-only worker and immutable last-known-good snapshot. A hard
+32-route ceiling prevents cross-pane state growth while fair batched publication
+prevents one busy pane from starving another. The pure index applies exact
+shell-user/global-user precedence, revalidates every activation layer, and keeps
+search stable and bounded; workspace activation,
 secret reads, providers, network, shell evaluation, and exact launch stay
 disabled. The pane-neutral Command Center flow provides responsive search,
 placeholder entry, risk/conflict/exact-command review, and explicit insert or
-copy. Insert uses bracketed paste and never Enter. The CLI provides bounded
+copy. Secret and exact-launch actions fail before any placeholder input is
+collected; visible rows include risk, source, conflicts, and degraded-store
+health, while empty/unavailable states are explicit. Insert uses bracketed paste
+and never Enter. The CLI provides bounded
 list/show/doctor, dry-run-by-default put/import/remove/recover, digest-checked
 export, CAS, explicit conflict replacement, and conservative machine-path
 consent.

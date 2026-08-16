@@ -98,10 +98,15 @@
     "quick_action_transfer",
     "worker-latest-generation",
     "worker-repeated-shutdown",
+    "worker-multi-route-fairness",
+    "worker-route-capacity",
     "palette-review",
+    "palette-health-and-empty-state",
     "shell-detection",
+    "pre-prompt-secret-denial",
     "responsive-view-model",
-    "cli-dry-run"
+    "cli-dry-run",
+    "activation-revalidation"
   ],
   "benchmark": "automexia-devops/benches/quick_actions.rs"
 }

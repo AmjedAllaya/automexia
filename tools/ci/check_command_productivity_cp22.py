@@ -157,6 +157,9 @@ def validate_sources(document: dict[str, Any]) -> dict[str, int]:
             "SEARCH_COALESCE_INTERVAL",
             "MAX_RESULT_ROUTES",
             "latest_requested",
+            "latest_by_route",
+            "RouteCapacity",
+            "validate_search_query",
             "handle.join()",
             "forget_route",
         },
@@ -173,6 +176,9 @@ def validate_sources(document: dict[str, Any]) -> dict[str, int]:
             "ExactLaunchDisabled",
             "SecretReferenceUnavailable",
             "workspace_trusted",
+            "LayerIdentity::ShellUser",
+            "LayerIdentity::GlobalUser",
+            "validate_quick_actions",
         },
     )
     require_tokens(
@@ -191,6 +197,9 @@ def validate_sources(document: dict[str, Any]) -> dict[str, int]:
             "self.paste(&expanded.command, true)",
             "requires_second_confirmation",
             "submit_action_placeholder",
+            "unavailable_before_placeholder",
+            "SecretReference",
+            "action_notice",
             "workspace_trusted: false",
         },
     ).casefold()
@@ -206,6 +215,8 @@ def validate_sources(document: dict[str, Any]) -> dict[str, int]:
             "QuickActionReview",
             "Exact command",
             "MAX_PALETTE_QUERY_BYTES",
+            "QuickActionNotice",
+            "metadata_label",
         },
     )
     require_tokens(

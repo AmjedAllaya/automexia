@@ -12,8 +12,9 @@ use std::{
 };
 
 use super::{
-    ActionScope, ActionTemplate, ArgumentToken, ExecutionMode, PlaceholderSensitivity,
-    QuickAction, RiskClass, ShellKind, MAX_ACTIONS, MAX_STRING_BYTES,
+    validate_quick_actions, ActionScope, ActionTemplate, ArgumentToken, ExecutionMode,
+    PlaceholderSensitivity, QuickAction, QuickActionDocument, RiskClass, ShellKind,
+    MAX_ACTIONS, MAX_STRING_BYTES, QUICK_ACTION_SCHEMA_VERSION,
 };
 
 pub const MAX_QUERY_BYTES: usize = MAX_STRING_BYTES;
@@ -25,7 +26,8 @@ pub enum LayerIdentity {
     Session { session_id: u64 },
     Capsule { session_id: u64, revision: u64 },
     TrustedWorkspace { identity: String },
-    User,
+    ShellUser,
+    GlobalUser,
     BuiltIn,
 }
 
@@ -35,7 +37,8 @@ impl LayerIdentity {
             Self::Session { .. } => ActionScope::Session,
             Self::Capsule { .. } => ActionScope::Capsule,
             Self::TrustedWorkspace { .. } => ActionScope::TrustedWorkspace,
-            Self::User => ActionScope::GlobalUser,
+            Self::ShellUser => ActionScope::ShellUser,
+            Self::GlobalUser => ActionScope::GlobalUser,
             Self::BuiltIn => ActionScope::BuiltinDisabled,
         }
     }
@@ -45,7 +48,8 @@ impl LayerIdentity {
             Self::Session { .. } => 0,
             Self::Capsule { .. } => 1,
             Self::TrustedWorkspace { .. } => 2,
-            Self::User => 3,
+            Self::ShellUser => 3,
+            Self::GlobalUser => 4,
             Self::BuiltIn => 5,
         }
     }
@@ -55,7 +59,8 @@ impl LayerIdentity {
             Self::Session { .. } => "Session",
             Self::Capsule { .. } => "Environment capsule",
             Self::TrustedWorkspace { .. } => "Trusted workspace",
-            Self::User => "User",
+            Self::ShellUser => "Shell user",
+            Self::GlobalUser => "Global user",
             Self::BuiltIn => "Built-in (disabled)",
         }
     }
@@ -112,6 +117,9 @@ pub enum IndexError {
         action_id: String,
     },
     InvalidLayerIdentity,
+    InvalidAction {
+        layer: &'static str,
+    },
     InvalidQuery,
 }
 
@@ -131,6 +139,9 @@ impl fmt::Display for IndexError {
             ),
             Self::InvalidLayerIdentity => {
                 formatter.write_str("Quick Action layer identity is incomplete")
+            }
+            Self::InvalidAction { layer } => {
+                write!(formatter, "{layer} layer contains an invalid Quick Action")
             }
             Self::InvalidQuery => formatter.write_str(
                 "Quick Action query is oversized or contains unsafe control text",
@@ -159,8 +170,15 @@ impl ActionIndex {
         let mut indexed = Vec::with_capacity(total);
         for layer in layers {
             validate_layer_identity(&layer.identity)?;
+            let layer_label = layer.identity.label();
+            let validated = validate_quick_actions(QuickActionDocument {
+                schema_version: QUICK_ACTION_SCHEMA_VERSION,
+                revision: layer.revision,
+                actions: layer.actions,
+            })
+            .map_err(|_| IndexError::InvalidAction { layer: layer_label })?;
             let mut ids = BTreeSet::new();
-            for action in layer.actions {
+            for action in validated.into_document().actions {
                 if !scope_matches_layer(action.scope, &layer.identity) {
                     return Err(IndexError::ScopeMismatch {
                         layer: layer.identity.label(),
@@ -196,7 +214,7 @@ impl ActionIndex {
         query: &str,
         context: &SearchContext,
     ) -> Result<Vec<ActionSearchHit>, IndexError> {
-        validate_query(query)?;
+        validate_search_query(query)?;
         let normalized = query.trim().to_lowercase();
         let mut winners: BTreeMap<&str, (&IndexedAction, usize)> = BTreeMap::new();
         for entry in self
@@ -270,7 +288,9 @@ fn validate_layer_identity(identity: &LayerIdentity) -> Result<(), IndexError> {
         LayerIdentity::TrustedWorkspace { identity } => {
             !identity.trim().is_empty() && identity.len() <= MAX_STRING_BYTES
         }
-        LayerIdentity::User | LayerIdentity::BuiltIn => true,
+        LayerIdentity::ShellUser | LayerIdentity::GlobalUser | LayerIdentity::BuiltIn => {
+            true
+        }
     };
     valid.then_some(()).ok_or(IndexError::InvalidLayerIdentity)
 }
@@ -280,9 +300,8 @@ fn scope_matches_layer(scope: ActionScope, layer: &LayerIdentity) -> bool {
         LayerIdentity::Session { .. } => scope == ActionScope::Session,
         LayerIdentity::Capsule { .. } => scope == ActionScope::Capsule,
         LayerIdentity::TrustedWorkspace { .. } => scope == ActionScope::TrustedWorkspace,
-        LayerIdentity::User => {
-            matches!(scope, ActionScope::ShellUser | ActionScope::GlobalUser)
-        }
+        LayerIdentity::ShellUser => scope == ActionScope::ShellUser,
+        LayerIdentity::GlobalUser => scope == ActionScope::GlobalUser,
         LayerIdentity::BuiltIn => scope == ActionScope::BuiltinDisabled,
     }
 }
@@ -301,12 +320,12 @@ fn active_for(entry: &IndexedAction, context: &SearchContext) -> bool {
             context.workspace_trusted
                 && context.workspace_identity.as_ref() == Some(identity)
         }
-        LayerIdentity::User => true,
+        LayerIdentity::ShellUser | LayerIdentity::GlobalUser => true,
         LayerIdentity::BuiltIn => false,
     }
 }
 
-fn validate_query(query: &str) -> Result<(), IndexError> {
+pub fn validate_search_query(query: &str) -> Result<(), IndexError> {
     if query.len() > MAX_QUERY_BYTES || query.chars().any(is_unsafe_runtime_character) {
         return Err(IndexError::InvalidQuery);
     }
@@ -453,18 +472,30 @@ pub fn expand_for_shell(
             for argument in arguments {
                 let value = match argument {
                     ArgumentToken::Literal { value } => value.as_str(),
-                    ArgumentToken::Placeholder { name } => bindings
-                        .get(name)
-                        .or_else(|| {
-                            action
-                                .placeholders
-                                .iter()
-                                .find(|placeholder| placeholder.name == *name)
-                                .and_then(|placeholder| placeholder.default.as_deref())
-                        })
-                        .ok_or_else(|| {
-                            ExpansionError::MissingPlaceholder(name.clone())
-                        })?,
+                    ArgumentToken::Placeholder { name } => {
+                        let placeholder = action
+                            .placeholders
+                            .iter()
+                            .find(|placeholder| placeholder.name == *name)
+                            .ok_or_else(|| {
+                                ExpansionError::MissingPlaceholder(name.clone())
+                            })?;
+                        match bindings.get(name) {
+                            Some(value) if placeholder.required && value.is_empty() => {
+                                return Err(ExpansionError::MissingPlaceholder(
+                                    name.clone(),
+                                ));
+                            }
+                            Some(value) => value,
+                            None => placeholder
+                                .default
+                                .as_deref()
+                                .or_else(|| (!placeholder.required).then_some(""))
+                                .ok_or_else(|| {
+                                    ExpansionError::MissingPlaceholder(name.clone())
+                                })?,
+                        }
+                    }
                 };
                 validate_insert_value(value)?;
                 tokens.push(quote_argument(shell, value)?);

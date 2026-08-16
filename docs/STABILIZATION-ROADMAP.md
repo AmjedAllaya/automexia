@@ -616,11 +616,11 @@ authority.
 
 | CP2.2 step | Audit before implementation | Implemented evidence | Remaining gate |
 |---|---|---|---|
-| Worker and publication | CP2.1 was never started | One process-owned, joined worker; immutable LKG snapshots; exact watch/reconciliation; bounded latest-only search; route/generation isolation and close cleanup | Hosted native lifecycle/resource runs |
-| Scope and search | No activated index | Capability-free deterministic session/capsule/trusted-workspace/shell/global/built-in merge, stable IDs, 4 KiB query and 128-result caps; untrusted workspace disabled | Future workspace trust requires its own authority |
+| Worker and publication | CP2.1 was never started | One process-owned, joined worker; immutable LKG snapshots; exact watch/reconciliation; per-route latest-only coalescing; 32-route hard ceiling; fair multi-pane publication; generation isolation and close cleanup | Hosted native lifecycle/resource runs |
+| Scope and search | No activated index | Capability-free deterministic session/capsule/trusted-workspace/shell-user/global-user/built-in merge with distinct precedence, activation-time revalidation, stable IDs, 4 KiB query and 128-result caps; untrusted workspace disabled | Future workspace trust requires its own authority |
 | Administration and transfer | Store API only | Versioned CLI list/show/doctor; dry-run put/import/remove/recover; apply plus CAS; digest-checked bounded no-follow import/export; conflict and machine-path consent | Native help/package smoke on pushed artifacts |
-| Review and insertion | No UI | Pane-neutral responsive search/placeholder/review; risk/source/conflict text; exact command preview; explicit Insert without Enter or copy; bracketed-paste insertion; exact/secret operations disabled | Controlled native screen-reader and shell-editor evidence |
-| Assurance | CP2.1 storage benchmark only | Five-shell quoting/Unicode/hostile cases, transfer tamper/scope cases, worker storms/shutdown, palette/400% layout, dry-run CLI, architecture/mutation gates, 1,024-action search and expansion Criterion targets | 30-day named-hardware latency/resource baseline |
+| Review and insertion | No UI | Pane-neutral responsive search/placeholder/review; visible risk/source/conflict and loading/empty/recovered/stale/unavailable states; exact command preview; secret/exact denial before placeholder collection; explicit Insert without Enter or copy; bracketed-paste insertion | Controlled native screen-reader and shell-editor evidence |
+| Assurance | CP2.1 storage benchmark only | Five-shell quoting/Unicode/hostile/optional-value cases, activation revalidation, transfer tamper/scope cases, per-route fairness/capacity/shutdown, palette health/400% layout, dry-run CLI, architecture/mutation gates, 1,024-action search and expansion Criterion targets | 30-day named-hardware latency/resource baseline |
 
 CP2.2 result: implemented locally with a partial release gate. It is not CP3
 alias projection and does not authorize D3 exact launch, provider work, secrets,
