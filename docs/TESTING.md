@@ -1056,8 +1056,9 @@ python tools/ci/check_command_productivity.py
 python tools/ci/test_command_productivity.py
 ```
 
-The focused Windows evidence is 25 unit cases and four public integration /
-property cases, including concurrent writers, rollback/tamper/corruption,
+The focused Windows evidence is 26 unit cases and four public integration /
+property cases, including a protected single-entry DACL assertion, concurrent
+writers, rollback/tamper/corruption,
 Unicode/spaced paths, 1,000 read-handle cycles, 64 writes, 24 watcher lifecycles,
 1,000 coalesced events, redaction, and periodic cross-window reconciliation.
 A native Ubuntu 24.04/WSL run passes 27 unit cases, the same four public tests,

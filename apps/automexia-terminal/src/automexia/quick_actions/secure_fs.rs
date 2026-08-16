@@ -339,3 +339,99 @@ fn apply_private_permissions(path: &Path, _directory: bool) -> Result<(), StoreE
 fn apply_private_permissions(_path: &Path, _directory: bool) -> Result<(), StoreError> {
     Err(StoreError::new(StoreErrorCode::PrivatePermissions))
 }
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+    use std::{ffi::OsStr, mem, os::windows::ffi::OsStrExt as _, ptr};
+    use windows_sys::Win32::{
+        Foundation::LocalFree,
+        Security::{
+            AclSizeInformation,
+            Authorization::{GetNamedSecurityInfoW, SE_FILE_OBJECT},
+            GetAclInformation, GetSecurityDescriptorControl, ACL_SIZE_INFORMATION,
+            DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, SE_DACL_PROTECTED,
+        },
+    };
+
+    struct LocalSecurityDescriptor(PSECURITY_DESCRIPTOR);
+
+    impl Drop for LocalSecurityDescriptor {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                // SAFETY: GetNamedSecurityInfoW allocates the descriptor with
+                // LocalAlloc and transfers ownership to this guard.
+                unsafe { LocalFree(self.0.cast()) };
+            }
+        }
+    }
+
+    fn dacl_shape(path: &Path) -> (u16, u32) {
+        let wide = OsStr::new(path)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>();
+        let mut acl = ptr::null_mut();
+        let mut descriptor = ptr::null_mut();
+        // SAFETY: the path is NUL-terminated; all requested output pointers are
+        // valid and the returned descriptor is released by the guard.
+        let result = unsafe {
+            GetNamedSecurityInfoW(
+                wide.as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                &mut acl,
+                ptr::null_mut(),
+                &mut descriptor,
+            )
+        };
+        assert_eq!(result, 0, "security descriptor query failed");
+        let descriptor = LocalSecurityDescriptor(descriptor);
+        assert!(!acl.is_null(), "private object must have an explicit DACL");
+
+        let mut control = 0;
+        let mut revision = 0;
+        // SAFETY: descriptor and scalar output pointers remain valid here.
+        assert_ne!(
+            unsafe {
+                GetSecurityDescriptorControl(descriptor.0, &mut control, &mut revision)
+            },
+            0,
+            "security descriptor control query failed"
+        );
+        let mut information = ACL_SIZE_INFORMATION::default();
+        // SAFETY: acl is owned by descriptor and information has the exact
+        // structure and size required for AclSizeInformation.
+        assert_ne!(
+            unsafe {
+                GetAclInformation(
+                    acl,
+                    (&mut information as *mut ACL_SIZE_INFORMATION).cast(),
+                    mem::size_of::<ACL_SIZE_INFORMATION>() as u32,
+                    AclSizeInformation,
+                )
+            },
+            0,
+            "DACL shape query failed"
+        );
+        (control, information.AceCount)
+    }
+
+    #[test]
+    fn private_directory_and_file_use_protected_single_entry_dacls() {
+        let temporary = tempfile::tempdir().unwrap();
+        let actions = temporary.path().join("actions");
+        ensure_private_directory(&actions).unwrap();
+        let source = actions.join("actions.toml");
+        fs::write(&source, b"schema_version = 1\nrevision = 0\nactions = []\n").unwrap();
+        apply_private_file_permissions(&source).unwrap();
+
+        for path in [&actions, &source] {
+            let (control, ace_count) = dacl_shape(path);
+            assert_ne!(control & SE_DACL_PROTECTED, 0);
+            assert_eq!(ace_count, 1, "private DACL must contain only the user ACE");
+        }
+    }
+}
