@@ -1,10 +1,12 @@
 # Command Productivity: Completion and Quick Actions
 
 Status: CP0 architecture baseline and CP1 shell-native completion activation
-accepted; CP2-CP6 capabilities remain planned for v0.5.x and later. CP1 ships
-managed native completion, not Automexia-rendered inline suggestions or a rich
-candidate popup. Quick Actions, generated aliases, provider-aware candidates,
-and the CP5 suggestion surface do not currently ship.
+accepted; the CP2.0 capability-free model and CP2.1 internal persistence
+foundation are implemented. CP2.2-CP6 user-facing capabilities remain planned
+for v0.5.x and later. CP1 ships managed native completion, not Automexia-
+rendered inline suggestions or a rich candidate popup. A user-facing Quick
+Action surface, generated aliases, provider-aware candidates, and the CP5
+suggestion surface do not currently ship.
 
 ## Purpose
 

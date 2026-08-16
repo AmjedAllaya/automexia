@@ -1064,8 +1064,9 @@ UI, clipboard, PTY, or exact launch authority was added. The library is not
 instantiated by startup or exposed in the Command Center yet; that remains
 CP2.2.
 
-Implemented evidence includes 25 focused unit cases, four public integration /
-property cases, 1,000 read-handle/storage cycles, 64 serialized write cycles,
+Implemented evidence includes 26 native Windows or 27 native Unix focused unit
+cases, four public integration/property cases, protected Windows DACL and Unix
+mode assertions, 1,000 read-handle/storage cycles, 64 serialized write cycles,
 24 watcher start/stop cycles, a 1,000-event coalescing storm, concurrent CAS,
 malformed/oversized/rollback/tamper recovery, Unicode and spaced roots, redaction,
 and an end-to-end periodic cross-window reconciliation. The exact five-source
@@ -1075,13 +1076,13 @@ reject unreviewed capability or source expansion.
 The controlled Criterion target is
 `cargo bench -p automexia-terminal --bench quick_action_store --locked -- --noplot`.
 It measures warm validated loads at 1, 256, and 1,024 actions and is owned by
-nightly compile plus controlled QA. A short 2026-08-16 local Windows run measured
-medians of 0.556 ms, 2.546 ms, and 9.970 ms respectively, keeping the hard ceiling
+nightly compile plus controlled QA. The final 2026-08-16 local Windows audit measured
+medians of 0.760 ms, 2.918 ms, and 10.089 ms respectively, keeping the hard ceiling
 below the provisional 25 ms warm-load budget. This is executable smoke evidence,
 not the required 30-day named-hardware baseline; hosted native Linux/macOS and
 controlled longitudinal evidence remain release gates.
 
-Exit at the implementation boundary: satisfied locally with 25 Windows and 27
+Exit at the implementation boundary: satisfied locally with 26 Windows and 27
 Ubuntu 24.04/WSL unit cases, four public integration/property cases on each host,
 and warnings-denied Clippy on both. The WSL run additionally proves Unix
 0700/0600, linked-parent rejection, directory sync, and inotify lifecycle.
