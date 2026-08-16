@@ -117,13 +117,15 @@ def validate_adapter_text(relative: str, text: str) -> None:
             raise Cp1Error(f"{relative} contains dynamic evaluation")
         required = ["sha256", "disabled"]
         if relative.endswith(".bash"):
-            required += ["complete -p", ". ", "$file", "__automexia_completion_directory_safe"]
+            required += ["complete -p", ". ", "$file", "__automexia_completion_directory_safe", "== /*"]
         elif relative.endswith(".zsh"):
-            required += ["_comps", "source", "$file", "__automexia_completion_directory_safe"]
+            required += ["_comps", "source", "$file", "__automexia_completion_directory_safe", "== /*"]
         elif relative.endswith(".fish"):
-            required += ["complete -c", "source", "$file", "__automexia_completion_directory_safe"]
+            required += ["complete -c", "source", "$file", "__automexia_completion_directory_safe", "^/"]
         elif relative.endswith(".ps1"):
             required += ["allow-override", "Get-FileHash", ". $file", "Test-AutomexiaCompletionDirectorySafe"]
+        if relative.endswith((".bash", ".zsh", ".fish")):
+            required += ["Application Support/io.github.AmjedAllaya.AutomexiaTerminal"]
         missing = [token for token in required if token.casefold() not in folded]
         if missing:
             raise Cp1Error(f"{relative} is missing adapter controls: {missing}")
@@ -139,9 +141,12 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
     xtask = bounded_text(root / "tools/xtask/src/completion.rs", MAX_SOURCE_BYTES, "CP1 provider manager")
     required = {
         "Duration::from_millis(750)", "MAX_PROVIDER_OUTPUT", "MAX_PROVIDER_STDERR",
-        "stdin(Stdio::null())", "kill()", "CommandWrap", "ProcessGroup::leader()",
+        "stdin(Stdio::null())", "start_kill()", "CommandWrap", "ProcessGroup::leader()",
         "JobObject", "bounded_process_terminates_descendants_holding_output_pipes",
+        "bounded_process_terminates_pipe_holders_after_leader_exit",
         "validate_refresh_executable", "native .exe/.com", "NamedTempFile", "symlink_metadata",
+        "inspect_artifact", "metadata-mismatch", "revalidate_executable", "MAX_METADATA_BYTES",
+        "Application Support", "completion configuration root must be absolute",
         "--allow-native-override", "native/provider-owned", "manual-consent-required",
     }
     missing = sorted(token for token in required if token not in xtask)
@@ -163,6 +168,28 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
         "tools/ci/test_measure_completion_adapter.py": {
             "test_p95_uses_nearest_rank", "test_exact_runner_rejects_unbounded_diagnostics",
         },
+        "shell-integration/install-unix.sh": {
+            "schema=3", "Application Support/io.github.AmjedAllaya.AutomexiaTerminal",
+            "config root must be absolute", "grep -Fqx", "bash_source_line",
+        },
+        "shell-integration/uninstall-unix.sh": {
+            "system_name", "io.github.AmjedAllaya.AutomexiaTerminal",
+            "All destructive targets are validated before the first mutation",
+            "assert_owned_file", "config root must be absolute",
+        },
+        "shell-integration/install-windows.ps1": {
+            "Test-MarkedBlockBody", "Get-AutomexiaPowerShellHook",
+            "Assert-AutomexiaRealDirectory", "schema=3",
+        },
+        "shell-integration/uninstall-windows.ps1": {
+            "Test-AutomexiaAbsoluteWindowsPath", "Assert-AutomexiaOwnedFile",
+            "Remove-AutomexiaOwnedFile",
+        },
+        "tools/ci/test_shell_sources.sh": {
+            "stale-owned-source-line", "relative-root", "config-link",
+            "Application Support/io.github.AmjedAllaya.AutomexiaTerminal",
+        },
+        "tools/ci/test_shell_integration.ps1": {"relative-config-root"},
     }
     for relative, tokens in wiring.items():
         text = bounded_text(root / relative, MAX_SOURCE_BYTES, "CP1 wiring")

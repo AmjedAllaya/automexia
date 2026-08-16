@@ -132,4 +132,9 @@ source "$root/shell-integration/completion/bash/automexia-completion.bash"
 ! complete -p kubectl >/dev/null 2>&1
 automexia_completion_health | grep -qF 'state=unsafe-path/native-fallback'
 
+unset AUTOMEXIA_COMPLETION_ADAPTER_BASH_LOADED
+export AUTOMEXIA_CONFIG_HOME=relative-config-root
+source "$root/shell-integration/completion/bash/automexia-completion.bash"
+automexia_completion_health | grep -qF 'state=unsafe-path/native-fallback'
+
 echo "PASS: Bash integration is prompt-safe, native-first, digest-verified, linked-parent-safe, disable-safe, idempotent, adapter-p95=${bash_adapter_p95}s, and readable icon-listing aware"

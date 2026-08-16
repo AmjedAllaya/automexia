@@ -986,18 +986,31 @@ bash tools/ci/test_shell_sources.sh
 The Rust suite covers provider/shell policy, argument parsing, fixed artifact
 names, invalid UTF-8/NUL/control output, stdout/stderr bounds, timeout kill,
 successful capture, cross-platform descendant/process-tree termination, linked
-destinations and managed directories, atomic
-replacement, stable SHA-256, and immutable limits. Shell suites cover native
+destinations and managed directories, early leader exit with inherited pipes,
+provider executable replacement, bounded doctor validation, absolute and
+platform-canonical config roots, atomic replacement, stable SHA-256, and
+immutable limits. Shell suites cover native
 definition precedence, digest tamper fallback, disable behavior, repeated
 sourcing, prompt/editor ownership, install/no-op/repair/uninstall, Unicode
-surrounding profile content, parent-link/reparse substitution, exact owned-file
-removal, and 20-sample post-warmup adapter p95 enforcement against the 50 ms
+surrounding profile content, stale owned-block repair, simulated canonical
+macOS installation, relative-root rejection, parent-link/reparse substitution,
+pre-mutation validation, exact owned-file removal, and 20-sample post-warmup
+adapter p95 enforcement against the 50 ms
 registration budget. Because non-interactive Fish does not update
 `CMD_DURATION` per sourced command, a bounded monotonic harness measures 20
-exact baseline/source process
-pairs after five warmups and computes p95 from paired registration overhead.
-Linux/macOS CI
+exact baseline/source process pairs after five warmups and computes p95 from
+paired registration overhead. Linux/macOS CI
 installs Bash/Zsh/Fish validators; Windows CI runs PowerShell/CMD integration.
+
+Windows profile-path coverage classifies the complete Microsoft Cloud Files tag
+family separately from name-surrogate tags, accepts a real OneDrive-backed
+profile directory when the host exposes one, exercises isolated profile
+install/no-op/repair/uninstall, and proves that a parent junction is rejected
+before the profile target is created or modified.
+The Windows host additionally validates a real user-distribution stdin smoke
+when WSL is available; source contracts require a bounded canonical Base64
+payload, redirected input/output/error, a fixed decoder command, and no payload
+bytes in process arguments.
 
 For a controlled real-generator smoke, use an isolated config root and one
 installed CLI, then inspect and remove the fixed artifact:
@@ -1010,6 +1023,9 @@ cargo xtask completion remove --provider kubernetes --shell bash
 
 `doctor` must not start providers. A refresh must finish within 750 ms or fail
 closed, retain no child process, and never run on startup/typing/render paths.
+Doctor reports an artifact healthy only when its bounded regular artifact,
+digest, metadata, provenance header, PowerShell consent marker, and managed
+directory chain all agree; missing and invalid states are separate.
 The authoritative runtime fixture is
 [`cp1-contract-v1.json`](../tests/fixtures/command-productivity/cp1-contract-v1.json).
 Native hosted macOS and clean-runner evidence remains required before a stable

@@ -2,11 +2,19 @@
 # `_comps` registrations remain authoritative.
 [[ ${AUTOMEXIA_COMPLETION_ADAPTER_ZSH_LOADED:-0} == 1 ]] && return 0
 typeset -gx AUTOMEXIA_COMPLETION_ADAPTER_ZSH_LOADED=1
-typeset -g __automexia_completion_root=${AUTOMEXIA_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/automexia}/generated/completion
+if [[ -n ${AUTOMEXIA_CONFIG_HOME:-} ]]; then
+  typeset -g __automexia_completion_config_root=$AUTOMEXIA_CONFIG_HOME
+elif [[ ${OSTYPE:-} == darwin* ]]; then
+  typeset -g __automexia_completion_config_root="$HOME/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal"
+else
+  typeset -g __automexia_completion_config_root=${XDG_CONFIG_HOME:-$HOME/.config}/automexia
+fi
+typeset -g __automexia_completion_root=$__automexia_completion_config_root/generated/completion
 typeset -g __automexia_completion_collisions=''
 typeset -g __automexia_completion_loaded=''
 
 __automexia_completion_directory_safe() {
+  [[ $__automexia_completion_config_root == /* ]] || return 1
   local generated_dir=${__automexia_completion_root:h}
   local config_dir=${generated_dir:h}
   local shell_dir="$__automexia_completion_root/zsh"

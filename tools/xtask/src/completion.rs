@@ -4,12 +4,12 @@ use process_wrap::std::CommandWrap;
 use process_wrap::std::JobObject;
 #[cfg(unix)]
 use process_wrap::std::ProcessGroup;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::env;
 use std::ffi::OsString;
 use std::fmt::Write as _;
-use std::fs::{self};
+use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
@@ -26,6 +26,10 @@ const MAX_PROVIDER_OUTPUT: usize = 1024 * 1024;
 const MAX_PROVIDER_STDERR: usize = 256 * 1024;
 const MAX_VERSION_OUTPUT: usize = 16 * 1024;
 const MAX_CONFIG_PATH_BYTES: usize = 4096;
+const MAX_ARTIFACT_BYTES: usize = MAX_PROVIDER_OUTPUT + 64 * 1024;
+const MAX_DIGEST_BYTES: usize = 128;
+const MAX_METADATA_BYTES: usize = 64 * 1024;
+const MAX_OVERRIDE_BYTES: usize = 64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CompletionShell {
@@ -242,22 +246,52 @@ struct Captured {
     elapsed: Duration,
 }
 
-#[derive(Serialize)]
-struct ArtifactMetadata<'a> {
+#[derive(Debug, Deserialize, Serialize)]
+struct ArtifactMetadata {
     schema_version: u8,
-    provider: &'a str,
-    command: &'a str,
-    shell: &'a str,
+    provider: String,
+    command: String,
+    shell: String,
     executable: String,
     executable_length: u64,
     executable_modified_unix_ms: u128,
     tool_version: String,
-    source_sha256: &'a str,
-    artifact_sha256: &'a str,
+    source_sha256: String,
+    artifact_sha256: String,
     generated_unix_ms: u128,
     deadline_ms: u128,
     output_limit_bytes: usize,
     native_override: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HostPlatform {
+    Windows,
+    MacOs,
+    Unix,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum ArtifactHealth {
+    Missing,
+    Healthy,
+    Invalid(String),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct ExecutableFingerprint {
+    length: u64,
+    modified_unix_ms: u128,
+    #[cfg(unix)]
+    device: u64,
+    #[cfg(unix)]
+    inode: u64,
+    #[cfg(windows)]
+    creation_time: u64,
+    #[cfg(windows)]
+    last_write_time: u64,
+    #[cfg(windows)]
+    attributes: u32,
 }
 
 #[derive(Debug)]
@@ -325,30 +359,46 @@ fn parse_operation(args: &[String]) -> TaskResult<ParsedOperation> {
 
 pub(super) fn report_health() -> TaskResult {
     let root = completion_root()?;
-    let disabled = is_regular_unlinked(&root.join(".disabled"));
     let mut report = String::new();
     let _ = writeln!(report, "completion root    {}", root.display());
-    let _ = writeln!(
-        report,
-        "completion state   {}",
-        if disabled {
+    let disabled_path = root.join(".disabled");
+    let state = match read_regular_bounded(&disabled_path, MAX_OVERRIDE_BYTES) {
+        Ok(Some(bytes)) if bytes == b"disabled-by-user-v1\n" => {
             "disabled/native fallback"
-        } else {
-            "enabled"
         }
-    );
+        Ok(Some(_)) | Err(_) => "unsafe-state/native fallback",
+        Ok(None) => match validate_managed_directory_chain(&root) {
+            Ok(()) => "enabled",
+            Err(_) => "unsafe-path/native fallback",
+        },
+    };
+    let _ = writeln!(report, "completion state   {}", state);
     for shell in CompletionShell::ALL {
-        let count = Provider::ALL
-            .iter()
-            .filter(|provider| {
-                is_regular_unlinked(&artifact_paths(&root, **provider, shell).0)
-            })
-            .count();
+        let mut healthy = 0;
+        let mut invalid = 0;
+        let mut missing = 0;
+        let mut issues = Vec::new();
+        for provider in Provider::ALL {
+            if provider.support(shell) != ProviderSupport::Generated {
+                continue;
+            }
+            match inspect_artifact(&root, provider, shell) {
+                ArtifactHealth::Healthy => healthy += 1,
+                ArtifactHealth::Missing => missing += 1,
+                ArtifactHealth::Invalid(reason) => {
+                    invalid += 1;
+                    issues.push(format!("{}/{}={reason}", shell.id(), provider.id()));
+                }
+            }
+        }
         let _ = writeln!(
             report,
-            "completion {:<8} cached providers={count}",
-            shell.id()
+            "completion {:<8} healthy={healthy} invalid={invalid} missing={missing}",
+            shell.id(),
         );
+        for issue in issues {
+            let _ = writeln!(report, "completion issue    {issue}");
+        }
     }
     for provider in Provider::ALL {
         let available = resolve_executable(provider.command()).is_ok();
@@ -374,12 +424,6 @@ pub(super) fn report_health() -> TaskResult {
         "completion safety  read-only health; provider commands run only through explicit `completion refresh`"
     );
     emit_output(&report)
-}
-
-fn is_regular_unlinked(path: &Path) -> bool {
-    fs::symlink_metadata(path)
-        .map(|metadata| metadata.file_type().is_file())
-        .unwrap_or(false)
 }
 
 fn emit_output(output: &str) -> TaskResult {
@@ -426,7 +470,10 @@ fn refresh(operation: ParsedOperation) -> TaskResult {
 
     let executable = resolve_executable(operation.provider.command())?;
     validate_refresh_executable(&executable)?;
-    let executable_metadata = fs::metadata(&executable)
+    let executable_handle = File::open(&executable)
+        .map_err(|error| format!("cannot open {}: {error}", executable.display()))?;
+    let executable_metadata = executable_handle
+        .metadata()
         .map_err(|error| format!("cannot stat {}: {error}", executable.display()))?;
     if !executable_metadata.is_file() {
         return Err(format!(
@@ -434,6 +481,8 @@ fn refresh(operation: ParsedOperation) -> TaskResult {
             executable.display()
         ));
     }
+    let executable_fingerprint =
+        ExecutableFingerprint::from_metadata(&executable_metadata);
     let version_args = operation
         .provider
         .version_args()
@@ -448,6 +497,7 @@ fn refresh(operation: ParsedOperation) -> TaskResult {
         MAX_PROVIDER_STDERR,
     )?;
     require_success("provider version", &version)?;
+    revalidate_executable(&executable, &executable_handle, &executable_fingerprint)?;
     let tool_version =
         summarize_version(bounded_utf8(&version.stdout, "provider version")?);
     if tool_version.is_empty() {
@@ -463,6 +513,7 @@ fn refresh(operation: ParsedOperation) -> TaskResult {
         MAX_PROVIDER_STDERR,
     )?;
     require_success("completion generator", &generated)?;
+    revalidate_executable(&executable, &executable_handle, &executable_fingerprint)?;
     validate_generated_output(&generated.stdout)?;
     let source_digest = sha256_hex(&generated.stdout);
     let root = completion_root()?;
@@ -483,15 +534,15 @@ fn refresh(operation: ParsedOperation) -> TaskResult {
     atomic_write(&digest_path, format!("{artifact_digest}\n").as_bytes())?;
     let metadata = ArtifactMetadata {
         schema_version: SCHEMA_VERSION,
-        provider: operation.provider.id(),
-        command: operation.provider.command(),
-        shell: operation.shell.id(),
+        provider: operation.provider.id().to_owned(),
+        command: operation.provider.command().to_owned(),
+        shell: operation.shell.id().to_owned(),
         executable: executable.to_string_lossy().into_owned(),
         executable_length: executable_metadata.len(),
         executable_modified_unix_ms: modified_unix_ms(&executable_metadata),
         tool_version,
-        source_sha256: &source_digest,
-        artifact_sha256: &artifact_digest,
+        source_sha256: source_digest,
+        artifact_sha256: artifact_digest,
         generated_unix_ms: unix_ms(SystemTime::now()),
         deadline_ms: PROVIDER_DEADLINE.as_millis(),
         output_limit_bytes: MAX_PROVIDER_OUTPUT,
@@ -520,6 +571,11 @@ fn refresh(operation: ParsedOperation) -> TaskResult {
 fn remove(operation: ParsedOperation) -> TaskResult {
     let root = completion_root()?;
     let paths = artifact_paths(&root, operation.provider, operation.shell);
+    let directory = paths
+        .0
+        .parent()
+        .ok_or_else(|| "completion artifact has no parent".to_owned())?;
+    validate_managed_directory_chain(directory)?;
     for path in [&paths.0, &paths.1, &paths.2, &paths.3] {
         remove_regular_file_if_present(path)?;
     }
@@ -549,24 +605,48 @@ fn set_enabled(enabled: bool) -> TaskResult {
 }
 
 fn completion_root() -> TaskResult<PathBuf> {
-    let root = if let Some(override_root) = env::var_os("AUTOMEXIA_CONFIG_HOME") {
-        PathBuf::from(override_root)
-    } else if cfg!(target_os = "windows") {
-        let local = env::var_os("LOCALAPPDATA")
-            .ok_or_else(|| "LOCALAPPDATA is unavailable".to_owned())?;
-        PathBuf::from(local).join("Automexia").join("Terminal")
+    let platform = if cfg!(target_os = "windows") {
+        HostPlatform::Windows
     } else if cfg!(target_os = "macos") {
-        let home = env::var_os("HOME").ok_or_else(|| "HOME is unavailable".to_owned())?;
-        PathBuf::from(home)
-            .join("Library")
-            .join("Application Support")
-            .join("io.github.AmjedAllaya.AutomexiaTerminal")
+        HostPlatform::MacOs
     } else {
-        let home = env::var_os("HOME").ok_or_else(|| "HOME is unavailable".to_owned())?;
-        env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(home).join(".config"))
-            .join("automexia")
+        HostPlatform::Unix
+    };
+    let root = select_config_root(
+        platform,
+        env::var_os("AUTOMEXIA_CONFIG_HOME").map(PathBuf::from),
+        env::var_os("LOCALAPPDATA").map(PathBuf::from),
+        env::var_os("HOME").map(PathBuf::from),
+        env::var_os("XDG_CONFIG_HOME").map(PathBuf::from),
+    )?;
+    Ok(root.join("generated").join("completion"))
+}
+
+fn select_config_root(
+    platform: HostPlatform,
+    override_root: Option<PathBuf>,
+    local_app_data: Option<PathBuf>,
+    home: Option<PathBuf>,
+    xdg_config_home: Option<PathBuf>,
+) -> TaskResult<PathBuf> {
+    let root = if let Some(override_root) = override_root {
+        override_root
+    } else {
+        match platform {
+            HostPlatform::Windows => local_app_data
+                .ok_or_else(|| "LOCALAPPDATA is unavailable".to_owned())?
+                .join("Automexia")
+                .join("Terminal"),
+            HostPlatform::MacOs => home
+                .ok_or_else(|| "HOME is unavailable".to_owned())?
+                .join("Library")
+                .join("Application Support")
+                .join("io.github.AmjedAllaya.AutomexiaTerminal"),
+            HostPlatform::Unix => xdg_config_home
+                .or_else(|| home.map(|path| path.join(".config")))
+                .ok_or_else(|| "HOME is unavailable".to_owned())?
+                .join("automexia"),
+        }
     };
     if root.as_os_str().as_encoded_bytes().len() > MAX_CONFIG_PATH_BYTES {
         return Err("completion configuration root exceeds 4096 bytes".into());
@@ -574,7 +654,10 @@ fn completion_root() -> TaskResult<PathBuf> {
     if root.as_os_str().is_empty() {
         return Err("completion configuration root is empty".into());
     }
-    Ok(root.join("generated").join("completion"))
+    if !root.is_absolute() {
+        return Err("completion configuration root must be absolute".into());
+    }
+    Ok(root)
 }
 
 fn artifact_paths(
@@ -590,6 +673,126 @@ fn artifact_paths(
     let native_override =
         artifact.with_extension(format!("{}.allow-override", shell.extension()));
     (artifact, digest, metadata, native_override)
+}
+
+fn inspect_artifact(
+    root: &Path,
+    provider: Provider,
+    shell: CompletionShell,
+) -> ArtifactHealth {
+    let (artifact_path, digest_path, metadata_path, override_path) =
+        artifact_paths(root, provider, shell);
+    let Some(directory) = artifact_path.parent() else {
+        return ArtifactHealth::Invalid("missing-parent".into());
+    };
+    if validate_managed_directory_chain(directory).is_err() {
+        return ArtifactHealth::Invalid("unsafe-path".into());
+    }
+
+    let artifact = match read_regular_bounded(&artifact_path, MAX_ARTIFACT_BYTES) {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => {
+            let orphaned = [&digest_path, &metadata_path, &override_path]
+                .iter()
+                .any(|path| fs::symlink_metadata(path).is_ok());
+            return if orphaned {
+                ArtifactHealth::Invalid("orphaned-sidecar".into())
+            } else {
+                ArtifactHealth::Missing
+            };
+        }
+        Err(_) => return ArtifactHealth::Invalid("artifact-bounds-or-type".into()),
+    };
+    let digest = match read_regular_bounded(&digest_path, MAX_DIGEST_BYTES) {
+        Ok(Some(bytes)) => bytes,
+        _ => return ArtifactHealth::Invalid("digest-missing-or-unsafe".into()),
+    };
+    let digest = match std::str::from_utf8(&digest) {
+        Ok(value) => value.trim(),
+        Err(_) => return ArtifactHealth::Invalid("digest-encoding".into()),
+    };
+    if digest.len() != 64
+        || !digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        || sha256_hex(&artifact) != digest
+    {
+        return ArtifactHealth::Invalid("digest-mismatch".into());
+    }
+
+    let metadata = match read_regular_bounded(&metadata_path, MAX_METADATA_BYTES) {
+        Ok(Some(bytes)) => bytes,
+        _ => return ArtifactHealth::Invalid("metadata-missing-or-unsafe".into()),
+    };
+    let metadata: ArtifactMetadata = match serde_json::from_slice(&metadata) {
+        Ok(metadata) => metadata,
+        Err(_) => return ArtifactHealth::Invalid("metadata-invalid".into()),
+    };
+    let expected_override = shell == CompletionShell::PowerShell;
+    if metadata.schema_version != SCHEMA_VERSION
+        || metadata.provider != provider.id()
+        || metadata.command != provider.command()
+        || metadata.shell != shell.id()
+        || metadata.artifact_sha256 != digest
+        || metadata.deadline_ms != PROVIDER_DEADLINE.as_millis()
+        || metadata.output_limit_bytes != MAX_PROVIDER_OUTPUT
+        || metadata.native_override != expected_override
+        || metadata.tool_version.is_empty()
+        || metadata.executable.is_empty()
+    {
+        return ArtifactHealth::Invalid("metadata-mismatch".into());
+    }
+    let source_digest = metadata.source_sha256.as_str();
+    if source_digest.len() != 64
+        || !source_digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        || !artifact
+            .starts_with(generated_header(provider, shell, source_digest).as_bytes())
+    {
+        return ArtifactHealth::Invalid("source-provenance-mismatch".into());
+    }
+
+    match read_regular_bounded(&override_path, MAX_OVERRIDE_BYTES) {
+        Ok(Some(bytes))
+            if expected_override && bytes == b"explicit-native-override-v1\n" => {}
+        Ok(None) if !expected_override => {}
+        _ => return ArtifactHealth::Invalid("native-override-mismatch".into()),
+    }
+    ArtifactHealth::Healthy
+}
+
+fn read_regular_bounded(path: &Path, limit: usize) -> TaskResult<Option<Vec<u8>>> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!("could not inspect {}: {error}", path.display()))
+        }
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(format!(
+            "managed state is not a regular file: {}",
+            path.display()
+        ));
+    }
+    if metadata.len() > limit as u64 {
+        return Err(format!(
+            "managed state exceeds {limit} bytes: {}",
+            path.display()
+        ));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    File::open(path)
+        .and_then(|file| file.take(limit as u64 + 1).read_to_end(&mut bytes))
+        .map_err(|error| format!("could not read {}: {error}", path.display()))?;
+    if bytes.len() > limit {
+        return Err(format!(
+            "managed state exceeds {limit} bytes: {}",
+            path.display()
+        ));
+    }
+    Ok(Some(bytes))
 }
 
 fn generated_header(provider: Provider, shell: CompletionShell, digest: &str) -> String {
@@ -702,7 +905,13 @@ fn run_bounded(
             return Err("provider output exceeded its bounded capture ceiling".into());
         }
         match child.try_wait() {
-            Ok(Some(status)) => break status,
+            Ok(Some(status)) => {
+                // A provider leader can exit while a helper still owns the inherited
+                // output pipes. Terminate the remaining process group/Job Object
+                // before joining readers so refresh cannot hang past its deadline.
+                let _ = child.start_kill();
+                break status;
+            }
             Ok(None) if started.elapsed() < deadline => thread::sleep(POLL_INTERVAL),
             Ok(None) => {
                 let _ = child.kill();
@@ -828,25 +1037,73 @@ fn validate_refresh_executable(executable: &Path) -> TaskResult {
     Ok(())
 }
 
-fn create_secure_directory(directory: &Path) -> TaskResult {
-    let mut managed = Vec::new();
-    let mut found_generated = false;
-    for ancestor in directory.ancestors() {
-        managed.push(ancestor);
-        if ancestor.file_name().is_some_and(|name| name == "generated") {
-            if let Some(config_root) = ancestor.parent() {
-                managed.push(config_root);
-            }
-            found_generated = true;
-            break;
+impl ExecutableFingerprint {
+    fn from_metadata(metadata: &fs::Metadata) -> Self {
+        #[cfg(unix)]
+        use std::os::unix::fs::MetadataExt as _;
+        #[cfg(windows)]
+        use std::os::windows::fs::MetadataExt as _;
+
+        Self {
+            length: metadata.len(),
+            modified_unix_ms: modified_unix_ms(metadata),
+            #[cfg(unix)]
+            device: metadata.dev(),
+            #[cfg(unix)]
+            inode: metadata.ino(),
+            #[cfg(windows)]
+            creation_time: metadata.creation_time(),
+            #[cfg(windows)]
+            last_write_time: metadata.last_write_time(),
+            #[cfg(windows)]
+            attributes: metadata.file_attributes(),
         }
     }
-    if !found_generated {
-        return Err("completion directory is outside the generated state root".into());
+}
+
+fn revalidate_executable(
+    executable: &Path,
+    held_file: &File,
+    expected: &ExecutableFingerprint,
+) -> TaskResult {
+    let held = held_file.metadata().map_err(|error| {
+        format!("cannot revalidate open {}: {error}", executable.display())
+    })?;
+    let current = fs::metadata(executable).map_err(|error| {
+        format!("cannot revalidate {}: {error}", executable.display())
+    })?;
+    if !current.is_file()
+        || ExecutableFingerprint::from_metadata(&held) != *expected
+        || ExecutableFingerprint::from_metadata(&current) != *expected
+    {
+        return Err(format!(
+            "provider executable identity changed during refresh: {}",
+            executable.display()
+        ));
     }
-    managed.reverse();
-    for candidate in &managed {
-        match fs::symlink_metadata(candidate) {
+    Ok(())
+}
+
+fn create_secure_directory(directory: &Path) -> TaskResult {
+    validate_managed_directory_chain(directory)?;
+    fs::create_dir_all(directory)
+        .map_err(|error| format!("could not create {}: {error}", directory.display()))?;
+    validate_managed_directory_chain(directory)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for managed in managed_directory_chain(directory)? {
+            fs::set_permissions(&managed, fs::Permissions::from_mode(0o700)).map_err(
+                |error| format!("could not restrict {}: {error}", managed.display()),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_managed_directory_chain(directory: &Path) -> TaskResult {
+    for candidate in managed_directory_chain(directory)? {
+        match fs::symlink_metadata(&candidate) {
             Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
                 return Err(format!(
                     "completion directory contains a linked or non-directory component: {}",
@@ -863,29 +1120,31 @@ fn create_secure_directory(directory: &Path) -> TaskResult {
             }
         }
     }
-    fs::create_dir_all(directory)
-        .map_err(|error| format!("could not create {}: {error}", directory.display()))?;
-    let metadata = fs::symlink_metadata(directory).map_err(|error| {
-        format!("could not validate {}: {error}", directory.display())
-    })?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err(format!(
-            "completion directory is not a real directory: {}",
-            directory.display()
-        ));
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(directory, fs::Permissions::from_mode(0o700)).map_err(
-            |error| format!("could not restrict {}: {error}", directory.display()),
-        )?;
-    }
     Ok(())
 }
 
+fn managed_directory_chain(directory: &Path) -> TaskResult<Vec<PathBuf>> {
+    let mut managed = Vec::new();
+    let mut found_generated = false;
+    for ancestor in directory.ancestors() {
+        managed.push(ancestor.to_path_buf());
+        if ancestor.file_name().is_some_and(|name| name == "generated") {
+            if let Some(config_root) = ancestor.parent() {
+                managed.push(config_root.to_path_buf());
+            }
+            found_generated = true;
+            break;
+        }
+    }
+    if !found_generated {
+        return Err("completion directory is outside the generated state root".into());
+    }
+    managed.reverse();
+    Ok(managed)
+}
+
 fn atomic_write(destination: &Path, bytes: &[u8]) -> TaskResult {
-    if bytes.len() > MAX_PROVIDER_OUTPUT + 64 * 1024 {
+    if bytes.len() > MAX_ARTIFACT_BYTES {
         return Err(
             "managed completion write exceeds the absolute artifact ceiling".into(),
         );
@@ -1153,6 +1412,23 @@ mod tests {
     }
 
     #[test]
+    fn bounded_process_terminates_pipe_holders_after_leader_exit() {
+        #[cfg(windows)]
+        let tree = "start /B ping -n 6 127.0.0.1 & exit /B 0";
+        #[cfg(unix)]
+        let tree = "(sleep 5) & exit 0";
+        let (executable, args) = shell_command(tree);
+        let started = Instant::now();
+        let captured =
+            run_bounded(&executable, &args, Duration::from_secs(2), 1024, 1024).unwrap();
+        assert!(captured.status.success());
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "a provider helper retained output pipes after its leader exited"
+        );
+    }
+
+    #[test]
     fn secure_directory_rejects_a_link_inside_managed_state() {
         let directory = tempfile::tempdir().unwrap();
         let config = directory.path().join("config");
@@ -1170,6 +1446,116 @@ mod tests {
             create_secure_directory(&generated.join("completion").join("bash")).is_err()
         );
         assert!(!outside.join("completion").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn secure_directory_restricts_every_managed_component() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let config = directory.path().join("config");
+        let shell = config.join("generated").join("completion").join("bash");
+        create_secure_directory(&shell).unwrap();
+        for managed in [
+            config,
+            directory.path().join("config/generated"),
+            directory.path().join("config/generated/completion"),
+            shell,
+        ] {
+            assert_eq!(
+                fs::metadata(managed).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+        }
+    }
+
+    #[test]
+    fn config_roots_are_absolute_and_macos_matches_the_product_contract() {
+        #[cfg(windows)]
+        let home = PathBuf::from(r"C:\Users\amjed");
+        #[cfg(not(windows))]
+        let home = PathBuf::from("/Users/amjed");
+        let mac =
+            select_config_root(HostPlatform::MacOs, None, None, Some(home.clone()), None)
+                .unwrap();
+        assert_eq!(
+            mac,
+            home.join("Library")
+                .join("Application Support")
+                .join("io.github.AmjedAllaya.AutomexiaTerminal")
+        );
+        assert!(select_config_root(
+            HostPlatform::Unix,
+            Some(PathBuf::from("relative-config")),
+            None,
+            Some(home),
+            None,
+        )
+        .unwrap_err()
+        .contains("must be absolute"));
+    }
+
+    #[test]
+    fn doctor_health_validates_digest_metadata_and_provenance() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory
+            .path()
+            .join("config")
+            .join("generated")
+            .join("completion");
+        let provider = Provider::Kubernetes;
+        let shell = CompletionShell::Bash;
+        let (artifact, digest, metadata_path, _) = artifact_paths(&root, provider, shell);
+        let source = b"complete -W managed kubectl\n";
+        let source_digest = sha256_hex(source);
+        let mut body = generated_header(provider, shell, &source_digest).into_bytes();
+        body.extend_from_slice(source);
+        let artifact_digest = sha256_hex(&body);
+        atomic_write(&artifact, &body).unwrap();
+        atomic_write(&digest, format!("{artifact_digest}\n").as_bytes()).unwrap();
+        let metadata = ArtifactMetadata {
+            schema_version: SCHEMA_VERSION,
+            provider: provider.id().into(),
+            command: provider.command().into(),
+            shell: shell.id().into(),
+            executable: "/fixture/kubectl".into(),
+            executable_length: 42,
+            executable_modified_unix_ms: 1,
+            tool_version: "v1.0.0".into(),
+            source_sha256: source_digest,
+            artifact_sha256: artifact_digest,
+            generated_unix_ms: 1,
+            deadline_ms: PROVIDER_DEADLINE.as_millis(),
+            output_limit_bytes: MAX_PROVIDER_OUTPUT,
+            native_override: false,
+        };
+        atomic_write(
+            &metadata_path,
+            &serde_json::to_vec_pretty(&metadata).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            inspect_artifact(&root, provider, shell),
+            ArtifactHealth::Healthy
+        );
+        fs::write(&artifact, b"tampered").unwrap();
+        assert_eq!(
+            inspect_artifact(&root, provider, shell),
+            ArtifactHealth::Invalid("digest-mismatch".into())
+        );
+    }
+
+    #[test]
+    fn executable_revalidation_detects_mutation() {
+        let directory = tempfile::tempdir().unwrap();
+        let executable = directory.path().join("provider");
+        fs::write(&executable, b"first").unwrap();
+        let held = File::open(&executable).unwrap();
+        let expected = ExecutableFingerprint::from_metadata(&held.metadata().unwrap());
+        revalidate_executable(&executable, &held, &expected).unwrap();
+        fs::write(&executable, b"changed-length").unwrap();
+        assert!(revalidate_executable(&executable, &held, &expected).is_err());
     }
 
     #[test]

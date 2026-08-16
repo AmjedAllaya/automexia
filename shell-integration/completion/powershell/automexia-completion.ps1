@@ -20,6 +20,7 @@ if (-not $global:AutomexiaCompletionAdapterLoaded) {
 
     function Test-AutomexiaCompletionDirectorySafe {
         if (-not $configRoot -or -not $script:AutomexiaCompletionRoot) { return $false }
+        if ($configRoot -notmatch '^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+)') { return $false }
         foreach ($candidate in @(
             $configRoot,
             (Join-Path $configRoot 'generated'),
