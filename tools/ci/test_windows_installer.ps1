@@ -2,6 +2,7 @@ param(
     [Parameter(Mandatory = $true)][string]$MsiPath,
     [Parameter(Mandatory = $true)][string]$PortableZipPath,
     [Parameter(Mandatory = $true)][string]$Version,
+    [Parameter(Mandatory = $true)][string]$ExpectedPublisher,
     [string]$PreviousMsiPath
 )
 
@@ -65,6 +66,12 @@ try {
     if (-not (Test-Path -LiteralPath $startMenuShortcut)) { throw 'Start menu shortcut is missing' }
     $signature = Get-AuthenticodeSignature -LiteralPath $binary
     if ($signature.Status -ne 'Valid') { throw "installed executable signature is $($signature.Status)" }
+    if ($signature.SignerCertificate.Subject -cne $ExpectedPublisher) {
+        throw "installed executable publisher is '$($signature.SignerCertificate.Subject)'"
+    }
+    if ($null -eq $signature.TimeStamperCertificate) {
+        throw 'installed executable has no trusted timestamp'
+    }
 
     Expand-Archive -LiteralPath $portableZip -DestinationPath $portableRoot
     $portableBinary = Get-ChildItem -LiteralPath $portableRoot -Recurse -File -Filter 'automexia.exe' |
@@ -77,6 +84,12 @@ try {
     $portableSignature = Get-AuthenticodeSignature -LiteralPath $portableBinary.FullName
     if ($portableSignature.Status -ne 'Valid') {
         throw "portable executable signature is $($portableSignature.Status)"
+    }
+    if ($portableSignature.SignerCertificate.Subject -cne $ExpectedPublisher) {
+        throw "portable executable publisher is '$($portableSignature.SignerCertificate.Subject)'"
+    }
+    if ($null -eq $portableSignature.TimeStamperCertificate) {
+        throw 'portable executable has no trusted timestamp'
     }
 }
 finally {
@@ -100,4 +113,4 @@ if ($createdRioRoot -and -not (Get-ChildItem -LiteralPath $rioRoot -Force)) {
 if ($createdDataRoot -and -not (Get-ChildItem -LiteralPath $automexiaDataRoot -Force)) {
     Remove-Item -LiteralPath $automexiaDataRoot -Force
 }
-Write-Host 'PASS: MSI silent install/upgrade/uninstall, executable and portable identity/signatures, PATH, shortcuts, user-data preservation, and Rio coexistence'
+Write-Host 'PASS: MSI silent install/upgrade/uninstall, timestamped publisher identity, portable identity/signature, PATH, shortcuts, user-data preservation, and Rio coexistence'

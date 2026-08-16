@@ -50,6 +50,8 @@ The documentation is organized by reader intent:
   performance, security, and release evidence.
 - [Releasing](../RELEASING.md) and [packaging](../packaging/README.md): artifact,
   signing, notarization, SBOM, provenance, and validation workflow.
+- [Release trust](RELEASE-TRUST.md): signatures, notarization, antivirus
+  scanning, user verification, and false-positive response.
 - [Branding](BRANDING.md): canonical assets, identity, and release blockers.
 - [Upstream policy](../UPSTREAM.md): how Rio changes are evaluated and ported.
 - [Documentation contribution guide](DOCUMENTATION.md): ownership, page types,

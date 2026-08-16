@@ -30,6 +30,9 @@ class PlatformCoverageTests(unittest.TestCase):
         PLATFORM.validate_macos_runtime_contract(
             PLATFORM.MACOS_BUILD_SCRIPT.read_text(encoding="utf-8")
         )
+        PLATFORM.validate_windows_release_trust_contract(
+            PLATFORM.WINDOWS_RELEASE_TRUST_SCRIPT.read_text(encoding="utf-8")
+        )
 
     def test_macos_frontend_cannot_restore_a_hard_framework_link(self) -> None:
         source = PLATFORM.MACOS_BUILD_SCRIPT.read_text(encoding="utf-8")
@@ -101,6 +104,76 @@ class PlatformCoverageTests(unittest.TestCase):
         self.assertIsNotNone(step)
         step["run"] = str(step["run"]).replace("notarytool submit", "notarytool omitted")
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "notarytool submit"):
+            PLATFORM.validate_release(altered)
+
+    def test_release_cannot_restore_global_write_permissions(self) -> None:
+        altered = copy.deepcopy(self.release)
+        altered["permissions"] = {"contents": "write", "id-token": "write"}
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "contents: read"):
+            PLATFORM.validate_release(altered)
+
+    def test_preflight_cannot_receive_raw_signing_secret(self) -> None:
+        altered = copy.deepcopy(self.release)
+        altered["jobs"]["preflight"]["env"]["APPLE_CERTIFICATE"] = (
+            "${{ secrets.APPLE_CERTIFICATE }}"
+        )
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "presence flag"):
+            PLATFORM.validate_release(altered)
+
+    def test_publish_cannot_download_unsigned_build_intermediates(self) -> None:
+        altered = copy.deepcopy(self.release)
+        publish = altered["jobs"]["publish"]
+        step = next(
+            step
+            for step in PLATFORM.steps(publish)
+            if step.get("with", {}).get("pattern") == "packages-*"
+        )
+        del step["with"]["pattern"]
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "unsigned build intermediates"):
+            PLATFORM.validate_release(altered)
+
+    def test_windows_release_cannot_drop_defender_gate(self) -> None:
+        altered = copy.deepcopy(self.release)
+        step = PLATFORM.step_for_command(
+            altered["jobs"]["hardware-smoke"], "test_release_trust_windows.ps1"
+        )
+        self.assertIsNotNone(step)
+        step["run"] = "echo skipped"
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "run Defender"):
+            PLATFORM.validate_release(altered)
+
+    def test_windows_release_scanner_cannot_drop_bounds_or_add_exclusions(self) -> None:
+        source = PLATFORM.WINDOWS_RELEASE_TRUST_SCRIPT.read_text(encoding="utf-8")
+        altered = source.replace("MaximumArchiveEntries", "UnboundedEntries")
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "MaximumArchiveEntries"):
+            PLATFORM.validate_windows_release_trust_contract(altered)
+
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "must not weaken"):
+            PLATFORM.validate_windows_release_trust_contract(
+                source + "\nAdd-MpPreference -ExclusionPath C:\\\n"
+            )
+
+    def test_release_cannot_drop_sbom_attestation(self) -> None:
+        altered = copy.deepcopy(self.release)
+        publish = altered["jobs"]["publish"]
+        publish["steps"] = [
+            step
+            for step in publish["steps"]
+            if "sbom-path" not in step.get("with", {})
+        ]
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "SBOM attestations"):
+            PLATFORM.validate_release(altered)
+
+    def test_macos_release_cannot_use_deep_signing(self) -> None:
+        altered = copy.deepcopy(self.release)
+        step = PLATFORM.step_for_command(
+            altered["jobs"]["package-macos"], "codesign --force --options runtime"
+        )
+        self.assertIsNotNone(step)
+        step["run"] = str(step["run"]).replace(
+            "--timestamp --sign", "--timestamp --deep --sign", 1
+        )
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "inside-out"):
             PLATFORM.validate_release(altered)
 
     def test_linux_release_cannot_drop_install_smoke(self) -> None:

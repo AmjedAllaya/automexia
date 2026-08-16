@@ -1483,17 +1483,32 @@ fn complete_ci_gate() -> TaskResult {
     run_python("tools/ci/validate_repository.py")?;
     validate_shell_integrations()?;
     with_verification_target(ci_in)?;
-    run(
-        "cargo",
-        &[
+    run_command(
+        cargo_deny_command(),
+        "cargo deny --locked --color never check --hide-inclusion-graph",
+    )
+}
+
+fn cargo_deny_command() -> Command {
+    let mut command = Command::new("cargo");
+    command
+        .args([
             "deny",
             "--locked",
             "--color",
             "never",
             "check",
             "--hide-inclusion-graph",
-        ],
-    )
+        ])
+        .current_dir(root());
+    #[cfg(target_os = "windows")]
+    if env::var_os("GIT_CONFIG_COUNT").is_none() {
+        command
+            .env("GIT_CONFIG_COUNT", "1")
+            .env("GIT_CONFIG_KEY_0", "http.sslBackend")
+            .env("GIT_CONFIG_VALUE_0", "schannel");
+    }
+    command
 }
 
 #[cfg(target_os = "windows")]
@@ -3728,6 +3743,31 @@ fn run_command(mut command: Command, label: &str) -> TaskResult {
     }
 }
 
+fn windows_signing_requirements(
+    backend: &str,
+) -> Result<&'static [&'static str], String> {
+    const AZURE_ARTIFACT_SIGNING: &[&str] = &[
+        "AZURE_CLIENT_ID",
+        "AZURE_TENANT_ID",
+        "AZURE_SUBSCRIPTION_ID",
+        "AZURE_ARTIFACT_SIGNING_ENDPOINT",
+        "AZURE_ARTIFACT_SIGNING_ACCOUNT",
+        "AZURE_ARTIFACT_SIGNING_PROFILE",
+    ];
+    const PFX: &[&str] = &[
+        "AUTOMEXIA_WINDOWS_CERTIFICATE",
+        "AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD",
+    ];
+
+    match backend {
+        "azure-artifact-signing" => Ok(AZURE_ARTIFACT_SIGNING),
+        "pfx" => Ok(PFX),
+        other => Err(format!(
+            "unsupported AUTOMEXIA_WINDOWS_SIGNING_BACKEND {other:?}; use azure-artifact-signing or pfx"
+        )),
+    }
+}
+
 fn release(version: &str) -> TaskResult {
     let identity = product_identity()?;
     require(
@@ -3758,8 +3798,8 @@ fn release(version: &str) -> TaskResult {
         "stable release is blocked until a private conduct contact is configured",
     )?;
     for variable in [
-        "AUTOMEXIA_WINDOWS_CERTIFICATE",
-        "AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD",
+        "AUTOMEXIA_WINDOWS_SIGNING_BACKEND",
+        "AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT",
         "APPLE_CERTIFICATE",
         "APPLE_CERTIFICATE_PASSWORD",
         "APPLE_ID",
@@ -3770,6 +3810,14 @@ fn release(version: &str) -> TaskResult {
         require(
             env::var_os(variable).is_some(),
             &format!("stable release credential {variable} is unavailable"),
+        )?;
+    }
+    let backend = env::var("AUTOMEXIA_WINDOWS_SIGNING_BACKEND")
+        .expect("the common release credential check requires the backend");
+    for variable in windows_signing_requirements(&backend)? {
+        require(
+            env::var_os(variable).is_some_and(|value| !value.is_empty()),
+            &format!("Windows signing setting {variable} is unavailable"),
         )?;
     }
     ci()?;
@@ -4119,6 +4167,49 @@ mod tests {
             "io.github.AmjedAllaya.AutomexiaTerminal"
         );
         assert_eq!(RIO_BASE_SHA.len(), 40);
+    }
+
+    #[test]
+    fn release_signing_backends_are_explicit_and_least_privilege() {
+        let azure = windows_signing_requirements("azure-artifact-signing").unwrap();
+        assert_eq!(azure.len(), 6);
+        assert!(azure.contains(&"AZURE_CLIENT_ID"));
+        assert!(azure.contains(&"AZURE_ARTIFACT_SIGNING_PROFILE"));
+        assert!(!azure.contains(&"AUTOMEXIA_WINDOWS_CERTIFICATE"));
+
+        let pfx = windows_signing_requirements("pfx").unwrap();
+        assert_eq!(pfx.len(), 2);
+        assert!(pfx.contains(&"AUTOMEXIA_WINDOWS_CERTIFICATE"));
+        assert!(pfx.contains(&"AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD"));
+        assert!(!pfx.contains(&"AZURE_CLIENT_ID"));
+
+        let error = windows_signing_requirements("unsigned").unwrap_err();
+        assert!(error.contains("unsupported AUTOMEXIA_WINDOWS_SIGNING_BACKEND"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn dependency_advisory_fetch_uses_the_windows_trust_store() {
+        if env::var_os("GIT_CONFIG_COUNT").is_some() {
+            return;
+        }
+        let command = cargo_deny_command();
+        let environment = command
+            .get_envs()
+            .filter_map(|(key, value)| value.map(|value| (key, value)))
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            environment.get(OsStr::new("GIT_CONFIG_COUNT")),
+            Some(&OsStr::new("1"))
+        );
+        assert_eq!(
+            environment.get(OsStr::new("GIT_CONFIG_KEY_0")),
+            Some(&OsStr::new("http.sslBackend"))
+        );
+        assert_eq!(
+            environment.get(OsStr::new("GIT_CONFIG_VALUE_0")),
+            Some(&OsStr::new("schannel"))
+        );
     }
 
     #[test]

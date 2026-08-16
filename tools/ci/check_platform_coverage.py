@@ -15,6 +15,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_ROOT = ROOT / ".github" / "workflows"
 MACOS_BUILD_SCRIPT = ROOT / "apps" / "automexia-terminal" / "build.rs"
+WINDOWS_RELEASE_TRUST_SCRIPT = ROOT / "tools" / "ci" / "test_release_trust_windows.ps1"
 
 # These are intentionally reported as external evidence, not represented as a
 # passing hosted check. GitHub does not provide BSD runners or interactive GPU,
@@ -56,6 +57,10 @@ def steps(value: dict[str, Any]) -> list[dict[str, Any]]:
     result = value.get("steps", [])
     require(isinstance(result, list), "workflow job steps must be a list")
     return [step for step in result if isinstance(step, dict)]
+
+
+def actions(value: dict[str, Any]) -> list[str]:
+    return [str(step.get("uses", "")) for step in steps(value) if step.get("uses")]
 
 
 def commands(value: dict[str, Any]) -> str:
@@ -221,6 +226,40 @@ def validate_nightly(workflow: dict[str, Any]) -> None:
 
 
 def validate_release(workflow: dict[str, Any]) -> None:
+    require(
+        workflow.get("permissions") == {"contents": "read"},
+        "release workflow must default to contents: read only",
+    )
+    for job_name, value in workflow["jobs"].items():
+        permissions = value.get("permissions", {})
+        if job_name != "publish":
+            require(
+                not isinstance(permissions, dict)
+                or permissions.get("contents") != "write",
+                f"release job {job_name} must not receive contents: write",
+            )
+
+    preflight = job(workflow, "preflight", "release.yml")
+    preflight_environment = preflight.get("env", {})
+    for name in (
+        "AUTOMEXIA_WINDOWS_CERTIFICATE",
+        "AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD",
+        "AZURE_CLIENT_ID",
+        "AZURE_TENANT_ID",
+        "AZURE_SUBSCRIPTION_ID",
+        "APPLE_CERTIFICATE",
+        "APPLE_CERTIFICATE_PASSWORD",
+        "APPLE_ID",
+        "APPLE_PASSWORD",
+        "APPLE_TEAM_ID",
+        "APPLE_SIGNING_IDENTITY",
+    ):
+        value = str(preflight_environment.get(name, ""))
+        require(
+            "configured" in value and "!= ''" in value,
+            f"release preflight must receive only a presence flag for {name}",
+        )
+
     build = job(workflow, "build", "release.yml")
     require(
         {
@@ -235,23 +274,127 @@ def validate_release(workflow: dict[str, Any]) -> None:
     )
 
     windows = job(workflow, "package-windows", "release.yml")
-    require("test_windows_installer.ps1" in commands(windows), "Windows release must run install/upgrade/uninstall smoke")
+    windows_commands = commands(windows)
+    windows_actions = actions(windows)
+    require("test_windows_installer.ps1" in windows_commands, "Windows release must run install/upgrade/uninstall smoke")
+    for fragment in (
+        "signtool verify /pa /all /v /tw",
+        "AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT",
+        "TimeStamperCertificate",
+    ):
+        require(fragment in windows_commands, f"Windows release trust is missing {fragment!r}")
+    require(
+        sum("azure/artifact-signing-action@" in value for value in windows_actions) == 2,
+        "Windows release must support Azure Artifact Signing for both EXE and MSI",
+    )
+    require(
+        any("azure/login@" in value for value in windows_actions),
+        "Windows Artifact Signing must use OIDC Azure login",
+    )
+    windows_uploads = [
+        step for step in steps(windows) if "actions/upload-artifact@" in str(step.get("uses", ""))
+    ]
+    require(
+        any(
+            "signed/*.msi" in str(step.get("with", {}).get("path", ""))
+            and "signed/*.zip" in str(step.get("with", {}).get("path", ""))
+            and "signed/*\n" not in str(step.get("with", {}).get("path", ""))
+            for step in windows_uploads
+        ),
+        "Windows release upload must contain only final MSI and ZIP packages",
+    )
 
     macos = job(workflow, "package-macos", "release.yml")
     macos_commands = commands(macos)
-    for fragment in ("codesign --verify", "notarytool submit", "stapler validate", "spctl --assess", "hdiutil attach"):
+    for fragment in (
+        "codesign --verify",
+        "codesign --force --options runtime --timestamp",
+        "notarytool submit",
+        "stapler validate",
+        "spctl --assess --type execute",
+        "hdiutil attach",
+        "com.apple.security.get-task-allow",
+    ):
         require(fragment in macos_commands, f"macOS release validation is missing {fragment!r}")
+    require(
+        "--timestamp --deep --sign" not in macos_commands,
+        "macOS release signing must be inside-out rather than codesign --deep",
+    )
 
     linux = job(workflow, "package-linux", "release.yml")
     linux_commands = commands(linux)
     for fragment in ("desktop-file-validate", "appstreamcli validate", "lintian", "test_linux_package.sh"):
         require(fragment in linux_commands, f"Linux release validation is missing {fragment!r}")
+    linux_uploads = [
+        step for step in steps(linux) if "actions/upload-artifact@" in str(step.get("uses", ""))
+    ]
+    require(
+        any(
+            all(
+                fragment in str(step.get("with", {}).get("path", ""))
+                for fragment in ("*.deb", "*.rpm", "*.tar.gz")
+            )
+            for step in linux_uploads
+        ),
+        "Linux release upload must contain only DEB, RPM, and portable archives",
+    )
+
+    hardware = job(workflow, "hardware-smoke", "release.yml")
+    hardware_dependencies = {str(item) for item in hardware.get("needs", [])}
+    require(
+        "package-windows" in hardware_dependencies,
+        "controlled release trust must consume the signed Windows packages",
+    )
+    require(
+        "defender" in {str(label).lower() for label in hardware.get("runs-on", [])},
+        "controlled release trust must use a Defender-enabled runner",
+    )
+    require(
+        "test_release_trust_windows.ps1" in commands(hardware),
+        "controlled release trust must validate signatures and run Defender",
+    )
 
     publish = job(workflow, "publish", "release.yml")
     dependencies = {str(item) for item in publish.get("needs", [])}
     require(
         {"package-windows", "package-macos", "package-linux", "hardware-smoke"}.issubset(dependencies),
         "publication must depend on every platform package and controlled hardware smoke",
+    )
+    publish_permissions = publish.get("permissions", {})
+    require(
+        isinstance(publish_permissions, dict)
+        and publish_permissions.get("contents") == "write"
+        and publish_permissions.get("id-token") == "write"
+        and publish_permissions.get("attestations") == "write",
+        "publish alone must receive release, OIDC, and attestation write permissions",
+    )
+    downloads = [
+        step for step in steps(publish) if "actions/download-artifact@" in str(step.get("uses", ""))
+    ]
+    require(
+        any(step.get("with", {}).get("pattern") == "packages-*" for step in downloads),
+        "publication must download only package-* artifacts, never unsigned build intermediates",
+    )
+    publish_commands = commands(publish)
+    for fragment in (
+        "release_trust.py",
+        "--verify-final",
+        "release-assets/*.msi",
+        "release-assets/*.tar.gz",
+    ):
+        require(fragment in publish_commands or fragment in str(publish), f"publication trust is missing {fragment!r}")
+    publish_actions = actions(publish)
+    require(
+        sum("anchore/sbom-action@" in value for value in publish_actions) == 2,
+        "final packages require SPDX and CycloneDX SBOM generation",
+    )
+    attest_steps = [
+        step for step in steps(publish) if "actions/attest@" in str(step.get("uses", ""))
+    ]
+    require(
+        len(attest_steps) == 2
+        and any("sbom-path" in step.get("with", {}) for step in attest_steps),
+        "final packages require separate provenance and SBOM attestations",
     )
 
 
@@ -268,11 +411,42 @@ def validate_macos_runtime_contract(source: str) -> None:
     )
 
 
+def validate_windows_release_trust_contract(source: str) -> None:
+    """Keep native archive, signature, scanner, and cleanup limits fail-closed."""
+    for fragment in (
+        "MaximumArchiveEntries",
+        "totalExpandedBytes",
+        "CompressedLength * 200",
+        "TimeStamperCertificate",
+        "1.3.6.1.5.5.7.3.3",
+        "MaximumSignatureAgeHours",
+        "automexia-portable-$portableIndex.exe",
+        "-DisableRemediation",
+        "Wait-Job -Job $scanJob -Timeout $ScanTimeoutSeconds",
+        "Stop-Job -Job $scanJob",
+        "Remove-Job -Job $scanJob",
+    ):
+        require(
+            fragment in source,
+            f"Windows release trust script is missing {fragment!r}",
+        )
+    lowered = source.casefold()
+    require(
+        "add-mppreference" not in lowered
+        and "set-mppreference" not in lowered
+        and "-exclusion" not in lowered,
+        "Windows release trust must not weaken Defender or create exclusions",
+    )
+
+
 def validate_repository_workflows() -> None:
     validate_ci(load_workflow("ci.yml"))
     validate_nightly(load_workflow("nightly.yml"))
     validate_release(load_workflow("release.yml"))
     validate_macos_runtime_contract(MACOS_BUILD_SCRIPT.read_text(encoding="utf-8"))
+    validate_windows_release_trust_contract(
+        WINDOWS_RELEASE_TRUST_SCRIPT.read_text(encoding="utf-8")
+    )
 
 
 def main() -> int:

@@ -116,6 +116,12 @@ referenced evidence path/job/heading loses ownership. A pull request that adds
 or materially changes a feature must update the ledger in the same change; the
 ledger does not replace the tests it references.
 
+On Windows, the contributor gate scopes RustSec's Git fetch to Git for
+Windows' `schannel` backend when the caller has not supplied an explicit
+`GIT_CONFIG_COUNT`. This preserves TLS verification while using the operating
+system certificate store (including managed enterprise roots); an explicit
+caller Git configuration remains authoritative.
+
 ## Phase 0 evidence gate
 
 Use the deeper evidence gate before a release or when changing renderer layout,
@@ -917,6 +923,37 @@ unavailable entitlement.
 Stable release requires WSL, real-GPU, clean-install, upgrade, uninstall,
 signature, notarization, URL handler, terminfo, and migration smoke tests on
 controlled hardware/self-hosted runners.
+
+### Release trust and antivirus evidence
+
+Release trust has a deterministic PR layer and a credentialed controlled layer.
+Run the PR layer with:
+
+```text
+python tools/ci/release_trust.py --check-policy
+python tools/ci/test_release_trust.py
+python tools/ci/check_platform_coverage.py
+python tools/ci/test_platform_coverage.py
+```
+
+The hostile mutation suites reject missing architectures, unexpected/raw
+artifacts, symlinks, empty or oversized packages, checksum tampering, policy
+drift, excessive workflow permissions, unsigned downloads, missing Defender
+evidence, pre-signing SBOMs, missing attestations, and unsafe macOS deep-signing.
+The manifest implementation hashes with a fixed-size buffer, writes atomically,
+and records digest throughput in `release-trust-benchmark.json`; that benchmark
+measures release IO only and adds no application runtime overhead.
+
+The controlled Windows gate requires signed final artifacts and the exact
+publisher, extracts portable ZIPs under traversal/expansion/entry-count limits,
+checks all MSI/executable signatures and timestamps, verifies current Defender
+state/intelligence, and runs `MpCmdRun` without remediation under a hard timeout.
+Its redacted evidence includes engine/intelligence versions, scanned bytes,
+signature summaries, and scan time. macOS release CI independently proves
+hardened runtime, absence of `get-task-allow`, accepted notarization, staple
+validation, and Gatekeeper acceptance. These native trust decisions cannot be
+claimed from local unsigned builds. The complete contract and false-positive
+response are in [Release trust](RELEASE-TRUST.md).
 
 ## OpenSSH inventory foundation
 

@@ -544,6 +544,17 @@ CI caches downloaded dependencies but not compiled target trees. The rationale,
 safety invariants, failure behavior, and tradeoffs are recorded in
 [ADR 0005](adr/0005-storage-bounded-build-workflow.md).
 
+Stable release trust begins only after platform packaging. Unsigned build
+intermediates are isolated workflow artifacts and cannot enter the flat public
+asset directory. Windows signs executables before MSI/ZIP assembly and verifies
+the exact publisher, timestamp, trust chain, and code-signing purpose before a
+controlled bounded Defender scan. macOS signs nested code inside-out with
+hardened runtime, notarizes and staples the DMG, and passes Gatekeeper. Linux
+retains native package validation. The final eleven-package allowlist is then
+stream-hashed, SBOM-scanned, attested, and checksum-verified as the exact bytes
+users receive. See [Release trust](RELEASE-TRUST.md) and
+[ADR 0016](adr/0016-final-artifact-release-trust.md).
+
 ## Capabilities
 
 First-party extensions declare explicit local-read capabilities. v0.4 supports

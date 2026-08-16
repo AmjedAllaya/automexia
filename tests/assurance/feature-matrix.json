@@ -267,22 +267,22 @@
       "title": "Windows, macOS, and Linux packages, identity, signing, SBOM, checksum, and provenance",
       "components": ["packaging", ".github/workflows"],
       "documentation": {
-        "guide": ["RELEASING.md"],
-        "reference": ["packaging/README.md"],
-        "explanation": ["docs/ARCHITECTURE.md#build-artifact-lifecycle"]
+        "guide": ["RELEASING.md", "docs/RELEASE-TRUST.md#user-verification"],
+        "reference": ["packaging/README.md", "docs/RELEASE-TRUST.md#release-artifact-contract"],
+        "explanation": ["docs/adr/0016-final-artifact-release-trust.md"]
       },
       "quality": {
         "accessibility": {"level": "external", "evidence": ["docs/ACCESSIBILITY.md", "packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml"]},
-        "correctness": {"level": "nightly", "evidence": ["tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh", ".github/workflows/release.yml"]},
-        "security": {"level": "controlled", "evidence": ["deny.toml", ".github/workflows/codeql.yml", ".github/workflows/release.yml"]},
-        "performance": {"level": "not_applicable", "evidence": [], "rationale": "Artifact construction speed is not a product runtime contract; package size and startup are tracked separately in release evidence."},
-        "resource_lifetime": {"level": "nightly", "evidence": ["tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh"]},
-        "storage_hygiene": {"level": "nightly", "evidence": ["tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh", "tools/xtask/src/main.rs"]},
-        "resilience": {"level": "controlled", "evidence": [".github/workflows/release.yml", "RELEASING.md"]},
+        "correctness": {"level": "nightly", "evidence": ["tools/ci/test_release_trust.py", "tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh", ".github/workflows/release.yml"]},
+        "security": {"level": "controlled", "evidence": ["tests/assurance/release-trust-policy-v1.json", "tools/ci/test_release_trust_windows.ps1", ".github/workflows/release.yml"]},
+        "performance": {"level": "controlled", "evidence": ["tools/ci/release_trust.py", ".github/workflows/release.yml", "docs/RELEASE-TRUST.md#tests-and-performance-evidence"]},
+        "resource_lifetime": {"level": "nightly", "evidence": ["tools/ci/test_release_trust.py", "tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh"]},
+        "storage_hygiene": {"level": "nightly", "evidence": ["tests/assurance/release-trust-policy-v1.json", "tools/ci/test_release_trust.py", "tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh", "tools/xtask/src/main.rs"]},
+        "resilience": {"level": "controlled", "evidence": ["tools/ci/test_release_trust.py", "tools/ci/test_release_trust_windows.ps1", ".github/workflows/release.yml", "RELEASING.md"]},
         "visual_quality": {"level": "pr", "evidence": ["assets/brand/ASSET-MANIFEST.toml", "tools/ci/validate_repository.py"]}
       },
       "platforms": {
-        "windows": {"level": "controlled", "evidence": [".github/workflows/release.yml#package-windows", "tools/ci/test_windows_installer.ps1"]},
+        "windows": {"level": "controlled", "evidence": [".github/workflows/release.yml#package-windows", "tools/ci/test_windows_installer.ps1", "tools/ci/test_release_trust_windows.ps1"]},
         "linux": {"level": "controlled", "evidence": [".github/workflows/release.yml#package-linux", "tools/ci/test_linux_package.sh"]},
         "macos": {"level": "controlled", "evidence": [".github/workflows/release.yml#package-macos"]}
       }

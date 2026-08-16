@@ -26,6 +26,7 @@ from check_command_productivity_cp1 import (
 from check_documentation_coverage import validate as validate_documentation_coverage
 from check_feature_assurance import load_and_validate as validate_feature_assurance
 from check_platform_coverage import validate_repository_workflows
+from release_trust import load_policy as validate_release_trust_policy
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -270,6 +271,9 @@ def validate() -> None:
 
     validate_repository_workflows()
     counts["platform workflow matrix"] = 1
+
+    validate_release_trust_policy()
+    counts["release trust policy"] = 1
 
     feature_counts = validate_feature_assurance()
     counts["feature assurance entries"] = feature_counts["features"]

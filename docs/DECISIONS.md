@@ -23,6 +23,7 @@ decision supersedes an old one instead of silently rewriting history.
 | [0013](adr/0013-renderer-independent-accessibility-model.md) | Renderer-independent accessibility model | Semantic accessibility state must not depend on pixels, GPU backends, OCR, or one window-system adapter. |
 | [0014](adr/0014-explicit-bounded-image-quick-look.md) | Bounded local image Quick Look | IO-free targeting plus bounded asynchronous decode gives direct preview without remote fetches, UI-thread IO, or unbounded cache/queue risk. |
 | [0015](adr/0015-shell-native-completion-and-typed-quick-actions.md) | Shell-native completion and typed Quick Actions | Preserve native editor semantics while providing one bounded persistent action model, opt-in alias projections, and brokered exact execution. |
+| [0016](adr/0016-final-artifact-release-trust.md) | Final-artifact release trust | Sign and scan only protected final artifacts, attest the bytes users install, and handle false positives through vendor review rather than security exclusions. |
 
 ## When an ADR is required
 
