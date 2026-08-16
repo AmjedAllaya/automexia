@@ -8,6 +8,16 @@ consistent DEB/RPM output. Repository automation owns portable archives,
 SHA-256 checksums, SBOM generation, signing orchestration, attestations, and
 validation.
 
+The public release directory is governed by
+`tests/assurance/release-trust-policy-v1.json` and
+`tools/ci/release_trust.py`. It accepts exactly the two-architecture Windows
+MSI/ZIP, universal macOS DMG, and two-architecture Linux DEB/RPM/tar matrix,
+with bounded sizes and no symlinks or raw executables. Final-package SBOMs,
+streamed checksums, provenance/SBOM attestations, manifest, digest benchmark,
+and controlled Windows trust evidence are added only after that package
+allowlist passes. See `docs/RELEASE-TRUST.md` for signing backends and operator
+verification.
+
 `cargo xtask package --check` validates metadata without mutating the tree.
 `cargo xtask package --target <triple>` builds the requested release binary.
 ARM64 Windows MSI packaging requires the .NET SDK; xtask restores the pinned

@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "product": "Automexia Terminal",
+  "repository": "AmjedAllaya/automexia-terminal",
+  "package_prefix": "automexia-terminal",
+  "chunk_bytes": 1048576,
+  "artifacts": [
+    {
+      "id": "windows-msi",
+      "suffix": ".msi",
+      "count": 2,
+      "max_bytes": 268435456,
+      "required_architecture_tokens": [["x86_64-pc-windows-msvc"], ["aarch64-pc-windows-msvc"]]
+    },
+    {
+      "id": "windows-portable",
+      "suffix": ".zip",
+      "count": 2,
+      "max_bytes": 268435456,
+      "required_architecture_tokens": [["x86_64-pc-windows-msvc"], ["aarch64-pc-windows-msvc"]]
+    },
+    {
+      "id": "macos-universal",
+      "suffix": ".dmg",
+      "count": 1,
+      "max_bytes": 335544320,
+      "required_architecture_tokens": [["universal"]]
+    },
+    {
+      "id": "linux-deb",
+      "suffix": ".deb",
+      "count": 2,
+      "max_bytes": 268435456,
+      "required_architecture_tokens": [["amd64", "x86_64"], ["arm64", "aarch64"]]
+    },
+    {
+      "id": "linux-rpm",
+      "suffix": ".rpm",
+      "count": 2,
+      "max_bytes": 268435456,
+      "required_architecture_tokens": [["x86_64", "amd64"], ["aarch64", "arm64"]]
+    },
+    {
+      "id": "linux-portable",
+      "suffix": ".tar.gz",
+      "count": 2,
+      "max_bytes": 268435456,
+      "required_architecture_tokens": [["x86_64-unknown-linux-gnu"], ["aarch64-unknown-linux-gnu"]]
+    }
+  ],
+  "forbidden_suffixes": [".exe", ".dll", ".pfx", ".p12", ".key", ".pem", ".pdb", ".dwp", ".dSYM"],
+  "final_metadata": [
+    {"name": "SHA256SUMS", "format": "sha256sums", "max_bytes": 65536},
+    {"name": "automexia-terminal.cdx.json", "format": "cyclonedx-json", "max_bytes": 67108864},
+    {"name": "automexia-terminal.spdx.json", "format": "spdx-json", "max_bytes": 67108864},
+    {"name": "release-manifest.json", "format": "release-manifest-v1", "max_bytes": 1048576},
+    {"name": "release-trust-benchmark.json", "format": "release-benchmark-v1", "max_bytes": 1048576},
+    {"name": "release-trust-windows.json", "format": "windows-trust-v1", "max_bytes": 1048576}
+  ]
+}
