@@ -128,3 +128,9 @@ structured SFTP, or third-party process authority. Those exclusions reduce
 attack surface and make the early release reviewable. They may be revisited only
 through explicit later ADRs and the gates in the
 [early DevOps and SSH delivery track](../STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track).
+
+The application-owned approval and user-journey consequences of this boundary
+are specified in [Connection Hub](../CONNECTION-HUB.md). Its renderer-neutral
+review/state model, externally owned credential recovery warning, and native
+evidence are required acceptance work; the document does not activate this
+proposed ADR or broaden its authority.
