@@ -1044,11 +1044,11 @@ renderer-neutral goldens remain mandatory but never substitute for controlled
 native evidence. Until those gates land in executable CI/QA ownership, the Hub
 must remain documented as planned/non-activated.
 
-## CP2.0 model and CP2.1 persistence-only Quick Action assurance
+## CP2.0-CP2.2 Quick Action assurance
 
-The capability-free schema/parser/validator remains in the exact three-file
-`automexia-devops/src/actions` boundary. CP2.1 adds exactly five reviewed app
-sources under `automexia::quick_actions` for bounded private no-follow storage,
+The capability-free schema/parser/validator and activation index remain in the
+exact four-file `automexia-devops/src/actions` boundary. CP2.1/CP2.2 use exactly
+eight reviewed app sources under `automexia::quick_actions` for bounded private no-follow storage,
 atomic primary/one-previous recovery, nonblocking cross-process lock/CAS,
 immutable fingerprinted last-known-good snapshots, exact watch filtering,
 bounded coalescing/periodic reconciliation, CRUD, and redacted errors. The
@@ -1056,18 +1056,22 @@ checker rejects process, network, environment discovery, clipboard, provider,
 shell-profile, UI, VT, PTY, async-runtime, execution, and unsafe code outside the
 reviewed platform permission adapter.
 
-CP2.1 is foundation code, not a shipped Command Center surface: startup does not
-instantiate it, no alias/projection is generated, and no command is inserted or
-executed. CP2.2 activation must add worker/UI/accessibility/shell-insertion and
-native-host evidence described in
-[DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md#verification-plan).
+CP2.2 starts one joined application worker and provides bounded layered search,
+responsive placeholder/risk/conflict review, dry-run administration and
+digest-checked transfer, plus explicit copy or bracketed-paste insertion without
+Enter. It adds no alias projection, provider work, trusted-workspace activation,
+secret expansion, or exact execution. Native-host and controlled accessibility
+evidence remains as described in [DevOps Quick Actions and persistent
+aliases](DEVOPS-ALIASES.md#verification-plan).
 
-Run the focused CP2.0/CP2.1 gate with:
+Run the focused CP2.0-CP2.2 gate with:
 
 ```powershell
 cargo test -p automexia-devops --all-targets --locked
 cargo test -p automexia-terminal --lib quick_actions --locked
 cargo test -p automexia-terminal --test quick_action_persistence --locked
+cargo test -p automexia-terminal --test quick_action_transfer --locked
+cargo test -p automexia-ui-model quick_actions --locked
 cargo clippy -p automexia-terminal --lib --locked -- -D warnings
 cargo bench -p automexia-devops --bench quick_actions --locked -- --noplot
 cargo bench -p automexia-terminal --bench quick_action_store --locked -- --noplot
@@ -1075,7 +1079,13 @@ python tools/ci/check_devops_alias_spec.py
 python tools/ci/test_devops_alias_spec.py
 python tools/ci/check_command_productivity.py
 python tools/ci/test_command_productivity.py
+python tools/ci/check_command_productivity_cp22.py
+python tools/ci/test_command_productivity_cp22.py
 ```
+
+The `automexia-devops` target owns both `quick_action_search_1024` and
+`quick_action_expand_and_quote`; controlled QA executes the same target so these
+measurements cannot become orphaned compile-only benchmarks.
 
 The focused Windows evidence is 26 unit cases and four public integration /
 property cases, including a protected single-entry DACL assertion, concurrent

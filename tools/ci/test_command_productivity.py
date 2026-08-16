@@ -57,7 +57,8 @@ class CommandProductivityPolicyTests(unittest.TestCase):
         self.assertEqual(counts["providers"], 11)
         self.assertEqual(counts["threats"], 16)
         self.assertGreater(counts["runtime_files"], 100)
-        self.assertEqual(counts["cp2_pure_action_files"], 3)
+        self.assertEqual(counts["cp2_pure_action_files"], 4)
+        self.assertEqual(counts["cp2_persistence_files"], 8)
 
     def test_versioned_hostile_mutation_corpus_is_rejected(self) -> None:
         self.assertEqual(set(self.hostile), {"schema", "phase", "cases"})

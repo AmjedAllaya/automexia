@@ -22,6 +22,105 @@ pub struct Cli {
 pub enum CliCommand {
     /// Inspect, install, or remove persistent shell integration.
     ShellIntegration(ShellIntegrationCommand),
+    /// Search and manage typed Quick Actions without opening a window.
+    Actions(ActionsCommand),
+}
+
+#[derive(Args, Debug)]
+pub struct ActionsCommand {
+    #[clap(subcommand)]
+    pub action: ActionsAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ActionsAction {
+    /// List action metadata. Command templates are intentionally omitted.
+    List {
+        /// Emit stable JSON for scripts and documentation tooling.
+        #[clap(long)]
+        json: bool,
+    },
+    /// Show one action, including its reviewed command template.
+    Show {
+        /// Stable Quick Action identifier.
+        id: String,
+        /// Emit stable JSON instead of TOML.
+        #[clap(long)]
+        json: bool,
+    },
+    /// Validate one action document, then create or update it explicitly.
+    Put {
+        /// TOML document containing exactly one Quick Action.
+        #[clap(value_hint = ValueHint::FilePath)]
+        input: PathBuf,
+        /// Apply the reviewed change. Without this flag no state changes.
+        #[clap(long, requires = "expected_revision")]
+        apply: bool,
+        /// Required compare-and-swap revision when applying.
+        #[clap(long, requires = "apply")]
+        expected_revision: Option<u64>,
+        /// Replace an existing action with the same stable ID.
+        #[clap(long, requires = "apply")]
+        replace: bool,
+    },
+    /// Preview or apply a bounded portable action transfer.
+    Import {
+        #[clap(value_hint = ValueHint::FilePath)]
+        input: PathBuf,
+        /// Apply the reviewed import. Without this flag no state changes.
+        #[clap(long, requires = "expected_revision")]
+        apply: bool,
+        /// Required compare-and-swap revision when applying.
+        #[clap(long, requires = "apply")]
+        expected_revision: Option<u64>,
+        /// Replace reviewed conflicting IDs instead of rejecting the import.
+        #[clap(long, requires = "apply")]
+        replace_conflicts: bool,
+        /// Permit explicitly reviewed machine-specific working directories.
+        #[clap(long)]
+        allow_machine_paths: bool,
+        /// Emit stable JSON.
+        #[clap(long)]
+        json: bool,
+    },
+    /// Export a portable, checksummed transfer document.
+    Export {
+        #[clap(value_hint = ValueHint::FilePath)]
+        output: PathBuf,
+        /// Replace an existing regular destination file.
+        #[clap(long)]
+        overwrite: bool,
+        /// Include explicitly reviewed machine-specific working directories.
+        #[clap(long)]
+        include_machine_paths: bool,
+        /// Emit stable JSON summary.
+        #[clap(long)]
+        json: bool,
+    },
+    /// Preview or remove one action by stable ID.
+    Remove {
+        id: String,
+        /// Apply the reviewed removal. Without this flag no state changes.
+        #[clap(long, requires = "expected_revision")]
+        apply: bool,
+        /// Required compare-and-swap revision when applying.
+        #[clap(long, requires = "apply")]
+        expected_revision: Option<u64>,
+    },
+    /// Preview or restore the private previous generation.
+    Recover {
+        /// Revision of the previous generation selected for recovery.
+        previous_revision: u64,
+        /// Apply recovery. Without this flag no state changes.
+        #[clap(long)]
+        apply: bool,
+    },
+    /// Report store health, revision, action count, and redacted status.
+    Doctor {
+        /// Emit stable JSON.
+        #[clap(long)]
+        json: bool,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -86,6 +185,53 @@ mod tests {
 
         let normal = Cli::try_parse_from(["automexia"]).unwrap();
         assert!(normal.command.is_none());
+    }
+
+    #[test]
+    fn quick_action_mutations_are_dry_run_unless_apply_is_explicit() {
+        let preview = Cli::try_parse_from([
+            "automexia",
+            "actions",
+            "import",
+            "portable-actions.toml",
+        ])
+        .unwrap();
+        assert!(matches!(
+            preview.command,
+            Some(CliCommand::Actions(ActionsCommand {
+                action: ActionsAction::Import { apply: false, .. }
+            }))
+        ));
+
+        assert!(Cli::try_parse_from([
+            "automexia",
+            "actions",
+            "import",
+            "portable-actions.toml",
+            "--apply",
+        ])
+        .is_err());
+
+        let apply = Cli::try_parse_from([
+            "automexia",
+            "actions",
+            "remove",
+            "git.status",
+            "--apply",
+            "--expected-revision",
+            "7",
+        ])
+        .unwrap();
+        assert!(matches!(
+            apply.command,
+            Some(CliCommand::Actions(ActionsCommand {
+                action: ActionsAction::Remove {
+                    apply: true,
+                    expected_revision: Some(7),
+                    ..
+                }
+            }))
+        ));
     }
 }
 

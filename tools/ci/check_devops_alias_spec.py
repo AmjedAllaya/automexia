@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the planned CP2/CP3 persistent DevOps alias specification."""
+"""Validate implemented CP2 foundations and the planned CP3 alias specification."""
 
 from __future__ import annotations
 
@@ -98,6 +98,7 @@ MODEL_FILES = [
     "automexia-devops/src/actions/mod.rs",
     "automexia-devops/src/actions/model.rs",
     "automexia-devops/src/actions/validation.rs",
+    "automexia-devops/src/actions/activation.rs",
 ]
 PERSISTENCE_FILES = [
     "apps/automexia-terminal/src/automexia/quick_actions/mod.rs",
@@ -105,6 +106,9 @@ PERSISTENCE_FILES = [
     "apps/automexia-terminal/src/automexia/quick_actions/secure_fs.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/service.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/store.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/cli.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/transfer.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/worker.rs",
 ]
 HOSTILE_FIXTURE = "tests/fixtures/command-productivity/cp2-hostile-actions-v1.json"
 HOSTILE_CASES = {
@@ -359,10 +363,10 @@ def validate_contract(document: Any) -> dict[str, int]:
         1,
         "CP2-CP3-SPEC",
         "planned",
-        "CP2.1-persistence-library",
+        "CP2.2-action-search-review-insert-copy",
     ):
         raise AliasSpecError(
-            "CP2/CP3 must remain planned schema 1 with only CP2.0 model and CP2.1 persistence-library activation"
+            "CP2/CP3 must remain planned schema 1 with CP2.2 reviewed insert/copy activation"
         )
     checks = (
         ("authorities", AUTHORITIES, "authority map"),
@@ -385,7 +389,7 @@ def validate_contract(document: Any) -> dict[str, int]:
         ("verification_domains", VERIFICATION_DOMAINS, "verification matrix"),
         ("model_files", MODEL_FILES, "pure model source boundary"),
         ("hostile_fixture", HOSTILE_FIXTURE, "hostile fixture authority"),
-        ("activation_files", PERSISTENCE_FILES, "CP2.1 persistence source boundary"),
+        ("activation_files", PERSISTENCE_FILES, "CP2.2 application source boundary"),
     )
     for key, expected, label in checks:
         if document[key] != expected:
@@ -406,6 +410,7 @@ def validate_model_evidence(root: Path) -> dict[str, int]:
         MODEL_FILES[0]: {"parse_quick_actions", "ValidatedQuickActions", "MAX_SOURCE_BYTES"},
         MODEL_FILES[1]: {"QuickActionDocument", "ActionTemplate", "AliasProjection"},
         MODEL_FILES[2]: {"validate_document", "MAX_ACTIONS", "MutatingAliasNotAcknowledged"},
+        MODEL_FILES[3]: {"ActionIndex", "expand_for_shell", "LayerIdentity"},
     }
     for relative, tokens in required_tokens.items():
         text = bounded_text(root / relative, MAX_POLICY_BYTES, "CP2.0 pure model")
@@ -446,13 +451,16 @@ def validate_model_evidence(root: Path) -> dict[str, int]:
         PERSISTENCE_FILES[2]: {"read_bounded_regular", "O_NOFOLLOW", "PROTECTED_DACL_SECURITY_INFORMATION"},
         PERSISTENCE_FILES[3]: {"RetainedLastKnownGood", "StaleRevision", "Arc<QuickActionSnapshot>"},
         PERSISTENCE_FILES[4]: {"actions.previous.toml", "try_lock", "MAX_CACHED_ACTION_BYTES", "recover_previous"},
+        PERSISTENCE_FILES[5]: {"ActionsAction", "expected_revision", "read_single_action"},
+        PERSISTENCE_FILES[6]: {"source_digest", "apply_import", "preview_import"},
+        PERSISTENCE_FILES[7]: {"SEARCH_COALESCE_INTERVAL", "forget_route", "handle.join()"},
     }
     for relative, tokens in required_persistence_tokens.items():
-        text = bounded_text(root / relative, MAX_POLICY_BYTES, "CP2.1 persistence source")
+        text = bounded_text(root / relative, MAX_POLICY_BYTES, "CP2.2 application source")
         missing = sorted(token for token in tokens if token not in text)
         if missing:
             raise AliasSpecError(
-                f"{relative} is missing CP2.1 persistence tokens: {missing}"
+                f"{relative} is missing CP2.2 application tokens: {missing}"
             )
     return {"hostile_cases": len(actual)}
 
@@ -528,7 +536,7 @@ def main() -> int:
         )
         return 1
     print(
-        "PASS: planned CP2/CP3 alias specification is complete and non-activated "
+        "PASS: CP2.0-CP2.2 foundations and planned non-activated CP3 aliases are contract-complete "
         f"(shells={counts['shells']}, providers={counts['providers']}, "
         f"scopes={counts['scopes']}, assurance={counts['verification_domains']}, "
         f"ux={counts['ux_invariants']}, model_files={counts['model_files']}, "

@@ -3,6 +3,13 @@
 - Status: Accepted for v0.5
 - Date: 2026-08-15
 
+Implementation note (2026-08-16): CP2.2 now implements the bounded local
+search, placeholder/risk/conflict review, dry-run administration/import/export,
+and explicit insert/copy slice of this decision. Exact launch, secret expansion,
+trusted-workspace activation, aliases, and provider-aware candidates remain
+outside that authority. Stable publication still requires hosted native and
+controlled accessibility/performance evidence.
+
 ## Context
 
 Automexia needs command completion and persistent DevOps shortcuts without

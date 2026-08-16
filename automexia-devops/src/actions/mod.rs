@@ -4,11 +4,17 @@
 //! document; persistence, shell projection, execution, UI, and provider work
 //! belong to later reviewed phases.
 
+mod activation;
 mod model;
 mod validation;
 
 use std::fmt;
 
+pub use activation::{
+    expand_for_shell, ActionConflict, ActionIndex, ActionLayer, ActionSearchHit,
+    ExpandedAction, ExpansionError, IndexError, LayerIdentity, PlaceholderBindings,
+    SearchContext, MAX_EXPANDED_COMMAND_BYTES, MAX_QUERY_BYTES, MAX_SEARCH_RESULTS,
+};
 pub use model::{
     ActionProvenance, ActionScope, ActionTemplate, AliasArgumentPolicy, AliasProjection,
     AliasProjectionMode, ArgumentToken, CompletionMode, ExecutionMode, OverridePolicy,

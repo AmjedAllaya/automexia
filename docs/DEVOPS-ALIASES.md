@@ -1,9 +1,13 @@
 # DevOps Quick Actions and persistent aliases
 
 Status: planned for CP2 (persistent typed Quick Actions) and CP3 (native-shell
-alias projections and first-party packs). CP1 native completion is shipped;
-the action store, predefined packs, and generated aliases described here are
-not shipped in v0.4.
+alias projections and first-party packs). CP1 is shipped and CP2.0-CP2.2 are
+implemented locally through reviewed insert/copy. Predefined packs, generated
+aliases, trusted workspace actions, secret expansion, and exact launch are not
+shipped in v0.4. Stable CP2.2 publication still requires hosted native and
+controlled evidence.
+
+Generated aliases and first-party packs are not shipped in v0.4.
 
 This document is the implementation authority for predefined DevOps shortcuts
 and user-created alias persistence. The broader
@@ -1059,10 +1063,10 @@ The application-owned `automexia::quick_actions` boundary now provides:
 - create, update, delete, replace, and explicit previous-generation recovery,
   with fixed redacted public error codes.
 
-No provider process, alias generation, workspace activation, shell projection,
-UI, clipboard, PTY, or exact launch authority was added. The library is not
-instantiated by startup or exposed in the Command Center yet; that remains
-CP2.2.
+CP2.1 itself added no provider process, alias generation, workspace activation,
+shell projection, UI, copy-buffer, PTY, or exact-launch authority. CP2.2 now
+instantiates it through a bounded application worker while preserving those
+denials.
 
 Implemented evidence includes 26 native Windows or 27 native Unix focused unit
 cases, four public integration/property cases, protected Windows DACL and Unix
@@ -1087,17 +1091,65 @@ Ubuntu 24.04/WSL unit cases, four public integration/property cases on each host
 and warnings-denied Clippy on both. The WSL run additionally proves Unix
 0700/0600, linked-parent rejection, directory sync, and inotify lifecycle.
 Hosted native Windows, Linux, and macOS CI must still pass on the pushed commit
-before a cross-platform release claim. CP2.2 is the next phase.
+before a cross-platform release claim. CP2.2 local activation adds its own
+separate contract and does not convert that external evidence into a pass.
 
 ### CP2.2 - action search, editor, and insert/copy
 
-- Build renderer-neutral list/editor/review, scope merge, placeholders, risk,
-  local search, explicit import/export, and shell-native insert without Enter.
-- Workspace source remains disabled until exact trust; secret expansion is not
-  stored/copied.
+**Implemented locally; stable release evidence partial.**
 
-Exit: UI/accessibility/responsive, Unicode/quoting/insertion, privacy,
-performance, and native shell evidence passes.
+- A single process-owned worker loads the private store, retains immutable
+  last-known-good state, coalesces obsolete queries, isolates routes by
+  generation, wakes only the requesting window, and joins on shutdown.
+- The pure index merges session, capsule, trusted-workspace, shell-user,
+  global-user, and disabled built-in layers deterministically. Only
+  global-user and shell-user are persisted. Trusted-workspace activation stays
+  disabled until exact trust authority exists.
+- The Command Center exposes a renderer-neutral, keyboard-complete responsive
+  list, placeholder editor, risk/source/conflict review, exact expanded command,
+  and explicit **Insert without Enter** or copy choices. Destructive actions
+  require a second confirmation. Exact launch and secret-reference expansion
+  fail closed.
+- PowerShell, Bash, Zsh, Fish, and CMD values use separate conservative quoting.
+  Controls, bidi overrides, malformed bindings, oversized output, and CMD
+  expansion metacharacters are rejected. Insert goes through bracketed paste so
+  PSReadLine, Readline, ZLE, and Fish keep ownership of the editable command.
+- Versioned import/export is bounded, digest checked, no-follow, dry-run first,
+  CAS protected, and conflict explicit. Session/built-in actions and fixed
+  machine paths are excluded unless the operation explicitly permits the latter.
+
+Administration commands:
+
+```text
+automexia actions list [--json]
+automexia actions show ACTION_ID [--json]
+automexia actions put ONE_ACTION.toml
+automexia actions put ONE_ACTION.toml --apply --expected-revision N [--replace]
+automexia actions import EXPORT.toml
+automexia actions import EXPORT.toml --apply --expected-revision N [--replace-conflicts] [--allow-machine-paths]
+automexia actions export DESTINATION [--overwrite] [--include-machine-paths]
+automexia actions remove ACTION_ID [--apply --expected-revision N]
+automexia actions recover PREVIOUS_REVISION [--apply]
+automexia actions doctor [--json]
+```
+
+`put`, `import`, `remove`, and `recover` are non-mutating unless `--apply` is
+present; apply operations require the displayed revision. `list` omits command
+templates, while `show` is the explicit content-reveal operation.
+
+Automated exit evidence covers scope order/shadowing, shell mismatch, stable
+search, Unicode and quoting, hostile controls, disabled exact/secrets/workspace,
+transfer tampering, native file security, worker storms/shutdown, route cleanup,
+responsive/accessibility view models, explicit review and dry-run CLI behavior,
+policy mutations, and controlled benchmarks. Remaining: hosted native
+Windows/Linux/macOS insertion, Narrator/NVDA/VoiceOver/Orca interaction, and the
+30-day named-hardware performance/resource baseline.
+
+No provider process, alias generation, workspace activation, shell projection,
+secret read, or exact-launch authority is granted by CP2.2.
+
+No provider process, alias generation, workspace activation, shell projection,
+secret read, or exact-launch authority is granted by CP2.2.
 
 ### CP3.0 - projection compiler baseline
 
