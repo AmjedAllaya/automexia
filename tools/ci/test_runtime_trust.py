@@ -56,6 +56,56 @@ class RuntimeTrustTests(unittest.TestCase):
         with self.assertRaisesRegex(TRUST.RuntimeTrustError, "QA PowerShell"):
             TRUST.validate_qa_runner(source)
 
+    def test_verbatim_windows_integration_root_is_rejected(self) -> None:
+        integration = self.read(
+            "apps/automexia-terminal/src/automexia/shell_integration.rs"
+        ).replace("dunce::canonicalize(path)", "path.canonicalize()", 1)
+        with self.assertRaisesRegex(
+            TRUST.RuntimeTrustError, "PowerShell-compatible canonical path"
+        ):
+            TRUST.validate_application(
+                self.read("apps/automexia-terminal/src/main.rs"),
+                self.read("apps/automexia-terminal/src/automexia/shell.rs"),
+                integration,
+                self.read("shell-integration/cmd/automexia.cmd"),
+            )
+
+    def test_wildcard_powershell_bootstrap_path_is_rejected(self) -> None:
+        shell = self.read(
+            "apps/automexia-terminal/src/automexia/shell.rs"
+        ).replace("Test-Path -LiteralPath $p", "Test-Path $p", 1)
+        with self.assertRaisesRegex(
+            TRUST.RuntimeTrustError, "literal paths, preserve policy"
+        ):
+            TRUST.validate_application(
+                self.read("apps/automexia-terminal/src/main.rs"),
+                shell,
+                self.read(
+                    "apps/automexia-terminal/src/automexia/shell_integration.rs"
+                ),
+                self.read("shell-integration/cmd/automexia.cmd"),
+            )
+
+    def test_uncaught_powershell_policy_failure_is_rejected(self) -> None:
+        shell = self.read(
+            "apps/automexia-terminal/src/automexia/shell.rs"
+        ).replace(
+            "catch [System.Management.Automation.PSSecurityException]",
+            "catch [System.IO.IOException]",
+            1,
+        )
+        with self.assertRaisesRegex(
+            TRUST.RuntimeTrustError, "literal paths, preserve policy"
+        ):
+            TRUST.validate_application(
+                self.read("apps/automexia-terminal/src/main.rs"),
+                shell,
+                self.read(
+                    "apps/automexia-terminal/src/automexia/shell_integration.rs"
+                ),
+                self.read("shell-integration/cmd/automexia.cmd"),
+            )
+
     def test_elevated_windows_manifest_is_rejected(self) -> None:
         manifest = self.read("packaging/windows/automexia.manifest").replace(
             'level="asInvoker"', 'level="requireAdministrator"'

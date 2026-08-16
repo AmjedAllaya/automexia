@@ -778,6 +778,15 @@ profiles receive integration once, nested CMD clones retain `%ComSpec%` and the
 live directory, `ls`/`ll` keep icon/name adjacency, and built-in `dir` remains
 unmodified.
 
+The application shell unit suite also launches a disposable unsigned
+integration fixture in real Windows PowerShell subprocesses. RemoteSigned must
+load its validated normal local path; AllSigned must remain authoritative while
+falling back without stderr or a startup exception. A separate path test
+requires safely representable canonical roots to omit the Windows verbatim
+prefix, and runtime-trust mutation tests fail if either canonicalization,
+literal-path lookup, or the narrow policy-exception fallback is removed. These
+tests never change a persistent execution-policy scope or unblock a file.
+
 The Bash suite feeds representative eza 0.18.x ANSI output through the bundled
 TTY compatibility filter and checks configuration and source folder badges,
 category colors, and an unchanged unclassified folder. Bash/Zsh integration

@@ -20,6 +20,15 @@ artifact through the antivirus vendor's official false-positive process.
 Developer builds and checked-out scripts are intentionally unsigned and should
 not be redistributed.
 
+If a RemoteSigned startup error names a local path beginning with the Windows
+verbatim-path prefix, update to a build containing the Windows shell-path
+normalization fix and restart Automexia. Do not weaken the execution policy:
+Automexia keeps the canonical resource validation while passing PowerShell a
+normal local path. Use Get-ExecutionPolicy -List only to diagnose the effective
+policy. Under an organization-enforced AllSigned policy, use a signed Automexia
+release; unsigned developer integration intentionally falls back to the native
+shell.
+
 A OneDrive-redirected Documents profile is no longer touched by normal launch.
 The explicit persistent installer allows Microsoft Cloud Files reparse tags but
 still rejects junctions, symbolic links, and unknown redirect types.

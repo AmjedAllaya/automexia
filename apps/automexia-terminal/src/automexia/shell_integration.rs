@@ -75,6 +75,16 @@ fn installed_candidates(executable: &Path) -> Vec<PathBuf> {
 }
 
 fn canonical_usable_root(path: PathBuf) -> Option<PathBuf> {
+    // std::fs::canonicalize returns a \\?\C:\... verbatim path on
+    // Windows. PowerShell can classify that spelling like a UNC path and,
+    // under RemoteSigned, reject an otherwise local unsigned development
+    // integration script. Keep the canonical trust check, but expose the most
+    // compatible lossless spelling to the child shell. The dunce crate
+    // deliberately retains verbatim paths that cannot be represented safely
+    // as DOS paths.
+    #[cfg(windows)]
+    let canonical = dunce::canonicalize(path).ok()?;
+    #[cfg(not(windows))]
     let canonical = path.canonicalize().ok()?;
     usable_root(&canonical).then_some(canonical)
 }
@@ -311,5 +321,18 @@ mod tests {
         let output = status();
         assert!(output.contains("session resources:"));
         assert!(output.contains("persistent state:"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn local_resource_root_is_powershell_compatible_after_validation() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("shell-integration [local]");
+        make_root(&root);
+
+        let canonical = canonical_usable_root(root).expect("valid local resources");
+        assert!(canonical.is_absolute());
+        assert!(!canonical.to_string_lossy().starts_with(r"\\?\"));
+        assert!(usable_root(&canonical));
     }
 }
