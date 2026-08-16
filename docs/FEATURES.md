@@ -45,7 +45,9 @@ persistence library is internal, non-started foundation code rather than a
 shipped user surface.
 Those omissions are deliberate security and product boundaries, not hidden
 features. The managed SSH/multi-cloud [Connection Hub](CONNECTION-HUB.md) is a
-fully specified D5/D6 plan but is likewise not a shipped v0.4 surface. See the
+fully specified D5/D6 plan but is likewise not a shipped v0.4 surface. Its
+reusable profiles and typed actions are specified in
+[SSH connections and automation](SSH-CONNECTION-AUTOMATION.md). See the
 [roadmap](ROADMAP.md) for sequencing and the
 [decision index](DECISIONS.md) for rationale.
 

@@ -903,7 +903,10 @@ D5 connects this package to a product surface.
 ### D5.1 — production SSH UX and connection lifecycle
 
 The implementation-ready product contract is
-[Connection Hub](CONNECTION-HUB.md). Its D5.0 contract/golden slice must close
+[Connection Hub](CONNECTION-HUB.md), with connection profiles and typed
+automatic actions specified by
+[SSH connections and automation](SSH-CONNECTION-AUTOMATION.md). Its D5.0
+contract/golden slice must close
 before this section draws production UI; D5.1 read-only discovery must close
 before D5.2 activates reviewed OpenSSH launch. The Hub is a window-level modal
 over renderer-neutral models and never resizes the PTY or becomes a credential

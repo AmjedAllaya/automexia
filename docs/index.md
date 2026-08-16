@@ -34,6 +34,9 @@ The documentation is organized by reader intent:
   Look.
 - [OpenSSH inventory](SSH-INVENTORY.md): bounded static discovery, private
   metadata, security limits, and the nonactivation boundary.
+- [SSH connections and automation](SSH-CONNECTION-AUTOMATION.md): planned
+  reusable connection profiles, typed automation recipes, multi-cloud context
+  isolation, security boundaries, delivery stages, and verification gates.
 - [Accessibility](ACCESSIBILITY.md): current accessibility contract, manual
   checks, and known limitations.
 - [Rio migration](MIGRATION.md): one-time, non-destructive configuration import.
@@ -68,6 +71,9 @@ The documentation is organized by reader intent:
 - [Connection Hub](CONNECTION-HUB.md): planned D5/D6 inventory, first-run,
   authentication state, review, capability, provider, accessibility, and
   verification specification.
+- [SSH connections and automation](SSH-CONNECTION-AUTOMATION.md): detailed
+  profile, recipe, action, provider, persistence, UI, security, performance,
+  resilience, and cross-platform implementation contract.
 - [Exact-argument session-launch broker](SESSION-LAUNCH-BROKER.md): reviewed
   non-activated D3 contracts, limits, tests, and activation gates.
 - [OpenSSH inventory](SSH-INVENTORY.md): implemented non-executing D4 parser,

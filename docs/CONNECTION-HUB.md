@@ -10,6 +10,9 @@ owns phase gates, and
 [ADR 0012](adr/0012-first-party-ssh-and-session-launch-boundary.md) owns the
 process, credential, and network boundary. This specification turns those
 boundaries into a complete user journey and renderer-neutral UI contract.
+Reusable connection profiles, connection-scoped context, automatic action
+recipes, remote initialization, and their detailed delivery/test contract are
+specified in [SSH connections and automation](SSH-CONNECTION-AUTOMATION.md).
 
 ## Product outcome
 
