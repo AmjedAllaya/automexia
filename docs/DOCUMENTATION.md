@@ -28,6 +28,9 @@ the claim.
 - `docs/ARCHITECTURE.md` and `docs/adr/` own technical rationale.
 - `docs/TESTING.md` owns evidence levels and commands.
 - `docs/ROADMAP.md` owns release sequencing.
+- [Phase implementation audit](PHASE-IMPLEMENTATION-AUDIT.md) owns the
+  evidence-based status reconciliation across the S, D, CP, and G roadmap
+  tracks.
 - root governance/support/security/release files own their named policies.
 
 Other pages should link to these sources instead of copying large tables.

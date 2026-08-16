@@ -96,6 +96,10 @@ Plans describe future work; they are not feature documentation. The
 [Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md),
 [security debt register](SECURITY-DEBT.md), and
 [readiness audit](READINESS-AUDIT.md) contain execution and evidence details.
+The [phase implementation audit](PHASE-IMPLEMENTATION-AUDIT.md) is the
+cross-roadmap status ledger: it records the implemented boundary, missing work,
+tests, benchmarks, platform proof, and exact next gate for every S, D, CP, and
+G phase.
 Current behavior is defined by the product guides and references above.
 
 ## Documentation contract

@@ -1,5 +1,9 @@
 # Roadmap
 
+For an evidence-based phase-by-phase comparison of this roadmap with the
+current source, tests, benchmarks, platform coverage, security controls, and
+release gates, see the [phase implementation audit](PHASE-IMPLEMENTATION-AUDIT.md).
+
 ## v0.4 — standalone stability
 
 Complete product rebranding, configuration coexistence/migration, contributor
