@@ -69,17 +69,24 @@ quality evidence, platform evidence, tests, and changelog fragment together.
    include meaningful alternative text in web assets.
 10. Keep examples minimal and tested. Prefer a secure default and explain
     opt-outs rather than requiring configuration for normal use.
+11. When a canonical roadmap adds, renames, or removes a phase, update
+    `PHASE-IMPLEMENTATION-AUDIT.md` in the same change. Every phase needs an
+    explicit status, source evidence, remaining work, and honest external
+    validation limits.
 
 ## Change checklist
 
 - Update the guide, reference, and explanation affected by the change.
 - Update `docs/index.md` when adding a canonical page.
 - Update `docs/FEATURES.md` and the feature assurance ledger for a new feature.
+- Update `docs/PHASE-IMPLEMENTATION-AUDIT.md` when roadmap scope or phase
+  status changes.
 - Add or supersede an ADR for a durable boundary decision.
 - Update `SUPPORT.md`, `SECURITY.md`, migration, or release docs when their
   contracts change.
 - Add a `changes/` fragment unless the PR has an allowed docs-only label.
-- Run `python tools/ci/validate_repository.py` and `cargo ready`.
+- Run `python tools/ci/check_phase_implementation_audit.py`,
+  `python tools/ci/validate_repository.py`, and `cargo ready`.
 
 The policy job also runs an offline Markdown link check. External URLs should
 be primary, authoritative sources and are reviewed for content relevance even

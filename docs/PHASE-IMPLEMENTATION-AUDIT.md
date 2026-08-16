@@ -223,7 +223,29 @@ inventory/manual matrix, generic status summaries, and ADR 0013.
 Missing: recorded Narrator/NVDA, VoiceOver, and Orca evidence plus the v0.5
 AccessKit semantic tree and controlled 200% scale checks for future UI.
 
-### S1.5 — deterministic orchestration and QA evidence
+### S1.5 — context freshness and provider recovery
+
+**Partially implemented.**
+
+- Provider snapshots carry source revision, observation time, availability,
+  last error, and truthful current/refreshing/stale/disabled/unavailable/error
+  state.
+- Prompt, cwd, profile, session, and capsule changes request refresh through
+  bounded session-scoped workers; external tools never run on render/input/VT/
+  PTY threads.
+- Bounded caches, exact operation/session/capsule identity, newest-generation
+  publication, cancellation, periodic reconciliation, and last-known-good
+  behavior prevent stale or failed discovery from erasing known production
+  context.
+- Deterministic provider, route-isolation, cache, saturation, failure, and
+  accessibility-label tests cover the current local provider boundary.
+
+Remaining: controlled provider/CLI cold/warm/slow/missing/disconnected latency
+and resource evidence on Windows/Linux/macOS. Reliable file/event watchers may
+be added only where they improve latency without becoming the correctness
+source; bounded periodic reconciliation remains mandatory.
+
+### S1.6 — deterministic orchestration and QA evidence
 
 **Source tooling fully implemented; multi-host release evidence partial.**
 
@@ -238,7 +260,7 @@ AccessKit semantic tree and controlled 200% scale checks for future UI.
 
 Remaining: retain complete bundles from every controlled release host.
 
-### S1.6 — property, model, fuzz, coverage, and mutation strength
+### S1.7 — property, model, fuzz, coverage, and mutation strength
 
 **Partially implemented.**
 
@@ -251,7 +273,7 @@ Missing: pure resize-queue and atomic snapshot-replacement model expansion,
 long weekly fuzz/corpus trends, owned region/branch baseline, scoped
 cargo-mutants survivor triage, and governed cargo-vet adoption.
 
-### S1.7 and S2 — performance proof and enforcement
+### S1.8 and S2 — performance proof and enforcement
 
 **Measurement partial; S2 not implemented.**
 
@@ -265,6 +287,35 @@ cargo-mutants survivor triage, and governed cargo-vet adoption.
 Missing: a complete 30-day same-runner baseline for startup/input/prompt/
 context/listing/parser/renderer/resize/memory/workers/images/actions/PTY/build
 storage, retained comparisons, and active >5% latency or >10% memory waivers.
+
+### v0.5 assurance maturation
+
+**Partially implemented.**
+
+Implemented foundations:
+
+- renderer-independent extension API/runtime, DevOps, UI, cache, queue, and
+  lifecycle state are extracted into private crates suitable for deterministic
+  tests, bounded Loom models, and hosted Miri without platform/GPU FFI;
+- the feature-assurance ledger, architecture rules, CI policy mutations,
+  sanitizer/fuzz ownership, coverage policy, and redacted QA evidence establish
+  the required proof vocabulary.
+
+Not implemented:
+
+- the AccessKit-backed renderer-independent accessibility tree and native
+  Narrator/NVDA/VoiceOver/Orca validation;
+- a pinned scoped cargo-mutants campaign, time budget, survivor triage, and
+  reviewed threshold for Automexia-owned pure modules;
+- cargo-vet ownership, imported-audit trust, criteria, exemptions, renewal, and
+  pull-request workflow;
+- an informational unused-dependency job with platform/feature false-positive
+  review;
+- post-baseline enforced performance/resource ratchets.
+
+These tools must complement, not replace, Cargo deny, dependency review,
+CodeQL, SBOMs, attestations, deterministic tests, fuzzing, sanitizers, Miri,
+Loom, native resource tests, and human accessibility/visual review.
 
 ## DevOps, SSH, and multi-cloud phases
 

@@ -26,6 +26,7 @@ from check_command_productivity_cp1 import (
 from check_documentation_coverage import validate as validate_documentation_coverage
 from check_devops_alias_spec import validate_repository as validate_devops_alias_spec
 from check_feature_assurance import load_and_validate as validate_feature_assurance
+from check_phase_implementation_audit import validate as validate_phase_audit
 from check_platform_coverage import validate_repository_workflows
 from release_trust import load_policy as validate_release_trust_policy
 
@@ -285,6 +286,9 @@ def validate() -> None:
         for kind, count in documentation_counts.items()
         if kind != "pages"
     )
+
+    phase_audit_counts = validate_phase_audit()
+    counts["phase audit entries"] = phase_audit_counts["phase_sections"]
 
     command_productivity_counts = validate_command_productivity()
     counts["command productivity CP0"] = command_productivity_counts["threats"]
