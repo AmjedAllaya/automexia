@@ -463,20 +463,27 @@ The schema-1 CP1 authority is
 [`cp1-contract-v1.json`](../tests/fixtures/command-productivity/cp1-contract-v1.json).
 Its validator keeps the 12-file activation allowlist, provider policy, five
 shell outcomes, six hard resource limits, and zero network/secret/grid/provider-
-startup capability machine-enforced. CP2 remains the next phase; CP1 does not
+startup capability machine-enforced. CP2.0 is now complete at the pure
+model boundary and CP2.1 persistence is next; CP1 does not
 add Quick Actions, generated aliases, provider authentication, a custom popup,
 or exact command launch.
 
 ### CP2 — persistent typed Quick Actions
 
-- Implement the bounded schema, atomic store, last-known-good reload, exact-file
-  watcher, in-memory index, palette/search surface, and insert/copy modes.
-- Add CRUD, import/export, layered scope, placeholder review, and conflict UI.
-- Keep exact launch disabled until D3 activation is accepted.
+**CP2.0 complete:** `automexia-devops::actions` now owns the capability-free,
+bounded schema-1 TOML parser, typed model, deterministic validator, validated-
+only wrapper, exact architecture allowlist, and versioned hostile corpus. It has
+no filesystem, watcher, process, network, secret, UI, PTY, shell-profile, alias,
+or execution authority.
 
-Exit: restart persistence, concurrent-window reload, corruption recovery,
-Unicode/hostile input, deterministic ordering, accessibility, and leak tests
-pass on Windows, Linux, and macOS.
+**CP2.1/CP2.2 pending:** implement the atomic store, last-known-good reload,
+exact-file watcher, in-memory index, CRUD/import/export, layered scope,
+placeholder review, palette/search/conflict UI, and insert/copy modes. Keep exact
+launch disabled until D3 activation is accepted.
+
+Exit for the remaining CP2 work: restart persistence, concurrent-window reload,
+corruption recovery, Unicode/hostile input, deterministic ordering,
+accessibility, resource lifecycle, and Windows/Linux/macOS tests pass.
 
 ### CP3 — aliases and first-party DevOps packs
 
