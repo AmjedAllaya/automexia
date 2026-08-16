@@ -109,6 +109,10 @@ impl rio_vt::performer::parser::Perform for NoopPerform {
 }
 
 fn bench(c: &mut Criterion) {
+    c.bench_function("processor_default_lazy_control_buffers", |b| {
+        b.iter(Processor::default);
+    });
+
     const BYTES: usize = 4 * 1024 * 1024;
     let cases: [(&str, Vec<u8>); 4] = [
         ("plain", plain(BYTES)),
