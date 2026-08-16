@@ -47,7 +47,6 @@ enum LaunchPhase {
     Ready,
     Build,
     Smoke,
-    InstallShellIntegration,
     Launch,
 }
 
@@ -57,16 +56,9 @@ impl LaunchPhase {
             Self::Ready => "complete verification gate",
             Self::Build => "incremental application build",
             Self::Smoke => "executable identity smoke test",
-            Self::InstallShellIntegration => "shell integration provisioning",
             Self::Launch => "Automexia process launch",
         }
     }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum HostShellPlatform {
-    Windows,
-    Unix,
 }
 
 fn main() {
@@ -846,17 +838,10 @@ fn run_app(app_args: &[String]) -> TaskResult {
 
 fn launch_plan(mode: LaunchMode) -> &'static [LaunchPhase] {
     match mode {
-        LaunchMode::Verified => &[
-            LaunchPhase::Ready,
-            LaunchPhase::InstallShellIntegration,
-            LaunchPhase::Launch,
-        ],
-        LaunchMode::Incremental => &[
-            LaunchPhase::Build,
-            LaunchPhase::Smoke,
-            LaunchPhase::InstallShellIntegration,
-            LaunchPhase::Launch,
-        ],
+        LaunchMode::Verified => &[LaunchPhase::Ready, LaunchPhase::Launch],
+        LaunchMode::Incremental => {
+            &[LaunchPhase::Build, LaunchPhase::Smoke, LaunchPhase::Launch]
+        }
     }
 }
 
@@ -881,46 +866,9 @@ fn execute_launch_plan(mode: LaunchMode, app_args: &[String]) -> TaskResult {
             LaunchPhase::Ready => ready()?,
             LaunchPhase::Build => build_debug_app()?,
             LaunchPhase::Smoke => smoke_debug_app()?,
-            LaunchPhase::InstallShellIntegration => install_shell_integration()?,
             LaunchPhase::Launch => launch_debug_app(app_args)?,
         }
     }
-    Ok(())
-}
-
-fn shell_integration_command(
-    platform: HostShellPlatform,
-) -> (&'static str, &'static [&'static str]) {
-    match platform {
-        HostShellPlatform::Windows => (
-            "powershell",
-            &[
-                "-NoLogo",
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                "shell-integration/install-windows.ps1",
-                "-Quiet",
-            ],
-        ),
-        HostShellPlatform::Unix => {
-            ("sh", &["shell-integration/install-unix.sh", "--quiet"])
-        }
-    }
-}
-
-fn install_shell_integration() -> TaskResult {
-    let platform = if cfg!(windows) {
-        HostShellPlatform::Windows
-    } else {
-        HostShellPlatform::Unix
-    };
-    let (program, args) = shell_integration_command(platform);
-    println!("Preparing Automexia shell integration (source-aware and idempotent)");
-    run(program, args)?;
-    println!("PASS: shell integration is ready for this launch");
     Ok(())
 }
 
@@ -1210,6 +1158,13 @@ fn launch_debug_app(app_args: &[String]) -> TaskResult {
     );
     let child = Command::new(&binary)
         .args(app_args)
+        // Development launches use the repository-owned scripts in the child
+        // session only. Normal launch must never write a PowerShell profile or
+        // invoke an installation script as a side effect.
+        .env(
+            "AUTOMEXIA_SHELL_INTEGRATION_ROOT",
+            root().join("shell-integration"),
+        )
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -1521,11 +1476,11 @@ fn cargo_deny_command() -> Command {
 #[cfg(target_os = "windows")]
 fn validate_shell_integrations() -> TaskResult {
     run(
-        "powershell",
+        "powershell.exe",
         &[
+            "-NoLogo",
             "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
+            "-NonInteractive",
             "-File",
             "tools/ci/test_powershell.ps1",
         ],
@@ -1871,12 +1826,12 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
         .clone()
         .unwrap_or_else(|| report_directory.path().join("wgpu.json"));
     let cpu_report = report_directory.path().join("cpu.json");
-    let mut command = Command::new("powershell");
+    let mut command = Command::new("powershell.exe");
     command
         .args([
+            "-NoLogo",
             "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
+            "-NonInteractive",
             "-File",
             "tests/integration/resize-stress-windows.ps1",
             "-Binary",
@@ -1896,12 +1851,12 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
     // The CPU fallback has a separate compositor and pass ordering. Run the
     // same real-window/pixel-fidelity contract there as well so a present but
     // card-obscured preview cannot regress unnoticed.
-    let mut cpu_command = Command::new("powershell");
+    let mut cpu_command = Command::new("powershell.exe");
     cpu_command
         .args([
+            "-NoLogo",
             "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
+            "-NonInteractive",
             "-File",
             "tests/integration/resize-stress-windows.ps1",
             "-Binary",
@@ -2035,11 +1990,11 @@ fn test_session_clone(native: Option<&str>) -> TaskResult {
         _ => return Err(format!("unsupported native clone suite: {native}")),
     };
     run(
-        "powershell",
+        "powershell.exe",
         &[
+            "-NoLogo",
             "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
+            "-NonInteractive",
             "-File",
             script,
             "-Binary",
@@ -2189,6 +2144,7 @@ fn product_identity() -> TaskResult<ProductIdentity> {
 fn verify_architecture() -> TaskResult {
     run_python("tools/ci/check_command_productivity.py")?;
     run_python("tools/ci/check_command_productivity_cp1.py")?;
+    run_python("tools/ci/check_runtime_trust.py")?;
     let identity = product_identity()?;
     let metadata = metadata()?;
     let packages = metadata["packages"]
@@ -3597,6 +3553,10 @@ fn package_windows_arm64(
         &define("ThirdPartyPath", &workspace.join("THIRD_PARTY_NOTICES.md")),
     ]);
     command.args(["-d", &define("ReadmePath", &workspace.join("README.md"))]);
+    command.args([
+        "-d",
+        &define("ShellIntegrationRoot", &workspace.join("shell-integration")),
+    ]);
     command.args(["-o"]);
     command.arg(&msi);
     command.arg(workspace.join("packaging/windows/automexia-arm64.wxs"));
@@ -3634,6 +3594,12 @@ fn portable_archive(
         fs::copy(root().join(document), staging.join(document))
             .map_err(|error| format!("could not stage {document}: {error}"))?;
     }
+    copy_bounded_resource_tree(
+        &root().join("shell-integration"),
+        &staging.join("shell-integration"),
+        128,
+        32 * 1024 * 1024,
+    )?;
     let archive = output.join(format!(
         "{}-{}-{target}.{extension}",
         identity.package_name, identity.version
@@ -3648,6 +3614,76 @@ fn portable_archive(
         .arg(".")
         .current_dir(root());
     run_command(command, "portable archive")
+}
+
+fn copy_bounded_resource_tree(
+    source: &Path,
+    destination: &Path,
+    maximum_files: usize,
+    maximum_bytes: u64,
+) -> TaskResult {
+    require(
+        source.is_dir() && !path_is_reparse_point(source)?,
+        &format!(
+            "portable resource root must be a real directory: {}",
+            source.display()
+        ),
+    )?;
+    fs::create_dir_all(destination).map_err(|error| {
+        format!("could not create {}: {error}", destination.display())
+    })?;
+
+    let mut files = 0usize;
+    let mut bytes = 0u64;
+    let mut pending = vec![(source.to_path_buf(), destination.to_path_buf())];
+    while let Some((source_directory, destination_directory)) = pending.pop() {
+        let mut entries = fs::read_dir(&source_directory)
+            .map_err(|error| {
+                format!("could not read {}: {error}", source_directory.display())
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("resource directory entry failed: {error}"))?;
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            let source_path = entry.path();
+            require(
+                !path_is_reparse_point(&source_path)?,
+                &format!(
+                    "portable resources refuse symlinks/reparse points: {}",
+                    source_path.display()
+                ),
+            )?;
+            let destination_path = destination_directory.join(entry.file_name());
+            let metadata = fs::symlink_metadata(&source_path).map_err(|error| {
+                format!("could not inspect {}: {error}", source_path.display())
+            })?;
+            if metadata.is_dir() {
+                fs::create_dir_all(&destination_path).map_err(|error| {
+                    format!("could not create {}: {error}", destination_path.display())
+                })?;
+                pending.push((source_path, destination_path));
+            } else if metadata.is_file() {
+                files = files.saturating_add(1);
+                bytes = bytes.saturating_add(metadata.len());
+                require(
+                    files <= maximum_files && bytes <= maximum_bytes,
+                    "portable shell resources exceed their file-count or byte ceiling",
+                )?;
+                fs::copy(&source_path, &destination_path).map_err(|error| {
+                    format!(
+                        "could not stage portable resource {}: {error}",
+                        source_path.display()
+                    )
+                })?;
+            } else {
+                return Err(format!(
+                    "portable resource is not a regular file or directory: {}",
+                    source_path.display()
+                ));
+            }
+        }
+    }
+    require(files > 0, "portable shell resource tree is empty")
 }
 
 fn package_linux(
@@ -4129,47 +4165,46 @@ mod tests {
     }
 
     #[test]
-    fn every_launch_plan_provisions_shells_immediately_before_spawn() {
+    fn launch_plans_never_persist_shell_integration() {
         assert_eq!(
             launch_plan(LaunchMode::Verified),
-            &[
-                LaunchPhase::Ready,
-                LaunchPhase::InstallShellIntegration,
-                LaunchPhase::Launch,
-            ]
+            &[LaunchPhase::Ready, LaunchPhase::Launch]
         );
         assert_eq!(
             launch_plan(LaunchMode::Incremental),
-            &[
-                LaunchPhase::Build,
-                LaunchPhase::Smoke,
-                LaunchPhase::InstallShellIntegration,
-                LaunchPhase::Launch,
-            ]
+            &[LaunchPhase::Build, LaunchPhase::Smoke, LaunchPhase::Launch,]
         );
         for mode in [LaunchMode::Verified, LaunchMode::Incremental] {
             let phases = launch_plan(mode);
             assert_eq!(phases.last(), Some(&LaunchPhase::Launch));
-            assert_eq!(
-                phases.get(phases.len() - 2),
-                Some(&LaunchPhase::InstallShellIntegration)
-            );
+            assert!(!format!("{phases:?}").contains("InstallShellIntegration"));
         }
     }
 
     #[test]
-    fn automatic_installers_are_quiet_and_repository_owned() {
-        let (windows_program, windows_args) =
-            shell_integration_command(HostShellPlatform::Windows);
-        assert_eq!(windows_program, "powershell");
-        assert!(windows_args.contains(&"shell-integration/install-windows.ps1"));
-        assert!(windows_args.contains(&"-Quiet"));
-        assert!(windows_args.contains(&"-NonInteractive"));
+    fn portable_resource_copy_is_bounded_and_preserves_layout() {
+        let temporary = tempfile::tempdir().unwrap();
+        let source = temporary.path().join("source");
+        let destination = temporary.path().join("destination");
+        fs::create_dir_all(source.join("nested")).unwrap();
+        fs::write(source.join("root.ps1"), b"root").unwrap();
+        fs::write(source.join("nested").join("child.cmd"), b"child").unwrap();
 
-        let (unix_program, unix_args) =
-            shell_integration_command(HostShellPlatform::Unix);
-        assert_eq!(unix_program, "sh");
-        assert_eq!(unix_args, &["shell-integration/install-unix.sh", "--quiet"]);
+        copy_bounded_resource_tree(&source, &destination, 2, 9).unwrap();
+        assert_eq!(fs::read(destination.join("root.ps1")).unwrap(), b"root");
+        assert_eq!(
+            fs::read(destination.join("nested").join("child.cmd")).unwrap(),
+            b"child"
+        );
+
+        let error = copy_bounded_resource_tree(
+            &source,
+            &temporary.path().join("too-small"),
+            1,
+            9,
+        )
+        .unwrap_err();
+        assert!(error.contains("file-count or byte ceiling"));
     }
 
     #[test]

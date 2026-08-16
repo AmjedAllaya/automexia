@@ -242,14 +242,14 @@
       "title": "PowerShell, CMD, WSL, Bash, Zsh, prompt integration, and icon-aware listings",
       "components": ["shell-integration"],
       "documentation": {
-        "guide": ["docs/SHELL-INTEGRATION.md#automatic-provisioning"],
+        "guide": ["docs/SHELL-INTEGRATION.md#session-only-integration-by-default"],
         "reference": ["docs/SHELL-INTEGRATION.md#icon-aware-listings"],
-        "explanation": ["docs/adr/0009-launch-time-shell-provisioning.md"]
+        "explanation": ["docs/adr/0017-session-only-shell-integration.md"]
       },
       "quality": {
         "accessibility": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_sources.sh"]},
         "correctness": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_integration.sh", "tools/ci/test_zsh_integration.zsh"]},
-        "security": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_sources.sh"]},
+        "security": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_sources.sh", "tools/ci/check_runtime_trust.py", "tools/ci/test_runtime_trust.py"]},
         "performance": {"level": "external", "evidence": ["docs/STABILIZATION-ROADMAP.md#performance-proof-plan"]},
         "resource_lifetime": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_shell_integration.ps1"]},
         "storage_hygiene": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_shell_integration.ps1"]},
@@ -273,24 +273,24 @@
       },
       "quality": {
         "accessibility": {"level": "external", "evidence": ["docs/ACCESSIBILITY.md", "packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml"]},
-        "correctness": {"level": "nightly", "evidence": ["tools/ci/test_release_trust.py", "tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh", ".github/workflows/release.yml"]},
-        "security": {"level": "controlled", "evidence": ["tests/assurance/release-trust-policy-v1.json", "tools/ci/test_release_trust_windows.ps1", ".github/workflows/release.yml"]},
-        "performance": {"level": "controlled", "evidence": ["tools/ci/release_trust.py", ".github/workflows/release.yml", "docs/RELEASE-TRUST.md#tests-and-performance-evidence"]},
+        "correctness": {"level": "nightly", "evidence": ["tools/ci/test_release_trust.py", "tools/ci/test_runtime_trust.py", "tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh", ".github/workflows/release.yml"]},
+        "security": {"level": "controlled", "evidence": ["tests/assurance/release-trust-policy-v1.json", "tools/ci/check_runtime_trust.py", "tools/ci/test_release_trust_windows.ps1", ".github/workflows/release.yml"]},
+        "performance": {"level": "controlled", "evidence": ["tools/ci/release_trust.py", "tools/ci/check_reproducible_build.sh", ".github/workflows/release.yml", "docs/RELEASE-TRUST.md#tests-and-performance-evidence"]},
         "resource_lifetime": {"level": "nightly", "evidence": ["tools/ci/test_release_trust.py", "tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh"]},
         "storage_hygiene": {"level": "nightly", "evidence": ["tests/assurance/release-trust-policy-v1.json", "tools/ci/test_release_trust.py", "tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh", "tools/xtask/src/main.rs"]},
-        "resilience": {"level": "controlled", "evidence": ["tools/ci/test_release_trust.py", "tools/ci/test_release_trust_windows.ps1", ".github/workflows/release.yml", "RELEASING.md"]},
+        "resilience": {"level": "controlled", "evidence": ["tools/ci/test_release_trust.py", "tools/ci/test_runtime_trust.py", "tools/ci/test_release_trust_windows.ps1", ".github/workflows/release.yml", "RELEASING.md"]},
         "visual_quality": {"level": "pr", "evidence": ["assets/brand/ASSET-MANIFEST.toml", "tools/ci/validate_repository.py"]}
       },
       "platforms": {
         "windows": {"level": "controlled", "evidence": [".github/workflows/release.yml#package-windows", "tools/ci/test_windows_installer.ps1", "tools/ci/test_release_trust_windows.ps1"]},
-        "linux": {"level": "controlled", "evidence": [".github/workflows/release.yml#package-linux", "tools/ci/test_linux_package.sh"]},
+        "linux": {"level": "controlled", "evidence": [".github/workflows/release.yml#package-linux", ".github/workflows/release.yml#reproducibility-linux", "tools/ci/test_linux_package.sh", "tools/ci/check_reproducible_build.sh"]},
         "macos": {"level": "controlled", "evidence": [".github/workflows/release.yml#package-macos"]}
       }
     },
     {
       "id": "command-productivity-cp0-policy",
       "title": "Accepted shell-native completion and typed Quick Action architecture, threat model, compatibility, and non-activation",
-      "components": ["tools/ci", "tests/fixtures/command-productivity"],
+      "components": ["tools/ci", "tests/fixtures/command-productivity", "automexia-devops"],
       "documentation": {
         "guide": ["docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md"],
         "reference": ["docs/COMMAND-PRODUCTIVITY.md#delivery-phases"],
@@ -298,9 +298,9 @@
       },
       "quality": {
         "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "CP0 activates no UI; CP1 and CP5 retain explicit native and renderer accessibility gates."},
-        "correctness": {"level": "pr", "evidence": ["tools/ci/check_command_productivity.py", "tools/ci/test_command_productivity.py", "tests/fixtures/command-productivity/cp0-contract-v1.json", "tests/fixtures/command-productivity/cp0-hostile-mutations-v1.json"]},
-        "security": {"level": "pr", "evidence": ["tools/ci/check_command_productivity.py", "tools/ci/test_command_productivity.py", "tests/fixtures/command-productivity/cp0-threats-v1.json", "tests/fixtures/command-productivity/cp0-hostile-mutations-v1.json"]},
-        "performance": {"level": "not_applicable", "evidence": [], "rationale": "CP0 is a non-runtime policy gate; executable latency and resource budgets begin with CP1 and CP2."},
+        "correctness": {"level": "pr", "evidence": ["tools/ci/check_command_productivity.py", "tools/ci/test_command_productivity.py", "automexia-devops/src/actions/validation.rs", "automexia-devops/tests/quick_actions.rs", "tests/fixtures/command-productivity/cp2-hostile-actions-v1.json", "tests/fixtures/command-productivity/cp0-contract-v1.json", "tests/fixtures/command-productivity/cp0-hostile-mutations-v1.json"]},
+        "security": {"level": "pr", "evidence": ["tools/ci/check_command_productivity.py", "tools/ci/test_command_productivity.py", "tools/ci/check_devops_alias_spec.py", "tools/ci/test_devops_alias_spec.py", "automexia-devops/src/actions/mod.rs", "automexia-devops/src/actions/validation.rs", "automexia-devops/tests/quick_actions.rs", "tests/fixtures/command-productivity/cp2-hostile-actions-v1.json", "tests/fixtures/command-productivity/cp0-threats-v1.json", "tests/fixtures/command-productivity/cp0-hostile-mutations-v1.json"]},
+        "performance": {"level": "controlled", "evidence": ["automexia-devops/benches/quick_actions.rs", ".github/workflows/nightly.yml#benchmarks-controlled", "tools/ci/qa.py"]},
         "resource_lifetime": {"level": "not_applicable", "evidence": [], "rationale": "CP0 starts no workers, watchers, providers, processes, or caches; later phases require lifecycle tests before activation."},
         "storage_hygiene": {"level": "pr", "evidence": ["tools/ci/check_command_productivity.py", "tests/fixtures/command-productivity/cp0-contract-v1.json"]},
         "resilience": {"level": "pr", "evidence": ["tools/ci/test_command_productivity.py", "docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md#version-and-fallback-policy"]},

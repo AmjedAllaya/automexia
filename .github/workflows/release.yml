@@ -139,6 +139,24 @@ jobs:
           path: dist
           if-no-files-found: error
 
+  reproducibility-linux:
+    name: Reproducible Linux x64 release binary
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
+      - name: Compare two independent cold release builds
+        run: bash tools/ci/check_reproducible_build.sh reproducibility/release-reproducibility-linux-x64.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-evidence-reproducibility
+          path: reproducibility/release-reproducibility-linux-x64.json
+          if-no-files-found: error
+
   package-windows:
     needs: [preflight, build]
     runs-on: windows-latest
@@ -227,6 +245,66 @@ jobs:
           $targetDir = "target\${{ matrix.target }}\release"
           New-Item -ItemType Directory -Force $targetDir | Out-Null
           Copy-Item $binary.FullName "$targetDir\automexia.exe"
+      - name: Sign PowerShell assets with Azure Artifact Signing
+        if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'azure-artifact-signing'
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          files-folder: shell-integration
+          files-folder-filter: ps1,ps1xml
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: Automexia Terminal shell integration
+          description-url: https://github.com/AmjedAllaya/automexia-terminal
+      - name: Sign PowerShell assets with fallback PFX
+        if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'pfx'
+        shell: pwsh
+        env:
+          CERTIFICATE_PASSWORD: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $flags = [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
+          $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+            "${{ steps.pfx.outputs.path }}",
+            $env:CERTIFICATE_PASSWORD,
+            $flags
+          )
+          try {
+            $scripts = @(Get-ChildItem shell-integration -Recurse -File |
+              Where-Object Extension -in @('.ps1', '.ps1xml'))
+            if ($scripts.Count -eq 0) { throw 'no PowerShell assets were found to sign' }
+            foreach ($script in $scripts) {
+              $result = Set-AuthenticodeSignature -LiteralPath $script.FullName `
+                -Certificate $certificate -HashAlgorithm SHA256 `
+                -TimestampServer http://timestamp.digicert.com
+              if ($result.Status -ne 'Valid') {
+                throw "PowerShell asset signature failed for $($script.FullName): $($result.Status)"
+              }
+            }
+          } finally {
+            $certificate.Dispose()
+          }
+      - name: Verify signed PowerShell assets
+        shell: pwsh
+        run: |
+          $scripts = @(Get-ChildItem shell-integration -Recurse -File |
+            Where-Object Extension -in @('.ps1', '.ps1xml'))
+          if ($scripts.Count -eq 0) { throw 'no PowerShell assets were found to verify' }
+          foreach ($script in $scripts) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $script.FullName
+            if ($signature.Status -ne 'Valid') {
+              throw "PowerShell asset signature is $($signature.Status): $($script.FullName)"
+            }
+            if ($signature.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) {
+              throw "unexpected PowerShell asset publisher: $($signature.SignerCertificate.Subject)"
+            }
+            if ($null -eq $signature.TimeStamperCertificate) {
+              throw "PowerShell asset has no trusted timestamp: $($script.FullName)"
+            }
+          }
       - name: Build MSI and signed portable ZIP
         shell: pwsh
         run: |
@@ -510,7 +588,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [preflight, package-windows, package-macos, package-linux, hardware-smoke]
+    needs: [preflight, reproducibility-linux, package-windows, package-macos, package-linux, hardware-smoke]
     runs-on: ubuntu-latest
     environment: stable-release
     permissions:
@@ -529,25 +607,34 @@ jobs:
         with:
           name: release-evidence-windows
           path: release-evidence
+      - name: Require immutable GitHub releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq '.enabled')" = "true"
       - name: Enforce final package allowlist and measure hashing overhead
         run: |
           mkdir release-assets
+          mkdir -p sbom-input/packages
           python tools/ci/release_trust.py \
             --artifacts packages \
             --version "${{ needs.preflight.outputs.version }}" \
             --manifest release-assets/release-manifest.json \
             --benchmark release-assets/release-trust-benchmark.json
           cp packages/* release-assets/
+          cp packages/* sbom-input/packages/
+          cp Cargo.lock sbom-input/Cargo.lock
           cp release-evidence/release-trust-windows.json release-assets/
       - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
-          path: packages
+          path: sbom-input
           format: spdx-json
           output-file: release-assets/automexia-terminal.spdx.json
           upload-artifact: false
       - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
-          path: packages
+          path: sbom-input
           format: cyclonedx-json
           output-file: release-assets/automexia-terminal.cdx.json
           upload-artifact: false
@@ -585,6 +672,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --draft --generate-notes --title "Automexia Terminal ${{ needs.preflight.outputs.version }}"
-          find release-assets -maxdepth 1 -type f -print0 | xargs -0 gh release upload "$GITHUB_REF_NAME" --clobber
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Refusing to modify an existing release: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" --verify-tag --draft --generate-notes --title "Automexia Terminal ${{ needs.preflight.outputs.version }}"
+          find release-assets -maxdepth 1 -type f -print0 | xargs -0 gh release upload "$GITHUB_REF_NAME"
           gh release edit "$GITHUB_REF_NAME" --draft=false --latest

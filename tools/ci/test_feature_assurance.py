@@ -28,7 +28,7 @@ class FeatureAssuranceTests(unittest.TestCase):
         self.assertGreaterEqual(counts["features"], 12)
         self.assertGreaterEqual(counts["components"], 20)
         self.assertGreater(counts["evidence"], counts["features"] * 9)
-        self.assertEqual(counts["benchmarks"], 6)
+        self.assertEqual(counts["benchmarks"], 7)
         self.assertEqual(counts["fuzz_targets"], 8)
         self.assertGreaterEqual(counts["documentation"], counts["features"] * 3)
 

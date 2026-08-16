@@ -269,6 +269,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         let launch_args = crate::automexia::shell::normalized_args(
             launch_program.as_deref(),
             &config.shell.args,
+            crate::automexia::shell_integration::session_available(),
         );
         #[cfg(not(target_os = "windows"))]
         let launch_args = config.shell.args.clone();

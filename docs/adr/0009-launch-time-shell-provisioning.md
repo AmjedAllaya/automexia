@@ -1,6 +1,6 @@
 # ADR 0009: Launch-time shell provisioning
 
-- Status: Accepted
+- Status: Superseded by ADR 0017
 - Date: 2026-08-13
 
 ## Context

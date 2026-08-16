@@ -34,6 +34,7 @@ if ($observedPackageNames -cne $requiredPackageNames) {
 
 $temporaryRoots = [System.Collections.Generic.List[string]]::new()
 $signatures = [System.Collections.Generic.List[object]]::new()
+$script:embeddedScriptSignatureCount = 0
 $scanJob = $null
 $scanRoot = Join-Path ([IO.Path]::GetTempPath()) (
     'automexia-release-scan-{0}' -f [guid]::NewGuid().ToString('N'))
@@ -44,7 +45,10 @@ foreach ($package in $packages) {
 }
 
 function Assert-TrustedSignature {
-    param([Parameter(Mandatory = $true)][string]$Path)
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [bool]$RecordEvidence = $true
+    )
 
     $signature = Get-AuthenticodeSignature -LiteralPath $Path
     if ($signature.Status -ne 'Valid' -or $null -eq $signature.SignerCertificate) {
@@ -60,6 +64,10 @@ function Assert-TrustedSignature {
         Where-Object { $_.ObjectId.Value -eq '1.3.6.1.5.5.7.3.3' }
     if ($codeSigningEku.Count -eq 0) {
         throw "Signer certificate for $Path has no code-signing extended key usage"
+    }
+    if (-not $RecordEvidence) {
+        $script:embeddedScriptSignatureCount++
+        return
     }
     $signatures.Add([ordered]@{
             file = [IO.Path]::GetFileName($Path)
@@ -90,15 +98,7 @@ function Expand-TrustedPortableArchive {
             }
             $portableName = $normalized
             while ($portableName.StartsWith('./')) { $portableName = $portableName.Substring(2) }
-            if ([string]::IsNullOrEmpty($entry.Name)) {
-                if (-not [string]::IsNullOrEmpty($portableName)) {
-                    throw "portable ZIP contains an unexpected directory: $($entry.FullName)"
-                }
-                continue
-            }
-            if ($portableName.Contains('/')) {
-                throw "portable ZIP content must be flat: $($entry.FullName)"
-            }
+            if ([string]::IsNullOrEmpty($entry.Name)) { continue }
             $fileEntries.Add($portableName)
             $totalExpandedBytes += $entry.Length
             if ($totalExpandedBytes -gt 536870912) {
@@ -108,7 +108,32 @@ function Expand-TrustedPortableArchive {
                 throw "portable ZIP entry exceeds the 200:1 expansion-ratio limit: $($entry.FullName)"
             }
         }
-        $expectedFiles = @('automexia.exe', 'LICENSE', 'NOTICE.md', 'README.md', 'THIRD_PARTY_NOTICES.md')
+        $expectedFiles = @(
+            'automexia.exe',
+            'LICENSE',
+            'NOTICE.md',
+            'README.md',
+            'THIRD_PARTY_NOTICES.md',
+            'shell-integration/bash/automexia.bash',
+            'shell-integration/cmd/automexia-ls.cmd',
+            'shell-integration/cmd/automexia-ls.ps1',
+            'shell-integration/cmd/automexia.cmd',
+            'shell-integration/completion/bash/automexia-completion.bash',
+            'shell-integration/completion/fish/automexia-completion.fish',
+            'shell-integration/completion/powershell/automexia-completion.ps1',
+            'shell-integration/completion/zsh/automexia-completion.zsh',
+            'shell-integration/fish/automexia.fish',
+            'shell-integration/install-unix.sh',
+            'shell-integration/install-windows.ps1',
+            'shell-integration/posix/automexia-eza-filter.pl',
+            'shell-integration/powershell/automexia.format.ps1xml',
+            'shell-integration/powershell/automexia.ps1',
+            'shell-integration/uninstall-unix.sh',
+            'shell-integration/uninstall-windows.ps1',
+            'shell-integration/windows-path-safety.ps1',
+            'shell-integration/windows-wsl.ps1',
+            'shell-integration/zsh/automexia.zsh'
+        )
         $observedFiles = (@($fileEntries | Sort-Object -CaseSensitive) -join '|')
         $requiredFiles = (@($expectedFiles | Sort-Object -CaseSensitive) -join '|')
         if ($fileEntries.Count -ne $expectedFiles.Count -or $observedFiles -cne $requiredFiles) {
@@ -131,6 +156,14 @@ function Expand-TrustedPortableArchive {
     $productVersion = $binary[0].VersionInfo.ProductVersion
     if ($productVersion -cne $Version) {
         throw "portable executable version mismatch: expected '$Version', found '$productVersion'"
+    }
+    $signedScripts = @(Get-ChildItem -LiteralPath (Join-Path $destination 'shell-integration') -Recurse -File |
+        Where-Object Extension -in @('.ps1', '.ps1xml'))
+    if ($signedScripts.Count -ne 8) {
+        throw "portable ZIP must contain exactly eight signed PowerShell assets; found $($signedScripts.Count)"
+    }
+    foreach ($script in $signedScripts) {
+        Assert-TrustedSignature -Path $script.FullName -RecordEvidence $false
     }
     return $binary[0].FullName
 }
@@ -215,6 +248,7 @@ try {
                 }
             })
         signature_count = $signatures.Count
+        embedded_script_signature_count = $script:embeddedScriptSignatureCount
         publisher = $ExpectedPublisher
         scan_milliseconds = $scanMilliseconds
         scan_timeout_seconds = $ScanTimeoutSeconds

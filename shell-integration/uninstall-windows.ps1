@@ -204,15 +204,14 @@ remove_file "$completion/.disabled"
 rmdir "$completion" "$cfg/generated" 2>/dev/null || true
 rmdir "$cfg" 2>/dev/null || true
 '@
-    $cleanupBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($cleanup))
     $distributions = @(
         & $wsl.Source --list --quiet 2>$null |
             ForEach-Object { ([string]$_).Replace([string][char]0, '').Trim() } |
             Where-Object { $_ -and $_ -notmatch '^(?i:docker-desktop(?:-data)?)$' }
     )
     foreach ($distribution in $distributions) {
-        $wslResult = Invoke-AutomexiaWslBase64Script `
-            $wsl.Source $distribution $cleanupBase64
+        $wslResult = Invoke-AutomexiaWslScript `
+            $wsl.Source $distribution $cleanup
         if ($wslResult.ExitCode -ne 0) {
             $detail = @($wslResult.Stdout, $wslResult.Stderr) |
                 Where-Object { -not [string]::IsNullOrWhiteSpace($_) }

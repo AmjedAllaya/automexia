@@ -1,7 +1,7 @@
 // cli.rs was retired originally from https://github.com/alacritty/alacritty/blob/e35e5ad14fce8456afdd89f2b392b9924bb27471/alacritty/src/cli.rs
 // which is licensed under Apache 2.0 license.
 
-use clap::{Args, Parser, ValueHint};
+use clap::{Args, Parser, Subcommand, ValueHint};
 use rio_backend::config::Shell;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -9,9 +9,46 @@ use std::path::PathBuf;
 #[derive(Parser, Default, Debug)]
 #[clap(name = "automexia", bin_name = "automexia", author, about, version)]
 pub struct Cli {
+    /// Explicit maintenance commands that do not open a terminal window.
+    #[clap(subcommand)]
+    pub command: Option<CliCommand>,
+
     /// Options which can be passed via IPC.
     #[clap(flatten)]
     pub window_options: WindowOptions,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum CliCommand {
+    /// Inspect, install, or remove persistent shell integration.
+    ShellIntegration(ShellIntegrationCommand),
+}
+
+#[derive(Args, Debug)]
+pub struct ShellIntegrationCommand {
+    #[clap(subcommand)]
+    pub action: ShellIntegrationAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ShellIntegrationAction {
+    /// Report session resources and persistent-install state without changes.
+    Doctor,
+    /// Explicitly install profile integration for shells outside Automexia.
+    Install {
+        /// Reinstall even when the current fingerprint is already installed.
+        #[clap(long)]
+        force: bool,
+        /// Suppress informational installer output.
+        #[clap(long)]
+        quiet: bool,
+    },
+    /// Remove only Automexia-owned persistent profile blocks and resources.
+    Uninstall {
+        /// Suppress informational uninstaller output.
+        #[clap(long)]
+        quiet: bool,
+    },
 }
 
 #[cfg(test)]
@@ -25,6 +62,30 @@ mod tests {
         assert_eq!(command.get_name(), "automexia");
         assert_eq!(command.get_bin_name(), Some("automexia"));
         assert_eq!(command.get_version(), Some(env!("CARGO_PKG_VERSION")));
+    }
+
+    #[test]
+    fn persistent_shell_changes_require_an_explicit_subcommand() {
+        let parsed = Cli::try_parse_from([
+            "automexia",
+            "shell-integration",
+            "install",
+            "--force",
+            "--quiet",
+        ])
+        .unwrap();
+        assert!(matches!(
+            parsed.command,
+            Some(CliCommand::ShellIntegration(ShellIntegrationCommand {
+                action: ShellIntegrationAction::Install {
+                    force: true,
+                    quiet: true
+                }
+            }))
+        ));
+
+        let normal = Cli::try_parse_from(["automexia"]).unwrap();
+        assert!(normal.command.is_none());
     }
 }
 

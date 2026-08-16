@@ -71,18 +71,20 @@ For normal day-to-day launches after the repository is known to be healthy:
 cargo automexia
 ```
 
-It rebuilds only changed code, performs a version smoke, automatically prepares
-the same shell integrations, and launches Automexia.
+It rebuilds only changed code, performs a version smoke, exposes the
+repository-owned integration to the new child shell, and launches Automexia.
 It does not repeat the exhaustive isolated gate and is the recommended command
 for normal launches after `cargo ready` or `cargo dev` has passed once.
 Both launch commands return after starting the Automexia process, so the
-terminal remains usable and Cargo's build output stays unlocked. Each launch
+terminal remains usable and Cargo's build output stays unlocked. A normal
+launch never writes profiles, runs an integration installer, changes PowerShell
+execution policy, or provisions WSL. Each launch
 uses a generation-specific copy under `target/automexia-runtime`; stale copies
-are reclaimed automatically on later launches. Integration provisioning is
-source-aware and idempotent: a current installation is a fast no-op, while a
-changed or missing generated file/profile marker is repaired before process
-creation. Provisioning failure stops the launch with an actionable error rather
-than opening a partially integrated terminal.
+are reclaimed automatically on later launches. Missing session resources leave
+the user's shell unmodified. Persistent integration for nested shells outside
+Automexia is an explicit
+`automexia shell-integration install` operation and can be inspected or
+removed with `doctor`/`uninstall`.
 Pass terminal arguments after `--`, for example:
 
 ```text
@@ -125,11 +127,11 @@ passive session footers, per-command operational context, tab/window
 interactions, shell prompt, command timing, semantic output styling, and focused regression commands are documented in
 [docs/LIQUID-HACKER-UX.md](docs/LIQUID-HACKER-UX.md).
 
-Both `cargo dev` and `cargo automexia` install or refresh the repository-owned
-shell support automatically immediately before they launch. `cargo ready`,
-`cargo check`, and CI remain non-mutating verification commands. The standalone
-installer scripts remain available only for maintainer repair and uninstall
-diagnostics; they are not part of the normal user workflow.
+Both `cargo dev` and `cargo automexia` use repository-owned shell resources
+only in the child session. `cargo ready`, `cargo check`, CI, and normal
+launch remain non-mutating with respect to user profiles. Signed release
+resources are loaded from the installed package; persistent profile support is
+available only through the explicit application maintenance command.
 
 Native PowerShell gains icon-aware `ls` output through a bundled, pipeline-safe
 format view and does not require `eza`. Typing bare `cmd` or `cmd.exe` from an

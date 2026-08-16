@@ -21,7 +21,11 @@ pub fn normalized_program(program: Option<&str>) -> Option<String> {
     }
 }
 
-pub fn normalized_args(program: Option<&str>, args: &[String]) -> Vec<String> {
+pub fn normalized_args(
+    program: Option<&str>,
+    args: &[String],
+    integration_available: bool,
+) -> Vec<String> {
     #[cfg(target_os = "windows")]
     {
         let mut result = args.to_vec();
@@ -36,13 +40,13 @@ pub fn normalized_args(program: Option<&str>, args: &[String]) -> Vec<String> {
                     || arg.eq_ignore_ascii_case("/k")
                     || arg.eq_ignore_ascii_case("/?")
             });
-            if !explicit_command {
+            if !explicit_command && integration_available {
                 if !result.iter().any(|arg| arg.eq_ignore_ascii_case("/d")) {
                     result.insert(0, "/D".to_string());
                 }
                 result.push("/K".to_string());
                 result.push(
-                    "chcp 65001>nul & set \"AUTOMEXIA_CMD_PROMPT_GLYPH=λ\" & if exist \"%LOCALAPPDATA%\\Automexia\\shell-integration\\automexia.cmd\" call \"%LOCALAPPDATA%\\Automexia\\shell-integration\\automexia.cmd\""
+                    "chcp 65001>nul & set \"AUTOMEXIA_CMD_PROMPT_GLYPH=λ\" & if exist \"%AUTOMEXIA_SHELL_INTEGRATION_ROOT%\\cmd\\automexia.cmd\" (call \"%AUTOMEXIA_SHELL_INTEGRATION_ROOT%\\cmd\\automexia.cmd\") else if exist \"%AUTOMEXIA_SHELL_INTEGRATION_ROOT%\\automexia.cmd\" call \"%AUTOMEXIA_SHELL_INTEGRATION_ROOT%\\automexia.cmd\""
                         .to_string(),
                 );
             }
@@ -65,11 +69,10 @@ pub fn normalized_args(program: Option<&str>, args: &[String]) -> Vec<String> {
         }
 
         // Do not rewrite explicit script/command invocations. For the normal
-        // interactive shell, source the LocalAppData integration directly so
-        // redirected/OneDrive profile paths cannot prevent Automexia's prompt
-        // from loading. Profiles still load normally because we never use
-        // -NoProfile. The command contains no spaces, which is important for
-        // Rio's audited Windows PTY launcher that joins argv into one commandline.
+        // interactive shell, source the validated package/development resource
+        // directly into this child session. Profiles still load normally
+        // because we never use -NoProfile. Persistent integration is an
+        // independent, explicit maintenance command.
         let has_explicit_command = result.iter().any(|arg| {
             matches!(
                 arg.to_ascii_lowercase().as_str(),
@@ -81,7 +84,7 @@ pub fn normalized_args(program: Option<&str>, args: &[String]) -> Vec<String> {
                     | "-encodedarguments"
             )
         });
-        if !has_explicit_command {
+        if !has_explicit_command && integration_available {
             let has_no_exit = result.iter().any(|arg| {
                 arg.eq_ignore_ascii_case("-NoExit") || arg.eq_ignore_ascii_case("-noe")
             });
@@ -90,7 +93,7 @@ pub fn normalized_args(program: Option<&str>, args: &[String]) -> Vec<String> {
             }
             result.push("-Command".to_string());
             result.push(
-                "if(Test-Path($env:LOCALAPPDATA+'\\Automexia\\shell-integration\\automexia.ps1')){&($env:LOCALAPPDATA+'\\Automexia\\shell-integration\\automexia.ps1')}"
+                "$r=$env:AUTOMEXIA_SHELL_INTEGRATION_ROOT;$p=$r+'\\powershell\\automexia.ps1';if(!(Test-Path($p))){$p=$r+'\\automexia.ps1'};if(Test-Path($p)){&($p)}"
                     .to_string(),
             );
         }
@@ -111,7 +114,7 @@ mod tests {
     #[test]
     fn preserves_non_powershell_arguments() {
         let input = vec!["-l".to_string()];
-        let output = normalized_args(Some("bash"), &input);
+        let output = normalized_args(Some("bash"), &input, true);
         assert_eq!(output, input);
     }
 
@@ -119,20 +122,20 @@ mod tests {
     #[test]
     fn default_windows_shell_loads_automexia_without_profile_guessing() {
         assert_eq!(normalized_program(None).as_deref(), Some("powershell"));
-        let args = normalized_args(None, &[]);
+        let args = normalized_args(None, &[], true);
         assert!(args.iter().any(|arg| arg.eq_ignore_ascii_case("-NoLogo")));
         assert!(args.iter().any(|arg| arg.eq_ignore_ascii_case("-NoExit")));
         assert!(args.iter().any(|arg| arg.eq_ignore_ascii_case("-Command")));
         assert!(args
             .iter()
-            .any(|arg| arg.contains("shell-integration\\automexia.ps1")));
+            .any(|arg| arg.contains("AUTOMEXIA_SHELL_INTEGRATION_ROOT")));
     }
 
     #[cfg(target_os = "windows")]
     #[test]
     fn existing_no_exit_is_not_duplicated() {
         let input = vec!["-NoExit".to_string()];
-        let output = normalized_args(Some("powershell"), &input);
+        let output = normalized_args(Some("powershell"), &input, true);
         assert_eq!(
             output
                 .iter()
@@ -146,7 +149,7 @@ mod tests {
     #[test]
     fn explicit_powershell_command_is_not_rewritten() {
         let input = vec!["-Command".to_string(), "Get-Date".to_string()];
-        let output = normalized_args(Some("powershell"), &input);
+        let output = normalized_args(Some("powershell"), &input, true);
         assert_eq!(
             output
                 .iter()
@@ -160,7 +163,7 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[test]
     fn interactive_cmd_loads_automexia_in_the_same_pty() {
-        let output = normalized_args(Some(r"C:\Windows\System32\cmd.exe"), &[]);
+        let output = normalized_args(Some(r"C:\Windows\System32\cmd.exe"), &[], true);
         assert!(output.iter().any(|arg| arg.eq_ignore_ascii_case("/D")));
         assert!(output.iter().any(|arg| arg.eq_ignore_ascii_case("/K")));
         assert!(output.iter().any(|arg| arg.contains("automexia.cmd")));
@@ -171,7 +174,20 @@ mod tests {
     fn noninteractive_cmd_commands_are_never_rewritten() {
         for control in ["/c", "/k", "/?"] {
             let input = vec![control.to_string(), "ver".to_string()];
-            assert_eq!(normalized_args(Some("cmd.exe"), &input), input);
+            assert_eq!(normalized_args(Some("cmd.exe"), &input, true), input);
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn unavailable_integration_never_injects_a_command() {
+        for program in ["powershell", "pwsh", "cmd.exe"] {
+            let output = normalized_args(Some(program), &[], false);
+            assert!(!output.iter().any(|arg| {
+                arg.eq_ignore_ascii_case("-Command")
+                    || arg.eq_ignore_ascii_case("/K")
+                    || arg.contains("shell-integration")
+            }));
         }
     }
 }

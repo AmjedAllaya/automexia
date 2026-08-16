@@ -132,6 +132,12 @@ class PlatformCoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "unsigned build intermediates"):
             PLATFORM.validate_release(altered)
 
+    def test_publish_cannot_bypass_reproducibility(self) -> None:
+        altered = copy.deepcopy(self.release)
+        altered["jobs"]["publish"]["needs"].remove("reproducibility-linux")
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "reproducibility"):
+            PLATFORM.validate_release(altered)
+
     def test_windows_executable_signing_cannot_escape_isolated_input(self) -> None:
         altered = copy.deepcopy(self.release)
         signing = next(
@@ -142,6 +148,32 @@ class PlatformCoverageTests(unittest.TestCase):
         )
         signing["with"]["files-folder"] = "staged"
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "isolated flat"):
+            PLATFORM.validate_release(altered)
+
+    def test_windows_release_cannot_drop_script_signing(self) -> None:
+        altered = copy.deepcopy(self.release)
+        windows = altered["jobs"]["package-windows"]
+        windows["steps"] = [
+            step
+            for step in windows["steps"]
+            if step.get("name") != "Sign PowerShell assets with Azure Artifact Signing"
+        ]
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "EXE, scripts, and MSI|PowerShell asset"
+        ):
+            PLATFORM.validate_release(altered)
+
+    def test_publication_cannot_overwrite_or_skip_immutability(self) -> None:
+        altered = copy.deepcopy(self.release)
+        publish = altered["jobs"]["publish"]
+        for step in publish["steps"]:
+            if step.get("name") == "Require immutable GitHub releases":
+                step["run"] = "echo skipped"
+            if step.get("name") == "Publish protected-tag assets":
+                step["run"] = 'gh release upload "$GITHUB_REF_NAME" --clobber'
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "immutable-releases|overwrite"
+        ):
             PLATFORM.validate_release(altered)
 
     def test_controlled_smoke_cannot_restore_unsigned_build_artifacts(self) -> None:

@@ -412,6 +412,7 @@ dependencies = [
  "automexia-extension-runtime",
  "automexia-image",
  "automexia-ui-model",
+ "base64",
  "bitflags 2.13.1",
  "clap",
  "corcovado",

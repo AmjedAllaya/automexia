@@ -9,6 +9,8 @@ set "AUTOMEXIA_SHELL_INTEGRATION=1"
 set "TERM_PROGRAM=Automexia"
 set "COLORTERM=truecolor"
 set "AUTOMEXIA_CMD_ROOT=%~dp0"
+if not defined AUTOMEXIA_CMD_USER_BASE64 set "AUTOMEXIA_CMD_USER_BASE64=__AUTOMEXIA_CMD_USER_BASE64__"
+if not defined AUTOMEXIA_CMD_PATH_BASE64 set "AUTOMEXIA_CMD_PATH_BASE64=__AUTOMEXIA_CMD_PATH_BASE64__"
 
 rem Keep this tracked and installed batch strictly ASCII. The launcher selects
 rem UTF-8 before CMD parses this file and passes the Unicode prompt glyph through
@@ -21,7 +23,7 @@ for /F "delims=#" %%E in ('"prompt #$E# & for %%E in (1) do rem"') do set "AUTOM
 rem Cache clone-safe shell identity once and embed it into PROMPT below. CMD's
 rem prompt is repainted after every command, so this also restores CMD metadata
 rem after a nested shell exits. Empty WSL fields deliberately clear stale data.
-set "AUTOMEXIA_CMD_IDENTITY=%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell_name=Q01E%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell_user=__AUTOMEXIA_CMD_USER_BASE64__%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell_path=__AUTOMEXIA_CMD_PATH_BASE64__%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_distro=%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_os_version=%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell=MQ==%AUTOMEXIA_ESC%\"
+set "AUTOMEXIA_CMD_IDENTITY=%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell_name=Q01E%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell_user=%AUTOMEXIA_CMD_USER_BASE64%%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell_path=%AUTOMEXIA_CMD_PATH_BASE64%%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_distro=%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_os_version=%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell=MQ==%AUTOMEXIA_ESC%\"
 <nul set /p "=%AUTOMEXIA_CMD_IDENTITY%"
 
 rem CMD expands $P every time it paints a prompt, so OSC 7, the window title,

@@ -620,6 +620,12 @@ Automexia owns `config.toml`, `themes/`, `extensions/`, and `logs/` under its
 platform configuration root. Planned typed user actions live below
 `actions/actions.toml`; per-shell completion and alias files below
 `generated/` are disposable, digest-marked artifacts rebuilt from that source.
+Normal terminal launch does not own or rewrite a shell profile. It validates a
+package-adjacent integration tree and exposes it only to the child session.
+Persistent profile integration is a distinct, explicit application command and
+owns only exact marked blocks and bounded copied resources. The decision and
+antivirus rationale are in
+[ADR 0017](adr/0017-session-only-shell-integration.md).
 The one-release migration reads a narrow Rio
 allowlist and never modifies the source. See `docs/MIGRATION.md`.
 

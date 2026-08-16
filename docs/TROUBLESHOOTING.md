@@ -1,5 +1,29 @@
 # Troubleshooting
 
+## Antivirus reports PowerShell or shell-integration behavior
+
+Current normal launches do not invoke an installer, change execution policy,
+write a PowerShell profile, or provision WSL. Confirm the session resource
+boundary without changing state:
+
+```text
+automexia shell-integration doctor
+```
+
+Persistent integration is optional. If
+`automexia shell-integration install` is blocked, continue using the
+session-only integration and do not add an antivirus exclusion or pass
+`-ExecutionPolicy Bypass`. For a protected release, verify the MSI/ZIP
+checksum, Authenticode publisher/timestamp, and GitHub attestation as described
+in [Release trust](RELEASE-TRUST.md), then submit only that exact public
+artifact through the antivirus vendor's official false-positive process.
+Developer builds and checked-out scripts are intentionally unsigned and should
+not be redistributed.
+
+A OneDrive-redirected Documents profile is no longer touched by normal launch.
+The explicit persistent installer allows Microsoft Cloud Files reparse tags but
+still rejects junctions, symbolic links, and unknown redirect types.
+
 Start with the smallest diagnostic that preserves the failure. Do not delete a
 configuration, profile, or Cargo target until its location and ownership are
 known.

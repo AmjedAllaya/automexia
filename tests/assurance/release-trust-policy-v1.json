@@ -4,6 +4,10 @@
   "repository": "AmjedAllaya/automexia-terminal",
   "package_prefix": "automexia-terminal",
   "chunk_bytes": 1048576,
+  "sbom": {
+    "minimum_components": 10,
+    "required_purl_prefixes": ["pkg:cargo/"]
+  },
   "artifacts": [
     {
       "id": "windows-msi",

@@ -102,6 +102,50 @@ pub fn setup_environment_variables(config: &rio_backend::config::Config) {
             std::env::set_var(env_vec[0], env_vec[1]);
         }
     }
+
+    // Resolve signed/package-owned resources after user environment settings
+    // so the trust boundary cannot be redirected by terminal configuration.
+    automexia::shell_integration::prepare_session_environment();
+}
+
+fn execute_cli_command(
+    command: &cli::CliCommand,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use automexia::shell_integration::{self, PersistentOperation};
+    use cli::{CliCommand, ShellIntegrationAction};
+
+    match command {
+        CliCommand::ShellIntegration(command) => match &command.action {
+            ShellIntegrationAction::Doctor => {
+                println!("{}", shell_integration::status());
+                Ok(())
+            }
+            ShellIntegrationAction::Install { force, quiet } => {
+                shell_integration::run_persistent(
+                    PersistentOperation::Install,
+                    *quiet,
+                    *force,
+                )
+                .map_err(std::io::Error::other)?;
+                if !*quiet {
+                    println!("Persistent Automexia shell integration installed.");
+                }
+                Ok(())
+            }
+            ShellIntegrationAction::Uninstall { quiet } => {
+                shell_integration::run_persistent(
+                    PersistentOperation::Uninstall,
+                    *quiet,
+                    false,
+                )
+                .map_err(std::io::Error::other)?;
+                if !*quiet {
+                    println!("Persistent Automexia shell integration removed.");
+                }
+                Ok(())
+            }
+        },
+    }
 }
 
 fn setup_logs_by_filter_level(
@@ -162,6 +206,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load command line options.
     let args = cli::Cli::parse();
+
+    if let Some(command) = &args.command {
+        let result = execute_cli_command(command);
+        #[cfg(windows)]
+        unsafe {
+            FreeConsole();
+        }
+        return result;
+    }
 
     if let Err(error) = automexia::migration::migrate_legacy_configuration() {
         eprintln!("warning: legacy configuration import was not completed: {error}");

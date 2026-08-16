@@ -424,11 +424,9 @@ append_block "`$HOME/.bashrc" '[ -r "`${AUTOMEXIA_CONFIG_HOME:-`${XDG_CONFIG_HOM
 append_block "`$HOME/.zshrc" '[ -r "`${AUTOMEXIA_CONFIG_HOME:-`${XDG_CONFIG_HOME:-`$HOME/.config}/automexia}/shell-integration.zsh" ] && . "`${AUTOMEXIA_CONFIG_HOME:-`${XDG_CONFIG_HOME:-`$HOME/.config}/automexia}/shell-integration.zsh"'
 printf 'AUTOMEXIA_WSL_INTEGRATION_OK\n'
 "@
-    $payloadBytes = [Text.Encoding]::UTF8.GetBytes($payload)
-    $payloadBase64 = [Convert]::ToBase64String($payloadBytes)
     foreach ($distribution in $script:DetectedWslDistributions) {
-        $wslResult = Invoke-AutomexiaWslBase64Script `
-            $script:DetectedWslExecutable $distribution $payloadBase64
+        $wslResult = Invoke-AutomexiaWslScript `
+            $script:DetectedWslExecutable $distribution $payload
         $stdoutLines = @($wslResult.Stdout -split '\r?\n' | Where-Object { $_ })
         if ($wslResult.ExitCode -ne 0 -or
             $stdoutLines -notcontains 'AUTOMEXIA_WSL_INTEGRATION_OK') {
