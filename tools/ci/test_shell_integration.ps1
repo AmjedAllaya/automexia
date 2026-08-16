@@ -217,8 +217,8 @@ try {
     }
     foreach ($contract in @(
         'SetUserVar=automexia_shell_name=Q01E',
-        'SetUserVar=automexia_shell_user=__AUTOMEXIA_CMD_USER_BASE64__',
-        'SetUserVar=automexia_shell_path=__AUTOMEXIA_CMD_PATH_BASE64__',
+        'SetUserVar=automexia_shell_user=%AUTOMEXIA_CMD_USER_BASE64%',
+        'SetUserVar=automexia_shell_path=%AUTOMEXIA_CMD_PATH_BASE64%',
         'SetUserVar=automexia_distro=',
         'set "AUTOMEXIA_CMD_IDENTITY=',
         'PROMPT=%AUTOMEXIA_CMD_IDENTITY%',
@@ -469,17 +469,17 @@ if ($installerSource -notmatch 'windows-path-safety\.ps1' -or
     $pathSafetySource -notmatch 'AutomexiaNameSurrogateReparseTagMask') {
     throw 'Windows installer does not classify cloud and name-surrogate reparse tags precisely'
 }
-if ($wslTransportSource -notmatch 'AutomexiaWslPayloadCharacterLimit' -or
+if ($wslTransportSource -notmatch 'AutomexiaWslPayloadBytesLimit' -or
     $wslTransportSource -notmatch 'RedirectStandardInput' -or
-    $wslTransportSource -notmatch "tr -cd ''A-Za-z0-9\+/=''" -or
-    $wslTransportSource -notmatch 'base64 -d \| sh') {
-    throw 'Windows WSL transport is not bounded, redirected, BOM-safe, and fixed-command'
+    $wslTransportSource -notmatch '--exec sh -s' -or
+    $wslTransportSource -match 'base64 -d|sh -c|Invoke-AutomexiaWslBase64Script') {
+    throw 'Windows WSL transport is not bounded, raw UTF-8 stdin, and fixed-command'
 }
 . $pathSafetyPath
 . $wslTransportPath
 $unsafeDistributionRejected = $false
 try {
-    Invoke-AutomexiaWslBase64Script $pathSafetyPath 'unsafe distribution' 'QQ==' | Out-Null
+    Invoke-AutomexiaWslScript $pathSafetyPath 'unsafe distribution' 'printf ok' | Out-Null
 } catch {
     if ($_.Exception.Message -notmatch 'Unsafe WSL distribution name') { throw }
     $unsafeDistributionRejected = $true
@@ -487,9 +487,9 @@ try {
 if (-not $unsafeDistributionRejected) { throw 'WSL transport accepted an unsafe distribution token' }
 $malformedPayloadRejected = $false
 try {
-    Invoke-AutomexiaWslBase64Script $pathSafetyPath 'fixture' 'not base64!' | Out-Null
+    Invoke-AutomexiaWslScript $pathSafetyPath 'fixture' ([string][char]0) | Out-Null
 } catch {
-    if ($_.Exception.Message -notmatch 'not canonical Base64') { throw }
+    if ($_.Exception.Message -notmatch 'null byte') { throw }
     $malformedPayloadRejected = $true
 }
 if (-not $malformedPayloadRejected) { throw 'WSL transport accepted a malformed payload' }
@@ -504,9 +504,8 @@ if ($wslExecutable) {
         ) | Select-Object -First 1
         if ($smokeDistribution) {
             $smokeScript = "printf 'AUTOMEXIA_WSL_TRANSPORT_OK\n'"
-            $smokePayload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($smokeScript))
-            $smokeResult = Invoke-AutomexiaWslBase64Script `
-                $wslExecutable.Source $smokeDistribution $smokePayload
+            $smokeResult = Invoke-AutomexiaWslScript `
+                $wslExecutable.Source $smokeDistribution $smokeScript
             if ($smokeResult.ExitCode -ne 0 -or
                 $smokeResult.Stdout -notmatch 'AUTOMEXIA_WSL_TRANSPORT_OK') {
                 throw "Windows WSL stdin transport smoke failed for $smokeDistribution"
@@ -559,9 +558,9 @@ if ($installerSource -notmatch 'DetectedWslDistributions' -or
     $wslTransportSource -notmatch "Arguments = '--distribution ' \+ \`$Distribution") {
     throw 'Windows installer does not provision every detected user WSL distribution safely'
 }
-if ($installerSource -notmatch 'Invoke-AutomexiaWslBase64Script' -or
-    $installerSource -match 'printf.+\$payloadBase64.+base64 -d') {
-    throw 'Windows installer does not stream its bounded WSL payload outside the command line'
+if ($installerSource -notmatch 'Invoke-AutomexiaWslScript' -or
+    $installerSource -match 'payloadBase64|base64 -d|sh -c') {
+    throw 'Windows installer does not stream its bounded raw WSL payload outside the command line'
 }
 if ($installerSource -notmatch 'automexia\.cmd' -or
     $installerSource -notmatch '__AUTOMEXIA_CMD_USER_BASE64__' -or

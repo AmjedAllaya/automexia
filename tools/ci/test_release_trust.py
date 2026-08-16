@@ -69,12 +69,60 @@ class ReleaseTrustTests(unittest.TestCase):
             final / "release-trust-benchmark.json",
             self.policy,
         )
+        components = [
+            ("automexia-terminal", "0.4.0"),
+            *[(f"dependency-{index}", f"1.0.{index}") for index in range(1, 10)],
+        ]
         (final / "automexia-terminal.spdx.json").write_text(
-            json.dumps({"spdxVersion": "SPDX-2.3", "name": "Automexia Terminal"}),
+            json.dumps(
+                {
+                    "spdxVersion": "SPDX-2.3",
+                    "SPDXID": "SPDXRef-DOCUMENT",
+                    "dataLicense": "CC0-1.0",
+                    "name": "Automexia Terminal",
+                    "documentNamespace": "https://example.invalid/automexia/sbom/fixture",
+                    "creationInfo": {
+                        "created": "2026-08-16T10:00:00Z",
+                        "creators": ["Tool: Automexia fixture"],
+                    },
+                    "packages": [
+                        {
+                            "name": name,
+                            "versionInfo": component_version,
+                            "SPDXID": f"SPDXRef-Package-{index}",
+                            "externalRefs": [
+                                {
+                                    "referenceCategory": "PACKAGE-MANAGER",
+                                    "referenceType": "purl",
+                                    "referenceLocator": f"pkg:cargo/{name}@{component_version}",
+                                }
+                            ],
+                        }
+                        for index, (name, component_version) in enumerate(components)
+                    ],
+                }
+            ),
             encoding="utf-8",
         )
         (final / "automexia-terminal.cdx.json").write_text(
-            json.dumps({"bomFormat": "CycloneDX", "specVersion": "1.6"}),
+            json.dumps(
+                {
+                    "bomFormat": "CycloneDX",
+                    "specVersion": "1.6",
+                    "serialNumber": "urn:uuid:12345678-1234-1234-1234-123456789abc",
+                    "version": 1,
+                    "metadata": {"timestamp": "2026-08-16T10:00:00Z"},
+                    "components": [
+                        {
+                            "type": "library",
+                            "name": name,
+                            "version": component_version,
+                            "purl": f"pkg:cargo/{name}@{component_version}",
+                        }
+                        for name, component_version in components
+                    ],
+                }
+            ),
             encoding="utf-8",
         )
         windows_packages = sorted(
@@ -107,6 +155,7 @@ class ReleaseTrustTests(unittest.TestCase):
                     "artifact_bytes": windows_bytes,
                     "artifacts": windows_artifacts,
                     "signature_count": 4,
+                    "embedded_script_signature_count": 16,
                     "publisher": PUBLISHER,
                     "scan_milliseconds": 10,
                     "scan_timeout_seconds": 900,
@@ -241,6 +290,31 @@ class ReleaseTrustTests(unittest.TestCase):
         (final / "automexia-terminal.cdx.json").write_text("{}", encoding="utf-8")
         self.write_checksums(final)
         with self.assertRaisesRegex(TRUST.ReleaseTrustError, "CycloneDX"):
+            TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
+
+    def test_semantically_empty_sboms_are_rejected(self) -> None:
+        for filename, mutation, message in (
+            ("automexia-terminal.spdx.json", ("packages", []), "SPDX packages"),
+            ("automexia-terminal.cdx.json", ("components", []), "CycloneDX components"),
+        ):
+            with self.subTest(filename=filename):
+                final = self.prepare_final(f"empty-{filename}")
+                path = final / filename
+                document = json.loads(path.read_text(encoding="utf-8"))
+                document[mutation[0]] = mutation[1]
+                path.write_text(json.dumps(document), encoding="utf-8")
+                self.write_checksums(final)
+                with self.assertRaisesRegex(TRUST.ReleaseTrustError, message):
+                    TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
+
+    def test_sboms_must_identify_the_exact_product_version(self) -> None:
+        final = self.prepare_final("wrong-sbom-product-version")
+        path = final / "automexia-terminal.cdx.json"
+        document = json.loads(path.read_text(encoding="utf-8"))
+        document["components"][0]["version"] = "9.9.9"
+        path.write_text(json.dumps(document), encoding="utf-8")
+        self.write_checksums(final)
+        with self.assertRaisesRegex(TRUST.ReleaseTrustError, "released Automexia version"):
             TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
 
         final = self.prepare_final("final-failed-evidence")

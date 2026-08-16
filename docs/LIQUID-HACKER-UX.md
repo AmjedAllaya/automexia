@@ -407,14 +407,14 @@ remain neutral so a Windows mount does not turn every filename green. A
 user-defined `EZA_COLORS` value is never replaced; the TTY-only folder badge
 layer owns only recognized directory icons and their matching basename color.
 
-`cargo dev` and `cargo automexia` automatically install or refresh all of these
-integrations before they launch. On Windows this includes PowerShell, CMD, and
-WSL Bash/Zsh; on Unix it includes Bash/Zsh and user-local terminfo. The
-source-aware fast path avoids rewriting current files or starting WSL, so no
-manual install command or post-install restart is part of normal use. The
-Windows installer generates CMD clone metadata for the current account without
-storing plaintext credentials, and the matching uninstall script removes only
-marked Automexia blocks.
+`cargo dev` and `cargo automexia` expose the repository integration only to
+the child shell they launch; signed releases use the package-adjacent resource
+tree. Normal launch never writes a profile or starts WSL for provisioning.
+Persistent PowerShell/CMD/WSL or Unix profile support for shells opened outside
+Automexia requires the explicit `automexia shell-integration install` command.
+The Windows installer generates CMD clone metadata for the current account
+without storing plaintext credentials, and uninstall removes only marked
+Automexia blocks.
 
 ## Semantic output
 

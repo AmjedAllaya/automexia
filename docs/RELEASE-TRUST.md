@@ -32,11 +32,12 @@ The flat publication directory must contain exactly eleven versioned packages:
 - one signed, notarized, and stapled universal macOS DMG;
 - Linux x86_64 and ARM64 DEB, RPM, and tar.gz packages.
 
-Each Windows ZIP is itself an exact flat package: `automexia.exe`, `LICENSE`,
-`NOTICE.md`, `README.md`, and `THIRD_PARTY_NOTICES.md`, with no extra files or
-directories. The embedded executable product version must equal the release tag.
-Portable staging is reset before every package run so a repeated local or CI build
-cannot carry a stale file into a later archive.
+Each Windows ZIP has an exact allowlist: `automexia.exe`, the four reviewed
+documents, and the complete `shell-integration/` resource tree. Nested paths,
+entry count, expanded size, compression ratio, and traversal are bounded.
+Portable staging is reset before every package run and the resource copy rejects
+symlinks/reparse points, more than 128 files, or more than 32 MiB. The embedded
+executable product version must equal the release tag.
 
 Raw executables, app directories, symbol files, signing material, build logs,
 and unsigned staging artifacts are forbidden. Every expected architecture must
@@ -51,9 +52,18 @@ atomically, and verifies that `SHA256SUMS` names every final asset exactly once.
 Controlled Windows evidence is accepted only when its release version, exact
 publisher, artifact count, signature count, and every scanned package name, size, and SHA-256 match those
 final packages; unknown evidence fields and out-of-contract timeouts are rejected.
-SBOMs are generated from the final package directory, not from unsigned build
-intermediates. GitHub provenance and SBOM attestations bind those final files to
-the protected workflow.
+SBOM input contains the final package directory plus the exact `Cargo.lock`
+used by the tagged build, not unsigned build outputs. Validation requires
+complete SPDX/CycloneDX metadata, at least ten components, Cargo PURLs, the
+exact `automexia-terminal` version, and agreement between both formats;
+header-only/empty documents fail. GitHub provenance and SBOM attestations bind
+the final packages to the protected workflow.
+
+Publication is create-once. The publish job calls GitHub's immutable-releases
+endpoint and fails unless the repository has immutable releases enabled. It
+refuses any pre-existing release for the tag and never uses `--clobber`.
+Assets are uploaded to a new draft and become immutable when the draft is
+published.
 
 ## Windows signing and malware scan
 
@@ -81,12 +91,18 @@ secrets, never certificate or account secret values. Actual credentials are
 scoped to their protected native signing job.
 
 The workflow copies the one reviewed executable into an isolated flat signing
-directory, signs it before packaging, and signs every MSI using an RFC 3161
-timestamp. Validation requires a trusted Authenticode chain, the
-exact configured publisher, a trusted timestamp, and the code-signing EKU.
+directory and signs it before packaging. It then Authenticode-signs and
+timestamps every distributed `.ps1` and `.ps1xml` resource before MSI/ZIP
+creation, and signs every MSI using an RFC 3161 timestamp. Azure Artifact
+Signing and PFX fallback paths both cover the scripts. Validation requires a
+trusted Authenticode chain, the exact configured publisher, a trusted
+timestamp, and the code-signing EKU.
 Portable ZIPs are treated as hostile input during validation: traversal,
 absolute paths, alternate streams, excessive expansion, and unexpected
-contents are rejected.
+contents are rejected. The controlled gate also extracts both final ZIPs and
+requires exactly eight valid publisher/timestamp signatures in each embedded
+PowerShell resource tree; the resulting count is bound into the redacted
+release evidence.
 
 The controlled hardware runner launches the final signed Windows x86_64 ZIP and
 the final Linux x86_64 tar archive for version/GPU/PTY/WSL smoke coverage; it does
@@ -111,6 +127,14 @@ Linux packages retain the platform-native model: deterministic DEB/RPM/tar.gz
 payloads, clean install/uninstall validation, exact SHA-256 checksums, SBOMs,
 and GitHub attestations. Distribution-repository signing is a future channel
 concern and must not be inferred from the GitHub release signature contract.
+
+The tag workflow additionally builds Linux x64 twice from fresh `git archive`
+trees at one canonical temporary path with `SOURCE_DATE_EPOCH`, UTC locale,
+incremental compilation disabled, stable build IDs, and source-path remapping.
+Publication depends on byte-identical binaries. The retained JSON records both
+cold-build durations, size, SHA-256, commit, and source epoch. This proves the
+controlled Linux binary is reproducible under the pinned workflow environment;
+it is not a claim that every toolchain/OS combination produces identical bits.
 
 ## User verification
 
@@ -167,10 +191,11 @@ security team; it is not an Automexia installation step.
 Pull requests run the policy validator and hostile mutation suite. The release
 workflow adds signature/notarization checks, final-asset inventory validation,
 controlled malware scanning, clean package tests, SBOM creation, checksum
-verification, and attestations. `release-trust-benchmark.json` measures only
-streaming digest throughput for the exact release set; Defender scan duration is
-recorded separately. These are release-pipeline measurements and add no runtime
-work to Automexia.
+verification, cold-build reproducibility, immutable publication, and
+attestations. `release-trust-benchmark.json` measures streaming digest
+throughput for the exact release set; Defender scan duration and two cold-build
+durations are recorded separately. These are release-pipeline measurements and
+add no runtime work to Automexia.
 
 Run focused local checks with:
 
@@ -179,6 +204,8 @@ python tools/ci/release_trust.py --check-policy
 python tools/ci/test_release_trust.py
 python tools/ci/check_platform_coverage.py
 python tools/ci/test_platform_coverage.py
+python tools/ci/check_runtime_trust.py
+python tools/ci/test_runtime_trust.py
 ```
 
 The Windows signature/Defender script is intentionally a controlled-runner

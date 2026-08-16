@@ -21,26 +21,24 @@ run. Compiler progress remains visible; this is active verification, not a
 launch hang. Use `cargo automexia` for ordinary day-to-day launches.
 
 The launcher returns after a successful spawn, leaving Cargo available for the
-next command while Automexia continues running. Both launch paths run the
-cross-platform shell-provisioning phase immediately before the spawn:
+next command while Automexia continues running. Normal launch never installs,
+repairs, or rewrites a shell profile. On Windows, the launcher passes the
+validated source integration directory only to the child Automexia process;
+PowerShell and interactive CMD sessions load those resources for that process
+tree. Unix profile integration remains an explicit installer operation.
 
-- Windows installs or repairs PowerShell, CMD, and WSL Bash/Zsh support;
-- macOS/Linux installs or repairs Bash/Zsh support and user-local terminfo;
-- an unchanged installation exits through a fingerprinted fast path without
-  rewriting profiles or starting WSL;
-- a provisioning failure aborts launch, so a successful command never opens an
-  unintentionally unintegrated terminal.
-
-`cargo ready`, `cargo check`, and `cargo xtask ci` remain non-mutating. The
-platform installers support direct `--force`/`-Force` invocation for focused
-maintainer diagnosis, but normal development never requires it.
+`cargo ready`, `cargo check`, `cargo xtask ci`, and ordinary application launch
+remain non-mutating. Persistent changes require the explicit
+`automexia shell-integration install` command (or direct platform installer),
+and PowerShell execution policy is never bypassed by the application or local
+verification commands.
 
 The complete gate also parses every repository PowerShell source, exercises the
-Windows install/repair fast path in an isolated LocalAppData fixture, and executes
-the PowerShell formatter/prompt contract on Windows. On Unix it syntax-checks
-Bash and Zsh, runs ShellCheck, exercises automatic installation twice in an
-isolated home, repairs a deliberately changed installed file, and executes both
-shell-integration suites.
+explicit Windows install/repair/uninstall paths in isolated profile and
+LocalAppData fixtures, and executes the PowerShell formatter/prompt contract on
+Windows. On Unix it syntax-checks Bash and Zsh, runs ShellCheck, exercises the
+explicit installer twice in an isolated home, repairs a deliberately changed
+installed file, and executes both shell-integration suites.
 `cargo xtask ci` runs the same non-launching gate; neither command leaves its
 isolated exhaustive build artifacts behind.
 
@@ -934,13 +932,18 @@ python tools/ci/release_trust.py --check-policy
 python tools/ci/test_release_trust.py
 python tools/ci/check_platform_coverage.py
 python tools/ci/test_platform_coverage.py
+python tools/ci/check_runtime_trust.py
+python tools/ci/test_runtime_trust.py
 ```
 
 The hostile mutation suites reject missing architectures, unexpected/raw
 artifacts, symlinks, empty or oversized packages, checksum tampering, policy
 drift, excessive workflow permissions, unsigned downloads, non-isolated signing
-inputs, stale or extra portable files, release-version/publisher/byte-evidence
-mismatches, missing Defender evidence, pre-signing SBOMs, missing attestations,
+inputs, automatic profile provisioning, execution-policy bypass, encoded WSL
+shell transport, elevated Windows manifests, unsigned distributed scripts,
+stale or extra portable resources, semantically empty SBOMs,
+release-version/publisher/byte-evidence mismatches, missing Defender evidence,
+missing immutable-release/reproducibility dependencies, missing attestations,
 and unsafe macOS deep-signing.
 The manifest implementation hashes with a fixed-size buffer, writes atomically,
 and records digest throughput in `release-trust-benchmark.json`; that benchmark
@@ -948,8 +951,9 @@ measures release IO only and adds no application runtime overhead.
 
 The controlled Windows gate requires signed final artifacts and the exact
 publisher, extracts portable ZIPs under traversal/expansion/entry-count limits,
-requires the exact flat five-file archive and embedded release version, checks all
-MSI/executable signatures and timestamps, verifies current Defender
+requires the exact five root files plus bounded integration tree and embedded
+release version, checks all MSI/executable signatures plus eight signed
+PowerShell assets per ZIP, verifies current Defender
 state/intelligence, and runs `MpCmdRun` without remediation under a hard timeout.
 Its redacted evidence includes engine/intelligence versions, signature count,
 package names/sizes/SHA-256 digests, and scan time. Final publication independently
@@ -957,9 +961,12 @@ binds that evidence to the exact Windows packages, version, and configured
 publisher. Controlled GUI/PTY and WSL smoke use the final packaged Windows and
 Linux portable archives. macOS release CI independently proves
 hardened runtime, absence of `get-task-allow`, accepted notarization, staple
-validation, and Gatekeeper acceptance. These native trust decisions cannot be
-claimed from local unsigned builds. The complete contract and false-positive
-response are in [Release trust](RELEASE-TRUST.md).
+validation, and Gatekeeper acceptance. A release-only Linux job compares two
+fresh cold builds byte for byte and records durations/hash/size; publication
+also requires repository immutable releases and refuses pre-existing assets.
+These native/external trust decisions cannot be claimed from local unsigned
+builds. The complete contract and false-positive response are in
+[Release trust](RELEASE-TRUST.md).
 
 ## OpenSSH inventory foundation
 

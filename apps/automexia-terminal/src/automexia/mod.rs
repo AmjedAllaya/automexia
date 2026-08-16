@@ -11,6 +11,7 @@ pub mod migration;
 pub mod runtime;
 #[cfg(target_os = "windows")]
 pub mod shell;
+pub mod shell_integration;
 mod state;
 pub mod theme;
 pub mod ui;

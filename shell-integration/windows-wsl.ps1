@@ -1,9 +1,9 @@
-$script:AutomexiaWslPayloadCharacterLimit = 8MB
+$script:AutomexiaWslPayloadBytesLimit = 6MB
 
-function Invoke-AutomexiaWslBase64Script(
+function Invoke-AutomexiaWslScript(
     [string]$WslExecutable,
     [string]$Distribution,
-    [string]$Base64Payload
+    [string]$Script
 ) {
     if ([string]::IsNullOrWhiteSpace($WslExecutable) -or
         -not (Test-Path -LiteralPath $WslExecutable -PathType Leaf)) {
@@ -13,31 +13,48 @@ function Invoke-AutomexiaWslBase64Script(
         $Distribution -notmatch '^[A-Za-z0-9._-]+$') {
         throw "Unsafe WSL distribution name: $Distribution"
     }
-    if ([string]::IsNullOrWhiteSpace($Base64Payload) -or
-        $Base64Payload.Length -gt $script:AutomexiaWslPayloadCharacterLimit -or
-        $Base64Payload -notmatch '^[A-Za-z0-9+/]+={0,2}$') {
-        throw 'WSL integration payload is empty, oversized, or not canonical Base64.'
+    if ([string]::IsNullOrWhiteSpace($Script) -or
+        $Script.IndexOf([char]0) -ge 0) {
+        throw 'WSL integration script is empty or contains a null byte.'
+    }
+    $payloadBytes = [Text.UTF8Encoding]::new($false).GetBytes($Script)
+    if ($payloadBytes.Length -gt $script:AutomexiaWslPayloadBytesLimit) {
+        throw 'WSL integration script exceeds the 6 MiB safety ceiling.'
     }
 
     $startInfo = New-Object Diagnostics.ProcessStartInfo
     $startInfo.FileName = $WslExecutable
-    $startInfo.Arguments = '--distribution ' + $Distribution +
-        ' --exec sh -c "tr -cd ''A-Za-z0-9+/='' | base64 -d | sh"'
+    # The distribution token is allowlisted above. The fixed sh -s command
+    # consumes raw UTF-8 from stdin; no command text, decoder, or nested shell
+    # is constructed from the payload.
+    $startInfo.Arguments = '--distribution ' + $Distribution + ' --exec sh -s'
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardInput = $true
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
-
     $process = New-Object Diagnostics.Process
     $process.StartInfo = $startInfo
+    # Windows PowerShell 5.1 lacks ProcessStartInfo.StandardInputEncoding and
+    # otherwise creates the redirected stdin writer with a UTF-8 BOM. Pin the
+    # console encodings only while Process.Start constructs its stream objects,
+    # then restore them before any payload is written.
+    $utf8NoBom = [Text.UTF8Encoding]::new($false)
+    $previousInputEncoding = [Console]::InputEncoding
+    $previousOutputEncoding = [Console]::OutputEncoding
     try {
-        if (-not $process.Start()) {
-            throw "Unable to start WSL integration process for $Distribution"
+        try {
+            [Console]::InputEncoding = $utf8NoBom
+            [Console]::OutputEncoding = $utf8NoBom
+            if (-not $process.Start()) {
+                throw "Unable to start WSL integration process for $Distribution"
+            }
+        } finally {
+            [Console]::InputEncoding = $previousInputEncoding
+            [Console]::OutputEncoding = $previousOutputEncoding
         }
         $stdoutTask = $process.StandardOutput.ReadToEndAsync()
         $stderrTask = $process.StandardError.ReadToEndAsync()
-        $payloadBytes = [Text.Encoding]::ASCII.GetBytes($Base64Payload)
         $process.StandardInput.BaseStream.Write($payloadBytes, 0, $payloadBytes.Length)
         $process.StandardInput.BaseStream.Close()
         $process.WaitForExit()

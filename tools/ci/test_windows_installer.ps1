@@ -26,6 +26,33 @@ $portableRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
     'automexia-portable-{0}' -f [guid]::NewGuid().ToString('N'))
 $installed = $false
 
+function Assert-SignedShellResources {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $required = @(
+        'install-windows.ps1',
+        'uninstall-windows.ps1',
+        'windows-path-safety.ps1',
+        'windows-wsl.ps1',
+        'cmd\automexia-ls.ps1',
+        'completion\powershell\automexia-completion.ps1',
+        'powershell\automexia.format.ps1xml',
+        'powershell\automexia.ps1'
+    )
+    foreach ($relative in $required) {
+        $path = Join-Path $Root $relative
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "signed shell resource is missing: $path"
+        }
+        $signature = Get-AuthenticodeSignature -LiteralPath $path
+        if ($signature.Status -ne 'Valid' -or
+            $signature.SignerCertificate.Subject -cne $ExpectedPublisher -or
+            $null -eq $signature.TimeStamperCertificate) {
+            throw "shell resource does not have the expected timestamped publisher: $path"
+        }
+    }
+}
+
 New-Item -ItemType Directory -Force -Path $rioRoot | Out-Null
 Set-Content -LiteralPath $rioSentinel -Value 'must survive Automexia install and uninstall'
 
@@ -72,6 +99,7 @@ try {
     if ($null -eq $signature.TimeStamperCertificate) {
         throw 'installed executable has no trusted timestamp'
     }
+    Assert-SignedShellResources -Root (Join-Path $installRoot 'shell-integration')
 
     Expand-Archive -LiteralPath $portableZip -DestinationPath $portableRoot
     $portableBinary = Get-ChildItem -LiteralPath $portableRoot -Recurse -File -Filter 'automexia.exe' |
@@ -91,6 +119,7 @@ try {
     if ($null -eq $portableSignature.TimeStamperCertificate) {
         throw 'portable executable has no trusted timestamp'
     }
+    Assert-SignedShellResources -Root (Join-Path $portableRoot 'shell-integration')
 }
 finally {
     if ($installed) {

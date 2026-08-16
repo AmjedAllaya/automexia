@@ -25,6 +25,7 @@ POLICY_KEYS = {
     "repository",
     "package_prefix",
     "chunk_bytes",
+    "sbom",
     "artifacts",
     "forbidden_suffixes",
     "final_metadata",
@@ -58,6 +59,27 @@ def load_policy(path: Path = POLICY_PATH) -> dict[str, Any]:
         raise ReleaseTrustError("release trust policy has no artifact rules")
     if not isinstance(policy.get("chunk_bytes"), int) or policy["chunk_bytes"] <= 0:
         raise ReleaseTrustError("release trust chunk_bytes must be positive")
+    sbom = policy.get("sbom")
+    if not isinstance(sbom, dict) or set(sbom) != {
+        "minimum_components",
+        "required_purl_prefixes",
+    }:
+        raise ReleaseTrustError(
+            "release trust sbom must define minimum_components and required_purl_prefixes"
+        )
+    if (
+        not isinstance(sbom["minimum_components"], int)
+        or sbom["minimum_components"] < 2
+    ):
+        raise ReleaseTrustError("SBOM minimum_components must be at least 2")
+    prefixes = sbom["required_purl_prefixes"]
+    if (
+        not isinstance(prefixes, list)
+        or not prefixes
+        or any(not isinstance(prefix, str) or not prefix.startswith("pkg:") for prefix in prefixes)
+        or len(set(prefixes)) != len(prefixes)
+    ):
+        raise ReleaseTrustError("SBOM required_purl_prefixes must be unique purl prefixes")
     ids: set[str] = set()
     suffixes: set[str] = set()
     for rule in policy["artifacts"]:
@@ -284,6 +306,120 @@ def read_json_bounded(path: Path, max_bytes: int) -> Any:
         raise ReleaseTrustError(f"{path.name} is not valid UTF-8 JSON: {error}") from error
 
 
+def validate_sboms(
+    spdx: Any,
+    cyclonedx: Any,
+    version: str,
+    policy: dict[str, Any],
+) -> None:
+    minimum = policy["sbom"]["minimum_components"]
+    prefixes = tuple(policy["sbom"]["required_purl_prefixes"])
+    product_name = policy["package_prefix"].casefold()
+
+    if (
+        not isinstance(spdx, dict)
+        or not str(spdx.get("spdxVersion", "")).startswith("SPDX-")
+        or spdx.get("SPDXID") != "SPDXRef-DOCUMENT"
+        or spdx.get("dataLicense") != "CC0-1.0"
+        or not str(spdx.get("documentNamespace", "")).startswith(("https://", "http://"))
+    ):
+        raise ReleaseTrustError("automexia-terminal.spdx.json is not a complete SPDX document")
+    creation = spdx.get("creationInfo")
+    if (
+        not isinstance(creation, dict)
+        or not isinstance(creation.get("created"), str)
+        or not isinstance(creation.get("creators"), list)
+        or not creation["creators"]
+    ):
+        raise ReleaseTrustError("SPDX creationInfo is incomplete")
+    spdx_packages = spdx.get("packages")
+    if not isinstance(spdx_packages, list) or len(spdx_packages) < minimum:
+        raise ReleaseTrustError(f"SPDX packages must contain at least {minimum} components")
+
+    spdx_identities: set[tuple[str, str]] = set()
+    spdx_purls: set[str] = set()
+    for package in spdx_packages:
+        if not isinstance(package, dict):
+            raise ReleaseTrustError("SPDX packages must be objects")
+        name = package.get("name")
+        package_version = package.get("versionInfo")
+        package_id = package.get("SPDXID")
+        if (
+            not isinstance(name, str)
+            or not name
+            or not isinstance(package_version, str)
+            or not package_version
+            or not isinstance(package_id, str)
+            or not package_id.startswith("SPDXRef-")
+        ):
+            raise ReleaseTrustError("SPDX package identity is incomplete")
+        spdx_identities.add((name.casefold(), package_version))
+        references = package.get("externalRefs", [])
+        if not isinstance(references, list):
+            raise ReleaseTrustError("SPDX externalRefs must be a list")
+        for reference in references:
+            if (
+                isinstance(reference, dict)
+                and str(reference.get("referenceType", "")).casefold() == "purl"
+                and isinstance(reference.get("referenceLocator"), str)
+            ):
+                spdx_purls.add(reference["referenceLocator"])
+
+    if (product_name, version) not in spdx_identities:
+        raise ReleaseTrustError("SPDX does not identify the released Automexia version")
+    for prefix in prefixes:
+        if not any(purl.startswith(prefix) for purl in spdx_purls):
+            raise ReleaseTrustError(f"SPDX has no required {prefix} purl")
+
+    if (
+        not isinstance(cyclonedx, dict)
+        or cyclonedx.get("bomFormat") != "CycloneDX"
+        or not isinstance(cyclonedx.get("specVersion"), str)
+        or not str(cyclonedx.get("serialNumber", "")).startswith("urn:uuid:")
+        or not isinstance(cyclonedx.get("version"), int)
+        or cyclonedx["version"] < 1
+        or not isinstance(cyclonedx.get("metadata"), dict)
+    ):
+        raise ReleaseTrustError(
+            "automexia-terminal.cdx.json is not a complete CycloneDX document"
+        )
+    components = cyclonedx.get("components")
+    if not isinstance(components, list) or len(components) < minimum:
+        raise ReleaseTrustError(f"CycloneDX components must contain at least {minimum} entries")
+
+    cyclonedx_identities: set[tuple[str, str]] = set()
+    cyclonedx_purls: set[str] = set()
+    for component in components:
+        if not isinstance(component, dict):
+            raise ReleaseTrustError("CycloneDX components must be objects")
+        name = component.get("name")
+        component_version = component.get("version")
+        component_type = component.get("type")
+        if (
+            not isinstance(name, str)
+            or not name
+            or not isinstance(component_version, str)
+            or not component_version
+            or not isinstance(component_type, str)
+            or not component_type
+        ):
+            raise ReleaseTrustError("CycloneDX component identity is incomplete")
+        cyclonedx_identities.add((name.casefold(), component_version))
+        purl = component.get("purl")
+        if isinstance(purl, str):
+            cyclonedx_purls.add(purl)
+
+    if (product_name, version) not in cyclonedx_identities:
+        raise ReleaseTrustError("CycloneDX does not identify the released Automexia version")
+    for prefix in prefixes:
+        if not any(purl.startswith(prefix) for purl in cyclonedx_purls):
+            raise ReleaseTrustError(f"CycloneDX has no required {prefix} purl")
+    if len(spdx_identities & cyclonedx_identities) < minimum:
+        raise ReleaseTrustError(
+            f"SPDX and CycloneDX must agree on at least {minimum} component identities"
+        )
+
+
 def verify_metadata(
     directory: Path,
     version: str,
@@ -336,12 +472,12 @@ def verify_metadata(
         if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) or value < 0:
             raise ReleaseTrustError(f"release benchmark {key} must be finite and non-negative")
 
-    spdx = parsed["automexia-terminal.spdx.json"]
-    if not isinstance(spdx, dict) or not str(spdx.get("spdxVersion", "")).startswith("SPDX-"):
-        raise ReleaseTrustError("automexia-terminal.spdx.json is not an SPDX document")
-    cyclonedx = parsed["automexia-terminal.cdx.json"]
-    if not isinstance(cyclonedx, dict) or cyclonedx.get("bomFormat") != "CycloneDX":
-        raise ReleaseTrustError("automexia-terminal.cdx.json is not a CycloneDX document")
+    validate_sboms(
+        parsed["automexia-terminal.spdx.json"],
+        parsed["automexia-terminal.cdx.json"],
+        version,
+        policy,
+    )
 
     windows = parsed["release-trust-windows.json"]
     windows_packages = sorted(
@@ -364,6 +500,7 @@ def verify_metadata(
             for path in windows_packages
         ],
         "signature_count": 4,
+        "embedded_script_signature_count": 16,
         "publisher": expected_windows_publisher,
         "result": "pass",
     }

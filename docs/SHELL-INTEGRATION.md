@@ -4,23 +4,49 @@ Automexia's shell integration makes prompt context, resize-safe semantic rows,
 session cloning, and icon-aware listings work without changing the objects or
 bytes that scripts consume.
 
-## Automatic provisioning
+## Session-only integration by default
 
-`cargo dev` and `cargo automexia` provision integration immediately before
-launch. The operation is source-fingerprinted, atomic, idempotent, and fails the
-launch if it cannot establish the expected integration. Normal users and
-contributors do not run installer scripts manually.
+`cargo dev`, `cargo automexia`, and packaged Automexia releases load
+integration only into the child shell they start. A normal application launch
+does not execute an installer, write a PowerShell profile, change execution
+policy, start WSL for provisioning, or create persistent shell files.
 
-| Host/session | Provisioned behavior |
+Release builds resolve only a complete `shell-integration/` resource tree
+adjacent to the signed executable. Debug builds additionally accept the
+repository path supplied directly by `cargo automexia`. The internal
+`AUTOMEXIA_SHELL_INTEGRATION_ROOT` value is replaced after configuration is
+loaded; release builds do not trust an arbitrary inherited/configured path.
+Missing resources degrade to the user's unmodified shell instead of causing a
+profile mutation or interpreter launch.
+
+| Host/session | Session behavior |
 |---|---|
-| Windows PowerShell / PowerShell 7 | A guarded profile hook, prompt lifecycle metadata, OSC 7 directory, shell/user identity, same-pane CMD interception, and a PowerShell formatting view. |
+| Windows PowerShell / PowerShell 7 | The signed package script is sourced into the child session for prompt lifecycle metadata, OSC 7 directory, shell/user identity, same-pane CMD interception, and a PowerShell formatting view. |
 | Command Prompt | UTF-8 setup, full-path semantic prompt, identity metadata, and `ls`/`ll` wrappers while built-in `dir` and explicit `cmd /c` remain native. |
-| WSL Bash/Zsh/Fish | Per-distribution user profile/conf.d integration, Linux-native files, semantic prompt metadata, native-first completion, and optional eza presentation. |
-| Linux/macOS Bash/Zsh/Fish | User profile/conf.d integration, files under user configuration roots, native-first completion, and user-local terminfo. |
+| WSL Bash/Zsh/Fish | Existing explicit persistent integration is honored; normal launch does not rewrite a distribution. |
+| Linux/macOS Bash/Zsh/Fish | Existing shell-native hooks are honored; normal launch does not rewrite profiles or terminfo. |
 
 The integration loads only when `TERM_PROGRAM=Automexia`,
 `AUTOMEXIA_SHELL_INTEGRATION=1`, or the corresponding WSL marker is present.
 It uses load guards so repeated sourcing cannot stack prompt hooks.
+
+Persistent integration for nested shells opened outside Automexia remains
+available, but consent is explicit:
+
+```text
+automexia shell-integration doctor
+automexia shell-integration install [--force] [--quiet]
+automexia shell-integration uninstall [--quiet]
+```
+
+`doctor` is read-only. Install/uninstall uses the packaged, bounded resource
+root and the platform installer. On Windows it invokes PowerShell without
+`-ExecutionPolicy Bypass`; enterprise `AllSigned` or Group Policy decisions
+therefore remain authoritative. Release packages Authenticode-sign and
+timestamp every distributed `.ps1` and `.ps1xml` asset before MSI/ZIP
+creation. The compatibility installer retains atomic/idempotent profile-block
+handling, precise OneDrive Cloud Files reparse-tag acceptance, and strict
+symlink/junction rejection.
 
 ## Native command completion
 
@@ -85,12 +111,13 @@ closed before profile directories are created or files are changed. The same
 classification protects install, stamped no-op/repair, and uninstall. Automexia-
 owned `%LOCALAPPDATA%` destinations retain their stricter no-reparse-point rule.
 
-Windows-to-WSL provisioning sends a size-bounded canonical Base64 program over
-redirected stdin to each validated distribution token. The fixed Linux decoder
-keeps only Base64 alphabet bytes before decoding, which removes Windows
-PowerShell 5.1's UTF-8 preamble without placing source payloads in the Windows
-command line. This avoids command-length failures while preserving exact UTF-8
-shell-integration sources and captured per-distribution diagnostics.
+Explicit Windows-to-WSL install/uninstall sends at most 6 MiB of raw UTF-8 bytes
+through redirected standard input to a fixed
+`wsl.exe --distribution <allowlisted-token> --exec sh -s` process. No source
+text, encoded command, decoder pipeline, or `sh -c` string appears in the
+Windows command line. Standard output/error are captured per distribution, null
+bytes and unsafe distribution tokens are rejected, and Docker Desktop internal
+distributions remain excluded.
 
 ## Prompt ownership
 
@@ -124,9 +151,18 @@ In PowerShell, explicit object pipelines and property access remain native.
 Set `AUTOMEXIA_PLAIN_CMD=1` to keep a typed `cmd`/`cmd.exe` launch completely
 native instead of applying the same-pane CMD integration.
 
-## Manual repair and removal
+## Persistent repair and removal
 
-Use manual scripts only for diagnosis or uninstall:
+Prefer the explicit application commands because they resolve the installed
+resource root and preserve the host execution policy:
+
+```text
+automexia shell-integration doctor
+automexia shell-integration install --force
+automexia shell-integration uninstall
+```
+
+Repository scripts remain available to maintainers and isolated tests:
 
 ```powershell
 powershell -NoProfile -File shell-integration/install-windows.ps1 -Force
@@ -138,10 +174,9 @@ bash shell-integration/install-unix.sh --force
 bash shell-integration/uninstall-unix.sh
 ```
 
-Before running a maintainer command, prefer `cargo automexia`; it repairs a
-missing or stale install automatically. Installer tests use isolated profile
-roots and verify first install, no-op repeat, deliberate damage, repair, and
-uninstall boundaries.
+Installer tests use isolated profile roots and verify first install, no-op
+repeat, deliberate damage, repair, malformed markers, reparse-point rejection,
+raw WSL transport, and uninstall boundaries.
 
 ## Verification
 
@@ -172,6 +207,7 @@ when the first prompt lacks metadata or icons.
 Automexia hosts the user's real PowerShell, CMD, WSL, Bash, or Zsh process. It
 does not replace the shell or parse commands itself. Small guarded hooks expose
 metadata the PTY protocol cannot otherwise know, preserve native history and
-profiles, and can be removed independently. Launch-time provisioning was
-chosen over a manual prerequisite so a successful launch has a deterministic
-feature set; see [ADR 0009](adr/0009-launch-time-shell-provisioning.md).
+profiles, and can be removed independently. Session-only sourcing is the normal
+boundary; persistent profile changes require an explicit maintenance command.
+See [ADR 0017](adr/0017-session-only-shell-integration.md), which supersedes
+[ADR 0009](adr/0009-launch-time-shell-provisioning.md).

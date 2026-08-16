@@ -94,6 +94,7 @@ objc = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 ahash = { version = "0.8.12", default-features = false, features = ["std"] }
+base64 = { workspace = true }
 dunce = "1.0.5"
 tinyvec = { version = "1.8.1", features = ["alloc"] }
 windows-sys = { version = "0.61.2", features = [

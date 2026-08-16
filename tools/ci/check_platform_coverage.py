@@ -284,8 +284,8 @@ def validate_release(workflow: dict[str, Any]) -> None:
     ):
         require(fragment in windows_commands, f"Windows release trust is missing {fragment!r}")
     require(
-        sum("azure/artifact-signing-action@" in value for value in windows_actions) == 2,
-        "Windows release must support Azure Artifact Signing for both EXE and MSI",
+        sum("azure/artifact-signing-action@" in value for value in windows_actions) == 3,
+        "Windows release must support Azure Artifact Signing for EXE, scripts, and MSI",
     )
     executable_signing = [
         step
@@ -297,6 +297,19 @@ def validate_release(workflow: dict[str, Any]) -> None:
         len(executable_signing) == 1
         and executable_signing[0].get("with", {}).get("files-folder") == "signing-input",
         "Windows executable signing must consume the isolated flat signing-input directory",
+    )
+    script_signing = [
+        step
+        for step in steps(windows)
+        if "azure/artifact-signing-action@" in str(step.get("uses", ""))
+        and step.get("with", {}).get("files-folder") == "shell-integration"
+    ]
+    require(
+        len(script_signing) == 1
+        and script_signing[0].get("with", {}).get("files-folder-filter") == "ps1,ps1xml"
+        and script_signing[0].get("with", {}).get("files-folder-recurse") is True
+        and "Set-AuthenticodeSignature" in windows_commands,
+        "Windows release must timestamp-sign every distributed PowerShell asset",
     )
     require(
         any("azure/login@" in value for value in windows_actions),
@@ -392,8 +405,23 @@ def validate_release(workflow: dict[str, Any]) -> None:
     publish = job(workflow, "publish", "release.yml")
     dependencies = {str(item) for item in publish.get("needs", [])}
     require(
-        {"package-windows", "package-macos", "package-linux", "hardware-smoke"}.issubset(dependencies),
-        "publication must depend on every platform package and controlled hardware smoke",
+        {
+            "reproducibility-linux",
+            "package-windows",
+            "package-macos",
+            "package-linux",
+            "hardware-smoke",
+        }.issubset(dependencies),
+        "publication must depend on reproducibility, every platform package, and controlled hardware smoke",
+    )
+    reproducibility = job(workflow, "reproducibility-linux", "release.yml")
+    require(
+        "check_reproducible_build.sh" in commands(reproducibility)
+        and any(
+            step.get("with", {}).get("name") == "release-evidence-reproducibility"
+            for step in steps(reproducibility)
+        ),
+        "release reproducibility must compare cold builds and retain evidence",
     )
     publish_permissions = publish.get("permissions", {})
     require(
@@ -415,10 +443,17 @@ def validate_release(workflow: dict[str, Any]) -> None:
         "release_trust.py",
         "--verify-final",
         "--expected-windows-publisher",
+        "immutable-releases",
+        "sbom-input/Cargo.lock",
+        "Refusing to modify an existing release",
         "release-assets/*.msi",
         "release-assets/*.tar.gz",
     ):
         require(fragment in publish_commands or fragment in str(publish), f"publication trust is missing {fragment!r}")
+    require(
+        "--clobber" not in publish_commands,
+        "publication must never overwrite existing release assets",
+    )
     publish_actions = actions(publish)
     require(
         sum("anchore/sbom-action@" in value for value in publish_actions) == 2,
@@ -453,7 +488,9 @@ def validate_windows_release_trust_contract(source: str) -> None:
         "MaximumArchiveEntries",
         "$expectedPackageNames = @(",
         "Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256",
-        "$expectedFiles = @('automexia.exe', 'LICENSE', 'NOTICE.md', 'README.md', 'THIRD_PARTY_NOTICES.md')",
+        "$expectedFiles = @(",
+        "shell-integration/powershell/automexia.ps1",
+        "embedded_script_signature_count",
         "VersionInfo.ProductVersion",
         "totalExpandedBytes",
         "CompressedLength * 200",

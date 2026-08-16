@@ -20,6 +20,17 @@ automexia [OPTIONS]
 | `-h, --help` | Print application help. |
 | `-V, --version` | Print the Automexia version. |
 
+Non-GUI shell maintenance commands are explicit:
+
+| Command | Mutation |
+|---|---|
+| `automexia shell-integration doctor` | None. Reports the validated session resource root and persistent state. |
+| `automexia shell-integration install [--force] [--quiet]` | Installs/repairs only the marked persistent integration after direct user invocation. |
+| `automexia shell-integration uninstall [--quiet]` | Removes only Automexia-owned persistent blocks and files. |
+
+On Windows these commands honor the effective PowerShell execution policy;
+Automexia never supplies an execution-policy bypass.
+
 Example:
 
 ```text
@@ -34,8 +45,8 @@ v0.5 roadmap item.
 
 | Command | Mutates profiles? | Result |
 |---|---:|---|
-| `cargo dev [-- APP_ARGS...]` | Yes | Complete verification, debug build, version smoke, automatic shell provisioning, then detached launch. |
-| `cargo automexia [-- APP_ARGS...]` | Yes | Incremental debug build, smoke, automatic provisioning, then detached launch. |
+| `cargo dev [-- APP_ARGS...]` | No | Complete verification, debug build, version smoke, then detached launch with session-only integration. |
+| `cargo automexia [-- APP_ARGS...]` | No | Incremental debug build, smoke, then detached launch with session-only integration. |
 | `cargo ready` | No | Complete contributor gate without launching. |
 | `cargo ci` | No | Alias for the full non-launching CI gate. |
 | `cargo qa` | No | Full Phase 0 evidence profile. |
@@ -88,6 +99,7 @@ cleanup. Full test ownership and expected duration are in
 | `AUTOMEXIA_CONFIG_HOME` | Override the complete writable product root. |
 | `AUTOMEXIA_LOG_LEVEL` | Override configured log level. |
 | `AUTOMEXIA_SHELL_INTEGRATION` | Marker injected into child shells; user configuration should not spoof it. |
+| `AUTOMEXIA_SHELL_INTEGRATION_ROOT` | Internal validated package/development resource root. Release builds ignore arbitrary inherited/configured values. |
 | `AUTOMEXIA_COMPLETION_DISABLED=1` | Disable managed completion for the current shell start without changing cached files. |
 | `CARGO_TARGET_DIR` | Relocate Cargo artifacts; keep it native to the active OS. |
 | `AUTOMEXIA_KEEP_VERIFY_TARGET=1` | Diagnostic-only retention of the isolated exhaustive target. |
