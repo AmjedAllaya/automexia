@@ -13,6 +13,9 @@ boundaries into a complete user journey and renderer-neutral UI contract.
 Reusable connection profiles, connection-scoped context, automatic action
 recipes, remote initialization, and their detailed delivery/test contract are
 specified in [SSH connections and automation](SSH-CONNECTION-AUTOMATION.md).
+The canonical command-first vocabulary and its relationship to actions,
+workspaces, files, logs, and provider contexts are specified in
+[Terminal-first remote operations](TERMINAL-FIRST-OPERATIONS.md).
 
 ## Product outcome
 
