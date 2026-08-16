@@ -7,7 +7,14 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 $parseFailures = [System.Collections.Generic.List[string]]::new()
 Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*.ps1' |
-    Where-Object { $_.FullName -notmatch '[\\/](?:target|\.git)[\\/]' } |
+    # Windows wildcard matching treats `*.ps1` as a prefix match and can also
+    # return signed format files such as `*.ps1xml`. Require the exact source
+    # extension before invoking the PowerShell parser; repository XML
+    # validation covers PS1XML files separately.
+    Where-Object {
+        $_.Extension -eq '.ps1' -and
+        $_.FullName -notmatch '[\\/](?:target|\.git)[\\/]'
+    } |
     ForEach-Object {
         $tokens = $null
         $errors = $null
