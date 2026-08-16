@@ -32,6 +32,12 @@ The flat publication directory must contain exactly eleven versioned packages:
 - one signed, notarized, and stapled universal macOS DMG;
 - Linux x86_64 and ARM64 DEB, RPM, and tar.gz packages.
 
+Each Windows ZIP is itself an exact flat package: `automexia.exe`, `LICENSE`,
+`NOTICE.md`, `README.md`, and `THIRD_PARTY_NOTICES.md`, with no extra files or
+directories. The embedded executable product version must equal the release tag.
+Portable staging is reset before every package run so a repeated local or CI build
+cannot carry a stale file into a later archive.
+
 Raw executables, app directories, symbol files, signing material, build logs,
 and unsigned staging artifacts are forbidden. Every expected architecture must
 be present, files must be regular non-symlinks, and package sizes are bounded.
@@ -42,6 +48,9 @@ and redacted Windows trust evidence.
 `tools/ci/release_trust.py` validates this allowlist before and after metadata
 generation. It streams package hashes in bounded memory, writes the manifest
 atomically, and verifies that `SHA256SUMS` names every final asset exactly once.
+Controlled Windows evidence is accepted only when its release version, exact
+publisher, artifact count, signature count, and every scanned package name, size, and SHA-256 match those
+final packages; unknown evidence fields and out-of-contract timeouts are rejected.
 SBOMs are generated from the final package directory, not from unsigned build
 intermediates. GitHub provenance and SBOM attestations bind those final files to
 the protected workflow.
@@ -71,18 +80,23 @@ The Linux preflight receives only `configured`/empty presence flags for signing
 secrets, never certificate or account secret values. Actual credentials are
 scoped to their protected native signing job.
 
-The workflow signs each executable before packaging and signs every MSI using
-an RFC 3161 timestamp. Validation requires a trusted Authenticode chain, the
+The workflow copies the one reviewed executable into an isolated flat signing
+directory, signs it before packaging, and signs every MSI using an RFC 3161
+timestamp. Validation requires a trusted Authenticode chain, the
 exact configured publisher, a trusted timestamp, and the code-signing EKU.
 Portable ZIPs are treated as hostile input during validation: traversal,
 absolute paths, alternate streams, excessive expansion, and unexpected
 contents are rejected.
 
+The controlled hardware runner launches the final signed Windows x86_64 ZIP and
+the final Linux x86_64 tar archive for version/GPU/PTY/WSL smoke coverage; it does
+not substitute unsigned build artifacts for release evidence.
+
 The controlled `automexia-gpu`/`defender` runner scans signed packages with the
 installed Microsoft Defender engine using remediation-disabled mode and a hard
 timeout. The gate requires current protection, intelligence no older than 48
 hours, and a successful scan. Its redacted JSON evidence records engine and
-intelligence versions, signatures, byte counts, and elapsed time; it contains
+intelligence versions, signature count, package names/sizes/SHA-256 digests, and elapsed time; it contains
 no certificate secret or user path.
 
 ## macOS and Linux trust

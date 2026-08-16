@@ -289,6 +289,7 @@ def verify_metadata(
     version: str,
     policy: dict[str, Any],
     artifacts: list[tuple[Path, dict[str, Any]]],
+    expected_windows_publisher: str,
 ) -> None:
     rules = metadata_rules(policy)
     parsed: dict[str, Any] = {}
@@ -343,29 +344,66 @@ def verify_metadata(
         raise ReleaseTrustError("automexia-terminal.cdx.json is not a CycloneDX document")
 
     windows = parsed["release-trust-windows.json"]
+    windows_packages = sorted(
+        (path for path, _ in artifacts if path.suffix.casefold() in {".msi", ".zip"}),
+        key=lambda path: path.name.casefold(),
+    )
+    windows_package_bytes = sum(path.stat().st_size for path in windows_packages)
     expected_windows = {
         "schema": 1,
+        "version": version,
         "scanner": "Microsoft Defender Antivirus",
         "artifact_count": 4,
+        "artifact_bytes": windows_package_bytes,
+        "artifacts": [
+            {
+                "name": path.name,
+                "size": path.stat().st_size,
+                "sha256": digest(path, policy["chunk_bytes"]),
+            }
+            for path in windows_packages
+        ],
         "signature_count": 4,
+        "publisher": expected_windows_publisher,
         "result": "pass",
     }
-    if not isinstance(windows, dict) or any(
-        windows.get(key) != value for key, value in expected_windows.items()
+    expected_windows_fields = {
+        *expected_windows,
+        "scanner_version",
+        "security_intelligence_version",
+        "security_intelligence_updated_utc",
+        "scan_milliseconds",
+        "scan_timeout_seconds",
+    }
+    if (
+        not isinstance(windows, dict)
+        or set(windows) != expected_windows_fields
+        or any(windows.get(key) != value for key, value in expected_windows.items())
     ):
-        raise ReleaseTrustError("release-trust-windows.json is not passing trust evidence")
+        raise ReleaseTrustError("release-trust-windows.json is not exact passing trust evidence")
     for key in (
         "scanner_version",
         "security_intelligence_version",
         "security_intelligence_updated_utc",
-        "publisher",
     ):
         if not isinstance(windows.get(key), str) or not windows[key].strip():
             raise ReleaseTrustError(f"Windows trust evidence is missing {key}")
-    for key in ("artifact_bytes", "scan_milliseconds", "scan_timeout_seconds"):
-        value = windows.get(key)
-        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-            raise ReleaseTrustError(f"Windows trust evidence {key} must be non-negative")
+    scan_milliseconds = windows.get("scan_milliseconds")
+    scan_timeout_seconds = windows.get("scan_timeout_seconds")
+    if (
+        not isinstance(scan_milliseconds, int)
+        or isinstance(scan_milliseconds, bool)
+        or scan_milliseconds < 0
+    ):
+        raise ReleaseTrustError("Windows trust evidence scan_milliseconds must be non-negative")
+    if (
+        not isinstance(scan_timeout_seconds, int)
+        or isinstance(scan_timeout_seconds, bool)
+        or not 60 <= scan_timeout_seconds <= 3600
+    ):
+        raise ReleaseTrustError("Windows trust evidence scan_timeout_seconds is outside 60..3600")
+    if scan_milliseconds > scan_timeout_seconds * 1000 + 10_000:
+        raise ReleaseTrustError("Windows trust scan duration exceeds its timeout contract")
 
 
 def verify_checksums(directory: Path, max_bytes: int) -> None:
@@ -391,7 +429,17 @@ def verify_checksums(directory: Path, max_bytes: int) -> None:
             raise ReleaseTrustError(f"checksum mismatch for {name}")
 
 
-def verify_final(directory: Path, version: str, policy: dict[str, Any]) -> None:
+def verify_final(
+    directory: Path,
+    version: str,
+    policy: dict[str, Any],
+    expected_windows_publisher: str,
+) -> None:
+    if (
+        not isinstance(expected_windows_publisher, str)
+        or not expected_windows_publisher.strip()
+    ):
+        raise ReleaseTrustError("expected Windows publisher must not be empty")
     rules = metadata_rules(policy)
     expected_metadata = set(rules)
     entries = list(directory.iterdir()) if directory.is_dir() else []
@@ -414,7 +462,7 @@ def verify_final(directory: Path, version: str, policy: dict[str, Any]) -> None:
         for name in package_names:
             os.link(directory / name, temporary / name)
         artifacts = package_files(temporary, version, policy)
-        verify_metadata(directory, version, policy, artifacts)
+        verify_metadata(directory, version, policy, artifacts, expected_windows_publisher)
     verify_checksums(directory, rules["SHA256SUMS"]["max_bytes"])
 
 
@@ -426,6 +474,7 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--benchmark", type=Path)
     parser.add_argument("--verify-final", type=Path)
+    parser.add_argument("--expected-windows-publisher")
     arguments = parser.parse_args()
     try:
         policy = load_policy()
@@ -438,17 +487,29 @@ def main() -> int:
                     arguments.manifest,
                     arguments.benchmark,
                     arguments.verify_final,
+                    arguments.expected_windows_publisher,
                 )
             ):
                 raise ReleaseTrustError("--check-policy cannot be combined with artifact modes")
             print("PASS: release trust policy is structurally valid")
             return 0
         if arguments.verify_final is not None:
-            if not arguments.version:
-                raise ReleaseTrustError("--verify-final requires --version")
-            verify_final(arguments.verify_final, arguments.version, policy)
+            if not arguments.version or not arguments.expected_windows_publisher:
+                raise ReleaseTrustError(
+                    "--verify-final requires --version and --expected-windows-publisher"
+                )
+            verify_final(
+                arguments.verify_final,
+                arguments.version,
+                policy,
+                arguments.expected_windows_publisher,
+            )
             print("PASS: final release assets, metadata allowlist, and checksums are valid")
             return 0
+        if arguments.expected_windows_publisher is not None:
+            raise ReleaseTrustError(
+                "--expected-windows-publisher is valid only with --verify-final"
+            )
         if not all(
             value is not None
             for value in (

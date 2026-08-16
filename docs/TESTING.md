@@ -938,18 +938,24 @@ python tools/ci/test_platform_coverage.py
 
 The hostile mutation suites reject missing architectures, unexpected/raw
 artifacts, symlinks, empty or oversized packages, checksum tampering, policy
-drift, excessive workflow permissions, unsigned downloads, missing Defender
-evidence, pre-signing SBOMs, missing attestations, and unsafe macOS deep-signing.
+drift, excessive workflow permissions, unsigned downloads, non-isolated signing
+inputs, stale or extra portable files, release-version/publisher/byte-evidence
+mismatches, missing Defender evidence, pre-signing SBOMs, missing attestations,
+and unsafe macOS deep-signing.
 The manifest implementation hashes with a fixed-size buffer, writes atomically,
 and records digest throughput in `release-trust-benchmark.json`; that benchmark
 measures release IO only and adds no application runtime overhead.
 
 The controlled Windows gate requires signed final artifacts and the exact
 publisher, extracts portable ZIPs under traversal/expansion/entry-count limits,
-checks all MSI/executable signatures and timestamps, verifies current Defender
+requires the exact flat five-file archive and embedded release version, checks all
+MSI/executable signatures and timestamps, verifies current Defender
 state/intelligence, and runs `MpCmdRun` without remediation under a hard timeout.
-Its redacted evidence includes engine/intelligence versions, scanned bytes,
-signature summaries, and scan time. macOS release CI independently proves
+Its redacted evidence includes engine/intelligence versions, signature count,
+package names/sizes/SHA-256 digests, and scan time. Final publication independently
+binds that evidence to the exact Windows packages, version, and configured
+publisher. Controlled GUI/PTY and WSL smoke use the final packaged Windows and
+Linux portable archives. macOS release CI independently proves
 hardened runtime, absence of `get-task-allow`, accepted notarization, staple
 validation, and Gatekeeper acceptance. These native trust decisions cannot be
 claimed from local unsigned builds. The complete contract and false-positive

@@ -46,10 +46,12 @@ resize storms on the `automexia-gpu` runner, while
 user, shell, directory, and PTY isolation on the `automexia-wsl` runner.
 
 The final controlled Windows runner additionally carries the `defender` label.
-It verifies both signed MSI and ZIP architecture pairs, safely inspects each
-portable archive, proves the exact publisher and trusted timestamp on every
-MSI/executable, requires current Defender intelligence, and performs a bounded
-non-remediating malware scan. Publication downloads only `packages-*`
+It verifies both signed MSI and ZIP architecture pairs, requires each portable ZIP
+to contain only the five documented flat files and the exact release version,
+proves the exact publisher and trusted timestamp on every MSI/executable, requires
+current Defender intelligence, and performs a bounded non-remediating malware
+scan. Its GPU/PTY and WSL smoke launches consume the final signed Windows ZIP and
+final Linux tar archive, never unsigned build intermediates. Publication downloads only `packages-*`
 artifacts, enforces the versioned eleven-package allowlist and size limits, and
 includes the redacted scan evidence. Raw executables and unsigned build
 intermediates cannot enter the public release directory.

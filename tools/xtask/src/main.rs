@@ -3606,6 +3606,10 @@ fn portable_archive(
     extension: &str,
 ) -> TaskResult {
     let staging = output.join("portable");
+    if staging.exists() {
+        fs::remove_dir_all(&staging)
+            .map_err(|error| format!("could not reset {}: {error}", staging.display()))?;
+    }
     fs::create_dir_all(&staging)
         .map_err(|error| format!("could not create {}: {error}", staging.display()))?;
     let binary_name = binary.file_name().ok_or("release binary has no filename")?;

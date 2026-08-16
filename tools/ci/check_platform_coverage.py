@@ -287,6 +287,17 @@ def validate_release(workflow: dict[str, Any]) -> None:
         sum("azure/artifact-signing-action@" in value for value in windows_actions) == 2,
         "Windows release must support Azure Artifact Signing for both EXE and MSI",
     )
+    executable_signing = [
+        step
+        for step in steps(windows)
+        if "azure/artifact-signing-action@" in str(step.get("uses", ""))
+        and step.get("with", {}).get("files-folder-filter") == "exe"
+    ]
+    require(
+        len(executable_signing) == 1
+        and executable_signing[0].get("with", {}).get("files-folder") == "signing-input",
+        "Windows executable signing must consume the isolated flat signing-input directory",
+    )
     require(
         any("azure/login@" in value for value in windows_actions),
         "Windows Artifact Signing must use OIDC Azure login",
@@ -342,16 +353,40 @@ def validate_release(workflow: dict[str, Any]) -> None:
     hardware = job(workflow, "hardware-smoke", "release.yml")
     hardware_dependencies = {str(item) for item in hardware.get("needs", [])}
     require(
-        "package-windows" in hardware_dependencies,
-        "controlled release trust must consume the signed Windows packages",
+        {"package-windows", "package-linux"}.issubset(hardware_dependencies),
+        "controlled release trust must consume final signed Windows and Linux packages",
     )
     require(
         "defender" in {str(label).lower() for label in hardware.get("runs-on", [])},
         "controlled release trust must use a Defender-enabled runner",
     )
+    hardware_commands = commands(hardware)
     require(
-        "test_release_trust_windows.ps1" in commands(hardware),
-        "controlled release trust must validate signatures and run Defender",
+        all(
+            fragment in hardware_commands
+            for fragment in (
+                "test_release_trust_windows.ps1",
+                "-Version $env:AUTOMEXIA_VERSION",
+                "x86_64-pc-windows-msvc.zip",
+                "x86_64-unknown-linux-gnu.tar.gz",
+            )
+        ),
+        "controlled release trust must scan and launch final version-bound packages",
+    )
+    hardware_downloads = {
+        str(step.get("with", {}).get("name", ""))
+        for step in steps(hardware)
+        if "actions/download-artifact@" in str(step.get("uses", ""))
+    }
+    require(
+        {
+            "packages-windows-x86_64",
+            "packages-windows-arm64",
+            "packages-linux-x86_64",
+        }.issubset(hardware_downloads)
+        and "windows-x86_64" not in hardware_downloads
+        and "linux-x86_64" not in hardware_downloads,
+        "controlled hardware smoke must consume final packages, not unsigned build intermediates",
     )
 
     publish = job(workflow, "publish", "release.yml")
@@ -379,6 +414,7 @@ def validate_release(workflow: dict[str, Any]) -> None:
     for fragment in (
         "release_trust.py",
         "--verify-final",
+        "--expected-windows-publisher",
         "release-assets/*.msi",
         "release-assets/*.tar.gz",
     ):
@@ -415,6 +451,10 @@ def validate_windows_release_trust_contract(source: str) -> None:
     """Keep native archive, signature, scanner, and cleanup limits fail-closed."""
     for fragment in (
         "MaximumArchiveEntries",
+        "$expectedPackageNames = @(",
+        "Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256",
+        "$expectedFiles = @('automexia.exe', 'LICENSE', 'NOTICE.md', 'README.md', 'THIRD_PARTY_NOTICES.md')",
+        "VersionInfo.ProductVersion",
         "totalExpandedBytes",
         "CompressedLength * 200",
         "TimeStamperCertificate",
