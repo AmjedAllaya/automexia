@@ -1,0 +1,17 @@
+schema_version = 1
+revision = 0
+
+[[actions]]
+id = "git.short-status"
+display_name = "Short status"
+scope = "global-user"
+shells = ["bash"]
+risk = "read-only"
+[actions.template]
+kind = "typed-argv"
+executable_id = "git"
+arguments = [{ kind = "literal", value = "status" }]
+[actions.alias_projection]
+requested_name = "gs"
+shells = ["bash"]
+mode = "command-alias"

@@ -1331,7 +1331,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
     let pty_manifest = read(&root().join("teletypewriter/Cargo.toml"))?;
     require(
         nightly_workflow.contains(
-            "cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-devops-ssh --no-run --locked",
+            "cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-devops -p automexia-devops-ssh --no-run --locked",
         )
             && qa.contains("\"benchmark-image\": 7200")
             && qa.contains("\"benchmark-image\"")
@@ -1347,6 +1347,13 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && qa.contains("\"benchmark-ssh-inventory\"")
             && qa.contains("\"automexia-devops-ssh\"")
             && qa.contains("\"openssh_inventory\"")
+            && qa.contains("\"benchmark-quick-actions\": 7200")
+            && qa.contains("\"benchmark-quick-actions\"")
+            && qa.contains("\"automexia-devops\"")
+            && qa.contains("\"quick_actions\"")
+            && root()
+                .join("automexia-devops/benches/quick_actions.rs")
+                .is_file()
             && pty_manifest.contains("name = \"pty_io\"")
             && root().join("teletypewriter/benches/pty_io.rs").is_file(),
         "Every declared controlled benchmark must compile nightly and execute with a bounded controlled-QA timeout",
@@ -2211,8 +2218,11 @@ fn verify_architecture() -> TaskResult {
             &[
                 "automexia-extension-api",
                 "automexia-ui-model",
+                "criterion",
                 "dirs",
+                "serde",
                 "serde_json",
+                "toml",
             ],
         ),
         (

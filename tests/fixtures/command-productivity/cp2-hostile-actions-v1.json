@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "phase": "CP2.0",
+  "cases": [
+    {"id": "unknown-field", "fixture": "unknown-field.toml", "expected": "decode-error"},
+    {"id": "duplicate-id", "fixture": "duplicate-id.toml", "expected": "duplicate-action-id"},
+    {"id": "destructive-alias", "fixture": "destructive-alias.toml", "expected": "alias-risk-denied"},
+    {"id": "secret-alias", "fixture": "secret-alias.toml", "expected": "alias-secret-denied"},
+    {"id": "raw-insert-alias", "fixture": "raw-insert-alias.toml", "expected": "raw-insert-alias-denied"},
+    {"id": "missing-placeholder", "fixture": "missing-placeholder.toml", "expected": "missing-placeholder"},
+    {"id": "command-alias-arguments", "fixture": "command-alias-arguments.toml", "expected": "command-alias-has-arguments"},
+    {"id": "shell-mismatch", "fixture": "shell-mismatch.toml", "expected": "alias-shell-not-allowed"},
+    {"id": "mutating-unreviewed", "fixture": "mutating-unreviewed.toml", "expected": "mutating-alias-not-acknowledged"},
+    {"id": "secret-default", "fixture": "secret-default.toml", "expected": "secret-default-denied"},
+    {"id": "unsafe-bidi", "fixture": "unsafe-bidi.toml", "expected": "unsafe-text"}
+  ]
+}

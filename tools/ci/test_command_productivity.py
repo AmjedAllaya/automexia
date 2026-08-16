@@ -57,6 +57,7 @@ class CommandProductivityPolicyTests(unittest.TestCase):
         self.assertEqual(counts["providers"], 11)
         self.assertEqual(counts["threats"], 16)
         self.assertGreater(counts["runtime_files"], 100)
+        self.assertEqual(counts["cp2_pure_action_files"], 3)
 
     def test_versioned_hostile_mutation_corpus_is_rejected(self) -> None:
         self.assertEqual(set(self.hostile), {"schema", "phase", "cases"})
@@ -226,6 +227,56 @@ class CommandProductivityPolicyTests(unittest.TestCase):
                 "non-runtime CP0",
             ):
                 POLICY.validate_pre_activation(root)
+
+    def test_pure_action_model_rejects_capability_bearing_source(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = []
+            for relative in sorted(POLICY.CP2_PURE_ACTION_FILES):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("struct QuickAction;\n", encoding="utf-8")
+                files.append(path)
+            for capability in (
+                "use std::fs;",
+                "use std::process::Command;",
+                "use std::net::TcpStream;",
+                "tokio::spawn(task);",
+                "async_std::task::spawn(task);",
+                "ureq::get(url);",
+                "hyper::client();",
+                "std::env::var(name);",
+                "automexia_ui_model::Panel;",
+                "rio_vt::Terminal;",
+                "teletypewriter::Pty;",
+                "unsafe { invoke(); }",
+            ):
+                with self.subTest(capability=capability):
+                    files[0].write_text(
+                        f"{capability}\nstruct QuickAction;\n",
+                        encoding="utf-8",
+                    )
+                    with self.assertRaisesRegex(
+                        POLICY.CommandProductivityError, "capability-free CP2"
+                    ):
+                        POLICY.validate_pure_action_sources(root, files)
+
+    def test_pure_action_model_rejects_unreviewed_source_expansion(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = []
+            for relative in sorted(POLICY.CP2_PURE_ACTION_FILES):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("struct QuickAction;\n", encoding="utf-8")
+                files.append(path)
+            unexpected = root / "automexia-devops/src/actions/runtime.rs"
+            unexpected.write_text("struct Runtime;\n", encoding="utf-8")
+            files.append(unexpected)
+            with self.assertRaisesRegex(
+                POLICY.CommandProductivityError, "exact reviewed boundary"
+            ):
+                POLICY.validate_pure_action_sources(root, files)
 
     def test_scanned_source_size_ceiling_is_enforced_before_read(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

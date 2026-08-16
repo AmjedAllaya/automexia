@@ -49,12 +49,13 @@ LIMITS = {
     "enabled_aliases": 256,
     "arguments_per_action": 64,
     "placeholders_per_action": 32,
+    "tags_per_action": 64,
     "string_bytes": 4_096,
     "generated_file_bytes": 1_048_576,
     "in_process_cache_bytes": 8_388_608,
 }
+DOCUMENT_FIELDS = ["schema_version", "revision", "actions"]
 ACTION_FIELDS = [
-    "schema_version",
     "id",
     "display_name",
     "description",
@@ -62,7 +63,6 @@ ACTION_FIELDS = [
     "scope",
     "shells",
     "template",
-    "arguments",
     "placeholders",
     "working_directory_policy",
     "risk",
@@ -72,7 +72,14 @@ ACTION_FIELDS = [
     "alias_projection",
 ]
 MODEL_ENUMS = {
+    "action_scopes": ["Session", "Capsule", "TrustedWorkspace", "ShellUser", "GlobalUser", "BuiltinDisabled"],
+    "shells": ["Powershell", "Bash", "Zsh", "Fish", "Cmd"],
     "templates": ["TypedArgv", "RawInsertOnly"],
+    "argument_tokens": ["Literal", "Placeholder"],
+    "working_directory_policies": ["Inherit", "WorkspaceRoot", "Fixed"],
+    "risk_classes": ["ReadOnly", "Mutating", "Destructive", "Privileged"],
+    "provenance": ["User", "BuiltIn", "Imported"],
+    "alias_projection_modes": ["Auto", "CommandAlias", "WrapperFunction", "FishAbbreviation", "DoskeyMacro"],
     "argument_policies": ["None", "ForwardAll", "TypedBindings"],
     "execution_modes": ["Insert", "Copy", "ExactLaunch"],
     "completion_modes": ["Required", "BestEffort", "Disabled"],
@@ -85,6 +92,26 @@ ALIAS_POLICY = {
     "builtin_one_letter_names": False,
     "secret_placeholders": False,
     "raw_insert_projection": False,
+    "mutating_alias_requires_acknowledgement": True,
+}
+MODEL_FILES = [
+    "automexia-devops/src/actions/mod.rs",
+    "automexia-devops/src/actions/model.rs",
+    "automexia-devops/src/actions/validation.rs",
+]
+HOSTILE_FIXTURE = "tests/fixtures/command-productivity/cp2-hostile-actions-v1.json"
+HOSTILE_CASES = {
+    "unknown-field": ("unknown-field.toml", "decode-error"),
+    "duplicate-id": ("duplicate-id.toml", "duplicate-action-id"),
+    "destructive-alias": ("destructive-alias.toml", "alias-risk-denied"),
+    "secret-alias": ("secret-alias.toml", "alias-secret-denied"),
+    "raw-insert-alias": ("raw-insert-alias.toml", "raw-insert-alias-denied"),
+    "missing-placeholder": ("missing-placeholder.toml", "missing-placeholder"),
+    "command-alias-arguments": ("command-alias-arguments.toml", "command-alias-has-arguments"),
+    "shell-mismatch": ("shell-mismatch.toml", "alias-shell-not-allowed"),
+    "mutating-unreviewed": ("mutating-unreviewed.toml", "mutating-alias-not-acknowledged"),
+    "secret-default": ("secret-default.toml", "secret-default-denied"),
+    "unsafe-bidi": ("unsafe-bidi.toml", "unsafe-text"),
 }
 PROJECTION_MODES = {
     "powershell": ["CommandAlias", "WrapperFunction"],
@@ -209,7 +236,7 @@ REQUIRED_SPEC_SNIPPETS = {
     "No hidden context mutation",
     "atomic all-or-old",
     "compare-and-swap",
-    "template: TypedArgv | RawInsertOnly",
+    "template: TypedArgv(executable_id, ArgumentToken[]) | RawInsertOnly(shell, text)",
     "mode: Auto | CommandAlias | WrapperFunction | FishAbbreviation | DoskeyMacro",
     "argument_policy: None | ForwardAll | TypedBindings",
     "Health states include `Ready`",
@@ -228,6 +255,8 @@ REQUIRED_SPEC_SNIPPETS = {
     "AT-SPI/Orca",
     "1,000 save/regenerate/reload cycles",
     "no handle/task/file/storage growth",
+    "CP2.0 - contract and fixtures (implemented)",
+    "No runtime store, watcher, alias, shell projection, UI, or execution path exists",
 }
 WIRING = {
     "docs/ROADMAP.md": "DEVOPS-ALIASES.md",
@@ -288,11 +317,13 @@ def validate_contract(document: Any) -> dict[str, int]:
         "schema",
         "phase",
         "status",
+        "implemented_stage",
         "authorities",
         "shells",
         "providers",
         "scopes",
         "limits",
+        "required_document_fields",
         "required_action_fields",
         "model_enums",
         "alias_policy",
@@ -305,22 +336,33 @@ def validate_contract(document: Any) -> dict[str, int]:
         "performance_targets",
         "ux_invariants",
         "verification_domains",
+        "model_files",
+        "hostile_fixture",
         "activation_files",
     }
     if set(document) != expected_keys:
         raise AliasSpecError("alias specification contract keys changed")
-    if (document["schema"], document["phase"], document["status"]) != (
+    if (
+        document["schema"],
+        document["phase"],
+        document["status"],
+        document["implemented_stage"],
+    ) != (
         1,
         "CP2-CP3-SPEC",
         "planned",
+        "CP2.0-model-only",
     ):
-        raise AliasSpecError("CP2/CP3 specification must remain planned schema 1")
+        raise AliasSpecError(
+            "CP2/CP3 must remain planned schema 1 with only CP2.0 model activation"
+        )
     checks = (
         ("authorities", AUTHORITIES, "authority map"),
         ("shells", SHELLS, "shell/platform matrix"),
         ("providers", PROVIDERS, "provider catalog"),
         ("scopes", SCOPES, "scope precedence"),
         ("limits", LIMITS, "resource ceilings"),
+        ("required_document_fields", DOCUMENT_FIELDS, "typed document fields"),
         ("required_action_fields", ACTION_FIELDS, "typed action fields"),
         ("model_enums", MODEL_ENUMS, "typed model enums"),
         ("alias_policy", ALIAS_POLICY, "portable alias policy"),
@@ -333,6 +375,8 @@ def validate_contract(document: Any) -> dict[str, int]:
         ("performance_targets", PERFORMANCE_TARGETS, "performance ratchets"),
         ("ux_invariants", UX_INVARIANTS, "UX/accessibility invariants"),
         ("verification_domains", VERIFICATION_DOMAINS, "verification matrix"),
+        ("model_files", MODEL_FILES, "pure model source boundary"),
+        ("hostile_fixture", HOSTILE_FIXTURE, "hostile fixture authority"),
         ("activation_files", [], "non-activation boundary"),
     )
     for key, expected, label in checks:
@@ -344,7 +388,50 @@ def validate_contract(document: Any) -> dict[str, int]:
         "scopes": len(SCOPES),
         "verification_domains": len(VERIFICATION_DOMAINS),
         "ux_invariants": len(UX_INVARIANTS),
+        "model_files": len(MODEL_FILES),
     }
+
+
+def validate_model_evidence(root: Path) -> dict[str, int]:
+    required_tokens = {
+        MODEL_FILES[0]: {"parse_quick_actions", "ValidatedQuickActions", "MAX_SOURCE_BYTES"},
+        MODEL_FILES[1]: {"QuickActionDocument", "ActionTemplate", "AliasProjection"},
+        MODEL_FILES[2]: {"validate_document", "MAX_ACTIONS", "MutatingAliasNotAcknowledged"},
+    }
+    for relative, tokens in required_tokens.items():
+        text = bounded_text(root / relative, MAX_POLICY_BYTES, "CP2.0 pure model")
+        missing = sorted(token for token in tokens if token not in text)
+        if missing:
+            raise AliasSpecError(f"{relative} is missing CP2.0 model tokens: {missing}")
+
+    manifest = load_contract(
+        bounded_text(root / HOSTILE_FIXTURE, MAX_POLICY_BYTES, "CP2.0 hostile fixture")
+    )
+    if not isinstance(manifest, dict) or set(manifest) != {"schema", "phase", "cases"}:
+        raise AliasSpecError("CP2.0 hostile fixture keys changed")
+    if manifest["schema"] != 1 or manifest["phase"] != "CP2.0":
+        raise AliasSpecError("CP2.0 hostile fixture identity changed")
+    cases = manifest["cases"]
+    if not isinstance(cases, list):
+        raise AliasSpecError("CP2.0 hostile cases must be a list")
+    actual: dict[str, tuple[str, str]] = {}
+    fixture_root = root / "tests/fixtures/command-productivity/cp2-quick-actions"
+    for case in cases:
+        if not isinstance(case, dict) or set(case) != {"id", "fixture", "expected"}:
+            raise AliasSpecError("CP2.0 hostile case fields changed")
+        identifier, fixture, expected = case["id"], case["fixture"], case["expected"]
+        if not all(isinstance(value, str) and value for value in (identifier, fixture, expected)):
+            raise AliasSpecError("CP2.0 hostile case values must be non-empty strings")
+        if identifier in actual:
+            raise AliasSpecError(f"duplicate CP2.0 hostile case: {identifier}")
+        fixture_path = Path(fixture)
+        if fixture_path.is_absolute() or ".." in fixture_path.parts or fixture_path.suffix != ".toml":
+            raise AliasSpecError(f"unsafe CP2.0 hostile fixture path: {fixture}")
+        bounded_text(fixture_root / fixture_path, MAX_POLICY_BYTES, "CP2.0 hostile TOML")
+        actual[identifier] = (fixture, expected)
+    if actual != HOSTILE_CASES:
+        raise AliasSpecError("CP2.0 hostile fixture catalog changed")
+    return {"hostile_cases": len(actual)}
 
 
 def validate_spec_text(text: str) -> None:
@@ -402,6 +489,7 @@ def validate_repository(root: Path = ROOT) -> dict[str, int]:
         "alias specification",
     )
     validate_spec_text(spec)
+    counts.update(validate_model_evidence(root))
     validate_wiring(root)
     counts["wiring"] = len(WIRING)
     return counts
@@ -420,7 +508,8 @@ def main() -> int:
         "PASS: planned CP2/CP3 alias specification is complete and non-activated "
         f"(shells={counts['shells']}, providers={counts['providers']}, "
         f"scopes={counts['scopes']}, assurance={counts['verification_domains']}, "
-        f"ux={counts['ux_invariants']}, wiring={counts['wiring']})"
+        f"ux={counts['ux_invariants']}, model_files={counts['model_files']}, "
+        f"hostile_cases={counts['hostile_cases']}, wiring={counts['wiring']})"
     )
     return 0
 

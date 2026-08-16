@@ -1,0 +1,24 @@
+schema_version = 1
+revision = 0
+
+[[actions]]
+id = "git.status"
+display_name = "Git status"
+scope = "global-user"
+shells = ["bash"]
+risk = "read-only"
+[actions.template]
+kind = "typed-argv"
+executable_id = "git"
+arguments = [{ kind = "literal", value = "status" }]
+
+[[actions]]
+id = "git.status"
+display_name = "Duplicate"
+scope = "global-user"
+shells = ["bash"]
+risk = "read-only"
+[actions.template]
+kind = "typed-argv"
+executable_id = "git"
+arguments = []

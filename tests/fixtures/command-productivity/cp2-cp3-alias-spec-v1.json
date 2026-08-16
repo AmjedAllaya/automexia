@@ -2,6 +2,7 @@
   "schema": 1,
   "phase": "CP2-CP3-SPEC",
   "status": "planned",
+  "implemented_stage": "CP2.0-model-only",
   "authorities": {
     "product": "docs/DEVOPS-ALIASES.md",
     "architecture": "docs/ARCHITECTURE.md",
@@ -42,12 +43,17 @@
     "enabled_aliases": 256,
     "arguments_per_action": 64,
     "placeholders_per_action": 32,
+    "tags_per_action": 64,
     "string_bytes": 4096,
     "generated_file_bytes": 1048576,
     "in_process_cache_bytes": 8388608
   },
-  "required_action_fields": [
+  "required_document_fields": [
     "schema_version",
+    "revision",
+    "actions"
+  ],
+  "required_action_fields": [
     "id",
     "display_name",
     "description",
@@ -55,7 +61,6 @@
     "scope",
     "shells",
     "template",
-    "arguments",
     "placeholders",
     "working_directory_policy",
     "risk",
@@ -65,7 +70,14 @@
     "alias_projection"
   ],
   "model_enums": {
+    "action_scopes": ["Session", "Capsule", "TrustedWorkspace", "ShellUser", "GlobalUser", "BuiltinDisabled"],
+    "shells": ["Powershell", "Bash", "Zsh", "Fish", "Cmd"],
     "templates": ["TypedArgv", "RawInsertOnly"],
+    "argument_tokens": ["Literal", "Placeholder"],
+    "working_directory_policies": ["Inherit", "WorkspaceRoot", "Fixed"],
+    "risk_classes": ["ReadOnly", "Mutating", "Destructive", "Privileged"],
+    "provenance": ["User", "BuiltIn", "Imported"],
+    "alias_projection_modes": ["Auto", "CommandAlias", "WrapperFunction", "FishAbbreviation", "DoskeyMacro"],
     "argument_policies": ["None", "ForwardAll", "TypedBindings"],
     "execution_modes": ["Insert", "Copy", "ExactLaunch"],
     "completion_modes": ["Required", "BestEffort", "Disabled"],
@@ -77,7 +89,8 @@
     "maximum_length": 32,
     "builtin_one_letter_names": false,
     "secret_placeholders": false,
-    "raw_insert_projection": false
+    "raw_insert_projection": false,
+    "mutating_alias_requires_acknowledgement": true
   },
   "projection_modes": {
     "powershell": ["CommandAlias", "WrapperFunction"],
@@ -163,5 +176,11 @@
     "performance-and-resources",
     "rollback-and-uninstall"
   ],
+  "model_files": [
+    "automexia-devops/src/actions/mod.rs",
+    "automexia-devops/src/actions/model.rs",
+    "automexia-devops/src/actions/validation.rs"
+  ],
+  "hostile_fixture": "tests/fixtures/command-productivity/cp2-hostile-actions-v1.json",
   "activation_files": []
 }

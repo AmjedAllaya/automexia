@@ -1,0 +1,17 @@
+schema_version = 1
+revision = 0
+
+[[actions]]
+id = "cluster.delete"
+display_name = "Delete cluster"
+scope = "global-user"
+shells = ["bash"]
+risk = "destructive"
+[actions.template]
+kind = "typed-argv"
+executable_id = "kubectl"
+arguments = []
+[actions.alias_projection]
+requested_name = "kc"
+shells = ["bash"]
+mode = "command-alias"

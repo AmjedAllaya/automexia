@@ -1,0 +1,17 @@
+schema_version = 1
+revision = 0
+
+[[actions]]
+id = "shell.raw"
+display_name = "Raw shell text"
+scope = "shell-user"
+shells = ["bash"]
+risk = "read-only"
+[actions.template]
+kind = "raw-insert-only"
+shell = "bash"
+text = "printf hello"
+[actions.alias_projection]
+requested_name = "ph"
+shells = ["bash"]
+mode = "wrapper-function"
