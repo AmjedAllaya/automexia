@@ -422,12 +422,21 @@ Automexia. Refresh resolves one executable, passes exact argv with null stdin,
 terminates at 750 ms, bounds stdout/stderr, validates UTF-8/control bytes, and
 publishes private fixed-name files using same-directory atomic replacement.
 Provider commands run inside a POSIX process group or Windows Job Object, so a
-timeout or output overflow terminates descendants that still hold output pipes;
-the command never leaves detached capture threads or provider children behind.
+timeout, output overflow, or early leader exit terminates descendants that still
+hold output pipes; the command never leaves detached capture threads or provider
+children behind. The executable is held open and its stable file identity is
+revalidated after version discovery and generation, rejecting replacement races.
 Windows refresh accepts only native `.exe`/`.com` images and never implicitly
 routes a provider through `.cmd`/`.bat` shell parsing. Shell adapters reject a
-linked or non-directory component anywhere in their managed parent chain.
-No provider is invoked during shell startup, typing, rendering, or `doctor`.
+linked or non-directory component anywhere in their managed parent chain, and
+all persistence overrides must be absolute. macOS uses
+`~/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal`; Linux
+and BSD use `${XDG_CONFIG_HOME:-~/.config}/automexia`. Installers repair a stale
+owned profile block in place; uninstallers preflight every exact owned target
+before their first mutation and never recursively remove an installation root.
+`doctor` performs bounded artifact, digest, metadata, provenance, override, and
+parent-chain validation. No provider is invoked during shell startup, typing,
+rendering, or `doctor`.
 
 The schema-1 CP1 authority is
 [`cp1-contract-v1.json`](../tests/fixtures/command-productivity/cp1-contract-v1.json).

@@ -4,13 +4,16 @@ param(
     [switch]$SkipCmd,
     [switch]$SkipWsl,
     [switch]$Quiet,
-    [switch]$Force
+    [switch]$Force,
+    [string[]]$PowerShellProfilePathOverride
 )
 
 $ErrorActionPreference = 'Stop'
 $MarkerStart = '# >>> AUTOMEXIA SHELL INTEGRATION >>>'
 $MarkerEnd = '# <<< AUTOMEXIA SHELL INTEGRATION <<<'
 $PackageRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $PackageRoot 'windows-path-safety.ps1')
+. (Join-Path $PackageRoot 'windows-wsl.ps1')
 if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
     throw 'LOCALAPPDATA is unavailable; Automexia cannot install its Windows shell integration.'
 }
@@ -21,6 +24,17 @@ $script:DetectedWslDistributions = @()
 $script:DetectedPowerShellProfiles = @()
 $ProfileBytesLimit = 1MB
 $StateBytesLimit = 256KB
+
+function Assert-AutomexiaRealDirectory([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    $item = Get-Item -LiteralPath $Path -Force
+    if (-not $item.PSIsContainer -or $item.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
+        throw "Refusing linked or non-directory installation path: $Path"
+    }
+}
+
+Assert-AutomexiaRealDirectory (Join-Path $env:LOCALAPPDATA 'Automexia')
+Assert-AutomexiaRealDirectory $InstallRoot
 
 function Write-InstallMessage([string]$Message, [ConsoleColor]$Color = [ConsoleColor]::Cyan) {
     if (-not $Quiet) { Write-Host $Message -ForegroundColor $Color }
@@ -39,6 +53,8 @@ function Get-TextSha256([string]$Text) {
 function Get-SourceFingerprint {
     $relativeSources = @(
         'install-windows.ps1',
+        'windows-path-safety.ps1',
+        'windows-wsl.ps1',
         'powershell\automexia.ps1',
         'powershell\automexia.format.ps1xml',
         'cmd\automexia.cmd',
@@ -62,18 +78,27 @@ function Get-SourceFingerprint {
     $parts.Add("skip-wsl=$([bool]$SkipWsl)")
     if (-not $SkipPowerShell) {
         $detectedProfiles = New-Object System.Collections.Generic.List[string]
-        if ($PROFILE -and $PROFILE.CurrentUserCurrentHost) {
-            $detectedProfiles.Add([string]$PROFILE.CurrentUserCurrentHost)
-        } elseif ($PROFILE) {
-            $detectedProfiles.Add([string]$PROFILE)
-        }
-        $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
-        $parts.Add("pwsh=$($pwsh.Source)")
-        if ($pwsh) {
-            try {
-                $pwshProfile = & $pwsh.Source -NoLogo -NoProfile -Command '$PROFILE.CurrentUserCurrentHost' 2>$null | Select-Object -First 1
-                if ($pwshProfile) { $detectedProfiles.Add([string]$pwshProfile) }
-            } catch {}
+        if ($PowerShellProfilePathOverride) {
+            foreach ($profilePath in $PowerShellProfilePathOverride) {
+                if (-not [string]::IsNullOrWhiteSpace($profilePath)) {
+                    $detectedProfiles.Add([IO.Path]::GetFullPath($profilePath))
+                }
+            }
+            $parts.Add('pwsh=profile-path-override')
+        } else {
+            if ($PROFILE -and $PROFILE.CurrentUserCurrentHost) {
+                $detectedProfiles.Add([string]$PROFILE.CurrentUserCurrentHost)
+            } elseif ($PROFILE) {
+                $detectedProfiles.Add([string]$PROFILE)
+            }
+            $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+            $parts.Add("pwsh=$($pwsh.Source)")
+            if ($pwsh) {
+                try {
+                    $pwshProfile = & $pwsh.Source -NoLogo -NoProfile -Command '$PROFILE.CurrentUserCurrentHost' 2>$null | Select-Object -First 1
+                    if ($pwshProfile) { $detectedProfiles.Add([string]$pwshProfile) }
+                } catch {}
+            }
         }
         $script:DetectedPowerShellProfiles = @($detectedProfiles | Select-Object -Unique)
         foreach ($profilePath in $script:DetectedPowerShellProfiles) {
@@ -109,15 +134,28 @@ function Get-SourceFingerprint {
     Get-TextSha256 ($parts -join "`n")
 }
 
-function Test-Marker([string]$Path) {
+function Get-AutomexiaPowerShellHook {
+    $hookPath = (Join-Path $InstallRoot 'automexia.ps1').Replace("'", "''")
+    return "if (`$env:TERM_PROGRAM -eq 'Automexia' -or `$env:AUTOMEXIA_SHELL_INTEGRATION -eq '1') { . '$hookPath' }"
+}
+
+function Test-MarkedBlockBody([string]$Path, [string]$ExpectedBody) {
     if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         return $false
     }
     $item = Get-Item -LiteralPath $Path -Force
-    if ($item.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint) -or $item.Length -gt $ProfileBytesLimit) {
+    try {
+        Assert-AutomexiaSafeProfilePathChain $Path
+    } catch {
         return $false
     }
-    return ([IO.File]::ReadAllText($Path)).Contains($MarkerStart)
+    if ($item.Length -gt $ProfileBytesLimit) {
+        return $false
+    }
+    $text = [IO.File]::ReadAllText($Path)
+    $pattern = '(?ms)^# >>> AUTOMEXIA SHELL INTEGRATION >>>\r?\n(?<body>.*?)\r?\n# <<< AUTOMEXIA SHELL INTEGRATION <<<(?:\r?\n)?'
+    $matches = [regex]::Matches($text, $pattern)
+    return $matches.Count -eq 1 -and $matches[0].Groups['body'].Value -ceq $ExpectedBody
 }
 
 function Test-StampedInstall([string]$Fingerprint) {
@@ -134,8 +172,9 @@ function Test-StampedInstall([string]$Fingerprint) {
             if ($actual -ne $file.Sha256) { return $false }
         }
         if (-not $SkipPowerShell) {
+            $expectedHook = Get-AutomexiaPowerShellHook
             foreach ($profile in @($state.Profiles)) {
-                if (-not (Test-Marker ([string]$profile))) { return $false }
+                if (-not (Test-MarkedBlockBody ([string]$profile) $expectedHook)) { return $false }
             }
         }
         return $true
@@ -179,20 +218,18 @@ function Write-TextAtomically([string]$Destination, [string]$Text, [Text.Encodin
 function Add-MarkedBlock([string]$Path, [string]$Body) {
     if ([string]::IsNullOrWhiteSpace($Path)) { return }
     $directory = Split-Path -Parent $Path
+    Assert-AutomexiaSafeProfilePathChain $directory
     New-Item -ItemType Directory -Force -Path $directory | Out-Null
     $directoryItem = Get-Item -LiteralPath $directory -Force
-    if ($directoryItem.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
-        throw "Refusing linked PowerShell profile directory: $directory"
-    }
+    if (-not $directoryItem.PSIsContainer) { throw "PowerShell profile parent is not a directory: $directory" }
+    Assert-AutomexiaSafeProfilePathChain $directory
     $existing = ''
     $encoding = [Text.UTF8Encoding]::new($false)
     $acl = $null
     if (Test-Path -LiteralPath $Path) {
         $item = Get-Item -LiteralPath $Path -Force
-        if ($item.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint) -or -not $item.PSIsContainer -and $item.Length -gt $ProfileBytesLimit) {
-            if ($item.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
-                throw "Refusing linked PowerShell profile: $Path"
-            }
+        Assert-AutomexiaSafeProfilePathChain $Path
+        if (-not $item.PSIsContainer -and $item.Length -gt $ProfileBytesLimit) {
             throw "PowerShell profile exceeds the 1 MiB safety ceiling: $Path"
         }
         if ($item.PSIsContainer) { throw "PowerShell profile is not a regular file: $Path" }
@@ -209,12 +246,18 @@ function Add-MarkedBlock([string]$Path, [string]$Body) {
     }
     $starts = ([regex]::Matches($existing, [regex]::Escape($MarkerStart))).Count
     $ends = ([regex]::Matches($existing, [regex]::Escape($MarkerEnd))).Count
-    if ($starts -eq 1 -and $ends -eq 1) { return }
-    if ($starts -ne 0 -or $ends -ne 0) {
+    if (($starts -ne 0 -or $ends -ne 0) -and ($starts -ne 1 -or $ends -ne 1)) {
         throw "Malformed Automexia managed block; profile left unchanged: $Path"
     }
     $newline = if ($existing.Contains("`r`n")) { "`r`n" } else { [Environment]::NewLine }
-    $updated = $existing + $newline + $MarkerStart + $newline + $Body + $newline + $MarkerEnd + $newline
+    if ($starts -eq 1) {
+        $pattern = '(?ms)^# >>> AUTOMEXIA SHELL INTEGRATION >>>\r?\n.*?^# <<< AUTOMEXIA SHELL INTEGRATION <<<\r?\n?'
+        if ([regex]::Matches($existing, $pattern).Count -ne 1) {
+            throw "Malformed or reversed Automexia managed block; profile left unchanged: $Path"
+        }
+        $existing = [regex]::Replace($existing, $pattern, '')
+    }
+    $updated = $existing.TrimEnd([char[]]"`r`n") + $newline + $MarkerStart + $newline + $Body + $newline + $MarkerEnd + $newline
     $temporary = "$Path.automexia-$PID.tmp"
     try {
         [IO.File]::WriteAllText($temporary, $updated, $encoding)
@@ -232,6 +275,7 @@ if (-not $Force -and (Test-StampedInstall $fingerprint)) {
 }
 
 New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
+Assert-AutomexiaRealDirectory $InstallRoot
 $installedFiles = New-Object System.Collections.Generic.List[string]
 $profiles = New-Object System.Collections.Generic.List[string]
 
@@ -253,8 +297,7 @@ if (-not $SkipPowerShell) {
     foreach ($profilePath in $script:DetectedPowerShellProfiles) {
         $profiles.Add($profilePath)
     }
-    $hookPath = $PowerShellIntegration.Replace("'", "''")
-    $hook = "if (`$env:TERM_PROGRAM -eq 'Automexia' -or `$env:AUTOMEXIA_SHELL_INTEGRATION -eq '1') { . '$hookPath' }"
+    $hook = Get-AutomexiaPowerShellHook
     foreach ($profilePath in ($profiles | Select-Object -Unique)) {
         Add-MarkedBlock $profilePath $hook
     }
@@ -306,34 +349,49 @@ set -eu
 umask 077
 cfg="`${AUTOMEXIA_CONFIG_HOME:-`${XDG_CONFIG_HOME:-`$HOME/.config}/automexia}"
 fish_cfg="`${XDG_CONFIG_HOME:-`$HOME/.config}/fish/conf.d"
-mkdir -p "`$cfg" "`$fish_cfg"
+case "`$cfg" in /*) ;; *) printf 'absolute Automexia config root required\n' >&2; exit 1;; esac
+case "`$fish_cfg" in /*) ;; *) printf 'absolute Fish config root required\n' >&2; exit 1;; esac
 [ ! -L "`$cfg" ] || { printf 'linked Automexia config root refused\n' >&2; exit 1; }
 [ ! -L "`$fish_cfg" ] || { printf 'linked Fish config root refused\n' >&2; exit 1; }
-cat > "`$cfg/shell-integration.bash" <<'AUTOMEXIA_BASH_EOF'
+mkdir -p "`$cfg" "`$fish_cfg"
+suffix=".automexia-`$$.tmp"
+cleanup_install() {
+  rm -f "`$cfg/shell-integration.bash`$suffix" "`$cfg/shell-integration.zsh`$suffix" \
+    "`$cfg/automexia-completion.bash`$suffix" "`$cfg/automexia-completion.zsh`$suffix" \
+    "`$cfg/automexia-eza-filter.pl`$suffix" "`$fish_cfg/automexia.fish`$suffix" \
+    "`$fish_cfg/automexia-completion.fish`$suffix" \
+    "`$HOME/.bashrc`$suffix" "`$HOME/.zshrc`$suffix"
+}
+trap cleanup_install EXIT HUP INT TERM
+cat > "`$cfg/shell-integration.bash`$suffix" <<'AUTOMEXIA_BASH_EOF'
 $bash
 AUTOMEXIA_BASH_EOF
-cat > "`$cfg/shell-integration.zsh" <<'AUTOMEXIA_ZSH_EOF'
+cat > "`$cfg/shell-integration.zsh`$suffix" <<'AUTOMEXIA_ZSH_EOF'
 $zsh
 AUTOMEXIA_ZSH_EOF
-cat > "`$cfg/automexia-completion.bash" <<'AUTOMEXIA_BASH_COMPLETION_EOF'
+cat > "`$cfg/automexia-completion.bash`$suffix" <<'AUTOMEXIA_BASH_COMPLETION_EOF'
 $bashCompletion
 AUTOMEXIA_BASH_COMPLETION_EOF
-cat > "`$cfg/automexia-completion.zsh" <<'AUTOMEXIA_ZSH_COMPLETION_EOF'
+cat > "`$cfg/automexia-completion.zsh`$suffix" <<'AUTOMEXIA_ZSH_COMPLETION_EOF'
 $zshCompletion
 AUTOMEXIA_ZSH_COMPLETION_EOF
-cat > "`$fish_cfg/automexia.fish" <<'AUTOMEXIA_FISH_EOF'
+cat > "`$fish_cfg/automexia.fish`$suffix" <<'AUTOMEXIA_FISH_EOF'
 $fish
 AUTOMEXIA_FISH_EOF
-cat > "`$fish_cfg/automexia-completion.fish" <<'AUTOMEXIA_FISH_COMPLETION_EOF'
+cat > "`$fish_cfg/automexia-completion.fish`$suffix" <<'AUTOMEXIA_FISH_COMPLETION_EOF'
 $fishCompletion
 AUTOMEXIA_FISH_COMPLETION_EOF
-cat > "`$cfg/automexia-eza-filter.pl" <<'AUTOMEXIA_EZA_FILTER_EOF'
+cat > "`$cfg/automexia-eza-filter.pl`$suffix" <<'AUTOMEXIA_EZA_FILTER_EOF'
 $ezaFilter
 AUTOMEXIA_EZA_FILTER_EOF
-chmod 0644 "`$cfg/shell-integration.bash" "`$cfg/shell-integration.zsh" \
-  "`$cfg/automexia-completion.bash" "`$cfg/automexia-completion.zsh" \
-  "`$cfg/automexia-eza-filter.pl" "`$fish_cfg/automexia.fish" \
-  "`$fish_cfg/automexia-completion.fish"
+for file in shell-integration.bash shell-integration.zsh automexia-completion.bash automexia-completion.zsh automexia-eza-filter.pl; do
+  chmod 0644 "`$cfg/`$file`$suffix"
+  mv -f "`$cfg/`$file`$suffix" "`$cfg/`$file"
+done
+for file in automexia.fish automexia-completion.fish; do
+  chmod 0644 "`$fish_cfg/`$file`$suffix"
+  mv -f "`$fish_cfg/`$file`$suffix" "`$fish_cfg/`$file"
+done
 append_block() {
   file=`$1
   source_line=`$2
@@ -346,10 +404,19 @@ append_block() {
     starts=`$(grep -Fxc '$MarkerStart' "`$file" 2>/dev/null || true); starts=`${starts:-0}
     ends=`$(grep -Fxc '$MarkerEnd' "`$file" 2>/dev/null || true); ends=`${ends:-0}
   fi
-  if [ "`$starts" -eq 1 ] && [ "`$ends" -eq 1 ]; then return 0; fi
-  [ "`$starts" -eq 0 ] && [ "`$ends" -eq 0 ] || { printf 'malformed Automexia profile markers: %s\n' "`$file" >&2; exit 1; }
-  tmp="`$file.automexia-`$$.tmp"
-  if [ -f "`$file" ]; then cp -p "`$file" "`$tmp"; else : >"`$tmp"; fi
+  if [ "`$starts" -eq 1 ] && [ "`$ends" -eq 1 ]; then
+    start_line=`$(grep -Fn '$MarkerStart' "`$file" | cut -d: -f1)
+    end_line=`$(grep -Fn '$MarkerEnd' "`$file" | cut -d: -f1)
+    [ "`$start_line" -lt "`$end_line" ] || { printf 'reversed Automexia profile markers: %s\n' "`$file" >&2; exit 1; }
+  else
+    [ "`$starts" -eq 0 ] && [ "`$ends" -eq 0 ] || { printf 'malformed Automexia profile markers: %s\n' "`$file" >&2; exit 1; }
+  fi
+  tmp="`$file`$suffix"
+  if [ "`$starts" -eq 1 ]; then
+    permissions=`$(stat -c '%a' "`$file" 2>/dev/null || stat -f '%Lp' "`$file")
+    awk -v start='$MarkerStart' -v end='$MarkerEnd' '`$0 == start {skip=1;next} `$0 == end {skip=0;next} !skip {print}' "`$file" >"`$tmp"
+    chmod "`$permissions" "`$tmp"
+  elif [ -f "`$file" ]; then cp -p "`$file" "`$tmp"; else : >"`$tmp"; fi
   printf '\n$MarkerStart\n%s\n$MarkerEnd\n' "`$source_line" >> "`$tmp"
   mv -f "`$tmp" "`$file"
 }
@@ -359,11 +426,15 @@ printf 'AUTOMEXIA_WSL_INTEGRATION_OK\n'
 "@
     $payloadBytes = [Text.Encoding]::UTF8.GetBytes($payload)
     $payloadBase64 = [Convert]::ToBase64String($payloadBytes)
-    $decodeCommand = "printf '%s' '$payloadBase64' | base64 -d | sh"
     foreach ($distribution in $script:DetectedWslDistributions) {
-        $result = & $script:DetectedWslExecutable --distribution $distribution --exec sh -c $decodeCommand 2>&1
-        if ($LASTEXITCODE -ne 0 -or ($result -notcontains 'AUTOMEXIA_WSL_INTEGRATION_OK')) {
-            throw "WSL shell integration install failed for ${distribution}: $($result -join [Environment]::NewLine)"
+        $wslResult = Invoke-AutomexiaWslBase64Script `
+            $script:DetectedWslExecutable $distribution $payloadBase64
+        $stdoutLines = @($wslResult.Stdout -split '\r?\n' | Where-Object { $_ })
+        if ($wslResult.ExitCode -ne 0 -or
+            $stdoutLines -notcontains 'AUTOMEXIA_WSL_INTEGRATION_OK') {
+            $detail = @($wslResult.Stdout, $wslResult.Stderr) |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+            throw "WSL shell integration install failed for ${distribution}: $($detail -join [Environment]::NewLine)"
         }
     }
     Write-InstallMessage "WSL Bash/Zsh/Fish integration and completion adapters installed for $($script:DetectedWslDistributions.Count) user distribution(s)."

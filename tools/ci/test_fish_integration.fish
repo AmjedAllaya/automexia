@@ -57,4 +57,9 @@ source "$root/shell-integration/completion/fish/automexia-completion.fish"; or e
 not string match -q '*linked-candidate*' -- (complete -c kubectl); or exit 1
 string match -q '*state=unsafe-path/native-fallback*' -- (automexia_completion_health); or exit 1
 
+set -e AUTOMEXIA_COMPLETION_ADAPTER_FISH_LOADED
+set -gx AUTOMEXIA_CONFIG_HOME relative-config-root
+source "$root/shell-integration/completion/fish/automexia-completion.fish"; or exit 1
+string match -q '*state=unsafe-path/native-fallback*' -- (automexia_completion_health); or exit 1
+
 echo "PASS: Fish integration is syntax-valid, editor-owned, digest-verified, linked-parent-safe, native-first, disable-safe, $fish_adapter_benchmark, and health-reporting"

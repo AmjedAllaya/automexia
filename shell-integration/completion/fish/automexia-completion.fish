@@ -5,6 +5,8 @@ set -gx AUTOMEXIA_COMPLETION_ADAPTER_FISH_LOADED 1
 set -g __automexia_completion_root ''
 if set -q AUTOMEXIA_CONFIG_HOME; and test -n "$AUTOMEXIA_CONFIG_HOME"
     set __automexia_completion_root "$AUTOMEXIA_CONFIG_HOME"
+else if test (command uname -s) = Darwin
+    set __automexia_completion_root "$HOME/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal"
 else if set -q XDG_CONFIG_HOME; and test -n "$XDG_CONFIG_HOME"
     set __automexia_completion_root "$XDG_CONFIG_HOME/automexia"
 else
@@ -15,6 +17,7 @@ set -g __automexia_completion_collisions
 set -g __automexia_completion_loaded
 
 function __automexia_completion_directory_safe
+    string match -qr '^/' -- "$__automexia_completion_root"; or return 1
     set -l generated_dir (path dirname "$__automexia_completion_root")
     set -l config_dir (path dirname "$generated_dir")
     set -l shell_dir "$__automexia_completion_root/fish"

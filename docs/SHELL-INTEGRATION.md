@@ -43,8 +43,10 @@ Refresh is the only operation that starts a provider. It uses the installed
 official CLI with exact arguments and no stdin, a 750 ms deadline, 1 MiB stdout
 and 256 KiB stderr ceilings, fixed private destinations, SHA-256 sidecars, and
 atomic replacement. Restart the shell after refresh, enable, disable, or remove.
-`doctor` only resolves executable names and inventories cached regular files; it
-does not run a provider, authenticate, read command history, or access secrets.
+`doctor` resolves executable names without executing them and validates each
+bounded artifact, digest, metadata record, provenance
+header, PowerShell consent marker, and managed parent chain. It does not run a
+provider, authenticate, read command history, or access secrets.
 
 Disable or remove managed state without affecting native completion:
 
@@ -60,6 +62,28 @@ the provider remains their source. Do not edit them. A digest mismatch, linked
 artifact or managed parent, non-directory path component, oversized file,
 unsupported shell/provider, missing tool, timeout, or malformed output fails
 closed to native shell behavior.
+
+`AUTOMEXIA_CONFIG_HOME`, when set, must be absolute. The native defaults are
+`%LOCALAPPDATA%\Automexia\Terminal` on Windows,
+`~/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal` on
+macOS, and `${XDG_CONFIG_HOME:-$HOME/.config}/automexia` on Linux/BSD. Managed
+profile blocks are updated in place when their owned source line becomes stale;
+uninstall validates every exact owned target before changing profiles or files.
+
+On Windows, detected PowerShell profiles may live below a OneDrive-redirected
+Documents folder. Provisioning inspects the native reparse tag of every existing
+profile-path component: Microsoft Cloud Files tags are allowed, while symbolic
+links, junctions, other name-surrogate redirects, and unknown reparse types fail
+closed before profile directories are created or files are changed. The same
+classification protects install, stamped no-op/repair, and uninstall. Automexia-
+owned `%LOCALAPPDATA%` destinations retain their stricter no-reparse-point rule.
+
+Windows-to-WSL provisioning sends a size-bounded canonical Base64 program over
+redirected stdin to each validated distribution token. The fixed Linux decoder
+keeps only Base64 alphabet bytes before decoding, which removes Windows
+PowerShell 5.1's UTF-8 preamble without placing source payloads in the Windows
+command line. This avoids command-length failures while preserving exact UTF-8
+shell-integration sources and captured per-distribution diagnostics.
 
 ## Prompt ownership
 

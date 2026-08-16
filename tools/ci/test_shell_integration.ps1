@@ -453,6 +453,101 @@ if ($ezaFilter -notmatch 'generic_folder' -or $ezaFilter -notmatch 'Filenames an
 }
 
 $installerSource = Get-Content (Join-Path $root 'shell-integration\install-windows.ps1') -Raw
+$pathSafetyPath = Join-Path $root 'shell-integration\windows-path-safety.ps1'
+if (-not (Test-Path -LiteralPath $pathSafetyPath -PathType Leaf)) {
+    throw 'Windows profile reparse-point safety helper is missing'
+}
+$wslTransportPath = Join-Path $root 'shell-integration\windows-wsl.ps1'
+if (-not (Test-Path -LiteralPath $wslTransportPath -PathType Leaf)) {
+    throw 'Windows WSL stdin transport helper is missing'
+}
+$pathSafetySource = Get-Content -LiteralPath $pathSafetyPath -Raw
+$wslTransportSource = Get-Content -LiteralPath $wslTransportPath -Raw
+if ($installerSource -notmatch 'windows-path-safety\.ps1' -or
+    $pathSafetySource -notmatch 'GetFileInformationByHandleEx' -or
+    $pathSafetySource -notmatch 'AutomexiaCloudReparseTagMask' -or
+    $pathSafetySource -notmatch 'AutomexiaNameSurrogateReparseTagMask') {
+    throw 'Windows installer does not classify cloud and name-surrogate reparse tags precisely'
+}
+if ($wslTransportSource -notmatch 'AutomexiaWslPayloadCharacterLimit' -or
+    $wslTransportSource -notmatch 'RedirectStandardInput' -or
+    $wslTransportSource -notmatch "tr -cd ''A-Za-z0-9\+/=''" -or
+    $wslTransportSource -notmatch 'base64 -d \| sh') {
+    throw 'Windows WSL transport is not bounded, redirected, BOM-safe, and fixed-command'
+}
+. $pathSafetyPath
+. $wslTransportPath
+$unsafeDistributionRejected = $false
+try {
+    Invoke-AutomexiaWslBase64Script $pathSafetyPath 'unsafe distribution' 'QQ==' | Out-Null
+} catch {
+    if ($_.Exception.Message -notmatch 'Unsafe WSL distribution name') { throw }
+    $unsafeDistributionRejected = $true
+}
+if (-not $unsafeDistributionRejected) { throw 'WSL transport accepted an unsafe distribution token' }
+$malformedPayloadRejected = $false
+try {
+    Invoke-AutomexiaWslBase64Script $pathSafetyPath 'fixture' 'not base64!' | Out-Null
+} catch {
+    if ($_.Exception.Message -notmatch 'not canonical Base64') { throw }
+    $malformedPayloadRejected = $true
+}
+if (-not $malformedPayloadRejected) { throw 'WSL transport accepted a malformed payload' }
+$wslExecutable = Get-Command wsl.exe -ErrorAction SilentlyContinue
+if ($wslExecutable) {
+    $rawDistributions = @(& $wslExecutable.Source --list --quiet 2>$null)
+    if ($LASTEXITCODE -eq 0) {
+        $smokeDistribution = @(
+            $rawDistributions |
+                ForEach-Object { ([string]$_).Replace([string][char]0, '').Trim() } |
+                Where-Object { $_ -and $_ -notmatch '^(?i:docker-desktop(?:-data)?)$' }
+        ) | Select-Object -First 1
+        if ($smokeDistribution) {
+            $smokeScript = "printf 'AUTOMEXIA_WSL_TRANSPORT_OK\n'"
+            $smokePayload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($smokeScript))
+            $smokeResult = Invoke-AutomexiaWslBase64Script `
+                $wslExecutable.Source $smokeDistribution $smokePayload
+            if ($smokeResult.ExitCode -ne 0 -or
+                $smokeResult.Stdout -notmatch 'AUTOMEXIA_WSL_TRANSPORT_OK') {
+                throw "Windows WSL stdin transport smoke failed for $smokeDistribution"
+            }
+        }
+    }
+}
+$cloudTags = @('9000001A', '9000601A', '9000F01A') |
+    ForEach-Object { [Convert]::ToUInt32($_, 16) }
+foreach ($tag in $cloudTags) {
+    if (-not (Test-AutomexiaCloudReparseTag $tag) -or
+        (Test-AutomexiaNameSurrogateReparseTag $tag)) {
+        throw ('Cloud reparse tag 0x{0:X8} was classified unsafely' -f $tag)
+    }
+    Assert-AutomexiaSupportedProfileReparsePoint 'cloud-profile-fixture' $tag
+}
+foreach ($tagText in @('A0000003', 'A000000C')) {
+    $tag = [Convert]::ToUInt32($tagText, 16)
+    if (-not (Test-AutomexiaNameSurrogateReparseTag $tag) -or
+        (Test-AutomexiaCloudReparseTag $tag)) {
+        throw ('Linked reparse tag 0x{0:X8} was classified unsafely' -f $tag)
+    }
+    $rejected = $false
+    try {
+        Assert-AutomexiaSupportedProfileReparsePoint 'linked-profile-fixture' $tag
+    } catch {
+        if ($_.Exception.Message -notmatch 'Refusing linked PowerShell profile path') { throw }
+        $rejected = $true
+    }
+    if (-not $rejected) { throw ('Linked reparse tag 0x{0:X8} was accepted' -f $tag) }
+}
+$actualProfileDirectory = Split-Path -Parent ([string]$PROFILE.CurrentUserCurrentHost)
+if (Test-Path -LiteralPath $actualProfileDirectory -PathType Container) {
+    $actualProfileItem = Get-Item -LiteralPath $actualProfileDirectory -Force
+    if ($actualProfileItem.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
+        $actualProfileTag = Get-AutomexiaReparseTag $actualProfileDirectory
+        if (Test-AutomexiaCloudReparseTag $actualProfileTag) {
+            Assert-AutomexiaSafeProfilePathChain $actualProfileDirectory
+        }
+    }
+}
 if ($installerSource -notmatch '\.TrimEnd\(\[char\[\]\]"`r`n"\)') { throw 'WSL installer does not normalize here-document terminators deterministically' }
 if ($installerSource -notmatch 'automexia\.format\.ps1xml') { throw 'Windows installer does not deploy the PowerShell icon view' }
 if ($installerSource -notmatch 'automexia-eza-filter\.pl' -or
@@ -462,6 +557,10 @@ if ($installerSource -notmatch 'automexia-eza-filter\.pl' -or
 if ($installerSource -notmatch '--distribution \$distribution' -or
     $installerSource -notmatch 'docker-desktop') {
     throw 'Windows installer does not provision every detected user WSL distribution safely'
+}
+if ($installerSource -notmatch 'Invoke-AutomexiaWslBase64Script' -or
+    $installerSource -match 'printf.+\$payloadBase64.+base64 -d') {
+    throw 'Windows installer does not stream its bounded WSL payload outside the command line'
 }
 if ($installerSource -notmatch 'automexia\.cmd' -or
     $installerSource -notmatch '__AUTOMEXIA_CMD_USER_BASE64__' -or
@@ -481,15 +580,34 @@ if ($installerSource -notmatch 'Move-Item -LiteralPath .* -Destination .* -Force
 
 $installerFixture = Join-Path ([IO.Path]::GetTempPath()) ("automexia-installer-{0}" -f [Guid]::NewGuid().ToString('N'))
 $previousLocalAppData = $env:LOCALAPPDATA
+$previousConfigHome = $env:AUTOMEXIA_CONFIG_HOME
 try {
     $env:LOCALAPPDATA = $installerFixture
+    $env:AUTOMEXIA_CONFIG_HOME = Join-Path $installerFixture 'Automexia\Terminal'
     $installerPath = Join-Path $root 'shell-integration\install-windows.ps1'
-    & $installerPath -SkipPowerShell -SkipWsl -Quiet
+    $uninstallerPath = Join-Path $root 'shell-integration\uninstall-windows.ps1'
+    $profilePath = Join-Path $installerFixture 'OneDrive\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1'
+    $null = New-Item -ItemType Directory -Force -Path (Split-Path -Parent $profilePath)
+    [IO.File]::WriteAllText($profilePath, "# existing profile`r`n", [Text.UTF8Encoding]::new($false))
+    $installerArguments = @{
+        SkipWsl = $true
+        Quiet = $true
+        PowerShellProfilePathOverride = @($profilePath)
+    }
+    & $installerPath @installerArguments
     $installedRoot = Join-Path $installerFixture 'Automexia\shell-integration'
     $installedCmd = Join-Path $installedRoot 'automexia.cmd'
     $installState = Join-Path $installedRoot 'install-state.json'
-    if (-not (Test-Path -LiteralPath $installedCmd) -or -not (Test-Path -LiteralPath $installState)) {
-        throw 'Windows automatic installer did not publish CMD integration and its state stamp'
+    if (-not (Test-Path -LiteralPath $installedCmd) -or
+        -not (Test-Path -LiteralPath $installState) -or
+        -not (Test-Path -LiteralPath $profilePath)) {
+        throw 'Windows automatic installer did not publish shell integration, its state stamp, and its profile hook'
+    }
+    $profileText = Get-Content -LiteralPath $profilePath -Raw
+    if ($profileText -notmatch [regex]::Escape('# existing profile') -or
+        ([regex]::Matches($profileText, [regex]::Escape('# >>> AUTOMEXIA SHELL INTEGRATION >>>'))).Count -ne 1 -or
+        ([regex]::Matches($profileText, [regex]::Escape('# <<< AUTOMEXIA SHELL INTEGRATION <<<'))).Count -ne 1) {
+        throw 'Windows automatic installer did not preserve the isolated profile and add exactly one managed hook'
     }
     $installedCmdBytes = [IO.File]::ReadAllBytes($installedCmd)
     if (($installedCmdBytes | Where-Object { $_ -gt 127 } | Select-Object -First 1) -or
@@ -500,17 +618,90 @@ try {
         throw 'Windows installer did not deploy CMD integration as BOM-free ASCII'
     }
     $firstState = Get-Content -LiteralPath $installState -Raw
-    & $installerPath -SkipPowerShell -SkipWsl -Quiet
+    $firstProfile = Get-Content -LiteralPath $profilePath -Raw
+    & $installerPath @installerArguments
     if ((Get-Content -LiteralPath $installState -Raw) -cne $firstState) {
         throw 'Windows automatic installer rewrote a current installation'
     }
+    if ((Get-Content -LiteralPath $profilePath -Raw) -cne $firstProfile) {
+        throw 'Windows automatic installer rewrote a current PowerShell profile hook'
+    }
+    $staleProfile = [regex]::Replace(
+        $firstProfile,
+        '(?ms)(^# >>> AUTOMEXIA SHELL INTEGRATION >>>\r?\n).*?(\r?\n# <<< AUTOMEXIA SHELL INTEGRATION <<<)',
+        '${1}stale-owned-source-line${2}'
+    )
+    [IO.File]::WriteAllText($profilePath, $staleProfile, [Text.UTF8Encoding]::new($false))
+    & $installerPath @installerArguments
+    $repairedProfile = Get-Content -LiteralPath $profilePath -Raw
+    if ($repairedProfile -match 'stale-owned-source-line' -or
+        $repairedProfile -notmatch [regex]::Escape('# existing profile') -or
+        ([regex]::Matches($repairedProfile, [regex]::Escape('# >>> AUTOMEXIA SHELL INTEGRATION >>>'))).Count -ne 1 -or
+        $repairedProfile -notmatch [regex]::Escape(". '$installedRoot\automexia.ps1'")) {
+        throw 'Windows automatic installer did not repair the exact managed profile body in place'
+    }
     Add-Content -LiteralPath $installedCmd -Value 'locally altered'
-    & $installerPath -SkipPowerShell -SkipWsl -Quiet
+    & $installerPath @installerArguments
     if ((Get-Content -LiteralPath $installedCmd -Raw) -match 'locally altered') {
         throw 'Windows automatic installer did not repair an altered installed integration'
     }
+
+    $junctionTarget = Join-Path $installerFixture 'junction-target'
+    $junctionProfileDirectory = Join-Path $installerFixture 'linked-profile-directory'
+    $null = New-Item -ItemType Directory -Force -Path $junctionTarget
+    $null = New-Item -ItemType Junction -Path $junctionProfileDirectory -Target $junctionTarget
+    $junctionRejected = $false
+    try {
+        & $installerPath -SkipWsl -Quiet -Force -PowerShellProfilePathOverride @(
+            (Join-Path $junctionProfileDirectory 'Microsoft.PowerShell_profile.ps1')
+        )
+    } catch {
+        if ($_.Exception.Message -notmatch 'Refusing linked PowerShell profile path') { throw }
+        $junctionRejected = $true
+    } finally {
+        Remove-Item -LiteralPath $junctionProfileDirectory -Force -ErrorAction SilentlyContinue
+    }
+    if (-not $junctionRejected) {
+        throw 'Windows automatic installer accepted a junction-backed PowerShell profile directory'
+    }
+
+    $outsideConfig = Join-Path $installerFixture 'outside-config'
+    $linkedConfig = Join-Path $installerFixture 'linked-config'
+    $null = New-Item -ItemType Directory -Force -Path $outsideConfig
+    [IO.File]::WriteAllText((Join-Path $outsideConfig 'sentinel'), 'outside-sentinel')
+    $null = New-Item -ItemType Junction -Path $linkedConfig -Target $outsideConfig
+    $env:AUTOMEXIA_CONFIG_HOME = $linkedConfig
+    $uninstallJunctionRejected = $false
+    try {
+        & $uninstallerPath -SkipWsl -PowerShellProfilePathOverride @($profilePath)
+    } catch {
+        if ($_.Exception.Message -notmatch 'Refusing linked or non-directory managed path') { throw }
+        $uninstallJunctionRejected = $true
+    }
+    if (-not $uninstallJunctionRejected -or
+        -not (Test-Path -LiteralPath (Join-Path $outsideConfig 'sentinel') -PathType Leaf) -or
+        (Get-Content -LiteralPath $profilePath -Raw) -notmatch 'AUTOMEXIA SHELL INTEGRATION') {
+        throw 'Windows uninstaller mutated state before rejecting a linked config root'
+    }
+    [IO.Directory]::Delete($linkedConfig)
+    $env:AUTOMEXIA_CONFIG_HOME = Join-Path $installerFixture 'Automexia\Terminal'
+
+    & $uninstallerPath -SkipWsl -PowerShellProfilePathOverride @($profilePath)
+    $profileAfterUninstall = Get-Content -LiteralPath $profilePath -Raw
+    if ($profileAfterUninstall -notmatch [regex]::Escape('# existing profile') -or
+        $profileAfterUninstall -match 'AUTOMEXIA SHELL INTEGRATION') {
+        throw 'Windows uninstaller did not remove only the managed block from the isolated profile'
+    }
+    if (Test-Path -LiteralPath $installedRoot) {
+        throw 'Windows uninstaller did not remove the isolated managed installation root'
+    }
 } finally {
     $env:LOCALAPPDATA = $previousLocalAppData
+    if ($null -eq $previousConfigHome) {
+        Remove-Item Env:AUTOMEXIA_CONFIG_HOME -ErrorAction SilentlyContinue
+    } else {
+        $env:AUTOMEXIA_CONFIG_HOME = $previousConfigHome
+    }
     if (Test-Path -LiteralPath $installerFixture) {
         Remove-Item -LiteralPath $installerFixture -Recurse -Force
     }
@@ -588,6 +779,13 @@ try {
     if ($global:AutomexiaCp1FixtureLoaded -or
         (Get-AutomexiaCompletionHealth).State -ne 'UnsafePath/NativeFallback') {
         throw 'PowerShell completion did not reject a substituted parent-directory junction'
+    }
+
+    $env:AUTOMEXIA_CONFIG_HOME = 'relative-config-root'
+    Remove-Variable AutomexiaCompletionAdapterLoaded -Scope Global -ErrorAction SilentlyContinue
+    . $completionAdapter
+    if ((Get-AutomexiaCompletionHealth).State -ne 'UnsafePath/NativeFallback') {
+        throw 'PowerShell completion did not reject a relative persistence root'
     }
 } finally {
     if ($null -eq $previousConfigHome) {

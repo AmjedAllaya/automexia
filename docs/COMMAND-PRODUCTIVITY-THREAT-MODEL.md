@@ -203,10 +203,13 @@ fallback; terminal-cell scraping is forbidden.
 - The CP1 checker fixes the activation allowlist, provider/shell policies,
   exact operations, process/file ceilings, and zero network/secret/grid/startup
   capability. Rust tests terminate hung/overflowing process groups/Windows Job
-  Objects including descendants that retain output pipes, reject file and
-  parent-directory links/reparse points and implicit Windows script launchers,
-  hostile output, verify atomic replacement and fixed paths, and shell tests
-  cover digest tamper, native collisions, disable, repair, and exact uninstall.
+  Objects including descendants that retain output pipes after their leader
+  exits, reject file and parent-directory links/reparse points, relative state
+  roots, executable replacement, and implicit Windows script launchers. Bounded
+  doctor inspection verifies artifact/digest/metadata/provenance/consent as one
+  unit. Shell tests cover digest tamper, native collisions, disable, stale-block
+  repair, canonical macOS state, pre-mutation link rejection, and exact
+  uninstall.
 - CP2 adds parser/property/fuzz, atomic/recovery/concurrency, serializer,
   insertion/no-Enter, secret-negative, search-performance, and leak tests.
 - CP3/CP4 add pack risk/provenance, alias completion, capsule isolation, broker

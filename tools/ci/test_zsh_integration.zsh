@@ -71,4 +71,9 @@ ln -s "$unsafe_completion" "$completion_root"
 source "$root/shell-integration/completion/zsh/automexia-completion.zsh"
 (( ! ${+_comps[kubectl]} ))
 automexia_completion_health | grep -qF 'state=unsafe-path/native-fallback'
+
+unset AUTOMEXIA_COMPLETION_ADAPTER_ZSH_LOADED
+export AUTOMEXIA_CONFIG_HOME=relative-config-root
+source "$root/shell-integration/completion/zsh/automexia-completion.zsh"
+automexia_completion_health | grep -qF 'state=unsafe-path/native-fallback'
 print "PASS: Zsh integration is prompt-safe, native-first, digest-verified, linked-parent-safe, disable-safe, idempotent, adapter-p95=${zsh_adapter_p95}s, and command-neutral"

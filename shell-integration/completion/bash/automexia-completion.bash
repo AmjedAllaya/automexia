@@ -2,12 +2,20 @@
 [[ ${AUTOMEXIA_COMPLETION_ADAPTER_BASH_LOADED:-0} == 1 ]] && return 0
 export AUTOMEXIA_COMPLETION_ADAPTER_BASH_LOADED=1
 
-__automexia_completion_root=${AUTOMEXIA_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/automexia}/generated/completion
+if [[ -n ${AUTOMEXIA_CONFIG_HOME:-} ]]; then
+  __automexia_completion_config_root=$AUTOMEXIA_CONFIG_HOME
+elif [[ ${OSTYPE:-} == darwin* ]]; then
+  __automexia_completion_config_root="$HOME/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal"
+else
+  __automexia_completion_config_root=${XDG_CONFIG_HOME:-$HOME/.config}/automexia
+fi
+__automexia_completion_root=$__automexia_completion_config_root/generated/completion
 __automexia_completion_collisions=''
 __automexia_completion_loaded=''
 
 __automexia_completion_directory_safe() {
   local generated_dir config_dir shell_dir directory
+  [[ $__automexia_completion_config_root == /* ]] || return 1
   generated_dir=${__automexia_completion_root%/*}
   config_dir=${generated_dir%/*}
   shell_dir="$__automexia_completion_root/bash"

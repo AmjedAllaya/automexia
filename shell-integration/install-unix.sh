@@ -19,12 +19,28 @@ fi
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 repository_root=$(CDPATH='' cd -- "$script_dir/.." && pwd)
-config_root=${AUTOMEXIA_CONFIG_HOME:-${XDG_CONFIG_HOME:-"$HOME/.config"}/automexia}
+system_name=$(uname -s)
+if [ -n "${AUTOMEXIA_CONFIG_HOME:-}" ]; then
+  config_root=$AUTOMEXIA_CONFIG_HOME
+elif [ "$system_name" = Darwin ]; then
+  config_root=$HOME/Library/Application\ Support/io.github.AmjedAllaya.AutomexiaTerminal
+else
+  config_root=${XDG_CONFIG_HOME:-"$HOME/.config"}/automexia
+fi
 fish_conf_root=${XDG_CONFIG_HOME:-"$HOME/.config"}/fish/conf.d
+case "$config_root" in /*) ;; *) printf 'install-unix.sh: config root must be absolute\n' >&2; exit 1 ;; esac
+case "$fish_conf_root" in /*) ;; *) printf 'install-unix.sh: Fish config root must be absolute\n' >&2; exit 1 ;; esac
 state_file=$config_root/install-state-unix.sha256
 marker_start='# >>> AUTOMEXIA SHELL INTEGRATION >>>'
 marker_end='# <<< AUTOMEXIA SHELL INTEGRATION <<<'
 temporary_suffix=.automexia-$$.tmp
+if [ "$system_name" = Darwin ]; then
+  bash_source_line='[ -r "${AUTOMEXIA_CONFIG_HOME:-$HOME/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal}/shell-integration.bash" ] && . "${AUTOMEXIA_CONFIG_HOME:-$HOME/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal}/shell-integration.bash"'
+  zsh_source_line='[ -r "${AUTOMEXIA_CONFIG_HOME:-$HOME/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal}/shell-integration.zsh" ] && . "${AUTOMEXIA_CONFIG_HOME:-$HOME/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal}/shell-integration.zsh"'
+else
+  bash_source_line='[ -r "${AUTOMEXIA_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/automexia}/shell-integration.bash" ] && . "${AUTOMEXIA_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/automexia}/shell-integration.bash"'
+  zsh_source_line='[ -r "${AUTOMEXIA_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/automexia}/shell-integration.zsh" ] && . "${AUTOMEXIA_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/automexia}/shell-integration.zsh"'
+fi
 
 say() {
   if [ "$quiet" -eq 0 ]; then printf '%s\n' "$1"; fi
@@ -44,7 +60,8 @@ hash_stream() {
 }
 
 source_fingerprint=$(
-  printf '%s\n' 'schema=2'
+  printf '%s\n' 'schema=3'
+  printf 'system=%s\n' "$system_name"
   for source in \
     "$script_dir/install-unix.sh" \
     "$script_dir/bash/automexia.bash" \
@@ -80,6 +97,8 @@ integration_is_current() {
   cmp -s "$script_dir/posix/automexia-eza-filter.pl" "$config_root/automexia-eza-filter.pl" || return 1
   grep -Fq "$marker_start" "$HOME/.bashrc" 2>/dev/null || return 1
   grep -Fq "$marker_start" "$HOME/.zshrc" 2>/dev/null || return 1
+  grep -Fqx "$bash_source_line" "$HOME/.bashrc" 2>/dev/null || return 1
+  grep -Fqx "$zsh_source_line" "$HOME/.zshrc" 2>/dev/null || return 1
 }
 
 if [ "$force" -eq 0 ] && integration_is_current; then
@@ -99,7 +118,9 @@ cleanup() {
     "$fish_conf_root/automexia.fish$temporary_suffix" \
     "$fish_conf_root/automexia-completion.fish$temporary_suffix" \
     "$config_root/automexia-eza-filter.pl$temporary_suffix" \
-    "$state_file$temporary_suffix"
+    "$state_file$temporary_suffix" \
+    "$HOME/.bashrc$temporary_suffix" \
+    "$HOME/.zshrc$temporary_suffix"
 }
 trap cleanup EXIT HUP INT TERM
 
@@ -145,13 +166,32 @@ append_block() {
     start_count=${start_count:-0}
     end_count=${end_count:-0}
   fi
-  if [ "$start_count" -eq 1 ] && [ "$end_count" -eq 1 ]; then return 0; fi
   if [ "$start_count" -ne 0 ] || [ "$end_count" -ne 0 ]; then
-    printf 'install-unix.sh: malformed Automexia markers in %s\n' "$profile_path" >&2
-    exit 1
+    if [ "$start_count" -ne 1 ] || [ "$end_count" -ne 1 ]; then
+      printf 'install-unix.sh: malformed Automexia markers in %s\n' "$profile_path" >&2
+      exit 1
+    fi
+    start_line=$(grep -Fn "$marker_start" "$profile_path" | cut -d: -f1)
+    end_line=$(grep -Fn "$marker_end" "$profile_path" | cut -d: -f1)
+    if [ "$start_line" -ge "$end_line" ]; then
+      printf 'install-unix.sh: reversed Automexia markers in %s\n' "$profile_path" >&2
+      exit 1
+    fi
   fi
   profile_temporary="$profile_path$temporary_suffix"
-  if [ -f "$profile_path" ]; then cp -p "$profile_path" "$profile_temporary"; else : >"$profile_temporary"; fi
+  if [ "$start_count" -eq 1 ]; then
+    permissions=$(stat -c '%a' "$profile_path" 2>/dev/null || stat -f '%Lp' "$profile_path")
+    awk -v start="$marker_start" -v end="$marker_end" '
+      $0 == start { skip=1; next }
+      $0 == end { skip=0; next }
+      !skip { print }
+    ' "$profile_path" >"$profile_temporary"
+    chmod "$permissions" "$profile_temporary"
+  elif [ -f "$profile_path" ]; then
+    cp -p "$profile_path" "$profile_temporary"
+  else
+    : >"$profile_temporary"
+  fi
   printf '\n%s\n%s\n%s\n' "$marker_start" "$source_line" "$marker_end" >>"$profile_temporary"
   mv -f "$profile_temporary" "$profile_path"
 }
@@ -163,8 +203,8 @@ install_source "$script_dir/completion/zsh/automexia-completion.zsh" "$config_ro
 install_source "$script_dir/fish/automexia.fish" "$fish_conf_root/automexia.fish" 0644
 install_source "$script_dir/completion/fish/automexia-completion.fish" "$fish_conf_root/automexia-completion.fish" 0644
 install_source "$script_dir/posix/automexia-eza-filter.pl" "$config_root/automexia-eza-filter.pl" 0644
-append_block "$HOME/.bashrc" '[ -r "${AUTOMEXIA_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/automexia}/shell-integration.bash" ] && . "${AUTOMEXIA_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/automexia}/shell-integration.bash"'
-append_block "$HOME/.zshrc" '[ -r "${AUTOMEXIA_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/automexia}/shell-integration.zsh" ] && . "${AUTOMEXIA_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/automexia}/shell-integration.zsh"'
+append_block "$HOME/.bashrc" "$bash_source_line"
+append_block "$HOME/.zshrc" "$zsh_source_line"
 
 # User-local terminfo avoids requiring root. Missing tic is non-fatal because
 # Automexia already falls back to xterm-256color when a custom entry is absent.
