@@ -1986,6 +1986,22 @@ $rendererConfig
         }
         $cyclePreHover =
             Read-AutomexiaSnapshot -AfterSequence ([int64]$imageLifecycleFinal.sequence)
+        # Winit and Windows may coalesce adjacent WM_MOUSEMOVE messages. Wait
+        # until the application has consumed the off-target transition before
+        # posting the return hover; otherwise the repeated cycle can legally
+        # collapse into the unchanged cell and never re-arm the preview.
+        $cyclePreHoverDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while (([Math]::Abs([double]$cyclePreHover.pointer.x - $previewX) -gt 1.0 -or
+                [Math]::Abs([double]$cyclePreHover.pointer.y - $preHoverY) -gt 1.0) -and
+               [DateTime]::UtcNow -lt $cyclePreHoverDeadline) {
+            $cyclePreHover =
+                Read-AutomexiaSnapshot -AfterSequence ([int64]$cyclePreHover.sequence)
+        }
+        if ([Math]::Abs([double]$cyclePreHover.pointer.x - $previewX) -gt 1.0 -or
+            [Math]::Abs([double]$cyclePreHover.pointer.y - $preHoverY) -gt 1.0) {
+            Write-Host ($cyclePreHover | ConvertTo-Json -Depth 10)
+            throw "Preview lifecycle pre-hover did not settle for cycle $cycle"
+        }
         if (-not [AutomexiaResizeDriver]::MovePointerToClient(
             $window, $messagePreviewX, $messagePreviewY) -or
             -not [AutomexiaResizeDriver]::PostMessage(
