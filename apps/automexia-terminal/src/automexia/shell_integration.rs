@@ -16,6 +16,7 @@ pub enum PersistentOperation {
     Uninstall,
 }
 
+#[cfg(windows)]
 fn powershell_source(root: &Path) -> Option<PathBuf> {
     [
         root.join("powershell").join("automexia.ps1"),
@@ -25,6 +26,7 @@ fn powershell_source(root: &Path) -> Option<PathBuf> {
     .find(|path| regular_file(path))
 }
 
+#[cfg(windows)]
 fn cmd_source(root: &Path) -> Option<PathBuf> {
     [
         root.join("cmd").join("automexia.cmd"),
