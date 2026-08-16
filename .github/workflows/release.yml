@@ -170,8 +170,10 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force signed | Out-Null
+          New-Item -ItemType Directory -Force signing-input | Out-Null
           $binary = Get-ChildItem staged -Recurse -File -Filter automexia.exe
           if (@($binary).Count -ne 1) { throw "expected one staged automexia.exe, found $(@($binary).Count)" }
+          Copy-Item -LiteralPath $binary.FullName -Destination signing-input\automexia.exe
       - name: Authenticate to Azure Artifact Signing
         if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'azure-artifact-signing'
         uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
@@ -186,7 +188,7 @@ jobs:
           endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
           signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-          files-folder: staged
+          files-folder: signing-input
           files-folder-filter: exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
@@ -209,12 +211,12 @@ jobs:
         env:
           CERTIFICATE_PASSWORD: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          $binary = Get-ChildItem staged -Recurse -Filter automexia.exe | Select-Object -First 1
+          $binary = Get-Item signing-input\automexia.exe
           signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.acs.microsoft.com /d "Automexia Terminal" /du "https://github.com/AmjedAllaya/automexia-terminal" /f "${{ steps.pfx.outputs.path }}" /p $env:CERTIFICATE_PASSWORD $binary.FullName
       - name: Verify publisher and stage signed executable
         shell: pwsh
         run: |
-          $binary = Get-ChildItem staged -Recurse -Filter automexia.exe | Select-Object -First 1
+          $binary = Get-Item signing-input\automexia.exe
           signtool verify /pa /all /v /tw $binary.FullName
           $signature = Get-AuthenticodeSignature -LiteralPath $binary.FullName
           if ($signature.Status -ne 'Valid') { throw "executable signature is $($signature.Status)" }
@@ -443,21 +445,14 @@ jobs:
 
   hardware-smoke:
     name: Controlled GPU, PTY, WSL, signatures, and Defender
-    needs: [preflight, build, package-windows]
+    needs: [preflight, package-windows, package-linux]
     runs-on: [self-hosted, windows, x64, automexia-release, gpu, wsl, defender]
     environment: stable-release
     env:
+      AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
       AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT: ${{ vars.AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: windows-x86_64
-          path: smoke/windows
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: linux-x86_64
-          path: smoke/linux
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: packages-windows-x86_64
@@ -466,23 +461,43 @@ jobs:
         with:
           name: packages-windows-arm64
           path: trust/windows
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: packages-linux-x86_64
+          path: trust/linux
       - name: Verify signed packages and scan with current Defender intelligence
         shell: pwsh
         run: |
           tools/ci/test_release_trust_windows.ps1 `
             -ArtifactDirectory trust/windows `
             -ExpectedPublisher $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT `
+            -Version $env:AUTOMEXIA_VERSION `
             -EvidencePath trust/evidence/release-trust-windows.json
       - name: Native GPU/PTY launch and WSL portable smoke
         shell: pwsh
         run: |
-          $windows = Get-ChildItem smoke/windows -Recurse -Filter automexia.exe | Select-Object -First 1
+          $windowsArchive = Get-Item "trust/windows/automexia-terminal-$env:AUTOMEXIA_VERSION-x86_64-pc-windows-msvc.zip"
+          New-Item -ItemType Directory -Force smoke/windows-final | Out-Null
+          Expand-Archive -LiteralPath $windowsArchive.FullName -DestinationPath smoke/windows-final
+          $windows = Get-Item smoke/windows-final/automexia.exe
           & $windows.FullName --version
+          if ($LASTEXITCODE -ne 0) { throw 'signed Windows portable smoke failed' }
           $process = Start-Process -FilePath $windows.FullName -PassThru
-          Start-Sleep -Seconds 8
-          if ($process.HasExited) { throw "Automexia exited during the controlled GPU/PTY smoke" }
-          Stop-Process -Id $process.Id
-          $linux = Get-ChildItem smoke/linux -Recurse -Filter automexia | Select-Object -First 1
+          try {
+            Start-Sleep -Seconds 8
+            if ($process.HasExited) { throw "Automexia exited during the controlled GPU/PTY smoke" }
+          }
+          finally {
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force
+              Wait-Process -Id $process.Id -Timeout 30 -ErrorAction SilentlyContinue
+            }
+          }
+          $linuxArchive = Get-Item "trust/linux/automexia-terminal-$env:AUTOMEXIA_VERSION-x86_64-unknown-linux-gnu.tar.gz"
+          New-Item -ItemType Directory -Force smoke/linux-final | Out-Null
+          tar -xzf $linuxArchive.FullName -C smoke/linux-final
+          if ($LASTEXITCODE -ne 0) { throw 'could not extract final Linux portable archive' }
+          $linux = Get-Item smoke/linux-final/automexia
           $wslPath = (& wsl.exe wslpath -u $linux.FullName).Trim()
           & wsl.exe chmod +x $wslPath
           if ($LASTEXITCODE -ne 0) { throw 'WSL could not prepare the Linux artifact' }
@@ -539,7 +554,10 @@ jobs:
       - name: Generate complete checksums
         run: |
           (cd release-assets && find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\0' | sort -z | xargs -0 sha256sum > SHA256SUMS)
-          python tools/ci/release_trust.py --verify-final release-assets --version "${{ needs.preflight.outputs.version }}"
+          python tools/ci/release_trust.py \
+            --verify-final release-assets \
+            --version "${{ needs.preflight.outputs.version }}" \
+            --expected-windows-publisher "${{ vars.AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT }}"
       - name: Attest final package provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:

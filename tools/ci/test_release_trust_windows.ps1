@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$ArtifactDirectory,
     [Parameter(Mandatory = $true)][string]$ExpectedPublisher,
+    [Parameter(Mandatory = $true)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$')][string]$Version,
     [Parameter(Mandatory = $true)][string]$EvidencePath,
     [ValidateRange(60, 3600)][int]$ScanTimeoutSeconds = 900,
     [ValidateRange(1, 168)][int]$MaximumSignatureAgeHours = 48,
@@ -18,6 +19,17 @@ $msiPackages = @($packages | Where-Object Extension -eq '.msi')
 $zipPackages = @($packages | Where-Object Extension -eq '.zip')
 if ($packages.Count -ne 4 -or $msiPackages.Count -ne 2 -or $zipPackages.Count -ne 2) {
     throw "Windows trust gate expects exactly two MSI and two ZIP packages; found $($packages.Count) files"
+}
+$expectedPackageNames = @(
+    "automexia-terminal-$Version-aarch64-pc-windows-msvc.msi",
+    "automexia-terminal-$Version-aarch64-pc-windows-msvc.zip",
+    "automexia-terminal-$Version-x86_64-pc-windows-msvc.msi",
+    "automexia-terminal-$Version-x86_64-pc-windows-msvc.zip"
+)
+$observedPackageNames = (@($packages.Name | Sort-Object -CaseSensitive) -join '|')
+$requiredPackageNames = (@($expectedPackageNames | Sort-Object -CaseSensitive) -join '|')
+if ($observedPackageNames -cne $requiredPackageNames) {
+    throw "Windows trust package names do not match release $Version`: $observedPackageNames"
 }
 
 $temporaryRoots = [System.Collections.Generic.List[string]]::new()
@@ -65,7 +77,7 @@ function Expand-TrustedPortableArchive {
     try {
         $totalExpandedBytes = [int64]0
         $entryCount = 0
-        $binaryEntries = @()
+        $fileEntries = [System.Collections.Generic.List[string]]::new()
         foreach ($entry in $archive.Entries) {
             $entryCount++
             if ($entryCount -gt $MaximumArchiveEntries) {
@@ -76,6 +88,18 @@ function Expand-TrustedPortableArchive {
             if ([IO.Path]::IsPathRooted($normalized) -or $normalized.Contains(':') -or $segments -contains '..') {
                 throw "portable ZIP contains an unsafe path: $($entry.FullName)"
             }
+            $portableName = $normalized
+            while ($portableName.StartsWith('./')) { $portableName = $portableName.Substring(2) }
+            if ([string]::IsNullOrEmpty($entry.Name)) {
+                if (-not [string]::IsNullOrEmpty($portableName)) {
+                    throw "portable ZIP contains an unexpected directory: $($entry.FullName)"
+                }
+                continue
+            }
+            if ($portableName.Contains('/')) {
+                throw "portable ZIP content must be flat: $($entry.FullName)"
+            }
+            $fileEntries.Add($portableName)
             $totalExpandedBytes += $entry.Length
             if ($totalExpandedBytes -gt 536870912) {
                 throw 'portable ZIP expands beyond the 512 MiB release limit'
@@ -83,12 +107,12 @@ function Expand-TrustedPortableArchive {
             if ($entry.CompressedLength -gt 0 -and $entry.Length -gt ($entry.CompressedLength * 200)) {
                 throw "portable ZIP entry exceeds the 200:1 expansion-ratio limit: $($entry.FullName)"
             }
-            if ([IO.Path]::GetFileName($normalized) -ceq 'automexia.exe') {
-                $binaryEntries += $entry
-            }
         }
-        if ($binaryEntries.Count -ne 1) {
-            throw "portable ZIP must contain exactly one automexia.exe; found $($binaryEntries.Count)"
+        $expectedFiles = @('automexia.exe', 'LICENSE', 'NOTICE.md', 'README.md', 'THIRD_PARTY_NOTICES.md')
+        $observedFiles = (@($fileEntries | Sort-Object -CaseSensitive) -join '|')
+        $requiredFiles = (@($expectedFiles | Sort-Object -CaseSensitive) -join '|')
+        if ($fileEntries.Count -ne $expectedFiles.Count -or $observedFiles -cne $requiredFiles) {
+            throw "portable ZIP content mismatch: expected $($expectedFiles -join ', '); found $($fileEntries -join ', ')"
         }
     }
     finally {
@@ -103,6 +127,10 @@ function Expand-TrustedPortableArchive {
     $binary = @(Get-ChildItem -LiteralPath $destination -Recurse -File -Filter 'automexia.exe')
     if ($binary.Count -ne 1) {
         throw 'portable ZIP extraction did not yield exactly one automexia.exe'
+    }
+    $productVersion = $binary[0].VersionInfo.ProductVersion
+    if ($productVersion -cne $Version) {
+        throw "portable executable version mismatch: expected '$Version', found '$productVersion'"
     }
     return $binary[0].FullName
 }
@@ -172,12 +200,20 @@ try {
 
     $evidence = [ordered]@{
         schema = 1
+        version = $Version
         scanner = 'Microsoft Defender Antivirus'
         scanner_version = $defender.AMEngineVersion
         security_intelligence_version = $defender.AntivirusSignatureVersion
         security_intelligence_updated_utc = $defender.AntivirusSignatureLastUpdated.ToUniversalTime().ToString('o')
         artifact_count = $packages.Count
         artifact_bytes = [int64](($packages | Measure-Object Length -Sum).Sum)
+        artifacts = @($packages | Sort-Object Name | ForEach-Object {
+                [ordered]@{
+                    name = $_.Name
+                    size = [int64]$_.Length
+                    sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+                }
+            })
         signature_count = $signatures.Count
         publisher = $ExpectedPublisher
         scan_milliseconds = $scanMilliseconds

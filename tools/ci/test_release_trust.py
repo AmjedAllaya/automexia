@@ -19,6 +19,8 @@ TRUST = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(TRUST)
 
 
+PUBLISHER = "CN=Automexia Test"
+
 VALID_NAMES = (
     "automexia-terminal-0.4.0-x86_64-pc-windows-msvc.msi",
     "automexia-terminal-0.4.0-aarch64-pc-windows-msvc.msi",
@@ -75,23 +77,37 @@ class ReleaseTrustTests(unittest.TestCase):
             json.dumps({"bomFormat": "CycloneDX", "specVersion": "1.6"}),
             encoding="utf-8",
         )
-        windows_bytes = sum(
-            path.stat().st_size
-            for path in self.packages.iterdir()
-            if path.suffix.casefold() in {".msi", ".zip"}
+        windows_packages = sorted(
+            (
+                path
+                for path in self.packages.iterdir()
+                if path.suffix.casefold() in {".msi", ".zip"}
+            ),
+            key=lambda path: path.name.casefold(),
         )
+        windows_bytes = sum(path.stat().st_size for path in windows_packages)
+        windows_artifacts = [
+            {
+                "name": path.name,
+                "size": path.stat().st_size,
+                "sha256": TRUST.digest(path, self.policy["chunk_bytes"]),
+            }
+            for path in windows_packages
+        ]
         (final / "release-trust-windows.json").write_text(
             json.dumps(
                 {
                     "schema": 1,
+                    "version": "0.4.0",
                     "scanner": "Microsoft Defender Antivirus",
                     "scanner_version": "1.1.1",
                     "security_intelligence_version": "1.2.3",
                     "security_intelligence_updated_utc": "2026-08-16T10:00:00Z",
                     "artifact_count": 4,
                     "artifact_bytes": windows_bytes,
+                    "artifacts": windows_artifacts,
                     "signature_count": 4,
-                    "publisher": "CN=Automexia Test",
+                    "publisher": PUBLISHER,
                     "scan_milliseconds": 10,
                     "scan_timeout_seconds": 900,
                     "result": "pass",
@@ -160,7 +176,43 @@ class ReleaseTrustTests(unittest.TestCase):
 
     def test_final_assets_require_exact_metadata_and_checksums(self) -> None:
         final = self.prepare_final("final-evidence")
-        TRUST.verify_final(final, "0.4.0", self.policy)
+        TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
+
+    def test_windows_evidence_is_bound_to_final_packages_and_release_identity(self) -> None:
+        mutations = (
+            ("artifact_bytes", 1, "exact passing trust evidence"),
+            ("artifacts", [], "exact passing trust evidence"),
+            ("publisher", "CN=Unexpected", "exact passing trust evidence"),
+            ("version", "9.9.9", "exact passing trust evidence"),
+            ("unexpected", True, "exact passing trust evidence"),
+            ("scan_timeout_seconds", 59, "outside 60..3600"),
+            ("scan_milliseconds", 910_001, "exceeds its timeout"),
+        )
+        for index, (field, value, message) in enumerate(mutations):
+            with self.subTest(field=field):
+                final = self.prepare_final(f"final-windows-evidence-{index}")
+                evidence_path = final / "release-trust-windows.json"
+                evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+                evidence[field] = value
+                evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+                self.write_checksums(final)
+                with self.assertRaisesRegex(TRUST.ReleaseTrustError, message):
+                    TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
+
+        final = self.prepare_final("final-windows-hash-evidence")
+        evidence_path = final / "release-trust-windows.json"
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        evidence["artifacts"][0]["sha256"] = "0" * 64
+        evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+        self.write_checksums(final)
+        with self.assertRaisesRegex(
+            TRUST.ReleaseTrustError, "exact passing trust evidence"
+        ):
+            TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
+
+        final = self.prepare_final("final-empty-publisher")
+        with self.assertRaisesRegex(TRUST.ReleaseTrustError, "must not be empty"):
+            TRUST.verify_final(final, "0.4.0", self.policy, " ")
 
     def test_checksum_tampering_is_rejected(self) -> None:
         final = self.prepare_final()
@@ -171,7 +223,7 @@ class ReleaseTrustTests(unittest.TestCase):
         ]
         (final / "SHA256SUMS").write_text("\n".join(lines) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(TRUST.ReleaseTrustError, "checksum mismatch"):
-            TRUST.verify_final(final, "0.4.0", self.policy)
+            TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
 
     def test_manifest_tampering_is_rejected_even_with_updated_checksum(self) -> None:
         final = self.prepare_final()
@@ -182,14 +234,14 @@ class ReleaseTrustTests(unittest.TestCase):
         )
         self.write_checksums(final)
         with self.assertRaisesRegex(TRUST.ReleaseTrustError, "does not describe"):
-            TRUST.verify_final(final, "0.4.0", self.policy)
+            TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
 
     def test_invalid_sbom_and_failed_scan_evidence_are_rejected(self) -> None:
         final = self.prepare_final()
         (final / "automexia-terminal.cdx.json").write_text("{}", encoding="utf-8")
         self.write_checksums(final)
         with self.assertRaisesRegex(TRUST.ReleaseTrustError, "CycloneDX"):
-            TRUST.verify_final(final, "0.4.0", self.policy)
+            TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
 
         final = self.prepare_final("final-failed-evidence")
         evidence_path = final / "release-trust-windows.json"
@@ -197,8 +249,8 @@ class ReleaseTrustTests(unittest.TestCase):
         evidence["result"] = "fail"
         evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
         self.write_checksums(final)
-        with self.assertRaisesRegex(TRUST.ReleaseTrustError, "not passing"):
-            TRUST.verify_final(final, "0.4.0", self.policy)
+        with self.assertRaisesRegex(TRUST.ReleaseTrustError, "trust evidence"):
+            TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
 
     def test_oversized_metadata_is_rejected_before_json_parsing(self) -> None:
         final = self.prepare_final()
@@ -207,7 +259,7 @@ class ReleaseTrustTests(unittest.TestCase):
             if rule["name"] == "automexia-terminal.spdx.json":
                 rule["max_bytes"] = 8
         with self.assertRaisesRegex(TRUST.ReleaseTrustError, "outside"):
-            TRUST.verify_final(final, "0.4.0", policy)
+            TRUST.verify_final(final, "0.4.0", policy, PUBLISHER)
 
     def test_policy_rejects_count_token_drift(self) -> None:
         policy = copy.deepcopy(self.policy)

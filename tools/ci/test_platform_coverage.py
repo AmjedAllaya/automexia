@@ -132,6 +132,30 @@ class PlatformCoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "unsigned build intermediates"):
             PLATFORM.validate_release(altered)
 
+    def test_windows_executable_signing_cannot_escape_isolated_input(self) -> None:
+        altered = copy.deepcopy(self.release)
+        signing = next(
+            step
+            for step in PLATFORM.steps(altered["jobs"]["package-windows"])
+            if "artifact-signing-action@" in str(step.get("uses", ""))
+            and step.get("with", {}).get("files-folder-filter") == "exe"
+        )
+        signing["with"]["files-folder"] = "staged"
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "isolated flat"):
+            PLATFORM.validate_release(altered)
+
+    def test_controlled_smoke_cannot_restore_unsigned_build_artifacts(self) -> None:
+        altered = copy.deepcopy(self.release)
+        hardware = altered["jobs"]["hardware-smoke"]
+        download = next(
+            step
+            for step in PLATFORM.steps(hardware)
+            if step.get("with", {}).get("name") == "packages-windows-x86_64"
+        )
+        download["with"]["name"] = "windows-x86_64"
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "final packages"):
+            PLATFORM.validate_release(altered)
+
     def test_windows_release_cannot_drop_defender_gate(self) -> None:
         altered = copy.deepcopy(self.release)
         step = PLATFORM.step_for_command(
@@ -139,14 +163,22 @@ class PlatformCoverageTests(unittest.TestCase):
         )
         self.assertIsNotNone(step)
         step["run"] = "echo skipped"
-        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "run Defender"):
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "scan and launch"):
             PLATFORM.validate_release(altered)
 
     def test_windows_release_scanner_cannot_drop_bounds_or_add_exclusions(self) -> None:
         source = PLATFORM.WINDOWS_RELEASE_TRUST_SCRIPT.read_text(encoding="utf-8")
-        altered = source.replace("MaximumArchiveEntries", "UnboundedEntries")
-        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "MaximumArchiveEntries"):
-            PLATFORM.validate_windows_release_trust_contract(altered)
+        for original, replacement, message in (
+            ("MaximumArchiveEntries", "UnboundedEntries", "MaximumArchiveEntries"),
+            ("$expectedPackageNames", "$unreviewedPackages", "expectedPackageNames"),
+            ("Get-FileHash", "Get-UntrustedHash", "Get-FileHash"),
+            ("$expectedFiles", "$unreviewedFiles", "expectedFiles"),
+            ("VersionInfo.ProductVersion", "UnverifiedVersion", "ProductVersion"),
+        ):
+            with self.subTest(contract=message):
+                altered = source.replace(original, replacement)
+                with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, message):
+                    PLATFORM.validate_windows_release_trust_contract(altered)
 
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "must not weaken"):
             PLATFORM.validate_windows_release_trust_contract(
