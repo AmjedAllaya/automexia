@@ -39,6 +39,7 @@ class AliasSpecificationTests(unittest.TestCase):
                 "verification_domains": 10,
                 "ux_invariants": 8,
                 "model_files": 3,
+                "persistence_files": 5,
                 "hostile_cases": 11,
                 "wiring": 10,
             },
@@ -50,11 +51,13 @@ class AliasSpecificationTests(unittest.TestCase):
         with self.assertRaisesRegex(POLICY.AliasSpecError, "remain planned"):
             POLICY.validate_contract(changed)
 
-    def test_cp2_model_only_stage_cannot_claim_persistence(self) -> None:
-        changed = deepcopy(CONTRACT)
-        changed["implemented_stage"] = "CP2.1-persistence"
-        with self.assertRaisesRegex(POLICY.AliasSpecError, "only CP2.0 model"):
-            POLICY.validate_contract(changed)
+    def test_cp2_persistence_stage_cannot_regress_or_claim_ui(self) -> None:
+        for stage in ("CP2.0-model-only", "CP2.2-action-ui"):
+            with self.subTest(stage=stage):
+                changed = deepcopy(CONTRACT)
+                changed["implemented_stage"] = stage
+                with self.assertRaisesRegex(POLICY.AliasSpecError, "CP2.1 persistence-library"):
+                    POLICY.validate_contract(changed)
 
     def test_pure_model_source_boundary_cannot_expand(self) -> None:
         changed = deepcopy(CONTRACT)
@@ -68,10 +71,10 @@ class AliasSpecificationTests(unittest.TestCase):
         with self.assertRaisesRegex(POLICY.AliasSpecError, "hostile fixture authority"):
             POLICY.validate_contract(changed)
 
-    def test_activation_file_is_rejected(self) -> None:
+    def test_persistence_source_boundary_cannot_expand(self) -> None:
         changed = deepcopy(CONTRACT)
         changed["activation_files"].append("shell-integration/aliases.sh")
-        with self.assertRaisesRegex(POLICY.AliasSpecError, "non-activation"):
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "persistence source"):
             POLICY.validate_contract(changed)
 
     def test_missing_shell_is_rejected(self) -> None:

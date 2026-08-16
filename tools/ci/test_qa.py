@@ -151,6 +151,8 @@ class QaRunnerTests(unittest.TestCase):
             '"benchmark-quick-actions"',
             '"automexia-devops"',
             '"quick_actions"',
+            '"benchmark-quick-action-store"',
+            '"quick_action_store"',
         )
         for contract in expected:
             self.assertIn(contract, source)
@@ -161,6 +163,9 @@ class QaRunnerTests(unittest.TestCase):
         )
         self.assertEqual(
             QA.STEP_TIMEOUT_SECONDS["benchmark-quick-actions"], 7200
+        )
+        self.assertEqual(
+            QA.STEP_TIMEOUT_SECONDS["benchmark-quick-action-store"], 7200
         )
 
 

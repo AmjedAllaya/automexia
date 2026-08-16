@@ -8,6 +8,7 @@ pub mod api;
 pub mod builtins;
 pub mod marketplace;
 pub mod migration;
+pub mod quick_actions;
 pub mod runtime;
 #[cfg(target_os = "windows")]
 pub mod shell;

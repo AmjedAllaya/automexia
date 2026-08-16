@@ -237,8 +237,9 @@ ships native-owned PowerShell/Bash/Zsh/Fish completion adapters, CMD fallback,
 read-only health, and explicit bounded Docker/Kubernetes/OpenShift/Helm cache
 refresh. Native definitions win; PowerShell requires explicit override consent.
 No provider runs on startup or keystrokes. CP1 adds no network, secret,
-clipboard, terminal-output, action-store, generated-alias, custom-completion-UI,
-or exact-launch authority. CP2 typed Quick Actions is next.
+clipboard, terminal-output, generated-alias, custom-completion-UI, or exact-
+launch authority. CP2.0 model and CP2.1 persistence foundation are complete;
+CP2.2 user-facing search/review/insertion is next.
 
 #### CP5 Shell Completion and Suggestions order
 

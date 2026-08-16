@@ -463,8 +463,9 @@ The schema-1 CP1 authority is
 [`cp1-contract-v1.json`](../tests/fixtures/command-productivity/cp1-contract-v1.json).
 Its validator keeps the 12-file activation allowlist, provider policy, five
 shell outcomes, six hard resource limits, and zero network/secret/grid/provider-
-startup capability machine-enforced. CP2.0 is now complete at the pure
-model boundary and CP2.1 persistence is next; CP1 does not
+startup capability machine-enforced. CP2.0 is complete at the pure model
+boundary and the CP2.1 persistence-only library is complete; CP2.2 is next.
+CP1 does not
 add Quick Actions, generated aliases, provider authentication, a custom popup,
 or exact command launch.
 
@@ -476,14 +477,22 @@ only wrapper, exact architecture allowlist, and versioned hostile corpus. It has
 no filesystem, watcher, process, network, secret, UI, PTY, shell-profile, alias,
 or execution authority.
 
-**CP2.1/CP2.2 pending:** implement the atomic store, last-known-good reload,
-exact-file watcher, in-memory index, CRUD/import/export, layered scope,
-placeholder review, palette/search/conflict UI, and insert/copy modes. Keep exact
-launch disabled until D3 activation is accepted.
+**CP2.1 persistence foundation complete:** the app-owned exact five-file boundary
+implements private bounded no-follow storage, same-directory atomic primary plus
+one previous revision, cross-process nonblocking lock/CAS, immutable fingerprinted
+last-known-good snapshots, exact parent-directory watch filtering, bounded burst
+coalescing, periodic reconciliation, CRUD, and explicit recovery. It has no
+provider/process/network/secret/profile/clipboard/PTY/UI or execution authority
+and is not started or shown to users yet.
 
-Exit for the remaining CP2 work: restart persistence, concurrent-window reload,
-corruption recovery, Unicode/hostile input, deterministic ordering,
-accessibility, resource lifecycle, and Windows/Linux/macOS tests pass.
+**CP2.2 pending:** activate the service through an application worker and build
+the in-memory layered index, explicit import/export, placeholder review,
+palette/search/conflict UI, and shell-native insert/copy modes. Keep exact launch
+disabled until D3 activation is accepted.
+
+Exit for the remaining CP2 work: responsive/accessibility and shell insertion
+evidence, deterministic scope ordering, native Windows/Linux/macOS lifecycle
+CI, controlled leak/performance baselines, and disable/rollback behavior pass.
 
 ### CP3 — aliases and first-party DevOps packs
 

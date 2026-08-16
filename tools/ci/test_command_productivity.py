@@ -278,6 +278,82 @@ class CommandProductivityPolicyTests(unittest.TestCase):
             ):
                 POLICY.validate_pure_action_sources(root, files)
 
+    def _persistence_fixture(self, root: Path) -> list[Path]:
+        files = []
+        for relative in sorted(POLICY.CP2_PERSISTENCE_FILES):
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("struct PersistenceBoundary;\n", encoding="utf-8")
+            files.append(path)
+        wiring = root / "apps/automexia-terminal/src/automexia/mod.rs"
+        wiring.parent.mkdir(parents=True, exist_ok=True)
+        wiring.write_text("pub mod quick_actions;\n", encoding="utf-8")
+        return files
+
+    def test_persistence_boundary_rejects_capability_bearing_source(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = self._persistence_fixture(root)
+            target = next(path for path in files if path.name == "mod.rs")
+            for capability in (
+                "use std::net::TcpStream;",
+                "use std::process::Command;",
+                'let url = "https://example.invalid"; std::process::Command::new("x");',
+                "std::env::var(name);",
+                "clipboard::read();",
+                "launch_broker::launch();",
+                "shell_integration::install();",
+                "rio_vt::Terminal::new();",
+                "teletypewriter::Pty::new();",
+                "reqwest::get(url);",
+                "ureq::get(url);",
+                "hyper::client();",
+                "tokio::spawn(task);",
+                "async_std::task::spawn(task);",
+                "terminal.grid.read();",
+                "visible_text();",
+                "raw_cursor_line_text();",
+                "unsafe { invoke(); }",
+            ):
+                with self.subTest(capability=capability):
+                    target.write_text(capability + "\n", encoding="utf-8")
+                    with self.assertRaisesRegex(
+                        POLICY.CommandProductivityError,
+                        "persistence-only capability boundary|unsafe code",
+                    ):
+                        POLICY.validate_persistence_sources(root, files)
+
+    def test_persistence_boundary_allows_documented_denials(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = self._persistence_fixture(root)
+            target = next(path for path in files if path.name == "mod.rs")
+            target.write_text(
+                "//! No network, process, clipboard, or PTY authority.\n"
+                "/* shell_integration and launch_broker remain denied. */\n"
+                "const DENIED: &str = \"std::process clipboard::read https://example\";\n"
+                "struct PersistenceBoundary;\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                POLICY.validate_persistence_sources(root, files),
+                POLICY.CP2_PERSISTENCE_FILES,
+            )
+
+    def test_persistence_boundary_rejects_unreviewed_source_expansion(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = self._persistence_fixture(root)
+            unexpected = (
+                root
+                / "apps/automexia-terminal/src/automexia/quick_actions/runtime.rs"
+            )
+            unexpected.write_text("struct Runtime;\n", encoding="utf-8")
+            files.append(unexpected)
+            with self.assertRaisesRegex(
+                POLICY.CommandProductivityError, "exact reviewed boundary"
+            ):
+                POLICY.validate_persistence_sources(root, files)
     def test_scanned_source_size_ceiling_is_enforced_before_read(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "oversized.rs"

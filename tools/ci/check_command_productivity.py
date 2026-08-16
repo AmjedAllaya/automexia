@@ -173,6 +173,35 @@ CP2_PURE_ACTION_FILES = {
     "automexia-devops/src/actions/model.rs",
     "automexia-devops/src/actions/validation.rs",
 }
+CP2_PERSISTENCE_FILES = {
+    "apps/automexia-terminal/src/automexia/quick_actions/mod.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/refresh.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/secure_fs.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/service.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/store.rs",
+}
+CP2_PERSISTENCE_WIRING_FILES = {
+    "apps/automexia-terminal/src/automexia/mod.rs",
+}
+CP2_PERSISTENCE_FORBIDDEN_MARKERS = {
+    "std::net",
+    "std::process",
+    "command::new",
+    "std::env",
+    "clipboard",
+    "launch_broker",
+    "shell_integration",
+    "rio_vt::",
+    "teletypewriter::",
+    "reqwest",
+    "ureq::",
+    "hyper::",
+    "tokio::",
+    "async_std::",
+    "terminal.grid",
+    "visible_text",
+    "raw_cursor_line_text",
+}
 CP2_PURE_FORBIDDEN_MARKERS = {
     "std::env",
     "std::fs",
@@ -538,6 +567,106 @@ def read_lower(path: Path) -> str:
     ).casefold()
 
 
+def rust_code_without_comments_and_literals(source: str) -> str:
+    output: list[str] = []
+    index = 0
+    block_depth = 0
+    state = "code"
+    raw_closer = ""
+    while index < len(source):
+        if state == "line-comment":
+            if source[index] in "\r\n":
+                output.append(source[index])
+                state = "code"
+            else:
+                output.append(" ")
+            index += 1
+            continue
+        if state == "block-comment":
+            if source.startswith("/*", index):
+                block_depth += 1
+                output.extend((" ", " "))
+                index += 2
+            elif source.startswith("*/", index):
+                block_depth -= 1
+                output.extend((" ", " "))
+                index += 2
+                if block_depth == 0:
+                    state = "code"
+            else:
+                output.append(source[index] if source[index] in "\r\n" else " ")
+                index += 1
+            continue
+        if state == "string":
+            character = source[index]
+            output.append(character if character in "\r\n" else " ")
+            index += 1
+            if character == "\\" and index < len(source):
+                output.append(source[index] if source[index] in "\r\n" else " ")
+                index += 1
+            elif character == '"':
+                state = "code"
+            continue
+        if state == "raw-string":
+            if source.startswith(raw_closer, index):
+                output.extend(" " for _ in raw_closer)
+                index += len(raw_closer)
+                state = "code"
+            else:
+                output.append(source[index] if source[index] in "\r\n" else " ")
+                index += 1
+            continue
+        if state == "character":
+            character = source[index]
+            output.append(character if character in "\r\n" else " ")
+            index += 1
+            if character == "\\" and index < len(source):
+                output.append(source[index] if source[index] in "\r\n" else " ")
+                index += 1
+            elif character == "'":
+                state = "code"
+            continue
+
+        if source.startswith("//", index):
+            output.extend((" ", " "))
+            index += 2
+            state = "line-comment"
+            continue
+        if source.startswith("/*", index):
+            output.extend((" ", " "))
+            index += 2
+            block_depth = 1
+            state = "block-comment"
+            continue
+        raw = re.match(r'(?:b|c)?r(#{0,255})"', source[index:])
+        if raw is not None:
+            prefix = raw.group(0)
+            raw_closer = '"' + raw.group(1)
+            output.extend(" " for _ in prefix)
+            index += len(prefix)
+            state = "raw-string"
+            continue
+        if source[index] == '"':
+            output.append(" ")
+            index += 1
+            state = "string"
+            continue
+        character = re.match(r"'(?:\\.|[^\\'\r\n])'", source[index:])
+        if character is not None:
+            output.append(" ")
+            index += 1
+            state = "character"
+            continue
+        output.append(source[index])
+        index += 1
+    return "".join(output)
+
+
+def read_rust_code_lower(path: Path) -> str:
+    source = bounded_read_text(path, SCANNED_SOURCE_MAX_BYTES, "scanned Rust source")
+    return rust_code_without_comments_and_literals(source).casefold()
+
+
 def normalized_source(path: Path) -> str:
     return re.sub(r"\s+", " ", read_lower(path))
 
@@ -642,6 +771,46 @@ def validate_pure_action_sources(root: Path, runtime_files: list[Path]) -> set[s
     return present
 
 
+def validate_persistence_sources(root: Path, runtime_files: list[Path]) -> set[str]:
+    present = {
+        path.relative_to(root).as_posix()
+        for path in runtime_files
+        if path.relative_to(root).as_posix().startswith(
+            "apps/automexia-terminal/src/automexia/quick_actions/"
+        )
+    }
+    if not present:
+        return set()
+    if present != CP2_PERSISTENCE_FILES:
+        unexpected = sorted(present.symmetric_difference(CP2_PERSISTENCE_FILES))
+        raise CommandProductivityError(
+            f"CP2.1 persistence source set is not the exact reviewed boundary: {unexpected}"
+        )
+    for relative in sorted(present):
+        content = read_rust_code_lower(root / relative)
+        marker = next(
+            (
+                item
+                for item in sorted(CP2_PERSISTENCE_FORBIDDEN_MARKERS)
+                if item in content
+            ),
+            None,
+        )
+        if marker is not None:
+            raise CommandProductivityError(
+                f"{relative} crosses the CP2.1 persistence-only capability boundary: {marker!r}"
+            )
+        if "unsafe {" in content and not relative.endswith("/secure_fs.rs"):
+            raise CommandProductivityError(
+                f"{relative} adds unsafe code outside the reviewed private-permission adapter"
+            )
+    wiring = root / "apps/automexia-terminal/src/automexia/mod.rs"
+    if "pub mod quick_actions;" not in bounded_read_text(
+        wiring, SCANNED_SOURCE_MAX_BYTES, "CP2.1 persistence wiring"
+    ):
+        raise CommandProductivityError("CP2.1 persistence module wiring is missing")
+    return present
+
 def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
     shell_files = source_files(root, "shell-integration")
     for path in shell_files:
@@ -685,6 +854,12 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
 
     runtime_files = workspace_runtime_files(root)
     pure_action_files = validate_pure_action_sources(root, runtime_files)
+    persistence_files = validate_persistence_sources(root, runtime_files)
+    allowed_runtime_files = (
+        pure_action_files
+        | persistence_files
+        | CP2_PERSISTENCE_WIRING_FILES
+    )
     for path in runtime_files:
         content = read_lower(path)
         normalized = re.sub(r"\s+", " ", content)
@@ -693,7 +868,7 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
                 raise CommandProductivityError(
                 f"{path.relative_to(root).as_posix()} activates a completion/provider hook before CP1: {hook!r}"
             )
-        if path.relative_to(root).as_posix() in pure_action_files:
+        if path.relative_to(root).as_posix() in allowed_runtime_files:
             continue
         marker = next(
             (item for item in sorted(PRODUCTIVITY_MARKERS) if item in content),
@@ -714,6 +889,7 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
         "shell_files": len(shell_files),
         "cp1_allowed_shell_files": len(CP1_ALLOWED_SHELL_FILES),
         "cp2_pure_action_files": len(pure_action_files),
+        "cp2_persistence_files": len(persistence_files),
         "interactive_files": len(interactive_files),
         "runtime_files": len(runtime_files),
     }
@@ -837,14 +1013,15 @@ def main() -> int:
         print(f"command productivity CP0 validation failed: {error}", file=sys.stderr)
         return 1
     print(
-        "PASS: command productivity CP0 contract is accepted; CP1 activation and the capability-free CP2.0 model are confined to reviewed allowlists "
+        "PASS: command productivity CP0 contract is accepted; CP1 activation, the capability-free CP2.0 model, and the CP2.1 persistence-only service are confined to reviewed allowlists "
         f"(shells={counts['shells']}, providers={counts['providers']}, "
         f"discoveries={counts['discoveries']}, "
         f"cases={counts['cases']}, threats={counts['threats']}, "
         f"shell_files={counts['shell_files']}, "
         f"interactive_files={counts['interactive_files']}, "
         f"runtime_files={counts['runtime_files']}, "
-        f"cp2_pure_action_files={counts['cp2_pure_action_files']})"
+        f"cp2_pure_action_files={counts['cp2_pure_action_files']}, "
+        f"cp2_persistence_files={counts['cp2_persistence_files']})"
     )
     return 0
 

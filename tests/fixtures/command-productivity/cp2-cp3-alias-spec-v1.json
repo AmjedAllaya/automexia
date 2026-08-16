@@ -2,7 +2,7 @@
   "schema": 1,
   "phase": "CP2-CP3-SPEC",
   "status": "planned",
-  "implemented_stage": "CP2.0-model-only",
+  "implemented_stage": "CP2.1-persistence-library",
   "authorities": {
     "product": "docs/DEVOPS-ALIASES.md",
     "architecture": "docs/ARCHITECTURE.md",
@@ -182,5 +182,11 @@
     "automexia-devops/src/actions/validation.rs"
   ],
   "hostile_fixture": "tests/fixtures/command-productivity/cp2-hostile-actions-v1.json",
-  "activation_files": []
+  "activation_files": [
+    "apps/automexia-terminal/src/automexia/quick_actions/mod.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/refresh.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/secure_fs.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/service.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/store.rs"
+  ]
 }
