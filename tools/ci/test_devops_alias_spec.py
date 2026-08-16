@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""Mutation tests for the planned CP2/CP3 alias specification contract."""
+
+from __future__ import annotations
+
+from copy import deepcopy
+import importlib.util
+import json
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+
+ROOT = Path(__file__).resolve().parents[2]
+SPEC = importlib.util.spec_from_file_location(
+    "check_devops_alias_spec",
+    ROOT / "tools/ci/check_devops_alias_spec.py",
+)
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError("could not load CP2/CP3 alias specification checker")
+POLICY = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(POLICY)
+CONTRACT = json.loads(
+    (ROOT / "tests/fixtures/command-productivity/cp2-cp3-alias-spec-v1.json")
+    .read_text(encoding="utf-8")
+)
+
+
+class AliasSpecificationTests(unittest.TestCase):
+    def test_repository_contract_validates(self) -> None:
+        counts = POLICY.validate_repository(ROOT)
+        self.assertEqual(
+            counts,
+            {
+                "shells": 5,
+                "providers": 11,
+                "scopes": 6,
+                "verification_domains": 10,
+                "wiring": 9,
+            },
+        )
+
+    def test_runtime_activation_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["status"] = "active"
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "remain planned"):
+            POLICY.validate_contract(changed)
+
+    def test_activation_file_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["activation_files"].append("shell-integration/aliases.sh")
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "non-activation"):
+            POLICY.validate_contract(changed)
+
+    def test_missing_shell_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        del changed["shells"]["fish"]
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "shell/platform"):
+            POLICY.validate_contract(changed)
+
+    def test_missing_provider_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["providers"].remove("openshift")
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "provider catalog"):
+            POLICY.validate_contract(changed)
+
+    def test_precedence_change_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["scopes"][0:2] = ["capsule", "session"]
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "scope precedence"):
+            POLICY.validate_contract(changed)
+
+    def test_resource_ceiling_increase_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["limits"]["enabled_aliases"] += 1
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "resource ceilings"):
+            POLICY.validate_contract(changed)
+
+    def test_default_alias_activation_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["defaults"]["builtin_aliases_enabled"] = True
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "safe defaults"):
+            POLICY.validate_contract(changed)
+
+    def test_destructive_alias_eligibility_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["risk_alias_eligibility"]["Destructive"] = "eligible"
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "risk eligibility"):
+            POLICY.validate_contract(changed)
+
+    def test_capability_escalation_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["capabilities"]["secret_read"] = True
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "capability boundary"):
+            POLICY.validate_contract(changed)
+
+    def test_unknown_contract_field_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["unreviewed"] = True
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "contract keys"):
+            POLICY.validate_contract(changed)
+
+    def test_typed_action_field_removal_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["required_action_fields"].remove("risk")
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "typed action fields"):
+            POLICY.validate_contract(changed)
+
+    def test_non_atomic_persistence_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["persistence"]["publication"] = "best-effort"
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "persistence contract"):
+            POLICY.validate_contract(changed)
+
+    def test_missing_assurance_domain_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["verification_domains"].remove("ui-and-accessibility")
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "verification matrix"):
+            POLICY.validate_contract(changed)
+
+    def test_shell_evaluation_escalation_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["capabilities"]["shell_evaluation"] = True
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "capability boundary"):
+            POLICY.validate_contract(changed)
+
+    def test_missing_security_section_is_rejected(self) -> None:
+        text = (ROOT / "docs/DEVOPS-ALIASES.md").read_text(encoding="utf-8")
+        changed = text.replace("## Security and privacy", "## Safety")
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "headings missing"):
+            POLICY.validate_spec_text(changed)
+
+    def test_false_shipped_claim_is_rejected(self) -> None:
+        text = (ROOT / "docs/DEVOPS-ALIASES.md").read_text(encoding="utf-8")
+        changed = text.replace(
+            "Status: planned for CP2",
+            "Status: shipped for CP2",
+            1,
+        )
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "controls missing"):
+            POLICY.validate_spec_text(changed)
+
+    def test_missing_cross_link_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in POLICY.WIRING:
+                destination = root / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                content = (ROOT / relative).read_text(encoding="utf-8")
+                if relative == "docs/ROADMAP.md":
+                    content = content.replace("DEVOPS-ALIASES.md", "missing.md")
+                destination.write_text(content, encoding="utf-8")
+            with self.assertRaisesRegex(POLICY.AliasSpecError, "ROADMAP.md"):
+                POLICY.validate_wiring(root)
+
+    def test_policy_reader_rejects_symbolic_links(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "contract.json"
+            path.write_text("{}\n", encoding="utf-8")
+            with patch.object(Path, "is_symlink", return_value=True):
+                with self.assertRaisesRegex(POLICY.AliasSpecError, "symbolic link"):
+                    POLICY.bounded_text(path, 64, "test contract")
+
+    def test_policy_reader_rejects_oversized_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "contract.json"
+            path.write_bytes(b"x" * 65)
+            with self.assertRaisesRegex(POLICY.AliasSpecError, "exceeds"):
+                POLICY.bounded_text(path, 64, "test contract")
+
+
+if __name__ == "__main__":
+    unittest.main()

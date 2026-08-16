@@ -24,6 +24,7 @@ from check_command_productivity_cp1 import (
     validate_repository as validate_command_productivity_cp1,
 )
 from check_documentation_coverage import validate as validate_documentation_coverage
+from check_devops_alias_spec import validate_repository as validate_devops_alias_spec
 from check_feature_assurance import load_and_validate as validate_feature_assurance
 from check_platform_coverage import validate_repository_workflows
 from release_trust import load_policy as validate_release_trust_policy
@@ -289,6 +290,11 @@ def validate() -> None:
     counts["command productivity CP0"] = command_productivity_counts["threats"]
     command_productivity_cp1_counts = validate_command_productivity_cp1()
     counts["command productivity CP1"] = command_productivity_cp1_counts["providers"]
+
+    alias_spec_counts = validate_devops_alias_spec()
+    counts["planned CP2/CP3 alias assurance"] = alias_spec_counts[
+        "verification_domains"
+    ]
 
     validate_brand_assets()
     counts["brand assets"] = 1
