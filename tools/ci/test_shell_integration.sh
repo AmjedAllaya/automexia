@@ -9,6 +9,14 @@ PROMPT_COMMAND='printf user-hook >/dev/null'
 # making the contributor machine install an optional presentation tool.
 fixture_bin=$(mktemp -d)
 trap 'rm -rf "$fixture_bin"' EXIT
+export AUTOMEXIA_CONFIG_HOME="$fixture_bin/config"
+completion_root="$AUTOMEXIA_CONFIG_HOME/generated/completion/bash"
+mkdir -p "$completion_root"
+printf '%s\n' 'complete -W "managed-candidate" kubectl' >"$completion_root/kubectl.bash"
+sha256sum "$completion_root/kubectl.bash" | awk '{print $1}' >"$completion_root/kubectl.bash.sha256"
+printf '%s\n' 'complete -W "must-not-load" docker' >"$completion_root/docker.bash"
+sha256sum "$completion_root/docker.bash" | awk '{print $1}' >"$completion_root/docker.bash.sha256"
+complete -W 'native-candidate' docker
 cat >"$fixture_bin/eza" <<'EOF'
 #!/usr/bin/env sh
 printf '%s\n' "$*"
@@ -63,6 +71,11 @@ expected_path=$'\e[38;2;88;113;141m/\e[38;2;98;176;255msrv\e[38;2;88;113;141m/\e
 [[ $EZA_COLORS == *'hd=1;38;5;117'* ]]
 [[ $EZA_COLORS == *'di=1;38;5;39'* ]]
 [[ $EZA_COLORS == *'ex=38;5;252'* ]]
+complete -p kubectl | grep -qF 'managed-candidate'
+complete -p docker | grep -qF 'native-candidate'
+! complete -p docker | grep -qF 'must-not-load'
+automexia_completion_health | grep -qF 'loaded=kubectl'
+automexia_completion_health | grep -qF 'collisions=docker'
 for category_color in \
   '*secret=1;38;5;203' '*config=38;5;214' '*logs=38;5;220' \
   '*src=38;5;81' '*docs=38;5;114' '*tests=38;5;177' \
@@ -87,4 +100,36 @@ export AUTOMEXIA_PLAIN_LS=1
 source "$root/shell-integration/bash/automexia.bash" >/dev/null
 [[ $(type -t ls) != function ]]
 
-echo 'PASS: Bash integration is active, idempotent, status-preserving, UTF-8-safe, semantically path-colored, composite-folder-aware, three-row prompt-identified, full-path, resize-safe, command-neutral, and readable icon-listing aware'
+unset AUTOMEXIA_COMPLETION_ADAPTER_BASH_LOADED
+export AUTOMEXIA_COMPLETION_DISABLED=1
+complete -r kubectl
+source "$root/shell-integration/completion/bash/automexia-completion.bash"
+! complete -p kubectl >/dev/null 2>&1
+automexia_completion_health | grep -qF 'state=disabled'
+
+adapter_samples=''
+for iteration in {1..25}; do
+  sample=$(
+    unset AUTOMEXIA_COMPLETION_ADAPTER_BASH_LOADED AUTOMEXIA_COMPLETION_DISABLED
+    complete -r kubectl 2>/dev/null || true
+    TIMEFORMAT='%R'
+    { time source "$root/shell-integration/completion/bash/automexia-completion.bash" >/dev/null; } 2>&1
+  )
+  (( iteration > 5 )) && adapter_samples+="$sample"$'\n'
+done
+bash_adapter_p95=$(printf '%s' "$adapter_samples" | sort -n | sed -n '19p')
+awk -v p95="$bash_adapter_p95" 'BEGIN { exit !(p95 <= 0.050) }'
+
+unset AUTOMEXIA_COMPLETION_ADAPTER_BASH_LOADED AUTOMEXIA_COMPLETION_DISABLED
+complete -r kubectl 2>/dev/null || true
+unsafe_completion="$fixture_bin/unsafe-bash"
+mkdir -p "$unsafe_completion"
+printf '%s\n' 'complete -W "linked-candidate" kubectl' >"$unsafe_completion/kubectl.bash"
+sha256sum "$unsafe_completion/kubectl.bash" | awk '{print $1}' >"$unsafe_completion/kubectl.bash.sha256"
+rm -rf -- "$completion_root"
+ln -s "$unsafe_completion" "$completion_root"
+source "$root/shell-integration/completion/bash/automexia-completion.bash"
+! complete -p kubectl >/dev/null 2>&1
+automexia_completion_health | grep -qF 'state=unsafe-path/native-fallback'
+
+echo "PASS: Bash integration is prompt-safe, native-first, digest-verified, linked-parent-safe, disable-safe, idempotent, adapter-p95=${bash_adapter_p95}s, and readable icon-listing aware"

@@ -54,6 +54,11 @@ has passed.
 | `cargo xtask ready` | Run the release-readiness validation without launching the application. |
 | `cargo xtask run [-- APP_ARGS...]` | Launch the already-built application with optional application arguments. |
 | `cargo xtask doctor` | Report Rust/tools, host shell, PowerShell health, packaging prerequisites, target storage, and WSL filesystem placement. |
+| `cargo xtask completion COMMAND [OPTIONS]` | Manage CP1 native-shell completion using one of the exact operations below. |
+| `cargo xtask completion doctor` | Read-only provider/cache/shell support health; never invokes provider definitions. |
+| `cargo xtask completion refresh --provider ID --shell SHELL [--allow-native-override]` | Explicitly generate one reviewed provider artifact within strict process/output limits. The override flag is PowerShell-only. |
+| `cargo xtask completion remove --provider ID --shell SHELL` | Remove only the fixed files for one managed artifact. |
+| `cargo xtask completion enable` / `disable` | Toggle managed artifacts globally; native shell behavior remains available. |
 | `cargo xtask storage` | Same storage report as `cargo storage`. |
 | `cargo xtask check` | Locked metadata, formatting, repository contracts, workspace checks, Clippy, tests, dependency policy, build, and smoke without launch. |
 | `cargo xtask ci` | Complete CI gate. |
@@ -83,6 +88,7 @@ cleanup. Full test ownership and expected duration are in
 | `AUTOMEXIA_CONFIG_HOME` | Override the complete writable product root. |
 | `AUTOMEXIA_LOG_LEVEL` | Override configured log level. |
 | `AUTOMEXIA_SHELL_INTEGRATION` | Marker injected into child shells; user configuration should not spoof it. |
+| `AUTOMEXIA_COMPLETION_DISABLED=1` | Disable managed completion for the current shell start without changing cached files. |
 | `CARGO_TARGET_DIR` | Relocate Cargo artifacts; keep it native to the active OS. |
 | `AUTOMEXIA_KEEP_VERIFY_TARGET=1` | Diagnostic-only retention of the isolated exhaustive target. |
 | `AUTOMEXIA_VERIFY_MIN_FREE_GIB` | Override the 12 GiB exhaustive-gate minimum. |

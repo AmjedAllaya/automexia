@@ -1,0 +1,1237 @@
+use super::TaskResult;
+use process_wrap::std::CommandWrap;
+#[cfg(windows)]
+use process_wrap::std::JobObject;
+#[cfg(unix)]
+use process_wrap::std::ProcessGroup;
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+use std::env;
+use std::ffi::OsString;
+use std::fmt::Write as _;
+use std::fs::{self};
+use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tempfile::NamedTempFile;
+
+const SCHEMA_VERSION: u8 = 1;
+const PROVIDER_DEADLINE: Duration = Duration::from_millis(750);
+const POLL_INTERVAL: Duration = Duration::from_millis(5);
+const MAX_PROVIDER_OUTPUT: usize = 1024 * 1024;
+const MAX_PROVIDER_STDERR: usize = 256 * 1024;
+const MAX_VERSION_OUTPUT: usize = 16 * 1024;
+const MAX_CONFIG_PATH_BYTES: usize = 4096;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CompletionShell {
+    PowerShell,
+    Bash,
+    Zsh,
+    Fish,
+    Cmd,
+}
+
+impl CompletionShell {
+    const ALL: [Self; 5] = [
+        Self::PowerShell,
+        Self::Bash,
+        Self::Zsh,
+        Self::Fish,
+        Self::Cmd,
+    ];
+
+    fn parse(value: &str) -> TaskResult<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "powershell" | "pwsh" => Ok(Self::PowerShell),
+            "bash" => Ok(Self::Bash),
+            "zsh" => Ok(Self::Zsh),
+            "fish" => Ok(Self::Fish),
+            "cmd" => Ok(Self::Cmd),
+            _ => Err(format!(
+                "unsupported shell {value:?}; expected powershell, bash, zsh, fish, or cmd"
+            )),
+        }
+    }
+
+    fn id(self) -> &'static str {
+        match self {
+            Self::PowerShell => "powershell",
+            Self::Bash => "bash",
+            Self::Zsh => "zsh",
+            Self::Fish => "fish",
+            Self::Cmd => "cmd",
+        }
+    }
+
+    fn extension(self) -> &'static str {
+        match self {
+            Self::PowerShell => "ps1",
+            Self::Bash => "bash",
+            Self::Zsh => "zsh",
+            Self::Fish => "fish",
+            Self::Cmd => "cmd",
+        }
+    }
+
+    fn supports_programmable_completion(self) -> bool {
+        !matches!(self, Self::Cmd)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Provider {
+    Git,
+    Docker,
+    Kubernetes,
+    OpenShift,
+    Helm,
+    Terraform,
+    OpenTofu,
+    Aws,
+    Azure,
+    Gcp,
+    OpenSsh,
+}
+
+impl Provider {
+    const ALL: [Self; 11] = [
+        Self::Git,
+        Self::Docker,
+        Self::Kubernetes,
+        Self::OpenShift,
+        Self::Helm,
+        Self::Terraform,
+        Self::OpenTofu,
+        Self::Aws,
+        Self::Azure,
+        Self::Gcp,
+        Self::OpenSsh,
+    ];
+
+    fn parse(value: &str) -> TaskResult<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "git" => Ok(Self::Git),
+            "docker" => Ok(Self::Docker),
+            "kubernetes" | "kubectl" => Ok(Self::Kubernetes),
+            "openshift" | "oc" => Ok(Self::OpenShift),
+            "helm" => Ok(Self::Helm),
+            "terraform" => Ok(Self::Terraform),
+            "opentofu" | "tofu" => Ok(Self::OpenTofu),
+            "aws" => Ok(Self::Aws),
+            "azure" | "az" => Ok(Self::Azure),
+            "gcp" | "gcloud" => Ok(Self::Gcp),
+            "openssh" | "ssh" => Ok(Self::OpenSsh),
+            _ => Err(format!("unknown completion provider {value:?}")),
+        }
+    }
+
+    fn id(self) -> &'static str {
+        match self {
+            Self::Git => "git",
+            Self::Docker => "docker",
+            Self::Kubernetes => "kubernetes",
+            Self::OpenShift => "openshift",
+            Self::Helm => "helm",
+            Self::Terraform => "terraform",
+            Self::OpenTofu => "opentofu",
+            Self::Aws => "aws",
+            Self::Azure => "azure",
+            Self::Gcp => "gcp",
+            Self::OpenSsh => "openssh",
+        }
+    }
+
+    fn command(self) -> &'static str {
+        match self {
+            Self::Git => "git",
+            Self::Docker => "docker",
+            Self::Kubernetes => "kubectl",
+            Self::OpenShift => "oc",
+            Self::Helm => "helm",
+            Self::Terraform => "terraform",
+            Self::OpenTofu => "tofu",
+            Self::Aws => "aws_completer",
+            Self::Azure => "az",
+            Self::Gcp => "gcloud",
+            Self::OpenSsh => "ssh",
+        }
+    }
+
+    fn support(self, shell: CompletionShell) -> ProviderSupport {
+        use ProviderSupport::{ExternalOwned, Generated, ManualConsent, Unsupported};
+        if !shell.supports_programmable_completion() {
+            return Unsupported("CMD has no context-aware programmable completion API");
+        }
+        match self {
+            Self::Docker
+                if matches!(
+                    shell,
+                    CompletionShell::Bash | CompletionShell::Zsh | CompletionShell::Fish
+                ) =>
+            {
+                Generated
+            }
+            Self::Kubernetes | Self::OpenShift | Self::Helm => Generated,
+            Self::Terraform | Self::OpenTofu => ManualConsent,
+            Self::Git | Self::Aws | Self::Azure | Self::Gcp | Self::OpenSsh => {
+                ExternalOwned
+            }
+            _ => Unsupported(
+                "the installed provider does not publish this shell generator",
+            ),
+        }
+    }
+
+    fn generator_args(self, shell: CompletionShell) -> TaskResult<Vec<OsString>> {
+        if self.support(shell) != ProviderSupport::Generated {
+            return Err(format!(
+                "{} completion for {} is not a cacheable official generator",
+                self.id(),
+                shell.id()
+            ));
+        }
+        let args = match self {
+            Self::Docker | Self::Kubernetes | Self::OpenShift | Self::Helm => {
+                vec![OsString::from("completion"), OsString::from(shell.id())]
+            }
+            _ => unreachable!("support() admitted only reviewed generators"),
+        };
+        Ok(args)
+    }
+
+    fn version_args(self) -> &'static [&'static str] {
+        match self {
+            Self::Docker => &["--version"],
+            Self::Kubernetes => &["version", "--client=true"],
+            Self::OpenShift => &["version", "--client"],
+            Self::Helm => &["version", "--short"],
+            _ => &["--version"],
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProviderSupport {
+    Generated,
+    ExternalOwned,
+    ManualConsent,
+    Unsupported(&'static str),
+}
+
+impl ProviderSupport {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Generated => "explicit-refresh",
+            Self::ExternalOwned => "native/provider-owned",
+            Self::ManualConsent => "manual-consent-required",
+            Self::Unsupported(_) => "unsupported",
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Captured {
+    status: ExitStatus,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    elapsed: Duration,
+}
+
+#[derive(Serialize)]
+struct ArtifactMetadata<'a> {
+    schema_version: u8,
+    provider: &'a str,
+    command: &'a str,
+    shell: &'a str,
+    executable: String,
+    executable_length: u64,
+    executable_modified_unix_ms: u128,
+    tool_version: String,
+    source_sha256: &'a str,
+    artifact_sha256: &'a str,
+    generated_unix_ms: u128,
+    deadline_ms: u128,
+    output_limit_bytes: usize,
+    native_override: bool,
+}
+
+#[derive(Debug)]
+struct ParsedOperation {
+    provider: Provider,
+    shell: CompletionShell,
+    allow_native_override: bool,
+}
+
+pub(super) fn dispatch(args: &[String]) -> TaskResult {
+    match args {
+        [command] if command == "doctor" => report_health(),
+        [command] if command == "enable" => set_enabled(true),
+        [command] if command == "disable" => set_enabled(false),
+        [command, rest @ ..] if command == "refresh" => refresh(parse_operation(rest)?),
+        [command, rest @ ..] if command == "remove" => remove(parse_operation(rest)?),
+        _ => Err(completion_usage()),
+    }
+}
+
+fn completion_usage() -> String {
+    "usage: cargo xtask completion <doctor|enable|disable|refresh --provider ID --shell SHELL [--allow-native-override]|remove --provider ID --shell SHELL>".into()
+}
+
+fn parse_operation(args: &[String]) -> TaskResult<ParsedOperation> {
+    let mut provider = None;
+    let mut shell = None;
+    let mut allow_native_override = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--provider" if index + 1 < args.len() => {
+                provider = Some(Provider::parse(&args[index + 1])?);
+                index += 2;
+            }
+            "--shell" if index + 1 < args.len() => {
+                shell = Some(CompletionShell::parse(&args[index + 1])?);
+                index += 2;
+            }
+            "--allow-native-override" => {
+                allow_native_override = true;
+                index += 1;
+            }
+            value => {
+                return Err(format!(
+                    "unknown completion option {value:?}\n{}",
+                    completion_usage()
+                ))
+            }
+        }
+    }
+    let provider = provider.ok_or_else(completion_usage)?;
+    let shell = shell.ok_or_else(completion_usage)?;
+    if allow_native_override && shell != CompletionShell::PowerShell {
+        return Err(
+            "--allow-native-override is PowerShell-only; Bash, Zsh, and Fish detect native definitions at shell startup".into(),
+        );
+    }
+    Ok(ParsedOperation {
+        provider,
+        shell,
+        allow_native_override,
+    })
+}
+
+pub(super) fn report_health() -> TaskResult {
+    let root = completion_root()?;
+    let disabled = is_regular_unlinked(&root.join(".disabled"));
+    let mut report = String::new();
+    let _ = writeln!(report, "completion root    {}", root.display());
+    let _ = writeln!(
+        report,
+        "completion state   {}",
+        if disabled {
+            "disabled/native fallback"
+        } else {
+            "enabled"
+        }
+    );
+    for shell in CompletionShell::ALL {
+        let count = Provider::ALL
+            .iter()
+            .filter(|provider| {
+                is_regular_unlinked(&artifact_paths(&root, **provider, shell).0)
+            })
+            .count();
+        let _ = writeln!(
+            report,
+            "completion {:<8} cached providers={count}",
+            shell.id()
+        );
+    }
+    for provider in Provider::ALL {
+        let available = resolve_executable(provider.command()).is_ok();
+        let policies = CompletionShell::ALL
+            .iter()
+            .map(|shell| provider.support(*shell).label())
+            .collect::<Vec<_>>();
+        let uniform = policies.iter().all(|policy| policy == &policies[0]);
+        let _ = writeln!(
+            report,
+            "provider {:<11} {:<11} {}",
+            provider.id(),
+            if available { "available" } else { "missing" },
+            if uniform {
+                policies[0]
+            } else {
+                "shell-specific"
+            }
+        );
+    }
+    let _ = writeln!(
+        report,
+        "completion safety  read-only health; provider commands run only through explicit `completion refresh`"
+    );
+    emit_output(&report)
+}
+
+fn is_regular_unlinked(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .map(|metadata| metadata.file_type().is_file())
+        .unwrap_or(false)
+}
+
+fn emit_output(output: &str) -> TaskResult {
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+    tolerate_broken_pipe(stdout.write_all(output.as_bytes()))
+}
+
+fn tolerate_broken_pipe(result: io::Result<()>) -> TaskResult {
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        Err(error) => Err(format!("could not write completion output: {error}")),
+    }
+}
+
+fn refresh(operation: ParsedOperation) -> TaskResult {
+    if operation.shell == CompletionShell::Cmd {
+        return Err("CMD retains native DOSKEY behavior and has no programmable provider completion API".into());
+    }
+    match operation.provider.support(operation.shell) {
+        ProviderSupport::Generated => {}
+        ProviderSupport::ExternalOwned => {
+            return Err(format!(
+                "{} completion is owned by the installed shell/provider package; Automexia diagnoses it but does not replace it",
+                operation.provider.id()
+            ));
+        }
+        ProviderSupport::ManualConsent => {
+            return Err(format!(
+                "{} uses a profile-mutating installer; preview and run the provider's documented install flow explicitly instead of caching it through Automexia",
+                operation.provider.id()
+            ));
+        }
+        ProviderSupport::Unsupported(reason) => return Err(reason.into()),
+    }
+    if operation.shell == CompletionShell::PowerShell && !operation.allow_native_override
+    {
+        return Err(
+            "PowerShell has no public read-only registry for native argument completers; pass --allow-native-override only after reviewing the active shell collision report"
+                .into(),
+        );
+    }
+
+    let executable = resolve_executable(operation.provider.command())?;
+    validate_refresh_executable(&executable)?;
+    let executable_metadata = fs::metadata(&executable)
+        .map_err(|error| format!("cannot stat {}: {error}", executable.display()))?;
+    if !executable_metadata.is_file() {
+        return Err(format!(
+            "provider executable is not a regular file: {}",
+            executable.display()
+        ));
+    }
+    let version_args = operation
+        .provider
+        .version_args()
+        .iter()
+        .map(OsString::from)
+        .collect::<Vec<_>>();
+    let version = run_bounded(
+        &executable,
+        &version_args,
+        PROVIDER_DEADLINE,
+        MAX_VERSION_OUTPUT,
+        MAX_PROVIDER_STDERR,
+    )?;
+    require_success("provider version", &version)?;
+    let tool_version =
+        summarize_version(bounded_utf8(&version.stdout, "provider version")?);
+    if tool_version.is_empty() {
+        return Err("provider version output was empty".into());
+    }
+
+    let args = operation.provider.generator_args(operation.shell)?;
+    let generated = run_bounded(
+        &executable,
+        &args,
+        PROVIDER_DEADLINE,
+        MAX_PROVIDER_OUTPUT,
+        MAX_PROVIDER_STDERR,
+    )?;
+    require_success("completion generator", &generated)?;
+    validate_generated_output(&generated.stdout)?;
+    let source_digest = sha256_hex(&generated.stdout);
+    let root = completion_root()?;
+    let (artifact, digest_path, metadata_path, override_path) =
+        artifact_paths(&root, operation.provider, operation.shell);
+    let directory = artifact
+        .parent()
+        .ok_or_else(|| "completion artifact has no parent".to_owned())?;
+    create_secure_directory(directory)?;
+    let header = generated_header(operation.provider, operation.shell, &source_digest);
+    let mut body = header.into_bytes();
+    body.extend_from_slice(&generated.stdout);
+    if !body.ends_with(b"\n") {
+        body.push(b'\n');
+    }
+    let artifact_digest = sha256_hex(&body);
+    atomic_write(&artifact, &body)?;
+    atomic_write(&digest_path, format!("{artifact_digest}\n").as_bytes())?;
+    let metadata = ArtifactMetadata {
+        schema_version: SCHEMA_VERSION,
+        provider: operation.provider.id(),
+        command: operation.provider.command(),
+        shell: operation.shell.id(),
+        executable: executable.to_string_lossy().into_owned(),
+        executable_length: executable_metadata.len(),
+        executable_modified_unix_ms: modified_unix_ms(&executable_metadata),
+        tool_version,
+        source_sha256: &source_digest,
+        artifact_sha256: &artifact_digest,
+        generated_unix_ms: unix_ms(SystemTime::now()),
+        deadline_ms: PROVIDER_DEADLINE.as_millis(),
+        output_limit_bytes: MAX_PROVIDER_OUTPUT,
+        native_override: operation.allow_native_override,
+    };
+    let mut metadata_bytes = serde_json::to_vec_pretty(&metadata)
+        .map_err(|error| format!("could not serialize completion metadata: {error}"))?;
+    metadata_bytes.push(b'\n');
+    atomic_write(&metadata_path, &metadata_bytes)?;
+    if operation.allow_native_override {
+        atomic_write(&override_path, b"explicit-native-override-v1\n")?;
+    } else {
+        remove_regular_file_if_present(&override_path)?;
+    }
+    emit_output(&format!(
+        "PASS: cached {} completion for {} ({} bytes, generator {}, version {}, {} ms)\n",
+        operation.provider.id(),
+        operation.shell.id(),
+        generated.stdout.len(),
+        executable.display(),
+        metadata.tool_version,
+        generated.elapsed.as_millis()
+    ))
+}
+
+fn remove(operation: ParsedOperation) -> TaskResult {
+    let root = completion_root()?;
+    let paths = artifact_paths(&root, operation.provider, operation.shell);
+    for path in [&paths.0, &paths.1, &paths.2, &paths.3] {
+        remove_regular_file_if_present(path)?;
+    }
+    emit_output(&format!(
+        "PASS: removed only Automexia's cached {} completion for {}\n",
+        operation.provider.id(),
+        operation.shell.id()
+    ))
+}
+
+fn set_enabled(enabled: bool) -> TaskResult {
+    let root = completion_root()?;
+    create_secure_directory(&root)?;
+    let marker = root.join(".disabled");
+    if enabled {
+        remove_regular_file_if_present(&marker)?;
+        emit_output(
+            "PASS: managed completion enabled; native collision policy remains authoritative\n",
+        )?;
+    } else {
+        atomic_write(&marker, b"disabled-by-user-v1\n")?;
+        emit_output(
+            "PASS: managed completion disabled; native shell completion remains unchanged\n",
+        )?;
+    }
+    Ok(())
+}
+
+fn completion_root() -> TaskResult<PathBuf> {
+    let root = if let Some(override_root) = env::var_os("AUTOMEXIA_CONFIG_HOME") {
+        PathBuf::from(override_root)
+    } else if cfg!(target_os = "windows") {
+        let local = env::var_os("LOCALAPPDATA")
+            .ok_or_else(|| "LOCALAPPDATA is unavailable".to_owned())?;
+        PathBuf::from(local).join("Automexia").join("Terminal")
+    } else if cfg!(target_os = "macos") {
+        let home = env::var_os("HOME").ok_or_else(|| "HOME is unavailable".to_owned())?;
+        PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
+            .join("io.github.AmjedAllaya.AutomexiaTerminal")
+    } else {
+        let home = env::var_os("HOME").ok_or_else(|| "HOME is unavailable".to_owned())?;
+        env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(home).join(".config"))
+            .join("automexia")
+    };
+    if root.as_os_str().as_encoded_bytes().len() > MAX_CONFIG_PATH_BYTES {
+        return Err("completion configuration root exceeds 4096 bytes".into());
+    }
+    if root.as_os_str().is_empty() {
+        return Err("completion configuration root is empty".into());
+    }
+    Ok(root.join("generated").join("completion"))
+}
+
+fn artifact_paths(
+    root: &Path,
+    provider: Provider,
+    shell: CompletionShell,
+) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
+    let directory = root.join(shell.id());
+    let name = format!("{}.{}", provider.command(), shell.extension());
+    let artifact = directory.join(name);
+    let digest = artifact.with_extension(format!("{}.sha256", shell.extension()));
+    let metadata = artifact.with_extension(format!("{}.json", shell.extension()));
+    let native_override =
+        artifact.with_extension(format!("{}.allow-override", shell.extension()));
+    (artifact, digest, metadata, native_override)
+}
+
+fn generated_header(provider: Provider, shell: CompletionShell, digest: &str) -> String {
+    let prefix = if shell == CompletionShell::Cmd {
+        "rem"
+    } else {
+        "#"
+    };
+    format!(
+        "{prefix} AUTOMEXIA-MANAGED-COMPLETION schema={SCHEMA_VERSION} provider={} shell={} source-sha256={digest}\n{prefix} Generated explicitly; edit the source provider configuration, not this disposable file.\n",
+        provider.id(),
+        shell.id()
+    )
+}
+
+fn validate_generated_output(output: &[u8]) -> TaskResult {
+    if output.is_empty() {
+        return Err("completion generator returned an empty artifact".into());
+    }
+    if output.len() > MAX_PROVIDER_OUTPUT {
+        return Err(format!(
+            "completion generator exceeded the {} byte output ceiling",
+            MAX_PROVIDER_OUTPUT
+        ));
+    }
+    let text = bounded_utf8(output, "completion generator")?;
+    if text.contains('\0') {
+        return Err("completion generator emitted NUL".into());
+    }
+    if text.chars().any(|character| {
+        character.is_control() && !matches!(character, '\n' | '\r' | '\t')
+    }) {
+        return Err("completion generator emitted unsupported control characters".into());
+    }
+    Ok(())
+}
+
+fn require_success(label: &str, captured: &Captured) -> TaskResult {
+    if captured.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&captured.stderr);
+    let summary = stderr.lines().next().unwrap_or("no stderr").trim();
+    Err(format!(
+        "{label} failed with {} after {} ms: {summary}",
+        captured.status,
+        captured.elapsed.as_millis()
+    ))
+}
+
+fn bounded_utf8<'a>(bytes: &'a [u8], label: &str) -> TaskResult<&'a str> {
+    std::str::from_utf8(bytes).map_err(|_| format!("{label} output is not valid UTF-8"))
+}
+
+fn summarize_version(output: &str) -> String {
+    output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .take(4)
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(512)
+        .collect()
+}
+
+fn run_bounded(
+    executable: &Path,
+    args: &[OsString],
+    deadline: Duration,
+    stdout_limit: usize,
+    stderr_limit: usize,
+) -> TaskResult<Captured> {
+    let mut command = Command::new(executable);
+    command
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut command = CommandWrap::from(command);
+    #[cfg(unix)]
+    command.wrap(ProcessGroup::leader());
+    #[cfg(windows)]
+    command.wrap(JobObject);
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("could not start {}: {error}", executable.display()))?;
+    let stdout = child
+        .stdout()
+        .take()
+        .ok_or_else(|| "provider stdout pipe is unavailable".to_owned())?;
+    let stderr = child
+        .stderr()
+        .take()
+        .ok_or_else(|| "provider stderr pipe is unavailable".to_owned())?;
+    let overflow = Arc::new(AtomicBool::new(false));
+    let stdout_overflow = Arc::clone(&overflow);
+    let stderr_overflow = Arc::clone(&overflow);
+    let stdout_thread =
+        thread::spawn(move || read_bounded(stdout, stdout_limit, stdout_overflow));
+    let stderr_thread =
+        thread::spawn(move || read_bounded(stderr, stderr_limit, stderr_overflow));
+    let started = Instant::now();
+    let status = loop {
+        if overflow.load(Ordering::Acquire) {
+            let _ = child.kill();
+            let _ = stdout_thread.join();
+            let _ = stderr_thread.join();
+            return Err("provider output exceeded its bounded capture ceiling".into());
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() < deadline => thread::sleep(POLL_INTERVAL),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = stdout_thread.join();
+                let _ = stderr_thread.join();
+                return Err(format!(
+                    "provider process exceeded the {} ms deadline and was terminated",
+                    deadline.as_millis()
+                ));
+            }
+            Err(error) => {
+                let _ = child.kill();
+                let _ = stdout_thread.join();
+                let _ = stderr_thread.join();
+                return Err(format!("could not poll provider process: {error}"));
+            }
+        }
+    };
+    let stdout = stdout_thread
+        .join()
+        .map_err(|_| "provider stdout reader panicked".to_owned())??;
+    let stderr = stderr_thread
+        .join()
+        .map_err(|_| "provider stderr reader panicked".to_owned())??;
+    Ok(Captured {
+        status,
+        stdout,
+        stderr,
+        elapsed: started.elapsed(),
+    })
+}
+
+fn read_bounded(
+    mut reader: impl Read,
+    limit: usize,
+    overflow: Arc<AtomicBool>,
+) -> TaskResult<Vec<u8>> {
+    let mut retained = Vec::with_capacity(limit.min(64 * 1024));
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|error| format!("could not read provider output: {error}"))?;
+        if read == 0 {
+            break;
+        }
+        let remaining = limit.saturating_sub(retained.len());
+        let keep = remaining.min(read);
+        retained.extend_from_slice(&buffer[..keep]);
+        if keep < read {
+            overflow.store(true, Ordering::Release);
+        }
+    }
+    Ok(retained)
+}
+
+fn resolve_executable(command: &str) -> TaskResult<PathBuf> {
+    if command.is_empty()
+        || command.contains('/')
+        || command.contains('\\')
+        || command.contains('\0')
+    {
+        return Err("provider executable identity is invalid".into());
+    }
+    let path = env::var_os("PATH").ok_or_else(|| "PATH is unavailable".to_owned())?;
+    #[cfg(windows)]
+    let extensions = env::var_os("PATHEXT")
+        .unwrap_or_else(|| OsString::from(".COM;.EXE;.BAT;.CMD"))
+        .to_string_lossy()
+        .split(';')
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    for directory in env::split_paths(&path) {
+        #[cfg(windows)]
+        let candidates = extensions
+            .iter()
+            .map(|extension| directory.join(format!("{command}{extension}")))
+            .chain(std::iter::once(directory.join(command)))
+            .collect::<Vec<_>>();
+        #[cfg(not(windows))]
+        let candidates = vec![directory.join(command)];
+        for candidate in candidates {
+            let Ok(metadata) = fs::metadata(&candidate) else {
+                continue;
+            };
+            if !metadata.is_file() {
+                continue;
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if metadata.permissions().mode() & 0o111 == 0 {
+                    continue;
+                }
+            }
+            return candidate.canonicalize().map_err(|error| {
+                format!("cannot resolve {}: {error}", candidate.display())
+            });
+        }
+    }
+    Err(format!("{} is not installed on PATH", command))
+}
+
+fn validate_refresh_executable(executable: &Path) -> TaskResult {
+    #[cfg(windows)]
+    {
+        let extension = executable
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default();
+        if !extension.eq_ignore_ascii_case("exe")
+            && !extension.eq_ignore_ascii_case("com")
+        {
+            return Err(format!(
+                "refusing completion provider launcher without a native .exe/.com image: {}",
+                executable.display()
+            ));
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = executable;
+    Ok(())
+}
+
+fn create_secure_directory(directory: &Path) -> TaskResult {
+    let mut managed = Vec::new();
+    let mut found_generated = false;
+    for ancestor in directory.ancestors() {
+        managed.push(ancestor);
+        if ancestor.file_name().is_some_and(|name| name == "generated") {
+            if let Some(config_root) = ancestor.parent() {
+                managed.push(config_root);
+            }
+            found_generated = true;
+            break;
+        }
+    }
+    if !found_generated {
+        return Err("completion directory is outside the generated state root".into());
+    }
+    managed.reverse();
+    for candidate in &managed {
+        match fs::symlink_metadata(candidate) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+                return Err(format!(
+                    "completion directory contains a linked or non-directory component: {}",
+                    candidate.display()
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "could not inspect {}: {error}",
+                    candidate.display()
+                ));
+            }
+        }
+    }
+    fs::create_dir_all(directory)
+        .map_err(|error| format!("could not create {}: {error}", directory.display()))?;
+    let metadata = fs::symlink_metadata(directory).map_err(|error| {
+        format!("could not validate {}: {error}", directory.display())
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(format!(
+            "completion directory is not a real directory: {}",
+            directory.display()
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(directory, fs::Permissions::from_mode(0o700)).map_err(
+            |error| format!("could not restrict {}: {error}", directory.display()),
+        )?;
+    }
+    Ok(())
+}
+
+fn atomic_write(destination: &Path, bytes: &[u8]) -> TaskResult {
+    if bytes.len() > MAX_PROVIDER_OUTPUT + 64 * 1024 {
+        return Err(
+            "managed completion write exceeds the absolute artifact ceiling".into(),
+        );
+    }
+    let directory = destination
+        .parent()
+        .ok_or_else(|| format!("{} has no parent", destination.display()))?;
+    create_secure_directory(directory)?;
+    if let Ok(metadata) = fs::symlink_metadata(destination) {
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(format!(
+                "refusing to replace non-regular completion artifact {}",
+                destination.display()
+            ));
+        }
+    }
+    let mut temporary = NamedTempFile::new_in(directory)
+        .map_err(|error| format!("could not stage {}: {error}", destination.display()))?;
+    temporary
+        .write_all(bytes)
+        .and_then(|_| temporary.as_file().sync_all())
+        .map_err(|error| format!("could not flush {}: {error}", destination.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        temporary
+            .as_file()
+            .set_permissions(fs::Permissions::from_mode(0o600))
+            .map_err(|error| {
+                format!("could not restrict {}: {error}", destination.display())
+            })?;
+    }
+    temporary.persist(destination).map_err(|error| {
+        format!(
+            "could not atomically replace {}: {}",
+            destination.display(),
+            error.error
+        )
+    })?;
+    Ok(())
+}
+
+fn remove_regular_file_if_present(path: &Path) -> TaskResult {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            Err(format!(
+                "refusing to remove non-regular completion artifact {}",
+                path.display()
+            ))
+        }
+        Ok(_) => fs::remove_file(path)
+            .map_err(|error| format!("could not remove {}: {error}", path.display())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("could not inspect {}: {error}", path.display())),
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let digest = Sha256::digest(bytes);
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+        encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    encoded
+}
+
+fn modified_unix_ms(metadata: &fs::Metadata) -> u128 {
+    metadata.modified().map(unix_ms).unwrap_or_default()
+}
+
+fn unix_ms(time: SystemTime) -> u128 {
+    time.duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn provider_matrix_is_explicit_and_cmd_never_claims_parity() {
+        assert_eq!(Provider::ALL.len(), 11);
+        for provider in Provider::ALL {
+            assert!(!provider.command().is_empty());
+            assert!(matches!(
+                provider.support(CompletionShell::Cmd),
+                ProviderSupport::Unsupported(_)
+            ));
+        }
+        assert_eq!(
+            Provider::Docker.support(CompletionShell::PowerShell),
+            ProviderSupport::Unsupported(
+                "the installed provider does not publish this shell generator"
+            )
+        );
+        assert_eq!(
+            Provider::Kubernetes.support(CompletionShell::PowerShell),
+            ProviderSupport::Generated
+        );
+    }
+
+    #[test]
+    fn operation_parser_rejects_unknown_and_non_powershell_override() {
+        let valid = parse_operation(&[
+            "--provider".into(),
+            "kubectl".into(),
+            "--shell".into(),
+            "powershell".into(),
+            "--allow-native-override".into(),
+        ])
+        .unwrap();
+        assert_eq!(valid.provider, Provider::Kubernetes);
+        assert_eq!(valid.shell, CompletionShell::PowerShell);
+        assert!(valid.allow_native_override);
+        assert!(parse_operation(&[
+            "--provider".into(),
+            "docker".into(),
+            "--shell".into(),
+            "bash".into(),
+            "--allow-native-override".into(),
+        ])
+        .is_err());
+        assert!(parse_operation(&["--provider".into(), "unknown".into()]).is_err());
+    }
+
+    #[test]
+    fn bounded_reader_retains_only_the_ceiling_and_flags_overflow() {
+        let overflow = Arc::new(AtomicBool::new(false));
+        let retained =
+            read_bounded(Cursor::new(vec![b'x'; 4097]), 4096, Arc::clone(&overflow))
+                .unwrap();
+        assert_eq!(retained.len(), 4096);
+        assert!(overflow.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn generated_output_rejects_empty_nul_control_and_invalid_utf8() {
+        assert!(validate_generated_output(b"").is_err());
+        assert!(validate_generated_output(b"complete\0bad").is_err());
+        assert!(validate_generated_output(b"complete\x1bbad").is_err());
+        assert!(validate_generated_output(&[0xff]).is_err());
+        assert!(validate_generated_output(b"complete -F _tool tool\n").is_ok());
+    }
+
+    #[test]
+    fn artifact_names_are_fixed_and_never_derived_from_user_text() {
+        let root = Path::new("safe");
+        let paths = artifact_paths(root, Provider::Kubernetes, CompletionShell::Bash);
+        assert_eq!(paths.0, root.join("bash").join("kubectl.bash"));
+        assert_eq!(paths.1, root.join("bash").join("kubectl.bash.sha256"));
+        assert_eq!(paths.2, root.join("bash").join("kubectl.bash.json"));
+        assert_eq!(
+            paths.3,
+            root.join("bash").join("kubectl.bash.allow-override")
+        );
+    }
+
+    #[test]
+    fn atomic_write_rejects_a_link_destination_and_preserves_external_data() {
+        let directory = tempfile::tempdir().unwrap();
+        let outside = directory.path().join("outside");
+        fs::write(&outside, b"keep").unwrap();
+        let link = directory.path().join("managed");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        #[cfg(windows)]
+        if std::os::windows::fs::symlink_file(&outside, &link).is_err() {
+            return;
+        }
+        assert!(atomic_write(&link, b"replace").is_err());
+        assert_eq!(fs::read(&outside).unwrap(), b"keep");
+    }
+
+    #[test]
+    fn atomic_write_is_bounded_and_round_trips() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory
+            .path()
+            .join("config")
+            .join("generated")
+            .join("completion")
+            .join("bash")
+            .join("artifact");
+        atomic_write(&path, b"first").unwrap();
+        atomic_write(&path, b"second").unwrap();
+        assert_eq!(fs::read(path).unwrap(), b"second");
+    }
+
+    fn shell_command(script: &str) -> (PathBuf, Vec<OsString>) {
+        #[cfg(windows)]
+        {
+            (
+                PathBuf::from(env::var_os("ComSpec").expect("ComSpec")),
+                vec![
+                    OsString::from("/D"),
+                    OsString::from("/C"),
+                    OsString::from(script),
+                ],
+            )
+        }
+        #[cfg(not(windows))]
+        {
+            (
+                PathBuf::from("/bin/sh"),
+                vec![OsString::from("-c"), OsString::from(script)],
+            )
+        }
+    }
+
+    #[test]
+    fn bounded_process_captures_success_without_inheriting_stdin() {
+        let (executable, args) = shell_command("echo automexia-provider");
+        let captured =
+            run_bounded(&executable, &args, Duration::from_secs(2), 1024, 1024).unwrap();
+        assert!(captured.status.success());
+        assert!(String::from_utf8(captured.stdout)
+            .unwrap()
+            .contains("automexia-provider"));
+    }
+
+    #[test]
+    fn bounded_process_terminates_deadline_and_output_overflow() {
+        #[cfg(windows)]
+        let spin = "for /L %i in (1,1,100000000) do @rem";
+        #[cfg(not(windows))]
+        let spin = "while :; do :; done";
+        let (executable, args) = shell_command(spin);
+        let timeout =
+            run_bounded(&executable, &args, Duration::from_millis(25), 1024, 1024)
+                .unwrap_err();
+        assert!(timeout.contains("deadline"));
+
+        #[cfg(windows)]
+        let flood = "for /L %i in (1,1,4096) do @echo 1234567890123456";
+        #[cfg(not(windows))]
+        let flood =
+            "i=0; while [ $i -lt 4096 ]; do echo 1234567890123456; i=$((i+1)); done";
+        let (executable, args) = shell_command(flood);
+        let overflow =
+            run_bounded(&executable, &args, Duration::from_secs(2), 1024, 1024)
+                .unwrap_err();
+        assert!(overflow.contains("bounded capture ceiling"));
+    }
+
+    #[test]
+    fn bounded_process_terminates_descendants_holding_output_pipes() {
+        #[cfg(windows)]
+        let tree = "start /B ping -n 6 127.0.0.1 & for /L %i in (1,1,100000000) do @rem";
+        #[cfg(unix)]
+        let tree = "(sleep 5) & while :; do :; done";
+        let (executable, args) = shell_command(tree);
+        let started = Instant::now();
+        let timeout =
+            run_bounded(&executable, &args, Duration::from_millis(25), 1024, 1024)
+                .unwrap_err();
+        assert!(timeout.contains("deadline"));
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "descendant process kept provider pipes alive after group termination"
+        );
+    }
+
+    #[test]
+    fn secure_directory_rejects_a_link_inside_managed_state() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = directory.path().join("config");
+        let outside = directory.path().join("outside");
+        fs::create_dir_all(&config).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        let generated = config.join("generated");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, &generated).unwrap();
+        #[cfg(windows)]
+        if std::os::windows::fs::symlink_dir(&outside, &generated).is_err() {
+            return;
+        }
+        assert!(
+            create_secure_directory(&generated.join("completion").join("bash")).is_err()
+        );
+        assert!(!outside.join("completion").exists());
+    }
+
+    #[test]
+    fn sha256_is_stable() {
+        assert_eq!(
+            sha256_hex(b"automexia"),
+            "aa0072bbb611bed430699b37c0c05c1d0097e1a5cf385f95bb6571cca014a876"
+        );
+    }
+
+    #[test]
+    fn generated_headers_are_reviewable_and_shell_specific() {
+        let header = generated_header(Provider::Docker, CompletionShell::Bash, "abc");
+        assert!(header.contains("schema=1 provider=docker shell=bash source-sha256=abc"));
+        assert!(!header.contains("eval"));
+    }
+
+    #[test]
+    fn provider_output_and_path_ceilings_are_immutable() {
+        assert_eq!(PROVIDER_DEADLINE, Duration::from_millis(750));
+        assert_eq!(MAX_PROVIDER_OUTPUT, 1_048_576);
+        assert_eq!(MAX_PROVIDER_STDERR, 262_144);
+        assert_eq!(MAX_CONFIG_PATH_BYTES, 4096);
+    }
+
+    #[test]
+    fn refresh_launcher_policy_avoids_implicit_windows_shell_parsing() {
+        #[cfg(windows)]
+        {
+            assert!(validate_refresh_executable(Path::new("kubectl.exe")).is_ok());
+            assert!(validate_refresh_executable(Path::new("legacy.com")).is_ok());
+            assert!(validate_refresh_executable(Path::new("kubectl.cmd")).is_err());
+            assert!(validate_refresh_executable(Path::new("kubectl.bat")).is_err());
+        }
+        #[cfg(not(windows))]
+        assert!(validate_refresh_executable(Path::new("/usr/bin/kubectl")).is_ok());
+    }
+
+    #[test]
+    fn multiline_provider_versions_are_bounded_and_informative() {
+        let output = "clientVersion:\n  gitVersion: v1.35.0\n  platform: linux/amd64\n  extra: ignored-after-four\n  fifth: omitted\n";
+        let summary = summarize_version(output);
+        assert_eq!(summary, "clientVersion: gitVersion: v1.35.0 platform: linux/amd64 extra: ignored-after-four");
+        assert!(summary.len() <= 512);
+        assert_eq!(
+            Provider::Kubernetes.version_args(),
+            &["version", "--client=true"]
+        );
+    }
+
+    #[test]
+    fn completion_output_treats_a_closed_consumer_as_success_only() {
+        assert!(tolerate_broken_pipe(Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "consumer closed"
+        )))
+        .is_ok());
+        let error = tolerate_broken_pipe(Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "blocked",
+        )))
+        .unwrap_err();
+        assert!(error.contains("could not write completion output"));
+    }
+}

@@ -261,3 +261,17 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
     }
     Remove-Variable psReadLineModule, configureEditorColors, candidateFormatPath, formatPath -ErrorAction SilentlyContinue
 }
+
+# CP1 completion is independently removable. Cached PowerShell provider scripts
+# require a separate explicit native-override marker before this adapter loads
+# them, because PowerShell has no supported read-only completer registry.
+if ($global:AutomexiaShellIntegrationLoaded) {
+    $automexiaCompletionAdapter = Join-Path $PSScriptRoot 'automexia-completion.ps1'
+    if (-not (Test-Path -LiteralPath $automexiaCompletionAdapter -PathType Leaf)) {
+        $automexiaCompletionAdapter = Join-Path (Split-Path -Parent $PSScriptRoot) 'completion\powershell\automexia-completion.ps1'
+    }
+    if (Test-Path -LiteralPath $automexiaCompletionAdapter -PathType Leaf) {
+        . $automexiaCompletionAdapter
+    }
+    Remove-Variable automexiaCompletionAdapter -ErrorAction SilentlyContinue
+}

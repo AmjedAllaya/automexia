@@ -967,9 +967,53 @@ The machine-readable sources are
 and [the hostile corpus](../tests/fixtures/command-productivity/cp0-hostile-mutations-v1.json).
 Human interpretation belongs in the
 [compatibility baseline](COMMAND-PRODUCTIVITY-COMPATIBILITY.md) and
-[threat model](COMMAND-PRODUCTIVITY-THREAT-MODEL.md). CP1 must add real
-shell/platform integration tests before any runtime capability may be marked
-implemented.
+[threat model](COMMAND-PRODUCTIVITY-THREAT-MODEL.md). The following CP1 gate
+supplies the separately reviewed runtime and native-shell evidence.
+
+## Command-productivity CP1 native completion
+
+CP1 activates only shell-native completion adapters and explicit local provider
+generation. Run its deterministic policy, lifecycle, and shell contracts with:
+
+```text
+python tools/ci/check_command_productivity_cp1.py
+python tools/ci/test_command_productivity_cp1.py
+cargo test -p xtask --locked
+powershell -NoProfile -File tools/ci/test_powershell.ps1
+bash tools/ci/test_shell_sources.sh
+```
+
+The Rust suite covers provider/shell policy, argument parsing, fixed artifact
+names, invalid UTF-8/NUL/control output, stdout/stderr bounds, timeout kill,
+successful capture, cross-platform descendant/process-tree termination, linked
+destinations and managed directories, atomic
+replacement, stable SHA-256, and immutable limits. Shell suites cover native
+definition precedence, digest tamper fallback, disable behavior, repeated
+sourcing, prompt/editor ownership, install/no-op/repair/uninstall, Unicode
+surrounding profile content, parent-link/reparse substitution, exact owned-file
+removal, and 20-sample post-warmup adapter p95 enforcement against the 50 ms
+registration budget. Because non-interactive Fish does not update
+`CMD_DURATION` per sourced command, a bounded monotonic harness measures 20
+exact baseline/source process
+pairs after five warmups and computes p95 from paired registration overhead.
+Linux/macOS CI
+installs Bash/Zsh/Fish validators; Windows CI runs PowerShell/CMD integration.
+
+For a controlled real-generator smoke, use an isolated config root and one
+installed CLI, then inspect and remove the fixed artifact:
+
+```bash
+AUTOMEXIA_CONFIG_HOME="$(mktemp -d)" cargo xtask completion refresh --provider kubernetes --shell bash
+cargo xtask completion doctor
+cargo xtask completion remove --provider kubernetes --shell bash
+```
+
+`doctor` must not start providers. A refresh must finish within 750 ms or fail
+closed, retain no child process, and never run on startup/typing/render paths.
+The authoritative runtime fixture is
+[`cp1-contract-v1.json`](../tests/fixtures/command-productivity/cp1-contract-v1.json).
+Native hosted macOS and clean-runner evidence remains required before a stable
+release; local WSL success is not represented as macOS evidence.
 
 ## Assurance status and remaining expansion
 

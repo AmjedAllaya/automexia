@@ -516,6 +516,92 @@ try {
     }
 }
 
+$completionFixture = Join-Path ([IO.Path]::GetTempPath()) ("automexia-cp1-{0}" -f [Guid]::NewGuid().ToString('N'))
+$previousConfigHome = $env:AUTOMEXIA_CONFIG_HOME
+$completionAdapter = Join-Path $root 'shell-integration\completion\powershell\automexia-completion.ps1'
+try {
+    $env:AUTOMEXIA_CONFIG_HOME = $completionFixture
+    $completionDirectory = Join-Path $completionFixture 'generated\completion\powershell'
+    $null = New-Item -ItemType Directory -Force -Path $completionDirectory
+    $artifact = Join-Path $completionDirectory 'kubectl.ps1'
+    $digest = "$artifact.sha256"
+    $override = "$artifact.allow-override"
+    [IO.File]::WriteAllText($artifact, '$global:AutomexiaCp1FixtureLoaded = $true', [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText($digest, ((Get-FileHash -LiteralPath $artifact -Algorithm SHA256).Hash.ToLowerInvariant() + "`n"), [Text.UTF8Encoding]::new($false))
+
+    Remove-Variable AutomexiaCompletionAdapterLoaded -Scope Global -ErrorAction SilentlyContinue
+    Remove-Variable AutomexiaCp1FixtureLoaded -Scope Global -ErrorAction SilentlyContinue
+    . $completionAdapter
+    if ($global:AutomexiaCp1FixtureLoaded) { throw 'PowerShell completion loaded without explicit native-override consent' }
+
+    [IO.File]::WriteAllText($override, "explicit-native-override-v1`n", [Text.UTF8Encoding]::new($false))
+    Remove-Variable AutomexiaCompletionAdapterLoaded -Scope Global -ErrorAction SilentlyContinue
+    . $completionAdapter
+    if (-not $global:AutomexiaCp1FixtureLoaded -or
+        (Get-AutomexiaCompletionHealth).Loaded -notcontains 'kubectl') {
+        throw 'PowerShell completion did not load a bounded digest-verified explicitly approved artifact'
+    }
+
+    $adapterSamples = for ($iteration = 1; $iteration -le 25; $iteration++) {
+        Remove-Variable AutomexiaCompletionAdapterLoaded -Scope Global -ErrorAction SilentlyContinue
+        Remove-Variable AutomexiaCp1FixtureLoaded -Scope Global -ErrorAction SilentlyContinue
+        $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+        . $completionAdapter
+        $stopwatch.Stop()
+        if ($iteration -gt 5) { $stopwatch.Elapsed.TotalMilliseconds }
+    }
+    $sortedAdapterSamples = @($adapterSamples | Sort-Object)
+    $powerShellAdapterP95 = $sortedAdapterSamples[18]
+    if ($powerShellAdapterP95 -gt 50) {
+        throw "PowerShell completion adapter p95 exceeded 50 ms: $powerShellAdapterP95 ms"
+    }
+    Write-Output ("PASS: PowerShell completion adapter p95={0:N2}ms" -f $powerShellAdapterP95)
+
+    [IO.File]::AppendAllText($artifact, "`n# tampered", [Text.UTF8Encoding]::new($false))
+    Remove-Variable AutomexiaCompletionAdapterLoaded -Scope Global -ErrorAction SilentlyContinue
+    Remove-Variable AutomexiaCp1FixtureLoaded -Scope Global -ErrorAction SilentlyContinue
+    . $completionAdapter
+    if ($global:AutomexiaCp1FixtureLoaded -or
+        (Get-AutomexiaCompletionHealth).Skipped -notcontains 'kubectl:tampered') {
+        throw 'PowerShell completion did not fail closed on digest tamper'
+    }
+
+    $null = New-Item -ItemType File -Force -Path (Join-Path $completionFixture 'generated\completion\.disabled')
+    Remove-Variable AutomexiaCompletionAdapterLoaded -Scope Global -ErrorAction SilentlyContinue
+    . $completionAdapter
+    if ((Get-AutomexiaCompletionHealth).State -ne 'Disabled') {
+        throw 'PowerShell managed-completion disable marker did not preserve native fallback'
+    }
+
+    Remove-Item -LiteralPath (Join-Path $completionFixture 'generated\completion\.disabled') -Force
+    $outsideCompletion = Join-Path $completionFixture 'outside-powershell'
+    $null = New-Item -ItemType Directory -Force -Path $outsideCompletion
+    $outsideArtifact = Join-Path $outsideCompletion 'kubectl.ps1'
+    [IO.File]::WriteAllText($outsideArtifact, '$global:AutomexiaCp1FixtureLoaded = $true', [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText("$outsideArtifact.sha256", ((Get-FileHash -LiteralPath $outsideArtifact -Algorithm SHA256).Hash.ToLowerInvariant() + "`n"), [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText("$outsideArtifact.allow-override", "explicit-native-override-v1`n", [Text.UTF8Encoding]::new($false))
+    Remove-Item -LiteralPath $completionDirectory -Recurse -Force
+    $null = New-Item -ItemType Junction -Path $completionDirectory -Target $outsideCompletion
+    Remove-Variable AutomexiaCompletionAdapterLoaded -Scope Global -ErrorAction SilentlyContinue
+    Remove-Variable AutomexiaCp1FixtureLoaded -Scope Global -ErrorAction SilentlyContinue
+    . $completionAdapter
+    if ($global:AutomexiaCp1FixtureLoaded -or
+        (Get-AutomexiaCompletionHealth).State -ne 'UnsafePath/NativeFallback') {
+        throw 'PowerShell completion did not reject a substituted parent-directory junction'
+    }
+} finally {
+    if ($null -eq $previousConfigHome) {
+        Remove-Item Env:AUTOMEXIA_CONFIG_HOME -ErrorAction SilentlyContinue
+    } else {
+        $env:AUTOMEXIA_CONFIG_HOME = $previousConfigHome
+    }
+    Remove-Variable AutomexiaCompletionAdapterLoaded -Scope Global -ErrorAction SilentlyContinue
+    Remove-Variable AutomexiaCp1FixtureLoaded -Scope Global -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $completionFixture) {
+        Remove-Item -LiteralPath $completionFixture -Recurse -Force
+    }
+}
+
 $uninstall = Get-Content (Join-Path $root 'shell-integration\uninstall-windows.ps1') -Raw
 if ($uninstall -notmatch 'AUTOMEXIA SHELL INTEGRATION') { throw 'uninstall marker cleanup is missing' }
-Write-Output 'PASS: shell integration is idempotent, UTF-8-safe, WSL-isolated, composite-folder-aware on PowerShell/CMD/Bash/Zsh, pipeline-safe, semantically path-colored, three-row prompt-identified, full-path, resize-safe, script-safe, and uninstallable'
+Write-Output 'PASS: shell integration is idempotent, UTF-8-safe, WSL-isolated, native-completion-safe on PowerShell/Bash/Zsh/Fish, composite-folder-aware, pipeline-safe, semantically path-colored, three-row prompt-identified, full-path, resize-safe, script-safe, and uninstallable'

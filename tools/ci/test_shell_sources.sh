@@ -23,6 +23,15 @@ find "$root" \
     rm -f "$normalized"
   done
 
+if command -v fish >/dev/null 2>&1; then
+  find "$root/shell-integration" -type f -name '*.fish' -print0 |
+    while IFS= read -r -d '' source; do
+      fish --no-execute "$source"
+    done
+else
+  printf '%s\n' 'EXTERNAL: Fish syntax/runtime validation requires the native CI Fish package.'
+fi
+
 find "$root" \
   \( -path "$root/.git" -o -path "$root/target" -o -path "$root/.cargo-packager" \) \
   -prune -o -type f -name '*.zsh' -print0 |
@@ -42,6 +51,18 @@ cmp -s \
   "$root/shell-integration/zsh/automexia.zsh" \
   "$installer_config/automexia/shell-integration.zsh"
 cmp -s \
+  "$root/shell-integration/completion/bash/automexia-completion.bash" \
+  "$installer_config/automexia/automexia-completion.bash"
+cmp -s \
+  "$root/shell-integration/completion/zsh/automexia-completion.zsh" \
+  "$installer_config/automexia/automexia-completion.zsh"
+cmp -s \
+  "$root/shell-integration/fish/automexia.fish" \
+  "$installer_config/fish/conf.d/automexia.fish"
+cmp -s \
+  "$root/shell-integration/completion/fish/automexia-completion.fish" \
+  "$installer_config/fish/conf.d/automexia-completion.fish"
+cmp -s \
   "$root/shell-integration/posix/automexia-eza-filter.pl" \
   "$installer_config/automexia/automexia-eza-filter.pl"
 [[ $(grep -Fc '# >>> AUTOMEXIA SHELL INTEGRATION >>>' "$installer_home/.bashrc") -eq 1 ]]
@@ -52,15 +73,30 @@ cmp -s \
 HOME="$installer_home" XDG_CONFIG_HOME="$installer_config" \
   sh "$root/shell-integration/install-unix.sh" --quiet
 printf '\nlocally altered\n' >>"$installer_config/automexia/shell-integration.bash"
+printf '\nlocally altered\n' >>"$installer_config/fish/conf.d/automexia-completion.fish"
 HOME="$installer_home" XDG_CONFIG_HOME="$installer_config" \
   sh "$root/shell-integration/install-unix.sh" --quiet
 cmp -s \
   "$root/shell-integration/bash/automexia.bash" \
   "$installer_config/automexia/shell-integration.bash"
+cmp -s \
+  "$root/shell-integration/completion/fish/automexia-completion.fish" \
+  "$installer_config/fish/conf.d/automexia-completion.fish"
 [[ $(grep -Fc '# >>> AUTOMEXIA SHELL INTEGRATION >>>' "$installer_home/.bashrc") -eq 1 ]]
 [[ -s "$installer_config/automexia/install-state-unix.sha256" ]]
 
 bash tools/ci/test_shell_integration.sh
 zsh tools/ci/test_zsh_integration.zsh
+if command -v fish >/dev/null 2>&1; then
+  fish tools/ci/test_fish_integration.fish
+fi
 
-echo 'PASS: all repository Bash/Zsh sources parse, ShellCheck passes, auto-install idempotency holds, and integration contracts pass'
+printf '%s\n' 'after-user-content' >>"$installer_home/.bashrc"
+HOME="$installer_home" XDG_CONFIG_HOME="$installer_config" \
+  sh "$root/shell-integration/uninstall-unix.sh" >/dev/null
+grep -Fq 'after-user-content' "$installer_home/.bashrc"
+! grep -Fq '# >>> AUTOMEXIA SHELL INTEGRATION >>>' "$installer_home/.bashrc"
+[[ ! -e "$installer_config/automexia/shell-integration.bash" ]]
+[[ ! -e "$installer_config/fish/conf.d/automexia.fish" ]]
+
+echo 'PASS: Bash/Zsh/Fish sources parse, ShellCheck passes, install/repair/uninstall are exact and idempotent, and integration contracts pass'
