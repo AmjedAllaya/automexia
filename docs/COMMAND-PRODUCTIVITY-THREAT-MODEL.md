@@ -173,6 +173,44 @@ only input owner. CP5 requires a versioned editor bridge with buffer, cursor,
 replacement span, generation, cancellation, accessibility, IME, and native
 fallback; terminal-cell scraping is forbidden.
 
+### CP5 pre-activation threat amendment
+
+The accepted CP0 schema-1 fixture intentionally remains immutable at sixteen
+threats. Before CP5 code is allowed, a new versioned fixture and bridge ADR must
+add and mutation-test these additional boundaries:
+
+- **Endpoint impersonation and replay:** another local process connects to or
+  replays a completion channel. Use a private named pipe/Unix socket, restrictive
+  ACL/mode, random per-session capability, peer/session/route binding, monotonic
+  generations, replay rejection, and exact endpoint teardown.
+- **Buffer/history privacy expansion:** bridge payloads reveal command text,
+  paths, or history. Make history/frequency separately opt-in; let the shell
+  return candidates without reading its history file; keep payloads memory-only
+  and absent from logs, telemetry, crash reports, diagnostics, clipboard,
+  extensions, persistence, and support bundles.
+- **Stale or over-broad replacement:** a candidate produced for older text
+  replaces a different token or selection. Bind route, prompt/buffer generation,
+  cursor, quoting mode, and exact span; the editor revalidates all fields and
+  performs the insertion once without Enter.
+- **Candidate spoofing and display/insertion mismatch:** bidi/control/markup,
+  misleading icons, truncated values, or hidden suffixes disguise inserted
+  text. Treat labels as untrusted plain text, contain bidi, preserve graphemes,
+  show source/freshness/risk, expose the insertion value, and let the editor
+  return the escaped value used for insertion.
+- **Input capture and UI occlusion:** the popup steals normal shell keys, covers
+  the cursor/IME/modals/sibling pane, or remains after focus/generation changes.
+  Preserve native bindings by default, clip to one pane, enforce modal z-order,
+  and cancel/dismiss on invalidation with accessibility/focus tests.
+- **Per-keystroke execution and resource amplification:** a bridge causes
+  provider/plugin processes, network/authentication, recursive IO, unbounded
+  ranking, or task/socket/cache leaks. Permit local bounded sources only, one
+  latest queued generation per pane, explicit cached-provider refresh, fixed
+  limits/deadlines, and repeated lifecycle/resource tests.
+
+This checklist is not activation authority. CP5 remains forbidden until each
+item has a stable ID, control set, hostile mutation, verification owner, and
+residual-risk entry in the next machine contract.
+
 ## Security invariants
 
 1. CP0 and CP1 grant no new process/network/secret/clipboard/terminal-output
@@ -214,8 +252,10 @@ fallback; terminal-cell scraping is forbidden.
   insertion/no-Enter, secret-negative, search-performance, and leak tests.
 - CP3/CP4 add pack risk/provenance, alias completion, capsule isolation, broker
   denial/grant/revocation/audit, provider offline/stale, and native stress tests.
-- CP5 adds renderer-neutral and native accessibility, IME/grapheme, resize,
-  latency, cancellation, and shell-parity evidence.
+- CP5 first versions and freezes the threat amendment above, then adds local
+  endpoint/peer/replay tests, buffer/crash/log redaction, exact editor insertion,
+  hostile-display/bidi, renderer-neutral/native accessibility, IME/grapheme,
+  resize/z-order, latency/cancellation, resource-leak, and shell-parity evidence.
 
 ## Residual risk and explicit exclusions
 

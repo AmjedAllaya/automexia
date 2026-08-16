@@ -101,3 +101,6 @@ broker ADR and protected activation gates are accepted.
 CP0 acceptance is limited to the documented architecture, threat model,
 compatibility fixtures, and non-activation ratchets. It does not itself ship a
 completion adapter, Quick Action store, generated alias, or provider invocation.
+CP5 additionally requires its own editor-bridge ADR, versioned threat/compatibility
+fixture, dependency decision record, native feasibility evidence, and rollback
+contract; this ADR does not authorize an Automexia-rendered suggestion surface.

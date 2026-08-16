@@ -309,7 +309,22 @@ insert-only; exact execution uses only the D3 typed launch broker. Native user
 definitions win unless the user chooses a visible reversible override.
 Provider-aware actions consume bounded cached public capsule context only after
 D6, with session/generation keys, freshness, cancellation, and stale-result
-rejection. See [Command Productivity](COMMAND-PRODUCTIVITY.md), the accepted
+rejection.
+
+The planned CP5 surface adds no second line editor. Shell integration is the
+only adapter allowed to observe editor-owned bounded state through a versioned,
+opt-in, session-capability-authenticated local pipe/socket. A renderer-/PTY-/
+network-/process-independent `automexia-completion` model may own immutable
+candidates, deterministic ranking, resource limits, and cancellation only after
+its dependency-boundary ADR is accepted. `automexia-ui-model` owns the pane-local
+listbox projection; the desktop frontend owns transport and rendering adapters.
+Engine, VT, PTY, renderer, extension, and DevOps context paths may not infer,
+produce, execute, or persist editable command text. The editor revalidates the
+exact generation and replacement span and performs shell-native escaped
+insertion without Enter. Failure destroys private transient state and returns to
+CP1 native completion.
+
+See [Command Productivity](COMMAND-PRODUCTIVITY.md), the accepted
 [compatibility baseline](COMMAND-PRODUCTIVITY-COMPATIBILITY.md), the
 [threat model](COMMAND-PRODUCTIVITY-THREAT-MODEL.md), and
 [ADR 0015](adr/0015-shell-native-completion-and-typed-quick-actions.md).

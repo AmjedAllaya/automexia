@@ -1,8 +1,10 @@
 # Command Productivity: Completion and Quick Actions
 
-Status: CP0 architecture baseline and CP1 native-completion activation accepted; CP2-CP6 capabilities remain
-planned for v0.5.x and later. This document does not claim that autocomplete,
-Quick Actions, generated aliases, or provider-aware candidates currently ship.
+Status: CP0 architecture baseline and CP1 shell-native completion activation
+accepted; CP2-CP6 capabilities remain planned for v0.5.x and later. CP1 ships
+managed native completion, not Automexia-rendered inline suggestions or a rich
+candidate popup. Quick Actions, generated aliases, provider-aware candidates,
+and the CP5 suggestion surface do not currently ship.
 
 ## Purpose
 
@@ -56,6 +58,13 @@ security and privacy boundaries are in the
 - **Provider pack**: reviewed actions and completion registration for one tool,
   such as Git, Docker, Kubernetes, Helm, Terraform/OpenTofu, AWS, Azure, GCP,
   or OpenSSH.
+- **Local suggestion**: a non-executing candidate derived locally from the
+  active shell/editor, its history, the current directory, executable names, or
+  an already-refreshed public provider cache. It is never inferred from painted
+  terminal cells.
+- **Editor bridge**: an opt-in, versioned, session-scoped protocol through which
+  the shell/editor reports bounded buffer, cursor, replacement-span, quoting,
+  candidate, and generation state without giving Automexia ownership of editing.
 
 ## Goals
 
@@ -206,6 +215,15 @@ conflicts before replacing state. Export excludes session actions, generated
 files, secret values, and machine-specific credential references by default.
 
 ## Shell adapter strategy
+
+Automatic setup is detection-first and idempotent. It inspects the current
+PSReadLine version/options, an already installed `bash-completion`, the user's
+initialized Zsh compsys/`compinit` state, Fish's native completion paths, and
+CMD/DOSKEY availability before proposing any change. It does not install a
+package, rerun expensive initialization on every shell start, or replace a user
+profile, keybinding, completer, predictor, function, abbreviation, or style.
+Existing user configuration wins; unsupported or partial setups produce one
+actionable diagnostic and retain the native fallback.
 
 ### PowerShell
 
@@ -479,16 +497,273 @@ and pack actions remain review-before-insert across all supported shells.
 Exit: multi-pane/session isolation, stale-context labeling, production safety,
 revocation, cancellation, offline behavior, and provider-native tests pass.
 
-### CP5 — optional rich completion surface
+### CP5 — Shell Completion and Suggestions
 
-- Specify a versioned editor bridge before drawing any custom candidate popup.
-- Preserve shell candidate semantics, replacement spans, accessibility, IME,
-  Unicode graphemes, composition, cancellation, and native fallback.
-- Ship only when it is measurably faster or clearer than shell-native UI and can
-  be disabled without changing command behavior.
+Status: planned after CP1. CP5 is optional, is not a v0.5.0 blocker, and does
+not authorize runtime code until its bridge ADR, threat-model amendment,
+machine-readable contract, and native-shell feasibility evidence are accepted.
+The CP1 native experience remains the default and complete fallback.
 
-Exit: renderer-neutral/native accessibility, latency, resize, IME, shell parity,
-and fallback evidence is recorded. This is not a v0.5.0 blocker.
+#### CP5.0 — research, baselines, and dependency decision
+
+1. Record native completion, prediction, startup, typing, cancellation, memory,
+   accessibility, and resize baselines for supported PowerShell/PSReadLine,
+   Bash/Readline, Zsh/ZLE/compsys, Fish, and CMD versions.
+2. Prototype the smallest supported editor-state bridge per shell without
+   changing existing profiles or keybindings. A shell with no safe persistent
+   bridge retains native completion; CMD must not claim rich parity.
+3. Benchmark the in-tree deterministic prefix/token matcher against the focused
+   `nucleo-matcher` crate using realistic 32/128/512-candidate corpora, Unicode,
+   long common prefixes, stale-generation cancellation, and low-end hardware.
+   The upstream project recommends this smaller crate when a managed picker is
+   unnecessary. Adopt its MPL-2.0 dependency only if legal/license policy,
+   advisories, features, binary/compile cost, maintenance, and measurements show
+   a user-visible benefit; do not import the higher-level picker by default.
+4. Treat Reedline as a UX, history, hint, Unicode, and menu test reference only.
+   Do not embed Reedline or Rustyline because they are complete line editors and
+   would replace the shell-owned editor contract.
+5. Evaluate Carapace as an explicitly installed external adapter only. Never
+   bundle it silently, invoke it on every keystroke, or let it outrank an
+   existing native/provider completion. Official CLI generators and native
+   shell definitions remain the primary path.
+6. Reuse existing `unicode-segmentation`, width/layout primitives, bounded worker
+   lifecycle, cancellation, theme contrast, and accessibility infrastructure.
+   Do not add another UI toolkit, async runtime, cache framework, or filesystem
+   watcher merely for this feature.
+
+Exit: a decision report records benchmark inputs/results, adopted/rejected
+components and licenses, shell/version support, binary/startup cost, privacy
+changes, and the native-fallback proof. No runtime dependency is added only
+because it is popular.
+
+#### CP5.1 — versioned editor bridge and ownership
+
+The bridge is local, opt-in, session scoped, capability authenticated, and
+version negotiated. Prefer a private named pipe on Windows and a mode-0600 Unix
+domain socket under the protected runtime directory. The endpoint is never a
+TCP listener, never placed in a world-readable directory, and is removed when
+the pane closes. A persistent shell-side adapter owns one connection; no helper
+process is spawned per keypress.
+
+Every request carries:
+
+- schema version; application/window/tab/pane/session route; shell/editor kind
+  and version; prompt generation; monotonically increasing buffer generation;
+- the bounded editor buffer supplied by the editor API, cursor byte offset and
+  grapheme boundary, optional selection/replacement span, quoting/token context,
+  working directory, and active completion mode;
+- source revision, request reason (`explicit`, `typing`, or `refresh`), and a
+  cancellation token.
+
+Every candidate carries a stable request-local ID, insertion value, display
+label, short description, semantic kind, source/provenance, freshness, exact
+replacement span, quoting/insertion mode, and optional non-secret public context.
+Messages are framed, length checked before allocation, schema validated, and
+rejected on route, generation, cursor, span, shell, endpoint, or capability
+mismatch. Buffer and candidate payloads are memory-only, excluded from logs,
+telemetry, crash reports, clipboard history, diagnostics, and extension APIs,
+and dropped on cancellation, prompt completion, pane rebind, tab close, or
+application shutdown.
+
+Automexia never reconstructs a buffer from terminal cells, writes directly into
+shell memory, or invents shell escaping. Acceptance is an explicit bridge call
+back to the active editor, which revalidates the generation and replacement
+span, performs native quoting/insertion, and leaves the command unexecuted.
+
+Exit: protocol conformance, downgrade/reject behavior, restrictive endpoint
+permissions, peer/session authentication, generation isolation, payload
+redaction, exact cleanup, and native fallback pass before any popup is enabled.
+
+#### CP5.2 — local-only source broker
+
+Candidate sources are ordered and independently controllable:
+
+1. current shell-native registered completers;
+2. shell-owned history predictions, returned by the shell without Automexia
+   opening or parsing history files;
+3. current-directory files/directories and executable names exposed through the
+   shell/editor completion API, without recursive filesystem walks;
+4. opt-in frequency ranking based only on accepted candidate IDs and decayed
+   counters—never raw command lines, arguments, environment values, or secrets;
+5. already generated CP1 provider artifacts and last-known-good CP4 public
+   context, with source and freshness labels;
+6. later CP2/CP3 typed Quick Actions and enabled aliases, as insert-only
+   candidates with visible provenance and risk.
+
+History and frequency learning are separately opt-in and local-only. There are
+no server, telemetry, extension, AI, remote-output, provider-authentication, or
+secret-store sources. Terminal output, OSC payloads, clipboard contents, remote
+host output, and untrusted workspace text cannot create candidates.
+
+Shell-native candidates are immediate. Other allowed local work is debounced,
+asynchronous, bounded, cancellable, and performed off PTY input, VT parsing,
+rendering, resize, and shell-output threads. Only one latest request per pane is
+queued; a newer buffer generation cancels and replaces older work. Temporarily
+slow sources return the last-known-good public snapshot with an explicit stale
+label or disappear without delaying native completion.
+
+Exit: source precedence, opt-in state, offline behavior, stale labels, no-network
+and no-secret negative tests, cancellation, queue saturation, multi-pane
+isolation, and cleanup pass for every activated shell.
+
+#### CP5.3 — deterministic matching, ranking, and insertion safety
+
+Ranking is explainable and stable: exact prefix, shell-native rank, token/word
+boundary, case-aware prefix, recently accepted candidate ID, then optional fuzzy
+score. Risk, freshness, and provenance never disappear during sorting. Ties use
+source priority, normalized display value, then stable candidate ID. There is no
+AI or remote ranking.
+
+The existing hard ceilings remain authoritative: at most 512 returned
+candidates, 1 KiB per rendered candidate, 512 KiB aggregate response, and 8 MiB
+for the process-wide action/completion cache. CP5 additionally freezes a bounded
+buffer/message limit, one latest queued request per pane, a visible-row limit,
+and per-source deadlines in its activation contract before implementation.
+Candidate text is untrusted display data: sanitize control/bidi-confusing text,
+preserve grapheme boundaries, never interpret markup, and insert only the
+editor-returned escaped value into the revalidated replacement span.
+
+Initial measurement gates are:
+
+| Interaction | CP5 gate before activation |
+|---|---:|
+| Native candidate availability | unchanged from the shell baseline |
+| Warm local results visible | <= 50 ms p95 after debounce |
+| Popup update/render work | <= 8 ms p95 and no missed input frame |
+| Stale generation cancellation | <= 50 ms p95 |
+| Explicit local source deadline | <= 250 ms, then stale/native fallback |
+| Provider process/network/auth work | 0 during startup and typing |
+| Completion cache | <= 8 MiB process-wide |
+
+Exit: deterministic/property tests, hostile Unicode/control tests, shell-native
+round trips for spaces/quotes/metacharacters, cancellation storms, and criterion
+benchmarks meet the frozen limits without renderer or input-thread blocking.
+
+#### CP5.4 — premium pane-owned UI/UX
+
+The renderer receives an immutable renderer-neutral projection; it never owns
+candidate production or insertion. The popup belongs to exactly one pane and is
+clipped to that pane. Its z-order is above terminal content and below
+application modals; it cannot cover pane tabs, the footer, another pane, the
+active cursor, the IME candidate window, or a confirmation/security dialog.
+It chooses above/below placement from measured free space and repositions on
+resize without moving terminal cells or the shell cursor.
+
+The default surface shows:
+
+- completion value with matched graphemes emphasized;
+- redundant icon and text kind: command, file, directory, option, host, cluster,
+  cloud profile, Quick Action, or alias;
+- a concise description plus source and freshness (`Shell`, `History`,
+  `Cached · 2m`, or `Action`); and
+- risk/production state for action-backed candidates using text and icon, never
+  color alone.
+
+Use the terminal's design tokens, semantic colors, contrast correction, corner
+radius, and scale factor. Candidate text is slightly smaller than command text
+but never below the platform-accessible minimum. Keep rows dense but touch
+friendly, align icons on a shared optical box, and use no decorative animation;
+when reduced motion is off, an optional opacity transition is capped at 120 ms.
+At narrow/short sizes, hide description, then freshness, then switch to a compact
+single-line native hint. If the pane cannot fit the surface without obscuring
+input, dismiss it and retain native completion rather than overlaying content.
+
+Keyboard and pointer behavior:
+
+- the shell's existing Tab/Shift+Tab behavior remains unchanged by default;
+- an explicit configurable `Ctrl+Space` action may open the Automexia surface
+  only when it does not collide with a user binding;
+- Up/Down, PageUp/PageDown, Home/End navigate while open; Escape dismisses;
+- Tab or Right Arrow accepts according to the active shell's native contract;
+  accepting never also submits the command; Enter is not captured unless the
+  shell bridge explicitly declares safe insert-only acceptance;
+- pointer hover changes only the visual highlight and never moves keyboard focus
+  or the editor cursor; one click selects/inserts and never executes;
+- Enter dismisses the popup and retains the shell's native submit behavior for
+  the current buffer; it never implicitly accepts a highlighted candidate;
+- focus loss, typing that invalidates the generation, pane change, prompt
+  completion, or modal opening dismisses the surface.
+
+Expose listbox/option semantics through the existing accessibility model. Each
+option's accessible name includes value, type, description, source, freshness,
+and risk. Announcements are coalesced and rate limited. Validate keyboard-only,
+screen-reader, high-contrast, 100–300% scale, RTL/bidi containment, IME,
+multiline, split-pane, and extreme-resize behavior with renderer-neutral goldens
+plus native assistive-technology checks.
+
+Exit: UX review and automated layout/accessibility evidence prove the popup is
+clearer than the native baseline, does not occlude or move the input/cursor, and
+fully disappears without residue.
+
+#### CP5.5 — shell-specific activation
+
+- **PowerShell 7.2+ / supported PSReadLine 2.2.2+**: prefer PSReadLine Predictive
+  IntelliSense and its public `ICommandPredictor` contract. Respect the user's
+  `PredictionSource`, `PredictionViewStyle`, key handlers, and other predictors.
+  Windows PowerShell 5.1 keeps history prediction/native completion and does not
+  claim plugin parity.
+- **Bash**: Readline and Bash programmable completion remain authoritative.
+  Use `COMP_LINE`, `COMP_POINT`, `COMP_WORDS`, and `COMPREPLY` only inside a
+  supported completion/widget invocation; do not run `complete -C` processes on
+  ordinary typing or replace existing compspecs.
+- **Zsh**: ZLE/compsys owns context and insertion. Reuse the initialized user
+  completion system; never repeatedly call `compinit` or replace user styles.
+- **Fish**: Fish already provides asynchronous autosuggestions, completion
+  descriptions, and a pager. Do not draw a duplicate surface unless the user
+  explicitly selects Automexia UI and a supported Fish bridge can suppress
+  duplication without mutating user configuration.
+- **CMD**: retain DOSKEY/native editing and CP1 diagnostics. Rich suggestions
+  remain unavailable until a supported editor-state API exists.
+- **WSL**: activate only after a host/distribution-local authenticated transport
+  is proven without translated profile writes or ambient cross-distribution
+  access. Otherwise the WSL shell keeps native completion.
+- **SSH/container/remote shells**: remain native-only until a separately reviewed
+  authenticated sideband exists. Do not tunnel editor buffers through OSC,
+  terminal output, a TCP listener, or an implicit port forward merely to obtain
+  feature parity.
+
+Existing user completion frameworks, profiles, aliases, functions, bindings,
+prediction settings, and Fish abbreviations always take priority. Install,
+update, disable, rollback, and uninstall own exact Automexia files/blocks and
+must leave user/provider state byte-for-byte intact.
+
+Exit: each supported shell/version has a native owner test, compatibility entry,
+install/update/remove proof, and explicit unsupported fallback. One shell's
+failure cannot disable completion in another pane.
+
+#### CP5.6 — release, security, performance, and rollback gate
+
+Ship behind an explicit preview flag first, then staged opt-in. Do not silently
+turn on history/frequency sources. The settings surface explains that all data
+stays local, lists every enabled source, shows storage/memory use and freshness,
+provides reset/disable controls, and previews the exact native fallback. A kill
+switch must disable CP5 without restart, profile edits, command loss, or changing
+Tab/history behavior.
+
+Required evidence includes:
+
+- exact PowerShell, CMD, Bash, Zsh, Fish, WSL, Linux PTY, macOS PTY, and Windows
+  ConPTY/native-GUI tests on supported hosts;
+- generation, routing, split/tab/window, clone, resize/reflow, prompt/output,
+  worker-loss, shutdown, sleep/resume, and rapid-typing storms;
+- Unicode/grapheme/IME/RTL, spaces, quotes, multiline buffers, selections,
+  shell modes, malformed frames, hostile labels, and exact replacement tests;
+- no implicit network, provider, authentication, credential, history-file,
+  clipboard, telemetry, extension, or terminal-output access;
+- endpoint ACL/permission, peer authentication, replay/cross-session rejection,
+  fuzzing, property tests, dependency-policy, SBOM, license, and advisory gates;
+- bounded CPU/memory/cache/queue/message growth; cancellation latency; process,
+  task, socket/pipe, file, watcher, GPU, and storage leak cycles;
+- renderer-neutral layout goldens at tiny, normal, 4K, 8K, 100–300% scale,
+  light/dark/high-contrast themes, and multi-pane modal/menu z-order states;
+- keyboard-only and automated accessibility checks on every PR plus controlled
+  NVDA/Narrator, VoiceOver, and Orca evidence before stable activation;
+- a 30-day opt-in performance baseline, regression budgets, rollback drill,
+  migration/disable/uninstall documentation, and last-known-good recovery.
+
+Exit: all machine gates pass, external native accessibility evidence is linked,
+and maintainers record that the Automexia surface improves a measured workflow.
+Otherwise CP1 native completion remains the shipped solution.
 
 ### CP6 — ecosystem integration
 
@@ -568,6 +843,12 @@ OS process-tree implementations inside `xtask`.
 ## Primary references
 
 - [PowerShell predictive IntelliSense and PSReadLine predictors](https://learn.microsoft.com/powershell/scripting/learn/shell/using-predictors)
+- [PowerShell predictor plug-in contract](https://learn.microsoft.com/powershell/scripting/dev-cross-plat/create-cmdline-predictor)
+- [Fish interactive autosuggestions and completion pager](https://fishshell.com/docs/current/interactive.html)
+- [Fish responsiveness design](https://fishshell.com/docs/current/design.html#the-law-of-responsiveness)
+- [Reedline editor/menu reference](https://github.com/nushell/reedline)
+- [Nucleo / `nucleo-matcher` evaluation candidate (MPL-2.0)](https://github.com/helix-editor/nucleo)
+- [Carapace optional multi-shell adapter candidate](https://github.com/carapace-sh/carapace-bin)
 - [PowerShell about aliases](https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_aliases)
 - [GNU Bash programmable completion](https://www.gnu.org/software/bash/manual/html_node/Programmable-Completion.html)
 - [Zsh completion system](https://zsh.sourceforge.io/Doc/Release/Completion-System.html)

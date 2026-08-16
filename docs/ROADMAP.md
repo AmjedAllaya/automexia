@@ -203,11 +203,20 @@ is [ADR 0015](adr/0015-shell-native-completion-and-typed-quick-actions.md).
 6. Keep startup and keystroke paths offline and secret-free. Provider-aware
    actions wait for D6 Environment Capsules and consume bounded cached public
    context with freshness and cancellation.
+7. Deliver CP5 Shell Completion and Suggestions only after a separate bridge
+   ADR and threat gate: baseline native editors, define a local authenticated
+   generation-scoped bridge, broker local-only sources, benchmark deterministic
+   matching, render a pane-owned accessible popup, activate shell by shell, and
+   prove rollback/resource/security behavior before opt-in release.
 
 CP0-CP3 may proceed alongside D5 when their own gates pass. CP4 depends on
-D5/D6; CP5's optional rich completion surface is not a v0.5.0 blocker and may
-ship only through a versioned shell-editor bridge. This plan does not claim that
-autocomplete, Quick Actions, or generated aliases are shipped in v0.4.
+D5/D6. CP5 is not a v0.5.0 blocker: CP1 native completion stays the default and
+complete fallback, and the Automexia surface may ship only when a versioned
+shell-editor bridge measurably improves a supported workflow. The bridge must
+never scrape terminal cells, start providers per keystroke, read history files,
+send command data elsewhere, or override user completion frameworks. This plan
+does not claim that Automexia-rendered suggestions, Quick Actions, or generated
+aliases are shipped in v0.4.
 
 #### CP0-CP1 command-productivity status (2026-08-16)
 
@@ -222,6 +231,36 @@ refresh. Native definitions win; PowerShell requires explicit override consent.
 No provider runs on startup or keystrokes. CP1 adds no network, secret,
 clipboard, terminal-output, action-store, generated-alias, custom-completion-UI,
 or exact-launch authority. CP2 typed Quick Actions is next.
+
+#### CP5 Shell Completion and Suggestions order
+
+When CP2-CP4 dependencies permit, CP5 executes in this fixed order:
+
+1. **CP5.0 research/baseline:** measure native UX and evaluate PSReadLine,
+   Bash/Readline, Zsh compsys, Fish, Reedline as a design reference, Nucleo as a
+   benchmark candidate, and Carapace only as an explicit external adapter.
+2. **CP5.1 bridge:** approve an opt-in local named-pipe/Unix-socket protocol with
+   strict endpoint permissions, peer/session capability, buffer/cursor/span/
+   generation state, bounded framing, privacy exclusions, and native fallback.
+3. **CP5.2 sources:** expose shell-native completion, opt-in shell-owned history,
+   current-directory/executables, accepted-candidate frequency, cached public
+   provider data, and typed actions without network, authentication, secrets,
+   remote-output inference, recursive walking, or per-keypress processes.
+4. **CP5.3 ranking:** use deterministic explainable ranking, bounded caches and
+   queues, latest-generation cancellation, exact shell escaping, and adopt a
+   matcher dependency only after measured license/security/size benefit.
+5. **CP5.4 UI:** render a responsive pane-owned accessible popup that avoids the
+   cursor, IME, footer, tabs, sibling panes, and modals; includes type, source,
+   freshness and risk; degrades to native UI at impossible sizes.
+6. **CP5.5 activation:** enable only proven shell/version pairs, preserve all
+   user bindings/completers/predictors, and keep truthful CMD/remote fallbacks.
+7. **CP5.6 release gate:** pass native OS/shell, protocol, security, fuzz,
+   accessibility, performance, resource-leak, resize, multi-pane, rollback, and
+   uninstall evidence plus a 30-day preview baseline.
+
+The exact contract, provisional budgets, UI behavior, source precedence,
+rejected dependencies, and acceptance criteria live in
+[Command Productivity](COMMAND-PRODUCTIVITY.md).
 
 ### v0.5.0 first-party SSH extension
 

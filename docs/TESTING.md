@@ -1074,6 +1074,37 @@ The authoritative runtime fixture is
 Native hosted macOS and clean-runner evidence remains required before a stable
 release; local WSL success is not represented as macOS evidence.
 
+## Planned CP5 Shell Completion and Suggestions gate
+
+CP5 has no runtime test command yet because implementation is forbidden until
+its bridge ADR, threat amendment, compatibility version, and machine contract
+are accepted. When activated, PR and nightly ownership must cover:
+
+| Layer | PR evidence | Nightly/release evidence |
+|---|---|---|
+| Pure model/ranking | Deterministic ordering, precedence, limits, Unicode/grapheme, hostile labels, replacement-span properties, stale-generation rejection | Criterion 32/128/512-candidate and low-end reference baselines; dependency-size/startup comparison |
+| Bridge protocol | Frame/schema/route/capability/generation validation, malformed/oversize/replay/cross-pane/downgrade rejection, memory-only redaction | Native Windows named-pipe and Unix-socket churn, crash/restart/sleep/resume, ACL/mode and handle/socket leak campaigns |
+| Shell adapters | Supported PowerShell/PSReadLine, Bash/Readline, Zsh/ZLE, Fish and CMD fallback fixtures; spaces, quotes, selections, multiline and no-Enter insertion | Native Windows/WSL/Linux/macOS shell/version matrix, unsupported/downgrade, profile preservation and exact uninstall |
+| Source broker | Explicit source opt-in, shell-owned history, cwd/executable, frequency-ID, cached-public-provider and action precedence; no-network/no-secret negatives | Rapid typing/cancellation, slow filesystem, stale cache, worker loss, offline and multi-pane/session storms |
+| Pane UI | Renderer-neutral placement, cursor/IME/footer/tab/sibling/modal avoidance, tiny-to-8K and 100–300% scale goldens, focus/dismissal | Native GPU screenshots, high-contrast/reduced-motion, menu/confirmation z-order, long-running resize/reflow storms |
+| Accessibility | Listbox/option names, keyboard-only navigation, coalesced announcements, icon-plus-text semantics | Controlled NVDA/Narrator, VoiceOver and Orca sessions before stable activation |
+| Resources/security | Bounded allocation/queue/cache/message tests, fuzz/property corpus, dependency policy, no log/crash/telemetry/extension leakage | ASan/TSan/Miri where supported, sustained fuzz, process/task/pipe/socket/file/GPU/storage leak and 30-day performance baselines |
+
+After each bridge operation, tests assert the shell/editor buffer, cursor,
+selection, quoting mode, generation, and history remain authoritative; the
+terminal grid is never the source. Accepting a candidate must revalidate the
+route/generation/replacement span, insert exactly once using shell-native
+escaping, and never send Enter. Dismissal, typing, focus change, modal opening,
+resize, pane/tab close, clone, reconnect, and shutdown must cancel obsolete work
+and leave no popup, private payload, task, endpoint, process, or cache entry.
+
+The initial performance gates are warm local display <= 50 ms p95, popup update
+<= 8 ms p95, cancellation <= 50 ms p95, local-source deadline <= 250 ms with
+native/stale fallback, process-wide completion cache <= 8 MiB, and exactly zero
+provider/network/authentication work during startup and typing. Benchmarks must
+publish distribution, machine identity, corpus, cold/warm state, sample count,
+and peak memory; a single fast local run is not release evidence.
+
 ## Assurance status and remaining expansion
 
 The Phase 0 local baseline now includes pinned Nextest/JUnit/doctests, a

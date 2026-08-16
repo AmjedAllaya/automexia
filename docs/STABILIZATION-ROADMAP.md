@@ -512,8 +512,24 @@ not authorize shell evaluation, provider access, or arbitrary process launch.
 | CP2 typed Quick Actions | CP0; D3 not required for insert/copy | Bounded versioned store; atomic user-only writes; last-known-good reload; exact-file watcher; layered scopes; CRUD/import/export; placeholder review; accessible search; insert/copy only. | Persistence/recovery/concurrent-window/isolation, Unicode/hostile input, deterministic ordering, leak, accessibility, and Windows/Linux/macOS tests pass. |
 | CP3 aliases and static packs | CP1/CP2 | Reversible opt-in aliases/functions/abbreviations plus Git, Docker, Kubernetes/OpenShift, Helm, Terraform/OpenTofu, AWS, Azure, GCP, and SSH packs; no default short alias. | Native definitions win; projections round-trip/remove cleanly; completion follows aliases; risk and tool/version states are truthful. |
 | CP4 capsule-aware actions | D3 activation plus D5/D6 | Bind cached public capsule/target context with freshness; explicit refresh; reviewed exact launch only through the broker. | Mixed-pane/session isolation, offline/stale/revocation/cancellation, production-risk, provider-native, audit-redaction, and resource tests pass. |
-| CP5 optional rich completion | CP1 plus a separately reviewed editor bridge | Versioned buffer/cursor/replacement/generation/cancellation bridge; renderer-neutral accessible popup; native fallback. | IME/grapheme, screen-reader, resize, shell parity, latency, cancellation, and disabled-fallback evidence proves a benefit. Not a v0.5.0 blocker. |
+| CP5 Shell Completion and Suggestions | CP1 plus a separately reviewed bridge ADR/threat fixture; CP2/CP3 for action candidates; CP4/D6 for provider context | CP5.0 baseline/dependency evaluation; CP5.1 authenticated local buffer/cursor/span/generation bridge; CP5.2 local-only source broker; CP5.3 deterministic bounded ranking; CP5.4 pane-owned accessible UI; CP5.5 per-shell activation; CP5.6 preview/rollback gate. Native completion remains default. | No grid/history-file/remote-output inference, network/auth/secret work, or per-keystroke process. Protocol/fuzz/security, exact insertion, IME/grapheme, accessibility, responsive layout, native shell/OS, cancellation, latency, memory/handle/socket/storage leak, 30-day baseline, disable and uninstall evidence proves a measurable benefit. Not a v0.5.0 blocker. |
 | CP6 ecosystem packs | v0.6 capability/sandbox/signing gates | Signed third-party packs and separate opt-in AI tools only through provenance, capability, quota, revocation, and privacy policy. | Malicious-package/sandbox/supply-chain/data-flow gates pass; no ambient terminal, secret, provider, or process authority. |
+
+#### CP5 activation ledger (planned)
+
+| CP5 checkpoint | Required implementation | Blocking proof |
+|---|---|---|
+| CP5.0 research | Native shell/version baselines and a written adopt/reject report for PSReadLine APIs, Reedline design patterns, Nucleo matching, Carapace, and in-tree alternatives | No new dependency or runtime path before license/advisory/size/startup/latency/privacy comparison is reviewed |
+| CP5.1 bridge | Private Windows named pipe / Unix domain socket, restrictive endpoint, session capability, version negotiation, bounded messages, generation/span validation, memory-only private payloads | Impersonation/replay/cross-session, downgrade, malformed-frame, cleanup, crash-redaction, and native-fallback tests pass |
+| CP5.2 broker | Shell-native, opt-in history/frequency, cwd/executable, cached public provider, and typed-action sources with deterministic precedence | Zero implicit network/provider/auth/secret/history-file/remote-output access; bounded queue/cache and stale cancellation pass |
+| CP5.3 match/insert | Explainable stable ranking, Unicode-safe display, shell-returned insertion values and spans | Property/hostile Unicode, quoting, replacement, rapid typing and Criterion gates meet frozen limits |
+| CP5.4 UI | Renderer-neutral pane-owned listbox projection, source/freshness/risk labels, responsive placement, modal/IME/cursor avoidance | Tiny-to-8K/100–300% goldens, input/cursor stability, screen-reader/high-contrast/reduced-motion tests pass |
+| CP5.5 shells | Version-gated PowerShell, Bash, Zsh, Fish and WSL/remote opt-in; truthful CMD fallback | Native framework/profile/binding preservation, install/update/remove, independent-pane failure and unsupported-version tests pass |
+| CP5.6 release | Preview flag, kill switch, reset/disable UX, last-known-good fallback, rollback and uninstall | Windows/Linux/macOS native CI, controlled NVDA/Narrator/VoiceOver/Orca, fuzz/leak/storm campaigns and 30-day performance baseline are linked |
+
+Failure at any checkpoint leaves CP1 native completion unchanged; a visually
+working popup is not evidence that the bridge, privacy, insertion, accessibility,
+or lifecycle gates are satisfied.
 
 #### CP0 implementation ledger
 

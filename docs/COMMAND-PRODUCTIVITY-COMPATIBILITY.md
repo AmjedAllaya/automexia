@@ -1,7 +1,7 @@
 # Command Productivity Compatibility Baseline
 
 Status: CP0 baseline and CP1 native completion accepted, 2026-08-16. CP2 Quick
-Actions and CP3 aliases are not shipped.
+Actions, CP3 aliases, and CP5 Automexia-rendered suggestions are not shipped.
 
 ## Purpose
 
@@ -41,6 +41,29 @@ managed autocomplete or persistent aliases.
 Automexia never recovers the editable command from terminal-grid cells. A future
 custom completion surface requires the CP5 editor bridge and must preserve the
 native editor as a complete disable/failure fallback.
+
+## Planned CP5 bridge and fallback matrix
+
+This matrix is a feasibility and activation gate, not a shipped-support claim.
+Each row requires a versioned native adapter and its own disable/uninstall proof.
+
+| Shell/environment | Preferred supported API | Automexia surface rule | Mandatory fallback |
+|---|---|---|---|
+| PowerShell 7.2+ with supported PSReadLine 2.2.2+ | PSReadLine Predictive IntelliSense and public `ICommandPredictor`/completion contracts | Respect `PredictionSource`, view style, key handlers and other predictors; bridge only after explicit opt-in | Current PSReadLine inline/list/native Tab UI |
+| Windows PowerShell 5.1 | History prediction and native completion only | Do not claim predictor plug-in or rich-surface parity | Native PSReadLine/console behavior |
+| Bash | Readline plus programmable completion (`COMP_LINE`, `COMP_POINT`, `COMP_WORDS`, `COMPREPLY`) inside supported completion/widget invocation | No `complete -C` helper or provider process on ordinary typing; existing compspecs win | Existing compspec or Readline default completion |
+| Zsh | ZLE and compsys context/candidate/insertion APIs | Reuse the initialized user system; never repeatedly invoke `compinit` or replace styles | Existing ZLE/compsys menu and user `fpath` |
+| Fish | Native autosuggestion, `complete`, descriptions and pager | Default to Fish UI; Automexia UI only when an explicit supported bridge can prevent duplicate surfaces without profile mutation | Fish autosuggestion/completion pager |
+| CMD | Console input and DOSKEY | No rich bridge until a supported buffer/cursor/candidate API exists | CP1 native CMD/DOSKEY behavior |
+| WSL | Destination shell API plus a separately proven host/distribution-local authenticated transport | Explicit per-distribution installation; no translated profile writes or ambient cross-distribution endpoint | Distribution shell-native behavior |
+| SSH/container/remote | No CP5 bridge until a separately reviewed authenticated sideband exists | Never carry editor buffers through OSC, terminal output, implicit TCP/port forwarding, or remote-output inference | Destination shell-native behavior with no Automexia files required |
+
+A CP5 adapter must negotiate shell/editor versions, endpoint security, route,
+buffer generation, cursor and replacement span. Unsupported, missing, disabled,
+stale, malformed, timed-out, disconnected, or downgraded bridges close the popup
+and return to the same native editor without losing input. Existing profiles,
+keybindings, predictors, completers, histories, aliases, functions, Fish
+abbreviations, and shell-specific view settings always take priority.
 
 ## Read-only discovery contract
 
@@ -154,10 +177,13 @@ without claiming CP1 behavior.
 ## Primary references
 
 - [PSReadLine completion functions](https://learn.microsoft.com/powershell/module/psreadline/about/about_psreadline_functions)
+- [PSReadLine predictors](https://learn.microsoft.com/powershell/scripting/learn/shell/using-predictors)
+- [PowerShell predictor plug-in contract](https://learn.microsoft.com/powershell/scripting/dev-cross-plat/create-cmdline-predictor)
 - [PowerShell aliases and persistence](https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_aliases)
 - [GNU Bash programmable completion](https://www.gnu.org/software/bash/manual/html_node/Programmable-Completion.html)
 - [Zsh completion system](https://zsh.sourceforge.io/Doc/Release/Completion-System.html)
-- [Fish interactive abbreviations](https://fishshell.com/docs/current/interactive.html#abbreviations)
+- [Fish interactive completions, autosuggestions, and pager](https://fishshell.com/docs/current/interactive.html)
+- [Fish responsiveness design](https://fishshell.com/docs/current/design.html#the-law-of-responsiveness)
 - [DOSKEY macros](https://learn.microsoft.com/windows-server/administration/windows-commands/doskey)
 - [Docker completion](https://docs.docker.com/engine/cli/completion/)
 - [kubectl completion](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_completion/)
