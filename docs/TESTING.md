@@ -1007,6 +1007,23 @@ renderer-neutral goldens remain mandatory but never substitute for controlled
 native evidence. Until those gates land in executable CI/QA ownership, the Hub
 must remain documented as planned/non-activated.
 
+## Planned CP2/CP3 Quick Action and alias assurance
+
+Quick Action persistence, generated aliases, and first-party DevOps packs are
+planned work and are not a shipped v0.4 test claim. Their implementation must
+land with the model, persistence/recovery, shell projection, collision,
+completion, native-host, UI/accessibility, security/fuzz/mutation,
+performance, and resource-lifecycle suites in
+[DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md#verification-plan).
+
+The gate must exercise PowerShell 5.1/7+, Bash, Zsh, Fish, CMD, WSL, Windows,
+Linux, and macOS while proving that native definitions win, generated files are
+fully removable, no alias silently executes provider/network/secret work, and
+new shells restore enabled aliases without duplicating profile hooks. Synthetic
+serializer fixtures are required for every PR; controlled native shells remain
+mandatory before a release claim. CP2/CP3 cannot be marked complete merely
+because a generated file parses or an alias works in one interactive shell.
+
 ## Command-productivity CP0 contract
 
 CP0 is a non-runtime policy boundary. It does not enable managed completion,

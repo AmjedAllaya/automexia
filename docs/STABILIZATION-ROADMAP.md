@@ -504,6 +504,8 @@ data, shell-adapter, test, and acceptance contract is
 [Command Productivity](COMMAND-PRODUCTIVITY.md), governed by
 [ADR 0015](adr/0015-shell-native-completion-and-typed-quick-actions.md). It does
 not authorize shell evaluation, provider access, or arbitrary process launch.
+CP2/CP3 implementation details and exit evidence are canonical in
+[DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md).
 
 | Stage | Dependency | Required work | Exit evidence |
 |---|---|---|---|

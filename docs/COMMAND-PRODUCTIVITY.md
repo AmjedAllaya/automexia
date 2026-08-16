@@ -44,6 +44,9 @@ The accepted native-shell/provider matrix is
 [Command Productivity Compatibility](COMMAND-PRODUCTIVITY-COMPATIBILITY.md);
 security and privacy boundaries are in the
 [Command Productivity Threat Model](COMMAND-PRODUCTIVITY-THREAT-MODEL.md).
+The complete CP2/CP3 product contract for user-created aliases, first-party
+DevOps packs, persistence, projection compilers, UX, and verification is
+[DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md).
 
 ## Terminology
 

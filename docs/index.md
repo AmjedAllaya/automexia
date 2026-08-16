@@ -75,6 +75,9 @@ The documentation is organized by reader intent:
 - [Command productivity](COMMAND-PRODUCTIVITY.md): CP0 architecture baseline,
   shipped CP1 native completion, and the ordered CP2-CP6 delivery plan for typed
   Quick Actions plus CP5 local-only Shell Completion and Suggestions.
+- [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md): the
+  implementation-ready CP2/CP3 model, persistent user workflow, native-shell
+  projections, first-party packs, security budgets, and verification gates.
 - [Command-productivity compatibility](COMMAND-PRODUCTIVITY-COMPATIBILITY.md):
   accepted shell/editor ownership, provider, precedence, fallback, and
   platform contract.

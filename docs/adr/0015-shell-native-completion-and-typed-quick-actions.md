@@ -48,7 +48,10 @@ per-keystroke process, network, authentication, or secret-cache access.
 
 The detailed schema, shell strategy, delivery phases, limits, verification
 matrix, and acceptance criteria are in
-[Command Productivity](../COMMAND-PRODUCTIVITY.md).
+[Command Productivity](../COMMAND-PRODUCTIVITY.md). The concrete CP2/CP3 alias
+and first-party pack specification is
+[DevOps Quick Actions and persistent aliases](../DEVOPS-ALIASES.md). This link
+does not activate those planned capabilities.
 
 ## Consequences
 

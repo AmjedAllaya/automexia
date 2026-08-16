@@ -187,7 +187,10 @@ delivery track rather than an implied shell-integration side effect. The
 authoritative design, resource ceilings, shell matrix, phases CP0-CP6, tests,
 and acceptance criteria are in
 [Command Productivity](COMMAND-PRODUCTIVITY.md); the ownership and trust decision
-is [ADR 0015](adr/0015-shell-native-completion-and-typed-quick-actions.md).
+is [ADR 0015](adr/0015-shell-native-completion-and-typed-quick-actions.md). The
+implementation-ready CP2/CP3 alias lifecycle, shell projection, pack catalog,
+UX, and assurance plan is
+[DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md).
 
 1. Preserve PSReadLine, Readline, ZLE, Fish, and CMD ownership of command input,
    history, cursor, quoting, and completion. Never infer the editable command

@@ -317,6 +317,10 @@ Provider-aware actions consume bounded cached public capsule context only after
 D6, with session/generation keys, freshness, cancellation, and stale-result
 rejection.
 
+The concrete CP2/CP3 ownership map, canonical schema, atomic persistence
+transaction, per-shell projection boundary, and resource budgets are specified
+in [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md).
+
 The planned CP5 surface adds no second line editor. Shell integration is the
 only adapter allowed to observe editor-owned bounded state through a versioned,
 opt-in, session-capability-authenticated local pipe/socket. A renderer-/PTY-/
