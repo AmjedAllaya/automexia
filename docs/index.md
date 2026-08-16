@@ -65,6 +65,9 @@ The documentation is organized by reader intent:
   alternatives, and consequences.
 - [SSH, DevOps, and multi-cloud architecture](SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md):
   planned provider-neutral delivery boundaries.
+- [Connection Hub](CONNECTION-HUB.md): planned D5/D6 inventory, first-run,
+  authentication state, review, capability, provider, accessibility, and
+  verification specification.
 - [Exact-argument session-launch broker](SESSION-LAUNCH-BROKER.md): reviewed
   non-activated D3 contracts, limits, tests, and activation gates.
 - [OpenSSH inventory](SSH-INVENTORY.md): implemented non-executing D4 parser,

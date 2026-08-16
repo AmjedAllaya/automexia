@@ -179,6 +179,12 @@ terminal history. OpenSSH is execution authority; the extension's static index
 is discovery/UI metadata and cannot replace OpenSSH's complete configuration
 semantics.
 
+The window-level discovery/review surface is the planned
+[Connection Hub](CONNECTION-HUB.md). It projects provider-neutral, bounded
+models through `automexia-ui-model`; provider extensions cannot draw their own
+approval UI, place work on render/input/VT threads, or turn a displayed label
+into executable text. The Hub does not resize a PTY and does not own credentials.
+
 ### Environment Capsule contract
 
 Every managed session has a non-secret, immutable `EnvironmentCapsule`:

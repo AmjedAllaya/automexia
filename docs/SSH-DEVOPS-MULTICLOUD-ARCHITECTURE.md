@@ -828,6 +828,13 @@ are deliberately slow.
 
 ## User experience
 
+The complete product contract for the window-level inventory, first-run scan,
+authentication lifecycle, Connection Review, capability approval/revocation,
+provider journeys, responsive/accessibility behavior, and renderer-neutral
+goldens is [Connection Hub](CONNECTION-HUB.md). This section describes the
+surrounding contribution points; it must not be implemented as separate
+provider-specific dialogs.
+
 ### Command palette
 
 Generic contribution points let extensions add commands such as:

@@ -73,6 +73,11 @@ second SSH protocol implementation to core.
 The complete architecture, security rationale, provider strategy, dependency
 evaluation, and research sources are consolidated in
 [SSH, DevOps, and multi-cloud extension architecture](SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md).
+The exact Connection Hub layout, discovery tiers, authentication state machine,
+platform setup journeys, connection review, capability UX, provider flows,
+external identity adapters, responsive/accessibility behavior, goldens, and
+acceptance evidence are specified in
+[Connection Hub](CONNECTION-HUB.md).
 The [stabilization roadmap](STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track)
 is authoritative for the implementation order and exit gates.
 
@@ -264,6 +269,11 @@ rejected dependencies, and acceptance criteria live in
 
 ### v0.5.0 first-party SSH extension
 
+The D5 product surface is the renderer-neutral Connection Hub rather than a
+collection of unrelated host dialogs. Its implementation is sliced into a
+contract/golden baseline, read-only discovery, and reviewed OpenSSH activation
+as defined in [Connection Hub](CONNECTION-HUB.md#delivery-phases-and-exit-gates).
+
 1. Ship `devops-ssh` as an optional, signed or compiled-in first-party
    extension. It may be included in the DevOps Pack but must be independently
    disabled without changing PTY, shell, or terminal behavior.
@@ -313,6 +323,13 @@ are true:
 - slow indexing and connection setup do not block input, parsing, rendering,
   resizing, or unrelated panes;
 - no secret appears in persistent state or redacted QA evidence;
+- passive Hub discovery performs no process/network/authentication work; every
+  `Unknown`, `Ready`, `Locked`, `Missing`, `Expired`, `MFA required`,
+  `Cancelled`, `Offline`, `Denied`, `Unsupported`, and error path has truthful
+  tested recovery behavior;
+- first-run agent/setup guidance, Connection Review, exact capability
+  approval/revocation, safe one-click reconnect, and externally owned
+  credential recovery warnings pass on Windows, macOS, and Linux;
 - keyboard, screen-reader, contrast, production-risk, and error semantics are
   tested on supported platforms;
 - any command-productivity capability included in the release passes its CP exit
@@ -368,6 +385,12 @@ Implementation order is:
    preferred cloud-native remote transports;
 6. lazy, explicitly permitted provider API inventory only after CLI/config
    flows, caching, cancellation, redaction, and resource budgets are proven.
+
+The user journeys and independent D6.1-D6.5 release slices for AWS, Azure,
+Google Cloud, Kubernetes/OpenShift, Teleport, and OpenBao are governed by
+[Connection Hub](CONNECTION-HUB.md#provider-setup-journeys). A provider slice
+does not inherit another provider's grant, cache, token, process, or release
+claim.
 
 Provider SDKs remain isolated behind extension-host adapters. CLI-first
 delivery is intentional: it preserves official authentication, limits binary

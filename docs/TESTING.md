@@ -985,6 +985,28 @@ calls, missing resource ceilings, weakened private permissions, or loss of
 fuzz/benchmark ownership. Full threat model, limits, and manual interpretation
 are in [OpenSSH inventory](SSH-INVENTORY.md).
 
+## Planned Connection Hub assurance
+
+The Connection Hub is D5/D6 planned work, not a shipped v0.4 test claim. Before
+activation it must add the deterministic, native, controlled-provider,
+accessibility, visual, security, performance, privacy, and resource evidence in
+[Connection Hub](CONNECTION-HUB.md#verification-plan).
+
+At minimum, PR evidence must prove no process/network/authentication work during
+passive discovery or search; legal generation-scoped authentication transitions;
+exact capability approval/revocation; secret-free serialized models; hostile
+OpenSSH/provider/kubeconfig parsing; exact Windows/Unix launch arguments;
+cross-session capsule isolation; responsive modal/focus/z-order behavior; and
+10,000-entry virtualized search without unbounded storage or workers.
+
+Native release evidence must cover Windows, macOS, and Linux OpenSSH/agent
+flows; AWS/Azure/Google/Kubernetes/OpenShift expiry, MFA, cancellation, offline,
+and denial; real plus mocked SSH; Narrator/NVDA, VoiceOver, and Orca; and 1/10/50
+session/process/tunnel teardown. Synthetic provider fixtures and
+renderer-neutral goldens remain mandatory but never substitute for controlled
+native evidence. Until those gates land in executable CI/QA ownership, the Hub
+must remain documented as planned/non-activated.
+
 ## Command-productivity CP0 contract
 
 CP0 is a non-runtime policy boundary. It does not enable managed completion,

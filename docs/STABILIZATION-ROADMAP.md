@@ -485,8 +485,8 @@ terminal.
 | D2 generic context/status adapter | In parallel with D1 after types compile | Before provider extensions | Existing context with no renderer provider branches. |
 | D3 exact-argv session launch | After D0/D1 | Before quick connect | Internal reviewed first-party capability only. |
 | D4 OpenSSH index and connection model | After D1; parser work may overlap D3 | Before SSH palette/host UI | Safe host inventory with no key custody. |
-| D5 production SSH UX | After D3/D4 and v0.4 control-string closure | v0.5.0 release | Quick connect, jumps, tunnels, agent/certificate visibility. |
-| D6 multi-cloud capsules/providers | After D2/D3 prove isolation | v0.5.1 release | AWS/Azure/GCP/Kubernetes/OpenShift/IaC session isolation. |
+| D5 production SSH UX | After D3/D4 and v0.4 control-string closure | v0.5.0 release | Responsive Connection Hub, reviewed quick connect, jumps, tunnels, agent/certificate visibility, and capability lifecycle. |
+| D6 multi-cloud capsules/providers | After D2/D3 prove isolation | v0.5.1 release | Provider-native Hub journeys and isolated AWS/Azure/GCP/Kubernetes/OpenShift sessions; organization adapters remain independent. |
 | D7 direct provider APIs/public SDK | After D6 measurement and policy | v0.6 or later | Optional inventory and sandboxed ecosystem. |
 
 D0, pure D1 types, a non-executable D4 parser, fixtures, and tests may be built
@@ -864,12 +864,22 @@ D5 connects this package to a product surface.
 
 ### D5.1 — production SSH UX and connection lifecycle
 
+The implementation-ready product contract is
+[Connection Hub](CONNECTION-HUB.md). Its D5.0 contract/golden slice must close
+before this section draws production UI; D5.1 read-only discovery must close
+before D5.2 activates reviewed OpenSSH launch. The Hub is a window-level modal
+over renderer-neutral models and never resizes the PTY or becomes a credential
+vault.
+
 Implement in this order so every slice is independently testable:
 
-1. Quick-connect search over alias, display name, tags, favorite, and recent
-   records. Every result shows transport and enough public destination intent
-   to avoid connecting to the wrong environment. Production risk uses text and
-   accessibility state, not color alone.
+1. Build the read-only Connection Hub over D4 records: passive/no-process first
+   run, explicit bounded local scan, virtualized quick-connect search over
+   alias/display name/tag/favorite/recent/provider/context, deterministic
+   filter/group projections, stale-while-revalidate status, and responsive
+   wide/medium/narrow layouts. Every result shows transport and enough public
+   destination intent to avoid connecting to the wrong environment. Production
+   risk uses text and accessibility state, not color alone.
 2. Destination choice: new pane, pane-local tab, workspace tab, or OS window.
    All choices create a fresh PTY/route/capsule; no mode attaches another view
    to an existing PTY.
@@ -896,6 +906,13 @@ Implement in this order so every slice is independently testable:
 9. Keep a native Rust SSH engine, embedded web UI, RDP/VNC/Telnet, shared
    sessions, and Termix embedding outside v0.5.0. Termix remains a UX reference
    or future optional metadata bridge.
+
+The activation slice also implements every provider-neutral authentication
+state, the full Connection Review, allow-once/exact persisted capability
+approval and revocation, unchanged-route one-click reconnect, platform-specific
+agent setup, external-custody recovery text, keyboard/focus behavior, and the
+renderer-neutral interaction/accessibility goldens required by the
+[Hub contract](CONNECTION-HUB.md#verification-plan).
 
 Exit gate for v0.5.0: quick connect, jumps, tunnels, authentication prompts,
 host-key behavior, cancellation, offline failure, remote exit, and cleanup pass
@@ -936,6 +953,11 @@ tests, but release evidence also requires real system OpenSSH clients and
 controlled native servers; neither layer replaces the other.
 
 ### D6 — v0.5.1 multi-cloud and orchestrator delivery
+
+The provider-neutral state, review, discovery, and UI model from D5 is reused;
+providers do not create separate connection dialogs. Exact AWS, Azure, Google
+Cloud, Kubernetes, OpenShift, Teleport, and OpenBao journeys and the D6.0-D6.5
+gates are in [Connection Hub](CONNECTION-HUB.md#delivery-phases-and-exit-gates).
 
 Implement provider extensions only after the D1-D3 contracts are stable:
 
