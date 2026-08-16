@@ -863,8 +863,10 @@ The planned boundary is already protected by the versioned
 [`CP2/CP3 alias specification fixture`](../tests/fixtures/command-productivity/cp2-cp3-alias-spec-v1.json),
 [`check_devops_alias_spec.py`](../tools/ci/check_devops_alias_spec.py), and its
 mutation suite. They freeze the non-activated status, supported shells and
-providers, precedence, safe defaults, resource ceilings, persistence contract,
-capability denials, documentation wiring, and all assurance domains. Runtime
+providers, typed model enums, alias grammar, projection and health states,
+precedence, safe defaults, resource ceilings, numeric performance targets,
+persistence, capability denials, responsive/accessibility invariants, PR-CI
+ownership, documentation wiring, and all assurance domains. Runtime
 activation still requires the phase-specific implementation and native evidence
 below; passing this prose/fixture gate is not evidence that aliases are shipped.
 

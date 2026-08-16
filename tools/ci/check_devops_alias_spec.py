@@ -71,6 +71,42 @@ ACTION_FIELDS = [
     "enabled",
     "alias_projection",
 ]
+MODEL_ENUMS = {
+    "templates": ["TypedArgv", "RawInsertOnly"],
+    "argument_policies": ["None", "ForwardAll", "TypedBindings"],
+    "execution_modes": ["Insert", "Copy", "ExactLaunch"],
+    "completion_modes": ["Required", "BestEffort", "Disabled"],
+    "override_policies": ["NativeWins", "ExplicitExactOverride"],
+}
+ALIAS_POLICY = {
+    "portable_pattern": "^[a-z][a-z0-9-]{1,31}$",
+    "minimum_length": 2,
+    "maximum_length": 32,
+    "builtin_one_letter_names": False,
+    "secret_placeholders": False,
+    "raw_insert_projection": False,
+}
+PROJECTION_MODES = {
+    "powershell": ["CommandAlias", "WrapperFunction"],
+    "bash": ["CommandAlias", "WrapperFunction"],
+    "zsh": ["CommandAlias", "WrapperFunction"],
+    "fish": ["FishAbbreviation", "WrapperFunction"],
+    "cmd": ["DoskeyMacro"],
+}
+HEALTH_STATES = [
+    "Ready",
+    "Disabled",
+    "Missing tool",
+    "Unsupported tool",
+    "Collision",
+    "Completion unavailable",
+    "Stale source",
+    "Reload required",
+    "Tampered artifact",
+    "Unsafe permissions",
+    "Malformed source",
+    "Generation failed",
+]
 DEFAULTS = {
     "builtin_aliases_enabled": False,
     "action_execution": "insert-without-enter",
@@ -104,6 +140,24 @@ CAPABILITIES = {
     "implicit_execution": False,
     "hidden_global_context_mutation": False,
 }
+PERFORMANCE_TARGETS = {
+    "baseline_days": 30,
+    "warm_load_p95_ms": 25,
+    "search_p95_ms": 16,
+    "collision_p95_ms": 25,
+    "compile_shell_p95_ms": 50,
+    "shell_startup_verify_p95_ms": 50,
+}
+UX_INVARIANTS = [
+    "keyboard-complete",
+    "focus-trap-and-exact-return",
+    "underlay-accessibility-inert",
+    "no-pty-geometry-mutation",
+    "text-and-icon-not-color-alone",
+    "responsive-at-400-percent",
+    "high-contrast-and-reduced-motion",
+    "narrator-nvda-voiceover-orca",
+]
 VERIFICATION_DOMAINS = [
     "model-and-persistence",
     "projection-compilers",
@@ -155,6 +209,14 @@ REQUIRED_SPEC_SNIPPETS = {
     "No hidden context mutation",
     "atomic all-or-old",
     "compare-and-swap",
+    "template: TypedArgv | RawInsertOnly",
+    "mode: Auto | CommandAlias | WrapperFunction | FishAbbreviation | DoskeyMacro",
+    "argument_policy: None | ForwardAll | TypedBindings",
+    "Health states include `Ready`",
+    "<= 25 ms p95 off renderer/input/PTY paths",
+    "<= 16 ms p95; deterministic and allocation-bounded",
+    "<= 50 ms p95 post-warmup, no subprocess/network",
+    "200%/400% text scale",
     "PowerShell 5.1 and PowerShell 7+",
     "Bash",
     "Zsh",
@@ -175,6 +237,7 @@ WIRING = {
     "docs/FEATURES.md": "DEVOPS-ALIASES.md",
     "docs/SHELL-INTEGRATION.md": "DEVOPS-ALIASES.md",
     "docs/COMMAND-PRODUCTIVITY.md": "DEVOPS-ALIASES.md",
+    ".github/workflows/ci.yml": "test_devops_alias_spec.py",
     "docs/index.md": "DEVOPS-ALIASES.md",
     "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md": (
         "DEVOPS-ALIASES.md"
@@ -197,6 +260,27 @@ def bounded_text(path: Path, maximum: int, label: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise AliasSpecError(f"duplicate JSON key is forbidden: {key}")
+        result[key] = value
+    return result
+
+
+def reject_nonstandard_constant(value: str) -> None:
+    raise AliasSpecError(f"non-standard JSON constant is forbidden: {value}")
+
+
+def load_contract(text: str) -> Any:
+    return json.loads(
+        text,
+        object_pairs_hook=reject_duplicate_keys,
+        parse_constant=reject_nonstandard_constant,
+    )
+
+
 def validate_contract(document: Any) -> dict[str, int]:
     if not isinstance(document, dict):
         raise AliasSpecError("alias specification contract must be an object")
@@ -210,10 +294,16 @@ def validate_contract(document: Any) -> dict[str, int]:
         "scopes",
         "limits",
         "required_action_fields",
+        "model_enums",
+        "alias_policy",
+        "projection_modes",
+        "health_states",
         "defaults",
         "risk_alias_eligibility",
         "persistence",
         "capabilities",
+        "performance_targets",
+        "ux_invariants",
         "verification_domains",
         "activation_files",
     }
@@ -232,10 +322,16 @@ def validate_contract(document: Any) -> dict[str, int]:
         ("scopes", SCOPES, "scope precedence"),
         ("limits", LIMITS, "resource ceilings"),
         ("required_action_fields", ACTION_FIELDS, "typed action fields"),
+        ("model_enums", MODEL_ENUMS, "typed model enums"),
+        ("alias_policy", ALIAS_POLICY, "portable alias policy"),
+        ("projection_modes", PROJECTION_MODES, "shell projection modes"),
+        ("health_states", HEALTH_STATES, "health-state model"),
         ("defaults", DEFAULTS, "safe defaults"),
         ("risk_alias_eligibility", RISK_POLICY, "risk eligibility"),
         ("persistence", PERSISTENCE, "persistence contract"),
         ("capabilities", CAPABILITIES, "capability boundary"),
+        ("performance_targets", PERFORMANCE_TARGETS, "performance ratchets"),
+        ("ux_invariants", UX_INVARIANTS, "UX/accessibility invariants"),
         ("verification_domains", VERIFICATION_DOMAINS, "verification matrix"),
         ("activation_files", [], "non-activation boundary"),
     )
@@ -247,6 +343,7 @@ def validate_contract(document: Any) -> dict[str, int]:
         "providers": len(PROVIDERS),
         "scopes": len(SCOPES),
         "verification_domains": len(VERIFICATION_DOMAINS),
+        "ux_invariants": len(UX_INVARIANTS),
     }
 
 
@@ -291,7 +388,7 @@ def validate_wiring(root: Path) -> None:
 
 
 def validate_repository(root: Path = ROOT) -> dict[str, int]:
-    contract = json.loads(
+    contract = load_contract(
         bounded_text(
             root / CONTRACT_PATH.relative_to(ROOT),
             MAX_POLICY_BYTES,
@@ -323,7 +420,7 @@ def main() -> int:
         "PASS: planned CP2/CP3 alias specification is complete and non-activated "
         f"(shells={counts['shells']}, providers={counts['providers']}, "
         f"scopes={counts['scopes']}, assurance={counts['verification_domains']}, "
-        f"wiring={counts['wiring']})"
+        f"ux={counts['ux_invariants']}, wiring={counts['wiring']})"
     )
     return 0
 

@@ -37,7 +37,8 @@ class AliasSpecificationTests(unittest.TestCase):
                 "providers": 11,
                 "scopes": 6,
                 "verification_domains": 10,
-                "wiring": 9,
+                "ux_invariants": 8,
+                "wiring": 10,
             },
         )
 
@@ -125,6 +126,59 @@ class AliasSpecificationTests(unittest.TestCase):
         with self.assertRaisesRegex(POLICY.AliasSpecError, "capability boundary"):
             POLICY.validate_contract(changed)
 
+    def test_unreviewed_model_enum_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["model_enums"]["templates"].append("ShellText")
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "typed model enums"):
+            POLICY.validate_contract(changed)
+
+    def test_weakened_alias_grammar_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["alias_policy"]["portable_pattern"] = ".*"
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "portable alias policy"):
+            POLICY.validate_contract(changed)
+
+    def test_missing_shell_projection_mode_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        del changed["projection_modes"]["cmd"]
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "shell projection modes"):
+            POLICY.validate_contract(changed)
+
+    def test_missing_health_state_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["health_states"].remove("Tampered artifact")
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "health-state model"):
+            POLICY.validate_contract(changed)
+
+    def test_performance_regression_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["performance_targets"]["warm_load_p95_ms"] += 1
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "performance ratchets"):
+            POLICY.validate_contract(changed)
+
+    def test_missing_accessibility_invariant_is_rejected(self) -> None:
+        changed = deepcopy(CONTRACT)
+        changed["ux_invariants"].remove("responsive-at-400-percent")
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "UX/accessibility"):
+            POLICY.validate_contract(changed)
+
+    def test_duplicate_json_key_is_rejected(self) -> None:
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "duplicate JSON key"):
+            POLICY.load_contract('{"schema": 1, "schema": 2}')
+
+    def test_nonstandard_json_constant_is_rejected(self) -> None:
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "non-standard JSON"):
+            POLICY.load_contract('{"schema": NaN}')
+
+    def test_document_performance_drift_is_rejected(self) -> None:
+        text = (ROOT / "docs/DEVOPS-ALIASES.md").read_text(encoding="utf-8")
+        changed = text.replace(
+            "<= 16 ms p95; deterministic and allocation-bounded",
+            "<= 32 ms p95; deterministic and allocation-bounded",
+        )
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "controls missing"):
+            POLICY.validate_spec_text(changed)
+
     def test_missing_security_section_is_rejected(self) -> None:
         text = (ROOT / "docs/DEVOPS-ALIASES.md").read_text(encoding="utf-8")
         changed = text.replace("## Security and privacy", "## Safety")
@@ -152,6 +206,22 @@ class AliasSpecificationTests(unittest.TestCase):
                     content = content.replace("DEVOPS-ALIASES.md", "missing.md")
                 destination.write_text(content, encoding="utf-8")
             with self.assertRaisesRegex(POLICY.AliasSpecError, "ROADMAP.md"):
+                POLICY.validate_wiring(root)
+
+    def test_missing_ci_owner_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in POLICY.WIRING:
+                destination = root / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                content = (ROOT / relative).read_text(encoding="utf-8")
+                if relative == ".github/workflows/ci.yml":
+                    content = content.replace(
+                        "test_devops_alias_spec.py",
+                        "missing_alias_spec_test.py",
+                    )
+                destination.write_text(content, encoding="utf-8")
+            with self.assertRaisesRegex(POLICY.AliasSpecError, "ci.yml"):
                 POLICY.validate_wiring(root)
 
     def test_policy_reader_rejects_symbolic_links(self) -> None:
