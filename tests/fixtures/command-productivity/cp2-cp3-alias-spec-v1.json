@@ -64,6 +64,42 @@
     "enabled",
     "alias_projection"
   ],
+  "model_enums": {
+    "templates": ["TypedArgv", "RawInsertOnly"],
+    "argument_policies": ["None", "ForwardAll", "TypedBindings"],
+    "execution_modes": ["Insert", "Copy", "ExactLaunch"],
+    "completion_modes": ["Required", "BestEffort", "Disabled"],
+    "override_policies": ["NativeWins", "ExplicitExactOverride"]
+  },
+  "alias_policy": {
+    "portable_pattern": "^[a-z][a-z0-9-]{1,31}$",
+    "minimum_length": 2,
+    "maximum_length": 32,
+    "builtin_one_letter_names": false,
+    "secret_placeholders": false,
+    "raw_insert_projection": false
+  },
+  "projection_modes": {
+    "powershell": ["CommandAlias", "WrapperFunction"],
+    "bash": ["CommandAlias", "WrapperFunction"],
+    "zsh": ["CommandAlias", "WrapperFunction"],
+    "fish": ["FishAbbreviation", "WrapperFunction"],
+    "cmd": ["DoskeyMacro"]
+  },
+  "health_states": [
+    "Ready",
+    "Disabled",
+    "Missing tool",
+    "Unsupported tool",
+    "Collision",
+    "Completion unavailable",
+    "Stale source",
+    "Reload required",
+    "Tampered artifact",
+    "Unsafe permissions",
+    "Malformed source",
+    "Generation failed"
+  ],
   "defaults": {
     "builtin_aliases_enabled": false,
     "action_execution": "insert-without-enter",
@@ -97,6 +133,24 @@
     "implicit_execution": false,
     "hidden_global_context_mutation": false
   },
+  "performance_targets": {
+    "baseline_days": 30,
+    "warm_load_p95_ms": 25,
+    "search_p95_ms": 16,
+    "collision_p95_ms": 25,
+    "compile_shell_p95_ms": 50,
+    "shell_startup_verify_p95_ms": 50
+  },
+  "ux_invariants": [
+    "keyboard-complete",
+    "focus-trap-and-exact-return",
+    "underlay-accessibility-inert",
+    "no-pty-geometry-mutation",
+    "text-and-icon-not-color-alone",
+    "responsive-at-400-percent",
+    "high-contrast-and-reduced-motion",
+    "narrator-nvda-voiceover-orca"
+  ],
   "verification_domains": [
     "model-and-persistence",
     "projection-compilers",
