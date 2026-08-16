@@ -1014,31 +1014,47 @@ renderer-neutral goldens remain mandatory but never substitute for controlled
 native evidence. Until those gates land in executable CI/QA ownership, the Hub
 must remain documented as planned/non-activated.
 
-## CP2.0 model and planned CP2.1/CP3 Quick Action and alias assurance
+## CP2.0 model and CP2.1 persistence-only Quick Action assurance
 
-The capability-free Quick Action schema, bounded TOML parser, and deterministic
-validator are present as non-activated groundwork in
-`automexia-devops/src/actions`. The CP0 checker permits only the three reviewed
-pure source files and rejects process, filesystem, environment, network,
-clipboard, shell-integration, launch-broker, async-runtime, or unsafe-code
-markers. Quick Action persistence, generated aliases, and first-party DevOps
-packs remain planned work and are not a shipped v0.4 claim. Their activation must
-land with persistence/recovery, shell projection, collision,
-completion, native-host, UI/accessibility, security/fuzz/mutation,
-performance, and resource-lifecycle suites in
+The capability-free schema/parser/validator remains in the exact three-file
+`automexia-devops/src/actions` boundary. CP2.1 adds exactly five reviewed app
+sources under `automexia::quick_actions` for bounded private no-follow storage,
+atomic primary/one-previous recovery, nonblocking cross-process lock/CAS,
+immutable fingerprinted last-known-good snapshots, exact watch filtering,
+bounded coalescing/periodic reconciliation, CRUD, and redacted errors. The
+checker rejects process, network, environment discovery, clipboard, provider,
+shell-profile, UI, VT, PTY, async-runtime, execution, and unsafe code outside the
+reviewed platform permission adapter.
+
+CP2.1 is foundation code, not a shipped Command Center surface: startup does not
+instantiate it, no alias/projection is generated, and no command is inserted or
+executed. CP2.2 activation must add worker/UI/accessibility/shell-insertion and
+native-host evidence described in
 [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md#verification-plan).
 
-Run the CP2.0 source/model gate with:
+Run the focused CP2.0/CP2.1 gate with:
 
 ```powershell
 cargo test -p automexia-devops --all-targets --locked
-cargo clippy -p automexia-devops --all-targets --locked -- -D warnings
+cargo test -p automexia-terminal --lib quick_actions --locked
+cargo test -p automexia-terminal --test quick_action_persistence --locked
+cargo clippy -p automexia-terminal --lib --locked -- -D warnings
 cargo bench -p automexia-devops --bench quick_actions --locked -- --noplot
+cargo bench -p automexia-terminal --bench quick_action_store --locked -- --noplot
 python tools/ci/check_devops_alias_spec.py
 python tools/ci/test_devops_alias_spec.py
 python tools/ci/check_command_productivity.py
 python tools/ci/test_command_productivity.py
 ```
+
+The focused Windows evidence is 25 unit cases and four public integration /
+property cases, including concurrent writers, rollback/tamper/corruption,
+Unicode/spaced paths, 1,000 read-handle cycles, 64 writes, 24 watcher lifecycles,
+1,000 coalesced events, redaction, and periodic cross-window reconciliation.
+A native Ubuntu 24.04/WSL run passes 27 unit cases, the same four public tests,
+and warnings-denied Linux Clippy, including Unix modes, links, sync, and inotify.
+Hosted native Windows/Linux/macOS CI plus the named-hardware 30-day benchmark
+remain mandatory before cross-platform or release-performance claims.
 
 The gate must exercise PowerShell 5.1/7+, Bash, Zsh, Fish, CMD, WSL, Windows,
 Linux, and macOS while proving that native definitions win, generated files are
@@ -1063,7 +1079,7 @@ resource ceilings, eleven conflict fixtures, sixteen threats, and seven trust
 boundaries. Canonical fingerprints and exact nested schemas make every accepted
 field review-visible. Bounded no-symlink scanning covers shell startup and all
 runtime workspace crates to reject premature provider/runtime activation or
-terminal-grid command inference. Nineteen policy tests, including a versioned
+terminal-grid command inference. Twenty-two policy tests, including a versioned
 eleven-case hostile corpus, prove that weakened contracts, threat controls,
 activation status, source boundaries, and CI wiring fail closed.
 

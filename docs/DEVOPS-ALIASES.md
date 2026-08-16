@@ -1009,7 +1009,7 @@ preflight and records redacted evidence.
   unbounded nested collections, duplicate IDs/shells/tags/placeholders, controls
   and bidi text, unsafe command IDs, invalid references, secret/default leakage,
   raw alias projection, risky aliases, and unreviewed mutating aliases.
-- The eleven-case hostile TOML corpus, 34 alias-policy mutations, 19 command-
+- The eleven-case hostile TOML corpus, 34 alias-policy mutations, 22 command-
   productivity mutations, and exact three-file architecture allowlist fail
   closed without adding process, network, filesystem, secret, profile, UI, PTY,
   async-runtime, or unsafe-code authority.
@@ -1025,8 +1025,9 @@ python tools/ci/check_command_productivity.py
 python tools/ci/test_command_productivity.py
 ```
 
-No runtime store, watcher, alias, shell projection, UI, or execution path exists;
-CP2.1 is the next activation boundary.
+CP2.0 itself introduced no runtime store, watcher, alias, shell projection, UI,
+or execution path. CP2.1 below adds only the reviewed persistence library; it
+still does not activate a user-facing action surface.
 
 A short 2026-08-16 local Windows Criterion smoke measured median validated TOML
 parsing at 7.46 us for one action, 3.37 ms for 256 actions, and 18.36 ms for the
@@ -1034,14 +1035,58 @@ parsing at 7.46 us for one action, 3.37 ms for 256 actions, and 18.36 ms for the
 load budget. This deliberately short, noisy run proves the benchmark works; it
 is not the required controlled 30-day cross-host baseline or a release ratchet.
 
-### CP2.1 - user-private action store
+### CP2.1 - user-private action store (implemented foundation)
 
-- Implement bounded parse, atomic source/one previous revision, serialized
-  compare-and-swap writes, last-known-good snapshot, exact watcher, and CRUD.
-- No provider process, alias generation, workspace activation, or exact launch.
+The application-owned `automexia::quick_actions` boundary now provides:
 
-Exit: corruption/concurrency/crash/permission/storage/leak tests pass on
-Windows, Linux, and macOS.
+- an explicit user-private, exactly named `actions/` root whose managed parent
+  chain rejects links/redirections, with a 1 MiB source ceiling and an
+  8 MiB resident-cache estimate ceiling, no-follow bounded reads, and regular-
+  file/stable-identity checks before parse;
+- private directory/file permissions (0700/0600 on Unix and a protected current-
+  user DACL on Windows), without environment discovery inside the store;
+- same-directory staged writes, file and parent-directory durability, one
+  `actions.previous.toml` recovery generation, and an explicit recovery API;
+- cross-process `File::try_lock` serialization and revision compare-and-swap, so
+  a stale window cannot overwrite a newer revision and a busy writer never
+  blocks the renderer, terminal input, VT, or PTY path;
+- immutable `Arc` snapshots with a BLAKE3 source fingerprint, newer-generation
+  publication, same-revision tamper and rollback rejection, monotonic explicit
+  recovery that refuses to replace a valid primary, and complete last-
+  known-good retention after malformed or oversized reloads;
+- a bounded 64-event, 64-event-per-poll parent-directory watcher that filters the
+  exact source, coalesces bursts, and periodically reconciles dropped events;
+- create, update, delete, replace, and explicit previous-generation recovery,
+  with fixed redacted public error codes.
+
+No provider process, alias generation, workspace activation, shell projection,
+UI, clipboard, PTY, or exact launch authority was added. The library is not
+instantiated by startup or exposed in the Command Center yet; that remains
+CP2.2.
+
+Implemented evidence includes 25 focused unit cases, four public integration /
+property cases, 1,000 read-handle/storage cycles, 64 serialized write cycles,
+24 watcher start/stop cycles, a 1,000-event coalescing storm, concurrent CAS,
+malformed/oversized/rollback/tamper recovery, Unicode and spaced roots, redaction,
+and an end-to-end periodic cross-window reconciliation. The exact five-source
+persistence allowlist and 22 command-productivity plus 34 alias-policy mutations
+reject unreviewed capability or source expansion.
+
+The controlled Criterion target is
+`cargo bench -p automexia-terminal --bench quick_action_store --locked -- --noplot`.
+It measures warm validated loads at 1, 256, and 1,024 actions and is owned by
+nightly compile plus controlled QA. A short 2026-08-16 local Windows run measured
+medians of 0.556 ms, 2.546 ms, and 9.970 ms respectively, keeping the hard ceiling
+below the provisional 25 ms warm-load budget. This is executable smoke evidence,
+not the required 30-day named-hardware baseline; hosted native Linux/macOS and
+controlled longitudinal evidence remain release gates.
+
+Exit at the implementation boundary: satisfied locally with 25 Windows and 27
+Ubuntu 24.04/WSL unit cases, four public integration/property cases on each host,
+and warnings-denied Clippy on both. The WSL run additionally proves Unix
+0700/0600, linked-parent rejection, directory sync, and inotify lifecycle.
+Hosted native Windows, Linux, and macOS CI must still pass on the pushed commit
+before a cross-platform release claim. CP2.2 is the next phase.
 
 ### CP2.2 - action search, editor, and insert/copy
 

@@ -1309,6 +1309,12 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && root()
                 .join("automexia-devops/benches/quick_actions.rs")
                 .is_file()
+            && qa.contains("\"benchmark-quick-action-store\": 7200")
+            && qa.contains("\"benchmark-quick-action-store\"")
+            && qa.contains("\"quick_action_store\"")
+            && root()
+                .join("apps/automexia-terminal/benches/quick_action_store.rs")
+                .is_file()
             && pty_manifest.contains("name = \"pty_io\"")
             && root().join("teletypewriter/benches/pty_io.rs").is_file(),
         "Every declared controlled benchmark must compile nightly and execute with a bounded controlled-QA timeout",

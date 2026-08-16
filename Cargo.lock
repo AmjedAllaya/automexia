@@ -414,6 +414,7 @@ dependencies = [
  "automexia-ui-model",
  "base64",
  "bitflags 2.13.1",
+ "blake3",
  "clap",
  "corcovado",
  "cpal",

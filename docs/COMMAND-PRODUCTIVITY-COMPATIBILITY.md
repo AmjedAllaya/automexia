@@ -1,7 +1,8 @@
 # Command Productivity Compatibility Baseline
 
-Status: CP0 baseline and CP1 native completion accepted, 2026-08-16. CP2 Quick
-Actions, CP3 aliases, and CP5 Automexia-rendered suggestions are not shipped.
+Status: CP0 baseline and CP1 native completion accepted, 2026-08-16. CP2.0 model
+and CP2.1 internal persistence foundation are implemented; CP2.2 user-facing
+Quick Actions, CP3 aliases, and CP5 Automexia-rendered suggestions are not shipped.
 
 ## Purpose
 
@@ -21,7 +22,7 @@ machine-readable authority is
 | Fish | First-class metadata integration plus native-first completion adapter; Fish owns prompt/editor/history/autosuggestions | CP1 complete | CP2 typed action insertion |
 | CMD | Prompt/listing DOSKEY helpers and truthful native fallback; no programmable-completion parity claim | CP1 complete by explicit fallback | CP2 insert-only action support |
 | DevOps short aliases | None supplied by Automexia | Correct CP0 nonactivation | CP3 opt-in generation only |
-| Persistent Quick Actions | No source store or generated projection | Not implemented | CP2 |
+| Persistent Quick Actions | Private bounded atomic/CAS/last-known-good store library exists but is not started or exposed | CP2.1 foundation implemented, non-shipped | CP2.2 UI and insertion |
 | Provider-aware candidates | Existing status context only, not completion | Not implemented and forbidden on input | CP4 after D6 |
 
 This audit is deliberately strict: prompt path styling, icon-aware `ls`, command

@@ -99,6 +99,13 @@ MODEL_FILES = [
     "automexia-devops/src/actions/model.rs",
     "automexia-devops/src/actions/validation.rs",
 ]
+PERSISTENCE_FILES = [
+    "apps/automexia-terminal/src/automexia/quick_actions/mod.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/refresh.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/secure_fs.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/service.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/store.rs",
+]
 HOSTILE_FIXTURE = "tests/fixtures/command-productivity/cp2-hostile-actions-v1.json"
 HOSTILE_CASES = {
     "unknown-field": ("unknown-field.toml", "decode-error"),
@@ -256,7 +263,8 @@ REQUIRED_SPEC_SNIPPETS = {
     "1,000 save/regenerate/reload cycles",
     "no handle/task/file/storage growth",
     "CP2.0 - contract and fixtures (implemented)",
-    "No runtime store, watcher, alias, shell projection, UI, or execution path exists",
+    "CP2.1 - user-private action store (implemented foundation)",
+    "No provider process, alias generation, workspace activation, shell projection",
 }
 WIRING = {
     "docs/ROADMAP.md": "DEVOPS-ALIASES.md",
@@ -351,10 +359,10 @@ def validate_contract(document: Any) -> dict[str, int]:
         1,
         "CP2-CP3-SPEC",
         "planned",
-        "CP2.0-model-only",
+        "CP2.1-persistence-library",
     ):
         raise AliasSpecError(
-            "CP2/CP3 must remain planned schema 1 with only CP2.0 model activation"
+            "CP2/CP3 must remain planned schema 1 with only CP2.0 model and CP2.1 persistence-library activation"
         )
     checks = (
         ("authorities", AUTHORITIES, "authority map"),
@@ -377,7 +385,7 @@ def validate_contract(document: Any) -> dict[str, int]:
         ("verification_domains", VERIFICATION_DOMAINS, "verification matrix"),
         ("model_files", MODEL_FILES, "pure model source boundary"),
         ("hostile_fixture", HOSTILE_FIXTURE, "hostile fixture authority"),
-        ("activation_files", [], "non-activation boundary"),
+        ("activation_files", PERSISTENCE_FILES, "CP2.1 persistence source boundary"),
     )
     for key, expected, label in checks:
         if document[key] != expected:
@@ -389,6 +397,7 @@ def validate_contract(document: Any) -> dict[str, int]:
         "verification_domains": len(VERIFICATION_DOMAINS),
         "ux_invariants": len(UX_INVARIANTS),
         "model_files": len(MODEL_FILES),
+        "persistence_files": len(PERSISTENCE_FILES),
     }
 
 
@@ -431,6 +440,20 @@ def validate_model_evidence(root: Path) -> dict[str, int]:
         actual[identifier] = (fixture, expected)
     if actual != HOSTILE_CASES:
         raise AliasSpecError("CP2.0 hostile fixture catalog changed")
+    required_persistence_tokens = {
+        PERSISTENCE_FILES[0]: {"QuickActionStore", "QuickActionService", "QuickActionMonitor"},
+        PERSISTENCE_FILES[1]: {"ExactActionWatchPlan", "WATCH_EVENT_CAPACITY", "RecursiveMode::NonRecursive"},
+        PERSISTENCE_FILES[2]: {"read_bounded_regular", "O_NOFOLLOW", "PROTECTED_DACL_SECURITY_INFORMATION"},
+        PERSISTENCE_FILES[3]: {"RetainedLastKnownGood", "StaleRevision", "Arc<QuickActionSnapshot>"},
+        PERSISTENCE_FILES[4]: {"actions.previous.toml", "try_lock", "MAX_CACHED_ACTION_BYTES", "recover_previous"},
+    }
+    for relative, tokens in required_persistence_tokens.items():
+        text = bounded_text(root / relative, MAX_POLICY_BYTES, "CP2.1 persistence source")
+        missing = sorted(token for token in tokens if token not in text)
+        if missing:
+            raise AliasSpecError(
+                f"{relative} is missing CP2.1 persistence tokens: {missing}"
+            )
     return {"hostile_cases": len(actual)}
 
 
@@ -509,6 +532,7 @@ def main() -> int:
         f"(shells={counts['shells']}, providers={counts['providers']}, "
         f"scopes={counts['scopes']}, assurance={counts['verification_domains']}, "
         f"ux={counts['ux_invariants']}, model_files={counts['model_files']}, "
+        f"persistence_files={counts['persistence_files']}, "
         f"hostile_cases={counts['hostile_cases']}, wiring={counts['wiring']})"
     )
     return 0
