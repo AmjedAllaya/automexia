@@ -32,13 +32,17 @@ jobs:
             ~/.cargo/git
           key: policy-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
       - name: Install repository format validators
-        run: sudo apt-get update && sudo apt-get install -y python3-yaml shellcheck zsh
+        run: sudo apt-get update && sudo apt-get install -y python3-yaml shellcheck zsh fish
       - name: Repository contracts
         run: cargo xtask verify all
       - name: Validate TOML, YAML, JSON, XML, and desktop metadata
         run: python tools/ci/validate_repository.py
       - name: Command productivity CP0 policy mutation tests
         run: python tools/ci/test_command_productivity.py
+      - name: Command productivity CP1 activation mutation tests
+        run: python tools/ci/test_command_productivity_cp1.py
+      - name: Completion adapter benchmark contract tests
+        run: python tools/ci/test_measure_completion_adapter.py
       - name: QA evidence runner contracts
         run: python tools/ci/test_qa.py
       - name: Cross-platform workflow coverage regression tests
@@ -90,10 +94,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh
+        run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish
       - name: Install macOS shell validator
         if: runner.os == 'macOS'
-        run: brew install shellcheck
+        run: brew install shellcheck fish
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |

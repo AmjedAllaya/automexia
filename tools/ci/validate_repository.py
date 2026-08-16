@@ -20,6 +20,9 @@ import yaml
 from check_command_productivity import (
     validate_repository as validate_command_productivity,
 )
+from check_command_productivity_cp1 import (
+    validate_repository as validate_command_productivity_cp1,
+)
 from check_documentation_coverage import validate as validate_documentation_coverage
 from check_feature_assurance import load_and_validate as validate_feature_assurance
 from check_platform_coverage import validate_repository_workflows
@@ -280,6 +283,8 @@ def validate() -> None:
 
     command_productivity_counts = validate_command_productivity()
     counts["command productivity CP0"] = command_productivity_counts["threats"]
+    command_productivity_cp1_counts = validate_command_productivity_cp1()
+    counts["command productivity CP1"] = command_productivity_cp1_counts["providers"]
 
     validate_brand_assets()
     counts["brand assets"] = 1

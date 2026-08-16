@@ -1,8 +1,7 @@
 # Command Productivity Compatibility Baseline
 
-Status: CP0 accepted baseline, 2026-08-15. This document describes current
-behavior and future adapter contracts; it does not claim that CP1 completion or
-CP2 Quick Actions are shipped.
+Status: CP0 baseline and CP1 native completion accepted, 2026-08-16. CP2 Quick
+Actions and CP3 aliases are not shipped.
 
 ## Purpose
 
@@ -16,11 +15,11 @@ machine-readable authority is
 
 | Surface | Current v0.4 state | CP0 classification | Next implementation |
 |---|---|---|---|
-| PowerShell | Idempotent prompt/listing integration; PSReadLine still owns input/history/completion; no provider completers or generated aliases | Baseline complete | CP1 health and managed completion adapter |
-| Bash/WSL | Idempotent prompt/listing integration; Readline and native completion unchanged | Baseline complete | CP1 completion-directory adapter |
-| Zsh/WSL/macOS | Idempotent prompt/listing integration; ZLE/compsys unchanged | Baseline complete | CP1 namespaced `fpath` adapter |
-| Fish | No Automexia integration; native Fish behavior remains untouched | Deliberately absent, documented | CP1 first-class Fish adapter |
-| CMD | Prompt/listing DOSKEY helpers only; no rich programmable-completion claim | Baseline complete | CP1 health plus action insertion; no false parity claim |
+| PowerShell | Idempotent prompt/listing plus explicit-consent, digest-verified cached completers; PSReadLine owns input/history/candidates | CP1 complete | CP2 typed action insertion |
+| Bash/WSL | Native-first fixed-path completion adapter; Readline and existing compspecs remain authoritative | CP1 complete | CP2 typed action insertion |
+| Zsh/WSL/macOS | Native-first fixed-path adapter that never invokes `compinit`; ZLE/compsys remain authoritative | CP1 complete | CP2 typed action insertion |
+| Fish | First-class metadata integration plus native-first completion adapter; Fish owns prompt/editor/history/autosuggestions | CP1 complete | CP2 typed action insertion |
+| CMD | Prompt/listing DOSKEY helpers and truthful native fallback; no programmable-completion parity claim | CP1 complete by explicit fallback | CP2 insert-only action support |
 | DevOps short aliases | None supplied by Automexia | Correct CP0 nonactivation | CP3 opt-in generation only |
 | Persistent Quick Actions | No source store or generated projection | Not implemented | CP2 |
 | Provider-aware candidates | Existing status context only, not completion | Not implemented and forbidden on input | CP4 after D6 |
@@ -31,13 +30,13 @@ managed autocomplete or persistent aliases.
 
 ## Shell and editor ownership
 
-| Shell | Editor/completion owner | Supported hosts | Managed projection planned | Native fallback |
+| Shell | Editor/completion owner | Supported hosts | CP1 managed projection | Native fallback |
 |---|---|---|---|---|
-| PowerShell | PowerShell parser and PSReadLine | Windows required; Linux/macOS when PowerShell is installed | Argument completer or reviewed predictor only on supported versions; `Set-Alias` only for a simple name, function otherwise | Existing completion, keybindings, prediction settings, history, and profile remain unchanged |
-| Bash | GNU Readline and Bash programmable completion | Linux/macOS/WSL | One user completion-directory file and namespaced functions | Existing compspec or default Readline filename completion |
-| Zsh | ZLE and `compsys`/`compinit` | Linux/macOS/WSL | One Automexia-owned directory prepended to `fpath`; namespaced completion functions | Existing functions/options and user `fpath` remain authoritative |
-| Fish | Fish editor, completions, and autosuggestions | Linux/macOS/WSL when installed | User completion file; abbreviation for visible insert expansion; function for logic | Existing Fish completions, autosuggestions, history, and universal variables remain authoritative |
-| CMD | Console input and DOSKEY | Windows | Generated macro file for compatible aliases plus Automexia action insertion | Native CMD/DOSKEY behavior; no context-aware parity claim |
+| PowerShell | PowerShell parser and PSReadLine | Windows required; Linux/macOS when PowerShell is installed | Fixed cached script only after explicit native-override consent | Existing completion, keybindings, prediction settings, history, and profile remain unchanged |
+| Bash | GNU Readline and Bash programmable completion | Linux/macOS/WSL | Fixed digest-verified artifact; `complete -p` collision check | Existing compspec or default Readline filename completion |
+| Zsh | ZLE and `compsys`/`compinit` | Linux/macOS/WSL | Fixed digest-verified artifact; `_comps` collision check; never runs `compinit` | Existing functions/options and user `fpath` remain authoritative |
+| Fish | Fish editor, completions, and autosuggestions | Linux/macOS/WSL when installed | Fixed digest-verified artifact; `complete -c` name inventory | Existing Fish completions, autosuggestions, history, and universal variables remain authoritative |
+| CMD | Console input and DOSKEY | Windows | No managed provider projection | Native CMD/DOSKEY behavior; no context-aware parity claim |
 
 Automexia never recovers the editable command from terminal-grid cells. A future
 custom completion surface requires the CP5 editor bridge and must preserve the

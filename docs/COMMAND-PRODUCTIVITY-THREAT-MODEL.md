@@ -1,7 +1,7 @@
 # Command Productivity Threat Model
 
-Status: CP0 accepted baseline, 2026-08-15. Re-review is mandatory before CP1
-activation and whenever the schema, trust boundaries, shell/provider execution,
+Status: CP0 baseline and CP1 activation accepted, 2026-08-16. Re-review remains
+mandatory whenever the schema, trust boundaries, shell/provider execution,
 capabilities, persistence roots, or distribution model changes.
 
 ## Scope
@@ -11,10 +11,12 @@ generated alias/function/abbreviation files, provider completion refresh, action
 insertion, and the future brokered exact-launch path. It covers local, workspace,
 capsule, imported, and built-in inputs on Windows, Linux, macOS, and WSL.
 
-CP0 itself adds no completion provider, action store, alias projection, process,
-network, credential, clipboard, PTY, renderer, or launch capability. The
-machine-readable threat authority is
-[`cp0-threats-v1.json`](../tests/fixtures/command-productivity/cp0-threats-v1.json).
+CP0 itself adds no runtime capability. CP1 adds an explicit local provider
+process only when the user invokes `completion refresh`; it adds no network,
+credential, clipboard, PTY, renderer, extension, or command-launch capability.
+The machine-readable authorities are
+[`cp0-threats-v1.json`](../tests/fixtures/command-productivity/cp0-threats-v1.json)
+and [`cp1-contract-v1.json`](../tests/fixtures/command-productivity/cp1-contract-v1.json).
 
 ## Assets to protect
 
@@ -198,6 +200,13 @@ fallback; terminal-cell scraping is forbidden.
   threat controls, limits, review triggers, CI wiring, and source boundaries.
 - CP1 adds native install/update/disable/uninstall, provider-output, timeout,
   collision, profile-surrounding-content, and shell-editor behavior tests.
+- The CP1 checker fixes the activation allowlist, provider/shell policies,
+  exact operations, process/file ceilings, and zero network/secret/grid/startup
+  capability. Rust tests terminate hung/overflowing process groups/Windows Job
+  Objects including descendants that retain output pipes, reject file and
+  parent-directory links/reparse points and implicit Windows script launchers,
+  hostile output, verify atomic replacement and fixed paths, and shell tests
+  cover digest tamper, native collisions, disable, repair, and exact uninstall.
 - CP2 adds parser/property/fuzz, atomic/recovery/concurrency, serializer,
   insertion/no-Enter, secret-negative, search-performance, and leak tests.
 - CP3/CP4 add pack risk/provenance, alias completion, capsule isolation, broker

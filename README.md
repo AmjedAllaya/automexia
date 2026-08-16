@@ -214,11 +214,11 @@ compatibility details.
   per-PTY environment isolation. These are planned, not current v0.4 features;
   see the [roadmap](docs/ROADMAP.md) and
   [SSH/DevOps/multi-cloud architecture](docs/SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md).
-- v0.5.x also has a planned
-  [Command Productivity](docs/COMMAND-PRODUCTIVITY.md) track: shell-native
-  completion health, persistent typed Quick Actions, opt-in non-colliding
-  aliases, and reviewed DevOps packs. These capabilities are not shipped in
-  v0.4; built-in short aliases remain disabled by default.
+- The v0.5 [Command Productivity](docs/COMMAND-PRODUCTIVITY.md) track has
+  completed CP1 shell-native completion health and bounded explicit provider
+  refresh. Persistent typed Quick Actions, opt-in non-colliding aliases, and
+  reviewed DevOps packs remain later phases; built-in short aliases remain
+  disabled by default.
 - Grouping inherited engines beneath `engine/` remains lower priority than the
   release-critical v0.5 extension/session boundary.
 - Third-party extension downloads, a public extension SDK, and Wasm sandboxing

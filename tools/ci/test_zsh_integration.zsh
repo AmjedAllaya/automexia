@@ -3,6 +3,18 @@ set -eu
 
 root=${0:A:h:h:h}
 export TERM_PROGRAM=Automexia
+fixture=$(mktemp -d)
+trap 'rm -rf "$fixture"' EXIT
+export AUTOMEXIA_CONFIG_HOME="$fixture/config"
+completion_root="$AUTOMEXIA_CONFIG_HOME/generated/completion/zsh"
+mkdir -p "$completion_root"
+print -r -- 'compdef _gnu_generic kubectl' >"$completion_root/kubectl.zsh"
+sha256sum "$completion_root/kubectl.zsh" | awk '{print $1}' >"$completion_root/kubectl.zsh.sha256"
+print -r -- 'compdef _gnu_generic docker' >"$completion_root/docker.zsh"
+sha256sum "$completion_root/docker.zsh" | awk '{print $1}' >"$completion_root/docker.zsh.sha256"
+autoload -Uz compinit
+compinit -D
+compdef _files docker
 source "$root/shell-integration/zsh/automexia.zsh" >/dev/null
 source "$root/shell-integration/zsh/automexia.zsh" >/dev/null
 __automexia_precmd >/dev/null
@@ -24,4 +36,39 @@ for category_color in \
   grep -qF "$category_color" "$root/shell-integration/zsh/automexia.zsh"
 done
 grep -qF 'automexia-eza-filter.pl' "$root/shell-integration/zsh/automexia.zsh"
-print 'PASS: Zsh integration is active, idempotent, UTF-8-safe, semantically path-colored, composite-folder-aware, and command-neutral'
+[[ $_comps[kubectl] == _gnu_generic ]]
+[[ $_comps[docker] == _files ]]
+[[ $__automexia_completion_loaded == kubectl ]]
+[[ $__automexia_completion_collisions == docker ]]
+unset AUTOMEXIA_COMPLETION_ADAPTER_ZSH_LOADED
+export AUTOMEXIA_COMPLETION_DISABLED=1
+unset '_comps[kubectl]'
+source "$root/shell-integration/completion/zsh/automexia-completion.zsh"
+(( ! ${+_comps[kubectl]} ))
+automexia_completion_health | grep -qF 'state=disabled'
+
+zmodload zsh/datetime
+typeset -a adapter_samples
+for iteration in {1..25}; do
+  unset AUTOMEXIA_COMPLETION_ADAPTER_ZSH_LOADED AUTOMEXIA_COMPLETION_DISABLED
+  unset '_comps[kubectl]'
+  started=$EPOCHREALTIME
+  source "$root/shell-integration/completion/zsh/automexia-completion.zsh" >/dev/null
+  elapsed=$(( EPOCHREALTIME - started ))
+  (( iteration > 5 )) && adapter_samples+=("$elapsed")
+done
+zsh_adapter_p95=$(printf '%s\n' "${adapter_samples[@]}" | sort -n | sed -n '19p')
+(( zsh_adapter_p95 <= 0.050 ))
+
+unset AUTOMEXIA_COMPLETION_ADAPTER_ZSH_LOADED AUTOMEXIA_COMPLETION_DISABLED
+unset '_comps[kubectl]'
+unsafe_completion="$fixture/unsafe-zsh"
+mkdir -p "$unsafe_completion"
+print -r -- 'compdef _gnu_generic kubectl' >"$unsafe_completion/kubectl.zsh"
+sha256sum "$unsafe_completion/kubectl.zsh" | awk '{print $1}' >"$unsafe_completion/kubectl.zsh.sha256"
+rm -rf -- "$completion_root"
+ln -s "$unsafe_completion" "$completion_root"
+source "$root/shell-integration/completion/zsh/automexia-completion.zsh"
+(( ! ${+_comps[kubectl]} ))
+automexia_completion_health | grep -qF 'state=unsafe-path/native-fallback'
+print "PASS: Zsh integration is prompt-safe, native-first, digest-verified, linked-parent-safe, disable-safe, idempotent, adapter-p95=${zsh_adapter_p95}s, and command-neutral"

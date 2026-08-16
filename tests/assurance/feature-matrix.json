@@ -313,6 +313,31 @@
       }
     },
     {
+      "id": "command-productivity-cp1-native-completion",
+      "title": "Bounded native-shell completion adapters, health, explicit provider refresh, and exact lifecycle",
+      "components": ["tools/xtask", "shell-integration", "tests/fixtures/command-productivity"],
+      "documentation": {
+        "guide": ["docs/SHELL-INTEGRATION.md#native-command-completion"],
+        "reference": ["docs/CLI-REFERENCE.md#focused-xtask-commands", "docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md#official-provider-completion-baseline"],
+        "explanation": ["docs/COMMAND-PRODUCTIVITY-THREAT-MODEL.md", "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["shell-integration/completion", "docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md#shell-and-editor-ownership"]},
+        "correctness": {"level": "pr", "evidence": ["tools/xtask/src/completion.rs", "tools/ci/test_shell_sources.sh", "tools/ci/test_shell_integration.ps1", "tools/ci/test_command_productivity_cp1.py"]},
+        "security": {"level": "pr", "evidence": ["tools/ci/check_command_productivity_cp1.py", "tests/fixtures/command-productivity/cp1-contract-v1.json", "tools/xtask/src/completion.rs"]},
+        "performance": {"level": "pr", "evidence": ["tools/xtask/src/completion.rs", "tools/ci/test_shell_sources.sh"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["tools/xtask/src/completion.rs", "shell-integration/uninstall-unix.sh", "shell-integration/uninstall-windows.ps1"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["tools/xtask/src/completion.rs", "shell-integration/uninstall-unix.sh", "tools/ci/check_command_productivity_cp1.py"]},
+        "resilience": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_command_productivity_cp1.py", "shell-integration/completion"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "CP1 deliberately uses each native shell's accessible candidate UI and draws no Automexia completion overlay."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "tools/ci/test_powershell.ps1", "tools/ci/test_shell_integration.ps1"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "tools/ci/test_shell_sources.sh", "tools/ci/test_fish_integration.fish"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "tools/ci/test_shell_sources.sh", "tools/ci/test_fish_integration.fish"]}
+      }
+    },
+    {
       "id": "contributor-automation-quality-policy",
       "title": "Single-command workflow, architecture, identity, coverage, QA evidence, and dependency policy",
       "components": ["tools/xtask"],

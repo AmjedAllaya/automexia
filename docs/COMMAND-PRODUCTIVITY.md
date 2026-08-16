@@ -1,6 +1,6 @@
 # Command Productivity: Completion and Quick Actions
 
-Status: CP0 architecture baseline accepted; CP1-CP6 runtime capabilities remain
+Status: CP0 architecture baseline and CP1 native-completion activation accepted; CP2-CP6 capabilities remain
 planned for v0.5.x and later. This document does not claim that autocomplete,
 Quick Actions, generated aliases, or provider-aware candidates currently ship.
 
@@ -380,10 +380,9 @@ is accepted; the native shell/provider/discovery and conflict/fallback matrix,
 fingerprints, whole-workspace pre-activation scanner, seventeen policy tests
 (including a versioned 11-case hostile corpus), repository-policy integration,
 and architecture gate are implemented.
-The current shell integration is also proven not to register provider
-completions or DevOps short aliases. CP1 remains unimplemented: there is still
-no Fish adapter, completion health UI, provider generator execution, action
-store, or generated alias surface.
+The CP0 baseline remains immutable. Its activation gate now permits only the
+exact CP1 files listed by the CP1 machine contract; provider code is still
+forbidden in the renderer, input, VT, PTY, and extension runtime paths.
 
 ### CP1 — completion health and shell adapters
 
@@ -395,6 +394,48 @@ store, or generated alias surface.
 
 Exit: clean install/update/uninstall, quoting, cursor, history, exit-status,
 startup-time, disabled-integration, and collision tests pass natively.
+
+CP1 status (2026-08-16): implemented. PowerShell, Bash, Zsh, Fish, CMD, and WSL
+retain their native editors. Managed Bash/Zsh/Fish adapters inventory existing
+definitions before sourcing a fixed, digest-verified artifact; native entries
+win. Because PowerShell exposes no supported read-only argument-completer
+registry, a cached PowerShell provider additionally requires the explicit
+`--allow-native-override` marker. CMD truthfully retains native DOSKEY behavior
+and does not claim programmable-completion parity.
+
+The read-only health and explicit lifecycle commands are:
+
+```text
+cargo xtask completion doctor
+cargo xtask completion refresh --provider kubernetes --shell bash
+cargo xtask completion refresh --provider kubernetes --shell powershell --allow-native-override
+cargo xtask completion remove --provider kubernetes --shell bash
+cargo xtask completion disable
+cargo xtask completion enable
+```
+
+Only Docker, Kubernetes, OpenShift, and Helm official generators are cacheable,
+and only for shells their installed CLI supports. Git, AWS, Azure, GCP, and
+OpenSSH remain package/provider-owned. Terraform and OpenTofu profile-mutating
+installers require their own reviewed manual consent and are never invoked by
+Automexia. Refresh resolves one executable, passes exact argv with null stdin,
+terminates at 750 ms, bounds stdout/stderr, validates UTF-8/control bytes, and
+publishes private fixed-name files using same-directory atomic replacement.
+Provider commands run inside a POSIX process group or Windows Job Object, so a
+timeout or output overflow terminates descendants that still hold output pipes;
+the command never leaves detached capture threads or provider children behind.
+Windows refresh accepts only native `.exe`/`.com` images and never implicitly
+routes a provider through `.cmd`/`.bat` shell parsing. Shell adapters reject a
+linked or non-directory component anywhere in their managed parent chain.
+No provider is invoked during shell startup, typing, rendering, or `doctor`.
+
+The schema-1 CP1 authority is
+[`cp1-contract-v1.json`](../tests/fixtures/command-productivity/cp1-contract-v1.json).
+Its validator keeps the 12-file activation allowlist, provider policy, five
+shell outcomes, six hard resource limits, and zero network/secret/grid/provider-
+startup capability machine-enforced. CP2 remains the next phase; CP1 does not
+add Quick Actions, generated aliases, provider authentication, a custom popup,
+or exact command launch.
 
 ### CP2 — persistent typed Quick Actions
 
@@ -510,6 +551,11 @@ keeping shell behavior native and generated state disposable. Review-before-
 insert avoids surprising execution; the D3 broker remains the only route for
 operations that genuinely need typed execution authority.
 
+Provider refresh keeps separate bounded stdout/stderr readers to avoid pipe
+deadlock. It uses the maintained `process-wrap` abstraction for POSIX process
+groups and Windows Job Objects instead of maintaining two security-sensitive
+OS process-tree implementations inside `xtask`.
+
 ## Primary references
 
 - [PowerShell predictive IntelliSense and PSReadLine predictors](https://learn.microsoft.com/powershell/scripting/learn/shell/using-predictors)
@@ -526,3 +572,4 @@ operations that genuinely need typed execution authority.
 - [Google Cloud CLI shell completion](https://cloud.google.com/sdk/docs/install-sdk#installing_the_latest_version)
 - [DOSKEY macros](https://learn.microsoft.com/windows-server/administration/windows-commands/doskey)
 - [Git aliases](https://git-scm.com/book/en/v2/Git-Basics-Git-Aliases)
+- [process-wrap cross-platform process lifecycle](https://docs.rs/process-wrap/latest/process_wrap/)

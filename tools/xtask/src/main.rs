@@ -1,3 +1,5 @@
+mod completion;
+
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -90,6 +92,9 @@ fn dispatch(args: Vec<String>) -> TaskResult {
             run_app(app_args)
         }
         [command] if command == "doctor" => doctor(),
+        [command, completion_args @ ..] if command == "completion" => {
+            completion::dispatch(completion_args)
+        }
         [command] if command == "storage" => storage_report(),
         [command] if command == "check" => check(),
         [command] if command == "ci" => ci(),
@@ -171,7 +176,7 @@ fn dispatch(args: Vec<String>) -> TaskResult {
 }
 
 fn usage() -> String {
-    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|storage|check|ci|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify all|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
+    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|check|ci|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify all|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
 }
 
 fn root() -> PathBuf {
@@ -493,6 +498,7 @@ fn doctor() -> TaskResult {
     }
     #[cfg(target_os = "windows")]
     report_windows_shell_health();
+    completion::report_health()?;
     #[cfg(target_os = "windows")]
     println!("platform           Windows: Visual Studio Build Tools, cargo-packager (x64), and the .NET SDK for repository-pinned WiX 5 (ARM64) are required for MSI builds");
     #[cfg(target_os = "macos")]
@@ -2160,6 +2166,7 @@ fn product_identity() -> TaskResult<ProductIdentity> {
 
 fn verify_architecture() -> TaskResult {
     run_python("tools/ci/check_command_productivity.py")?;
+    run_python("tools/ci/check_command_productivity_cp1.py")?;
     let identity = product_identity()?;
     let metadata = metadata()?;
     let packages = metadata["packages"]

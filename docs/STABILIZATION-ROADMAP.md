@@ -520,15 +520,32 @@ not authorize shell evaluation, provider access, or arbitrary process launch.
 | CP0 step | Audit before implementation | Implemented evidence | Remaining gate |
 |---|---|---|---|
 | Decision and terminology | Partial: ADR 0015 was proposed and the canonical roadmap defined intended ownership | ADR 0015 accepted; shell-native completion, typed Quick Action, alias projection, provider pack, insert, and D3 exact-launch terms are fixed | Reopen only on a mandatory threat-model trigger |
-| Shell/editor/platform compatibility | Partial prose without a machine authority | Compatibility baseline plus schema-1 fixture covers PowerShell/Bash/Zsh/Fish/CMD, Windows/Linux/macOS/WSL, native fallback, provider support, versions, profiles, conflicts, uninstall, and bounded read-only discovery that never invokes definitions | CP1 must implement and prove adapters natively |
+| Shell/editor/platform compatibility | Partial prose without a machine authority | Compatibility baseline plus schema-1 fixture covers PowerShell/Bash/Zsh/Fish/CMD, Windows/Linux/macOS/WSL, native fallback, provider support, versions, profiles, conflicts, uninstall, and bounded read-only discovery that never invokes definitions | Satisfied by the CP1 ledger below |
 | Threat/privacy model | General security bullets only | Threat model and schema-1 fixture define seven boundaries, 16 threats, assets, controls, verification, residual risks, and review triggers | Each later CP phase adds runtime evidence for activated boundaries |
 | Precedence and ceilings | Defined in prose but not mutation-tested | Exact precedence, native-wins policy, execution modes, 11 compatibility cases, 14 hard ceilings, nested schemas, and canonical fixture fingerprints are machine validated | Changes require ADR/threat/schema review |
-| Architecture nonactivation | Documented but not enforced | Policy uses bounded no-symlink reads, normalizes shell-hook whitespace, scans every runtime workspace crate, rejects all premature command-productivity runtime markers/provider hooks, and retains the terminal-grid inference prohibition | CP1 must update phase gate before intentional adapter activation |
+| Architecture nonactivation | Documented but not enforced | Policy uses bounded no-symlink reads, normalizes shell-hook whitespace, scans every runtime workspace crate, rejects all premature command-productivity runtime markers/provider hooks, and retains the terminal-grid inference prohibition | CP1 now narrows activation to its separate exact allowlist |
 | CI and regression ownership | Missing | Repository validation, architecture verification, PR policy, seventeen policy tests with an 11-case hostile corpus, shell contracts, and feature-assurance traceability own CP0 | Hosted CI must pass on pushed commit |
 
 CP0 result: satisfied at the source/policy boundary. It grants no runtime
 capability and does not claim CP1 completion, Fish support, Quick Action
 persistence, generated aliases, provider execution, or a custom completion UI.
+
+#### CP1 implementation ledger
+
+| CP1 step | Audit before implementation | Implemented evidence | Remaining gate |
+|---|---|---|---|
+| Shell ownership and adapters | PowerShell/Bash/Zsh existed only for prompt/listing; Fish and managed completion were absent | First-class guarded PowerShell/Bash/Zsh/Fish adapters preserve PSReadLine/Readline/ZLE/Fish ownership; CMD explicitly falls back; terminal-grid inference remains forbidden | Hosted native macOS shell job must pass on the pushed commit |
+| Provider discovery and refresh | Provider contracts were documentation only | `cargo xtask completion doctor/refresh/remove/enable/disable`; exact executable and argv; explicit-only Docker/Kubernetes/OpenShift/Helm generation; truthful external/manual/unsupported states for all 11 providers | New provider contracts require ADR/threat/allowlist review |
+| Security and persistence | No runtime artifact boundary | 750 ms process deadline, null stdin, POSIX process-group/Windows Job-Object descendant termination, native-image-only Windows refresh, 1 MiB/256 KiB capture, UTF-8/control validation, fixed paths, private directories, same-directory atomic files, SHA-256 sidecars/metadata, file/parent link checks, PowerShell explicit override | Controlled hostile-provider campaigns remain nightly evidence, not startup work |
+| Install/update/uninstall | No Fish or generated-artifact lifecycle | Source-fingerprinted Windows/Unix/WSL installation, bounded atomic profile blocks, exact-file uninstall, surrounding-content preservation, disable/native fallback, and repair tests | Remote/container installation remains explicit and out of scope |
+| Native correctness | Bash/Zsh/PowerShell prompt tests existed | Bash/Zsh/Fish native collision/digest/disable tests, Windows PowerShell/CMD integration, WSL install/repair/uninstall, provider timeout/overflow/kill tests, and CP1 policy mutations are PR-owned | Hosted Windows/macOS/Linux jobs provide final platform evidence |
+| Machine enforcement and documentation | CP0 rejected all activation | Schema-1 CP1 fixture/checker limits activation to 12 reviewed files and zero network/secret/grid/startup capability; CLI, shell, compatibility, threat, testing, feature, and roadmap docs are updated | CP2 must define and pass its own activation gate |
+
+CP1 result: implemented at the source and locally available native-host
+boundaries. It intentionally adds no Quick Action store, generated alias,
+provider authentication/network call, custom candidate UI, or exact launch.
+CP2 is next. Stable release claims still require the pushed hosted Windows,
+Linux, and macOS checks plus the existing controlled release gates.
 
 CP0-CP3 may proceed alongside D5 without delaying safe system-OpenSSH work. CP4
 must not precede D6 capsule isolation. CP5 and CP6 cannot be pulled into the

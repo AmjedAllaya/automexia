@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "phase": "CP1",
+  "status": "active",
+  "shells": {
+    "powershell": "managed-explicit-override",
+    "bash": "managed-native-first",
+    "zsh": "managed-native-first",
+    "fish": "managed-native-first",
+    "cmd": "native-fallback"
+  },
+  "providers": {
+    "git": {"command": "git", "policy": "native/provider-owned"},
+    "docker": {"command": "docker", "policy": "shell-specific"},
+    "kubernetes": {"command": "kubectl", "policy": "explicit-refresh"},
+    "openshift": {"command": "oc", "policy": "explicit-refresh"},
+    "helm": {"command": "helm", "policy": "explicit-refresh"},
+    "terraform": {"command": "terraform", "policy": "manual-consent-required"},
+    "opentofu": {"command": "tofu", "policy": "manual-consent-required"},
+    "aws": {"command": "aws_completer", "policy": "native/provider-owned"},
+    "azure": {"command": "az", "policy": "native/provider-owned"},
+    "gcp": {"command": "gcloud", "policy": "native/provider-owned"},
+    "openssh": {"command": "ssh", "policy": "native/provider-owned"}
+  },
+  "limits": {
+    "provider_deadline_ms": 750,
+    "provider_stdout_bytes": 1048576,
+    "provider_stderr_bytes": 262144,
+    "version_output_bytes": 16384,
+    "config_path_bytes": 4096,
+    "profile_bytes": 1048576
+  },
+  "operations": ["doctor", "enable", "disable", "refresh", "remove"],
+  "activation_files": [
+    "shell-integration/bash/automexia.bash",
+    "shell-integration/zsh/automexia.zsh",
+    "shell-integration/fish/automexia.fish",
+    "shell-integration/powershell/automexia.ps1",
+    "shell-integration/completion/bash/automexia-completion.bash",
+    "shell-integration/completion/zsh/automexia-completion.zsh",
+    "shell-integration/completion/fish/automexia-completion.fish",
+    "shell-integration/completion/powershell/automexia-completion.ps1",
+    "shell-integration/install-unix.sh",
+    "shell-integration/install-windows.ps1",
+    "shell-integration/uninstall-unix.sh",
+    "shell-integration/uninstall-windows.ps1"
+  ],
+  "capabilities": {
+    "network": false,
+    "secret_read": false,
+    "terminal_grid_inference": false,
+    "provider_on_startup": false,
+    "provider_on_keystroke": false
+  }
+}

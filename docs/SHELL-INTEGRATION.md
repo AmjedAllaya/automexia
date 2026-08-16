@@ -15,12 +15,51 @@ contributors do not run installer scripts manually.
 |---|---|
 | Windows PowerShell / PowerShell 7 | A guarded profile hook, prompt lifecycle metadata, OSC 7 directory, shell/user identity, same-pane CMD interception, and a PowerShell formatting view. |
 | Command Prompt | UTF-8 setup, full-path semantic prompt, identity metadata, and `ls`/`ll` wrappers while built-in `dir` and explicit `cmd /c` remain native. |
-| WSL Bash/Zsh | Per-distribution user profile block, Linux-native integration files, semantic prompt metadata, and optional eza presentation. |
-| Linux/macOS Bash/Zsh | User profile block, integration files under the Automexia config root, and user-local terminfo. |
+| WSL Bash/Zsh/Fish | Per-distribution user profile/conf.d integration, Linux-native files, semantic prompt metadata, native-first completion, and optional eza presentation. |
+| Linux/macOS Bash/Zsh/Fish | User profile/conf.d integration, files under user configuration roots, native-first completion, and user-local terminfo. |
 
 The integration loads only when `TERM_PROGRAM=Automexia`,
 `AUTOMEXIA_SHELL_INTEGRATION=1`, or the corresponding WSL marker is present.
 It uses load guards so repeated sourcing cannot stack prompt hooks.
+
+## Native command completion
+
+Automexia provisions shell adapters but never computes candidates from rendered
+terminal cells. Tab behavior, quoting, cursor movement, history, menus,
+autosuggestions, and accessibility remain owned by PSReadLine, Readline, ZLE,
+or Fish. Existing native definitions win on Bash, Zsh, and Fish. PowerShell
+requires an explicit override because it has no supported public read-only
+completer registry; CMD retains native fallback without a parity claim.
+
+```text
+cargo xtask completion doctor
+cargo xtask completion refresh --provider docker --shell bash
+cargo xtask completion refresh --provider kubernetes --shell zsh
+cargo xtask completion refresh --provider helm --shell fish
+cargo xtask completion refresh --provider kubernetes --shell powershell --allow-native-override
+```
+
+Refresh is the only operation that starts a provider. It uses the installed
+official CLI with exact arguments and no stdin, a 750 ms deadline, 1 MiB stdout
+and 256 KiB stderr ceilings, fixed private destinations, SHA-256 sidecars, and
+atomic replacement. Restart the shell after refresh, enable, disable, or remove.
+`doctor` only resolves executable names and inventories cached regular files; it
+does not run a provider, authenticate, read command history, or access secrets.
+
+Disable or remove managed state without affecting native completion:
+
+```text
+cargo xtask completion disable
+cargo xtask completion enable
+cargo xtask completion remove --provider docker --shell bash
+```
+
+Generated files live below
+`<Automexia-config-root>/generated/completion/<shell>/`. They are disposable;
+the provider remains their source. Do not edit them. A digest mismatch, linked
+artifact or managed parent, non-directory path component, oversized file,
+unsupported shell/provider, missing tool, timeout, or malformed output fails
+closed to native shell behavior.
 
 ## Prompt ownership
 
@@ -65,6 +104,7 @@ powershell -NoProfile -File shell-integration/uninstall-windows.ps1
 
 ```bash
 bash shell-integration/install-unix.sh --force
+bash shell-integration/uninstall-unix.sh
 ```
 
 Before running a maintainer command, prefer `cargo automexia`; it repairs a
@@ -89,6 +129,7 @@ powershell -NoProfile -File tools/ci/test_powershell.ps1
 bash tools/ci/test_shell_sources.sh
 bash tools/ci/test_shell_integration.sh
 zsh tools/ci/test_zsh_integration.zsh
+fish tools/ci/test_fish_integration.fish
 ```
 
 Run only the native-host command available to you; CI owns PowerShell/CMD on

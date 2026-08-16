@@ -151,6 +151,23 @@ GRID_INFERENCE_MARKERS = {
     "raw_cursor_line_text",
     "visible_text",
 }
+# CP0 remains the immutable architecture baseline. CP1 may activate completion
+# only through this reviewed, machine-checked file set; every other shell-startup
+# path remains subject to the original nonactivation ratchet.
+CP1_ALLOWED_SHELL_FILES = {
+    "shell-integration/bash/automexia.bash",
+    "shell-integration/zsh/automexia.zsh",
+    "shell-integration/fish/automexia.fish",
+    "shell-integration/powershell/automexia.ps1",
+    "shell-integration/completion/bash/automexia-completion.bash",
+    "shell-integration/completion/zsh/automexia-completion.zsh",
+    "shell-integration/completion/fish/automexia-completion.fish",
+    "shell-integration/completion/powershell/automexia-completion.ps1",
+    "shell-integration/install-unix.sh",
+    "shell-integration/install-windows.ps1",
+    "shell-integration/uninstall-unix.sh",
+    "shell-integration/uninstall-windows.ps1",
+}
 SHELL_RECORD_KEYS = {
     "id",
     "editor",
@@ -569,12 +586,16 @@ def workspace_runtime_files(root: Path) -> list[Path]:
 
 def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
     shell_files = source_files(root, "shell-integration")
-    shell_text = " ".join(normalized_source(path) for path in shell_files)
-    for hook in sorted(SHELL_PROVIDER_HOOKS):
-        if hook in shell_text:
-            raise CommandProductivityError(
-                f"CP0 shell startup unexpectedly activates provider/completion hook {hook!r}"
-            )
+    for path in shell_files:
+        relative = path.relative_to(root).as_posix()
+        if relative in CP1_ALLOWED_SHELL_FILES:
+            continue
+        shell_text = normalized_source(path)
+        for hook in sorted(SHELL_PROVIDER_HOOKS):
+            if hook in shell_text:
+                raise CommandProductivityError(
+                    f"CP0 shell startup unexpectedly activates provider/completion hook {hook!r}"
+                )
 
     interactive_roots = [
         "apps/automexia-terminal/src/renderer",
@@ -630,6 +651,7 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
             )
     return {
         "shell_files": len(shell_files),
+        "cp1_allowed_shell_files": len(CP1_ALLOWED_SHELL_FILES),
         "interactive_files": len(interactive_files),
         "runtime_files": len(runtime_files),
     }
@@ -753,7 +775,7 @@ def main() -> int:
         print(f"command productivity CP0 validation failed: {error}", file=sys.stderr)
         return 1
     print(
-        "PASS: command productivity CP0 contract is accepted and non-activated "
+        "PASS: command productivity CP0 contract is accepted; CP1 activation is confined to its reviewed allowlist "
         f"(shells={counts['shells']}, providers={counts['providers']}, "
         f"discoveries={counts['discoveries']}, "
         f"cases={counts['cases']}, threats={counts['threats']}, "

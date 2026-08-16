@@ -223,3 +223,14 @@ esac
 PS1='\[\e[38;2;97;231;255m\]'$'\xCE\xBB''\[\e[0m\] \[\e]133;B\a\]\[\e[38;2;238;247;242m\]'
 # shellcheck disable=SC2016 # Readline evaluates the arithmetic at prompt time.
 PS0='\[\e[0;$((__automexia_prompt_is_active=0))m\]\[\e]1337;SetUserVar=automexia_prompt_active=MA==\a\]\[\e]133;C\a\]'
+
+# CP1 completion remains a separate managed adapter so disabling or removing it
+# cannot affect prompt, history, listing, or editor ownership.
+__automexia_completion_adapter="${BASH_SOURCE[0]%/*}/automexia-completion.bash"
+[[ -r $__automexia_completion_adapter ]] || \
+  __automexia_completion_adapter="${BASH_SOURCE[0]%/*}/../completion/bash/automexia-completion.bash"
+if [[ -r $__automexia_completion_adapter ]]; then
+  # shellcheck source=/dev/null
+  . "$__automexia_completion_adapter"
+fi
+unset __automexia_completion_adapter

@@ -177,3 +177,11 @@ setopt PROMPT_SUBST
 # `precmd` emits the stable context and complete path rows. ZLE owns only the
 # editable lambda row.
 PROMPT=''
+
+# Completion is independently removable and never calls `compinit`; the user's
+# existing compsys setup remains authoritative.
+typeset __automexia_completion_adapter="${${(%):-%N}:A:h}/automexia-completion.zsh"
+[[ -r $__automexia_completion_adapter ]] || \
+  __automexia_completion_adapter="${${(%):-%N}:A:h}/../completion/zsh/automexia-completion.zsh"
+[[ -r $__automexia_completion_adapter ]] && source "$__automexia_completion_adapter"
+unset __automexia_completion_adapter

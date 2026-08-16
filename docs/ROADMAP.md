@@ -209,16 +209,19 @@ D5/D6; CP5's optional rich completion surface is not a v0.5.0 blocker and may
 ship only through a versioned shell-editor bridge. This plan does not claim that
 autocomplete, Quick Actions, or generated aliases are shipped in v0.4.
 
-#### CP0 command-productivity status (2026-08-15)
+#### CP0-CP1 command-productivity status (2026-08-16)
 
 CP0 is complete as a non-runtime architecture gate. ADR 0015 is accepted; the
 native shell/provider compatibility baseline, conflict/precedence matrix,
 versioned schema-1 fixtures, 16-threat model, exact ceilings, architecture
-ratchets, mutation tests, CI ownership, and documentation are in place. Current
-shell integration is proven not to activate provider completion or DevOps short
-aliases. CP1 is the next command-productivity phase and remains unimplemented;
-CP0 adds no process, network, secret, clipboard, terminal-output, provider,
-profile-generation, or exact-launch authority.
+ratchets, mutation tests, CI ownership, and documentation are in place. The
+baseline still rejects activation outside a 12-file CP1 allowlist. CP1 now
+ships native-owned PowerShell/Bash/Zsh/Fish completion adapters, CMD fallback,
+read-only health, and explicit bounded Docker/Kubernetes/OpenShift/Helm cache
+refresh. Native definitions win; PowerShell requires explicit override consent.
+No provider runs on startup or keystrokes. CP1 adds no network, secret,
+clipboard, terminal-output, action-store, generated-alias, custom-completion-UI,
+or exact-launch authority. CP2 typed Quick Actions is next.
 
 ### v0.5.0 first-party SSH extension
 
@@ -376,7 +379,7 @@ detailed implementation and exit gates. The version assignment is:
 | Performance | Execute Criterion, collect 30-day baselines, record startup/interaction/resource data | Enforce ratchets and add SSH index/connect/tunnel/saturation budgets | Add CLI/config/API refresh and 10/50/100-session budgets | Add public SDK/sandbox overhead budgets |
 | Native assurance | AppVerifier/WPR and controlled Windows/Linux/macOS GPU/shell matrices | System OpenSSH, agents, certificates, host keys, jumps, tunnels, cancellation, and cleanup on each OS | Official provider CLIs, Kubernetes/OpenShift, SSM/Bastion/IAP, offline/expiry paths | Sandboxed third-party and AI extension isolation |
 | Test-strength/security ratchets | Longer fuzz corpora and Automexia-owned coverage baseline | Fuzz config/index/IPC/diagnostics; mutation-test policy and argv validation | Fuzz provider/config/exec-plugin adapters; audit SDK/CLI supply chain | Public extension supply-chain, signature, revocation, and capability audits |
-| Command productivity | Existing shell integration only; no managed autocomplete/action-store claim | CP0-CP3: shell-native adapters, diagnostics, typed persistent actions, opt-in aliases, static DevOps packs | CP4: capsule/provider-aware cached actions with freshness and brokered exact launch | CP5/CP6: optional editor bridge and signed ecosystem packs after separate gates |
+| Command productivity | CP0 baseline plus CP1 shell-native managed completion, diagnostics, explicit bounded refresh, and CMD fallback; no action-store claim | CP2-CP3: typed persistent actions, opt-in aliases, static DevOps packs | CP4: capsule/provider-aware cached actions with freshness and brokered exact launch | CP5/CP6: optional editor bridge and signed ecosystem packs after separate gates |
 
 No single host or test layer may claim complete assurance. Pull requests prove
 deterministic contracts, nightly jobs explore expensive state and native

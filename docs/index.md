@@ -22,7 +22,7 @@ The documentation is organized by reader intent:
 | Configure appearance and behavior | [Configuration reference](CONFIGURATION.md) |
 | Learn every product shortcut and binding action | [Keyboard and input reference](KEYBOARD.md) |
 | Use the executable and contributor commands | [CLI and automation reference](CLI-REFERENCE.md) |
-| Understand automatic PowerShell, CMD, WSL, Bash, and Zsh support | [Shell integration](SHELL-INTEGRATION.md) |
+| Understand automatic PowerShell, CMD, WSL, Bash, Zsh, and Fish support | [Shell integration](SHELL-INTEGRATION.md) |
 | Diagnose a failure | [Troubleshooting](TROUBLESHOOTING.md) |
 | Check OS-specific support and evidence | [Platform support](PLATFORMS.md) |
 
@@ -67,8 +67,8 @@ The documentation is organized by reader intent:
   non-activated D3 contracts, limits, tests, and activation gates.
 - [OpenSSH inventory](SSH-INVENTORY.md): implemented non-executing D4 parser,
   persistence, refresh, threat model, and verification contract.
-- [Command productivity](COMMAND-PRODUCTIVITY.md): CP0 architecture baseline
-  and the ordered CP1-CP6 delivery plan for native completion and typed Quick
+- [Command productivity](COMMAND-PRODUCTIVITY.md): CP0 architecture baseline,
+  shipped CP1 native completion, and the ordered CP2-CP6 delivery plan for typed Quick
   Actions.
 - [Command-productivity compatibility](COMMAND-PRODUCTIVITY-COMPATIBILITY.md):
   accepted shell/editor ownership, provider, precedence, fallback, and
