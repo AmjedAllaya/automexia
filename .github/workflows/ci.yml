@@ -41,6 +41,8 @@ jobs:
         run: python tools/ci/test_command_productivity.py
       - name: Command productivity CP1 activation mutation tests
         run: python tools/ci/test_command_productivity_cp1.py
+      - name: Planned CP2/CP3 alias specification mutation tests
+        run: python tools/ci/test_devops_alias_spec.py
       - name: Completion adapter benchmark contract tests
         run: python tools/ci/test_measure_completion_adapter.py
       - name: QA evidence runner contracts

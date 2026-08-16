@@ -1,0 +1,113 @@
+{
+  "schema": 1,
+  "phase": "CP2-CP3-SPEC",
+  "status": "planned",
+  "authorities": {
+    "product": "docs/DEVOPS-ALIASES.md",
+    "architecture": "docs/ARCHITECTURE.md",
+    "decision": "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md",
+    "threats": "docs/COMMAND-PRODUCTIVITY-THREAT-MODEL.md"
+  },
+  "shells": {
+    "powershell": ["windows", "linux", "macos"],
+    "bash": ["linux", "macos", "wsl"],
+    "zsh": ["linux", "macos", "wsl"],
+    "fish": ["linux", "macos", "wsl"],
+    "cmd": ["windows"]
+  },
+  "providers": [
+    "git",
+    "docker",
+    "kubernetes",
+    "openshift",
+    "helm",
+    "terraform",
+    "opentofu",
+    "aws",
+    "azure",
+    "gcp",
+    "openssh"
+  ],
+  "scopes": [
+    "session",
+    "capsule",
+    "trusted-workspace",
+    "shell-user",
+    "global-user",
+    "builtin-disabled"
+  ],
+  "limits": {
+    "source_file_bytes": 1048576,
+    "active_actions": 1024,
+    "enabled_aliases": 256,
+    "arguments_per_action": 64,
+    "placeholders_per_action": 32,
+    "string_bytes": 4096,
+    "generated_file_bytes": 1048576,
+    "in_process_cache_bytes": 8388608
+  },
+  "required_action_fields": [
+    "schema_version",
+    "id",
+    "display_name",
+    "description",
+    "tags",
+    "scope",
+    "shells",
+    "template",
+    "arguments",
+    "placeholders",
+    "working_directory_policy",
+    "risk",
+    "execution",
+    "provenance",
+    "enabled",
+    "alias_projection"
+  ],
+  "defaults": {
+    "builtin_aliases_enabled": false,
+    "action_execution": "insert-without-enter",
+    "workspace_trusted": false,
+    "collision_precedence": "native-wins",
+    "provider_refresh": "explicit-only"
+  },
+  "risk_alias_eligibility": {
+    "ReadOnly": "eligible-after-review",
+    "Mutating": "eligible-only-when-bounded-reversible-and-descriptive",
+    "Destructive": "denied",
+    "Privileged": "denied"
+  },
+  "persistence": {
+    "source": "actions/actions.toml",
+    "previous_revision": "actions/actions.previous.toml",
+    "generated_root": "generated/aliases",
+    "publication": "atomic-all-or-old",
+    "concurrency": "exact-lock-and-compare-and-swap",
+    "active_session_reload": "explicit",
+    "workspace_alias_projection": false,
+    "remote_installation": "explicit"
+  },
+  "capabilities": {
+    "network": false,
+    "secret_read": false,
+    "provider_on_startup": false,
+    "provider_on_keystroke": false,
+    "terminal_grid_inference": false,
+    "shell_evaluation": false,
+    "implicit_execution": false,
+    "hidden_global_context_mutation": false
+  },
+  "verification_domains": [
+    "model-and-persistence",
+    "projection-compilers",
+    "provider-packs",
+    "completion-linkage",
+    "native-shells-and-platforms",
+    "ui-and-accessibility",
+    "security-and-privacy",
+    "fuzz-and-mutation",
+    "performance-and-resources",
+    "rollback-and-uninstall"
+  ],
+  "activation_files": []
+}
