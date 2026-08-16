@@ -554,8 +554,9 @@ if ($installerSource -notmatch 'automexia-eza-filter\.pl' -or
     $installerSource -notmatch 'AUTOMEXIA_EZA_FILTER_EOF') {
     throw 'Windows installer does not deploy the POSIX composite-folder filter'
 }
-if ($installerSource -notmatch '--distribution \$distribution' -or
-    $installerSource -notmatch 'docker-desktop') {
+if ($installerSource -notmatch 'DetectedWslDistributions' -or
+    $installerSource -notmatch 'docker-desktop' -or
+    $wslTransportSource -notmatch "Arguments = '--distribution ' \+ \`$Distribution") {
     throw 'Windows installer does not provision every detected user WSL distribution safely'
 }
 if ($installerSource -notmatch 'Invoke-AutomexiaWslBase64Script' -or
