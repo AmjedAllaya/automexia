@@ -49,7 +49,7 @@ fn context(shell: ShellKind) -> SearchContext {
 fn layered_search_is_deterministic_and_higher_scope_shadows_lower_scope() {
     let index = ActionIndex::build(vec![
         ActionLayer {
-            identity: LayerIdentity::User,
+            identity: LayerIdentity::GlobalUser,
             revision: 4,
             actions: vec![action(
                 "shared.action",
@@ -96,9 +96,9 @@ fn layered_search_is_deterministic_and_higher_scope_shadows_lower_scope() {
 }
 
 #[test]
-fn user_layer_rejects_session_or_workspace_scopes() {
+fn global_user_layer_rejects_session_or_workspace_scopes() {
     let error = ActionIndex::build(vec![ActionLayer {
-        identity: LayerIdentity::User,
+        identity: LayerIdentity::GlobalUser,
         revision: 1,
         actions: vec![action("wrong.scope", ActionScope::Session, ShellKind::Bash)],
     }])
@@ -198,7 +198,7 @@ fn search_rejects_controls_and_obeys_shell_and_enabled_filters() {
         action("disabled.action", ActionScope::GlobalUser, ShellKind::Bash);
     disabled.enabled = false;
     let index = ActionIndex::build(vec![ActionLayer {
-        identity: LayerIdentity::User,
+        identity: LayerIdentity::GlobalUser,
         revision: 1,
         actions: vec![
             disabled,
@@ -220,4 +220,73 @@ fn search_rejects_controls_and_obeys_shell_and_enabled_filters() {
     assert!(index
         .search("bad\u{1b}", &context(ShellKind::Bash))
         .is_err());
+}
+
+#[test]
+fn shell_user_precedence_is_distinct_from_global_user() {
+    let index = ActionIndex::build(vec![
+        ActionLayer {
+            identity: LayerIdentity::GlobalUser,
+            revision: 4,
+            actions: vec![action(
+                "shared.user-action",
+                ActionScope::GlobalUser,
+                ShellKind::Bash,
+            )],
+        },
+        ActionLayer {
+            identity: LayerIdentity::ShellUser,
+            revision: 7,
+            actions: vec![action(
+                "shared.user-action",
+                ActionScope::ShellUser,
+                ShellKind::Bash,
+            )],
+        },
+    ])
+    .unwrap();
+
+    let hits = index.search("shared", &context(ShellKind::Bash)).unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].source, "Shell user");
+    assert_eq!(hits[0].source_revision, 7);
+    assert_eq!(hits[0].shadowed_count, 1);
+
+    let zsh_hits = index.search("shared", &context(ShellKind::Zsh)).unwrap();
+    assert!(zsh_hits.is_empty(), "shell filters remain authoritative");
+}
+
+#[test]
+fn activation_index_rejects_unvalidated_action_text() {
+    let mut invalid = action("invalid.action", ActionScope::GlobalUser, ShellKind::Bash);
+    invalid.display_name = "hidden\u{202e}name".into();
+    let error = ActionIndex::build(vec![ActionLayer {
+        identity: LayerIdentity::GlobalUser,
+        revision: 1,
+        actions: vec![invalid],
+    }])
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        automexia_devops::actions::IndexError::InvalidAction { .. }
+    ));
+}
+
+#[test]
+fn optional_empty_values_are_quoted_and_required_empty_values_fail_closed() {
+    let mut optional =
+        action("optional.action", ActionScope::GlobalUser, ShellKind::Bash);
+    optional.placeholders[0].required = false;
+    let expanded =
+        expand_for_shell(&optional, ShellKind::Bash, &PlaceholderBindings::default())
+            .unwrap();
+    assert_eq!(expanded.command, "printf ''");
+
+    let required = action("required.action", ActionScope::GlobalUser, ShellKind::Bash);
+    let mut bindings = PlaceholderBindings::default();
+    bindings.insert("target", "");
+    assert_eq!(
+        expand_for_shell(&required, ShellKind::Bash, &bindings).unwrap_err(),
+        ExpansionError::MissingPlaceholder("target".into())
+    );
 }

@@ -83,6 +83,10 @@ const BRAND_LIME: [f32; 4] = [0.52, 0.94, 0.36, 1.0];
 const BRAND_AMBER: [f32; 4] = [1.0, 0.69, 0.18, 1.0];
 const BRAND_CORAL: [f32; 4] = [1.0, 0.36, 0.48, 1.0];
 
+fn quick_action_metadata_max_width(input_width: f32) -> f32 {
+    (input_width * 0.42).clamp(72.0, 220.0)
+}
+
 // Depth / order
 const DEPTH_BACKDROP: f32 = 0.0;
 const DEPTH_BG: f32 = 0.1;
@@ -641,8 +645,13 @@ enum PaletteMode {
     Commands,
     Fonts(Vec<String>),
     Market(Vec<MarketItem>),
-    QuickActions(Vec<QuickActionListItem>),
-    QuickActionPlaceholder { prompt: String },
+    QuickActions {
+        items: Vec<QuickActionListItem>,
+        notice: String,
+    },
+    QuickActionPlaceholder {
+        prompt: String,
+    },
     QuickActionReview(QuickActionReviewView),
 }
 
@@ -672,6 +681,9 @@ enum PaletteRow<'a> {
     QuickAction {
         item: &'a QuickActionListItem,
     },
+    QuickActionNotice {
+        message: &'a str,
+    },
     PlaceholderContinue,
     ReviewCommand {
         command: &'a str,
@@ -692,6 +704,7 @@ impl<'a> PaletteRow<'a> {
             PaletteRow::Font { family } => family,
             PaletteRow::Market { name, .. } => name,
             PaletteRow::QuickAction { item } => &item.name,
+            PaletteRow::QuickActionNotice { message } => message,
             PaletteRow::PlaceholderContinue => "Continue to review",
             PaletteRow::ReviewCommand { command } => command,
             PaletteRow::ReviewInsert { label, .. } => label,
@@ -709,7 +722,8 @@ impl<'a> PaletteRow<'a> {
             PaletteRow::Market {
                 installed: false, ..
             } => "Install",
-            PaletteRow::QuickAction { item } => item.source.as_str(),
+            PaletteRow::QuickAction { item } => item.metadata_label.as_str(),
+            PaletteRow::QuickActionNotice { .. } => "",
             PaletteRow::PlaceholderContinue => "Enter",
             PaletteRow::ReviewCommand { .. } => "Exact command",
             PaletteRow::ReviewInsert { risk, .. } | PaletteRow::ReviewCopy { risk } => {
@@ -724,6 +738,7 @@ impl<'a> PaletteRow<'a> {
             PaletteRow::Font { .. }
             | PaletteRow::Market { .. }
             | PaletteRow::QuickAction { .. }
+            | PaletteRow::QuickActionNotice { .. }
             | PaletteRow::PlaceholderContinue
             | PaletteRow::ReviewCommand { .. }
             | PaletteRow::ReviewInsert { .. }
@@ -753,6 +768,10 @@ impl<'a> PaletteRow<'a> {
             PaletteRow::QuickAction { item } => RowPresentation {
                 icon: CommandIcon::Code,
                 accent: risk_accent(item.risk),
+            },
+            PaletteRow::QuickActionNotice { .. } => RowPresentation {
+                icon: CommandIcon::History,
+                accent: BRAND_BLUE,
             },
             PaletteRow::PlaceholderContinue => RowPresentation {
                 icon: CommandIcon::TabNext,
@@ -1303,7 +1322,10 @@ impl CommandPalette {
         items: Vec<QuickActionListItem>,
         query: String,
     ) {
-        self.mode = PaletteMode::QuickActions(items);
+        self.mode = PaletteMode::QuickActions {
+            items,
+            notice: "Loading Quick Actions…".into(),
+        };
         self.query = query;
         self.selected_index = 0;
         self.scroll_offset = 0;
@@ -1311,9 +1333,13 @@ impl CommandPalette {
         self.last_scroll_time = None;
     }
 
-    pub fn update_action_items(&mut self, items: Vec<QuickActionListItem>) {
-        if matches!(self.mode, PaletteMode::QuickActions(_)) {
-            self.mode = PaletteMode::QuickActions(items);
+    pub fn update_action_items(
+        &mut self,
+        items: Vec<QuickActionListItem>,
+        notice: String,
+    ) {
+        if matches!(self.mode, PaletteMode::QuickActions { .. }) {
+            self.mode = PaletteMode::QuickActions { items, notice };
             self.selected_index = self
                 .selected_index
                 .min(self.filtered_rows().len().saturating_sub(1));
@@ -1343,7 +1369,7 @@ impl CommandPalette {
     }
 
     pub fn is_action_search(&self) -> bool {
-        matches!(self.mode, PaletteMode::QuickActions(_))
+        matches!(self.mode, PaletteMode::QuickActions { .. })
     }
 
     pub fn is_action_placeholder(&self) -> bool {
@@ -1406,6 +1432,7 @@ impl CommandPalette {
                 PaletteRow::Command { .. }
                 | PaletteRow::Market { .. }
                 | PaletteRow::QuickAction { .. }
+                | PaletteRow::QuickActionNotice { .. }
                 | PaletteRow::PlaceholderContinue
                 | PaletteRow::ReviewCommand { .. }
                 | PaletteRow::ReviewInsert { .. }
@@ -1421,6 +1448,7 @@ impl CommandPalette {
                 PaletteRow::Command { .. }
                 | PaletteRow::Font { .. }
                 | PaletteRow::QuickAction { .. }
+                | PaletteRow::QuickActionNotice { .. }
                 | PaletteRow::PlaceholderContinue
                 | PaletteRow::ReviewCommand { .. }
                 | PaletteRow::ReviewInsert { .. }
@@ -1503,17 +1531,23 @@ impl CommandPalette {
                     ))
                 })
                 .collect(),
-            PaletteMode::QuickActions(items) => items
-                .iter()
-                .enumerate()
-                .map(|(index, item)| {
-                    (
-                        i32::try_from(items.len().saturating_sub(index))
-                            .unwrap_or(i32::MAX),
-                        PaletteRow::QuickAction { item },
-                    )
-                })
-                .collect(),
+            PaletteMode::QuickActions { items, notice } => {
+                if items.is_empty() {
+                    vec![(1, PaletteRow::QuickActionNotice { message: notice })]
+                } else {
+                    items
+                        .iter()
+                        .enumerate()
+                        .map(|(index, item)| {
+                            (
+                                i32::try_from(items.len().saturating_sub(index))
+                                    .unwrap_or(i32::MAX),
+                                PaletteRow::QuickAction { item },
+                            )
+                        })
+                        .collect()
+                }
+            }
             PaletteMode::QuickActionPlaceholder { .. } => {
                 vec![(1, PaletteRow::PlaceholderContinue)]
             }
@@ -1744,7 +1778,7 @@ impl CommandPalette {
             PaletteMode::Commands => "Type a command...",
             PaletteMode::Fonts(_) => "Type a font name...",
             PaletteMode::Market(_) => "Search extensions...",
-            PaletteMode::QuickActions(_) => "Search Quick Actions...",
+            PaletteMode::QuickActions { .. } => "Search Quick Actions...",
             PaletteMode::QuickActionPlaceholder { ref prompt } => prompt,
             PaletteMode::QuickActionReview(_) => "Review; command is never executed",
         };
@@ -1889,6 +1923,17 @@ impl CommandPalette {
             let row_text_x = icon_x + RESULT_ICON_SIZE + 14.0;
             let row_text_y = item_y + (RESULT_ITEM_HEIGHT - RESULT_FONT_SIZE) / 2.0 - 1.0;
             let shortcut = row.shortcut();
+            let shortcut_display: std::borrow::Cow<'_, str> =
+                if matches!(row, PaletteRow::QuickAction { .. }) {
+                    elide_end(
+                        sugarloaf,
+                        shortcut,
+                        quick_action_metadata_max_width(input_width),
+                        SHORTCUT_FONT_SIZE,
+                    )
+                } else {
+                    std::borrow::Cow::Borrowed(shortcut)
+                };
             let is_font_row = matches!(row, PaletteRow::Font { .. });
             let trailing_width = if !shortcut.is_empty() {
                 let shortcut_opts = DrawOpts {
@@ -1896,7 +1941,10 @@ impl CommandPalette {
                     color: color_u8(SHORTCUT_TEXT_COLOR),
                     ..DrawOpts::default()
                 };
-                sugarloaf.text_mut().measure(shortcut, &shortcut_opts) + 30.0
+                sugarloaf
+                    .text_mut()
+                    .measure(&shortcut_display, &shortcut_opts)
+                    + 30.0
             } else if is_font_row {
                 COPY_ICON_W + 24.0
             } else {
@@ -1922,8 +1970,9 @@ impl CommandPalette {
                     }),
                     ..DrawOpts::default()
                 };
-                let shortcut_width =
-                    sugarloaf.text_mut().measure(shortcut, &shortcut_opts);
+                let shortcut_width = sugarloaf
+                    .text_mut()
+                    .measure(&shortcut_display, &shortcut_opts);
                 let keycap_width = shortcut_width + 18.0;
                 let shortcut_x = input_x + input_width - 10.0 - keycap_width;
                 let shortcut_y = item_y + 10.0;
@@ -1943,7 +1992,7 @@ impl CommandPalette {
                 sugarloaf.text_mut().draw(
                     shortcut_x + 9.0,
                     shortcut_y + 6.0,
-                    shortcut,
+                    &shortcut_display,
                     &shortcut_opts,
                 );
             }
@@ -2637,11 +2686,41 @@ mod tests {
             palette.get_selected_action_item_id().as_deref(),
             Some("git.status")
         );
+        assert_eq!(
+            palette.filtered_rows()[0].1.shortcut(),
+            "Read-only · Session"
+        );
         palette.move_selection_down();
         assert_eq!(
             palette.get_selected_action_item_id().as_deref(),
             Some("cluster.delete")
         );
+    }
+
+    #[test]
+    fn quick_action_loading_and_empty_notices_are_visible_but_not_actionable() {
+        let mut palette = CommandPalette::new();
+        palette.enter_action_search(Vec::new(), String::new());
+        assert_eq!(
+            palette.filtered_rows()[0].1.title(),
+            "Loading Quick Actions…"
+        );
+        assert!(palette.get_selected_action_item_id().is_none());
+        assert!(palette.get_selected_action().is_none());
+
+        palette.update_action_items(Vec::new(), "No matching Quick Actions".into());
+        assert_eq!(
+            palette.filtered_rows()[0].1.title(),
+            "No matching Quick Actions"
+        );
+        assert!(palette.get_selected_action_item_id().is_none());
+    }
+
+    #[test]
+    fn quick_action_metadata_budget_is_proportional_and_bounded() {
+        assert_eq!(quick_action_metadata_max_width(100.0), 72.0);
+        assert!((quick_action_metadata_max_width(300.0) - 126.0).abs() < 0.001);
+        assert_eq!(quick_action_metadata_max_width(1_000.0), 220.0);
     }
 
     #[test]

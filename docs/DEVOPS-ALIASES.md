@@ -1099,17 +1099,20 @@ separate contract and does not convert that external evidence into a pass.
 **Implemented locally; stable release evidence partial.**
 
 - A single process-owned worker loads the private store, retains immutable
-  last-known-good state, coalesces obsolete queries, isolates routes by
-  generation, wakes only the requesting window, and joins on shutdown.
-- The pure index merges session, capsule, trusted-workspace, shell-user,
-  global-user, and disabled built-in layers deterministically. Only
+  last-known-good state, coalesces obsolete queries independently per route,
+  admits at most 32 routes, publishes all admitted panes fairly, isolates
+  generations, wakes only the requesting window, and joins on shutdown.
+- The pure index revalidates and merges session, capsule, trusted-workspace,
+  shell-user, global-user, and disabled built-in layers with distinct precedence.
+  Only
   global-user and shell-user are persisted. Trusted-workspace activation stays
   disabled until exact trust authority exists.
 - The Command Center exposes a renderer-neutral, keyboard-complete responsive
-  list, placeholder editor, risk/source/conflict review, exact expanded command,
+  list, placeholder editor, visible risk/source/conflict/degraded-health labels,
+  explicit loading/empty/unavailable states, exact expanded command,
   and explicit **Insert without Enter** or copy choices. Destructive actions
   require a second confirmation. Exact launch and secret-reference expansion
-  fail closed.
+  fail closed before the UI collects any placeholder value.
 - PowerShell, Bash, Zsh, Fish, and CMD values use separate conservative quoting.
   Controls, bidi overrides, malformed bindings, oversized output, and CMD
   expansion metacharacters are rejected. Insert goes through bracketed paste so
@@ -1144,9 +1147,6 @@ responsive/accessibility view models, explicit review and dry-run CLI behavior,
 policy mutations, and controlled benchmarks. Remaining: hosted native
 Windows/Linux/macOS insertion, Narrator/NVDA/VoiceOver/Orca interaction, and the
 30-day named-hardware performance/resource baseline.
-
-No provider process, alias generation, workspace activation, shell projection,
-secret read, or exact-launch authority is granted by CP2.2.
 
 No provider process, alias generation, workspace activation, shell projection,
 secret read, or exact-launch authority is granted by CP2.2.

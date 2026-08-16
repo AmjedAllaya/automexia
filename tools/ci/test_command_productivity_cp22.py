@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -32,7 +33,7 @@ class Cp22ContractTests(unittest.TestCase):
     def test_canonical_repository_contract_and_sources_pass(self) -> None:
         counts = policy.validate_repository()
         self.assertEqual(counts["model_files"], 4)
-        self.assertEqual(counts["tests"], 8)
+        self.assertEqual(counts["tests"], 13)
 
     def test_resource_ceiling_expansion_is_rejected(self) -> None:
         self.validate_mutation(
@@ -75,6 +76,36 @@ class Cp22ContractTests(unittest.TestCase):
                 self.skipTest("symbolic links are unavailable")
             with self.assertRaises(policy.Cp22Error):
                 policy.bounded_text(linked)
+
+    def test_collapsed_user_scope_or_global_pending_slot_is_rejected(self) -> None:
+        original = policy.bounded_text
+
+        def mutated(path, maximum=policy.MAX_POLICY_BYTES):
+            source = original(path, maximum)
+            if path.name == "activation.rs":
+                source = source.replace("LayerIdentity::ShellUser", "LayerIdentity::User")
+            if path.name == "worker.rs":
+                source = source.replace("latest_by_route", "latest")
+            return source
+
+        with mock.patch.object(policy, "bounded_text", side_effect=mutated):
+            with self.assertRaises(policy.Cp22Error):
+                policy.validate_sources(self.contract)
+
+    def test_secret_prompt_preflight_or_visible_health_removal_is_rejected(self) -> None:
+        original = policy.bounded_text
+
+        def mutated(path, maximum=policy.MAX_POLICY_BYTES):
+            source = original(path, maximum)
+            if path.name == "action_surface.rs":
+                source = source.replace(
+                    "unavailable_before_placeholder", "post_prompt_unavailable"
+                )
+            return source
+
+        with mock.patch.object(policy, "bounded_text", side_effect=mutated):
+            with self.assertRaises(policy.Cp22Error):
+                policy.validate_sources(self.contract)
 
 
 if __name__ == "__main__":
