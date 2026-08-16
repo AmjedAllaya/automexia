@@ -8,6 +8,11 @@ rendered inline suggestions or a rich candidate popup. A user-facing Quick
 Action surface, generated aliases, provider-aware candidates, and the CP5
 suggestion surface do not currently ship.
 
+The complete command-first product vocabulary that consumes this track is
+specified in [Terminal-first remote operations](TERMINAL-FIRST-OPERATIONS.md).
+That document does not widen CP authority or turn planned commands into shipped
+behavior.
+
 ## Purpose
 
 Automexia should make frequent DevOps commands fast to discover and reuse

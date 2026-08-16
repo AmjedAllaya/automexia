@@ -37,6 +37,10 @@ The documentation is organized by reader intent:
 - [SSH connections and automation](SSH-CONNECTION-AUTOMATION.md): planned
   reusable connection profiles, typed automation recipes, multi-cloud context
   isolation, security boundaries, delivery stages, and verification gates.
+- [Terminal-first remote operations](TERMINAL-FIRST-OPERATIONS.md): planned
+  command, leader-key, picker, connection, inventory, identity, action,
+  workspace, file, log, collaboration, cloud, policy, and AI experience that
+  replaces GUI-heavy remote-management workflows.
 - [Accessibility](ACCESSIBILITY.md): current accessibility contract, manual
   checks, and known limitations.
 - [Rio migration](MIGRATION.md): one-time, non-destructive configuration import.
@@ -90,6 +94,9 @@ The documentation is organized by reader intent:
 - [Command-productivity threat model](COMMAND-PRODUCTIVITY-THREAT-MODEL.md):
   accepted trust boundaries, threats, controls, resource ceilings, and review
   triggers.
+- [Terminal-first remote operations](TERMINAL-FIRST-OPERATIONS.md): canonical
+  cross-feature product grammar, Termius-equivalent capability mapping,
+  security/performance invariants, delivery ownership, and acceptance gates.
 - [Feature assurance ledger](../tests/assurance/feature-matrix.json):
   machine-checked mapping from each feature to quality, platform, and
   documentation evidence.

@@ -47,7 +47,10 @@ Those omissions are deliberate security and product boundaries, not hidden
 features. The managed SSH/multi-cloud [Connection Hub](CONNECTION-HUB.md) is a
 fully specified D5/D6 plan but is likewise not a shipped v0.4 surface. Its
 reusable profiles and typed actions are specified in
-[SSH connections and automation](SSH-CONNECTION-AUTOMATION.md). See the
+[SSH connections and automation](SSH-CONNECTION-AUTOMATION.md). The complete
+planned command/leader/picker replacement for GUI-oriented remote-management
+workflows is [Terminal-first remote operations](TERMINAL-FIRST-OPERATIONS.md).
+It is a roadmap contract, not a shipped `automexia`/`ax` command claim. See the
 [roadmap](ROADMAP.md) for sequencing and the
 [decision index](DECISIONS.md) for rationale.
 

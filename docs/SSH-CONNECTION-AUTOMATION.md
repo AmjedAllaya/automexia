@@ -12,6 +12,10 @@ overall inventory, authentication, review, and responsive UI contract. The
 and [ADR 0012](adr/0012-first-party-ssh-and-session-launch-boundary.md) owns the
 SSH credential, process, and network boundary. If these sources conflict, the
 accepted ADR and its protected review take precedence.
+The user-facing `automexia connect`, `run`, `workspace`, `tunnel`, and `context`
+grammar is planned in
+[Terminal-first remote operations](TERMINAL-FIRST-OPERATIONS.md); those examples
+remain non-shipped until their D/CP activation gates pass.
 
 ## Product outcome
 

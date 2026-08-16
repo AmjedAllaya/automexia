@@ -85,6 +85,44 @@ acceptance evidence are specified in
 The [stabilization roadmap](STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track)
 is authoritative for the implementation order and exit gates.
 
+## Terminal-first remote operations strategy
+
+Automexia will cover the useful connection, inventory, identity, automation,
+workspace, transfer, session-memory, collaboration, multi-cloud, and governance
+workflows associated with products such as Termius without copying a
+screen-heavy GUI. The canonical product contract is
+[Terminal-first remote operations](TERMINAL-FIRST-OPERATIONS.md), and the
+durable interaction decision is [ADR 0018](adr/0018-terminal-first-remote-operations.md).
+
+The strategy uses three views of one typed operation registry:
+
+1. the canonical `automexia <domain> <verb>` CLI for scripting, documentation,
+   and recovery;
+2. a configurable leader-key command mode for Vim-speed interaction;
+3. bounded keyboard-driven overlays for fuzzy selection, browsing, comparison,
+   preview, and explicit security review.
+
+`ax` is only a proposed optional shorthand. CP3 may project it after explicit
+consent and collision checks; the project must not silently shadow an existing
+executable, shell alias, function, or abbreviation. Native shell editors keep
+ownership of normal input, history, completion, cursor, quoting, and control
+keys. Terminal cells and remote output are never trusted command intent.
+
+This is a product-experience projection over existing phases, not a separate
+authority or an implementation claim:
+
+| Release/owners | Terminal-first outcome | Explicit exclusions until later |
+|---|---|---|
+| v0.5.0 D5 + CP2/CP3 | Generated operation registry; action search/review/insert; collision-safe optional aliases; read-only host/group/tag/recent/favorite inventory; Connection Review; quick connect; destination selection; routes/jumps; typed tunnels; identity references; host-key explanation; safe workspace intent/restore; native completion | Structured SFTP, provider API inventory, shared sessions, proprietary identity, AI execution |
+| v0.5.1 D6 + CP4 | Immutable per-pane cloud/cluster/infrastructure context; official AWS/Azure/GCP/Kubernetes/OpenShift/Teleport/OpenBao flows; static imports; explicit provider refresh; capsule-aware actions; reviewed multi-target operations | Ambient provider processes, global context mutation, background authentication, secret custody |
+| v0.6+ D7 + CP5/CP6 | Independently gated file transfer, bounded session memory/bookmarks, team inventory/policy, read-only-first collaboration, additional transports, signed ecosystem packs, optional editor bridge, and isolated AI explanation/suggestion | Any capability that has not passed its own file/network/peer/privacy/sandbox/native release gate |
+
+The detailed mapping names every planned command, leader sequence, picker
+behavior, risk review, data boundary, security/performance invariant, test
+layer, and acceptance criterion. Roadmap examples remain non-shipped until the
+feature catalog, public CLI/configuration/keyboard references, feature assurance
+ledger, native evidence, and release gate are updated together.
+
 ## v0.5 — DevOps foundation and production SSH
 
 v0.5 combines the smallest necessary internal modularization with the earliest

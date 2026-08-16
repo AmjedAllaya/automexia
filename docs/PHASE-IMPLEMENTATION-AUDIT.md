@@ -582,6 +582,49 @@ accessibility, lifecycle, performance, or rollback gates.
 signature/revocation, quotas, malicious-package, privacy, and least-authority
 gates.
 
+## Terminal-first remote operations projection
+
+The canonical product experience is now specified in
+[Terminal-first remote operations](TERMINAL-FIRST-OPERATIONS.md) and accepted
+for the v0.5+ roadmap by
+[ADR 0018](adr/0018-terminal-first-remote-operations.md). It does not introduce
+another phase or capability system: D3-D7 own remote/process/provider/file/
+collaboration authority, while CP2-CP6 own actions, aliases, completion,
+suggestions, packs, and AI-assisted insertion.
+
+**Specification complete; public product implementation mostly not started.**
+
+Implemented foundations that the specification reuses:
+
+- current independent PTYs, windows, splits, pane-local tabs, cloning,
+  renderer-owned palette/modal composition, prompt context, and passive footer;
+- D1-D2 typed bounded models, session isolation, immutable snapshots,
+  cancellation, status/freshness, and extension non-blocking behavior;
+- the non-activated D3 exact-argv/capability review boundary;
+- D4 bounded non-executing OpenSSH inventory;
+- CP1 native shell/provider completion;
+- CP2.0 typed Quick Action model and CP2.1 private nonstarted store.
+
+Planned work, with no shipped-command claim:
+
+| Product surface | Owning gate | Audit status |
+|---|---|---|
+| Canonical operation registry, `automexia` domains, generated palette/help/accessibility, optional collision-safe `ax` | CP2.2-CP3/D5 | Not implemented |
+| Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | Not implemented |
+| Identity references, agent/certificate state, known-host explanation, routes/jumps/proxies/tunnels | D5.2 | Not implemented |
+| Quick Actions, aliases, lifecycle hooks, reviewed multi-target execution | CP2.2-CP4/D5E | Model/store foundations only |
+| Declarative workspace persistence/restoration and visibly armed broadcast | D5/CP4 | Existing layout primitives only |
+| Per-pane multi-cloud/context commands and typed import/reconcile adapters | D6.0-D6.5/CP4 | Not implemented |
+| Structured files/SFTP, bounded logs/bookmarks, team state/policy, shared sessions | D7 protected slices | Not implemented |
+| Mosh, Telnet, serial, public ecosystem packs, optional editor popup, AI explain/suggest | D7/CP5-CP6 | Not implemented/deferred |
+
+Before any row changes to shipped, it needs the exact CLI/configuration/
+keyboard reference, feature-ledger entry, typed resource ceilings, threat and
+capability review, deterministic model/property/hostile tests, native Windows/
+Linux/macOS and applicable shell/provider evidence, accessibility/responsive
+goldens, benchmarks, long-run leak/cleanup proof, recovery/uninstall behavior,
+and changelog. `ax` remains optional and cannot shadow native user state.
+
 ## Ghostty compatibility phases
 
 Automexia ships its classic shortcuts. It has no selectable Ghostty profile and

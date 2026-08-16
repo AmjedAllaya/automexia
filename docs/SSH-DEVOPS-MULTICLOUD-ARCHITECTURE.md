@@ -11,6 +11,9 @@ This document consolidates the documentation audit, product-boundary decision,
 SSH design, multi-cloud design, extension model, security requirements,
 performance requirements, Termix evaluation, reusable projects and libraries,
 user experience, data model, and delivery plan discussed for Automexia.
+The cross-feature command, leader-key, picker, workspace, file, log, and
+collaboration experience that composes this architecture is specified in
+[Terminal-first remote operations](TERMINAL-FIRST-OPERATIONS.md).
 
 The central decision is:
 

@@ -28,6 +28,10 @@ the claim.
 - `docs/ARCHITECTURE.md` and `docs/adr/` own technical rationale.
 - `docs/TESTING.md` owns evidence levels and commands.
 - `docs/ROADMAP.md` owns release sequencing.
+- `docs/TERMINAL-FIRST-OPERATIONS.md` owns the planned command-first remote
+  operations vocabulary and its cross-feature D/CP phase mapping. It does not
+  define shipped CLI behavior until the exact reference and feature ledger are
+  updated.
 - [Phase implementation audit](PHASE-IMPLEMENTATION-AUDIT.md) owns the
   evidence-based status reconciliation across the S, D, CP, and G roadmap
   tracks.

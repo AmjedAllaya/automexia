@@ -24,6 +24,8 @@ decision supersedes an old one instead of silently rewriting history.
 | [0014](adr/0014-explicit-bounded-image-quick-look.md) | Bounded local image Quick Look | IO-free targeting plus bounded asynchronous decode gives direct preview without remote fetches, UI-thread IO, or unbounded cache/queue risk. |
 | [0015](adr/0015-shell-native-completion-and-typed-quick-actions.md) | Shell-native completion and typed Quick Actions | Preserve native editor semantics while providing one bounded persistent action model, opt-in alias projections, and brokered exact execution. |
 | [0016](adr/0016-final-artifact-release-trust.md) | Final-artifact release trust | Sign and scan only protected final artifacts, attest the bytes users install, and handle false positives through vendor review rather than security exclusions. |
+| [0017](adr/0017-session-only-shell-integration.md) | Session-only shell integration | Normal launch injects bounded integration into the child session without persistent profile changes or execution-policy bypass. |
+| [0018](adr/0018-terminal-first-remote-operations.md) | Terminal-first remote operations | One typed registry powers CLI, leader-key, palette, and accessible overlays while preserving native shell ownership and external secret custody. |
 
 ## When an ADR is required
 
