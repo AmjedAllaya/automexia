@@ -10,6 +10,16 @@ technologies. Automexia does **not** claim a complete platform accessibility
 tree in v0.4; that renderer-independent model is the v0.5 decision recorded in
 [ADR 0013](adr/0013-renderer-independent-accessibility-model.md).
 
+The v0.5 platform adapter will adopt AccessKit over that model, as sequenced in
+the [build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md).
+Automexia continues to own stable semantic IDs, roles, names, states, actions,
+focus, privacy, update cadence, terminal text/document projection, and
+renderer-neutral tests. AccessKit owns translation to Windows UI Automation,
+macOS accessibility, and Unix AT-SPI; it does not become a second renderer or
+make pixels the semantic source of truth. Initial delivery covers application
+chrome and structured overlays. Complete terminal-grid range semantics remain
+a separate Automexia text/document milestone.
+
 ## Custom surface inventory
 
 | Surface | v0.4 semantic contract | Keyboard contract | Current limitation |
