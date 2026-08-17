@@ -74,3 +74,10 @@ path = "fuzz_targets/openssh_inventory.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "quick_action_projection"
+path = "fuzz_targets/quick_action_projection.rs"
+test = false
+doc = false
+bench = false

@@ -353,6 +353,7 @@ name = "automexia-devops"
 version = "0.4.0"
 dependencies = [
  "automexia-extension-api",
+ "blake3",
  "criterion",
  "dirs",
  "serde",
@@ -441,6 +442,7 @@ dependencies = [
  "rustc-hash 2.1.3",
  "serde",
  "serde_json",
+ "sha2",
  "smallvec",
  "sugarloaf",
  "taffy",

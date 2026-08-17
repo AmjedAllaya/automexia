@@ -1,11 +1,12 @@
 //! Bounded parsing and serialization for typed Quick Actions.
 //!
 //! This module is intentionally capability-free. Callers provide an in-memory
-//! document; persistence, shell projection, execution, UI, and provider work
-//! belong to later reviewed phases.
+//! document and bounded observations; persistence, shell activation, execution,
+//! UI, and provider work belong to separate reviewed phases.
 
 mod activation;
 mod model;
+mod projection;
 mod validation;
 
 use std::fmt;
@@ -21,6 +22,16 @@ pub use model::{
     AliasProjectionMode, ArgumentToken, CompletionMode, ExecutionMode, OverridePolicy,
     Placeholder, PlaceholderSensitivity, QuickAction, QuickActionDocument, RiskClass,
     ShellKind, WorkingDirectoryPolicy, QUICK_ACTION_SCHEMA_VERSION,
+};
+pub use projection::{
+    canonical_projection_source_digest, compile_shell_projection,
+    verify_projection_artifact, CollisionDetail, CollisionEntry, CollisionInventory,
+    CompletionBlockReason, CompletionHealth, CompletionInventory, CompletionObservation,
+    ExactOverrideConsent, NativeNameKind, ProjectedBinding, ProjectionArtifact,
+    ProjectionDecision, ProjectionDecisionState, ProjectionError, ProjectionReason,
+    ProjectionRequest, ToolHealth, ToolIdentity, ToolInventory, ToolObservation,
+    MAX_CMD_TYPED_BINDINGS, MAX_COLLISION_ENTRIES, MAX_GENERATED_FILE_BYTES,
+    MAX_OBSERVATION_ENTRIES, PROJECTION_GENERATOR, PROJECTION_SCHEMA_VERSION,
 };
 pub use validation::{
     ValidationCode, ValidationError, MAX_ACTIONS, MAX_ARGUMENTS_PER_ACTION,

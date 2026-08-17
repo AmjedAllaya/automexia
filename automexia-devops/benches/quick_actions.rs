@@ -150,10 +150,91 @@ fn quick_action_search_and_expansion(criterion: &mut Criterion) {
     });
 }
 
+fn quick_action_projection_compile(criterion: &mut Criterion) {
+    use automexia_devops::actions::{
+        canonical_projection_source_digest, compile_shell_projection,
+        validate_quick_actions, AliasArgumentPolicy, AliasProjection,
+        AliasProjectionMode, CollisionInventory, CompletionInventory, CompletionMode,
+        OverridePolicy, ProjectionRequest, ToolHealth, ToolInventory, ToolObservation,
+    };
+
+    let actions = (0..256)
+        .map(|index| QuickAction {
+            id: format!("benchmark.projection-{index:03}"),
+            display_name: format!("Projection {index}"),
+            description: String::new(),
+            tags: Vec::new(),
+            scope: ActionScope::GlobalUser,
+            shells: vec![ShellKind::Bash],
+            template: ActionTemplate::TypedArgv {
+                executable_id: "kubectl".into(),
+                arguments: vec![ArgumentToken::Literal {
+                    value: format!("fixed-{index}"),
+                }],
+            },
+            placeholders: Vec::new(),
+            working_directory_policy: Default::default(),
+            risk: RiskClass::ReadOnly,
+            execution: ExecutionMode::Insert,
+            provenance: ActionProvenance::User,
+            enabled: true,
+            alias_projection: Some(AliasProjection {
+                requested_name: format!("a{index:03}"),
+                shells: vec![ShellKind::Bash],
+                mode: AliasProjectionMode::Auto,
+                argument_policy: AliasArgumentPolicy::ForwardAll,
+                completion: CompletionMode::Disabled,
+                override_policy: OverridePolicy::NativeWins,
+                mutating_acknowledged: false,
+                enabled: true,
+            }),
+        })
+        .collect();
+    let actions = validate_quick_actions(QuickActionDocument {
+        schema_version: 1,
+        revision: 1,
+        actions,
+    })
+    .expect("benchmark projections must validate");
+    let source_digest =
+        canonical_projection_source_digest(&actions).expect("benchmark digest");
+    let tools = ToolInventory {
+        complete: true,
+        entries: vec![ToolObservation {
+            executable_id: "kubectl".into(),
+            health: ToolHealth::Ready {
+                version: "1.0.0".into(),
+                file_digest: "a".repeat(64),
+            },
+        }],
+    };
+    let collisions = CollisionInventory::default();
+    let completions = CompletionInventory::default();
+
+    criterion.bench_function("quick_action_projection_compile_bash_256", |bencher| {
+        bencher.iter(|| {
+            black_box(
+                compile_shell_projection(ProjectionRequest {
+                    actions: black_box(&actions),
+                    shell: ShellKind::Bash,
+                    source_digest: black_box(&source_digest),
+                    previous_artifact_digest: None,
+                    collisions: black_box(&collisions),
+                    completions: black_box(&completions),
+                    tools: black_box(&tools),
+                    exact_overrides: &[],
+                })
+                .expect("benchmark projection must compile"),
+            )
+        })
+    });
+}
+
 criterion_group!(
     benches,
     quick_action_parsing,
     quick_action_search_and_expansion,
-    context_label_compaction
+    context_label_compaction,
+    quick_action_projection_compile,
 );
 criterion_main!(benches);

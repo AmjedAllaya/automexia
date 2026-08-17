@@ -185,6 +185,7 @@ fn enabled_alias_limit_counts_enabled_actions_and_projections() {
     let actions = (0..=MAX_ENABLED_ALIASES)
         .map(|index| {
             let mut action = minimal_action(index);
+            action.scope = ActionScope::GlobalUser;
             action.alias_projection = Some(AliasProjection {
                 requested_name: format!("a{index}"),
                 shells: vec![ShellKind::Bash],
