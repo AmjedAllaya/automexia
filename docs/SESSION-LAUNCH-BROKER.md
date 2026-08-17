@@ -67,10 +67,12 @@ A request is rejected unless all of these conditions hold:
 
 1. The broker is in the test-only review harness. The production/pending
    constructor always returns `PendingSecurityReview` before path resolution.
-2. The verified principal matches the repository-owned
-   `automexia.devops-ssh` ID, publisher, and build version. Package digest,
-   signature, compatibility, and revocation proof remain activation gates
-   until the D4 package exists.
+2. The verified principal exactly matches the broker's reviewed
+   `automexia.devops-ssh` package policy: ID, publisher, workspace version,
+   non-zero 32-byte digest, contract version, and either repository-reviewed
+   or first-party-signed verification. Unverified packages and every mismatch
+   fail before executable resolution. A real loader/attestation binding remains
+   an activation gate.
 3. Capability, decision, launch, executable resource, operation ID, session ID,
    and non-zero capsule revision all match.
 4. The application has registered that exact session/capsule; closed session
@@ -109,9 +111,13 @@ system candidate.
 Windows obtains the system directory from `GetSystemDirectoryW`, then checks
 its `OpenSSH` directory. Microsoft documents the in-box client under
 [`%SystemRoot%\\System32\\OpenSSH`](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh-overview).
-Linux and macOS use reviewed fixed locations such as `/usr/bin`; optional
-configured absolute paths cover administrator- or package-manager-installed
-clients without trusting `PATH`.
+macOS checks `/usr/bin`, `/usr/local/bin`, and `/opt/homebrew/bin`; Linux
+checks `/usr/bin`, `/bin`, and `/usr/local/bin`. Optional configured
+absolute paths cover administrator-installed clients without trusting `PATH`.
+WSL production launch is disabled and produces no candidates. Its future
+contract requires the fixed Windows system-directory `wsl.exe`, `--exec`
+without a shell, a verified distribution, and `/usr/bin/ssh`; those steps
+require later native review and are not implemented by this model.
 
 After canonicalization, the broker records native identity:
 
@@ -192,26 +198,48 @@ path, environment value, terminal content, private username, process ID,
 credential, or agent data. The broker does not infer a connection ID from a
 destination argument.
 
-## Verification
+## D0/D3 fixture contract
+
+`tests/fixtures/session-launch/d0-d3-contract-v1.json` is the canonical local
+decision and native-fixture baseline. For Windows, macOS, Linux, and WSL it
+defines direct/explicit/user-port connections, encrypted-key prompts, agents,
+certificates, new/known/changed host keys, ProxyJump, every forwarding type,
+cancellation, exit classification, hostile output, offline behavior, shutdown
+cleanup, and 1/10/50-session resource proof. Each row freezes its expected safe
+outcome rather than only naming a case.
+
+The same contract keeps process, PTY, network, provider, authentication,
+key-custody, and renderer authority false. Strict host-key checking is
+preserved; new trust is explicit, changed keys fail, agent/TCP/X11 forwarding
+and remote commands default off, listener scope is loopback unless separately
+confirmed, discovery runs no config command, and inherited environment,
+secrets, and shell evaluation remain unavailable.
+
+This matrix is a definition, not a claim that native sessions ran. F4/F5 own
+the process/PTY implementation and execution evidence. The contract status
+therefore remains
+`local-contract-complete-protected-approval-pending`.
+
 
 Run the focused contract with:
+## Verification
 
 ```text
+python tools/ci/check_session_launch_d0.py
+python tools/ci/test_session_launch_d0.py
 cargo test -p automexia-extension-api --lib --locked
 cargo test -p automexia-terminal --bin automexia --locked context::launch_broker::tests
 cargo xtask verify architecture
 ```
 
-The suite covers hard production denial, exact principal/capability/decision
-scope, future/expired and denied decisions, capsule registration/rebind,
-operation replay and nonce exhaustion, broad-spawn rejection, shell/WSL rejection,
-leading-dash and extra-argument rejection, literal native argument preservation,
-fixed absolute and fail-closed configured resolution, unsupported tools, native file replacement,
-vanished and relative cwd behavior, bounded environment validation, redaction
-canaries, duplicates, revocation, cancellation, stale leases, cross-scope
-isolation, and cleanup after 1/10/50 pure lifecycle cycles. Native Windows uses
-file-index evidence; native Linux/macOS test jobs compile and run the Unix
-device/inode path.
+The suite covers contract mutation, hard production denial, exact package
+digest/version/contract/verification matching, four-platform fixed roots,
+principal/capability/decision scope, future/expired/denied decisions, capsule
+registration/rebind, replay and nonce exhaustion, broad-spawn and shell/WSL
+rejection, leading-dash and extra-argument rejection, literal native argv,
+fail-closed resolution, file replacement, cwd/environment limits, redaction,
+revocation, cancellation, stale leases, cross-scope isolation, and cleanup
+after 1/10/50 pure lifecycle cycles.
 
 ## Remaining activation gates
 
@@ -219,16 +247,18 @@ This phase is not complete as a shipped feature. Before removing the test-only
 module gate, maintainers must:
 
 1. accept ADR 0012 with the two protected-path approvals required by ADR 0003;
-2. verify the real first-party package digest/signature, publisher,
-   compatibility, and revocation state before constructing a principal;
+2. bind the real package loader's digest/signature, publisher, exact compatible
+   version/contract, and live revocation result to the frozen reviewed-package
+   policy before constructing a principal;
 3. implement a visible, accessible capability decision UI and deterministic
    persisted/session grant policy if persistence is supported;
 4. bind process, PTY, route, capsule, operation, and tunnels before publication
    through the existing application launch path;
-5. add native Windows, Linux, and macOS spawn/cancel/teardown and hostile-argv
+5. add native Windows, macOS, Linux, and WSL spawn/cancel/teardown and hostile-argv
    evidence, including PID reuse and application close;
 6. close the executable check-to-spawn race with a reviewed native mechanism;
-7. complete D4 OpenSSH inventory/security work and the redaction matrix;
+7. connect the completed disabled D4 inventory only through reviewed D5
+   surfaces and complete the cross-surface redaction matrix;
 8. pass the controlled 1/10/50-session process, PTY, renderer, performance,
    and leak gates. The pure broker lifecycle test is necessary but not a
    substitute for those native measurements.

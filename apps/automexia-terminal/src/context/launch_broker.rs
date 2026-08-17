@@ -25,6 +25,7 @@ const _: () = assert!(!MANAGED_SESSION_LAUNCH_ENABLED);
 const REVIEWED_EXTENSION_ID: &str = "automexia.devops-ssh";
 const REVIEWED_PUBLISHER: &str = "io.github.AmjedAllaya";
 const MAX_PUBLISHER_BYTES: usize = 256;
+const REVIEWED_CONTRACT_VERSION: u32 = 1;
 const MAX_VERSION_BYTES: usize = 64;
 const MAX_TOTAL_ARGUMENT_BYTES: usize = 32 * 1024;
 const MAX_DESTINATION_BYTES: usize = 512;
@@ -162,22 +163,47 @@ impl fmt::Display for LaunchDenialCode {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VerifiedExtension {
+pub struct PackageDigest([u8; 32]);
+
+impl PackageDigest {
+    pub fn new(bytes: [u8; 32]) -> Result<Self, LaunchDenialCode> {
+        if bytes.iter().all(|byte| *byte == 0) {
+            return Err(LaunchDenialCode::InvalidPrincipal);
+        }
+        Ok(Self(bytes))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PackageVerification {
+    RepositoryReviewed,
+    FirstPartySigned,
+    Unverified,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReviewedPackagePolicy {
     id: ExtensionId,
     publisher: String,
     version: String,
+    package_digest: PackageDigest,
+    contract_version: u32,
 }
 
-impl VerifiedExtension {
+impl ReviewedPackagePolicy {
     pub fn new(
         id: ExtensionId,
         publisher: impl Into<String>,
         version: impl Into<String>,
+        package_digest: PackageDigest,
+        contract_version: u32,
     ) -> Result<Self, LaunchDenialCode> {
         let publisher = publisher.into();
         let version = version.into();
-        if !valid_identity_text(&publisher, MAX_PUBLISHER_BYTES)
-            || !valid_version(&version)
+        if id.as_str() != REVIEWED_EXTENSION_ID
+            || publisher != REVIEWED_PUBLISHER
+            || version != env!("CARGO_PKG_VERSION")
+            || contract_version != REVIEWED_CONTRACT_VERSION
         {
             return Err(LaunchDenialCode::InvalidPrincipal);
         }
@@ -185,13 +211,60 @@ impl VerifiedExtension {
             id,
             publisher,
             version,
+            package_digest,
+            contract_version,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VerifiedExtension {
+    id: ExtensionId,
+    publisher: String,
+    version: String,
+    package_digest: PackageDigest,
+    contract_version: u32,
+    verification: PackageVerification,
+}
+
+impl VerifiedExtension {
+    pub fn new(
+        id: ExtensionId,
+        publisher: impl Into<String>,
+        version: impl Into<String>,
+        package_digest: PackageDigest,
+        contract_version: u32,
+        verification: PackageVerification,
+    ) -> Result<Self, LaunchDenialCode> {
+        let publisher = publisher.into();
+        let version = version.into();
+        if !valid_identity_text(&publisher, MAX_PUBLISHER_BYTES)
+            || !valid_version(&version)
+            || contract_version == 0
+        {
+            return Err(LaunchDenialCode::InvalidPrincipal);
+        }
+        Ok(Self {
+            id,
+            publisher,
+            version,
+            package_digest,
+            contract_version,
+            verification,
         })
     }
 
-    fn is_reviewed_first_party(&self) -> bool {
-        self.id.as_str() == REVIEWED_EXTENSION_ID
-            && self.publisher == REVIEWED_PUBLISHER
-            && self.version == env!("CARGO_PKG_VERSION")
+    fn is_reviewed_first_party(&self, policy: &ReviewedPackagePolicy) -> bool {
+        self.id == policy.id
+            && self.publisher == policy.publisher
+            && self.version == policy.version
+            && self.package_digest == policy.package_digest
+            && self.contract_version == policy.contract_version
+            && matches!(
+                self.verification,
+                PackageVerification::RepositoryReviewed
+                    | PackageVerification::FirstPartySigned
+            )
     }
 }
 
@@ -419,6 +492,75 @@ impl PreparedLaunch {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OpenSshHostPlatform {
+    Windows,
+    MacOs,
+    Linux,
+    Wsl,
+    Unsupported,
+}
+
+#[cfg(target_os = "windows")]
+fn current_openssh_host_platform() -> OpenSshHostPlatform {
+    OpenSshHostPlatform::Windows
+}
+
+#[cfg(target_os = "macos")]
+fn current_openssh_host_platform() -> OpenSshHostPlatform {
+    OpenSshHostPlatform::MacOs
+}
+
+#[cfg(target_os = "linux")]
+fn current_openssh_host_platform() -> OpenSshHostPlatform {
+    let wsl_environment = std::env::var_os("WSL_DISTRO_NAME").is_some()
+        || std::env::var_os("WSL_INTEROP").is_some();
+    let wsl_kernel = fs::read_to_string("/proc/sys/kernel/osrelease")
+        .is_ok_and(|release| release.to_ascii_lowercase().contains("microsoft"));
+    if wsl_environment || wsl_kernel {
+        OpenSshHostPlatform::Wsl
+    } else {
+        OpenSshHostPlatform::Linux
+    }
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+fn current_openssh_host_platform() -> OpenSshHostPlatform {
+    OpenSshHostPlatform::Unsupported
+}
+
+fn platform_candidate_roots(
+    platform: OpenSshHostPlatform,
+    windows_system_directory: Option<&Path>,
+) -> Vec<PathBuf> {
+    match platform {
+        OpenSshHostPlatform::Windows => windows_system_directory
+            .map(|directory| vec![directory.join("OpenSSH")])
+            .unwrap_or_default(),
+        OpenSshHostPlatform::MacOs => ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"]
+            .into_iter()
+            .map(PathBuf::from)
+            .collect(),
+        OpenSshHostPlatform::Linux => ["/usr/bin", "/bin", "/usr/local/bin"]
+            .into_iter()
+            .map(PathBuf::from)
+            .collect(),
+        // WSL launch remains outside the accepted ADR boundary. A later phase
+        // must verify fixed System32/wsl.exe and /usr/bin/ssh identities.
+        OpenSshHostPlatform::Wsl | OpenSshHostPlatform::Unsupported => Vec::new(),
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn host_windows_system_directory() -> Option<PathBuf> {
+    windows_system_directory()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn host_windows_system_directory() -> Option<PathBuf> {
+    None
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct ExecutablePolicy {
     candidates: BTreeMap<&'static str, Vec<PathBuf>>,
@@ -427,25 +569,20 @@ pub struct ExecutablePolicy {
 impl ExecutablePolicy {
     pub fn host_defaults() -> Self {
         let mut policy = Self::default();
-        #[cfg(target_os = "windows")]
-        if let Some(system_directory) = windows_system_directory() {
-            let openssh = system_directory.join("OpenSSH");
+        let system_directory = host_windows_system_directory();
+        for directory in platform_candidate_roots(
+            current_openssh_host_platform(),
+            system_directory.as_deref(),
+        ) {
             for executable in OpenSshExecutable::ALL {
-                policy.add_candidate(executable, openssh.join(executable.filename()));
-            }
-        }
-        #[cfg(not(target_os = "windows"))]
-        for directory in ["/usr/bin", "/bin", "/usr/local/bin", "/opt/homebrew/bin"] {
-            for executable in OpenSshExecutable::ALL {
-                policy.add_candidate(
-                    executable,
-                    Path::new(directory).join(executable.filename()),
-                );
+                policy.add_candidate(executable, directory.join(executable.filename()));
             }
         }
         policy
     }
 
+    /// An explicit override replaces host defaults. Failure never falls back
+    /// to a PATH, working-directory, or default candidate.
     pub fn with_configured_path(
         mut self,
         executable: OpenSshExecutable,
@@ -645,6 +782,7 @@ enum BrokerActivation {
 pub struct CapabilityBroker {
     activation: BrokerActivation,
     executable_policy: ExecutablePolicy,
+    package_policy: ReviewedPackagePolicy,
     next_nonce: u64,
     operations: BTreeMap<OperationId, OperationBinding>,
     sessions: BTreeMap<SessionId, SessionRegistration>,
@@ -653,11 +791,15 @@ pub struct CapabilityBroker {
 }
 
 impl CapabilityBroker {
-    pub fn pending_security_review(executable_policy: ExecutablePolicy) -> Self {
+    pub fn pending_security_review(
+        executable_policy: ExecutablePolicy,
+        package_policy: ReviewedPackagePolicy,
+    ) -> Self {
         Self {
             activation: BrokerActivation::PendingSecurityReview,
             executable_policy,
             next_nonce: 1,
+            package_policy,
             operations: BTreeMap::new(),
             sessions: BTreeMap::new(),
             highest_session_id: 0,
@@ -666,8 +808,11 @@ impl CapabilityBroker {
     }
 
     #[cfg(test)]
-    fn review_harness(executable_policy: ExecutablePolicy) -> Self {
-        let mut broker = Self::pending_security_review(executable_policy);
+    fn review_harness(
+        executable_policy: ExecutablePolicy,
+        package_policy: ReviewedPackagePolicy,
+    ) -> Self {
+        let mut broker = Self::pending_security_review(executable_policy, package_policy);
         broker.activation = BrokerActivation::ReviewHarness;
         broker
     }
@@ -741,7 +886,9 @@ impl CapabilityBroker {
     ) -> Result<PreparedLaunch, Box<DeniedLaunch>> {
         let operation_kind = operation_kind(submission.launch);
 
-        if !submission.principal.is_reviewed_first_party()
+        if !submission
+            .principal
+            .is_reviewed_first_party(&self.package_policy)
             || submission.capability.extension_id != submission.principal.id
         {
             return Err(deny(
@@ -1295,11 +1442,29 @@ mod tests {
         }
     }
 
+    fn review_package_digest() -> PackageDigest {
+        PackageDigest::new([0xa5; 32]).unwrap()
+    }
+
+    fn reviewed_package_policy() -> ReviewedPackagePolicy {
+        ReviewedPackagePolicy::new(
+            ExtensionId::new(REVIEWED_EXTENSION_ID).unwrap(),
+            REVIEWED_PUBLISHER,
+            env!("CARGO_PKG_VERSION"),
+            review_package_digest(),
+            REVIEWED_CONTRACT_VERSION,
+        )
+        .unwrap()
+    }
+
     fn reviewed_principal() -> VerifiedExtension {
         VerifiedExtension::new(
             ExtensionId::new(REVIEWED_EXTENSION_ID).unwrap(),
             REVIEWED_PUBLISHER,
             env!("CARGO_PKG_VERSION"),
+            review_package_digest(),
+            REVIEWED_CONTRACT_VERSION,
+            PackageVerification::RepositoryReviewed,
         )
         .unwrap()
     }
@@ -1308,7 +1473,8 @@ mod tests {
         fixture: &ExecutableFixture,
         request: &TestRequest,
     ) -> CapabilityBroker {
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
+        let mut broker =
+            CapabilityBroker::review_harness(fixture.policy(), reviewed_package_policy());
         broker
             .register_session(request.launch.session_id, request.launch.capsule_revision)
             .unwrap();
@@ -1319,8 +1485,10 @@ mod tests {
     fn production_broker_is_a_hard_denial_before_resolution() {
         let fixture = ExecutableFixture::new();
         let request = TestRequest::new(fixture.safe_default.clone(), "prod-alias");
-        let mut broker =
-            CapabilityBroker::pending_security_review(ExecutablePolicy::default());
+        let mut broker = CapabilityBroker::pending_security_review(
+            ExecutablePolicy::default(),
+            reviewed_package_policy(),
+        );
         let denied = broker.authorize(request.submission()).unwrap_err();
         assert_eq!(denied.code, LaunchDenialCode::PendingSecurityReview);
         assert_eq!(denied.audit.result, AuditResultClass::Denied(denied.code));
@@ -1482,6 +1650,9 @@ mod tests {
             ExtensionId::new("third.party").unwrap(),
             "third.party",
             env!("CARGO_PKG_VERSION"),
+            review_package_digest(),
+            REVIEWED_CONTRACT_VERSION,
+            PackageVerification::RepositoryReviewed,
         )
         .unwrap();
         unreviewed.capability.extension_id = unreviewed.principal.id.clone();
@@ -1517,6 +1688,94 @@ mod tests {
                 LaunchDenialCode::UnsupportedOperation
             );
         }
+    }
+
+    #[test]
+    fn package_identity_digest_compatibility_and_verification_fail_closed() {
+        assert_eq!(
+            PackageDigest::new([0; 32]).unwrap_err(),
+            LaunchDenialCode::InvalidPrincipal
+        );
+        assert_eq!(
+            ReviewedPackagePolicy::new(
+                ExtensionId::new(REVIEWED_EXTENSION_ID).unwrap(),
+                REVIEWED_PUBLISHER,
+                "999.0.0",
+                review_package_digest(),
+                REVIEWED_CONTRACT_VERSION,
+            )
+            .unwrap_err(),
+            LaunchDenialCode::InvalidPrincipal
+        );
+
+        let fixture = ExecutableFixture::new();
+        let seed = TestRequest::new(fixture.safe_default.clone(), "host");
+        let mut broker = review_broker(&fixture, &seed);
+
+        let mut unverified = TestRequest::new(fixture.safe_default.clone(), "host");
+        unverified.principal.verification = PackageVerification::Unverified;
+        assert_eq!(
+            broker.authorize(unverified.submission()).unwrap_err().code,
+            LaunchDenialCode::InvalidPrincipal
+        );
+
+        let mut wrong_digest = TestRequest::new(fixture.safe_default.clone(), "host");
+        wrong_digest.principal.package_digest = PackageDigest::new([0x5a; 32]).unwrap();
+        assert_eq!(
+            broker
+                .authorize(wrong_digest.submission())
+                .unwrap_err()
+                .code,
+            LaunchDenialCode::InvalidPrincipal
+        );
+
+        let mut wrong_contract = TestRequest::new(fixture.safe_default.clone(), "host");
+        wrong_contract.principal.contract_version = REVIEWED_CONTRACT_VERSION + 1;
+        assert_eq!(
+            broker
+                .authorize(wrong_contract.submission())
+                .unwrap_err()
+                .code,
+            LaunchDenialCode::InvalidPrincipal
+        );
+
+        let mut signed = TestRequest::new(fixture.safe_default.clone(), "host");
+        signed.principal.verification = PackageVerification::FirstPartySigned;
+        let prepared = broker.authorize(signed.submission()).unwrap();
+        broker.complete(prepared.lease()).unwrap();
+    }
+
+    #[test]
+    fn platform_resolution_contract_is_fixed_and_wsl_remains_disabled() {
+        let system_directory = PathBuf::from("/fixed/windows/System32");
+        assert_eq!(
+            platform_candidate_roots(
+                OpenSshHostPlatform::Windows,
+                Some(system_directory.as_path()),
+            ),
+            vec![system_directory.join("OpenSSH")]
+        );
+        assert_eq!(
+            platform_candidate_roots(OpenSshHostPlatform::MacOs, None),
+            vec![
+                PathBuf::from("/usr/bin"),
+                PathBuf::from("/usr/local/bin"),
+                PathBuf::from("/opt/homebrew/bin"),
+            ]
+        );
+        assert_eq!(
+            platform_candidate_roots(OpenSshHostPlatform::Linux, None),
+            vec![
+                PathBuf::from("/usr/bin"),
+                PathBuf::from("/bin"),
+                PathBuf::from("/usr/local/bin"),
+            ]
+        );
+        assert!(platform_candidate_roots(OpenSshHostPlatform::Windows, None).is_empty());
+        assert!(platform_candidate_roots(OpenSshHostPlatform::Wsl, None).is_empty());
+        assert!(
+            platform_candidate_roots(OpenSshHostPlatform::Unsupported, None).is_empty()
+        );
     }
 
     #[test]
@@ -1772,7 +2031,8 @@ mod tests {
         );
 
         let unregistered = TestRequest::new(fixture.safe_default.clone(), "host");
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
+        let mut broker =
+            CapabilityBroker::review_harness(fixture.policy(), reviewed_package_policy());
         assert_eq!(
             broker
                 .authorize(unregistered.submission())
@@ -1840,7 +2100,10 @@ mod tests {
     fn one_ten_and_fifty_session_cycles_release_all_bounded_state() {
         let fixture = ExecutableFixture::new();
         for count in [1_u64, 10, 50] {
-            let mut broker = CapabilityBroker::review_harness(fixture.policy());
+            let mut broker = CapabilityBroker::review_harness(
+                fixture.policy(),
+                reviewed_package_policy(),
+            );
             for index in 1..=count {
                 let mut request = TestRequest::new(fixture.safe_default.clone(), "host");
                 request.set_scope(OperationId::new(1), SessionId::new(index), 1);
