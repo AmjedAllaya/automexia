@@ -38,8 +38,8 @@ class AliasSpecificationTests(unittest.TestCase):
                 "scopes": 6,
                 "verification_domains": 10,
                 "ux_invariants": 8,
-                "model_files": 5,
-                "persistence_files": 10,
+                "model_files": 6,
+                "persistence_files": 11,
                 "hostile_cases": 11,
                 "wiring": 10,
             },
@@ -51,16 +51,17 @@ class AliasSpecificationTests(unittest.TestCase):
         with self.assertRaisesRegex(POLICY.AliasSpecError, "remain planned"):
             POLICY.validate_contract(changed)
 
-    def test_cp31_stage_cannot_regress_or_overclaim_later_phases(self) -> None:
+    def test_cp32_stage_cannot_regress_or_overclaim_later_phases(self) -> None:
         for stage in (
             "CP2.2-action-search-review-insert-copy",
             "CP3.0-pure-projection-compiler-activation-disabled",
-            "CP3.2-static-devops-packs",
+            "CP3.1-persistent-explicit-opt-in-aliases",
+            "CP3.3-context-aware-pack-automation",
         ):
             with self.subTest(stage=stage):
                 changed = deepcopy(CONTRACT)
                 changed["implemented_stage"] = stage
-                with self.assertRaisesRegex(POLICY.AliasSpecError, "through explicit CP3.1"):
+                with self.assertRaisesRegex(POLICY.AliasSpecError, "through reviewed CP3.2"):
                     POLICY.validate_contract(changed)
 
     def test_pure_model_source_boundary_cannot_expand(self) -> None:
@@ -75,7 +76,7 @@ class AliasSpecificationTests(unittest.TestCase):
         with self.assertRaisesRegex(POLICY.AliasSpecError, "hostile fixture authority"):
             POLICY.validate_contract(changed)
 
-    def test_cp31_application_source_boundary_cannot_expand(self) -> None:
+    def test_cp32_application_source_boundary_cannot_expand(self) -> None:
         changed = deepcopy(CONTRACT)
         changed["activation_files"].append("shell-integration/aliases.sh")
         with self.assertRaisesRegex(POLICY.AliasSpecError, "application source"):
@@ -221,8 +222,8 @@ class AliasSpecificationTests(unittest.TestCase):
     def test_false_shipped_claim_is_rejected(self) -> None:
         text = (ROOT / "docs/DEVOPS-ALIASES.md").read_text(encoding="utf-8")
         changed = text.replace(
-            "Status: CP2.0-CP3.1",
-            "Status: shipped CP2.0-CP3.1",
+            "Status: CP2.0-CP3.2",
+            "Status: shipped CP2.0-CP3.2",
             1,
         )
         with self.assertRaisesRegex(POLICY.AliasSpecError, "must not overclaim"):

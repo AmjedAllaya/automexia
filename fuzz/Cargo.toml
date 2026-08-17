@@ -81,3 +81,10 @@ path = "fuzz_targets/quick_action_projection.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "quick_action_packs"
+path = "fuzz_targets/quick_action_packs.rs"
+test = false
+doc = false
+bench = false

@@ -47,7 +47,9 @@ jobs:
         run: python tools/ci/test_command_productivity_cp30.py
       - name: Command productivity CP3.1 persistence mutation tests
         run: python tools/ci/test_command_productivity_cp31.py
-      - name: Implemented CP2-CP3.1 and planned CP3.2+ alias mutation tests
+      - name: Command productivity CP3.2 provider-pack mutation tests
+        run: python tools/ci/test_command_productivity_cp32.py
+      - name: Implemented CP2-CP3.2 and planned CP3.3+ alias mutation tests
         run: python tools/ci/test_devops_alias_spec.py
       - name: Completion adapter benchmark contract tests
         run: python tools/ci/test_measure_completion_adapter.py

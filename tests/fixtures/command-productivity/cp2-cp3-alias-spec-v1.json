@@ -2,7 +2,7 @@
   "schema": 1,
   "phase": "CP2-CP3-SPEC",
   "status": "planned",
-  "implemented_stage": "CP3.1-persistent-explicit-opt-in-aliases",
+  "implemented_stage": "CP3.2-static-devops-packs",
   "authorities": {
     "product": "docs/DEVOPS-ALIASES.md",
     "architecture": "docs/ARCHITECTURE.md",
@@ -181,7 +181,8 @@
     "automexia-devops/src/actions/model.rs",
     "automexia-devops/src/actions/projection.rs",
     "automexia-devops/src/actions/validation.rs",
-    "automexia-devops/src/actions/activation.rs"
+    "automexia-devops/src/actions/activation.rs",
+    "automexia-devops/src/actions/packs.rs"
   ],
   "hostile_fixture": "tests/fixtures/command-productivity/cp2-hostile-actions-v1.json",
   "activation_files": [
@@ -194,6 +195,7 @@
     "apps/automexia-terminal/src/automexia/quick_actions/transfer.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/worker.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/aliases.rs",
-    "apps/automexia-terminal/src/automexia/quick_actions/aliases_cli.rs"
+    "apps/automexia-terminal/src/automexia/quick_actions/aliases_cli.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/packs_cli.rs"
   ]
 }

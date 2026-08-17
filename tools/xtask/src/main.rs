@@ -2152,6 +2152,8 @@ fn verify_architecture() -> TaskResult {
     run_python("tools/ci/check_command_productivity_cp1.py")?;
     run_python("tools/ci/check_command_productivity_cp22.py")?;
     run_python("tools/ci/check_command_productivity_cp30.py")?;
+    run_python("tools/ci/check_command_productivity_cp31.py")?;
+    run_python("tools/ci/check_command_productivity_cp32.py")?;
     run_python("tools/ci/check_runtime_trust.py")?;
     let identity = product_identity()?;
     let metadata = metadata()?;
