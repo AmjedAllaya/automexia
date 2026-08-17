@@ -1224,11 +1224,12 @@ Twenty-one owned alias-store regressions span common, three Windows-native, and 
 Unix-permission/link cases (19 run on Windows and 18 on Unix), with three focused
 CLI detail regressions and seven CLI parser cases. A hostile-manifest property,
 cross-process lock contention, the schema-1 CP3.1 contract, eight mutations,
-workflow evidence checks, and the aggregate CP2-CP3.1 checker prevent publication-
+workflow evidence checks, and the aggregate CP2-CP3.2 checker prevent publication-
 order, capability, security, UX, lifecycle, and documentation drift. Local WSL
 also passes the Unix unsafe-artifact-permission case. Published hosted native
 Windows/Linux/macOS/WSL results and the 30-day resource baseline remain release
-evidence; CP3.2/CP3.3 remain disabled.
+evidence. CP3.2 static actions ship disabled and unaliased; CP3.3 bridges remain
+not implemented.
 ## Command-productivity CP0 contract
 
 CP0 is a non-runtime policy boundary. It does not enable managed completion,
@@ -1418,3 +1419,38 @@ criteria are in the
 [stabilization roadmap](STABILIZATION-ROADMAP.md#verification-infrastructure-plan).
 A source implementation never substitutes for the hosted, elevated, signed, or
 human-reviewed evidence named there.
+
+## CP3.2 reviewed DevOps action packs
+
+CP3.2 is fully done at the local source boundary. Its focused validation is:
+
+```text
+cargo test -p automexia-devops --test quick_action_packs --lib
+cargo test -p automexia-terminal cli::tests::pack_ --lib
+cargo check --manifest-path fuzz/Cargo.toml --bin quick_action_packs
+cargo bench -p automexia-devops --bench quick_actions --no-run
+python tools/ci/check_command_productivity_cp32.py
+python tools/ci/test_command_productivity_cp32.py
+python tools/ci/check_devops_alias_spec.py
+python tools/ci/test_devops_alias_spec.py
+```
+
+The pack suite covers the exact 11-provider/33-action inventory, HTTPS/version/
+sort validation, disabled and unaliased defaults, explicit materialization,
+effect/risk alias denial, forged built-in provenance, missing/unsupported/
+completion/ready health, hostile version text, overlay preservation, deprecation
+replacement, update detection, stale-overlay rejection, and immutable-version
+advancement. Registry unit mutations reject enabled defaults, wrong provenance,
+and duplicate actions. CLI parser tests prove enable is a dry
+run and apply needs revision CAS, while doctor version/missing observations are
+mutually exclusive.
+
+A short local Windows Criterion run measured full 11-pack/33-action validation at
+285.40-291.28 us and all 11 ready health evaluations at 283.94-292.40 us. This
+proves the benchmark and current bounds, not the controlled 30-day baseline.
+The Criterion targets validate all 11 manifests/33 actions and evaluate all 11
+health reports. Nightly fuzzes bounded hostile version observations and both
+valid/stale overlay digests. The contract checker and seven mutation cases
+freeze inventory, capability denial, alias safety, lifecycle, source, tests,
+benchmark, fuzz, CI wiring, and CP3.2 documentation. Hosted cross-platform and
+30-day comparable measurements remain release evidence.
