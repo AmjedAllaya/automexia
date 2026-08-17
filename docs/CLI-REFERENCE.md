@@ -166,11 +166,17 @@ automexia packs enable PACK_ID ACTION_ID [--json]
 automexia packs enable PACK_ID ACTION_ID --apply --expected-revision N [--json]
 ```
 
-`list`, `show`, and `doctor` are read-only and never start a provider. Doctor
-reports the registry as ready when no pack is selected; pack health uses only
-the supplied Missing/Detected/Unobserved observation. `enable` previews by
-default, refuses to overwrite an existing action, and applies through the same
-private revision compare-and-swap store as other Quick Actions. It always leaves
-the alias disabled. Eligible inspection actions require a separate explicit
-`automexia aliases enable` review; context-changing, authentication,
-destructive, and privileged pack actions are rejected there.
+`list`, `show`, and `doctor` are read-only and never start a provider. With
+no pack selected, doctor reports `registry-ready` only; it does not imply that
+any provider is installed or healthy. Pack health uses only the supplied
+Missing/Detected/Unobserved observation and text output names every missing
+completion shell.
+
+`enable` previews by default and shows the exact argv token array, display text,
+effect, risk, documentation URL, alias eligibility, registry digest, and reusable
+revision. Apply rejects a stale revision before creating the store, refuses to
+overwrite an existing action, and uses the same private compare-and-swap store
+as other Quick Actions. It always leaves the alias disabled. Eligible inspection
+actions require a separate explicit `automexia aliases enable` review; context-
+changing, authentication, destructive, and privileged pack actions are rejected
+there.

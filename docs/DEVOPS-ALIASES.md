@@ -1271,7 +1271,9 @@ not enable CP3.2/CP3.3.
 - The capability-free schema-1 registry owns eleven immutable manifests and
   exactly 33 sorted typed actions. Each records stable ID/provenance, reviewed
   minimum tool version and version argv, HTTPS documentation, completion policy,
-  placeholders, effect, and exact risk floor.
+  placeholders, effect, and exact risk floor. A reviewed BLAKE3 digest freezes
+  the complete serialized payload, so argv, effect, version, completion, URL, or
+  provenance drift fails during registry initialization and focused tests.
 - Built-ins are `BuiltinDisabled`, unaliased, insert-only, and directory-neutral.
   `materialize_pack_action` creates a user-enabled copy only after explicit
   selection and still leaves aliases disabled.
@@ -1280,18 +1282,24 @@ not enable CP3.2/CP3.3.
   health code starts no provider and reads no credentials, files, or network.
 - Update planning rejects version regressions and stale overlay digests,
   preserves valid custom overlays, and reports add/update/unchanged/deprecated/
-  removed states with exact replacement IDs.
+  removed states with exact replacement IDs. Version-only provenance changes are
+  correctly unchanged; functional action or completion metadata changes remain
+  updates.
 - Manifest-aware alias validation rechecks canonical payload and provenance.
   Context-changing, authentication, destructive, and privileged actions cannot
   acquire aliases; generic secret, risk, scope, working-directory, collision,
   and completion rules still apply.
-- `automexia packs list`, `show`, and `doctor` are read-only. `enable` is a dry
-  run unless `--apply --expected-revision N` is supplied, never overwrites an
+- `automexia packs list`, `show`, and `doctor` are read-only. Registry doctor
+  reports `registry-ready`, never provider readiness. `enable` previews exact
+  argv, display text, effect, risk, documentation, alias eligibility, and the
+  reusable revision. It is a dry run unless `--apply --expected-revision N` is
+  supplied, rejects a stale revision before store creation, never overwrites an
   existing action, and never enables an alias.
 
-Exit: satisfied at the source/local boundary by 13 pack unit/integration cases,
-two CLI parser cases, registry and health benchmarks, the nightly pack fuzzer,
-a schema-1 contract and seven mutations, aggregate CI/xtask enforcement, and
+Exit: satisfied at the source/local boundary by 14 pack unit/integration cases,
+five CLI parser/rendering/preflight cases, registry and health benchmarks, the
+nightly pack fuzzer, a schema-1 exact-payload contract and eight mutations,
+aggregate CI/xtask enforcement, and
 this synchronized documentation. Hosted native results and the controlled
 30-day baseline remain release evidence.
 

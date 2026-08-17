@@ -1427,6 +1427,7 @@ CP3.2 is fully done at the local source boundary. Its focused validation is:
 ```text
 cargo test -p automexia-devops --test quick_action_packs --lib
 cargo test -p automexia-terminal cli::tests::pack_ --lib
+cargo test -p automexia-terminal packs_cli --lib
 cargo check --manifest-path fuzz/Cargo.toml --bin quick_action_packs
 cargo bench -p automexia-devops --bench quick_actions --no-run
 python tools/ci/check_command_productivity_cp32.py
@@ -1439,18 +1440,23 @@ The pack suite covers the exact 11-provider/33-action inventory, HTTPS/version/
 sort validation, disabled and unaliased defaults, explicit materialization,
 effect/risk alias denial, forged built-in provenance, missing/unsupported/
 completion/ready health, hostile version text, overlay preservation, deprecation
-replacement, update detection, stale-overlay rejection, and immutable-version
-advancement. Registry unit mutations reject enabled defaults, wrong provenance,
-and duplicate actions. CLI parser tests prove enable is a dry
-run and apply needs revision CAS, while doctor version/missing observations are
-mutually exclusive.
+replacement, functional update detection, correct version-only unchanged
+classification, stale-overlay rejection, and immutable-version advancement.
+Registry unit mutations reject enabled defaults, wrong provenance, duplicate
+actions, inconsistent completion policies, and malformed HTTPS documentation
+URLs. Five CLI parser/rendering/preflight cases prove enable is a dry run, apply
+needs revision CAS, stale revisions fail before store creation, exact argv/risk/
+effect/documentation are reviewable, and registry doctor never claims provider
+readiness.
 
 A short local Windows Criterion run measured full 11-pack/33-action validation at
-285.40-291.28 us and all 11 ready health evaluations at 283.94-292.40 us. This
+272.31-283.98 us and all 11 ready health evaluations at 289.48-310.79 us. This
 proves the benchmark and current bounds, not the controlled 30-day baseline.
 The Criterion targets validate all 11 manifests/33 actions and evaluate all 11
 health reports. Nightly fuzzes bounded hostile version observations and both
-valid/stale overlay digests. The contract checker and seven mutation cases
-freeze inventory, capability denial, alias safety, lifecycle, source, tests,
-benchmark, fuzz, CI wiring, and CP3.2 documentation. Hosted cross-platform and
+valid/stale overlay digests. The contract freezes the complete reviewed registry
+digest plus 17 named integration/CLI regressions; eight mutation cases freeze
+inventory, capability denial, exact preview UX, alias safety, lifecycle, source,
+tests, benchmark, fuzz, CI wiring, and eight CP3.2 documents. Hosted
+cross-platform and
 30-day comparable measurements remain release evidence.
