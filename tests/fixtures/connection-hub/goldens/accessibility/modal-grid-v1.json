@@ -18,5 +18,9 @@
   "primary_action_disabled": true,
   "execution_enabled": false,
   "status_not_color_only": true,
-  "focus_returns_to_opener": true
+  "focus_returns_to_opener": true,
+  "missing_selection_managed_focusable_rows": 1,
+  "loading_role": "progress",
+  "loading_live": true,
+  "planner_action_values_redacted": true
 }

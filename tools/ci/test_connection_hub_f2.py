@@ -32,7 +32,7 @@ class F2ContractTests(unittest.TestCase):
             policy.validate_repository(),
             {
                 "models": 6,
-                "tests": 22,
+                "tests": 30,
                 "providers": 10,
                 "auth_states": 14,
                 "layouts": 4,
@@ -71,6 +71,28 @@ class F2ContractTests(unittest.TestCase):
         with mock.patch.object(policy, "bounded_text", side_effect=mutated):
             with self.assertRaisesRegex(policy.F2ContractError, "capability-free"):
                 policy.validate_sources(self.contract)
+
+    def test_validation_bypass_or_planner_panic_is_rejected(self) -> None:
+        cases = [
+            (
+                "model.rs",
+                "\nimpl From<ConnectionProfileV1> for ValidatedConnectionProfile {}\n",
+                "can be forged",
+            ),
+            ("planner.rs", "\nfn panic_path() { value.expect(\"boom\"); }\n", "panic primitive"),
+        ]
+        original = policy.bounded_text
+        for file_name, injection, expected in cases:
+            with self.subTest(file_name=file_name):
+                def mutated(path, maximum=policy.MAX_EVIDENCE_BYTES):
+                    source = original(path, maximum)
+                    if path.name == file_name:
+                        source += injection
+                    return source
+
+                with mock.patch.object(policy, "bounded_text", side_effect=mutated):
+                    with self.assertRaisesRegex(policy.F2ContractError, expected):
+                        policy.validate_sources(self.contract)
 
     def test_disabled_execution_or_modal_inertness_mutation_is_rejected(self) -> None:
         original = policy.bounded_text

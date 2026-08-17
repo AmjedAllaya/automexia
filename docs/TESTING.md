@@ -1058,31 +1058,53 @@ It is reproduced locally with:
     cargo test --manifest-path fuzz/Cargo.toml --no-run
     cargo xtask verify architecture
 
-The DevOps tests cover every top-level strict/versioned record, document limits,
-duplicate/missing/cyclic dependencies, cross-recipe variable collisions, pre-allocation plan-step ceilings, hostile controls/bidi, secret-bearing
+The DevOps tests cover every top-level strict/versioned record, sealed validated
+wrappers, document limits, duplicate/missing/cyclic dependencies, duplicate
+review identities, cross-recipe variable collisions, pre-allocation plan-step
+ceilings, hostile controls/bidi in documents and plan overrides, secret-bearing
 and command-shaped input, option confusion, policy/retry combinations,
-redaction, deterministic plan fingerprints, all authentication/result states
-and transitions, exactly 64 steps, order-independent capability/executable
-inputs, and the all-false process/network/provider/credential/PTY/listener
-authority ceiling.
+redaction, deterministic plan fingerprints, active-operation authentication
+correlation, late-generation rejection, canonical event IDs, all authentication/
+result states and transitions, exactly 64 steps, order-independent capability/
+executable inputs, panic-free sequence conversion, and the all-false process/
+network/provider/credential/PTY/listener authority ceiling.
 
 The UI-model tests cover the ten-provider and all-auth fixture matrices, every
 Hub empty/loading/failure state, wide/medium/narrow projection at 100-400% text
 scale, bounded row virtualization, modal/background-inert/topmost behavior,
-keyboard navigation, managed composite focus, opener focus restoration, reading
-order, status text independent of color, high contrast, reduced motion/
-transparency, all seven Connection Review sections, blocking decisions, and
-step-by-step dry-run planner narration. The structured files under
+keyboard navigation, managed composite focus with stale-selection fallback,
+opener focus restoration, route-aware modal tab cycles, reading order, live
+loading progress, status text independent of color, high contrast, reduced
+motion/transparency, all seven Connection Review sections, blocking decisions,
+and value-redacted human dry-run action narration. The structured files under
 `tests/fixtures/connection-hub/goldens` are semantic/layout contracts, not a
 claim about native pixels or a shipped dialog.
 
 `tools/ci/check_connection_hub_f2.py` freezes schemas, ceilings, provider/state/
-layout matrices, evidence owners, forbidden authority primitives, and disabled
-execution/modal invariants. Its mutation suite proves those checks fail when
-limits, authority, states, required tests, or accessibility invariants drift.
+layout matrices, 30 required regressions, sealed validation, panic-free planning,
+evidence owners, forbidden authority primitives, and disabled execution/modal
+invariants. Its mutation suite proves those checks fail when limits, authority,
+states, validation construction, panic primitives, required tests,
+accessibility, or projected-value privacy invariants drift.
 Nightly owns the bounded `connection_planning` fuzz target; controlled QA owns
 execution of the 64-step validation/resolution benchmark. The benchmark build
 is a PR/nightly ownership check, not a longitudinal performance ratchet.
+
+A local Windows release-profile diagnostic on 2026-08-17 first used ten samples:
+validation measured 3.8865-4.5138 us and resolution measured 87.246-89.835 us.
+Criterion reported an apparent 10.635% validation regression, but that sample
+contained a severe high outlier. The required 50-sample investigation then
+measured validation at 3.6726-3.7202 us and resolution at 85.880-87.687 us;
+validation improved and resolution remained within noise. Both paths are far
+below the 10 ms reviewed ceiling. These local measurements prove the current
+bounded implementation, not the controlled named-hardware or 30-day baseline.
+
+The fuzz package and `connection_planning` target compile on this Windows host.
+Native campaign execution remains external here: the sanitizer build could not
+load `clang_rt.asan_dynamic-x86_64.dll`, while the `--sanitizer none` fallback
+failed in the MSVC linker on the libFuzzer sanitizer-coverage start/stop symbols.
+Nightly's supported sanitizer runner remains the execution owner; this local
+host limitation is not recorded as a successful fuzz campaign.
 
 No F2 test requires an account, network, process, filesystem persistence, PTY,
 window server, or GPU. Resource-lifetime and storage evidence are not applicable

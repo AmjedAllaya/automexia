@@ -58,16 +58,19 @@ models remain planned contracts, not instructions for a shipped v0.4 feature.
 
 - **Fully done locally:** strict schema-1 ConnectionDefinition, Observation,
   Intent, Review, Receipt, Profile, Recipe, Step, Tunnel, document, state, and
-  ResolvedConnectionPlan owners with fixed ceilings and redacted references.
+  ResolvedConnectionPlan owners with fixed ceilings, sealed validated wrappers,
+  fallible plan sequencing, and redacted references.
 - **Fully done locally:** hostile controls/bidi, option confusion, duplicates,
   cycles, missing dependencies, oversize, secret-bearing fields, command-string
   shapes, and invalid policy/retry combinations fail closed.
 - **Fully done locally:** canonical fingerprints and dry-run resolution cover
   all material target/identity/route/tunnel/recipe/executable/capability/source
   changes while returning an all-false authority ceiling.
-- **Fully done locally:** exhaustive authentication/result reducers and pure
-  responsive Hub, Connection Review, and 64-step planner projections have
-  structured provider/auth/layout/accessibility fixtures plus property,
+- **Fully done locally:** exhaustive authentication/result reducers reject late
+  operation generations, and the pure responsive Hub, Connection Review, and
+  64-step planner projections preserve roving focus, live progress, route-aware
+  modal cycles, and value-redacted human labels. Thirty required regressions and
+  structured provider/auth/layout/accessibility fixtures have property,
   mutation, architecture, fuzz, and benchmark ownership.
 - **Not done externally:** ADR 0012 protected acceptance. Private persistence,
   renderer/product wiring, a profile/recipe editor, and every execution path are

@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use serde::Serialize;
 
 use super::model::*;
-use super::validation::{validate_profile, validate_recipe};
+use super::validation::{validate_profile, validate_recipe, validate_text};
 
 fn error(
     code: ConnectionModelErrorCode,
@@ -114,16 +114,14 @@ fn validate_context(context: &PlanContext) -> Result<(), ConnectionModelError> {
         }
     }
     for (name, value) in &context.public_variables {
-        if !identifier_is_valid(name)
-            || value.len() > MAX_STRING_BYTES
-            || value.chars().any(|character| character.is_control())
-        {
+        if !identifier_is_valid(name) {
             return Err(error(
-                ConnectionModelErrorCode::UnsafeText,
+                ConnectionModelErrorCode::InvalidIdentifier,
                 "public_variables",
-                "public plan variable is invalid",
+                "public plan variable name is invalid",
             ));
         }
+        validate_text(value, "public_variables", true)?;
     }
     Ok(())
 }
@@ -185,14 +183,24 @@ fn recipe_order<'a>(
         .collect()
 }
 
+fn plan_sequence(sequence: usize) -> Result<u16, ConnectionModelError> {
+    u16::try_from(sequence).map_err(|_| {
+        error(
+            ConnectionModelErrorCode::LimitExceeded,
+            "plan.steps",
+            "resolved plan sequence exceeds its representation ceiling",
+        )
+    })
+}
+
 fn planner_step(
-    sequence: usize,
+    sequence: u16,
     id: &str,
     stage: ExecutionStage,
     action: AutomationAction,
 ) -> ResolvedPlanStep {
     ResolvedPlanStep {
-        sequence: u16::try_from(sequence).expect("bounded plan sequence"),
+        sequence,
         id: id.to_owned(),
         stage,
         action,
@@ -386,8 +394,9 @@ pub fn resolve_connection_plan(
         ExecutionStage::Cleanup,
     ] {
         if stage == ExecutionStage::Connect && connection_step_count == 0 {
+            let sequence = plan_sequence(steps.len())?;
             steps.push(planner_step(
-                steps.len(),
+                sequence,
                 "planner.connect",
                 ExecutionStage::Connect,
                 AutomationAction::ConnectTransport,
@@ -395,8 +404,9 @@ pub fn resolve_connection_plan(
         }
         for recipe in &recipes {
             for step in recipe_steps_for_stage(recipe, stage) {
+                let sequence = plan_sequence(steps.len())?;
                 steps.push(ResolvedPlanStep {
-                    sequence: u16::try_from(steps.len()).expect("bounded plan sequence"),
+                    sequence,
                     id: format!("{}:{}", recipe.id, step.id),
                     stage: step.stage,
                     action: step.action.clone(),

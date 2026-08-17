@@ -945,12 +945,12 @@ remains non-executing.
 
 | D5.0 feature | Status | Implemented evidence / remaining gate |
 |---|---|---|
-| Versioned records and fixed ceilings | **Fully done locally** | Provider-neutral definitions, observations, intents, reviews, receipts, profiles, recipes, steps, typed tunnels, documents, and resolved plans are owned by `automexia-devops::connections`. |
-| Strict validation and policy | **Fully done locally** | Unknown schemas/fields, hostile controls/bidi, option confusion, duplicates, cycles, missing dependencies, oversize, secret-bearing fields, free-form commands, and invalid stage/risk/failure/retry combinations fail closed. |
+| Versioned records and fixed ceilings | **Fully done locally** | Provider-neutral definitions, observations, intents, reviews, receipts, profiles, recipes, steps, typed tunnels, documents, and resolved plans are owned by `automexia-devops::connections`; validated wrappers are sealed. |
+| Strict validation and policy | **Fully done locally** | Unknown schemas/fields, hostile controls/bidi including plan overrides, option confusion, duplicate review identities, cycles, missing dependencies, oversize, secret-bearing fields, free-form commands, and invalid stage/risk/failure/retry combinations fail closed. |
 | Fingerprints and dry-run resolution | **Fully done locally** | Canonical approval digests cover target, identity, route, executable, tunnel, recipe, capability, source, and plan changes; output explicitly disables execution. |
-| Authentication and result reducers | **Fully done locally** | Exhaustive tables cover every public state, legal/illegal transition, stale/expiry, cancellation, terminality, and denied background authentication. |
-| Hub, review, and planner model UX | **Fully done locally** | Pure responsive projections cover modal inertness, keyboard/focus/reading order, accessibility, visual preferences, 100-400% scaling, all content/auth states, and 64-step plan narration. |
-| Fixtures and assurance | **Fully done locally** | Ten-provider/all-auth structured fixtures and responsive/accessibility goldens have property, hostile, mutation, architecture, fuzz, benchmark, and cross-platform CI owners. |
+| Authentication and result reducers | **Fully done locally** | Exhaustive tables cover every public state, legal/illegal transition, active-operation correlation, late-generation rejection, canonical IDs, stale/expiry, cancellation, terminality, and denied background authentication. |
+| Hub, review, and planner model UX | **Fully done locally** | Pure responsive projections cover modal inertness, stale-selection focus recovery, route-aware tab cycles, live progress, value-redacted human labels, reading order, visual preferences, 100-400% scaling, all content/auth states, and 64-step plan narration. |
+| Fixtures and assurance | **Fully done locally** | Ten-provider/all-auth structured fixtures and responsive/accessibility goldens have 30 required regressions plus validation-bypass, panic, property, hostile, mutation, architecture, fuzz, benchmark, and cross-platform CI owners. |
 | Authority ceiling | **Fully disabled** | No filesystem, process, network, provider, credential, PTY, listener, renderer, GPU, or unsafe path exists in F2. |
 | Protected ADR decision | **Not done externally** | Accept or supersede ADR 0012 before overall phase closure or any product activation. |
 

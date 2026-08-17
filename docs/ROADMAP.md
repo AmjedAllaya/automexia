@@ -326,12 +326,12 @@ close or activate.
 
 | Feature | Status | Evidence / remaining work |
 |---|---|---|
-| Provider-neutral definition/observation/intent/review/receipt/profile/recipe/step/tunnel/plan schemas | **Fully done locally** | Strict schema 1 models and fixed ceilings live in `automexia-devops::connections`. |
+| Provider-neutral definition/observation/intent/review/receipt/profile/recipe/step/tunnel/plan schemas | **Fully done locally** | Strict schema 1 models, sealed validated wrappers, and fixed ceilings live in `automexia-devops::connections`. |
 | Hostile input, duplicates, cycles, policy, retry, and redaction validation | **Fully done locally** | Integration/property/record/state tests plus mutation and architecture ratchets fail closed. |
 | Deterministic dry-run resolution and approval invalidation | **Fully done locally** | Target, identity, route, executable, tunnel, recipe, capability, and source changes are covered. |
-| Authentication and result state machines | **Fully done locally** | Every public state and illegal/terminal transition is table-tested. |
-| Hub, Connection Review, and recipe-planner projection contract | **Fully done locally** | Wide/medium/narrow/text-scale, modal focus, keyboard, reading order, all-state, accessibility, and structured golden tests pass without a renderer. |
-| Synthetic/deep assurance | **Fully done locally** | Ten-provider/all-auth fixtures, 64-step benchmark, fuzz target, CI checker, and mutation suite are owned. |
+| Authentication and result state machines | **Fully done locally** | Every public state and illegal/terminal transition is table-tested; auth results are bound to the active operation generation. |
+| Hub, Connection Review, and recipe-planner projection contract | **Fully done locally** | Wide/medium/narrow/text-scale, stale-selection focus recovery, live progress, route-aware modal focus, value-redacted labels, reading order, all-state accessibility, and structured goldens pass without a renderer. |
+| Synthetic/deep assurance | **Fully done locally** | Ten-provider/all-auth fixtures, 64-step benchmark, fuzz target, 30 required regressions, and bypass/panic mutation ratchets are owned. |
 | Process/network/provider/credential/PTY/listener authority | **Fully disabled** | F2 has no filesystem, process, socket, provider, credential, PTY, window, or GPU owner. |
 | ADR 0012 protected acceptance | **Not done externally** | Required before overall D5.0 closure and any D5.1/D5.2 activation. |
 

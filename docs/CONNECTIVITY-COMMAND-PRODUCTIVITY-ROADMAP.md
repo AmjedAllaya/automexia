@@ -215,24 +215,40 @@ Status: Partially done. Every local, non-executing F2 deliverable is fully done;
 protected acceptance or supersession of ADR 0012 is not done and prevents phase
 closure or activation.
 
+Second-pass implementation audit (2026-08-17):
+
+| F2 requirement | Before this audit | Final status | Closing evidence |
+|---|---|---|---|
+| Versioned records and validated types | **Partially done** | **Fully done locally** | Validation wrappers are sealed from external construction; strict parsers remain the only public validated-value ingress. |
+| Hostile input, duplicates, bounds, and policy | **Partially done** | **Fully done locally** | Plan overrides now share the bidi/control filter; duplicate policy/executable review entries fail closed. |
+| Deterministic approval fingerprints | **Fully done locally** | **Fully done locally** | All material-field and order-canonicalization regressions remained green. |
+| Authentication and result state models | **Partially done** | **Fully done locally** | Auth completion/cancellation is correlated to the active operation; late generations and noncanonical IDs fail closed. |
+| Hub/review/planner UX and accessibility | **Partially done** | **Fully done locally** | Missing selections retain one roving focus target; loading is live progress; route tab cycles remain trapped; planner labels exclude value contents. |
+| Deep assurance and performance ownership | **Fully done locally** | **Fully done locally** | The F2 checker now requires 30 regressions and forbids validation bypasses and planner panic primitives. |
+| Process/network/provider/credential/PTY/listener authority | **Fully disabled** | **Fully disabled** | The authority checker and all-false resolved-plan ceiling remain unchanged. |
+
 - [x] **Fully done locally:** added bounded versioned ConnectionDefinition,
   Observation, Intent, Review, Receipt, Profile, Recipe, Step, Tunnel, and
-  ResolvedConnectionPlan models in provider-neutral owners.
-- [x] **Fully done locally:** reject unknown versions, hostile controls/bidi,
-  duplicates, cycles, oversized values/counts, secret-bearing fields,
-  free-form command strings, and invalid risk/failure/retry combinations.
+  ResolvedConnectionPlan models in provider-neutral owners; validated wrappers
+  cannot be forged through a public conversion.
+- [x] **Fully done locally:** reject unknown versions, hostile controls/bidi in
+  documents and plan overrides, duplicate review identities, cycles, oversized
+  values/counts, secret-bearing fields, free-form command strings, and invalid
+  risk/failure/retry combinations.
 - [x] **Fully done locally:** deterministic fingerprints invalidate approval
   when target, identity, route, executable, tunnel, recipe, capability, or
   source changes; unordered executable/capability inputs canonicalize first.
 - [x] **Fully done locally:** authentication/result reducers cover missing,
   locked, expired, MFA, cancelled, offline, denied, unsupported, stale, error,
   active, waiting, success, warning, failure, and skipped states, including
-  illegal-transition and no-background-authentication rules.
+  illegal-transition, operation-generation correlation, canonical event IDs,
+  and no-background-authentication rules.
 - [x] **Fully done locally:** renderer-neutral wide/medium/narrow Hub, Connection
   Review, and 64-step recipe-planner models cover keyboard, focus trap/return,
-  reading order, high contrast, reduced motion/transparency, 100-400% text
-  scale, empty/loading/error states, and structured responsive/accessibility
-  goldens.
+  reading order, stale-selection focus recovery, live loading progress,
+  route-aware modal tab cycles, value-redacted action labels, high contrast,
+  reduced motion/transparency, 100-400% text scale, empty/loading/error states,
+  and structured responsive/accessibility goldens.
 - [x] **Fully done locally:** synthetic fixtures cover all ten providers and all
   authentication states; integration, property, mutation, accessibility,
   hostile-record, fuzz, and 64-step Criterion benchmark owners are registered.
@@ -252,7 +268,9 @@ Implementation evidence (2026-08-17):
 - deep owners: `fuzz/fuzz_targets/connection_planning.rs` and the
   `connection_planning` Criterion benchmark;
 - architecture and CI ratchets reject authority drift, lost limits, missing
-  evidence, or weakened modal/accessibility invariants.
+  evidence, public validated-wrapper construction, planner panic primitives,
+  late auth results, or weakened modal/accessibility/privacy invariants; 30
+  named Rust regressions are required by the F2 checker.
 
 Exit status: the entire local product slice is testable without an account,
 network, process, PTY, window system, or GPU. The technical F2 exit passes;

@@ -6,8 +6,8 @@
 use std::ops::Range;
 
 use automexia_devops::connections::{
-    ActionRisk, AuthState, ConnectionReview, EnvironmentRisk, ExecutionStage,
-    HostTrustState, ProviderKind, ResolvedConnectionPlan, StaleAuthState,
+    ActionRisk, AuthState, AutomationAction, ConnectionReview, EnvironmentRisk,
+    ExecutionStage, HostTrustState, ProviderKind, ResolvedConnectionPlan, StaleAuthState,
 };
 use serde::{Deserialize, Serialize};
 
@@ -381,7 +381,9 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
     );
     let rows = request.connections[range.clone()]
         .iter()
-        .map(|connection| {
+        .enumerate()
+        .map(|(offset, connection)| {
+            let is_selected = range.start.saturating_add(offset) == selected;
             let provider = provider_label(connection.provider);
             let risk = risk_label(connection.risk);
             let (state, action) = auth_labels(&connection.auth_state);
@@ -396,9 +398,7 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
                 state_label: state,
                 primary_action_label: action,
                 favorite: connection.favorite,
-                selected: request
-                    .selected_id
-                    .is_some_and(|selected_id| selected_id == connection.id),
+                selected: is_selected,
                 accessibility_label: format!(
                     "{}, {provider}, {}, {state}, {risk} risk, target {}, identity {}",
                     connection.display_name,
@@ -477,23 +477,21 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
         ];
         accessibility_tree.push(node);
     }
-    let role = if matches!(
-        request.content_state,
+    let role = match request.content_state {
+        HubContentState::Loading => AccessibilityRole::Progress,
         HubContentState::Denied
-            | HubContentState::ExtensionCrashed
-            | HubContentState::RevokedCapability
-            | HubContentState::Error
-    ) {
-        AccessibilityRole::Alert
-    } else {
-        AccessibilityRole::Status
+        | HubContentState::ExtensionCrashed
+        | HubContentState::RevokedCapability
+        | HubContentState::Error => AccessibilityRole::Alert,
+        _ => AccessibilityRole::Status,
     };
     let mut status = AccessibilityNode::new(
         "connection-status",
         role,
         request.content_state.status_text(),
     );
-    status.live = request.live_announcement.is_some();
+    status.live = request.content_state == HubContentState::Loading
+        || request.live_announcement.is_some();
     accessibility_tree.push(status);
     let mut primary = AccessibilityNode::new(
         "connection-primary-action",
@@ -640,7 +638,9 @@ pub fn apply_hub_key(state: &mut InteractionState, key: HubKey) -> InteractionEf
                 selected_index: state.selected_index,
             }
         }
-        HubKey::ContextMenu if state.result_count > 0 => {
+        HubKey::ContextMenu
+            if state.route == HubRoute::Results && state.result_count > 0 =>
+        {
             InteractionEffect::OpenContextMenu {
                 selected_index: state.selected_index,
             }
@@ -654,18 +654,32 @@ pub fn apply_hub_key(state: &mut InteractionState, key: HubKey) -> InteractionEf
             InteractionEffect::CloseAndRestoreFocus(state.opener_id.clone())
         }
         HubKey::Tab => {
-            state.focus = match state.focus {
-                HubFocus::Search => HubFocus::Results,
-                HubFocus::Results | HubFocus::Result(_) => HubFocus::Close,
-                _ => HubFocus::Search,
+            state.focus = match (state.route, &state.focus) {
+                (HubRoute::Results, HubFocus::Search) => HubFocus::Results,
+                (HubRoute::Results, HubFocus::Results | HubFocus::Result(_)) => {
+                    HubFocus::Close
+                }
+                (HubRoute::Results, _) => HubFocus::Search,
+                (HubRoute::Review, HubFocus::Back) => HubFocus::Review,
+                (HubRoute::Review, HubFocus::Review) => HubFocus::Close,
+                (HubRoute::Review, _) => HubFocus::Back,
+                (HubRoute::RecipePlanner, HubFocus::Back) => HubFocus::Planner,
+                (HubRoute::RecipePlanner, HubFocus::Planner) => HubFocus::Close,
+                (HubRoute::RecipePlanner, _) => HubFocus::Back,
             };
             InteractionEffect::FocusChanged(state.focus.clone())
         }
         HubKey::ShiftTab => {
-            state.focus = match state.focus {
-                HubFocus::Search => HubFocus::Close,
-                HubFocus::Close => HubFocus::Results,
-                _ => HubFocus::Search,
+            state.focus = match (state.route, &state.focus) {
+                (HubRoute::Results, HubFocus::Search) => HubFocus::Close,
+                (HubRoute::Results, HubFocus::Close) => HubFocus::Results,
+                (HubRoute::Results, _) => HubFocus::Search,
+                (HubRoute::Review, HubFocus::Review) => HubFocus::Back,
+                (HubRoute::Review, HubFocus::Back) => HubFocus::Close,
+                (HubRoute::Review, _) => HubFocus::Review,
+                (HubRoute::RecipePlanner, HubFocus::Planner) => HubFocus::Back,
+                (HubRoute::RecipePlanner, HubFocus::Back) => HubFocus::Close,
+                (HubRoute::RecipePlanner, _) => HubFocus::Planner,
             };
             InteractionEffect::FocusChanged(state.focus.clone())
         }
@@ -799,6 +813,39 @@ pub fn project_connection_review(
     }
 }
 
+fn action_label(action: &AutomationAction) -> &'static str {
+    match action {
+        AutomationAction::ResolveConnection => "Resolve connection",
+        AutomationAction::SetSessionEnvironment { .. } => "Set session environment",
+        AutomationAction::UnsetSessionEnvironment { .. } => "Unset session environment",
+        AutomationAction::SetLocalWorkingDirectory { .. } => {
+            "Set local working directory"
+        }
+        AutomationAction::RequireExecutable { .. } => "Check required executable",
+        AutomationAction::RequireFile { .. } => "Check required file",
+        AutomationAction::CheckAgentState { .. } => "Check agent state",
+        AutomationAction::SetProviderScope { .. } => "Set provider scope",
+        AutomationAction::SetKubernetesScope { .. } => "Set Kubernetes scope",
+        AutomationAction::SetOpenShiftScope { .. } => "Set OpenShift scope",
+        AutomationAction::ConnectTransport => "Connect transport",
+        AutomationAction::StartTunnel { .. } => "Prepare tunnel",
+        AutomationAction::AuthenticateExternal { .. } => "Authenticate externally",
+        AutomationAction::SetRemoteWorkingDirectory { .. } => {
+            "Set remote working directory"
+        }
+        AutomationAction::SetRemotePublicEnvironment { .. } => {
+            "Set remote public environment"
+        }
+        AutomationAction::SwitchRemoteUser { .. } => "Switch remote user",
+        AutomationAction::VerifyRemoteUser => "Verify remote user",
+        AutomationAction::VerifyRemoteWorkingDirectory => {
+            "Verify remote working directory"
+        }
+        AutomationAction::VerifyProviderIdentity { .. } => "Verify provider identity",
+        AutomationAction::VerifyContext { .. } => "Verify provider context",
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlannerStepView {
@@ -835,7 +882,7 @@ pub fn project_recipe_planner(
             position: index + 1,
             stage: step.stage,
             risk: step.risk,
-            summary: format!("{:?}", step.action),
+            summary: action_label(&step.action).to_owned(),
         })
         .collect::<Vec<_>>();
     let mut accessibility_tree = vec![AccessibilityNode::new(

@@ -308,6 +308,7 @@ fn authentication_and_result_reducers_cover_truthful_terminal_states() {
     let ready = apply_auth_event(
         checking,
         AuthEvent::ObservedReady {
+            operation_id: "operation-check".into(),
             evidence_id: "evidence-ready".into(),
             expires_at_ms: Some(2_000),
         },
@@ -505,4 +506,26 @@ fn resolved_plans_reject_cross_recipe_variable_collisions_and_preallocate_step_o
     )
     .unwrap_err();
     assert_eq!(error.code, ConnectionModelErrorCode::DuplicateId);
+}
+
+#[test]
+fn plan_context_rejects_hostile_bidi_variable_overrides() {
+    let profile = parse_profile(&profile_value());
+    let mut recipe = recipe_value();
+    recipe["variables"] = json!([{
+        "id": "public-label",
+        "prompt": "Public deployment label",
+        "required": true,
+        "public_default": null
+    }]);
+    let recipe = parse_recipe_json(&serde_json::to_vec(&recipe).unwrap())
+        .unwrap()
+        .into_inner();
+    let mut context = plan_context();
+    context
+        .public_variables
+        .insert("public-label".into(), "safe\u{202e}unsafe".into());
+
+    let error = resolve_connection_plan(&profile, &[recipe], &context).unwrap_err();
+    assert_eq!(error.code, ConnectionModelErrorCode::UnsafeText);
 }

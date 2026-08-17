@@ -72,6 +72,13 @@ FORBIDDEN_PRIMITIVES = {
     "hyper::",
     "unsafe {",
 }
+FORBIDDEN_VALIDATION_BYPASSES = {
+    "automexia-devops/src/connections/model.rs": {
+        "impl From<ConnectionProfileV1> for ValidatedConnectionProfile",
+        "impl From<AutomationRecipeV1> for ValidatedAutomationRecipe",
+    },
+}
+FORBIDDEN_PANIC_PRIMITIVES = {".expect(", ".unwrap("}
 REQUIRED_SOURCE_TOKENS = {
     "automexia-devops/src/connections/model.rs": {
         "ConnectionDefinition", "ConnectionObservation", "ConnectionIntent",
@@ -79,6 +86,7 @@ REQUIRED_SOURCE_TOKENS = {
         "AutomationRecipeV1", "AutomationStepV1", "TunnelDefinitionV1",
         "ResolvedConnectionPlan", "AuthState", "OperationResultState",
         "MAX_STEPS_PER_RECIPE: usize = 64", "deny_unknown_fields",
+        "from_validated", "operation_id: String",
     },
     "automexia-devops/src/connections/documents.rs": {
         "validate_profile_document", "validate_recipe_document",
@@ -87,22 +95,24 @@ REQUIRED_SOURCE_TOKENS = {
     "automexia-devops/src/connections/validation.rs": {
         "contains_hostile_format", "looks_secret_bearing_name",
         "validate_retry", "dependency_cycle", "MAX_AUTOMATIC_ATTEMPTS",
-        "option-like targets are forbidden",
+        "option-like targets are forbidden", "decision_codes", "executable_ids",
     },
     "automexia-devops/src/connections/planner.rs": {
         "fingerprint_profile", "fingerprint_recipe", "resolve_connection_plan",
-        "requested_capabilities.sort", "execution_enabled: false",
+        "requested_capabilities.sort", "execution_enabled: false", "plan_sequence",
         "AuthorityKind::Process", "AuthorityKind::Listener",
     },
     "automexia-devops/src/connections/state.rs": {
         "apply_auth_event", "apply_result_event", "InvalidTransition",
         "AuthState::Denied", "AuthState::Stale", "OperationResultState::Offline",
+        "require_current_operation",
     },
     "automexia-ui-model/src/connection_hub.rs": {
         "HubLayout", "HubContentState", "background_inert: true",
         "focus_trapped: true", "pty_resize_requested: false",
         "execution_enabled: false", "project_connection_review",
         "project_recipe_planner", "AccessibilityRole::Dialog",
+        "AccessibilityRole::Progress", "action_label", "is_selected",
     },
 }
 REQUIRED_TESTS = {
@@ -115,6 +125,7 @@ REQUIRED_TESTS = {
         "the_64_step_architecture_limit_is_accepted_but_limit_plus_one_is_not",
         "profile_documents_reject_duplicate_ids_missing_jumps_and_jump_cycles",
         "resolved_plans_reject_cross_recipe_variable_collisions_and_preallocate_step_overflow",
+        "plan_context_rejects_hostile_bidi_variable_overrides",
     },
     "automexia-devops/tests/connection_properties.rs": {
         "bounded_printable_unicode_labels_and_targets_validate",
@@ -123,10 +134,13 @@ REQUIRED_TESTS = {
     },
     "automexia-devops/tests/connection_records.rs": {
         "all_top_level_connection_records_are_strict_versioned_and_bounded",
+        "review_records_reject_duplicate_policy_and_executable_entries",
     },
     "automexia-devops/tests/connection_state_matrix.rs": {
         "authentication_reducer_reaches_every_truthful_public_state",
         "result_reducer_reaches_every_truthful_public_state_and_keeps_terminals_terminal",
+        "late_authentication_results_cannot_cross_operation_generations",
+        "authentication_event_ids_use_the_canonical_identifier_contract",
     },
     "automexia-ui-model/tests/connection_hub.rs": {
         "responsive_projection_is_modal_inert_and_never_requests_execution_or_pty_resize",
@@ -136,6 +150,10 @@ REQUIRED_TESTS = {
         "recipe_planner_is_bounded_accessible_and_explicitly_dry_run_only",
         "synthetic_provider_and_auth_fixtures_cover_the_frozen_matrices",
         "structured_layout_and_accessibility_goldens_match_the_projection",
+        "missing_selection_still_exposes_one_managed_grid_focus_target",
+        "loading_state_exposes_live_progress_semantics",
+        "modal_tab_cycle_stays_on_controls_for_the_active_route",
+        "planner_accessibility_summary_does_not_expose_public_value_contents",
     },
     "automexia-ui-model/tests/connection_review.rs": {
         "connection_review_exposes_every_decision_section_and_remains_non_executing",
@@ -209,15 +227,26 @@ def require_tokens(relative: str, tokens: set[str], root: Path = ROOT) -> str:
 
 
 def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, int]:
-    combined = []
-    for relative, tokens in REQUIRED_SOURCE_TOKENS.items():
-        combined.append(require_tokens(relative, tokens, root))
-    lowered = "\n".join(combined).casefold()
+    sources = {
+        relative: require_tokens(relative, tokens, root)
+        for relative, tokens in REQUIRED_SOURCE_TOKENS.items()
+    }
+    combined = "\n".join(sources.values())
+    lowered = combined.casefold()
     forbidden = next(
         (token for token in sorted(FORBIDDEN_PRIMITIVES) if token in lowered), None
     )
     if forbidden:
         raise F2ContractError(f"F2 crossed the capability-free boundary: {forbidden}")
+    panic_primitive = next(
+        (token for token in sorted(FORBIDDEN_PANIC_PRIMITIVES) if token in combined), None
+    )
+    if panic_primitive:
+        raise F2ContractError(f"F2 production model contains a panic primitive: {panic_primitive}")
+    for relative, bypasses in FORBIDDEN_VALIDATION_BYPASSES.items():
+        bypass = next((token for token in sorted(bypasses) if token in sources[relative]), None)
+        if bypass:
+            raise F2ContractError(f"F2 validated wrapper can be forged: {bypass}")
     for relative, tests in REQUIRED_TESTS.items():
         source = bounded_text(root / relative)
         missing = sorted(name for name in tests if f"fn {name}(" not in source)

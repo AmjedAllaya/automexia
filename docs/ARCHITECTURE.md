@@ -224,9 +224,13 @@ The boundary is deliberately capability-free:
   the background is inert while the modal is open, and no projection requests a
   PTY resize;
 - opaque identity/source/context references redact their debug representation,
-  and serialized records accept public metadata/references only; and
-- fixed collection/byte/dependency/retry/time ceilings are checked before a
-  plan can be projected.
+  planner accessibility summaries expose action kinds rather than value
+  contents, and serialized records accept public metadata/references only;
+- validated profile/recipe wrappers have no public unchecked constructor,
+  duplicate review identities and hostile plan overrides fail closed, and late
+  authentication completions cannot cross the active operation generation; and
+- fixed collection/byte/dependency/retry/time ceilings and fallible sequence
+  conversion are checked before a plan can be projected.
 
 D4 remains the independent static OpenSSH inventory/persistence owner. D5.1
 must add an explicit adapter from immutable D4 snapshots into these models plus

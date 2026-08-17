@@ -457,15 +457,19 @@ Implemented evidence:
   route, tunnels, recipes, executable identities, requested capabilities, and
   ordered plan steps;
 - exhaustive authentication/result transition tests cover every public state,
-  illegal transitions, terminality, cancellation, stale/expiry, and denial of
+  illegal transitions, terminality, cancellation, stale/expiry, canonical IDs,
+  active-operation correlation, rejection of late generations, and denial of
   background or denied-state authentication;
 - `automexia-ui-model::connection_hub` owns pure wide/medium/narrow Hub,
   Connection Review, and recipe-planner projections with modal/inert behavior,
-  managed grid focus, focus restoration, keyboard navigation, reading order,
-  high-contrast/reduced-motion preferences, 100-400% scaling, every content and
-  auth state, disabled primary actions, and no PTY resize;
-- frozen ten-provider/all-auth/layout/accessibility fixtures, hostile/property/
-  record/model tests, mutation checks, a fuzz target, and the 64-step Criterion
+  managed grid focus including stale-selection fallback, focus restoration,
+  route-aware modal keyboard cycles, reading order, live loading progress,
+  value-redacted human action labels, high-contrast/reduced-motion preferences,
+  100-400% scaling, every content/auth state, disabled primary actions, and no
+  PTY resize;
+- frozen ten-provider/all-auth/layout/accessibility fixtures, 30 required
+  hostile/property/record/state/model/UX regressions, validation-bypass and
+  planner-panic mutation checks, a fuzz target, and the 64-step Criterion
   benchmark are registered in CI/assurance; and
 - architecture checks forbid filesystem, process, network, provider,
   credential, PTY, listener, renderer, GPU, or unsafe authority in this slice.

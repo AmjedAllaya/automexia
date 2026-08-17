@@ -1,6 +1,6 @@
 use automexia_devops::connections::{
-    apply_auth_event, apply_result_event, AuthEvent, AuthState, OperationResultEvent,
-    OperationResultState, StaleAuthState,
+    apply_auth_event, apply_result_event, AuthEvent, AuthState, ConnectionModelErrorCode,
+    OperationResultEvent, OperationResultState, StaleAuthState,
 };
 
 fn checking() -> AuthState {
@@ -14,6 +14,7 @@ fn authentication_reducer_reaches_every_truthful_public_state() {
     let cases = vec![
         (
             AuthEvent::ObservedReady {
+                operation_id: "operation-check".into(),
                 evidence_id: "evidence-ready".into(),
                 expires_at_ms: Some(2_000),
             },
@@ -24,6 +25,7 @@ fn authentication_reducer_reaches_every_truthful_public_state() {
         ),
         (
             AuthEvent::ObservedLocked {
+                operation_id: "operation-check".into(),
                 diagnostic_code: "agent-locked".into(),
             },
             AuthState::Locked {
@@ -32,6 +34,7 @@ fn authentication_reducer_reaches_every_truthful_public_state() {
         ),
         (
             AuthEvent::ObservedMissing {
+                operation_id: "operation-check".into(),
                 diagnostic_code: "identity-missing".into(),
             },
             AuthState::Missing {
@@ -40,6 +43,7 @@ fn authentication_reducer_reaches_every_truthful_public_state() {
         ),
         (
             AuthEvent::ObservedExpired {
+                operation_id: "operation-check".into(),
                 evidence_id: Some("evidence-old".into()),
             },
             AuthState::Expired {
@@ -48,6 +52,7 @@ fn authentication_reducer_reaches_every_truthful_public_state() {
         ),
         (
             AuthEvent::ObservedMfaRequired {
+                operation_id: "operation-check".into(),
                 diagnostic_code: "mfa-required".into(),
             },
             AuthState::MfaRequired {
@@ -56,6 +61,7 @@ fn authentication_reducer_reaches_every_truthful_public_state() {
         ),
         (
             AuthEvent::ObservedCancelled {
+                operation_id: "operation-check".into(),
                 diagnostic_code: "user-cancelled".into(),
             },
             AuthState::Cancelled {
@@ -64,6 +70,7 @@ fn authentication_reducer_reaches_every_truthful_public_state() {
         ),
         (
             AuthEvent::ObservedOffline {
+                operation_id: "operation-check".into(),
                 diagnostic_code: "network-offline".into(),
             },
             AuthState::Offline {
@@ -72,6 +79,7 @@ fn authentication_reducer_reaches_every_truthful_public_state() {
         ),
         (
             AuthEvent::ObservedDenied {
+                operation_id: "operation-check".into(),
                 diagnostic_code: "policy-denied".into(),
             },
             AuthState::Denied {
@@ -80,6 +88,7 @@ fn authentication_reducer_reaches_every_truthful_public_state() {
         ),
         (
             AuthEvent::ObservedUnsupported {
+                operation_id: "operation-check".into(),
                 diagnostic_code: "tool-unsupported".into(),
             },
             AuthState::Unsupported {
@@ -88,6 +97,7 @@ fn authentication_reducer_reaches_every_truthful_public_state() {
         ),
         (
             AuthEvent::ObservedError {
+                operation_id: "operation-check".into(),
                 diagnostic_code: "auth-error".into(),
             },
             AuthState::Error {
@@ -278,4 +288,32 @@ fn result_reducer_reaches_every_truthful_public_state_and_keeps_terminals_termin
         apply_result_event(waiting, OperationResultEvent::Succeed).unwrap(),
         OperationResultState::Succeeded
     );
+}
+
+#[test]
+fn late_authentication_results_cannot_cross_operation_generations() {
+    let error = apply_auth_event(
+        checking(),
+        AuthEvent::ObservedReady {
+            operation_id: "operation-previous".into(),
+            evidence_id: "evidence-stale".into(),
+            expires_at_ms: None,
+        },
+    )
+    .unwrap_err();
+    assert_eq!(error.code, ConnectionModelErrorCode::InvalidTransition);
+}
+
+#[test]
+fn authentication_event_ids_use_the_canonical_identifier_contract() {
+    for operation_id in [".hidden", "-option", "_private"] {
+        let error = apply_auth_event(
+            AuthState::Unknown,
+            AuthEvent::BeginCheck {
+                operation_id: operation_id.into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ConnectionModelErrorCode::InvalidIdentifier);
+    }
 }
