@@ -3,7 +3,7 @@
 - Status: consolidated research and proposed target architecture
 - Date: 2026-08-13
 - Applies to: Automexia Terminal after the v0.4 stabilization boundary
-- Current implementation status: not implemented unless explicitly identified
+- Current implementation status: D1/D2 and disabled D4 are implemented; F2/D5.0 non-executing connection/Hub/planner models are complete locally but overall partial pending ADR 0012; later product/execution/provider phases remain unimplemented unless explicitly identified
 
 ## Purpose
 
@@ -1096,6 +1096,15 @@ verified.
 - Add strict host-key UX, agent/certificate status, jump hosts, and tunnels.
 - Keep raw key import and direct extension networking out of the first release.
 
+Phase 2 implementation status (2026-08-17): **Partially done**. The disabled D4
+inventory and the complete local F2/D5.0 capability-free baseline now provide
+strict connection/profile/recipe/review/receipt/plan schemas, exhaustive auth
+and result reducers, deterministic dry-run fingerprints, pure responsive Hub/
+review/planner projections, all-provider/state/layout/accessibility fixtures,
+and fuzz/mutation/benchmark ownership. They expose no filesystem, process,
+network, provider, credential, PTY, listener, window, renderer, or GPU authority.
+ADR 0012 acceptance, capability UI, D5.1 product integration/persistence, and
+D5.2 OpenSSH launch/lifecycle/native evidence are not implemented.
 Exit criterion for the first recommended DevOps-ready release: security review,
 protected-path approvals, injection tests, cross-platform native SSH tests,
 cancellation, cleanup, secret redaction, and resource limits pass while the

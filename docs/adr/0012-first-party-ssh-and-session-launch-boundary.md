@@ -118,6 +118,14 @@ and disabled WSL resolution, retains native file-identity revalidation, and
 keeps the exact argv, bounded environment/cwd, expiring decision, session/
 capsule, replay, revocation, lifecycle, and redacted-audit controls.
 
+The F2/D5.0 capability-free baseline is also implemented as of 2026-08-17.
+`automexia-devops::connections` contains bounded public-only records, strict
+validation, exhaustive state reducers, canonical approval fingerprints, and a
+deterministic dry-run planner. `automexia-ui-model::connection_hub` contains
+pure responsive Hub/review/planner and accessibility projections. Frozen
+all-provider/all-auth fixtures, hostile/property/mutation tests, fuzz ownership,
+and a 64-step benchmark are registered. Every process, network, provider,
+credential, PTY, listener, renderer, and GPU authority remains absent or false.
 This evidence does not accept this ADR and does not enable the capability. The
 remaining acceptance evidence includes protected approval; binding a real
 package-loader attestation/revocation result to the frozen policy; visible

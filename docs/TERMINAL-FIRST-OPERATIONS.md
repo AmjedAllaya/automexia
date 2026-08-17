@@ -8,7 +8,10 @@ found in GUI-oriented products such as Termius with a keyboard-first Automexia
 experience.
 
 It is a **planned product contract**, not a claim that these commands ship in
-Automexia v0.4. Current implementation status remains authoritative in the
+Automexia v0.4. F2/D5.0's bounded connection/profile/recipe/review and dry-run
+projection models are implemented locally, but no command, Connection Hub,
+workspace lifecycle, or connection execution is activated by that baseline.
+Current implementation status remains authoritative in the
 [feature catalog](FEATURES.md) and
 [phase implementation audit](PHASE-IMPLEMENTATION-AUDIT.md). Delivery reuses
 the existing D3-D7 SSH/multi-cloud phases and CP2-CP6 command-productivity
@@ -185,12 +188,12 @@ workflow does not yet ship.
 
 | GUI-oriented capability | Terminal-first Automexia replacement | Delivery owner | Current status |
 |---|---|---|---|
-| SSH connection | `automexia connect <alias>` plus host picker | D5 | D4 inventory foundation only |
+| SSH connection | `automexia connect <alias>` plus host picker | D5 | D4 inventory plus F2 planning/review model foundations; no connection action |
 | Local terminal | Existing native session/tab/pane actions | v0.4 core | Shipped |
 | Mosh | Typed `connect --transport mosh` adapter | D7 review | Not implemented |
 | Telnet | Explicit insecure `connect --transport telnet` adapter | D7 review | Not implemented |
 | Serial | `automexia serial open` and exact device parameters | D7 review | Not implemented |
-| Recent/favorite hosts | `inventory list --recent`, pin, fuzzy picker | D5.0-D5.1 | Not implemented |
+| Recent/favorite hosts | `inventory list --recent`, pin, fuzzy picker | D5.0-D5.1 | F2 record/view fields only; D5.1 product inventory is not implemented |
 | Hosts and groups | Declarative records, paths, tags, saved queries | D4-D5 | D4 bounded aliases only |
 | Inherited group settings | Layered configuration plus `inventory explain` | D5-D6 | Not implemented |
 | Keychain | External identity references and `identity doctor` | D5 | Not implemented |
@@ -199,13 +202,13 @@ workflow does not yet ship.
 | SSH ID | Interoperable device/certificate adapters, not proprietary custody | D6-D7 | Not implemented |
 | Post-quantum SSH | System OpenSSH negotiation and truthful public status | D5 native evidence | Not implemented as UI |
 | Known Hosts | `known-host` inspect/verify workflow; OpenSSH remains authority | D5 | Not implemented |
-| Jump hosts/host chains | Reusable typed routes and route explanation | D5 | Not implemented |
+| Jump hosts/host chains | Reusable typed routes and route explanation | D5 | F2 typed route/review model only; launch/lifecycle not implemented |
 | HTTP/SOCKS proxy | Typed route step with visible provenance | D5/D7 by transport | Not implemented |
-| Port forwarding | `tunnel local|remote|socks`, status, owner, stop | D5 | Not implemented |
+| Port forwarding | `tunnel local|remote|socks`, status, owner, stop | D5 | F2 typed tunnel/review model only; listener/lifecycle not implemented |
 | Agent forwarding | Per-connection explicit grant; off by default | D5 | Not implemented |
 | Snippets | Typed persistent Quick Actions | CP2 | Model/store foundation only |
 | Shared snippets | Reviewed signed/team action catalogs | CP6/D7 | Not implemented |
-| Startup snippets | Typed connection lifecycle hooks | D5A-D5E | Specification only |
+| Startup snippets | Typed connection lifecycle hooks | D5A-D5E | F2 typed recipe/dry-run model; editor and execution not implemented |
 | Multi-host execution | Bounded target query and result isolation | CP4/D6 | Not implemented |
 | Autocomplete | Native completion first; optional editor bridge later | CP1/CP5 | CP1 shipped, CP5 planned |
 | DevOps aliases | Optional collision-checked projections of actions | CP3 | Not implemented |

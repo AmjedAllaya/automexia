@@ -3,6 +3,7 @@
 //! Providers inspect bounded local configuration and shell metadata. They have
 //! no network-client dependency and return versioned generic contributions.
 pub mod actions;
+pub mod connections;
 
 mod context;
 mod model;

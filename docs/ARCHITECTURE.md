@@ -198,11 +198,42 @@ terminal history. OpenSSH is execution authority; the extension's static index
 is discovery/UI metadata and cannot replace OpenSSH's complete configuration
 semantics.
 
-The window-level discovery/review surface is the planned
-[Connection Hub](CONNECTION-HUB.md). It projects provider-neutral, bounded
-models through `automexia-ui-model`; provider extensions cannot draw their own
+The window-level discovery/review surface is specified by the
+[Connection Hub](CONNECTION-HUB.md). F2/D5.0 now implements its pure provider-
+neutral Hub, review, and planner projections in `automexia-ui-model`; no product
+window or renderer wiring is active. Provider extensions cannot draw their own
 approval UI, place work on render/input/VT threads, or turn a displayed label
 into executable text. The Hub does not resize a PTY and does not own credentials.
+
+### F2/D5.0 non-executing connection-planning boundary
+
+`automexia-devops::connections` is the provider-neutral owner for strict public
+connection/profile/recipe documents, validation, authentication/result
+reducers, canonical fingerprints, and deterministic dry-run plans.
+`automexia-ui-model::connection_hub` consumes only those bounded public values
+to produce renderer-neutral Hub, Connection Review, and recipe-planner view and
+accessibility models.
+
+The boundary is deliberately capability-free:
+
+- it owns no files, persistence, processes, sockets, provider clients,
+  credentials, agents, PTYs, listeners, windows, renderer objects, or GPU state;
+- every resolved plan carries `execution_enabled = false` and explicit false
+  process/network/provider/credential/PTY/listener authority entries;
+- Enter/select opens review only, review/planner primary actions are disabled,
+  the background is inert while the modal is open, and no projection requests a
+  PTY resize;
+- opaque identity/source/context references redact their debug representation,
+  and serialized records accept public metadata/references only; and
+- fixed collection/byte/dependency/retry/time ceilings are checked before a
+  plan can be projected.
+
+D4 remains the independent static OpenSSH inventory/persistence owner. D5.1
+must add an explicit adapter from immutable D4 snapshots into these models plus
+private user preference/profile persistence and product rendering; it may not
+move D4 parsing or storage into the UI model. D5.2 must pass the application-
+owned capability/process/PTY/route gate before translating a reviewed plan into
+an execution request. No lower crate may bypass those owners.
 
 ### Environment Capsule contract
 

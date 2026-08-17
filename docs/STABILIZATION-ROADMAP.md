@@ -937,6 +937,27 @@ The re-audit also makes nightly compilation and controlled execution of the
 10,000-alias benchmark mandatory; UI/accessibility remain not applicable until
 D5 connects this package to a product surface.
 
+### D5.0 — Connection Hub and planning-model baseline
+
+Status: **Partially done** overall because ADR 0012 protected acceptance is
+not done. Every local F2 implementation row below is **Fully done locally** and
+remains non-executing.
+
+| D5.0 feature | Status | Implemented evidence / remaining gate |
+|---|---|---|
+| Versioned records and fixed ceilings | **Fully done locally** | Provider-neutral definitions, observations, intents, reviews, receipts, profiles, recipes, steps, typed tunnels, documents, and resolved plans are owned by `automexia-devops::connections`. |
+| Strict validation and policy | **Fully done locally** | Unknown schemas/fields, hostile controls/bidi, option confusion, duplicates, cycles, missing dependencies, oversize, secret-bearing fields, free-form commands, and invalid stage/risk/failure/retry combinations fail closed. |
+| Fingerprints and dry-run resolution | **Fully done locally** | Canonical approval digests cover target, identity, route, executable, tunnel, recipe, capability, source, and plan changes; output explicitly disables execution. |
+| Authentication and result reducers | **Fully done locally** | Exhaustive tables cover every public state, legal/illegal transition, stale/expiry, cancellation, terminality, and denied background authentication. |
+| Hub, review, and planner model UX | **Fully done locally** | Pure responsive projections cover modal inertness, keyboard/focus/reading order, accessibility, visual preferences, 100-400% scaling, all content/auth states, and 64-step plan narration. |
+| Fixtures and assurance | **Fully done locally** | Ten-provider/all-auth structured fixtures and responsive/accessibility goldens have property, hostile, mutation, architecture, fuzz, benchmark, and cross-platform CI owners. |
+| Authority ceiling | **Fully disabled** | No filesystem, process, network, provider, credential, PTY, listener, renderer, GPU, or unsafe path exists in F2. |
+| Protected ADR decision | **Not done externally** | Accept or supersede ADR 0012 before overall phase closure or any product activation. |
+
+The local exit is independently testable without an account, network, process,
+PTY, window system, or GPU. This baseline does not connect D4 inventory, persist
+profiles/preferences, render a product dialog, or launch OpenSSH; those remain
+D5.1/D5.2.
 ### D5.1 — production SSH UX and connection lifecycle
 
 The implementation-ready product contract is

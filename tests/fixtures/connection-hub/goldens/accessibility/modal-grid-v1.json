@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "dialog_role": "dialog",
+  "dialog_name": "Connection Hub",
+  "modal": true,
+  "managed_focusable_rows": 1,
+  "required_row_name_fields": ["provider","state","risk"],
+  "required_row_description_fields": ["target","identity","environment","action"],
+  "reading_order": [
+    "connection-hub-title",
+    "connection-search",
+    "connection-filters",
+    "connection-results",
+    "connection-status",
+    "connection-primary-action",
+    "connection-close"
+  ],
+  "primary_action_disabled": true,
+  "execution_enabled": false,
+  "status_not_color_only": true,
+  "focus_returns_to_opener": true
+}

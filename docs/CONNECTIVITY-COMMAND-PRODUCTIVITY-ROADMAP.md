@@ -68,10 +68,10 @@ documentation, feature assurance, and a change fragment.
 | SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 proposal, exact schema-2 manual/trust/default/fixture protocol, four-platform matrix, mutation gate | Accept or supersede ADR 0012 through protected review; execute native fixtures in F4/F5 |
 | Exact-argument launch broker | D3 | Partially done | test-only exact package identity, capability scope, platform resolver, file revalidation, lifecycle and audit model | Production capability UI, atomic spawn, PTY/route lifecycle, real package-loader binding, native evidence |
 | Static OpenSSH inventory | D4 | Fully done | automexia-devops-ssh, hostile/property tests, fuzz, benchmark, assurance | Remains deliberately disabled until D5 |
-| Connection Hub model | D5.0 | Not done | Detailed specification only | Frozen schemas, all-state fixtures, responsive/accessibility goldens, mutations |
+| Connection Hub model | D5.0 | Partially done | All local F2 schemas, state reducers, dry-run planner, Hub/review/planner projections, fixtures, goldens, fuzz, mutation tests, and benchmark are implemented | Protected ADR 0012 acceptance remains; D5.1 renderer/inventory integration and D5.2 activation are separate phases |
 | Read-only Connection Hub | D5.1 | Not done | No product owner connected to D4 | Virtualized inventory, persistence, search/grouping, platform guidance, 10,000-item proof |
 | Managed OpenSSH | D5.2 | Not done | Design and disabled D3/D4 foundations | Reviewed launch, PTY lifecycle, jumps, tunnels, host trust, reconnect, native proof |
-| Profiles, recipes, remote workspaces | D5.0-D5.2 | Not done | SSH automation and terminal-first specifications | Model/persistence/planner, then separately gated execution |
+| Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, and approval fingerprints are implemented in F2 | Private persistence, product editor, remote workspace lifecycle, and separately gated execution remain |
 | Multi-cloud framework and providers | D6.0-D6.5 | Not done | Provider-neutral D1/D2 types only | Auth state machine, exact official CLI adapters, isolation, provider-by-provider gates |
 | Native completion | CP1 | Fully done | shell integration, xtask completion manager, CP1 contract/tests | Hosted three-OS and longitudinal release evidence |
 | Quick Actions and persistence | CP2.0-CP2.2 | Fully done | automexia-devops model, application store/worker/UI/CLI tests | Hosted shell insertion, controlled accessibility, longitudinal evidence |
@@ -211,29 +211,53 @@ accept or supersede ADR 0012; native fixture execution remains owned by F4/F5.
 
 ## F2 - implement D5.0 Connection Hub and planning models
 
-Status: Not done.
+Status: Partially done. Every local, non-executing F2 deliverable is fully done;
+protected acceptance or supersession of ADR 0012 is not done and prevents phase
+closure or activation.
 
-- [ ] Add bounded versioned ConnectionDefinition, Observation, Intent, Review,
-  Receipt, Profile, Recipe, Step, Tunnel, and ResolvedConnectionPlan models in
-  provider-neutral owners.
-- [ ] Reject unknown versions, hostile controls/bidi, duplicates, cycles,
-  oversized values/counts, secret-bearing fields, free-form command strings,
-  and invalid risk/failure/retry combinations.
-- [ ] Define deterministic fingerprints so target, identity, route, executable,
-  tunnel, recipe, capability, or source changes invalidate approval.
-- [ ] Add authentication/result state machines with every missing, locked,
-  expired, MFA, cancelled, offline, denied, unsupported, stale, and error state.
-- [ ] Add renderer-neutral wide/medium/narrow Hub, review, and recipe-planner
-  models with keyboard, focus, reading order, high contrast, reduced motion,
-  text scale, empty/loading/error, and responsive goldens.
-- [ ] Add synthetic all-provider fixtures, property tests, mutation tests,
-  accessibility tests, and 64-step planner benchmarks.
-- [ ] Keep process, network, provider, credential, PTY, and listener authority
-  disabled.
+- [x] **Fully done locally:** added bounded versioned ConnectionDefinition,
+  Observation, Intent, Review, Receipt, Profile, Recipe, Step, Tunnel, and
+  ResolvedConnectionPlan models in provider-neutral owners.
+- [x] **Fully done locally:** reject unknown versions, hostile controls/bidi,
+  duplicates, cycles, oversized values/counts, secret-bearing fields,
+  free-form command strings, and invalid risk/failure/retry combinations.
+- [x] **Fully done locally:** deterministic fingerprints invalidate approval
+  when target, identity, route, executable, tunnel, recipe, capability, or
+  source changes; unordered executable/capability inputs canonicalize first.
+- [x] **Fully done locally:** authentication/result reducers cover missing,
+  locked, expired, MFA, cancelled, offline, denied, unsupported, stale, error,
+  active, waiting, success, warning, failure, and skipped states, including
+  illegal-transition and no-background-authentication rules.
+- [x] **Fully done locally:** renderer-neutral wide/medium/narrow Hub, Connection
+  Review, and 64-step recipe-planner models cover keyboard, focus trap/return,
+  reading order, high contrast, reduced motion/transparency, 100-400% text
+  scale, empty/loading/error states, and structured responsive/accessibility
+  goldens.
+- [x] **Fully done locally:** synthetic fixtures cover all ten providers and all
+  authentication states; integration, property, mutation, accessibility,
+  hostile-record, fuzz, and 64-step Criterion benchmark owners are registered.
+- [x] **Fully done locally:** process, network, provider, credential, PTY,
+  listener, renderer, and GPU authority remain disabled; models are pure and do
+  not read files, spawn tools, connect sockets, resize a PTY, or draw a window.
+- [ ] **Not done externally:** protected reviewers must accept or supersede ADR
+  0012 before D5 can close or any production connection capability can activate.
 
-Exit: the entire product slice is testable without an account, network, process,
-PTY, window system, or GPU.
+Implementation evidence (2026-08-17):
 
+- model owners: `automexia-devops/src/connections` and
+  `automexia-ui-model/src/connection_hub.rs`;
+- frozen contract/fixtures: `tests/fixtures/connection-hub`;
+- deterministic tests: all `automexia-devops` and `automexia-ui-model` tests,
+  plus `tools/ci/test_connection_hub_f2.py`;
+- deep owners: `fuzz/fuzz_targets/connection_planning.rs` and the
+  `connection_planning` Criterion benchmark;
+- architecture and CI ratchets reject authority drift, lost limits, missing
+  evidence, or weakened modal/accessibility invariants.
+
+Exit status: the entire local product slice is testable without an account,
+network, process, PTY, window system, or GPU. The technical F2 exit passes;
+overall phase status remains **Partially done** only because ADR 0012 is still
+proposed. D5.1 and D5.2 are not implied or activated.
 ## F3 - implement D5.1 read-only Connection Hub
 
 Status: Not done.
@@ -627,7 +651,8 @@ These do not become silently complete from local Windows development:
 ## Current next action
 
 The current blocking action is protected acceptance or supersession of
-ADR 0012, which keeps F1 **Partially done**. After that decision, the next
-primary implementation phase is **F2 - implement D5.0 Connection Hub and
-planning models**. P1 autocomplete research is independently safe; no later
-phase should be marked started until its listed dependencies and evidence pass.
+ADR 0012, which keeps F1 and F2 **Partially done** despite both local contract
+slices passing. After that decision, the next primary implementation phase is
+**F3 - implement D5.1 read-only Connection Hub**. P1 autocomplete research is
+independently safe; no later phase should be marked started until its listed
+dependencies and evidence pass.

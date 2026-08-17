@@ -1,9 +1,11 @@
 # SSH access, multi-cloud connections, and automation recipes
 
-Status: implementation specification for D5 production SSH and D6 multi-cloud
-delivery. Automexia v0.4 does not ship managed connections or automatic remote
-actions. Ordinary user-entered `ssh`, `aws`, `az`, `gcloud`, `kubectl`, and
-`oc` commands continue to use the installed system tools.
+Status: the F2/D5.0 non-executing connection/profile/recipe/state/dry-run model
+baseline is implemented locally; D5.1 product integration, D5.2 execution, and
+D6 multi-cloud delivery are not implemented. Automexia v0.4 does not ship
+managed connections or automatic remote actions. Ordinary user-entered `ssh`,
+`aws`, `az`, `gcloud`, `kubectl`, and `oc` commands continue to use installed
+system tools.
 
 This document is the implementation authority for connection profiles and
 connection-scoped automation. The [Connection Hub](CONNECTION-HUB.md) owns the
@@ -42,12 +44,38 @@ The current repository provides:
 - provider-neutral environment and extension contracts;
 - an exact-argument launch validation model that is intentionally disabled;
 - independent PTY, pane, tab, clone, context, and cancellation ownership; and
-- the complete Connection Hub and security specifications.
+- the complete Connection Hub and security specifications; and
+- the F2/D5.0 bounded public-only records, strict validation, authentication/
+  result reducers, deterministic non-executing planner/fingerprints, pure Hub/
+  review/planner projections, fixtures, fuzz, mutation, and benchmark owners.
 
-It does **not** yet provide a production Connection Hub, automatic SSH launch,
-recipe editor, recipe executor, cloud transport adapters, or remote action
-handshake. UI examples and schemas in this page are planned contracts, not
-instructions for a shipped v0.4 feature.
+It does **not** yet provide a rendered/persisted production Connection Hub,
+automatic SSH launch, profile/recipe editor, recipe executor, cloud transport
+adapters, or remote action handshake. UI examples beyond the pure F2 projection
+models remain planned contracts, not instructions for a shipped v0.4 feature.
+
+### F2/D5.0 implementation ledger (2026-08-17)
+
+- **Fully done locally:** strict schema-1 ConnectionDefinition, Observation,
+  Intent, Review, Receipt, Profile, Recipe, Step, Tunnel, document, state, and
+  ResolvedConnectionPlan owners with fixed ceilings and redacted references.
+- **Fully done locally:** hostile controls/bidi, option confusion, duplicates,
+  cycles, missing dependencies, oversize, secret-bearing fields, command-string
+  shapes, and invalid policy/retry combinations fail closed.
+- **Fully done locally:** canonical fingerprints and dry-run resolution cover
+  all material target/identity/route/tunnel/recipe/executable/capability/source
+  changes while returning an all-false authority ceiling.
+- **Fully done locally:** exhaustive authentication/result reducers and pure
+  responsive Hub, Connection Review, and 64-step planner projections have
+  structured provider/auth/layout/accessibility fixtures plus property,
+  mutation, architecture, fuzz, and benchmark ownership.
+- **Not done externally:** ADR 0012 protected acceptance. Private persistence,
+  renderer/product wiring, a profile/recipe editor, and every execution path are
+  also later D5.1/D5.2 work.
+
+Therefore F2/D5.0 is **Partially done** overall despite its complete local
+non-executing exit. No account, filesystem, process, network, credential, PTY,
+listener, window, or GPU is required to test this baseline.
 
 ## Non-negotiable principles
 
@@ -680,17 +708,24 @@ The application remains the only owner allowed to attach a process to a route.
 
 ### D5A - contracts and golden fixtures
 
-- Accept or supersede ADR 0012 through protected review.
-- Freeze bounded profile, recipe, step, state, result, and capability schemas.
-- Implement validation, revisioning, fingerprints, redacted debug, migration,
-  and synthetic all-state fixtures.
-- Add renderer-neutral wide/medium/narrow Connection Hub and recipe-editor
-  models with keyboard/focus/accessibility goldens.
-- Keep all process and network capabilities disabled.
+Status: **Partially done** overall.
 
-Exit gate: hostile/mutation/property/model tests pass and the synthetic product
-slice is reviewable without an account, PTY, network, or GPU.
+- [ ] **Not done externally:** accept or supersede ADR 0012 through protected
+  review.
+- [x] **Fully done locally:** freeze bounded profile, recipe, step, connection,
+  state, result, review, plan, and capability schemas.
+- [x] **Fully done locally:** implement strict validation, revision fields,
+  fingerprints, redacted debug, and synthetic all-state fixtures. Persisted
+  schema migration remains D5B because F2 performs no storage.
+- [x] **Fully done locally:** add renderer-neutral wide/medium/narrow Connection
+  Hub, review, and recipe-planner models with keyboard/focus/accessibility
+  goldens.
+- [x] **Fully done locally:** keep all process, network, provider, credential,
+  PTY, listener, renderer, and GPU authority disabled.
 
+Exit status: hostile/mutation/property/record/state/model/layout/accessibility
+tests pass and the synthetic slice is reviewable without an account, PTY,
+network, window, or GPU. Protected ADR acceptance remains the overall blocker.
 ### D5B - read-only Connection Hub
 
 - Connect the current D4 inventory to virtualized search and grouping.
@@ -705,15 +740,22 @@ and Linux persistence/permission tests pass.
 
 ### D5C - recipe editor and dry-run planner
 
-- Add the typed first-party action catalog, variables, dependencies, risk,
-  confirmation, deadlines, failure/retry/reconnect policies, and plan preview.
-- Add deterministic compilation to a non-executing `ResolvedConnectionPlan`.
-- Add changed-fingerprint review and reusable recipe selection.
-- Do not spawn tools or connect.
+Status: **Partially done**; the pure model/planner is done and the product editor
+is not done.
 
-Exit gate: every supported action and hostile parameter has deterministic
-validation, redaction, migration, accessibility, and layout coverage.
+- [x] **Fully done locally:** add the typed first-party action catalog,
+  variables, dependencies, risk, confirmation, deadlines, failure/retry/
+  reconnect policies, and plan projection.
+- [x] **Fully done locally:** add deterministic compilation to a non-executing
+  `ResolvedConnectionPlan` with explicit all-false authority.
+- [ ] **Partially done:** changed-fingerprint review data and reusable recipe
+  references exist; persisted selection and the interactive editor belong to
+  D5B/D5.1 and are not implemented.
+- [x] **Fully done locally:** no tool is spawned and no connection is opened.
 
+Exit status: supported model actions and hostile parameters have deterministic
+validation, redaction, accessibility, and layout coverage. Editor interaction,
+persistence/migration, and native UI evidence remain before D5C is fully done.
 ### D5D - managed system OpenSSH
 
 - Activate only the reviewed one-argument OpenSSH alias path first.

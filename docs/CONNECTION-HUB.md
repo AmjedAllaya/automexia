@@ -1,7 +1,9 @@
 # Connection Hub product, security, and delivery specification
 
-Status: planned for D5 (production OpenSSH) and D6 (multi-cloud); no managed
-connection UI or credential custody is shipped in v0.4.
+Status: D5.0/F2's non-executing record, state, dry-run planning, and renderer-
+neutral Hub/review/planner baseline is implemented locally. D5.1 product UI and
+D5.2 managed connection lifecycle are not implemented; no credential custody
+or managed connection capability is shipped in v0.4.
 
 This document is the implementation authority for Automexia's Connection Hub.
 The [roadmap](ROADMAP.md) owns release order, the
@@ -896,15 +898,35 @@ never substitutes for deterministic PR tests.
 
 ### D5.0 - contract, threat model, and UX baseline
 
-- Accept ADR 0012/replacement capability decision.
-- Freeze the records, state machine, discovery tiers, capability/review model,
-  resource ceilings, privacy rules, keyboard/accessibility tree, and goldens.
-- Add synthetic fixtures for all states/providers without enabling process or
-  network authority.
+Status: **Partially done** overall; all local implementation rows are fully done
+and ADR 0012's protected decision remains external/not done.
 
-Exit: architecture, mutation, hostile-fixture, model, layout, and accessibility
-tests pass; no managed process exists in production.
+- [ ] **Not done externally:** accept or supersede ADR 0012 through protected
+  review before the phase closes or any authority activates.
+- [x] **Fully done locally:** freeze bounded versioned records, state machines,
+  typed action/policy models, deterministic approval fingerprints, resource
+  ceilings, privacy rules, keyboard/focus/reading order, responsive layouts,
+  Connection Review, recipe dry-run planning, and structured goldens.
+- [x] **Fully done locally:** add synthetic fixtures for all ten providers,
+  every authentication state, every Hub content state, all public result states,
+  and 100-400% wide/medium/narrow layouts without enabling process or network
+  authority.
+- [x] **Fully done locally:** enforce hostile/property/record/state/model,
+  accessibility, mutation, architecture, fuzz, and 64-step benchmark evidence.
+- [x] **Fully done locally:** keep filesystem, process, network, provider,
+  credential, PTY, listener, renderer, and GPU authority absent or false.
 
+Implementation owners are `automexia-devops/src/connections`,
+`automexia-ui-model/src/connection_hub.rs`, and
+`tests/fixtures/connection-hub`. The pure Hub is a renderer-neutral projection,
+not a shipped dialog; its primary connection action is disabled and Enter opens
+review only. D5.1 owns product rendering, D4 integration, persistence, and
+10,000-record behavior. D5.2 owns all connection execution and lifecycle.
+
+Exit status: architecture, mutation, hostile-fixture, model, layout,
+accessibility, fuzz-build, and benchmark-build gates pass locally with no
+managed process. Overall D5.0 stays **Partially done** until ADR 0012 receives
+its protected decision.
 ### D5.1 - read-only Hub and first-run detection
 
 - Connect the completed D4 inventory to the virtualized Hub.

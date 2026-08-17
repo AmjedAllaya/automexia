@@ -29,7 +29,7 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | D2 | Generic status, immutable history, capsules, isolation, cancellation, and freshness are implemented. |
 | **Partially done** | D3 | The nonactivated broker now binds exact package identity, grants, platform resolution, file identity, lifecycle, and redacted audit; production UX/spawn/native proof remain. |
 | **Fully done** | D4 | The bounded OpenSSH inventory/persistence package is complete but deliberately disabled. |
-| **Not done** | D5.0-D5.2 | Connection Hub and managed OpenSSH production UX/launch are design only. |
+| **Partially done** | D5.0-D5.2 | D5.0 non-executing records, validation, state reducers, dry-run planning, Hub/review/planner models, fixtures, goldens, and assurance are complete locally; ADR acceptance plus D5.1 product integration and D5.2 managed launch remain. |
 | **Not done** | D6.0-D6.5 | Provider authentication, capsules, transports, and multi-cloud slices are planned only. |
 | **Not done** | D7 | Public ecosystem, direct APIs, sandboxed extensions, and AI execution are deferred. |
 | **Fully done** | CP0 | Architecture, threat model, ceilings, fixtures, mutation tests, and nonactivation policy are complete. |
@@ -318,6 +318,27 @@ blocked by ADR 0012 acceptance, protected approval, first-party package
 identity, visible exact grants, atomic native launch, and controlled native
 lifecycle/performance evidence.
 
+#### D5.0 Connection Hub model status (2026-08-17)
+
+Status: **Partially done**. All source-local, non-executing D5.0/F2 work is
+fully implemented; the protected ADR decision is not done, so the phase cannot
+close or activate.
+
+| Feature | Status | Evidence / remaining work |
+|---|---|---|
+| Provider-neutral definition/observation/intent/review/receipt/profile/recipe/step/tunnel/plan schemas | **Fully done locally** | Strict schema 1 models and fixed ceilings live in `automexia-devops::connections`. |
+| Hostile input, duplicates, cycles, policy, retry, and redaction validation | **Fully done locally** | Integration/property/record/state tests plus mutation and architecture ratchets fail closed. |
+| Deterministic dry-run resolution and approval invalidation | **Fully done locally** | Target, identity, route, executable, tunnel, recipe, capability, and source changes are covered. |
+| Authentication and result state machines | **Fully done locally** | Every public state and illegal/terminal transition is table-tested. |
+| Hub, Connection Review, and recipe-planner projection contract | **Fully done locally** | Wide/medium/narrow/text-scale, modal focus, keyboard, reading order, all-state, accessibility, and structured golden tests pass without a renderer. |
+| Synthetic/deep assurance | **Fully done locally** | Ten-provider/all-auth fixtures, 64-step benchmark, fuzz target, CI checker, and mutation suite are owned. |
+| Process/network/provider/credential/PTY/listener authority | **Fully disabled** | F2 has no filesystem, process, socket, provider, credential, PTY, window, or GPU owner. |
+| ADR 0012 protected acceptance | **Not done externally** | Required before overall D5.0 closure and any D5.1/D5.2 activation. |
+
+This status does not claim a shipped Connection Hub. D5.1 still owns D4 snapshot
+integration, private persistence, virtualized 10,000-record search, and native
+read-only UI evidence; D5.2 separately owns reviewed OpenSSH execution and
+lifecycle.
 ### v0.5.x command productivity track
 
 Command completion and persistent DevOps shortcuts are now an explicit parallel

@@ -1045,28 +1045,71 @@ calls, missing resource ceilings, weakened private permissions, or loss of
 fuzz/benchmark ownership. Full threat model, limits, and manual interpretation
 are in [OpenSSH inventory](SSH-INVENTORY.md).
 
-## Planned Connection Hub assurance
+## Connection Hub F2 model and golden contract
 
-The Connection Hub is D5/D6 planned work, not a shipped v0.4 test claim. Before
-activation it must add the deterministic, native, controlled-provider,
-accessibility, visual, security, performance, privacy, and resource evidence in
+The F2/D5.0 capability-free baseline is implemented and remains non-activated.
+It is reproduced locally with:
+
+    cargo test -p automexia-devops --tests
+    cargo test -p automexia-ui-model --tests
+    python tools/ci/check_connection_hub_f2.py
+    python tools/ci/test_connection_hub_f2.py
+    cargo bench -p automexia-devops --bench connection_planning --no-run
+    cargo test --manifest-path fuzz/Cargo.toml --no-run
+    cargo xtask verify architecture
+
+The DevOps tests cover every top-level strict/versioned record, document limits,
+duplicate/missing/cyclic dependencies, cross-recipe variable collisions, pre-allocation plan-step ceilings, hostile controls/bidi, secret-bearing
+and command-shaped input, option confusion, policy/retry combinations,
+redaction, deterministic plan fingerprints, all authentication/result states
+and transitions, exactly 64 steps, order-independent capability/executable
+inputs, and the all-false process/network/provider/credential/PTY/listener
+authority ceiling.
+
+The UI-model tests cover the ten-provider and all-auth fixture matrices, every
+Hub empty/loading/failure state, wide/medium/narrow projection at 100-400% text
+scale, bounded row virtualization, modal/background-inert/topmost behavior,
+keyboard navigation, managed composite focus, opener focus restoration, reading
+order, status text independent of color, high contrast, reduced motion/
+transparency, all seven Connection Review sections, blocking decisions, and
+step-by-step dry-run planner narration. The structured files under
+`tests/fixtures/connection-hub/goldens` are semantic/layout contracts, not a
+claim about native pixels or a shipped dialog.
+
+`tools/ci/check_connection_hub_f2.py` freezes schemas, ceilings, provider/state/
+layout matrices, evidence owners, forbidden authority primitives, and disabled
+execution/modal invariants. Its mutation suite proves those checks fail when
+limits, authority, states, required tests, or accessibility invariants drift.
+Nightly owns the bounded `connection_planning` fuzz target; controlled QA owns
+execution of the 64-step validation/resolution benchmark. The benchmark build
+is a PR/nightly ownership check, not a longitudinal performance ratchet.
+
+No F2 test requires an account, network, process, filesystem persistence, PTY,
+window server, or GPU. Resource-lifetime and storage evidence are not applicable
+because F2 is synchronous pure modeling with bounded owned collections and no
+resource/persistence owner. This does not waive those gates for D5.1/D5.2.
+
+### Remaining Connection Hub activation assurance
+
+D5.1/D5.2 and D6 remain planned/non-activated work. Before activation they must
+add the deterministic, native, controlled-provider, accessibility, visual,
+security, performance, privacy, persistence, and resource evidence in
 [Connection Hub](CONNECTION-HUB.md#verification-plan).
 
-At minimum, PR evidence must prove no process/network/authentication work during
-passive discovery or search; legal generation-scoped authentication transitions;
-exact capability approval/revocation; secret-free serialized models; hostile
-OpenSSH/provider/kubeconfig parsing; exact Windows/Unix launch arguments;
-cross-session capsule isolation; responsive modal/focus/z-order behavior; and
-10,000-entry virtualized search without unbounded storage or workers.
+At minimum, later PR evidence must prove no process/network/authentication work
+during passive discovery or search; exact capability approval/revocation;
+hostile OpenSSH/provider/kubeconfig parsing; exact Windows/Unix launch
+arguments; cross-session capsule isolation; a real responsive modal/focus/
+z-order renderer; and 10,000-entry virtualized search without unbounded storage
+or workers.
 
 Native release evidence must cover Windows, macOS, and Linux OpenSSH/agent
 flows; AWS/Azure/Google/Kubernetes/OpenShift expiry, MFA, cancellation, offline,
 and denial; real plus mocked SSH; Narrator/NVDA, VoiceOver, and Orca; and 1/10/50
-session/process/tunnel teardown. Synthetic provider fixtures and
-renderer-neutral goldens remain mandatory but never substitute for controlled
-native evidence. Until those gates land in executable CI/QA ownership, the Hub
-must remain documented as planned/non-activated.
-
+session/process/tunnel teardown. Synthetic provider fixtures and renderer-
+neutral goldens remain mandatory but never substitute for controlled native
+evidence. Until those later gates land, the product Hub and managed connection
+lifecycle remain not implemented.
 ## CP2.0-CP2.2 Quick Action assurance
 
 The capability-free schema/parser/validator, activation index, and CP3.0

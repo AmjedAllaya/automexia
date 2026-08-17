@@ -89,7 +89,7 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
 | DevOps | D3 | **Partial; nonactivated** | **Blocked** | A test-only exact-argv review model exists; production launch, capability UX, atomic spawn, and native lifecycle proof do not. |
 | DevOps | D4 | **Fully implemented as disabled package** | **Partial** | Bounded OpenSSH inventory/persistence exists without process/network authority; no production UI or launch is connected. |
-| SSH UX | D5.0-D5.2 | **Not implemented** | **Blocked** | Detailed design exists; production Connection Hub and managed OpenSSH do not. |
+| SSH UX | D5.0-D5.2 | **Partial; D5.0 local model complete, later slices pending** | **Blocked** | Bounded records, validation, state reducers, dry-run planning, renderer-neutral Hub/review/planner models, fixtures, goldens, fuzz, mutation, and benchmark evidence exist with every authority disabled; ADR acceptance, product integration, and managed OpenSSH remain. |
 | Multi-cloud | D6.0-D6.5 | **Not implemented** | **Blocked** | Provider auth, capsules, transports, and provider slices are planned only. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
@@ -441,17 +441,40 @@ benchmark evidence. D4 does not activate D3 or D5.
 
 ### D5.0 — Connection Hub contract and UX baseline
 
-**Not implemented as product code; specification is detailed.**
+**Partially implemented overall; every local non-executing F2 deliverable is
+fully implemented.**
 
-The docs define records/groups, responsive layouts, search/filter/refresh,
-first-run discovery, OS agent setup, authentication states, retry/reconnect,
-capability approval/revocation, Connection Review, provider journeys,
-Teleport/OpenBao, recovery, privacy, accessibility, budgets, and goldens.
+Implemented evidence:
 
-Missing: accept ADR 0012, freeze schemas, implement renderer-neutral Hub models
-and all-state synthetic fixtures, hostile/mutation/layout/accessibility/golden
-tests, with no process enabled.
+- `automexia-devops::connections` owns strict schema-1 definition, observation,
+  intent, review, receipt, profile, recipe, step, tunnel, document, state, and
+  resolved-plan records with fixed byte/item/depth/retry/time ceilings;
+- validation rejects future/unknown schemas, unknown fields, controls/bidi,
+  option-like targets, duplicates, missing dependencies, cycles, oversized
+  input, secret-bearing variable/environment names, free-form commands, and
+  inconsistent stage/risk/confirmation/failure/retry/reconnect policy;
+- canonical fingerprints cover profile, source, target, identity, transport/
+  route, tunnels, recipes, executable identities, requested capabilities, and
+  ordered plan steps;
+- exhaustive authentication/result transition tests cover every public state,
+  illegal transitions, terminality, cancellation, stale/expiry, and denial of
+  background or denied-state authentication;
+- `automexia-ui-model::connection_hub` owns pure wide/medium/narrow Hub,
+  Connection Review, and recipe-planner projections with modal/inert behavior,
+  managed grid focus, focus restoration, keyboard navigation, reading order,
+  high-contrast/reduced-motion preferences, 100-400% scaling, every content and
+  auth state, disabled primary actions, and no PTY resize;
+- frozen ten-provider/all-auth/layout/accessibility fixtures, hostile/property/
+  record/model tests, mutation checks, a fuzz target, and the 64-step Criterion
+  benchmark are registered in CI/assurance; and
+- architecture checks forbid filesystem, process, network, provider,
+  credential, PTY, listener, renderer, GPU, or unsafe authority in this slice.
 
+Not implemented externally: ADR 0012 remains proposed and requires protected
+acceptance or supersession. That single external decision keeps D5.0
+**Partially done** and prevents activation; it does not invalidate the complete
+local F2 exit. D5.1 inventory/UI/persistence integration and D5.2 process/PTY/
+network lifecycle are separate, still-not-implemented phases.
 ### D5.1 — read-only Connection Hub
 
 **Not implemented.**
@@ -788,7 +811,7 @@ Planned work, with no shipped-command claim:
 | Product surface | Owning gate | Audit status |
 |---|---|---|
 | Canonical operation registry, `automexia` domains, generated palette/help/accessibility, optional collision-safe `ax` | CP2.2-CP3/D5 | Not implemented |
-| Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | Not implemented |
+| Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | F2 records and renderer-neutral review projections implemented; D5.1 product Hub and D5.2 connect/reconnect remain not implemented |
 | Identity references, agent/certificate state, known-host explanation, routes/jumps/proxies/tunnels | D5.2 | Not implemented |
 | Quick Actions, aliases, lifecycle hooks, reviewed multi-target execution | CP2.2-CP4/D5E | Model/store foundations only |
 | Declarative workspace persistence/restoration and visibly armed broadcast | D5/CP4 | Existing layout primitives only |
@@ -994,7 +1017,7 @@ At this audited baseline, the focused order is:
 1. Obtain protected acceptance or supersession of ADR 0012. Package identity,
    grants, executable resolution, strict defaults, and the native fixture
    definitions are already frozen locally with production launch disabled.
-2. Implement non-executing D5.0 models, then the read-only D5.1 Connection Hub.
+2. Preserve the completed non-executing D5.0/F2 boundary; after the protected decision, implement the read-only D5.1 Connection Hub.
 3. Activate D3 only with its capability, atomic spawn, PTY lifecycle, cleanup,
    and three-OS native gates; then deliver D5.2 managed OpenSSH in bounded
    direct, route/host-trust, tunnel, and native-evidence slices.
@@ -1021,9 +1044,10 @@ production SSH/Connection Hub, remote workspaces, multi-cloud, provider-aware
 actions, Automexia-owned suggestions, full Ghostty compatibility, public
 extensions, and AI remain.
 
-> Current milestone: v0.4 source stabilization, D1/D2, disabled D4, CP0-CP3.3,
-> and the local D0/D3 package/resolution/fixture contract are implemented at
-> their stated local/source boundaries. D0/D3 remain partial because protected
-> acceptance, production authority, real loader binding, and native execution
-> evidence are open. Stable release proof, D5/D6/CP4/CP5 activation, and the
-> other phases remain partial or not implemented as listed above.
+> Current milestone: v0.4 source stabilization, D1/D2, disabled D4, the complete
+> local non-executing D5.0/F2 model boundary, CP0-CP3.3, and the local D0/D3
+> package/resolution/fixture contract are implemented at their stated local/
+> source boundaries. D0/D3/D5.0 remain partial because protected acceptance,
+> production authority, real loader binding, and native execution evidence are
+> open. Stable release proof, D5.1-D6/CP4/CP5 activation, and the other phases
+> remain partial or not implemented as listed above.
