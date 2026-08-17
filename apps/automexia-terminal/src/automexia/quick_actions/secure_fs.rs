@@ -49,7 +49,7 @@ pub(super) fn validate_private_aliases_directory(path: &Path) -> Result<(), Stor
     apply_private_permissions(path, true)
 }
 
-pub(super) fn ensure_private_child_directory(path: &Path) -> Result<(), StoreError> {
+pub(crate) fn ensure_private_child_directory(path: &Path) -> Result<(), StoreError> {
     let parent = path
         .parent()
         .ok_or_else(|| StoreError::new(StoreErrorCode::InvalidRoot))?;
@@ -65,7 +65,7 @@ pub(super) fn ensure_private_child_directory(path: &Path) -> Result<(), StoreErr
     apply_private_permissions(path, true)
 }
 
-pub(super) fn validate_private_child_directory(path: &Path) -> Result<(), StoreError> {
+pub(crate) fn validate_private_child_directory(path: &Path) -> Result<(), StoreError> {
     let parent = path
         .parent()
         .ok_or_else(|| StoreError::new(StoreErrorCode::InvalidRoot))?;
@@ -99,7 +99,7 @@ pub(super) fn inspect_private_child_directory(path: &Path) -> Result<(), StoreEr
     Ok(())
 }
 
-pub(super) fn inspect_private_file(path: &Path) -> Result<(), StoreError> {
+pub(crate) fn inspect_private_file(path: &Path) -> Result<(), StoreError> {
     let metadata = fs::symlink_metadata(path).map_err(StoreError::io)?;
     validate_regular(&metadata)?;
     if !private_permissions_are_safe(path, &metadata)? {
@@ -125,7 +125,7 @@ pub(super) fn validate_private_directory(path: &Path) -> Result<(), StoreError> 
     apply_private_permissions(path, true)
 }
 
-pub(super) fn read_bounded_regular(
+pub(crate) fn read_bounded_regular(
     path: &Path,
     maximum: usize,
 ) -> Result<Option<Vec<u8>>, StoreError> {
@@ -178,7 +178,7 @@ pub(super) fn read_bounded_regular(
     Ok(Some(bytes))
 }
 
-pub(super) fn open_private_lock(path: &Path) -> Result<File, StoreError> {
+pub(crate) fn open_private_lock(path: &Path) -> Result<File, StoreError> {
     if let Ok(metadata) = fs::symlink_metadata(path) {
         validate_regular(&metadata)?;
     }
@@ -191,7 +191,7 @@ pub(super) fn open_private_lock(path: &Path) -> Result<File, StoreError> {
     Ok(file)
 }
 
-pub(super) fn reject_link_or_non_file(path: &Path) -> Result<(), StoreError> {
+pub(crate) fn reject_link_or_non_file(path: &Path) -> Result<(), StoreError> {
     match fs::symlink_metadata(path) {
         Ok(metadata) => validate_regular(&metadata),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -199,7 +199,7 @@ pub(super) fn reject_link_or_non_file(path: &Path) -> Result<(), StoreError> {
     }
 }
 
-pub(super) fn apply_private_file_permissions(path: &Path) -> Result<(), StoreError> {
+pub(crate) fn apply_private_file_permissions(path: &Path) -> Result<(), StoreError> {
     apply_private_permissions(path, false)
 }
 
@@ -208,14 +208,14 @@ pub(super) fn apply_private_directory_permissions(path: &Path) -> Result<(), Sto
 }
 
 #[cfg(unix)]
-pub(super) fn sync_directory(path: &Path) -> Result<(), StoreError> {
+pub(crate) fn sync_directory(path: &Path) -> Result<(), StoreError> {
     File::open(path)
         .and_then(|directory| directory.sync_all())
         .map_err(StoreError::io)
 }
 
 #[cfg(not(unix))]
-pub(super) fn sync_directory(_path: &Path) -> Result<(), StoreError> {
+pub(crate) fn sync_directory(_path: &Path) -> Result<(), StoreError> {
     Ok(())
 }
 

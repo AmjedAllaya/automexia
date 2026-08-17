@@ -12,7 +12,7 @@ mod cli;
 mod native_import;
 mod packs_cli;
 mod refresh;
-mod secure_fs;
+pub(crate) mod secure_fs;
 mod service;
 mod store;
 mod transfer;

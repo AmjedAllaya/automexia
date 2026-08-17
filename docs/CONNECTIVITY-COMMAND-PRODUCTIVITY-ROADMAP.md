@@ -293,9 +293,13 @@ Status: Partially done.
   truthful fallback, and explicit recovery. Explicit scans now retain last-known-
   good results under a redacted stale state, and Windows/macOS/Linux setup
   guidance truthfully requires exact user-selected files. Mutation UI remains.
-- [ ] **Not done** — Add bounded private profile/recipe/preference persistence
+- [x] **Fully done** — Add bounded private profile/recipe/preference persistence
   with no-follow reads, user-only permissions, CAS, atomic replacement,
-  recovery, import/export redaction, and new local IDs for imports.
+  recovery, import/export redaction, and new local IDs for imports. One 16 MiB
+  application-owned document now validates the F2 profile/recipe schemas,
+  stores bounded preferences, retains one validated recovery generation, and
+  redacts targets, identities, references, capsule values, recipe bodies,
+  descriptions, prior IDs, and approval fingerprints during transfer.
 - [ ] **Partially done** — Keep login, connect, automatic actions, network, and
   provider processes visibly disabled. The model continues to expose no
   execution or PTY authority; the product Hub must make those disabled states
@@ -305,8 +309,9 @@ Status: Partially done.
   scale, and tiny-to-8K layouts. Catalog limits, hostile text, deterministic
   filtering, 10,000 records, one-target focus, 300% scale, 8K virtualization,
   CAS conflicts, writer contention, malformed-primary fallback, explicit
-  recovery, and Windows private-ACL round trips pass. Fault-injected read-only/
-  disk-full product storage and full product rendering remain.
+  recovery, Windows private-ACL round trips, fault-injected read-only/disk-full
+  preservation, strict transfer parsing, canary redaction, fresh imported IDs,
+  and concurrent-writer exclusion pass. Full product rendering remains.
 - [ ] **Not done** — Run native static persistence/permission evidence on
   Windows, macOS, and Linux and controlled screen-reader model verification.
 
