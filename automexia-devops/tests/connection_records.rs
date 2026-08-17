@@ -217,3 +217,52 @@ fn all_top_level_connection_records_are_strict_versioned_and_bounded() {
     assert_eq!(error.code, ConnectionModelErrorCode::MalformedSchema);
     assert!(!error.to_string().contains("secret-canary"));
 }
+
+#[test]
+fn review_records_reject_duplicate_policy_and_executable_entries() {
+    let review = || {
+        json!({
+            "schema_version": 1,
+            "normalized_intent": intent(),
+            "policy_decisions": [{
+                "code": "review-production",
+                "outcome": "review",
+                "reason": "Explicit review remains required"
+            }],
+            "warnings": ["host-trust-review-required"],
+            "host_trust": {"state": "unknown"},
+            "changed_fields": ["source_revision"],
+            "executable_preview": [{
+                "executable_id": "openssh",
+                "arguments": [{"label": "destination", "redacted": false}]
+            }],
+            "approval_fingerprint": digest('c')
+        })
+    };
+
+    let mut duplicate_policy = review();
+    let decision = duplicate_policy["policy_decisions"][0].clone();
+    duplicate_policy["policy_decisions"]
+        .as_array_mut()
+        .unwrap()
+        .push(decision);
+    assert_eq!(
+        parse_connection_review_json(&serde_json::to_vec(&duplicate_policy).unwrap())
+            .unwrap_err()
+            .code,
+        ConnectionModelErrorCode::DuplicateId,
+    );
+
+    let mut duplicate_executable = review();
+    let executable = duplicate_executable["executable_preview"][0].clone();
+    duplicate_executable["executable_preview"]
+        .as_array_mut()
+        .unwrap()
+        .push(executable);
+    assert_eq!(
+        parse_connection_review_json(&serde_json::to_vec(&duplicate_executable).unwrap())
+            .unwrap_err()
+            .code,
+        ConnectionModelErrorCode::DuplicateId,
+    );
+}

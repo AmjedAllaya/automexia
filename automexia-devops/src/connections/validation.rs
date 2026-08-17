@@ -34,7 +34,7 @@ pub fn parse_profile_json(
 ) -> Result<ValidatedConnectionProfile, ConnectionModelError> {
     let profile: ConnectionProfileV1 = parse_strict(bytes)?;
     validate_profile(&profile)?;
-    Ok(profile.into())
+    Ok(ValidatedConnectionProfile::from_validated(profile))
 }
 
 pub fn parse_recipe_json(
@@ -42,7 +42,7 @@ pub fn parse_recipe_json(
 ) -> Result<ValidatedAutomationRecipe, ConnectionModelError> {
     let recipe: AutomationRecipeV1 = parse_strict(bytes)?;
     validate_recipe(&recipe)?;
-    Ok(recipe.into())
+    Ok(ValidatedAutomationRecipe::from_validated(recipe))
 }
 
 pub fn parse_connection_definition_json(
@@ -110,7 +110,7 @@ fn contains_hostile_format(character: char) -> bool {
     )
 }
 
-fn validate_text(
+pub(super) fn validate_text(
     value: &str,
     field: &'static str,
     allow_empty: bool,
@@ -800,14 +800,30 @@ pub fn validate_connection_review(
             "review collection exceeds its fixed item ceiling",
         ));
     }
+    let mut decision_codes = HashSet::with_capacity(review.policy_decisions.len());
     for decision in &review.policy_decisions {
         validate_identifier(&decision.code, "policy_decisions.code")?;
         validate_text(&decision.reason, "policy_decisions.reason", false)?;
+        if !decision_codes.insert(decision.code.as_str()) {
+            return Err(error(
+                ConnectionModelErrorCode::DuplicateId,
+                "policy_decisions.code",
+                "duplicate policy decisions are forbidden",
+            ));
+        }
     }
     validate_unique_texts(&review.warnings, "warnings", MAX_CAPABILITIES)?;
     validate_unique_texts(&review.changed_fields, "changed_fields", MAX_CAPABILITIES)?;
+    let mut executable_ids = HashSet::with_capacity(review.executable_preview.len());
     for preview in &review.executable_preview {
         validate_identifier(&preview.executable_id, "executable_preview.executable_id")?;
+        if !executable_ids.insert(preview.executable_id.as_str()) {
+            return Err(error(
+                ConnectionModelErrorCode::DuplicateId,
+                "executable_preview.executable_id",
+                "duplicate executable previews are forbidden",
+            ));
+        }
         if preview.arguments.len() > MAX_STEPS_PER_RECIPE {
             return Err(error(
                 ConnectionModelErrorCode::LimitExceeded,

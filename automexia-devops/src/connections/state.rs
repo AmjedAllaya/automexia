@@ -20,6 +20,10 @@ fn validate_event_id(
         || !value.bytes().all(|byte| {
             byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"._-".contains(&byte)
         })
+        || !value
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphanumeric)
     {
         return Err(ConnectionModelError::new(
             ConnectionModelErrorCode::InvalidIdentifier,
@@ -49,6 +53,29 @@ fn stale_state(state: &AuthState) -> Option<StaleAuthState> {
     }
 }
 
+fn require_current_operation(
+    current: &AuthState,
+    event_operation_id: &str,
+    allow_checking: bool,
+    allow_authenticating: bool,
+) -> Result<(), ConnectionModelError> {
+    validate_event_id(event_operation_id, "auth_event.operation_id")?;
+    let matches = match current {
+        AuthState::Checking { operation_id } if allow_checking => {
+            operation_id == event_operation_id
+        }
+        AuthState::Authenticating { operation_id } if allow_authenticating => {
+            operation_id == event_operation_id
+        }
+        _ => false,
+    };
+    if matches {
+        Ok(())
+    } else {
+        Err(invalid_transition("auth_event.operation_id"))
+    }
+}
+
 pub fn apply_auth_event(
     current: AuthState,
     event: AuthEvent,
@@ -65,40 +92,38 @@ pub fn apply_auth_event(
             Ok(AuthState::Checking { operation_id })
         }
         AuthEvent::ObservedReady {
+            operation_id,
             evidence_id,
             expires_at_ms,
-        } if matches!(
-            current,
-            AuthState::Checking { .. } | AuthState::Authenticating { .. }
-        ) =>
-        {
+        } => {
+            require_current_operation(&current, &operation_id, true, true)?;
             validate_event_id(&evidence_id, "auth_event.evidence_id")?;
             Ok(AuthState::Ready {
                 evidence_id,
                 expires_at_ms,
             })
         }
-        AuthEvent::ObservedLocked { diagnostic_code }
-            if matches!(
-                current,
-                AuthState::Checking { .. } | AuthState::Authenticating { .. }
-            ) =>
-        {
+        AuthEvent::ObservedLocked {
+            operation_id,
+            diagnostic_code,
+        } => {
+            require_current_operation(&current, &operation_id, true, true)?;
             validate_event_id(&diagnostic_code, "auth_event.diagnostic_code")?;
             Ok(AuthState::Locked { diagnostic_code })
         }
-        AuthEvent::ObservedMissing { diagnostic_code }
-            if matches!(current, AuthState::Checking { .. }) =>
-        {
+        AuthEvent::ObservedMissing {
+            operation_id,
+            diagnostic_code,
+        } => {
+            require_current_operation(&current, &operation_id, true, false)?;
             validate_event_id(&diagnostic_code, "auth_event.diagnostic_code")?;
             Ok(AuthState::Missing { diagnostic_code })
         }
-        AuthEvent::ObservedExpired { evidence_id }
-            if matches!(
-                current,
-                AuthState::Checking { .. } | AuthState::Authenticating { .. }
-            ) =>
-        {
+        AuthEvent::ObservedExpired {
+            operation_id,
+            evidence_id,
+        } => {
+            require_current_operation(&current, &operation_id, true, true)?;
             if let Some(evidence_id) = &evidence_id {
                 validate_event_id(evidence_id, "auth_event.evidence_id")?;
             }
@@ -106,54 +131,51 @@ pub fn apply_auth_event(
                 previous_evidence_id: evidence_id,
             })
         }
-        AuthEvent::ObservedMfaRequired { diagnostic_code }
-            if matches!(
-                current,
-                AuthState::Checking { .. } | AuthState::Authenticating { .. }
-            ) =>
-        {
+        AuthEvent::ObservedMfaRequired {
+            operation_id,
+            diagnostic_code,
+        } => {
+            require_current_operation(&current, &operation_id, true, true)?;
             validate_event_id(&diagnostic_code, "auth_event.diagnostic_code")?;
             Ok(AuthState::MfaRequired { diagnostic_code })
         }
-        AuthEvent::ObservedCancelled { diagnostic_code }
-            if matches!(
-                current,
-                AuthState::Checking { .. } | AuthState::Authenticating { .. }
-            ) =>
-        {
+        AuthEvent::ObservedCancelled {
+            operation_id,
+            diagnostic_code,
+        } => {
+            require_current_operation(&current, &operation_id, true, true)?;
             validate_event_id(&diagnostic_code, "auth_event.diagnostic_code")?;
             Ok(AuthState::Cancelled { diagnostic_code })
         }
-        AuthEvent::ObservedOffline { diagnostic_code }
-            if matches!(
-                current,
-                AuthState::Checking { .. } | AuthState::Authenticating { .. }
-            ) =>
-        {
+        AuthEvent::ObservedOffline {
+            operation_id,
+            diagnostic_code,
+        } => {
+            require_current_operation(&current, &operation_id, true, true)?;
             validate_event_id(&diagnostic_code, "auth_event.diagnostic_code")?;
             Ok(AuthState::Offline { diagnostic_code })
         }
-        AuthEvent::ObservedDenied { diagnostic_code }
-            if matches!(
-                current,
-                AuthState::Checking { .. } | AuthState::Authenticating { .. }
-            ) =>
-        {
+        AuthEvent::ObservedDenied {
+            operation_id,
+            diagnostic_code,
+        } => {
+            require_current_operation(&current, &operation_id, true, true)?;
             validate_event_id(&diagnostic_code, "auth_event.diagnostic_code")?;
             Ok(AuthState::Denied { diagnostic_code })
         }
-        AuthEvent::ObservedUnsupported { diagnostic_code }
-            if matches!(current, AuthState::Checking { .. }) =>
-        {
+        AuthEvent::ObservedUnsupported {
+            operation_id,
+            diagnostic_code,
+        } => {
+            require_current_operation(&current, &operation_id, true, false)?;
             validate_event_id(&diagnostic_code, "auth_event.diagnostic_code")?;
             Ok(AuthState::Unsupported { diagnostic_code })
         }
-        AuthEvent::ObservedError { diagnostic_code }
-            if matches!(
-                current,
-                AuthState::Checking { .. } | AuthState::Authenticating { .. }
-            ) =>
-        {
+        AuthEvent::ObservedError {
+            operation_id,
+            diagnostic_code,
+        } => {
+            require_current_operation(&current, &operation_id, true, true)?;
             validate_event_id(&diagnostic_code, "auth_event.diagnostic_code")?;
             Ok(AuthState::Error { diagnostic_code })
         }
@@ -172,12 +194,11 @@ pub fn apply_auth_event(
             validate_event_id(&operation_id, "auth_event.operation_id")?;
             Ok(AuthState::Authenticating { operation_id })
         }
-        AuthEvent::Cancel { diagnostic_code }
-            if matches!(
-                current,
-                AuthState::Checking { .. } | AuthState::Authenticating { .. }
-            ) =>
-        {
+        AuthEvent::Cancel {
+            operation_id,
+            diagnostic_code,
+        } => {
+            require_current_operation(&current, &operation_id, true, true)?;
             validate_event_id(&diagnostic_code, "auth_event.diagnostic_code")?;
             Ok(AuthState::Cancelled { diagnostic_code })
         }
@@ -196,7 +217,6 @@ pub fn apply_auth_event(
         _ => Err(invalid_transition("auth_event")),
     }
 }
-
 pub fn apply_result_event(
     current: OperationResultState,
     event: OperationResultEvent,

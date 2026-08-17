@@ -795,8 +795,11 @@ Privacy defaults:
 ## Renderer-neutral interaction goldens
 
 Goldens are structured snapshots of model, geometry, semantics, focus, z-order,
-and accessible output. Pixel screenshots supplement them on controlled native
-runners; OCR is not an assertion mechanism.
+and accessible output. The implemented F2 accessibility golden also freezes one
+managed focus row after selection invalidation, live progress semantics while
+loading, and omission of action value contents from planner narration. Pixel
+screenshots supplement them on controlled native runners; OCR is not an
+assertion mechanism.
 
 Required fixture axes:
 
@@ -900,6 +903,14 @@ never substitutes for deterministic PR tests.
 
 Status: **Partially done** overall; all local implementation rows are fully done
 and ADR 0012's protected decision remains external/not done.
+
+The 2026-08-17 second-pass audit initially reclassified the schema/validation,
+auth reducer, and renderer-neutral UX rows as **Partially done**. It then sealed
+validated wrappers, added plan-override bidi and review-duplicate rejection,
+bound auth results to operation generations, removed planner panic paths, and
+hardened roving focus, loading progress, modal focus cycles, and value-redacted
+action labels. Those rows are **Fully done locally** again with 30 required
+regressions; authority and protected-ADR status did not change.
 
 - [ ] **Not done externally:** accept or supersede ADR 0012 through protected
   review before the phase closes or any authority activates.

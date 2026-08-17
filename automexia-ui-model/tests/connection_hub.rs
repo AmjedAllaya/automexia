@@ -477,4 +477,119 @@ fn structured_layout_and_accessibility_goldens_match_the_projection() {
     assert!(view.rows[0]
         .accessibility_label
         .contains(view.rows[0].risk_label));
+
+    let mut fallback_input = request(&connections, Viewport::new(1_440.0, 900.0, 1.0));
+    fallback_input.selected_id = None;
+    let fallback = project_connection_hub(fallback_input);
+    assert_eq!(
+        accessibility["missing_selection_managed_focusable_rows"].as_u64(),
+        Some(
+            fallback
+                .accessibility_tree
+                .iter()
+                .filter(|node| node.role == AccessibilityRole::Row && node.focusable)
+                .count() as u64,
+        ),
+    );
+
+    let mut loading_input = request(&connections, Viewport::new(1_024.0, 768.0, 1.0));
+    loading_input.content_state = HubContentState::Loading;
+    loading_input.live_announcement = None;
+    let loading = project_connection_hub(loading_input);
+    let loading_status = loading
+        .accessibility_tree
+        .iter()
+        .find(|node| node.id == "connection-status")
+        .unwrap();
+    assert_eq!(
+        accessibility["loading_role"],
+        serde_json::to_value(loading_status.role).unwrap(),
+    );
+    assert_eq!(
+        accessibility["loading_live"].as_bool(),
+        Some(loading_status.live),
+    );
+}
+
+#[test]
+fn missing_selection_still_exposes_one_managed_grid_focus_target() {
+    let connections = summaries();
+    for selected_id in [None, Some("connection-no-longer-present")] {
+        let mut input = request(&connections, Viewport::new(1_440.0, 900.0, 1.0));
+        input.selected_id = selected_id;
+        let view = project_connection_hub(input);
+        assert_eq!(view.rows.iter().filter(|row| row.selected).count(), 1);
+        assert!(view.rows[0].selected);
+        assert_eq!(
+            view.accessibility_tree
+                .iter()
+                .filter(|node| node.role == AccessibilityRole::Row && node.focusable)
+                .count(),
+            1,
+        );
+    }
+}
+
+#[test]
+fn loading_state_exposes_live_progress_semantics() {
+    let connections = summaries();
+    let mut input = request(&connections, Viewport::new(1_024.0, 768.0, 1.0));
+    input.content_state = HubContentState::Loading;
+    input.live_announcement = None;
+    let view = project_connection_hub(input);
+    let status = view
+        .accessibility_tree
+        .iter()
+        .find(|node| node.id == "connection-status")
+        .unwrap();
+    assert_eq!(status.role, AccessibilityRole::Progress);
+    assert!(status.live);
+}
+
+#[test]
+fn modal_tab_cycle_stays_on_controls_for_the_active_route() {
+    let mut state = InteractionState::new(14, 5, "terminal-pane-7".into());
+    assert!(matches!(
+        apply_hub_key(&mut state, HubKey::Enter),
+        InteractionEffect::OpenReview { .. }
+    ));
+    assert_eq!(
+        apply_hub_key(&mut state, HubKey::Tab),
+        InteractionEffect::FocusChanged(HubFocus::Close),
+    );
+    assert_eq!(
+        apply_hub_key(&mut state, HubKey::Tab),
+        InteractionEffect::FocusChanged(HubFocus::Back),
+    );
+    assert_eq!(
+        apply_hub_key(&mut state, HubKey::Tab),
+        InteractionEffect::FocusChanged(HubFocus::Review),
+    );
+    assert_eq!(
+        apply_hub_key(&mut state, HubKey::ShiftTab),
+        InteractionEffect::FocusChanged(HubFocus::Back),
+    );
+    assert!(!state.execution_requested);
+}
+
+#[test]
+fn planner_accessibility_summary_does_not_expose_public_value_contents() {
+    let mut plan = synthetic_plan();
+    plan.steps[1].stage = ExecutionStage::BeforeConnect;
+    plan.steps[1].action = AutomationAction::SetSessionEnvironment {
+        name: "PUBLIC_LABEL".into(),
+        public_value: "snapshot-canary-value".into(),
+    };
+    let view = project_recipe_planner(&plan, Viewport::new(1_024.0, 768.0, 1.0));
+    let serialized = serde_json::to_string(&view).unwrap();
+    assert!(!serialized.contains("snapshot-canary-value"));
+    assert_eq!(view.steps[1].summary, "Set session environment");
+    let accessibility: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/connection-hub/goldens/accessibility/modal-grid-v1.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        accessibility["planner_action_values_redacted"].as_bool(),
+        Some(true),
+    );
 }

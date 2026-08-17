@@ -455,40 +455,51 @@ pub enum AuthEvent {
         operation_id: String,
     },
     ObservedReady {
+        operation_id: String,
         evidence_id: String,
         expires_at_ms: Option<u64>,
     },
     ObservedLocked {
+        operation_id: String,
         diagnostic_code: String,
     },
     ObservedMissing {
+        operation_id: String,
         diagnostic_code: String,
     },
     ObservedExpired {
+        operation_id: String,
         evidence_id: Option<String>,
     },
     ObservedMfaRequired {
+        operation_id: String,
         diagnostic_code: String,
     },
     ObservedCancelled {
+        operation_id: String,
         diagnostic_code: String,
     },
     ObservedOffline {
+        operation_id: String,
         diagnostic_code: String,
     },
     ObservedDenied {
+        operation_id: String,
         diagnostic_code: String,
     },
     ObservedUnsupported {
+        operation_id: String,
         diagnostic_code: String,
     },
     ObservedError {
+        operation_id: String,
         diagnostic_code: String,
     },
     BeginAuthentication {
         operation_id: String,
     },
     Cancel {
+        operation_id: String,
         diagnostic_code: String,
     },
     SourceChanged,
@@ -880,6 +891,10 @@ pub struct AutomationRecipeDocumentV1 {
 pub struct ValidatedConnectionProfile(ConnectionProfileV1);
 
 impl ValidatedConnectionProfile {
+    pub(super) fn from_validated(value: ConnectionProfileV1) -> Self {
+        Self(value)
+    }
+
     pub fn into_inner(self) -> ConnectionProfileV1 {
         self.0
     }
@@ -891,16 +906,14 @@ impl AsRef<ConnectionProfileV1> for ValidatedConnectionProfile {
     }
 }
 
-impl From<ConnectionProfileV1> for ValidatedConnectionProfile {
-    fn from(value: ConnectionProfileV1) -> Self {
-        Self(value)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ValidatedAutomationRecipe(AutomationRecipeV1);
 
 impl ValidatedAutomationRecipe {
+    pub(super) fn from_validated(value: AutomationRecipeV1) -> Self {
+        Self(value)
+    }
+
     pub fn into_inner(self) -> AutomationRecipeV1 {
         self.0
     }
@@ -909,12 +922,6 @@ impl ValidatedAutomationRecipe {
 impl AsRef<AutomationRecipeV1> for ValidatedAutomationRecipe {
     fn as_ref(&self) -> &AutomationRecipeV1 {
         &self.0
-    }
-}
-
-impl From<AutomationRecipeV1> for ValidatedAutomationRecipe {
-    fn from(value: AutomationRecipeV1) -> Self {
-        Self(value)
     }
 }
 
