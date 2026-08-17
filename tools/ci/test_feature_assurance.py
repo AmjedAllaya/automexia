@@ -29,7 +29,7 @@ class FeatureAssuranceTests(unittest.TestCase):
         self.assertGreaterEqual(counts["components"], 20)
         self.assertGreater(counts["evidence"], counts["features"] * 9)
         self.assertEqual(counts["benchmarks"], 8)
-        self.assertEqual(counts["fuzz_targets"], 9)
+        self.assertEqual(counts["fuzz_targets"], 10)
         self.assertGreaterEqual(counts["documentation"], counts["features"] * 3)
 
     def test_missing_documentation_type_is_rejected(self) -> None:

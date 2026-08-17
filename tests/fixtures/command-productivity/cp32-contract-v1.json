@@ -2,6 +2,7 @@
   "schema": 1,
   "phase": "CP3.2",
   "status": "fully-done-reviewed-devops-packs",
+  "registry_digest": "ddc7ab95790ce93e6621e4eb7aff1b76896f71a217ff283f55f4a8d01adde63e",
   "providers": [
     "aws",
     "azure",
@@ -74,6 +75,10 @@
   "security": {
     "builtins_disabled_by_default": true,
     "aliases_disabled_by_default": true,
+    "exact_registry_payload": true,
+    "enable_preview_exact_argv": true,
+    "stale_revision_preflight": true,
+    "truthful_registry_doctor": true,
     "builtin_manifest_identity": true,
     "custom_overlays_user_provenance": true,
     "context_aliases_denied": true,
@@ -89,6 +94,8 @@
   },
   "lifecycle": {
     "version_health": true,
+    "version_only_updates_unchanged": true,
+    "completion_policy_validation": true,
     "provider_absence": true,
     "completion_health": true,
     "overlay_preservation": true,
@@ -114,12 +121,20 @@
     "changed_manifest_content_requires_a_new_version",
     "updates_preserve_overlays_and_explain_deprecations",
     "stale_overlays_are_rejected",
-    "registry_effects_cover_read_and_mutating_risk_floors"
+    "registry_effects_cover_read_and_mutating_risk_floors",
+    "version_only_updates_remain_unchanged",
+    "pack_enable_is_dry_run_and_apply_requires_a_revision",
+    "pack_doctor_observations_are_explicit_and_conflict_checked",
+    "pack_enable_preview_exposes_exact_review_fields",
+    "registry_doctor_does_not_claim_provider_readiness",
+    "stale_pack_enable_revision_is_actionable"
   ],
   "benchmark": "automexia-devops/benches/quick_actions.rs",
   "fuzz_target": "fuzz/fuzz_targets/quick_action_packs.rs",
   "documents": [
     "docs/ARCHITECTURE.md",
+    "docs/CLI-REFERENCE.md",
+    "docs/COMMAND-PRODUCTIVITY-THREAT-MODEL.md",
     "docs/COMMAND-PRODUCTIVITY.md",
     "docs/DEVOPS-ALIASES.md",
     "docs/PHASE-IMPLEMENTATION-AUDIT.md",

@@ -4,8 +4,9 @@ use std::io;
 
 use automexia_devops::actions::{
     builtin_pack, builtin_packs, evaluate_pack_health, materialize_pack_action,
-    pack_alias_eligibility, pack_registry_digest, validate_pack_registry,
-    PackToolObservation,
+    pack_alias_eligibility, pack_registry_digest, validate_pack_registry, ActionTemplate,
+    ArgumentToken, PackAction, PackActionEffect, PackHealthState, PackToolObservation,
+    RiskClass, ShellKind,
 };
 use serde::Serialize;
 
@@ -28,6 +29,12 @@ struct PackSummary<'a> {
 struct EnableSummary<'a> {
     pack_id: &'a str,
     action_id: &'a str,
+    display_name: &'a str,
+    description: &'a str,
+    effect: PackActionEffect,
+    risk: RiskClass,
+    argv: Vec<String>,
+    documentation_url: &'a str,
     applied: bool,
     revision: u64,
     registry_digest: String,
@@ -66,17 +73,10 @@ pub fn execute_packs_command(
                     .into());
                 }
                 validate_pack_registry(builtin_packs())?;
-                let result = serde_json::json!({
-                    "state": "ready",
-                    "packs": builtin_packs().len(),
-                    "actions": builtin_packs().iter().map(|pack| pack.actions.len()).sum::<usize>(),
-                    "registry_digest": pack_registry_digest(),
-                    "provider_processes_started": 0,
-                });
                 return print_json_or_line(
-                    result,
+                    registry_doctor_summary(),
                     *json,
-                    "state=ready packs=11 actions=33 provider-processes-started=0",
+                    "state=registry-ready packs=11 actions=33 provider-processes-started=0",
                 );
             };
             let pack = builtin_pack(id).ok_or_else(|| not_found("pack", id))?;
@@ -98,13 +98,21 @@ pub fn execute_packs_command(
             if *json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
+                let missing = report
+                    .missing_completion_shells
+                    .iter()
+                    .copied()
+                    .map(shell_label)
+                    .collect::<Vec<_>>()
+                    .join(",");
                 println!(
-                    "pack={} state={:?} detected={} minimum={} missing-completions={}",
+                    "pack={} state={} detected={} minimum={} missing-completions=[{}] detail={}",
                     report.pack_id,
-                    report.state,
+                    health_state_label(report.state),
                     report.detected_version.as_deref().unwrap_or("unobserved"),
                     report.minimum_version,
-                    report.missing_completion_shells.len()
+                    missing,
+                    serde_json::to_string(&report.detail)?
                 );
             }
             Ok(())
@@ -148,10 +156,11 @@ fn print_list(json: bool) -> Result<(), Box<dyn std::error::Error>> {
     } else {
         for item in summaries {
             println!(
-                "{}\t{}\tversion={}\ttool>={}\tactions={}\talias-eligible={}",
+                "{}\t{}\tversion={}\texecutable={}\ttool>={}\tactions={}\talias-eligible={}",
                 item.id,
                 item.display_name,
                 item.version,
+                item.executable_id,
                 item.minimum_tool_version,
                 item.actions,
                 item.alias_eligible_actions
@@ -176,6 +185,9 @@ fn enable(
         .ok_or_else(|| not_found("pack action", action_id))?;
     let action = materialize_pack_action(pack_id, action_id)?;
     let eligibility = pack_alias_eligibility(entry);
+    let argv = pack_action_argv(entry);
+    let argv_text = serde_json::to_string(&argv)?;
+    let display_name_text = serde_json::to_string(&action.display_name)?;
     let root = rio_backend::config::config_dir_path().join("actions");
     let existing = QuickActionStore::open_existing_read_only(&root)?
         .map(QuickActionService::open_read_only)
@@ -207,6 +219,7 @@ fn enable(
                 "--expected-revision is required with --apply",
             )
         })?;
+        ensure_expected_revision(expected, revision)?;
         let service = QuickActionService::open(QuickActionStore::open_or_create(&root)?)?;
         service.create(expected, action)?.revision()
     } else {
@@ -215,6 +228,12 @@ fn enable(
     let summary = EnableSummary {
         pack_id,
         action_id,
+        display_name: &entry.action.display_name,
+        description: &entry.action.description,
+        effect: entry.effect,
+        risk: entry.action.risk,
+        argv,
+        documentation_url: &pack.documentation_url,
         applied: apply,
         revision: saved_revision,
         registry_digest: pack_registry_digest(),
@@ -226,11 +245,17 @@ fn enable(
         println!("{}", serde_json::to_string_pretty(&summary)?);
     } else if apply {
         println!(
-            "enabled pack={pack_id} action={action_id} revision={saved_revision} alias=disabled (applied)"
+            "enabled pack={pack_id} action={action_id} name={display_name_text} effect={} risk={} argv={argv_text} docs={} revision={saved_revision} alias=disabled (applied)",
+            effect_label(entry.effect),
+            risk_label(entry.action.risk),
+            pack.documentation_url
         );
     } else {
         println!(
-            "would enable pack={pack_id} action={action_id} revision={revision} alias=disabled (dry-run; add --apply --expected-revision {revision})"
+            "would enable pack={pack_id} action={action_id} name={display_name_text} effect={} risk={} argv={argv_text} docs={} revision={revision} alias=disabled (dry-run; add --apply --expected-revision {revision})",
+            effect_label(entry.effect),
+            risk_label(entry.action.risk),
+            pack.documentation_url
         );
     }
     Ok(())
@@ -249,6 +274,119 @@ fn print_json_or_line(
     Ok(())
 }
 
+fn registry_doctor_summary() -> serde_json::Value {
+    serde_json::json!({
+        "state": "registry-ready",
+        "packs": builtin_packs().len(),
+        "actions": builtin_packs().iter().map(|pack| pack.actions.len()).sum::<usize>(),
+        "registry_digest": pack_registry_digest(),
+        "provider_processes_started": 0,
+    })
+}
+
+fn pack_action_argv(entry: &PackAction) -> Vec<String> {
+    let ActionTemplate::TypedArgv {
+        executable_id,
+        arguments,
+    } = &entry.action.template
+    else {
+        unreachable!("validated built-in pack actions use typed argv")
+    };
+    std::iter::once(executable_id.clone())
+        .chain(arguments.iter().map(|argument| match argument {
+            ArgumentToken::Literal { value } => value.clone(),
+            ArgumentToken::Placeholder { name } => format!("{{{name}}}"),
+        }))
+        .collect()
+}
+
+fn ensure_expected_revision(expected: u64, current: u64) -> io::Result<()> {
+    if expected == current {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "revision conflict: expected {expected}, current {current}; rerun the dry-run preview"
+            ),
+        ))
+    }
+}
+
+const fn effect_label(effect: PackActionEffect) -> &'static str {
+    match effect {
+        PackActionEffect::Inspection => "inspection",
+        PackActionEffect::BoundedMutation => "bounded-mutation",
+        PackActionEffect::ContextChange => "context-change",
+        PackActionEffect::Authentication => "authentication",
+        PackActionEffect::Destructive => "destructive",
+        PackActionEffect::Privileged => "privileged",
+    }
+}
+
+const fn risk_label(risk: RiskClass) -> &'static str {
+    match risk {
+        RiskClass::ReadOnly => "read-only",
+        RiskClass::Mutating => "mutating",
+        RiskClass::Destructive => "destructive",
+        RiskClass::Privileged => "privileged",
+    }
+}
+
+const fn health_state_label(state: PackHealthState) -> &'static str {
+    match state {
+        PackHealthState::Unobserved => "unobserved",
+        PackHealthState::Missing => "missing",
+        PackHealthState::UnsupportedVersion => "unsupported-version",
+        PackHealthState::CompletionUnavailable => "completion-unavailable",
+        PackHealthState::Ready => "ready",
+    }
+}
+
+const fn shell_label(shell: ShellKind) -> &'static str {
+    match shell {
+        ShellKind::Powershell => "powershell",
+        ShellKind::Bash => "bash",
+        ShellKind::Zsh => "zsh",
+        ShellKind::Fish => "fish",
+        ShellKind::Cmd => "cmd",
+    }
+}
+
 fn not_found(kind: &str, id: &str) -> io::Error {
     io::Error::new(io::ErrorKind::NotFound, format!("{kind} {id:?} not found"))
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pack_enable_preview_exposes_exact_review_fields() {
+        let pack = builtin_pack("kubernetes").unwrap();
+        let entry = pack
+            .actions
+            .iter()
+            .find(|entry| entry.action.id == "kubernetes.use-context")
+            .unwrap();
+        assert_eq!(
+            pack_action_argv(entry),
+            ["kubectl", "config", "use-context", "{context}"]
+        );
+        assert_eq!(effect_label(entry.effect), "context-change");
+        assert_eq!(risk_label(entry.action.risk), "mutating");
+    }
+
+    #[test]
+    fn registry_doctor_does_not_claim_provider_readiness() {
+        let summary = registry_doctor_summary();
+        assert_eq!(summary["state"], "registry-ready");
+        assert_eq!(summary["provider_processes_started"], 0);
+    }
+
+    #[test]
+    fn stale_pack_enable_revision_is_actionable() {
+        let error = ensure_expected_revision(4, 5).unwrap_err();
+        assert!(error.to_string().contains("expected 4, current 5"));
+        assert!(error.to_string().contains("rerun the dry-run preview"));
+    }
 }

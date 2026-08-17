@@ -50,6 +50,7 @@ EXPECTED_ACTION_IDS = [
     "terraform.workspace-select",
     "terraform.workspace-show",
 ]
+EXPECTED_REGISTRY_DIGEST = "ddc7ab95790ce93e6621e4eb7aff1b76896f71a217ff283f55f4a8d01adde63e"
 EXPECTED_INVENTORY = {
     "packs": 11,
     "actions_per_pack": 3,
@@ -65,6 +66,10 @@ EXPECTED_COMMANDS = ["list", "show", "doctor", "enable"]
 EXPECTED_SECURITY = {
     "builtins_disabled_by_default": True,
     "aliases_disabled_by_default": True,
+    "exact_registry_payload": True,
+    "enable_preview_exact_argv": True,
+    "stale_revision_preflight": True,
+    "truthful_registry_doctor": True,
     "builtin_manifest_identity": True,
     "custom_overlays_user_provenance": True,
     "context_aliases_denied": True,
@@ -80,6 +85,8 @@ EXPECTED_SECURITY = {
 }
 EXPECTED_LIFECYCLE = {
     "version_health": True,
+    "version_only_updates_unchanged": True,
+    "completion_policy_validation": True,
     "provider_absence": True,
     "completion_health": True,
     "overlay_preservation": True,
@@ -106,11 +113,18 @@ EXPECTED_TESTS = [
     "updates_preserve_overlays_and_explain_deprecations",
     "stale_overlays_are_rejected",
     "registry_effects_cover_read_and_mutating_risk_floors",
+    "version_only_updates_remain_unchanged",
+    "pack_enable_is_dry_run_and_apply_requires_a_revision",
+    "pack_doctor_observations_are_explicit_and_conflict_checked",
+    "pack_enable_preview_exposes_exact_review_fields",
+    "registry_doctor_does_not_claim_provider_readiness",
+    "stale_pack_enable_revision_is_actionable",
 ]
 EXPECTED_BENCHMARK = "automexia-devops/benches/quick_actions.rs"
 EXPECTED_FUZZ_TARGET = "fuzz/fuzz_targets/quick_action_packs.rs"
 EXPECTED_DOCUMENTS = [
-    "docs/ARCHITECTURE.md", "docs/COMMAND-PRODUCTIVITY.md",
+    "docs/ARCHITECTURE.md", "docs/CLI-REFERENCE.md",
+    "docs/COMMAND-PRODUCTIVITY-THREAT-MODEL.md", "docs/COMMAND-PRODUCTIVITY.md",
     "docs/DEVOPS-ALIASES.md", "docs/PHASE-IMPLEMENTATION-AUDIT.md",
     "docs/ROADMAP.md", "docs/TESTING.md",
 ]
@@ -143,7 +157,7 @@ def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 def load_contract(path: Path = CONTRACT) -> dict[str, Any]:
     document = json.loads(bounded_text(path), object_pairs_hook=reject_duplicate_keys)
     expected_keys = {
-        "schema", "phase", "status", "providers", "action_ids", "inventory", "effects",
+        "schema", "phase", "status", "registry_digest", "providers", "action_ids", "inventory", "effects",
         "management_commands", "security", "lifecycle", "source_files",
         "required_tests", "benchmark", "fuzz_target", "documents",
     }
@@ -154,6 +168,7 @@ def load_contract(path: Path = CONTRACT) -> dict[str, Any]:
     ):
         raise Cp32Error("CP3.2 contract identity changed")
     expected = (
+        ("registry_digest", EXPECTED_REGISTRY_DIGEST),
         ("providers", EXPECTED_PROVIDERS),
         ("action_ids", EXPECTED_ACTION_IDS),
         ("inventory", EXPECTED_INVENTORY),
@@ -191,26 +206,36 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "validate_pack_registry", "evaluate_pack_health", "plan_pack_update",
         "StaleOverlay", "VersionRegression", "ContextChange", "Authentication",
         "Destructive", "Privileged", "materialize_pack_action",
+        "REVIEWED_PACK_REGISTRY_DIGEST", "same_pack_action_content",
+        "valid_documentation_url",
     } | {f'id: "{provider}"' for provider in document["providers"]}, root)
+    if f'"{document["registry_digest"]}"' not in registry:
+        raise Cp32Error("CP3.2 source registry digest does not match the contract")
     require_tokens(document["source_files"][1], {
         "BuiltinAliasDenied", "builtin-alias-denied", "BuiltinManifestMismatch",
         "builtin-manifest-mismatch", "validate_builtin_alias",
     }, root)
-    require_tokens(document["source_files"][2], {
+    pack_cli = require_tokens(document["source_files"][2], {
         "PacksAction::List", "PacksAction::Show", "PacksAction::Doctor",
         "PacksAction::Enable", "open_existing_read_only", "if apply",
         "expected_revision", "alias=disabled", "provider_processes_started",
+        "state=registry-ready", "pack_action_argv", "ensure_expected_revision",
+        "documentation_url", "missing-completions=[{}]",
     }, root)
-    require_tokens(document["source_files"][3], {
+    parser_tests = require_tokens(document["source_files"][3], {
         "enum PacksAction", "conflicts_with = \"missing\"",
         "requires = \"expected_revision\"", "pack_enable_is_dry_run",
+        "pack_doctor_observations_are_explicit_and_conflict_checked",
     }, root)
     tests = require_tokens(document["source_files"][4], {
         "BuiltinAliasDenied", "AliasRiskDenied", "PackHealthState::Missing",
         "PackHealthState::UnsupportedVersion", "PackUpdateState::PreservedOverlay",
         "PackUpdateState::Deprecated",
     }, root)
-    missing_tests = sorted(name for name in document["required_tests"] if f"fn {name}(" not in tests)
+    all_tests = tests + pack_cli + parser_tests
+    missing_tests = sorted(
+        name for name in document["required_tests"] if f"fn {name}(" not in all_tests
+    )
     if missing_tests:
         raise Cp32Error(f"CP3.2 required tests are missing: {missing_tests}")
     require_tokens(document["benchmark"], {

@@ -33,7 +33,7 @@ pub use packs::{
     PackOverlay, PackToolObservation, PackUpdateDecision, PackUpdatePlan,
     PackUpdateState, MAX_BUILTIN_PACKS, MAX_PACK_ACTIONS, MAX_PACK_DEPRECATIONS,
     MAX_PACK_OVERLAYS, MAX_PACK_URL_BYTES, MAX_TOOL_VERSION_BYTES,
-    PACK_REGISTRY_GENERATOR, PACK_SCHEMA_VERSION,
+    PACK_REGISTRY_GENERATOR, PACK_SCHEMA_VERSION, REVIEWED_PACK_REGISTRY_DIGEST,
 };
 pub use projection::{
     canonical_projection_source_digest, compile_shell_projection,
