@@ -264,6 +264,62 @@ fn quick_action_pack_registry(criterion: &mut Criterion) {
         })
     });
 }
+
+fn quick_action_native_import_and_workspace_trust(criterion: &mut Criterion) {
+    use automexia_devops::actions::{
+        build_trusted_task_bridge, preview_native_alias_import, trusted_workspace_layer,
+        NativeAliasSource, TaskBridgeRequest, TaskRunner, WorkspaceTrustReceipt,
+    };
+
+    let source = (0..1_024)
+        .map(|index| format!("alias bench{index:04}='git status --short'\n"))
+        .collect::<String>();
+    criterion.bench_function("quick_action_native_import_bash_1024", |bencher| {
+        bencher.iter(|| {
+            black_box(
+                preview_native_alias_import(
+                    NativeAliasSource::Bash,
+                    black_box(source.as_bytes()),
+                )
+                .expect("bounded benchmark inventory must remain valid"),
+            )
+        })
+    });
+
+    let workspace_identity = "a".repeat(64);
+    let action = build_trusted_task_bridge(TaskBridgeRequest {
+        action_id: "workspace.benchmark".into(),
+        display_name: "Benchmark workspace task".into(),
+        description: "Exact task bridge benchmark".into(),
+        runner: TaskRunner::Just,
+        task_name: "test-all".into(),
+        workspace_identity: workspace_identity.clone(),
+        shells: vec![
+            ShellKind::Powershell,
+            ShellKind::Bash,
+            ShellKind::Zsh,
+            ShellKind::Fish,
+            ShellKind::Cmd,
+        ],
+        risk: RiskClass::Mutating,
+    })
+    .expect("benchmark task bridge must remain valid");
+    let document = QuickActionDocument {
+        schema_version: 1,
+        revision: 7,
+        actions: vec![action],
+    };
+    let receipt = WorkspaceTrustReceipt::for_document(workspace_identity, &document)
+        .expect("benchmark trust receipt must remain valid");
+    criterion.bench_function("quick_action_workspace_trust_verify", |bencher| {
+        bencher.iter(|| {
+            black_box(
+                trusted_workspace_layer(black_box(&document), black_box(Some(&receipt)))
+                    .expect("exact trust receipt must remain valid"),
+            )
+        })
+    });
+}
 criterion_group!(
     benches,
     quick_action_parsing,
@@ -271,5 +327,6 @@ criterion_group!(
     context_label_compaction,
     quick_action_projection_compile,
     quick_action_pack_registry,
+    quick_action_native_import_and_workspace_trust,
 );
 criterion_main!(benches);

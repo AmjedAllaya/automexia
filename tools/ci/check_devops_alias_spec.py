@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate implemented CP2-CP3.2 foundations and planned CP3.3+ work."""
+"""Validate implemented CP2-CP3.3 foundations and planned CP4+ work."""
 
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ MODEL_ENUMS = {
     "argument_tokens": ["Literal", "Placeholder"],
     "working_directory_policies": ["Inherit", "WorkspaceRoot", "Fixed"],
     "risk_classes": ["ReadOnly", "Mutating", "Destructive", "Privileged"],
-    "provenance": ["User", "BuiltIn", "Imported"],
+    "provenance": ["User", "BuiltIn", "Imported", "WorkspaceTask"],
     "alias_projection_modes": ["Auto", "CommandAlias", "WrapperFunction", "FishAbbreviation", "DoskeyMacro"],
     "argument_policies": ["None", "ForwardAll", "TypedBindings"],
     "execution_modes": ["Insert", "Copy", "ExactLaunch"],
@@ -102,6 +102,7 @@ MODEL_FILES = [
     "automexia-devops/src/actions/validation.rs",
     "automexia-devops/src/actions/activation.rs",
     "automexia-devops/src/actions/packs.rs",
+    "automexia-devops/src/actions/imports.rs",
 ]
 PERSISTENCE_FILES = [
     "apps/automexia-terminal/src/automexia/quick_actions/mod.rs",
@@ -115,6 +116,8 @@ PERSISTENCE_FILES = [
     "apps/automexia-terminal/src/automexia/quick_actions/aliases.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/aliases_cli.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/packs_cli.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/native_import.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/workspace.rs",
 ]
 HOSTILE_FIXTURE = "tests/fixtures/command-productivity/cp2-hostile-actions-v1.json"
 HOSTILE_CASES = {
@@ -242,7 +245,7 @@ REQUIRED_HEADINGS = {
     "Primary references",
 }
 REQUIRED_SPEC_SNIPPETS = {
-    "Status: CP2.0-CP3.2",
+    "Status: CP2.0-CP3.3",
     "No first-party pack alias is activated by default or shipped implicitly by CP3.2.",
     "actions/actions.toml",
     "actions/actions.previous.toml",
@@ -276,7 +279,8 @@ REQUIRED_SPEC_SNIPPETS = {
     "CP2.1 - user-private action store (implemented foundation)",
     "CP3.1 - persistent opt-in user aliases",
     "CP3.2 - reviewed first-party DevOps packs",
-    "No provider process, alias generation, workspace activation, shell projection",
+    "CP3.3 - native imports and trusted workspace task bridges",
+    "No native inventory, task discovery, recipe parsing, provider process, network, credential read, or task execution",
 }
 WIRING = {
     "docs/ROADMAP.md": "DEVOPS-ALIASES.md",
@@ -371,10 +375,10 @@ def validate_contract(document: Any) -> dict[str, int]:
         1,
         "CP2-CP3-SPEC",
         "planned",
-        "CP3.2-static-devops-packs",
+        "CP3.3-native-imports-trusted-workspace-tasks",
     ):
         raise AliasSpecError(
-            "CP2/CP3 must remain planned schema 1 with implementation through reviewed CP3.2 packs"
+            "CP2/CP3 must remain planned schema 1 with implementation through reviewed CP3.3 imports and task bridges"
         )
     checks = (
         ("authorities", AUTHORITIES, "authority map"),
@@ -397,7 +401,7 @@ def validate_contract(document: Any) -> dict[str, int]:
         ("verification_domains", VERIFICATION_DOMAINS, "verification matrix"),
         ("model_files", MODEL_FILES, "pure model source boundary"),
         ("hostile_fixture", HOSTILE_FIXTURE, "hostile fixture authority"),
-        ("activation_files", PERSISTENCE_FILES, "CP2-CP3.2 application source boundary"),
+        ("activation_files", PERSISTENCE_FILES, "CP2-CP3.3 application source boundary"),
     )
     for key, expected, label in checks:
         if document[key] != expected:
@@ -421,6 +425,7 @@ def validate_model_evidence(root: Path) -> dict[str, int]:
         MODEL_FILES[3]: {"validate_document", "MAX_ACTIONS", "MutatingAliasNotAcknowledged"},
         MODEL_FILES[4]: {"ActionIndex", "expand_for_shell", "LayerIdentity"},
         MODEL_FILES[5]: {"builtin_packs", "validate_pack_registry", "plan_pack_update"},
+        MODEL_FILES[6]: {"preview_native_alias_import", "build_trusted_task_bridge", "trusted_workspace_layer"},
     }
     for relative, tokens in required_tokens.items():
         text = bounded_text(root / relative, MAX_POLICY_BYTES, "CP2.0 pure model")
@@ -467,17 +472,19 @@ def validate_model_evidence(root: Path) -> dict[str, int]:
         PERSISTENCE_FILES[8]: {"AliasProjectionStore", "prepare_transition", "recover_pending", "current_exact_overrides"},
         PERSISTENCE_FILES[9]: {"AliasesAction::Preview", "AliasesAction::Test", "prepare_transition", "activate_prepared"},
         PERSISTENCE_FILES[10]: {"PacksAction::List", "PacksAction::Doctor", "materialize_pack_action", "expected_revision"},
+        PERSISTENCE_FILES[11]: {"preview_native_alias_import_file", "apply_native_alias_import", "replace_conflicts"},
+        PERSISTENCE_FILES[12]: {"open_existing_read_only", "put_task_bridge", "remove_task_bridge", "trusted_layer"},
     }
     for relative, tokens in required_persistence_tokens.items():
         text = bounded_text(
             root / relative,
             MAX_APPLICATION_SOURCE_BYTES,
-            "CP2-CP3.2 application source",
+            "CP2-CP3.3 application source",
         )
         missing = sorted(token for token in tokens if token not in text)
         if missing:
             raise AliasSpecError(
-                f"{relative} is missing CP2.2 application tokens: {missing}"
+                f"{relative} is missing CP2-CP3.3 application tokens: {missing}"
             )
     return {"hostile_cases": len(actual)}
 
@@ -498,7 +505,7 @@ def validate_spec_text(text: str) -> None:
         re.MULTILINE | re.IGNORECASE,
     ):
         raise AliasSpecError(
-            "CP2-CP3.2 specification must not overclaim a shipped product"
+            "CP2-CP3.3 specification must not overclaim a shipped product"
         )
     missing_snippets = sorted(
         token for token in REQUIRED_SPEC_SNIPPETS if token not in text
@@ -553,7 +560,7 @@ def main() -> int:
         )
         return 1
     print(
-        "PASS: CP2.0-CP3.2 foundations and planned CP3.3+ aliases are contract-complete "
+        "PASS: CP2.0-CP3.3 foundations and planned CP4+ aliases are contract-complete "
         f"(shells={counts['shells']}, providers={counts['providers']}, "
         f"scopes={counts['scopes']}, assurance={counts['verification_domains']}, "
         f"ux={counts['ux_invariants']}, model_files={counts['model_files']}, "

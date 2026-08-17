@@ -413,6 +413,31 @@
       }
     },
     {
+      "id": "command-productivity-cp33-native-imports-workspace",
+      "title": "Selected native alias imports and exact trusted-workspace task bridges",
+      "components": ["automexia-devops", "apps/automexia-terminal", "tools/ci", "tests/fixtures/command-productivity"],
+      "documentation": {
+        "guide": ["docs/DEVOPS-ALIASES.md#cp33-native-imports-and-trusted-workspace-task-bridges"],
+        "reference": ["docs/CLI-REFERENCE.md#native-alias-imports-and-workspace-task-bridges-cp33", "docs/TESTING.md#cp33-native-imports-and-trusted-workspace-task-bridges"],
+        "explanation": ["docs/ARCHITECTURE.md#cp33-native-import-and-trusted-workspace-boundary", "docs/COMMAND-PRODUCTIVITY-THREAT-MODEL.md#cp33-implemented-controls", "docs/adr/0021-trusted-workspace-task-bridges.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/src/screen/action_surface.rs", "automexia-ui-model/src/quick_actions.rs"], "rationale": "CP3.3 reuses the reviewed Quick Action surface and adds a textual unavailable state when trust is stale or revoked."},
+        "correctness": {"level": "pr", "evidence": ["automexia-devops/src/actions/imports.rs", "automexia-devops/tests/quick_action_imports.rs", "apps/automexia-terminal/tests/quick_action_native_import.rs", "apps/automexia-terminal/tests/quick_action_workspace_trust.rs", "tools/ci/check_command_productivity_cp33.py", "tools/ci/test_command_productivity_cp33.py", "tests/fixtures/command-productivity/cp33-contract-v1.json"]},
+        "security": {"level": "nightly", "evidence": ["automexia-devops/src/actions/imports.rs", "apps/automexia-terminal/src/automexia/quick_actions/native_import.rs", "apps/automexia-terminal/src/automexia/quick_actions/workspace.rs", "apps/automexia-terminal/src/automexia/quick_actions/worker.rs", "tools/ci/test_command_productivity_cp33.py", "fuzz/fuzz_targets/quick_action_imports.rs", ".github/workflows/nightly.yml#fuzz"]},
+        "performance": {"level": "controlled", "evidence": ["automexia-devops/benches/quick_actions.rs", ".github/workflows/nightly.yml#benchmarks-controlled"], "rationale": "Focused local parser and trust-verification measurements pass; the comparable named-hardware 30-day baseline remains controlled evidence."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/worker.rs"], "rationale": "The bounded 32-workspace cache, per-route cleanup, TTL authorization, and joined worker are covered by deterministic unit tests."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/native_import.rs", "apps/automexia-terminal/src/automexia/quick_actions/workspace.rs", "apps/automexia-terminal/tests/quick_action_native_import.rs", "apps/automexia-terminal/tests/quick_action_workspace_trust.rs"]},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/worker.rs", "apps/automexia-terminal/src/screen/action_surface.rs", "apps/automexia-terminal/tests/quick_action_workspace_trust.rs", "tools/ci/test_command_productivity_cp33.py"]},
+        "visual_quality": {"level": "controlled", "evidence": ["apps/automexia-terminal/src/screen/action_surface.rs", "apps/automexia-terminal/src/renderer/command_palette.rs"], "rationale": "Deterministic review-state semantics are tested; native frame review remains controlled evidence."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["automexia-devops/tests/quick_action_imports.rs", "apps/automexia-terminal/tests/quick_action_native_import.rs", "apps/automexia-terminal/tests/quick_action_workspace_trust.rs", ".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": ["automexia-devops/tests/quick_action_imports.rs", "apps/automexia-terminal/tests/quick_action_native_import.rs", "apps/automexia-terminal/tests/quick_action_workspace_trust.rs", ".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": ["automexia-devops/tests/quick_action_imports.rs", "apps/automexia-terminal/tests/quick_action_native_import.rs", "apps/automexia-terminal/tests/quick_action_workspace_trust.rs", ".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
       "id": "command-productivity-cp1-native-completion",
       "title": "Bounded native-shell completion adapters, health, explicit provider refresh, and exact lifecycle",
       "components": ["tools/xtask", "shell-integration", "tests/fixtures/command-productivity"],

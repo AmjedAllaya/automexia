@@ -57,8 +57,8 @@ class CommandProductivityPolicyTests(unittest.TestCase):
         self.assertEqual(counts["providers"], 11)
         self.assertEqual(counts["threats"], 16)
         self.assertGreater(counts["runtime_files"], 100)
-        self.assertEqual(counts["cp2_pure_action_files"], 6)
-        self.assertEqual(counts["cp2_persistence_files"], 11)
+        self.assertEqual(counts["cp2_pure_action_files"], 7)
+        self.assertEqual(counts["cp2_persistence_files"], 13)
 
     def test_versioned_hostile_mutation_corpus_is_rejected(self) -> None:
         self.assertEqual(set(self.hostile), {"schema", "phase", "cases"})
@@ -385,6 +385,33 @@ class CommandProductivityPolicyTests(unittest.TestCase):
                 POLICY.CommandProductivityError, "CP3.2 pack CLI-only"
             ):
                 POLICY.validate_persistence_sources(root, files)
+
+    def test_persistence_boundary_accepts_and_confines_cp33_workspace_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = self._persistence_fixture(root)
+            workspace_files = sorted(POLICY.CP33_WORKSPACE_FILES)
+            first = root / workspace_files[0]
+            first.write_text("struct WorkspaceBoundary;\n", encoding="utf-8")
+            files.append(first)
+            with self.assertRaisesRegex(
+                POLICY.CommandProductivityError, "exact reviewed boundary"
+            ):
+                POLICY.validate_persistence_sources(root, files)
+
+            second = root / workspace_files[1]
+            second.write_text("struct WorkspaceBoundary;\n", encoding="utf-8")
+            files.append(second)
+            self.assertEqual(
+                POLICY.validate_persistence_sources(root, files),
+                POLICY.CP2_PERSISTENCE_FILES | POLICY.CP33_WORKSPACE_FILES,
+            )
+            first.write_text("use std::process::Command;\n", encoding="utf-8")
+            with self.assertRaisesRegex(
+                POLICY.CommandProductivityError, "CP3.3 import/workspace-only"
+            ):
+                POLICY.validate_persistence_sources(root, files)
+
     def test_persistence_boundary_rejects_partial_or_capability_bearing_cp31(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

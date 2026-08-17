@@ -2,9 +2,7 @@
 
 use std::fs;
 
-use automexia_devops_ssh::{
-    scan_inventory, GrantKind, InventoryGrant, InventoryLimits,
-};
+use automexia_devops_ssh::{scan_inventory, GrantKind, InventoryGrant, InventoryLimits};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
