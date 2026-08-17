@@ -22,7 +22,10 @@ pub use model::{
     ConnectionMetadata, ConnectionRecord, IdentityHint, InventorySnapshot,
     MetadataDocument, SourceKind, SCHEMA_VERSION,
 };
-pub use persistence::{MetadataStore, CONNECTIONS_FILE_NAME, MAX_METADATA_BYTES};
+pub use persistence::{
+    MetadataLoadOrigin, MetadataLoadResult, MetadataStore, CONNECTIONS_FILE_NAME,
+    CONNECTIONS_LOCK_FILE_NAME, MAX_METADATA_BYTES, PREVIOUS_CONNECTIONS_FILE_NAME,
+};
 pub use refresh::{
     recommended_watcher, RefreshCoordinator, RefreshDecision, RefreshStatus, WatchPlan,
 };

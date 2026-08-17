@@ -33,17 +33,24 @@ process-spawn, network, clipboard, environment, terminal-output, or overlay
 capability.
 
 Automexia-owned labels, tags, favorites, and recent-use timestamps are stored
-only in:
+only in the primary and single recovery files:
 
     <Automexia config root>/extensions/devops-ssh/connections.v1.json
+    <Automexia config root>/extensions/devops-ssh/connections.previous.v1.json
 
 MetadataStore creates that exact extension root, validates schema version 1,
-writes a same-directory temporary file, synchronizes it, atomically replaces
-the destination, and applies user-only permissions. JSON serialization itself
-is bounded, so an oversized in-memory document is rejected before a staging
-file or oversized serialization buffer exists. Removing owned state
-deletes only connections.v1.json. It never edits OpenSSH configuration,
-known_hosts, agents, certificates, or keys.
+defaults legacy documents to revision zero, and serializes under the fixed
+8 MiB ceiling before acquiring its private writer lock. Compare-and-swap writes
+require the reviewed revision, advance it without overflow, retain exactly one
+validated previous generation, synchronize same-directory staged files, and
+atomically replace the destination with user-only permissions. A malformed
+primary is never silently overwritten: reads return the validated previous
+generation with explicit recovery origin, while restoration requires the exact
+reviewed previous revision and advances it.
+
+Removing owned state deletes both metadata generations. A zero-value private
+coordination lock may remain and contains no connection data. The store never
+edits OpenSSH configuration, known_hosts, agents, certificates, or keys.
 
 ## Security and resource contract
 
@@ -102,13 +109,15 @@ controlled QA contract both fail if this benchmark becomes orphaned.
 The unit/property suite covers immutable maximum ceilings, bounded entry
 grants, race-resistant no-follow reads, active obsolete-generation
 cancellation, scanner-derived watcher provenance, bounded serialization,
-concrete versus wildcard aliases, first-value
-behavior, lexical includes, cycles, out-of-grant and dynamic includes,
-oversized and malformed input, redacted diagnostics, Unix permissions,
-Windows DACL round trips, atomic replacement, interrupted staging, exact
-removal, event filtering, refresh coalescing, stale recovery, and arbitrary
-byte input. Nightly runs the openssh_inventory libFuzzer target with explicit
-time and RSS limits. The benchmark parses the maximum 10,000 concrete aliases.
+concrete versus wildcard aliases, first-value behavior, lexical includes,
+cycles, out-of-grant and dynamic includes, oversized and malformed input,
+redacted diagnostics, Unix permissions, Windows DACL round trips, atomic
+replacement, interrupted staging, revision-zero migration, CAS stale-writer
+rejection, writer contention, single-generation rotation, truthful fallback,
+explicit recovery, exact removal, event filtering, refresh coalescing, stale
+inventory recovery, and arbitrary byte input. Nightly runs the
+openssh_inventory libFuzzer target with explicit time and RSS limits. The
+benchmark parses the maximum 10,000 concrete aliases.
 
 Native Windows, Linux, and macOS workspace jobs compile and execute the same
 portable package. Unix permission behavior is executed on Linux and macOS;

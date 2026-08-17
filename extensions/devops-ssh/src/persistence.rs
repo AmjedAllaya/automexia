@@ -1,15 +1,31 @@
 use std::{
-    fs,
+    fs::{self, File, OpenOptions, TryLockError},
     io::Write,
     path::{Path, PathBuf},
 };
 
 use tempfile::NamedTempFile;
 
-use crate::{InventoryError, MetadataDocument};
+use crate::{secure_fs::SecureReadError, InventoryError, MetadataDocument};
 
 pub const CONNECTIONS_FILE_NAME: &str = "connections.v1.json";
+pub const PREVIOUS_CONNECTIONS_FILE_NAME: &str = "connections.previous.v1.json";
+pub const CONNECTIONS_LOCK_FILE_NAME: &str = ".connections.lock";
 pub const MAX_METADATA_BYTES: usize = 8 * 1024 * 1024;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MetadataLoadOrigin {
+    Empty,
+    Primary,
+    PreviousRecovery,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MetadataLoadResult {
+    pub document: MetadataDocument,
+    pub origin: MetadataLoadOrigin,
+    pub rejected_primary: bool,
+}
 
 struct BoundedJsonWriter {
     bytes: Vec<u8>,
@@ -40,6 +56,20 @@ impl Write for BoundedJsonWriter {
     }
 }
 
+#[derive(Debug)]
+enum DocumentReadFailure {
+    Recoverable(InventoryError),
+    Fatal(InventoryError),
+}
+
+impl DocumentReadFailure {
+    fn into_error(self) -> InventoryError {
+        match self {
+            Self::Recoverable(error) | Self::Fatal(error) => error,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct MetadataStore {
     root: PathBuf,
@@ -66,62 +96,304 @@ impl MetadataStore {
         self.root.join(CONNECTIONS_FILE_NAME)
     }
 
+    pub fn previous_path(&self) -> PathBuf {
+        self.root.join(PREVIOUS_CONNECTIONS_FILE_NAME)
+    }
+
+    pub fn lock_path(&self) -> PathBuf {
+        self.root.join(CONNECTIONS_LOCK_FILE_NAME)
+    }
+
     pub fn load(&self) -> Result<MetadataDocument, InventoryError> {
-        let path = self.path();
-        if !entry_exists(&path)? {
-            return Ok(MetadataDocument::default());
+        Ok(self.load_with_recovery()?.document)
+    }
+
+    pub fn load_with_recovery(&self) -> Result<MetadataLoadResult, InventoryError> {
+        reject_symlink(&self.root)?;
+        match read_optional_document(&self.path()) {
+            Ok(Some(document)) => Ok(MetadataLoadResult {
+                document,
+                origin: MetadataLoadOrigin::Primary,
+                rejected_primary: false,
+            }),
+            Ok(None) => match read_optional_document(&self.previous_path()) {
+                Ok(Some(document)) => Ok(MetadataLoadResult {
+                    document,
+                    origin: MetadataLoadOrigin::PreviousRecovery,
+                    rejected_primary: false,
+                }),
+                Ok(None) => Ok(MetadataLoadResult {
+                    document: MetadataDocument::default(),
+                    origin: MetadataLoadOrigin::Empty,
+                    rejected_primary: false,
+                }),
+                Err(error) => Err(error.into_error()),
+            },
+            Err(DocumentReadFailure::Fatal(error)) => Err(error),
+            Err(DocumentReadFailure::Recoverable(primary)) => {
+                match read_optional_document(&self.previous_path()) {
+                    Ok(Some(document)) => Ok(MetadataLoadResult {
+                        document,
+                        origin: MetadataLoadOrigin::PreviousRecovery,
+                        rejected_primary: true,
+                    }),
+                    Ok(None) | Err(DocumentReadFailure::Recoverable(_)) => Err(primary),
+                    Err(DocumentReadFailure::Fatal(error)) => Err(error),
+                }
+            }
         }
-        let bytes = crate::secure_fs::read_bounded_regular(&path, MAX_METADATA_BYTES)
-            .map_err(|error| {
-                InventoryError::Persistence(format!(
-                    "private metadata read rejected ({})",
-                    error.message()
-                ))
-            })?;
-        let document: MetadataDocument =
-            serde_json::from_slice(&bytes).map_err(|_| {
-                InventoryError::Persistence("metadata JSON is malformed".into())
-            })?;
-        document.validate()?;
-        Ok(document)
     }
 
     pub fn save(&self, document: &MetadataDocument) -> Result<(), InventoryError> {
-        document.validate()?;
+        let bytes = serialize_document(document)?;
+        let _lock = self.try_write_lock()?;
         reject_symlink(&self.root)?;
-        let mut writer = BoundedJsonWriter::new();
-        serde_json::to_writer_pretty(&mut writer, document).map_err(|_| {
-            InventoryError::Persistence("metadata serialization failed".into())
-        })?;
-        let bytes = writer.bytes;
-
-        let mut staged = NamedTempFile::new_in(&self.root).map_err(persistence_io)?;
-        apply_private_permissions(staged.path(), false)?;
-        staged.write_all(&bytes).map_err(persistence_io)?;
-        staged.as_file_mut().sync_all().map_err(persistence_io)?;
-        let destination = self.path();
-        if entry_exists(&destination)? {
-            reject_symlink(&destination)?;
+        let current = self.current_for_write()?;
+        if let Some(current) = current {
+            persist_bytes(
+                &self.root,
+                &self.previous_path(),
+                &serialize_document(&current)?,
+            )?;
         }
-        let persisted = staged
-            .persist(&destination)
-            .map_err(|error| persistence_io(error.error))?;
-        persisted.sync_all().map_err(persistence_io)?;
-        apply_private_permissions(&destination, false)?;
-        sync_parent(&self.root)?;
-        Ok(())
+        persist_bytes(&self.root, &self.path(), &bytes)
+    }
+
+    pub fn compare_and_swap(
+        &self,
+        expected_revision: u64,
+        document: &MetadataDocument,
+    ) -> Result<MetadataDocument, InventoryError> {
+        if document.revision != expected_revision {
+            return Err(InventoryError::Persistence(
+                "metadata document revision does not match the reviewed revision".into(),
+            ));
+        }
+        let next_revision = expected_revision.checked_add(1).ok_or_else(|| {
+            InventoryError::Persistence("metadata revision overflow".into())
+        })?;
+        let mut next = document.clone();
+        next.revision = next_revision;
+        let bytes = serialize_document(&next)?;
+
+        let _lock = self.try_write_lock()?;
+        reject_symlink(&self.root)?;
+        let current = self.current_for_write()?;
+        let current_revision = current.as_ref().map_or(0, |value| value.revision);
+        if current_revision != expected_revision {
+            return Err(InventoryError::Persistence(
+                "stale metadata revision".into(),
+            ));
+        }
+        if let Some(current) = current {
+            persist_bytes(
+                &self.root,
+                &self.previous_path(),
+                &serialize_document(&current)?,
+            )?;
+        }
+        persist_bytes(&self.root, &self.path(), &bytes)?;
+        Ok(next)
+    }
+
+    pub fn recover_previous(
+        &self,
+        expected_previous_revision: u64,
+    ) -> Result<MetadataDocument, InventoryError> {
+        let _lock = self.try_write_lock()?;
+        reject_symlink(&self.root)?;
+        match read_optional_document(&self.path()) {
+            Ok(Some(_)) => {
+                return Err(InventoryError::Persistence(
+                    "metadata recovery is not required".into(),
+                ));
+            }
+            Ok(None) | Err(DocumentReadFailure::Recoverable(_)) => {}
+            Err(DocumentReadFailure::Fatal(error)) => return Err(error),
+        }
+        let previous = read_optional_document(&self.previous_path())
+            .map_err(DocumentReadFailure::into_error)?
+            .ok_or_else(|| {
+                InventoryError::Persistence(
+                    "no validated previous metadata revision is available".into(),
+                )
+            })?;
+        if previous.revision != expected_previous_revision {
+            return Err(InventoryError::Persistence(
+                "stale previous metadata revision".into(),
+            ));
+        }
+        let mut recovered = previous;
+        recovered.revision =
+            expected_previous_revision.checked_add(1).ok_or_else(|| {
+                InventoryError::Persistence("metadata revision overflow".into())
+            })?;
+        let bytes = serialize_document(&recovered)?;
+        persist_bytes(&self.root, &self.path(), &bytes)?;
+        Ok(recovered)
     }
 
     pub fn remove_owned_state(&self) -> Result<bool, InventoryError> {
-        let path = self.path();
-        if !entry_exists(&path)? {
-            return Ok(false);
+        let _lock = self.try_write_lock()?;
+        let mut removed = false;
+        for path in [self.path(), self.previous_path()] {
+            if !entry_exists(&path)? {
+                continue;
+            }
+            reject_owned_file(&path)?;
+            fs::remove_file(path).map_err(persistence_io)?;
+            removed = true;
         }
-        reject_symlink(&path)?;
-        fs::remove_file(&path).map_err(persistence_io)?;
-        sync_parent(&self.root)?;
-        Ok(true)
+        if removed {
+            sync_parent(&self.root)?;
+        }
+        Ok(removed)
     }
+
+    fn current_for_write(&self) -> Result<Option<MetadataDocument>, InventoryError> {
+        match read_optional_document(&self.path()) {
+            Ok(Some(document)) => Ok(Some(document)),
+            Ok(None) => match read_optional_document(&self.previous_path()) {
+                Ok(None) => Ok(None),
+                Ok(Some(_)) | Err(DocumentReadFailure::Recoverable(_)) => {
+                    Err(InventoryError::Persistence(
+                        "metadata recovery is required before writing".into(),
+                    ))
+                }
+                Err(DocumentReadFailure::Fatal(error)) => Err(error),
+            },
+            Err(error) => Err(error.into_error()),
+        }
+    }
+
+    fn try_write_lock(&self) -> Result<File, InventoryError> {
+        let path = self.lock_path();
+        if entry_exists(&path)? {
+            reject_owned_file(&path)?;
+        }
+        let mut options = OpenOptions::new();
+        options.read(true).write(true).create(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt as _;
+            options.custom_flags(libc::O_NOFOLLOW);
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt as _;
+            options.custom_flags(0x0020_0000);
+        }
+        let lock = options.open(&path).map_err(persistence_io)?;
+        let metadata = lock.metadata().map_err(persistence_io)?;
+        if metadata_is_link(&metadata) || !metadata.is_file() {
+            return Err(InventoryError::Persistence(
+                "metadata lock is not a private regular file".into(),
+            ));
+        }
+        apply_private_permissions(&path, false)?;
+        match lock.try_lock() {
+            Ok(()) => Ok(lock),
+            Err(TryLockError::WouldBlock) => Err(InventoryError::Persistence(
+                "metadata writer is busy".into(),
+            )),
+            Err(TryLockError::Error(error)) => Err(persistence_io(error)),
+        }
+    }
+}
+
+fn serialize_document(document: &MetadataDocument) -> Result<Vec<u8>, InventoryError> {
+    document.validate()?;
+    let mut writer = BoundedJsonWriter::new();
+    serde_json::to_writer_pretty(&mut writer, document).map_err(|_| {
+        InventoryError::Persistence("metadata serialization failed".into())
+    })?;
+    Ok(writer.bytes)
+}
+
+fn read_optional_document(
+    path: &Path,
+) -> Result<Option<MetadataDocument>, DocumentReadFailure> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(DocumentReadFailure::Fatal(persistence_io(error))),
+    };
+    if metadata_is_link(&metadata) || !metadata.is_file() {
+        return Err(DocumentReadFailure::Fatal(InventoryError::Persistence(
+            "private metadata path is not a regular no-follow file".into(),
+        )));
+    }
+
+    let bytes = crate::secure_fs::read_bounded_regular(path, MAX_METADATA_BYTES)
+        .map_err(|error| match error {
+            SecureReadError::TooLarge => {
+                DocumentReadFailure::Recoverable(InventoryError::Persistence(
+                    "private metadata exceeds its byte limit".into(),
+                ))
+            }
+            SecureReadError::Io(_)
+            | SecureReadError::NotRegular
+            | SecureReadError::Link
+            | SecureReadError::Changed => {
+                DocumentReadFailure::Fatal(InventoryError::Persistence(format!(
+                    "private metadata read rejected ({})",
+                    error.message()
+                )))
+            }
+        })?;
+    let document = serde_json::from_slice::<MetadataDocument>(&bytes).map_err(|_| {
+        DocumentReadFailure::Recoverable(InventoryError::Persistence(
+            "metadata JSON is malformed".into(),
+        ))
+    })?;
+    document
+        .validate()
+        .map_err(DocumentReadFailure::Recoverable)?;
+    Ok(Some(document))
+}
+
+fn persist_bytes(
+    root: &Path,
+    destination: &Path,
+    bytes: &[u8],
+) -> Result<(), InventoryError> {
+    let mut staged = NamedTempFile::new_in(root).map_err(persistence_io)?;
+    apply_private_permissions(staged.path(), false)?;
+    staged.write_all(bytes).map_err(persistence_io)?;
+    staged.as_file_mut().sync_all().map_err(persistence_io)?;
+    if entry_exists(destination)? {
+        reject_owned_file(destination)?;
+    }
+    let persisted = staged
+        .persist(destination)
+        .map_err(|error| persistence_io(error.error))?;
+    persisted.sync_all().map_err(persistence_io)?;
+    apply_private_permissions(destination, false)?;
+    sync_parent(root)
+}
+
+fn reject_owned_file(path: &Path) -> Result<(), InventoryError> {
+    let metadata = fs::symlink_metadata(path).map_err(persistence_io)?;
+    if metadata_is_link(&metadata) || !metadata.is_file() {
+        return Err(InventoryError::Persistence(
+            "extension-owned metadata is not a regular no-follow file".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn metadata_is_link(metadata: &fs::Metadata) -> bool {
+    if metadata.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt as _;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    }
+    #[cfg(not(windows))]
+    false
 }
 
 fn entry_exists(path: &Path) -> Result<bool, InventoryError> {
@@ -311,6 +583,7 @@ mod tests {
     fn sample() -> MetadataDocument {
         MetadataDocument {
             schema: crate::SCHEMA_VERSION,
+            revision: 0,
             connections: vec![ConnectionMetadata {
                 connection_id: "openssh:prod".into(),
                 display_name: Some("Production Europe".into()),
@@ -366,6 +639,7 @@ mod tests {
             .collect();
         let document = MetadataDocument {
             schema: crate::SCHEMA_VERSION,
+            revision: 0,
             connections,
         };
         assert!(store.save(&document).is_err());

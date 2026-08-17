@@ -1133,6 +1133,24 @@ is local implementation evidence, not the controlled multi-platform baseline.
 Application composition, filesystem persistence, native product rendering, and
 platform/screen-reader evidence remain D5.1 gates.
 
+### Connection Hub F3 transactional OpenSSH metadata
+
+The D4 metadata owner now supplies the persistence semantics required by the
+read-only Hub's favorites, tags, and recent-use fields:
+
+    cargo test -p automexia-devops-ssh --locked
+    cargo test -p automexia-devops-ssh --test metadata_store --locked
+    cargo clippy -p automexia-devops-ssh --all-targets --locked -- -D warnings
+
+The focused contract covers legacy revision-zero documents, CAS increments,
+stale-writer rejection, one validated previous generation, malformed-primary
+fallback with an explicit recovery origin, reviewed recovery with a new
+revision, unnecessary-recovery refusal, process-local writer contention, and
+Unix no-follow recovery paths. The full D4 suite retains bounded serialization,
+atomic replacement, interrupted staging, redacted malformed/oversized input,
+exact removal, Unix mode, and Windows current-user DACL coverage. Application
+composition and profile/recipe/preference persistence remain separate F3 gates.
+
 ### Remaining Connection Hub activation assurance
 
 D5.1/D5.2 and D6 remain planned/non-activated work. Before activation they must
