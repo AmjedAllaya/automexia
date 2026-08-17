@@ -9,6 +9,7 @@
 mod aliases;
 mod aliases_cli;
 mod cli;
+mod packs_cli;
 mod refresh;
 mod secure_fs;
 mod service;
@@ -18,6 +19,7 @@ mod worker;
 
 pub use aliases_cli::execute_aliases_command;
 pub use cli::execute_actions_command;
+pub use packs_cli::execute_packs_command;
 
 pub use aliases::{
     collect_local_alias_observations, projection_file_name, shell_label,

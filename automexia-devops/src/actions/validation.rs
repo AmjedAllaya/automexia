@@ -41,6 +41,8 @@ pub enum ValidationCode {
     AliasShellNotAllowed,
     AliasModeNotSupported,
     AliasRiskDenied,
+    BuiltinAliasDenied,
+    BuiltinManifestMismatch,
     AliasSecretDenied,
     RawInsertAliasDenied,
     RawInsertExecutionDenied,
@@ -84,6 +86,8 @@ impl ValidationCode {
             Self::AliasShellNotAllowed => "alias-shell-not-allowed",
             Self::AliasModeNotSupported => "alias-mode-not-supported",
             Self::AliasRiskDenied => "alias-risk-denied",
+            Self::BuiltinAliasDenied => "builtin-alias-denied",
+            Self::BuiltinManifestMismatch => "builtin-manifest-mismatch",
             Self::AliasSecretDenied => "alias-secret-denied",
             Self::RawInsertAliasDenied => "raw-insert-alias-denied",
             Self::RawInsertExecutionDenied => "raw-insert-execution-denied",
@@ -274,6 +278,16 @@ fn validate_action(action: &QuickAction) -> Result<(), ValidationError> {
         ActionProvenance::BuiltIn { pack_id, version } => {
             validate_text(action, "provenance.pack_id", pack_id, false)?;
             validate_text(action, "provenance.version", version, false)?;
+            if action.scope != ActionScope::BuiltinDisabled
+                && super::packs::validate_builtin_action(action).is_err()
+            {
+                return Err(ValidationError::action(
+                    action,
+                    ValidationCode::BuiltinManifestMismatch,
+                    "provenance",
+                    "persisted built-in action must match its reviewed manifest",
+                ));
+            }
         }
         ActionProvenance::Imported { source_digest } => {
             validate_text(action, "provenance.source_digest", source_digest, false)?;
@@ -417,6 +431,14 @@ fn validate_alias(
             ));
         }
         RiskClass::ReadOnly | RiskClass::Mutating => {}
+    }
+    if super::packs::validate_builtin_alias(action).is_err() {
+        return Err(ValidationError::action(
+            action,
+            ValidationCode::BuiltinAliasDenied,
+            "alias_projection",
+            "built-in action is not alias-eligible or no longer matches its reviewed manifest",
+        ));
     }
     if matches!(action.template, ActionTemplate::RawInsertOnly { .. }) {
         return Err(ValidationError::action(
