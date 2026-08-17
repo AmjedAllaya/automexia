@@ -1,7 +1,7 @@
 # Automexia CP1 Fish completion adapter. `complete -c` inventories names only;
 # it does not execute completion bodies. Existing Fish definitions win.
 set -q AUTOMEXIA_COMPLETION_ADAPTER_FISH_LOADED; and return 0
-set -gx AUTOMEXIA_COMPLETION_ADAPTER_FISH_LOADED 1
+set -g AUTOMEXIA_COMPLETION_ADAPTER_FISH_LOADED 1
 set -g __automexia_completion_root ''
 if set -q AUTOMEXIA_CONFIG_HOME; and test -n "$AUTOMEXIA_CONFIG_HOME"
     set __automexia_completion_root "$AUTOMEXIA_CONFIG_HOME"
@@ -12,12 +12,14 @@ else if set -q XDG_CONFIG_HOME; and test -n "$XDG_CONFIG_HOME"
 else
     set __automexia_completion_root "$HOME/.config/automexia"
 end
+set -g __automexia_completion_config_root "$__automexia_completion_root"
 set __automexia_completion_root "$__automexia_completion_root/generated/completion"
 set -g __automexia_completion_collisions
 set -g __automexia_completion_loaded
 
 function __automexia_completion_directory_safe
     string match -qr '^/' -- "$__automexia_completion_root"; or return 1
+    test (string length -- "$__automexia_completion_config_root") -le 4096; or return 1
     set -l generated_dir (path dirname "$__automexia_completion_root")
     set -l config_dir (path dirname "$generated_dir")
     set -l shell_dir "$__automexia_completion_root/fish"
@@ -53,16 +55,21 @@ function __automexia_load_completion --argument-names target
     test -f "$file"; and not test -L "$file"; or return 0
     test -f "$file.sha256"; and not test -L "$file.sha256"; or return 0
     test (command wc -c <"$file") -le 1114112; or return 0
-    test (command wc -c <"$file.sha256") -le 128; or return 0
+    test (command wc -c <"$file.sha256") -le 192; or return 0
     set -l existing (complete -c "$target")
     if test (count $existing) -gt 0
         set -ga __automexia_completion_collisions $target
         return 0
     end
-    read -l expected <"$file.sha256"; or return 0
-    string match -qr '^[0-9a-f]{64}$' -- "$expected"; or return 0
+    set -l expected_digests
+    while read -l expected
+        string match -qr '^[0-9a-f]{64}$' -- "$expected"; or return 0
+        set -a expected_digests "$expected"
+        test (count $expected_digests) -le 2; or return 0
+    end <"$file.sha256"
+    test (count $expected_digests) -ge 1; or return 0
     set -l actual (__automexia_completion_hash "$file"); or return 0
-    test "$actual" = "$expected"; or return 0
+    contains -- "$actual" $expected_digests; or return 0
     source "$file"
     set -ga __automexia_completion_loaded $target
 end

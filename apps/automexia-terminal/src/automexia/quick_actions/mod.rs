@@ -6,6 +6,8 @@
 //! parent-directory watcher. It has no renderer, input, VT, PTY, provider,
 //! network, shell-profile, clipboard, secret-store, or execution authority.
 
+mod aliases;
+mod aliases_cli;
 mod cli;
 mod refresh;
 mod secure_fs;
@@ -14,7 +16,19 @@ mod store;
 mod transfer;
 mod worker;
 
+pub use aliases_cli::execute_aliases_command;
 pub use cli::execute_actions_command;
+
+pub use aliases::{
+    collect_local_alias_observations, projection_file_name, shell_label,
+    AliasDoctorReport, AliasError, AliasErrorCode, AliasHealth, AliasObservationSet,
+    AliasProjectionPlan, AliasProjectionStore, AliasPublication, AliasRecovery,
+    AliasShellObservations, GenerationExpectation, PreparedAliasPublication,
+    ALIAS_CURRENT_FILE, ALIAS_GENERATIONS_DIRECTORY, ALIAS_LOCK_FILE,
+    ALIAS_MANIFEST_FILE, ALIAS_MANIFEST_SCHEMA, ALIAS_PREVIOUS_FILE, ALIAS_ROOT_NAME,
+    ALIAS_TRANSACTION_FILE, DISABLED_POINTER, MAX_ALIAS_MANIFEST_BYTES,
+    MAX_ALIAS_TRANSACTION_BYTES, MAX_GENERATION_DIRECTORY_ENTRIES,
+};
 
 pub use refresh::{
     ExactActionWatchPlan, QuickActionMonitor, RefreshCoordinator, RefreshDecision,

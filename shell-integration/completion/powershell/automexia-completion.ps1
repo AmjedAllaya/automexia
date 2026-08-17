@@ -5,6 +5,18 @@ if (-not $global:AutomexiaCompletionAdapterLoaded) {
     $global:AutomexiaCompletionAdapterLoaded = $true
     $script:AutomexiaCompletionLoaded = [Collections.Generic.List[string]]::new()
     $script:AutomexiaCompletionSkipped = [Collections.Generic.List[string]]::new()
+    function script:Get-AutomexiaCompletionFileSha256([string]$Path) {
+        # Avoid optional module auto-loading on the shell startup path.
+        $stream = [IO.File]::OpenRead($Path)
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try {
+            return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+        } finally {
+            $sha.Dispose()
+            $stream.Dispose()
+        }
+    }
+
     $configRoot = if ($env:AUTOMEXIA_CONFIG_HOME) {
         $env:AUTOMEXIA_CONFIG_HOME
     } elseif ($env:LOCALAPPDATA) {
@@ -20,7 +32,11 @@ if (-not $global:AutomexiaCompletionAdapterLoaded) {
 
     function Test-AutomexiaCompletionDirectorySafe {
         if (-not $configRoot -or -not $script:AutomexiaCompletionRoot) { return $false }
-        if ($configRoot -notmatch '^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+)') { return $false }
+        # Cached completion is local-only; a UNC root would perform network I/O at startup.
+        if ($configRoot -notmatch '^[A-Za-z]:[\\/]') { return $false }
+        if ([Text.Encoding]::UTF8.GetByteCount($configRoot) -gt 4096) {
+            return $false
+        }
         foreach ($candidate in @(
             $configRoot,
             (Join-Path $configRoot 'generated'),
@@ -62,19 +78,23 @@ if (-not $global:AutomexiaCompletionAdapterLoaded) {
                 $script:AutomexiaCompletionSkipped.Add("${target}:link")
                 continue
             }
-            if ($fileItem.Length -gt 1114112 -or $digestItem.Length -gt 128 -or
+            if ($fileItem.Length -gt 1114112 -or $digestItem.Length -gt 192 -or
                 $overrideItem.Length -gt 64 -or
                 ([IO.File]::ReadAllText($overridePath)).Trim() -ne 'explicit-native-override-v1') {
                 $script:AutomexiaCompletionSkipped.Add("${target}:bounds")
                 continue
             }
-            $expected = ([IO.File]::ReadAllText($digestPath)).Trim()
-            if ($expected -notmatch '^[0-9a-f]{64}$') {
+            $digestText = [IO.File]::ReadAllText($digestPath)
+            $expectedDigests = @([IO.File]::ReadAllLines($digestPath))
+            $invalidDigests = @($expectedDigests | Where-Object { $_ -notmatch '^[0-9a-f]{64}$' })
+            if (-not $digestText.EndsWith("`n") -or
+                $expectedDigests.Count -lt 1 -or $expectedDigests.Count -gt 2 -or
+                $invalidDigests.Count -ne 0) {
                 $script:AutomexiaCompletionSkipped.Add("${target}:digest")
                 continue
             }
-            $actual = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($actual -ne $expected) {
+            $actual = Get-AutomexiaCompletionFileSha256 $file
+            if ($expectedDigests -notcontains $actual) {
                 $script:AutomexiaCompletionSkipped.Add("${target}:tampered")
                 continue
             }
