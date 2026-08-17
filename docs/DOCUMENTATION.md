@@ -35,6 +35,10 @@ the claim.
 - `docs/TESTING.md` owns evidence levels and commands.
 - `docs/ROADMAP.md` owns release sequencing and the status-first feature/phase
   register.
+- `docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md` owns the ordered focused
+  execution checklist for SSH, connectivity, remote workspaces, multi-cloud,
+  Quick Actions, and autocomplete. It does not replace the main status register
+  or exact shipped-behavior references.
 - `docs/TERMINAL-FIRST-OPERATIONS.md` owns the planned command-first remote
   operations vocabulary and its cross-feature D/CP phase mapping. It does not
   define shipped CLI behavior until the exact reference and feature ledger are

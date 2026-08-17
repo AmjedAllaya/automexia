@@ -116,6 +116,9 @@ The documentation is organized by reader intent:
 
 Plans describe future work; they are not feature documentation. The
 [roadmap](ROADMAP.md) is the canonical release sequence. The
+[connectivity and command-productivity focus roadmap](CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md)
+is the ordered source of truth for upcoming SSH, connectivity, remote
+workspace, multi-cloud, Quick Actions, and autocomplete phases. The
 [stabilization roadmap](STABILIZATION-ROADMAP.md),
 [Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md),
 [security debt register](SECURITY-DEBT.md), and

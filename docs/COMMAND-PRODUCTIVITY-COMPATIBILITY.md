@@ -1,9 +1,9 @@
 # Command Productivity Compatibility Baseline
 
-Status: CP0/CP1 are accepted and CP2.0/CP2.1 are complete. CP2.2 reviewed Quick
-Action search, administration, import/export, and insert/copy are implemented
-locally; stable release evidence is partial. CP3 aliases and CP5 Automexia-
-rendered suggestions are not shipped.
+Status: CP0-CP3.3 are fully implemented at the local/source boundary; stable
+hosted, native accessibility, and longitudinal release evidence is partial.
+CP4 provider-aware actions and CP5 Automexia-rendered suggestions are not
+shipped.
 
 ## Purpose
 
@@ -22,13 +22,14 @@ machine-readable authority is
 | Zsh/WSL/macOS | Native-first adapter never invokes `compinit`; ZLE remains authoritative and receives reviewed action insertion | CP1 complete; CP2.2 local | Hosted native insertion/accessibility evidence |
 | Fish | Fish owns prompt/editor/history/autosuggestions and receives reviewed action insertion | CP1 complete; CP2.2 local | Hosted native insertion/accessibility evidence |
 | CMD | Prompt/listing DOSKEY helpers, truthful native fallback, and conservative reviewed insertion | CP1 fallback; CP2.2 local | Hosted native insertion/accessibility evidence |
-| DevOps short aliases | None supplied by Automexia | Correct CP0 nonactivation | CP3 opt-in generation only |
-| Persistent Quick Actions | Bounded private store, joined application worker, layered local search, reviewed placeholders, dry-run CLI/import/export, and explicit insert/copy | CP2.2 implemented locally | Hosted native and controlled accessibility/performance evidence |
+| DevOps short aliases | Opt-in native-wins five-shell generations with collision review, private atomic publication, reload, rollback, diagnostics, and exact uninstall | CP3.0/CP3.1 implemented locally | Hosted native/macOS/WSL and longitudinal evidence |
+| Persistent Quick Actions | Bounded private store, joined application worker, layered local search, reviewed placeholders, dry-run CLI/import/export, insert/copy, reviewed static packs, native imports, and trusted local workspace task bridges | CP2.2/CP3.2/CP3.3 implemented locally | Hosted native and controlled accessibility/performance evidence |
 | Provider-aware candidates | Existing status context only, not completion | Not implemented and forbidden on input | CP4 after D6 |
+| Automexia suggestion surface | No app-rendered buffer-aware suggestion UI or editor bridge | Not implemented; CP1/native behavior remains authoritative | CP5 research and separate bridge ADR |
 
 This audit is deliberately strict: prompt path styling, icon-aware `ls`, command
-palette commands, OpenSSH host inventory, and shell history are not evidence of
-managed autocomplete or persistent aliases.
+palette commands, OpenSSH host inventory, CP3 alias projection, and shell
+history are not evidence of an Automexia-rendered autocomplete surface.
 
 ## Shell and editor ownership
 

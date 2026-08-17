@@ -494,6 +494,10 @@ to ship useful, production-quality SSH in v0.5.0 rather than waiting for the
 v0.6 public extension platform, while preserving Automexia as a generic
 terminal.
 
+The cross-track dependency order and maintained feature checklists now live in
+the [connectivity and command-productivity focus roadmap](CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md).
+This page retains the detailed stabilization and delivery contracts.
+
 ### Ordering and parallelism
 
 | Stage | May start | Must finish before exposure | User-visible result |

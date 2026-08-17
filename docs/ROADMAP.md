@@ -4,6 +4,12 @@ For an evidence-based phase-by-phase comparison of this roadmap with the
 current source, tests, benchmarks, platform coverage, security controls, and
 release gates, see the [phase implementation audit](PHASE-IMPLEMENTATION-AUDIT.md).
 
+For the ordered SSH, connectivity, multi-cloud, Quick Actions, and autocomplete
+implementation checklist, use the
+[connectivity and command-productivity focus roadmap](CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md).
+This roadmap continues to own release sequencing and canonical phase status;
+the focus roadmap owns the next executable checklist and dependencies.
+
 <!-- roadmap-status-register:start -->
 ## Current feature status
 

@@ -2,7 +2,7 @@
 
 Audit date: 2026-08-17
 
-Audited source baseline: 22367d2888b1af3911bcac5768a18d1cac47ab69
+Audited source baseline: 2d9079ab036cf34b313d7a09e5b0d7ea9a2e85b6
 
 Scope: every execution phase defined by the product, stabilization, DevOps/SSH,
 Connection Hub, command-productivity, persistent-alias, and Ghostty
@@ -19,6 +19,7 @@ documentation, and release prerequisites.
 Authoritative design sources:
 
 - [Product roadmap](ROADMAP.md)
+- [Connectivity and command-productivity focus roadmap](CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md)
 - [Stabilization roadmap](STABILIZATION-ROADMAP.md)
 - [Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md)
 - [Readiness audit](READINESS-AUDIT.md)
@@ -65,10 +66,10 @@ remain subject to their documented protected milestones and evidence.
 
 | Check | Result on the audited commit |
 |---|---|
-| Feature assurance | Passed: 19 feature families, 25 components, 8 benchmark targets, 10 fuzz targets, 84 documentation references, and 457 evidence links. |
+| Feature assurance | Passed: 20 feature families, 25 components, 8 benchmark targets, 11 fuzz targets, 90 documentation references, and 498 evidence links. |
 | Platform coverage policy | Passed: Windows/Linux/macOS, PowerShell/CMD/Unix shells, X11/Wayland, alternate architectures, nightly artifacts, deep Windows/WSL jobs, and release validators are machine-enforced. |
-| Documentation coverage | Passed: 11 public pages, 172 configuration keys, 73 binding actions, 6 application flags, and 21 xtask commands. |
-| Repository validation | Passed: 41 TOML, 14 YAML, 17 JSON, 6 XML, one desktop file, 139 Markdown files, 69 pinned Actions, release trust, assurance, and CP policy contracts. |
+| Documentation coverage | Passed: 12 public pages, 172 configuration keys, 73 binding actions, 6 application flags, and 21 xtask commands. |
+| Repository validation | Passed: 41 TOML, 14 YAML, 18 JSON, 6 XML, one desktop file, 143 Markdown files, 69 pinned Actions, release trust, assurance, and CP policy contracts. |
 
 The hosted GitHub run state was not independently queried because GitHub CLI is
 not installed on this host. The latest readiness record says hosted jobs were
@@ -971,21 +972,26 @@ malformed input, expired grants, and policy failure.
 
 ## Recommended execution order
 
-1. Close v0.4 external evidence: restore hosted Actions, assets/rights/contact/
-   repository policy, Linux/macOS native visual/GPU/accessibility, elevated
-   Windows tools, and the 30-day baseline.
-2. Close CP2.2 hosted native shell, controlled accessibility, and longitudinal
-   performance evidence; keep exact launch disabled.
-3. Accept D0/ADR 0012 or keep D3 disabled; freeze package identity, grants, and
-   native SSH fixtures first.
-4. Implement D5.0 then read-only D5.1.
-5. Activate D3 only with its full native gate, then implement D5.2.
-6. Implement CP3 compiler, aliases, packs, then trusted imports.
-7. Implement D6 provider slices independently.
-8. Implement CP4 only after D3/D5/D6; evaluate optional CP5 later.
-9. Keep G0-G6 independent: reproducible fixtures, then typed registry; never
-   hand-copy compatibility or mix it with process/credential authority.
-10. Defer D7/CP6/G6 until their sandbox/lifecycle ADRs pass.
+The maintained checklist and dependencies are in the
+[connectivity and command-productivity focus roadmap](CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md).
+At this audited baseline, the focused order is:
+
+1. Close D0/ADR 0012 and freeze package identity, grants, executable resolution,
+   and complete native SSH fixtures while production launch remains disabled.
+2. Implement non-executing D5.0 models, then the read-only D5.1 Connection Hub.
+3. Activate D3 only with its capability, atomic spawn, PTY lifecycle, cleanup,
+   and three-OS native gates; then deliver D5.2 managed OpenSSH in bounded
+   direct, route/host-trust, tunnel, and native-evidence slices.
+4. Complete connection profiles, typed recipes, and declarative remote
+   workspaces before adding provider execution.
+5. Implement D6.0 and each D6.1-D6.5 provider independently through official
+   CLI/auth authorities and isolated immutable capsules.
+6. Implement CP4 only after D3/D5/D6 expose bounded cached public context.
+7. Run CP5.0 native autocomplete research as the only safe parallel lane;
+   proceed to CP5.1-CP5.6 only after its separate bridge ADR and gates pass.
+8. Keep v0.4 external release evidence and G0-G6 compatibility work as
+   independent evidence tracks; defer D7/CP6/G6 until their protected designs
+   pass.
 
 ## Final assessment
 
@@ -995,10 +1001,12 @@ DevOps foundations. It has substantive tests, benchmarks, fuzz ownership,
 security controls, resource limits, documentation, and platform policy.
 
 The full roadmap is not complete. Stable v0.4 evidence is incomplete;
-production SSH/Connection Hub, multi-cloud, aliases/packs, Automexia-owned
-suggestions, full Ghostty compatibility, public extensions, and AI remain.
+production SSH/Connection Hub, remote workspaces, multi-cloud, provider-aware
+actions, Automexia-owned suggestions, full Ghostty compatibility, public
+extensions, and AI remain.
 
-> Current milestone: v0.4 source stabilization plus D1/D2, disabled D4,
-> CP0/CP1, and internal CP2.0/CP2.1 are implemented. Stable cross-platform
-> release proof and production activation beyond those boundaries remain
-> partial or not implemented as listed above.
+> Current milestone: v0.4 source stabilization, D1/D2, disabled D4, and
+> CP0-CP3.3 are implemented at their stated local/source boundaries. D0/D3 are
+> partial. Stable cross-platform release proof, D5/D6/CP4/CP5 production
+> activation, and the other phases remain partial or not implemented as listed
+> above.
