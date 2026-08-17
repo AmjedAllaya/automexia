@@ -386,7 +386,33 @@
         "linux": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_shell_integration.sh", ".github/workflows/ci.yml#native"]},
         "macos": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", ".github/workflows/ci.yml#native"]}
       }
-    },    {
+    },
+    {
+      "id": "command-productivity-cp32-devops-packs",
+      "title": "Reviewed disabled-by-default static DevOps Quick Action packs",
+      "components": ["automexia-devops", "apps/automexia-terminal", "tools/ci", "tests/fixtures/command-productivity"],
+      "documentation": {
+        "guide": ["docs/DEVOPS-ALIASES.md#cp32-first-party-static-devops-packs"],
+        "reference": ["docs/CLI-REFERENCE.md#reviewed-devops-packs-cp32", "docs/TESTING.md#cp32-reviewed-devops-action-packs"],
+        "explanation": ["docs/ARCHITECTURE.md#cp32-static-devops-pack-boundary", "docs/COMMAND-PRODUCTIVITY-THREAT-MODEL.md#cp32-implemented-controls", "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "CP3.2 adds a textual CLI and typed actions but no renderer-owned interactive surface; CP2.2 and CP5 own visual accessibility."},
+        "correctness": {"level": "pr", "evidence": ["automexia-devops/src/actions/packs.rs", "automexia-devops/tests/quick_action_packs.rs", "apps/automexia-terminal/src/automexia/quick_actions/packs_cli.rs", "tools/ci/check_command_productivity_cp32.py", "tools/ci/test_command_productivity_cp32.py", "tests/fixtures/command-productivity/cp32-contract-v1.json"]},
+        "security": {"level": "nightly", "evidence": ["automexia-devops/src/actions/packs.rs", "automexia-devops/src/actions/validation.rs", "automexia-devops/tests/quick_action_packs.rs", "tools/ci/check_command_productivity_cp32.py", "tools/ci/test_command_productivity_cp32.py", "fuzz/fuzz_targets/quick_action_packs.rs", ".github/workflows/nightly.yml#fuzz"]},
+        "performance": {"level": "controlled", "evidence": ["automexia-devops/benches/quick_actions.rs", ".github/workflows/nightly.yml#benchmarks-controlled"], "rationale": "Focused local registry/health measurements pass; the comparable named-hardware 30-day baseline remains controlled evidence."},
+        "resource_lifetime": {"level": "not_applicable", "evidence": [], "rationale": "The registry and health/update evaluators own no worker, watcher, process, network client, or cache."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/packs_cli.rs", "apps/automexia-terminal/src/automexia/quick_actions/store.rs", "automexia-devops/tests/quick_action_packs.rs"]},
+        "resilience": {"level": "pr", "evidence": ["automexia-devops/src/actions/packs.rs", "automexia-devops/tests/quick_action_packs.rs", "tools/ci/test_command_productivity_cp32.py"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "CP3.2 draws no new product UI; stable text and JSON output own presentation."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["automexia-devops/tests/quick_action_packs.rs", "apps/automexia-terminal/src/cli.rs", ".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": ["automexia-devops/tests/quick_action_packs.rs", "apps/automexia-terminal/src/cli.rs", ".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": ["automexia-devops/tests/quick_action_packs.rs", "apps/automexia-terminal/src/cli.rs", ".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
       "id": "command-productivity-cp1-native-completion",
       "title": "Bounded native-shell completion adapters, health, explicit provider refresh, and exact lifecycle",
       "components": ["tools/xtask", "shell-integration", "tests/fixtures/command-productivity"],

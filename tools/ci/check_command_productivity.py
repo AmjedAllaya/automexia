@@ -172,6 +172,7 @@ CP2_PURE_ACTION_FILES = {
     "automexia-devops/src/actions/activation.rs",
     "automexia-devops/src/actions/mod.rs",
     "automexia-devops/src/actions/model.rs",
+    "automexia-devops/src/actions/packs.rs",
     "automexia-devops/src/actions/projection.rs",
     "automexia-devops/src/actions/validation.rs",
 }
@@ -188,6 +189,9 @@ CP2_PERSISTENCE_FILES = {
 CP31_PUBLICATION_FILES = {
     "apps/automexia-terminal/src/automexia/quick_actions/aliases.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/aliases_cli.rs",
+}
+CP32_PACK_FILES = {
+    "apps/automexia-terminal/src/automexia/quick_actions/packs_cli.rs",
 }
 CP2_PERSISTENCE_WIRING_FILES = {
     "apps/automexia-terminal/src/automexia/mod.rs",
@@ -816,17 +820,23 @@ def validate_persistence_sources(root: Path, runtime_files: list[Path]) -> set[s
     }
     if not present:
         return set()
-    expected = CP2_PERSISTENCE_FILES | CP31_PUBLICATION_FILES
+    expected = CP2_PERSISTENCE_FILES | CP31_PUBLICATION_FILES | CP32_PACK_FILES
     cp31_present = present & CP31_PUBLICATION_FILES
+    cp32_present = present & CP32_PACK_FILES
     if (
         not CP2_PERSISTENCE_FILES.issubset(present)
         or present - expected
         or (cp31_present and cp31_present != CP31_PUBLICATION_FILES)
+        or (cp32_present and cp32_present != CP32_PACK_FILES)
     ):
-        baseline = expected if cp31_present else CP2_PERSISTENCE_FILES
+        baseline = CP2_PERSISTENCE_FILES
+        if cp31_present:
+            baseline |= CP31_PUBLICATION_FILES
+        if cp32_present:
+            baseline |= CP32_PACK_FILES
         unexpected = sorted(present.symmetric_difference(baseline))
         raise CommandProductivityError(
-            "CP2.1/CP3.1 persistence/publication source set is not the exact "
+            "CP2.1/CP3.1/CP3.2 application source set is not the exact "
             f"reviewed boundary: {unexpected}"
         )
     for relative in sorted(present):
@@ -841,7 +851,13 @@ def validate_persistence_sources(root: Path, runtime_files: list[Path]) -> set[s
             None,
         )
         if marker is not None:
-            phase = "CP3.1 publication" if relative in CP31_PUBLICATION_FILES else "CP2.1 persistence"
+            phase = (
+                "CP3.1 publication"
+                if relative in CP31_PUBLICATION_FILES
+                else "CP3.2 pack CLI"
+                if relative in CP32_PACK_FILES
+                else "CP2.1 persistence"
+            )
             raise CommandProductivityError(
                 f"{relative} crosses the {phase}-only capability boundary: {marker!r}"
             )
@@ -1059,7 +1075,7 @@ def main() -> int:
         print(f"command productivity CP0 validation failed: {error}", file=sys.stderr)
         return 1
     print(
-        "PASS: command productivity CP0/CP1 and bounded CP2.0-CP3.0 model/application boundaries are confined to reviewed allowlists "
+        "PASS: command productivity CP0/CP1 and bounded CP2.0-CP3.2 model/application boundaries are confined to reviewed allowlists "
         f"(shells={counts['shells']}, providers={counts['providers']}, "
         f"discoveries={counts['discoveries']}, "
         f"cases={counts['cases']}, threats={counts['threats']}, "

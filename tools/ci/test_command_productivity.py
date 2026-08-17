@@ -57,8 +57,8 @@ class CommandProductivityPolicyTests(unittest.TestCase):
         self.assertEqual(counts["providers"], 11)
         self.assertEqual(counts["threats"], 16)
         self.assertGreater(counts["runtime_files"], 100)
-        self.assertEqual(counts["cp2_pure_action_files"], 5)
-        self.assertEqual(counts["cp2_persistence_files"], 10)
+        self.assertEqual(counts["cp2_pure_action_files"], 6)
+        self.assertEqual(counts["cp2_persistence_files"], 11)
 
     def test_versioned_hostile_mutation_corpus_is_rejected(self) -> None:
         self.assertEqual(set(self.hostile), {"schema", "phase", "cases"})
@@ -368,6 +368,23 @@ class CommandProductivityPolicyTests(unittest.TestCase):
                 POLICY.CP2_PERSISTENCE_FILES | POLICY.CP31_PUBLICATION_FILES,
             )
 
+    def test_persistence_boundary_accepts_and_confines_cp32_pack_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = self._persistence_fixture(root)
+            relative = next(iter(POLICY.CP32_PACK_FILES))
+            pack_cli = root / relative
+            pack_cli.write_text("struct PackCliBoundary;\n", encoding="utf-8")
+            files.append(pack_cli)
+            self.assertEqual(
+                POLICY.validate_persistence_sources(root, files),
+                POLICY.CP2_PERSISTENCE_FILES | POLICY.CP32_PACK_FILES,
+            )
+            pack_cli.write_text("use std::process::Command;\n", encoding="utf-8")
+            with self.assertRaisesRegex(
+                POLICY.CommandProductivityError, "CP3.2 pack CLI-only"
+            ):
+                POLICY.validate_persistence_sources(root, files)
     def test_persistence_boundary_rejects_partial_or_capability_bearing_cp31(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
