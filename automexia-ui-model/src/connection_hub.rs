@@ -3,7 +3,7 @@
 //! This module projects already validated public records. It cannot launch,
 //! authenticate, open a listener, resize a PTY, or access a renderer.
 
-use std::ops::Range;
+use std::{cmp::Ordering, fmt, ops::Range};
 
 use automexia_devops::connections::{
     ActionRisk, AuthState, AutomationAction, ConnectionReview, EnvironmentRisk,
@@ -18,6 +18,12 @@ pub const MAX_VISIBLE_ROWS: usize = 32;
 pub const DESKTOP_ROW_HEIGHT: f32 = 52.0;
 pub const NARROW_ROW_HEIGHT: f32 = 72.0;
 pub const RESERVED_VERTICAL_SPACE: f32 = 184.0;
+pub const MAX_CATALOG_ENTRIES: usize = 10_000;
+pub const MAX_CATALOG_QUERY_BYTES: usize = 512;
+pub const MAX_CATALOG_TAGS: usize = 32;
+pub const MAX_CATALOG_TEXT_BYTES: usize = 4 * 1024;
+pub const MAX_CATALOG_RESIDENT_BYTES: usize = 16 * 1024 * 1024;
+pub const MAX_CATALOG_GROUPS: usize = 256;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -164,6 +170,330 @@ pub struct ConnectionSummary {
     pub risk: EnvironmentRisk,
     pub auth_state: AuthState,
     pub favorite: bool,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HubCatalogSource {
+    OpenSshUser,
+    OpenSshSystem,
+    SavedProfile,
+    ImportedProfile,
+}
+
+impl HubCatalogSource {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::OpenSshUser => "OpenSSH user configuration",
+            Self::OpenSshSystem => "OpenSSH system configuration",
+            Self::SavedProfile => "Saved profiles",
+            Self::ImportedProfile => "Imported profiles",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HubCatalogGrouping {
+    #[default]
+    None,
+    Source,
+    Environment,
+    Favorite,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConnectionCatalogQuery {
+    pub text: String,
+    pub favorites_only: bool,
+    pub recent_only: bool,
+    pub tag: Option<String>,
+    pub source: Option<HubCatalogSource>,
+    pub grouping: HubCatalogGrouping,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConnectionCatalogEntry {
+    pub summary: ConnectionSummary,
+    pub tags: Vec<String>,
+    pub source: HubCatalogSource,
+    pub source_revision: u64,
+    pub last_used_at_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HubCatalogGroup {
+    pub label: String,
+    pub range: Range<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConnectionCatalogProjection {
+    pub indices: Vec<usize>,
+    pub groups: Vec<HubCatalogGroup>,
+    pub source_revision: u64,
+    pub content_state: HubContentState,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HubCatalogErrorCode {
+    LimitExceeded,
+    UnsafeText,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HubCatalogError {
+    code: HubCatalogErrorCode,
+    field: &'static str,
+}
+
+impl HubCatalogError {
+    pub const fn code(&self) -> HubCatalogErrorCode {
+        self.code
+    }
+}
+
+impl fmt::Display for HubCatalogError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "connection catalog rejected {} ({:?})",
+            self.field, self.code
+        )
+    }
+}
+
+impl std::error::Error for HubCatalogError {}
+
+pub fn project_connection_catalog(
+    entries: &[ConnectionCatalogEntry],
+    query: &ConnectionCatalogQuery,
+) -> Result<ConnectionCatalogProjection, HubCatalogError> {
+    validate_catalog(entries, query)?;
+
+    let source_revision = entries
+        .iter()
+        .map(|entry| entry.source_revision)
+        .max()
+        .unwrap_or_default();
+    let folded_query = fold_for_search(&query.text);
+    let mut indices = entries
+        .iter()
+        .enumerate()
+        .filter_map(|(index, entry)| {
+            catalog_entry_matches(entry, query, &folded_query).then_some(index)
+        })
+        .collect::<Vec<_>>();
+    indices.sort_by(|left, right| {
+        compare_catalog_entries(&entries[*left], &entries[*right], query.grouping)
+    });
+
+    let groups = catalog_groups(entries, &indices, query.grouping);
+    let content_state = if entries.is_empty() {
+        HubContentState::Empty
+    } else if indices.is_empty() {
+        HubContentState::FilteredEmpty
+    } else {
+        HubContentState::Ready
+    };
+
+    Ok(ConnectionCatalogProjection {
+        indices,
+        groups,
+        source_revision,
+        content_state,
+    })
+}
+
+fn validate_catalog(
+    entries: &[ConnectionCatalogEntry],
+    query: &ConnectionCatalogQuery,
+) -> Result<(), HubCatalogError> {
+    if entries.len() > MAX_CATALOG_ENTRIES {
+        return Err(catalog_error(
+            HubCatalogErrorCode::LimitExceeded,
+            "entry count",
+        ));
+    }
+    if query.text.len() > MAX_CATALOG_QUERY_BYTES {
+        return Err(catalog_error(
+            HubCatalogErrorCode::LimitExceeded,
+            "search query",
+        ));
+    }
+    validate_catalog_text(&query.text, "search query")?;
+    if let Some(tag) = query.tag.as_deref() {
+        validate_catalog_text(tag, "tag filter")?;
+    }
+
+    let mut resident_bytes = 0_usize;
+    for entry in entries {
+        if entry.tags.len() > MAX_CATALOG_TAGS {
+            return Err(catalog_error(
+                HubCatalogErrorCode::LimitExceeded,
+                "tag count",
+            ));
+        }
+        for (value, field) in [
+            (entry.summary.id.as_str(), "connection id"),
+            (entry.summary.display_name.as_str(), "display name"),
+            (entry.summary.target.as_str(), "target"),
+            (entry.summary.identity.as_str(), "identity"),
+            (entry.summary.environment.as_str(), "environment"),
+        ] {
+            validate_catalog_text(value, field)?;
+            resident_bytes =
+                resident_bytes.checked_add(value.len()).ok_or_else(|| {
+                    catalog_error(HubCatalogErrorCode::LimitExceeded, "resident bytes")
+                })?;
+        }
+        for tag in &entry.tags {
+            validate_catalog_text(tag, "tag")?;
+            resident_bytes = resident_bytes.checked_add(tag.len()).ok_or_else(|| {
+                catalog_error(HubCatalogErrorCode::LimitExceeded, "resident bytes")
+            })?;
+        }
+    }
+    if resident_bytes > MAX_CATALOG_RESIDENT_BYTES {
+        return Err(catalog_error(
+            HubCatalogErrorCode::LimitExceeded,
+            "resident bytes",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_catalog_text(
+    value: &str,
+    field: &'static str,
+) -> Result<(), HubCatalogError> {
+    if value.len() > MAX_CATALOG_TEXT_BYTES {
+        return Err(catalog_error(HubCatalogErrorCode::LimitExceeded, field));
+    }
+    if value.chars().any(is_unsafe_catalog_character) {
+        return Err(catalog_error(HubCatalogErrorCode::UnsafeText, field));
+    }
+    Ok(())
+}
+
+fn is_unsafe_catalog_character(character: char) -> bool {
+    let codepoint = character as u32;
+    character.is_control()
+        || codepoint == 0x061c
+        || (0x200b..=0x200f).contains(&codepoint)
+        || (0x202a..=0x202e).contains(&codepoint)
+        || (0x2060..=0x206f).contains(&codepoint)
+        || codepoint == 0xfeff
+}
+
+fn catalog_error(code: HubCatalogErrorCode, field: &'static str) -> HubCatalogError {
+    HubCatalogError { code, field }
+}
+
+fn fold_for_search(value: &str) -> String {
+    value.chars().flat_map(char::to_lowercase).collect()
+}
+
+fn catalog_entry_matches(
+    entry: &ConnectionCatalogEntry,
+    query: &ConnectionCatalogQuery,
+    folded_query: &str,
+) -> bool {
+    if query.favorites_only && !entry.summary.favorite {
+        return false;
+    }
+    if query.recent_only && entry.last_used_at_ms.is_none() {
+        return false;
+    }
+    if query.source.is_some_and(|source| source != entry.source) {
+        return false;
+    }
+    if let Some(tag) = query.tag.as_deref() {
+        if !entry
+            .tags
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(tag))
+        {
+            return false;
+        }
+    }
+    folded_query.is_empty()
+        || [
+            entry.summary.id.as_str(),
+            entry.summary.display_name.as_str(),
+            entry.summary.target.as_str(),
+            entry.summary.environment.as_str(),
+        ]
+        .into_iter()
+        .chain(entry.tags.iter().map(String::as_str))
+        .any(|candidate| fold_for_search(candidate).contains(folded_query))
+}
+
+fn compare_catalog_entries(
+    left: &ConnectionCatalogEntry,
+    right: &ConnectionCatalogEntry,
+    grouping: HubCatalogGrouping,
+) -> Ordering {
+    let left_group = catalog_group_label(left, grouping);
+    let right_group = catalog_group_label(right, grouping);
+    fold_for_search(&left_group)
+        .cmp(&fold_for_search(&right_group))
+        .then_with(|| right.summary.favorite.cmp(&left.summary.favorite))
+        .then_with(|| right.last_used_at_ms.cmp(&left.last_used_at_ms))
+        .then_with(|| {
+            fold_for_search(&left.summary.display_name)
+                .cmp(&fold_for_search(&right.summary.display_name))
+        })
+        .then_with(|| left.summary.id.cmp(&right.summary.id))
+}
+
+fn catalog_group_label(
+    entry: &ConnectionCatalogEntry,
+    grouping: HubCatalogGrouping,
+) -> String {
+    match grouping {
+        HubCatalogGrouping::None => "All connections".into(),
+        HubCatalogGrouping::Source => entry.source.label().into(),
+        HubCatalogGrouping::Environment => entry.summary.environment.clone(),
+        HubCatalogGrouping::Favorite if entry.summary.favorite => "Favorites".into(),
+        HubCatalogGrouping::Favorite if entry.last_used_at_ms.is_some() => {
+            "Recent".into()
+        }
+        HubCatalogGrouping::Favorite => "Other connections".into(),
+    }
+}
+
+fn catalog_groups(
+    entries: &[ConnectionCatalogEntry],
+    indices: &[usize],
+    grouping: HubCatalogGrouping,
+) -> Vec<HubCatalogGroup> {
+    let mut groups: Vec<HubCatalogGroup> = Vec::new();
+    for (position, index) in indices.iter().copied().enumerate() {
+        let label = catalog_group_label(&entries[index], grouping);
+        if let Some(group) = groups.last_mut() {
+            if group.label == label {
+                group.range.end = position + 1;
+                continue;
+            }
+        }
+        groups.push(HubCatalogGroup {
+            label,
+            range: position..position + 1,
+        });
+    }
+    if groups.len() > MAX_CATALOG_GROUPS {
+        let collapsed_start = groups[MAX_CATALOG_GROUPS - 1].range.start;
+        groups.truncate(MAX_CATALOG_GROUPS - 1);
+        groups.push(HubCatalogGroup {
+            label: "Other groups".into(),
+            range: collapsed_start..indices.len(),
+        });
+    }
+    groups
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
