@@ -96,14 +96,20 @@ are exposed.
 
 ## Non-activated implementation evidence
 
-As of 2026-08-17, the local D0/D3 contract is frozen in
-`tests/fixtures/session-launch/d0-d3-contract-v1.json`. It records the exact
-package ID, publisher, non-zero SHA-256 identity shape, workspace version,
-contract version, accepted verification classes, grant/audit fields, strict
-defaults, authority ceiling, four-platform executable policy, and nineteen
-required native scenarios. A dedicated checker and mutation suite reject
-weakened activation, identity, grants, defaults, authority, evidence, or
-scenario claims.
+As of 2026-08-17, the active local D0/D3 contract is
+`tests/fixtures/session-launch/d0-d3-contract-v2.json`; schema 1 is retained
+byte-for-byte and hash-checked as historical evidence. Schema 2 records the
+manual-shell and missing-client baseline, trusted-loader SHA-256 source/size,
+package identity/version/contract/verification, grants/audits/defaults,
+all-false authority ceiling, four-platform executable policy, and nineteen
+native scenarios.
+
+It also records nine trust boundaries with accepted/returned data, limits,
+cancellation, logging, and failure ownership plus a hermetic fixture protocol:
+loopback-only server, isolated disposable authentication state, bounded probes
+and lifecycle timeouts, DNS/connect/auth cancellation, hostile argument corpus,
+platform activation semantics, cleanup invariants, evidence metadata, private
+artifact policy, and nine redaction surfaces. Dedicated checks reject drift.
 
 The test-only broker now binds the verified principal to an exact reviewed
 package policy including digest, version, contract version, and repository-
