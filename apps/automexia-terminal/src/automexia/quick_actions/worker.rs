@@ -3,7 +3,7 @@
 use std::{
     collections::BTreeMap,
     fmt,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc, Condvar, Mutex, MutexGuard,
@@ -13,20 +13,27 @@ use std::{
 };
 
 use automexia_devops::actions::{
-    validate_search_query, ActionIndex, ActionLayer, ActionScope, ActionSearchHit,
-    IndexError, LayerIdentity, SearchContext,
+    validate_search_query, ActionIndex, ActionLayer, ActionProvenance, ActionScope,
+    ActionSearchHit, IndexError, LayerIdentity, QuickAction, SearchContext,
 };
 use automexia_extension_runtime::CompletionWake;
 
 use super::{
     QuickActionMonitor, QuickActionService, QuickActionStore, ServiceStatus, StoreError,
-    StoreErrorCode,
+    StoreErrorCode, WorkspaceActionStore, WorkspaceTrustStore,
+    WORKSPACE_ACTION_DIRECTORY_NAME, WORKSPACE_ACTION_FILE_NAME,
 };
 
 const SEARCH_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const SEARCH_COALESCE_INTERVAL: Duration = Duration::from_millis(12);
 const WATCH_DEBOUNCE: Duration = Duration::from_millis(75);
 const WATCH_RECONCILE: Duration = Duration::from_secs(5);
+const WORKSPACE_RECONCILE: Duration = Duration::from_millis(250);
+#[cfg(test)]
+const WORKSPACE_AUTHORIZATION_TTL: Duration = Duration::from_millis(100);
+#[cfg(not(test))]
+const WORKSPACE_AUTHORIZATION_TTL: Duration = Duration::from_secs(30);
+const MAX_WORKSPACE_CACHE_ENTRIES: usize = 32;
 const MAX_RESULT_ROUTES: usize = 32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -93,7 +100,15 @@ struct SearchRequest {
     route_id: usize,
     query: String,
     context: SearchContext,
+    workspace_path: Option<PathBuf>,
     wake: CompletionWake,
+}
+
+#[derive(Clone, Debug)]
+struct RouteWorkspaceAuthorization {
+    workspace_path: PathBuf,
+    workspace_identity: String,
+    checked_at: Instant,
 }
 
 #[derive(Default)]
@@ -108,6 +123,7 @@ struct RuntimeInner {
     pending: Arc<(Mutex<PendingState>, Condvar)>,
     latest_requested: Arc<Mutex<BTreeMap<usize, u64>>>,
     results: Arc<Mutex<BTreeMap<usize, QuickActionSearchResult>>>,
+    workspace_authorizations: Arc<Mutex<BTreeMap<usize, RouteWorkspaceAuthorization>>>,
     next_request: AtomicU64,
     handle: Mutex<Option<JoinHandle<()>>>,
 }
@@ -147,6 +163,7 @@ impl QuickActionRuntime {
 
     pub fn open(root: impl AsRef<Path>) -> Result<Self, QuickActionRuntimeErrorCode> {
         let store = QuickActionStore::open_or_create(root)?;
+        let workspace_trust_root = store.root().join("workspace-trust");
         let service = QuickActionService::open(store)?;
         let monitor = QuickActionMonitor::start(
             service.clone(),
@@ -158,12 +175,15 @@ impl QuickActionRuntime {
         let pending = Arc::new((Mutex::new(PendingState::default()), Condvar::new()));
         let latest_requested = Arc::new(Mutex::new(BTreeMap::new()));
         let results = Arc::new(Mutex::new(BTreeMap::new()));
+        let workspace_authorizations = Arc::new(Mutex::new(BTreeMap::new()));
         let handle = spawn_worker(
             monitor,
             initial,
             Arc::clone(&pending),
             Arc::clone(&latest_requested),
             Arc::clone(&results),
+            workspace_trust_root,
+            Arc::clone(&workspace_authorizations),
         )
         .ok_or(QuickActionRuntimeErrorCode::WorkerUnavailable)?;
         Ok(Self(Arc::new(RuntimeInner {
@@ -172,6 +192,7 @@ impl QuickActionRuntime {
             pending,
             latest_requested,
             results,
+            workspace_authorizations,
             next_request: AtomicU64::new(1),
             handle: Mutex::new(Some(handle)),
         })))
@@ -184,6 +205,7 @@ impl QuickActionRuntime {
             pending: Arc::new((Mutex::new(PendingState::default()), Condvar::new())),
             latest_requested: Arc::new(Mutex::new(BTreeMap::new())),
             results: Arc::new(Mutex::new(BTreeMap::new())),
+            workspace_authorizations: Arc::new(Mutex::new(BTreeMap::new())),
             next_request: AtomicU64::new(1),
             handle: Mutex::new(None),
         }))
@@ -218,6 +240,17 @@ impl QuickActionRuntime {
         route_id: usize,
         query: String,
         context: SearchContext,
+        wake: CompletionWake,
+    ) -> SearchSubmission {
+        self.submit_for_workspace(route_id, query, context, None, wake)
+    }
+
+    pub fn submit_for_workspace(
+        &self,
+        route_id: usize,
+        query: String,
+        context: SearchContext,
+        workspace_path: Option<PathBuf>,
         wake: CompletionWake,
     ) -> SearchSubmission {
         if let Some(error) = self.0.disabled {
@@ -261,11 +294,36 @@ impl QuickActionRuntime {
                 route_id,
                 query,
                 context,
+                workspace_path,
                 wake,
             },
         );
         condition.notify_one();
         SearchSubmission::Queued { request_id }
+    }
+
+    pub fn workspace_action_is_authorized(
+        &self,
+        route_id: usize,
+        workspace_path: Option<&Path>,
+        action: &QuickAction,
+    ) -> bool {
+        let ActionProvenance::WorkspaceTask {
+            workspace_identity, ..
+        } = &action.provenance
+        else {
+            return true;
+        };
+        let Some(workspace_path) = workspace_path else {
+            return false;
+        };
+        let authorizations = lock(&self.0.workspace_authorizations);
+        let Some(authorization) = authorizations.get(&route_id) else {
+            return false;
+        };
+        authorization.checked_at.elapsed() <= WORKSPACE_AUTHORIZATION_TTL
+            && authorization.workspace_path == workspace_path
+            && authorization.workspace_identity == *workspace_identity
     }
 
     pub fn take_result(
@@ -283,7 +341,118 @@ impl QuickActionRuntime {
         lock(pending).latest_by_route.remove(&route_id);
         lock(&self.0.latest_requested).remove(&route_id);
         lock(&self.0.results).remove(&route_id);
+        lock(&self.0.workspace_authorizations).remove(&route_id);
     }
+}
+
+#[derive(Clone)]
+struct CachedWorkspaceIndex {
+    checked_at: Instant,
+    user_revision: u64,
+    index: ActionIndex,
+    authorization: Option<RouteWorkspaceAuthorization>,
+}
+
+struct WorkspaceIndexCache {
+    trust_root: PathBuf,
+    entries: BTreeMap<PathBuf, CachedWorkspaceIndex>,
+}
+
+impl WorkspaceIndexCache {
+    fn new(trust_root: PathBuf) -> Self {
+        Self {
+            trust_root,
+            entries: BTreeMap::new(),
+        }
+    }
+
+    fn index_for(
+        &mut self,
+        workspace_path: Option<&Path>,
+        service: &QuickActionService,
+        base: &ActionIndex,
+        now: Instant,
+    ) -> (ActionIndex, Option<RouteWorkspaceAuthorization>) {
+        let Some(workspace_path) = workspace_path.filter(|path| path.is_absolute())
+        else {
+            return (base.clone(), None);
+        };
+        let key = workspace_path.to_path_buf();
+        let user_revision = service.snapshot().revision();
+        if let Some(cached) = self.entries.get(&key) {
+            if cached.user_revision == user_revision
+                && now.saturating_duration_since(cached.checked_at) < WORKSPACE_RECONCILE
+            {
+                return (cached.index.clone(), cached.authorization.clone());
+            }
+        }
+
+        let base = index_for_service(service).unwrap_or_else(|_| base.clone());
+        let (index, authorization) =
+            match resolve_trusted_workspace(workspace_path, &self.trust_root) {
+                Some((layer, workspace_identity)) => {
+                    let index = index_for_service_with_workspace(service, Some(layer))
+                        .unwrap_or_else(|_| base.clone());
+                    let authorization = RouteWorkspaceAuthorization {
+                        workspace_path: key.clone(),
+                        workspace_identity,
+                        checked_at: now,
+                    };
+                    (index, Some(authorization))
+                }
+                None => (base, None),
+            };
+        if !self.entries.contains_key(&key)
+            && self.entries.len() >= MAX_WORKSPACE_CACHE_ENTRIES
+        {
+            if let Some(oldest) = self
+                .entries
+                .iter()
+                .min_by_key(|(_, entry)| entry.checked_at)
+                .map(|(path, _)| path.clone())
+            {
+                self.entries.remove(&oldest);
+            }
+        }
+        self.entries.insert(
+            key,
+            CachedWorkspaceIndex {
+                checked_at: now,
+                user_revision,
+                index: index.clone(),
+                authorization: authorization.clone(),
+            },
+        );
+        (index, authorization)
+    }
+}
+
+fn resolve_trusted_workspace(
+    workspace_path: &Path,
+    trust_root: &Path,
+) -> Option<(ActionLayer, String)> {
+    for workspace_root in workspace_path.ancestors().take(64) {
+        let source = workspace_root
+            .join(WORKSPACE_ACTION_DIRECTORY_NAME)
+            .join(WORKSPACE_ACTION_FILE_NAME);
+        match std::fs::symlink_metadata(&source) {
+            Ok(metadata) if !metadata.file_type().is_symlink() && metadata.is_file() => {}
+            Ok(_) => return None,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => return None,
+        }
+        let workspace = WorkspaceActionStore::open(workspace_root)
+            .ok()?
+            .load()
+            .ok()?;
+        let trust = WorkspaceTrustStore::open_existing_read_only(trust_root).ok()??;
+        let layer = trust.trusted_layer(&workspace).ok()?;
+        let LayerIdentity::TrustedWorkspace { identity } = &layer.identity else {
+            return None;
+        };
+        return Some((layer.clone(), identity.clone()));
+    }
+    None
 }
 
 fn spawn_worker(
@@ -292,7 +461,10 @@ fn spawn_worker(
     pending: Arc<(Mutex<PendingState>, Condvar)>,
     latest_requested: Arc<Mutex<BTreeMap<usize, u64>>>,
     results: Arc<Mutex<BTreeMap<usize, QuickActionSearchResult>>>,
+    workspace_trust_root: PathBuf,
+    workspace_authorizations: Arc<Mutex<BTreeMap<usize, RouteWorkspaceAuthorization>>>,
 ) -> Option<JoinHandle<()>> {
+    let mut workspace_cache = WorkspaceIndexCache::new(workspace_trust_root);
     thread::Builder::new()
         .name("automexia-quick-actions".into())
         .spawn(move || loop {
@@ -341,14 +513,32 @@ fn spawn_worker(
                 continue;
             }
             for (_, request) in request {
-                let hits = index
-                    .search(&request.query, &request.context)
+                let (request_index, authorization) = workspace_cache.index_for(
+                    request.workspace_path.as_deref(),
+                    monitor.service(),
+                    &index,
+                    Instant::now(),
+                );
+                let mut context = request.context;
+                context.workspace_identity = authorization
+                    .as_ref()
+                    .map(|authorization| authorization.workspace_identity.clone());
+                context.workspace_trusted = authorization.is_some();
+                let hits = request_index
+                    .search(&request.query, &context)
                     .unwrap_or_default();
                 if lock(&latest_requested).get(&request.route_id).copied()
                     != Some(request.request_id)
                 {
                     continue;
                 }
+                let mut route_authorizations = lock(&workspace_authorizations);
+                if let Some(authorization) = authorization {
+                    route_authorizations.insert(request.route_id, authorization);
+                } else {
+                    route_authorizations.remove(&request.route_id);
+                }
+                drop(route_authorizations);
                 let result = QuickActionSearchResult {
                     request_id: request.request_id,
                     route_id: request.route_id,
@@ -366,6 +556,13 @@ fn spawn_worker(
 fn index_for_service(
     service: &QuickActionService,
 ) -> Result<ActionIndex, QuickActionRuntimeErrorCode> {
+    index_for_service_with_workspace(service, None)
+}
+
+fn index_for_service_with_workspace(
+    service: &QuickActionService,
+    workspace: Option<ActionLayer>,
+) -> Result<ActionIndex, QuickActionRuntimeErrorCode> {
     let snapshot = service.snapshot();
     let mut shell_user = Vec::new();
     let mut global_user = Vec::new();
@@ -376,7 +573,7 @@ fn index_for_service(
             _ => return Err(QuickActionRuntimeErrorCode::Index),
         }
     }
-    ActionIndex::build(vec![
+    let mut layers = vec![
         ActionLayer {
             identity: LayerIdentity::ShellUser,
             revision: snapshot.revision(),
@@ -387,8 +584,11 @@ fn index_for_service(
             revision: snapshot.revision(),
             actions: global_user,
         },
-    ])
-    .map_err(|_: IndexError| QuickActionRuntimeErrorCode::Index)
+    ];
+    if let Some(workspace) = workspace {
+        layers.push(workspace);
+    }
+    ActionIndex::build(layers).map_err(|_: IndexError| QuickActionRuntimeErrorCode::Index)
 }
 
 fn status_from_service(status: ServiceStatus) -> QuickActionRuntimeStatus {
@@ -588,5 +788,80 @@ mod tests {
                 error: QuickActionRuntimeErrorCode::InvalidQuery
             }
         );
+    }
+
+    #[test]
+    fn trusted_workspace_tasks_are_cached_off_thread_and_revocation_fails_closed() {
+        let root = tempfile::tempdir().unwrap();
+        let actions_root = root.path().join("actions");
+        let runtime = QuickActionRuntime::open(&actions_root).unwrap();
+        let workspace = root.path().join("project");
+        std::fs::create_dir(&workspace).unwrap();
+        let workspace_store =
+            super::super::WorkspaceActionStore::open(&workspace).unwrap();
+        let saved = workspace_store
+            .put_task_bridge(
+                super::super::WorkspaceTaskBridgeInput {
+                    action_id: "workspace.build".into(),
+                    display_name: "Build workspace".into(),
+                    description: "Explicit task bridge".into(),
+                    runner: automexia_devops::actions::TaskRunner::Just,
+                    task_name: "build".into(),
+                    shells: vec![ShellKind::Bash],
+                    risk: RiskClass::Mutating,
+                },
+                0,
+                false,
+            )
+            .unwrap();
+        let trust = super::super::WorkspaceTrustStore::open_or_create(
+            actions_root.join("workspace-trust"),
+        )
+        .unwrap();
+        trust.trust(&saved, 0).unwrap();
+
+        let (sender, receiver) = mpsc::channel();
+        runtime.submit_for_workspace(
+            77,
+            String::new(),
+            context(),
+            Some(workspace.clone()),
+            Box::new(move || {
+                let _ = sender.send(());
+            }),
+        );
+        receiver.recv_timeout(Duration::from_secs(2)).unwrap();
+        let result = runtime.take_result(77, 0).unwrap();
+        let action = result
+            .hits
+            .iter()
+            .find(|hit| hit.action.id == "workspace.build")
+            .unwrap()
+            .action
+            .clone();
+        assert!(runtime.workspace_action_is_authorized(77, Some(&workspace), &action));
+
+        trust
+            .revoke(workspace_store.workspace_identity(), 1)
+            .unwrap();
+        std::thread::sleep(WORKSPACE_RECONCILE + Duration::from_millis(25));
+        assert!(!runtime.workspace_action_is_authorized(77, Some(&workspace), &action));
+        let (sender, receiver) = mpsc::channel();
+        runtime.submit_for_workspace(
+            77,
+            String::new(),
+            context(),
+            Some(workspace),
+            Box::new(move || {
+                let _ = sender.send(());
+            }),
+        );
+        receiver.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(runtime
+            .take_result(77, 0)
+            .unwrap()
+            .hits
+            .iter()
+            .all(|hit| hit.action.id != "workspace.build"));
     }
 }

@@ -118,6 +118,32 @@ fn conflicts_rename_removal_and_private_receipts_fail_closed() {
     );
 }
 
+#[test]
+fn read_only_trust_lookup_never_creates_or_mutates_state() {
+    let root = tempfile::tempdir().unwrap();
+    let workspace = root.path().join("project");
+    fs::create_dir(&workspace).unwrap();
+    let trust_root = root.path().join("private-trust");
+    assert!(WorkspaceTrustStore::open_existing_read_only(&trust_root)
+        .unwrap()
+        .is_none());
+    assert!(!trust_root.exists());
+
+    let source = WorkspaceActionStore::open(&workspace).unwrap();
+    let saved = source
+        .put_task_bridge(task("workspace.build", "build"), 0, false)
+        .unwrap();
+    let writable = WorkspaceTrustStore::open_or_create(&trust_root).unwrap();
+    writable.trust(&saved, 0).unwrap();
+    let read_only = WorkspaceTrustStore::open_existing_read_only(&trust_root)
+        .unwrap()
+        .unwrap();
+    assert_eq!(read_only.load().unwrap().revision(), 1);
+    assert_eq!(
+        read_only.trust(&saved, 1).unwrap_err().code(),
+        WorkspaceErrorCode::InvalidWorkspace
+    );
+}
 #[cfg(unix)]
 #[test]
 fn linked_workspace_sources_and_trust_files_are_rejected() {
