@@ -532,8 +532,9 @@ route, admits at most 32 live routes, publishes every admitted pane fairly, and
 is joined on shutdown. A capability-free layered index revalidates each layer
 and applies distinct deterministic session, capsule, trusted-workspace,
 shell-user, global-user, and built-in precedence. Workspace entries remain
-fail-closed because workspace trust is not activated. The Command Center
-provides a keyboard-complete responsive search, placeholder, visible
+fail-closed in the CP2.2-only boundary; CP3.3 activates only an exact digest/
+revision-trusted workspace source and rechecks it before insertion. The Command
+Center provides a keyboard-complete responsive search, placeholder, visible
 risk/source/conflict/health, explicit empty and unavailable states,
 exact-command review, and explicit
 **Insert without Enter** or copy flow. Insertion uses the shell-owned editor's bracketed-paste
@@ -597,9 +598,30 @@ revisions before store creation. Fourteen pack unit/integration cases, five CLI
 parser/rendering/preflight cases, Criterion, nightly fuzz, an exact-payload
 contract, and eight mutations own CP3.2.
 
-**CP3.3 not done:** trusted native-alias import and explicit just/Task/mise task
-bridges remain separate work. The named-hardware 30-day baseline is pending
-release evidence; it does not make CP3.2's implemented source boundary partial.
+**CP3.3 fully done locally:** capability-free bounded parsers consume only an
+explicitly supplied PowerShell CSV, Bash/Zsh alias, Fish abbreviation,
+CMD/DOSKEY, or Git inventory. They reject controls/bidi, duplicates, likely
+secrets, machine paths, substitutions, pipelines, redirection, metacharacters,
+Git shell aliases, and unsupported kinds. Import requires explicit unique names,
+is dry-run first, supports portable ID rename, previews conflict/replace, and
+applies once through Quick Action revision CAS without editing native sources.
+
+Exact named just, Task, and mise bridges persist in `.automexia/actions.toml` as
+Mutating, Insert, WorkspaceRoot, WorkspaceTask actions with no aliases. Private
+path-free receipts bind workspace identity, canonical source digest, and exact
+revision; trust/revoke/put/remove are bounded, no-follow, staged, lock/CAS
+mutations. Any source/link/malformed/revoked mismatch removes the trusted layer.
+The background worker bounds ancestor walking, cache entries, reconciliation,
+and route authorization; the review and insert/copy boundaries recheck trust and
+show a textual refresh-and-review state when stale. Automexia never discovers/
+lists tasks, parses recipes, starts providers/runners, reads credentials, uses
+the network, executes tasks, synthesizes Enter, or projects workspace aliases.
+
+Fourteen named regressions, Unix no-follow cases, the schema-1 contract and
+mutations, aggregate source ratchets, nightly fuzzing, parser/trust benchmarks,
+CI/xtask wiring, ADR 0021, and synchronized documentation own CP3.3. Hosted
+native/accessibility and named-hardware 30-day measurements remain release
+evidence, not missing CP3.3 source implementation.
 
 ### CP4 — capsule/provider-aware productivity
 

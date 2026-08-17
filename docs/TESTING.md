@@ -1224,12 +1224,13 @@ Twenty-one owned alias-store regressions span common, three Windows-native, and 
 Unix-permission/link cases (19 run on Windows and 18 on Unix), with three focused
 CLI detail regressions and seven CLI parser cases. A hostile-manifest property,
 cross-process lock contention, the schema-1 CP3.1 contract, eight mutations,
-workflow evidence checks, and the aggregate CP2-CP3.2 checker prevent publication-
+workflow evidence checks, and the aggregate CP2-CP3.3 checker prevent publication-
 order, capability, security, UX, lifecycle, and documentation drift. Local WSL
 also passes the Unix unsafe-artifact-permission case. Published hosted native
 Windows/Linux/macOS/WSL results and the 30-day resource baseline remain release
-evidence. CP3.2 static actions ship disabled and unaliased; CP3.3 bridges remain
-not implemented.
+evidence. CP3.2 static actions remain disabled and unaliased. CP3.3 native
+imports and trusted task bridges are fully implemented locally, insert-only,
+unaliasable, explicitly selected/trusted, and separately revocable.
 ## Command-productivity CP0 contract
 
 CP0 is a non-runtime policy boundary. It does not enable managed completion,
@@ -1460,3 +1461,48 @@ inventory, capability denial, exact preview UX, alias safety, lifecycle, source,
 tests, benchmark, fuzz, CI wiring, and eight CP3.2 documents. Hosted
 cross-platform and
 30-day comparable measurements remain release evidence.
+## CP3.3 native imports and trusted workspace task bridges
+
+CP3.3 is fully done at the local source boundary. Run the focused evidence with:
+
+```text
+cargo test -p automexia-devops --test quick_action_imports --locked
+cargo test -p automexia-terminal --test quick_action_native_import --locked
+cargo test -p automexia-terminal --test quick_action_workspace_trust --locked
+cargo test -p automexia-terminal trusted_workspace_tasks_are_cached_off_thread_and_revocation_fails_closed --lib --locked
+cargo test -p automexia-terminal cp33_native_import_and_workspace_mutations_are_explicit_and_cas_guarded --lib --locked
+cargo check --manifest-path fuzz/Cargo.toml --bin quick_action_imports
+cargo bench -p automexia-devops --bench quick_actions --no-run --locked
+python tools/ci/check_command_productivity_cp33.py
+python tools/ci/test_command_productivity_cp33.py
+python tools/ci/check_command_productivity.py
+python tools/ci/test_command_productivity.py
+python tools/ci/check_devops_alias_spec.py
+python tools/ci/test_devops_alias_spec.py
+```
+
+The 14 named cross-platform regressions comprise five capability-free parser/
+task/trust cases, three application import cases, four workspace/trust cases,
+one background runtime revocation case, and one CLI parser case. Twelve execute
+on Windows; the two additional Unix cases create real linked inventory,
+workspace, and trust sources and prove no-follow rejection. Coverage includes
+all six native formats, exact just/Task/mise argv, secret/control/bidi/path/
+substitution/pipeline/metacharacter rejection, explicit selection, stable rename,
+conflict/replace, portable export, source preservation, dry-run/CAS, private
+path-free receipts, source-change invalidation, revocation, removal, read-only
+no-side-effect lookup, bounded background cache authorization, and final
+review/insertion failure UX.
+
+The schema-1 contract freezes six formats, three runners, six commands, 18
+security assertions, 12 lifecycle assertions, ten reviewed source files, all
+named tests, twelve synchronized documents, the benchmark, and the fuzz target.
+Seven mutation tests weaken inventories, security/lifecycle values, parser/
+trust/runtime/UI guards, dry-run/CAS dispatch, test evidence, benchmark, fuzz,
+duplicate keys, and nightly registration. The aggregate CP2-CP3.3 checkers keep
+the pure and application capability allowlists exact.
+
+A short local Windows release-profile Criterion run on 2026-08-17 measured
+1,024 Bash alias records at 9.7948-12.291 ms and exact workspace trust
+verification at 20.081-21.105 us (10 samples, one-second measurement window).
+These measurements prove the target and current bound; they do not replace the
+controlled named-hardware 30-day baseline or hosted native/accessibility gates.

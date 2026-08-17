@@ -34,7 +34,7 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | CP3.0 | The pure five-shell compiler recomputes source identity; requires complete collision/completion/tool evidence; verifies owner, structured, body, and rollback identities; retains degraded tool UX detail; and has serializer/native/tamper tests, all-shell fuzzing, a 256-binding benchmark, and mutation ratchets with activation disabled. |
 | **Fully done** | CP3.1 | Explicit opt-in persistent aliases, crash-safe atomic generations, active/rollback topology and permission verification, exact compiler-bound native startup/reload, detailed reusable-CAS dry runs, stable diagnostics, rollback, exact uninstall, and WSL lifecycle gates are implemented at the source/local boundary. |
 | **Fully done** | CP3.2 | Eleven reviewed static DevOps packs provide 33 disabled-by-default typed actions, an exact-payload digest, truthful health/version/completion evaluation, correct update/overlay/deprecation semantics, exact review previews, stale-revision preflight, and fail-closed alias eligibility. |
-| **Not done** | CP3.3 | Trusted native-alias import and task-runner bridges are not implemented. |
+| **Fully done** | CP3.3 | Explicit selected PowerShell/Bash/Zsh/Fish/CMD/Git alias import and exact just/Task/mise workspace bridges are dry-run/CAS managed, bounded, insert-only, path-free digest/revision trusted, revocable, removal-safe, runtime-authorized, fuzzed, benchmarked, and mutation-gated. |
 | **Not done** | CP4 | Capsule/provider actions wait for activated D3 and D5/D6 context. |
 | **Not done** | CP5.0-CP5.6 | The optional suggestion bridge/UI is planned; CP1 remains the complete fallback. |
 | **Not done** | CP6 | Signed ecosystem packs and AI tools are deferred to later gates. |
@@ -396,8 +396,16 @@ remains disabled behind D3.
   exact argv/effect/risk/documentation previews and stale-revision preflight
   protect enablement; fuzzing, benchmarks, eight mutations, and synchronized
   documentation gate the phase.
-- **Not done** — CP3.3 trusted native-alias import and task-runner bridges remain
-  separate and are not activated by CP3.2.
+- **Fully done** — CP3.3 consumes only explicitly supplied native inventories
+  for PowerShell, Bash, Zsh, Fish, CMD/DOSKEY, and Git; imports only explicitly
+  selected simple fixed-token actions through dry-run/CAS conflict and rename
+  review; and leaves native sources untouched.
+- **Fully done** — exact just, Task, and mise task bridges persist only named
+  insert-only workspace actions. Private path-free digest/revision receipts,
+  explicit trust/revocation/removal, bounded background ancestor/cache refresh,
+  and review/insertion authorization checks fail closed on source change.
+  Automexia never lists tasks, parses recipes, runs providers, reads credentials,
+  accesses the network, executes tasks, or projects workspace aliases.
 
 #### CP5 Shell Completion and Suggestions order
 
@@ -603,7 +611,7 @@ detailed implementation and exit gates. The version assignment is:
 | Performance | Execute Criterion, collect 30-day baselines, record startup/interaction/resource data | Enforce ratchets and add SSH index/connect/tunnel/saturation budgets | Add CLI/config/API refresh and 10/50/100-session budgets | Add public SDK/sandbox overhead budgets |
 | Native assurance | AppVerifier/WPR and controlled Windows/Linux/macOS GPU/shell matrices | System OpenSSH, agents, certificates, host keys, jumps, tunnels, cancellation, and cleanup on each OS | Official provider CLIs, Kubernetes/OpenShift, SSM/Bastion/IAP, offline/expiry paths | Sandboxed third-party and AI extension isolation |
 | Test-strength/security ratchets | Longer fuzz corpora and Automexia-owned coverage baseline | Fuzz config/index/IPC/diagnostics; mutation-test policy and argv validation | Fuzz provider/config/exec-plugin adapters; audit SDK/CLI supply chain | Public extension supply-chain, signature, revocation, and capability audits |
-| Command productivity | CP0 baseline plus CP1 shell-native managed completion, diagnostics, explicit bounded refresh, and CMD fallback; no action-store claim | CP2-CP3: typed persistent actions, opt-in aliases, static DevOps packs | CP4: capsule/provider-aware cached actions with freshness and brokered exact launch | CP5/CP6: optional editor bridge and signed ecosystem packs after separate gates |
+| Command productivity | CP0 baseline plus CP1 shell-native managed completion, diagnostics, explicit bounded refresh, and CMD fallback; no action-store claim | CP2-CP3.3: typed persistent actions, opt-in aliases, static DevOps packs, selected native imports, and trusted exact workspace task bridges | CP4: capsule/provider-aware cached actions with freshness and brokered exact launch | CP5/CP6: optional editor bridge and signed ecosystem packs after separate gates |
 
 No single host or test layer may claim complete assurance. Pull requests prove
 deterministic contracts, nightly jobs explore expensive state and native

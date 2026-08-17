@@ -91,12 +91,14 @@ The documentation is organized by reader intent:
 - [Command productivity](COMMAND-PRODUCTIVITY.md): CP0 architecture baseline,
   shipped CP1 native completion, locally implemented CP2.2 reviewed Quick
   Actions, pure CP3.0 shell projection compilation, explicit CP3.1 persistent
-  aliases, fully implemented CP3.2 reviewed static DevOps packs, and the ordered
-  CP3.3-CP6 plan including local-only CP5 suggestions.
+  aliases, fully implemented CP3.2 reviewed static DevOps packs, fully
+  implemented CP3.3 selected native imports and exact trusted-workspace task
+  bridges, and the ordered CP4-CP6 plan including local-only CP5 suggestions.
 - [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md): implemented
   CP2 model/persistence/review, CP3.0 pure five-shell compiler, CP3.1 private
-  transactional activation, and CP3.2's 11 manifests/33 disabled-by-default
-  actions with health, update, alias-safety, security budgets, and gates.
+  transactional activation, CP3.2's 11 manifests/33 disabled-by-default
+  actions, and CP3.3's selected native imports and exact trusted-workspace task
+  bridges with revocation-aware runtime authorization and security gates.
 - [Command-productivity compatibility](COMMAND-PRODUCTIVITY-COMPATIBILITY.md):
   accepted shell/editor ownership, provider, precedence, fallback, and
   platform contract.

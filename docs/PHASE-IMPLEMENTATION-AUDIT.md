@@ -99,7 +99,7 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Productivity | CP3.0 | **Fully implemented at pure boundary** | **Partial** | Five pure serializers, bounded inventories, metadata/tamper verification, tests, fuzz, benchmark, and policy ratchets are complete; activation is disabled and hosted native evidence remains. |
 | Productivity | CP3.1 | **Fully implemented locally** | **Partial** | Explicit opt-in persistence, crash-safe all-old/all-new publication, verified five-shell startup/reload, diagnostics, rollback, and exact uninstall are implemented; hosted native/macOS/WSL and controlled-baseline evidence remains. |
 | Productivity | CP3.2 | **Fully implemented locally** | **Partial** | Eleven static provider packs, 33 disabled-by-default actions, health/update/alias-safety, CLI, tests, fuzz, benchmarks, and policy gates are complete; hosted evidence remains. |
-| Productivity | CP3.3 | **Not implemented** | **Not started** | Trusted native-alias import and task-runner bridges remain. |
+| Productivity | CP3.3 | **Fully implemented locally** | **Partial** | Six explicit native inventory formats, exact just/Task/mise bridges, bounded dry-run/CAS import/workspace/trust/revocation/removal, path-free digest/revision receipts, background cache authorization, final insertion recheck, tests, mutation, fuzz, benchmark, ADR, CLI, and docs are complete; hosted native/accessibility and 30-day evidence remain. |
 | Productivity | CP4 | **Not implemented** | **Blocked** | Requires activated D3 and D5/D6 capsule/provider context. |
 | Productivity | CP5.0-CP5.6 | **Not implemented** | **Not started** | Detailed bridge/sources/ranking/UI/release plan exists; CP1 remains fallback. |
 | Productivity | CP6 | **Not implemented; deferred** | **Blocked by design** | Signed ecosystem packs and AI tools require v0.6 gates. |
@@ -696,9 +696,23 @@ not missing source behavior.
 
 ### CP3.3 — import and trusted task bridges
 
-**Not implemented.** Needs dry-run simple-alias import; trusted named just/Task/
-mise insertion; no recipe evaluation or automatic listing; hostile trust/
-revocation/conflict/export/removal tests.
+**Fully implemented locally; release assurance partial.**
+
+Capability-free parsers cover explicit PowerShell CSV, Bash/Zsh alias, Fish
+abbreviation, CMD/DOSKEY, and Git inventories; reject controls/bidi, duplicates,
+likely secrets, paths, substitutions, pipelines, metacharacters, and Git shell
+aliases; and create only explicitly selected independent Mutating/Insert actions.
+App-owned bounded no-follow import uses dry-run/CAS conflict and rename review.
+Exact named just/Task/mise workspace bridges persist in `.automexia/actions.toml`
+without recipe parsing, listing, discovery, providers, network, credentials, or
+execution. Private path-free digest/revision receipts, trust/revoke/remove,
+source-change invalidation, bounded ancestor/cache reconciliation, short route
+authorization, and review/insertion rechecks fail closed with textual UX.
+
+Fourteen named parser/import/trust/runtime/CLI regressions, Unix link cases,
+contract mutations, aggregate capability ratchets, nightly fuzzing, Criterion
+parser/trust targets, CI/xtask wiring, ADR 0021, and synchronized documentation
+are present. Hosted native/accessibility and controlled 30-day evidence remain.
 
 ### CP4 — capsule/provider actions
 

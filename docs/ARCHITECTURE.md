@@ -753,3 +753,40 @@ are frozen by the CP3.2 machine contract, reviewed digest assertion, mutation
 checker, integration/CLI tests, Criterion targets,
 and nightly libFuzzer target. CP3.3 imports and task bridges are outside this
 boundary.
+## CP3.3 native import and trusted workspace boundary
+
+CP3.3 is fully implemented with the same capability-free/application-owned
+split and adds no process, network, credential, recipe, provider, or task
+execution authority:
+
+- `automexia-devops/src/actions/imports.rs` owns the six bounded native inventory
+  parsers, rejection codes, imported-action construction, exact task-bridge
+  construction, canonical workspace source digest, trust receipt, and trusted
+  layer validation. It has no filesystem, environment, process, network, UI,
+  PTY, shell-profile, or execution dependency.
+- `native_import.rs` performs bounded no-follow reads of an explicitly supplied
+  inventory, requires unique selected names, previews conflicts and explicit ID
+  renames, and applies one existing-store revision CAS transaction. It neither
+  discovers native aliases nor modifies their source.
+- `workspace.rs` owns `.automexia/actions.toml`, exact just/Task/mise bridge
+  put/remove, stable path-derived workspace identity, locks, staged atomic
+  persistence, and the private `workspace-trust.toml`. Trust receipts omit paths
+  and bind identity, canonical digest, and exact revision. Read-only lookup
+  validates existing private topology and cannot create or mutate state.
+- `worker.rs` resolves a candidate through at most 64 ancestors off the renderer,
+  input, and PTY paths; builds a validated workspace layer only with an exact
+  receipt; admits at most 32 cached workspace indexes; and reconciles after 250
+  ms. Per-route authorization binds requested path and workspace identity and
+  expires after 30 seconds. A changed/malformed/linked/revoked source removes
+  both the layer and authorization.
+- `action_surface.rs` supplies the pane's current directory to the worker and
+  rechecks authorization before review and again before insert/copy. Failure
+  clears confirmation/expansion and exposes a textual refresh-and-review state.
+  No CP3.3 action synthesizes Enter, exact launch, or alias projection.
+
+The schema-1 CP3.3 contract freezes ten reviewed source files, security and
+lifecycle invariants, fourteen named tests, nightly fuzz registration, parser/
+trust benchmarks, synchronized documentation, and aggregate CI/xtask wiring.
+[ADR 0021](adr/0021-trusted-workspace-task-bridges.md) records the durable trust
+and no-discovery decision. Unresolvable WSL guest-only paths fail closed because
+the desktop process cannot authenticate their host filesystem source.

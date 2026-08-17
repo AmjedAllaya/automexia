@@ -297,3 +297,38 @@ and stale overlay digests while preserving valid user overlays and distinguishin
 version-only provenance changes from functional updates. Contract mutations,
 hostile version/manifest tests, fuzzing, and nightly gates keep these denials
 fail-closed.
+## CP3.3 implemented controls
+
+CP3.3 treats native inventories and repository task configuration as attacker-
+controlled input. Automexia never creates an inventory or starts a shell, Git,
+task runner, provider, network, authentication, or credential operation during
+import, search, review, doctor, or trust verification.
+
+- Bounded capability-free parsers reject invalid UTF-8/control/bidirectional
+  text, duplicates, likely secrets, machine paths, substitutions, pipelines,
+  redirections, shell metacharacters, Git shell aliases, and unsupported native
+  kinds. Only explicit unique selections can become Mutating, Insert, Imported
+  actions, and no imported alias projection is created.
+- Inventory reads are bounded regular no-follow reads. Preview exposes selected
+  actions and conflicts; apply requires exact store revision CAS and explicit
+  replacement. Native files remain untouched, so removal affects only the
+  independent Automexia action.
+- Task bridges accept only one safe explicit task identifier and construct exact
+  just/Task/mise argv. They are TrustedWorkspace, WorkspaceRoot, Mutating,
+  Insert, WorkspaceTask provenance with no alias or exact-launch path. Recipe
+  bodies and task discovery/listing are never parsed or invoked.
+- Workspace and trust state use bounded no-follow files, nonblocking locks,
+  staged atomic persistence, and revision CAS. The private trust receipt omits
+  workspace paths and binds stable identity, canonical digest, and exact source
+  revision. Source change, duplicate/malformed receipt, symlink/special-file
+  topology, revocation, and revision/digest/identity mismatch fail closed.
+- Read-only trust lookup has no create/write path. The worker bounds ancestor
+  walking to 64, cache entries to 32, reconciliation to 250 ms, and route
+  authorization to 30 seconds. Review and insertion/copy recheck path and
+  identity; stale state removes confirmation and shows a textual unavailable
+  refresh-and-review result.
+
+The CP3.3 contract and mutation suite freeze all of these denials plus the
+source boundary, named regressions, benchmark, fuzz target, nightly registration,
+CI/xtask wiring, and synchronized security documentation. WSL guest-only paths
+that cannot be authenticated through the host filesystem fail closed.
