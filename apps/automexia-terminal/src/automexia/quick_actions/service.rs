@@ -62,6 +62,18 @@ impl QuickActionService {
         })
     }
 
+    pub fn open_read_only(store: QuickActionStore) -> Result<Self, StoreError> {
+        let loaded = store.load_read_only()?;
+        let status = status_for_loaded(&loaded.snapshot, loaded.rejected_primary);
+        Ok(Self {
+            store,
+            state: Arc::new(RwLock::new(ServiceState {
+                snapshot: loaded.snapshot,
+                status,
+            })),
+        })
+    }
+
     pub fn store(&self) -> &QuickActionStore {
         &self.store
     }

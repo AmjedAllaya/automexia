@@ -2,7 +2,6 @@
 rem Automexia Command Prompt integration. This file is installed with the two
 rem base64 placeholders below resolved for the current Windows account.
 if /I not "%TERM_PROGRAM%"=="Automexia" if not "%AUTOMEXIA_SHELL_INTEGRATION%"=="1" goto :eof
-if defined AUTOMEXIA_CMD_INTEGRATION_LOADED goto :eof
 
 set "AUTOMEXIA_CMD_INTEGRATION_LOADED=1"
 set "AUTOMEXIA_SHELL_INTEGRATION=1"
@@ -41,3 +40,32 @@ if not "%AUTOMEXIA_PLAIN_LS%"=="1" (
 set "AUTOMEXIA_ESC="
 set "AUTOMEXIA_CMD_IDENTITY="
 set "AUTOMEXIA_CMD_PROMPT_GLYPH="
+rem CP3.1 aliases are verified once as a complete immutable generation, then
+rem DOSKEY loads the exact reviewed macro file. No per-alias process is created.
+set "AUTOMEXIA_ALIAS_CONFIG_ROOT=%AUTOMEXIA_CONFIG_HOME%"
+if not defined AUTOMEXIA_ALIAS_CONFIG_ROOT set "AUTOMEXIA_ALIAS_CONFIG_ROOT=%LOCALAPPDATA%\Automexia\Terminal"
+set "AUTOMEXIA_ALIAS_STATE=FAILED"
+set "AUTOMEXIA_ALIAS_GENERATION="
+set "AUTOMEXIA_ALIAS_FILE="
+set "AUTOMEXIA_ALIAS_NAMES="
+set "AUTOMEXIA_ALIAS_RESULT="
+set "AUTOMEXIA_ALIAS_POWERSHELL=powershell.exe"
+where pwsh.exe >nul 2>nul && set "AUTOMEXIA_ALIAS_POWERSHELL=pwsh.exe"
+for /f "usebackq delims=" %%R in (`%AUTOMEXIA_ALIAS_POWERSHELL% -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%~dp0automexia-alias-loader.ps1" -ConfigRoot "%AUTOMEXIA_ALIAS_CONFIG_ROOT%"`) do set "AUTOMEXIA_ALIAS_RESULT=%%R"
+for /f "tokens=1-4 delims=|" %%A in ("%AUTOMEXIA_ALIAS_RESULT%") do (
+  set "AUTOMEXIA_ALIAS_STATE=%%A"
+  set "AUTOMEXIA_ALIAS_GENERATION=%%B"
+  set "AUTOMEXIA_ALIAS_FILE=%%C"
+  set "AUTOMEXIA_ALIAS_NAMES=%%D"
+)
+if /I "%AUTOMEXIA_ALIAS_STATE%"=="READY" doskey /macrofile="%AUTOMEXIA_ALIAS_FILE%"
+
+doskey /macros | findstr /B /I /L "automexia_aliases_health=" >nul 2>nul
+if errorlevel 1 where automexia_aliases_health >nul 2>nul
+if errorlevel 1 doskey automexia_aliases_health=echo state=%AUTOMEXIA_ALIAS_STATE% generation=%AUTOMEXIA_ALIAS_GENERATION% names=%AUTOMEXIA_ALIAS_NAMES%
+doskey /macros | findstr /B /I /L "automexia_aliases_reload=" >nul 2>nul
+if errorlevel 1 where automexia_aliases_reload >nul 2>nul
+if errorlevel 1 doskey automexia_aliases_reload=echo Open a new CMD session to activate a different verified alias generation safely.
+
+set "AUTOMEXIA_ALIAS_RESULT="
+set "AUTOMEXIA_ALIAS_POWERSHELL="

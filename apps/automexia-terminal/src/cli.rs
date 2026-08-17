@@ -1,7 +1,7 @@
 // cli.rs was retired originally from https://github.com/alacritty/alacritty/blob/e35e5ad14fce8456afdd89f2b392b9924bb27471/alacritty/src/cli.rs
 // which is licensed under Apache 2.0 license.
 
-use clap::{Args, Parser, Subcommand, ValueHint};
+use clap::{Args, Parser, Subcommand, ValueEnum, ValueHint};
 use rio_backend::config::Shell;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -24,6 +24,8 @@ pub enum CliCommand {
     ShellIntegration(ShellIntegrationCommand),
     /// Search and manage typed Quick Actions without opening a window.
     Actions(ActionsCommand),
+    /// Preview, publish, reload, diagnose, or roll back opt-in aliases.
+    Aliases(AliasesCommand),
 }
 
 #[derive(Args, Debug)]
@@ -121,6 +123,168 @@ pub enum ActionsAction {
         #[clap(long)]
         json: bool,
     },
+}
+
+#[derive(Args, Debug)]
+pub struct AliasesCommand {
+    #[clap(subcommand)]
+    pub action: AliasesAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AliasesAction {
+    /// List saved alias projections and their activation state.
+    List {
+        #[clap(long, value_enum)]
+        shell: Option<AliasShell>,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Compile all shells without writing generated or canonical state.
+    Preview {
+        /// Limit detailed output to one shell.
+        #[clap(long, value_enum)]
+        shell: Option<AliasShell>,
+        /// Include the exact generated shell source in reviewed output.
+        #[clap(long)]
+        show_source: bool,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Verify compiler invariants and installed native shell parsers.
+    Test {
+        /// Limit validation to one shell.
+        #[clap(long, value_enum)]
+        shell: Option<AliasShell>,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Add or enable one reviewed alias projection, then publish all shells.
+    Enable {
+        id: String,
+        #[clap(long)]
+        name: String,
+        #[clap(long, value_enum, required = true)]
+        shell: Vec<AliasShell>,
+        #[clap(long, value_enum, default_value = "forward-all")]
+        argument_policy: AliasArgumentPolicy,
+        #[clap(long, value_enum, default_value = "best-effort")]
+        completion: AliasCompletion,
+        #[clap(long)]
+        mutating_acknowledged: bool,
+        /// Consent to overriding only the observed owner with this exact digest.
+        #[clap(long)]
+        override_owner_fingerprint: Option<String>,
+        /// Apply the reviewed source and generation transaction.
+        #[clap(long, requires_all = ["expected_revision", "expected_generation"])]
+        apply: bool,
+        #[clap(long, requires = "apply")]
+        expected_revision: Option<u64>,
+        /// Current generation digest, `empty`, or `disabled`.
+        #[clap(long, requires = "apply")]
+        expected_generation: Option<String>,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Disable one projection (or one shell) and republish all shells.
+    Disable {
+        id: String,
+        #[clap(long, value_enum)]
+        shell: Option<AliasShell>,
+        #[clap(long, requires_all = ["expected_revision", "expected_generation"])]
+        apply: bool,
+        #[clap(long, requires = "apply")]
+        expected_revision: Option<u64>,
+        #[clap(long, requires = "apply")]
+        expected_generation: Option<String>,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Rename one alias and republish all shells.
+    Rename {
+        id: String,
+        name: String,
+        #[clap(long, requires_all = ["expected_revision", "expected_generation"])]
+        apply: bool,
+        #[clap(long, requires = "apply")]
+        expected_revision: Option<u64>,
+        #[clap(long, requires = "apply")]
+        expected_generation: Option<String>,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Recompile the saved source and atomically publish one generation.
+    Regenerate {
+        #[clap(long, requires = "expected_generation")]
+        apply: bool,
+        #[clap(long, requires = "apply")]
+        expected_generation: Option<String>,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Disable all generated aliases without deleting saved actions.
+    DisableAll {
+        #[clap(long, requires = "expected_generation")]
+        apply: bool,
+        #[clap(long, requires = "apply")]
+        expected_generation: Option<String>,
+    },
+    /// Swap the current and one retained previous generation.
+    Rollback {
+        current_generation: String,
+        #[clap(long)]
+        apply: bool,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Report source, generation, integrity, and reload health without repairs.
+    Doctor {
+        #[clap(long)]
+        json: bool,
+    },
+    /// Explain the explicit shell-native reload command for the current shell.
+    Reload {
+        #[clap(long, value_enum)]
+        shell: AliasShell,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum AliasShell {
+    Powershell,
+    Bash,
+    Zsh,
+    Fish,
+    Cmd,
+}
+
+impl From<AliasShell> for automexia_devops::actions::ShellKind {
+    fn from(value: AliasShell) -> Self {
+        match value {
+            AliasShell::Powershell => Self::Powershell,
+            AliasShell::Bash => Self::Bash,
+            AliasShell::Zsh => Self::Zsh,
+            AliasShell::Fish => Self::Fish,
+            AliasShell::Cmd => Self::Cmd,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum AliasArgumentPolicy {
+    None,
+    ForwardAll,
+    TypedBindings,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum AliasCompletion {
+    Required,
+    BestEffort,
+    Disabled,
 }
 
 #[derive(Args, Debug)]
@@ -229,6 +393,112 @@ mod tests {
                     apply: true,
                     expected_revision: Some(7),
                     ..
+                }
+            }))
+        ));
+    }
+
+    #[test]
+    fn alias_mutations_are_dry_run_and_apply_requires_both_cas_values() {
+        let preview = Cli::try_parse_from([
+            "automexia",
+            "aliases",
+            "enable",
+            "git.status",
+            "--name",
+            "gst",
+            "--shell",
+            "bash",
+        ])
+        .unwrap();
+        assert!(matches!(
+            preview.command,
+            Some(CliCommand::Aliases(AliasesCommand {
+                action: AliasesAction::Enable { apply: false, .. }
+            }))
+        ));
+
+        assert!(Cli::try_parse_from([
+            "automexia",
+            "aliases",
+            "enable",
+            "git.status",
+            "--name",
+            "gst",
+            "--shell",
+            "bash",
+            "--apply",
+            "--expected-revision",
+            "7",
+        ])
+        .is_err());
+
+        let apply = Cli::try_parse_from([
+            "automexia",
+            "aliases",
+            "enable",
+            "git.status",
+            "--name",
+            "gst",
+            "--shell",
+            "bash",
+            "--apply",
+            "--expected-revision",
+            "7",
+            "--expected-generation",
+            "empty",
+        ])
+        .unwrap();
+        assert!(matches!(
+            apply.command,
+            Some(CliCommand::Aliases(AliasesCommand {
+                action: AliasesAction::Enable {
+                    apply: true,
+                    expected_revision: Some(7),
+                    ..
+                }
+            }))
+        ));
+    }
+
+    #[test]
+    fn alias_preview_and_fixture_test_are_explicit_and_non_mutating() {
+        let preview = Cli::try_parse_from([
+            "automexia",
+            "aliases",
+            "preview",
+            "--shell",
+            "zsh",
+            "--show-source",
+            "--json",
+        ])
+        .unwrap();
+        assert!(matches!(
+            preview.command,
+            Some(CliCommand::Aliases(AliasesCommand {
+                action: AliasesAction::Preview {
+                    shell: Some(AliasShell::Zsh),
+                    show_source: true,
+                    json: true,
+                }
+            }))
+        ));
+
+        let fixture_test = Cli::try_parse_from([
+            "automexia",
+            "aliases",
+            "test",
+            "--shell",
+            "powershell",
+            "--json",
+        ])
+        .unwrap();
+        assert!(matches!(
+            fixture_test.command,
+            Some(CliCommand::Aliases(AliasesCommand {
+                action: AliasesAction::Test {
+                    shell: Some(AliasShell::Powershell),
+                    json: true,
                 }
             }))
         ));

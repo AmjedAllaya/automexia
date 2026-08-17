@@ -20,6 +20,104 @@ pub(super) fn ensure_private_directory(path: &Path) -> Result<(), StoreError> {
     apply_private_permissions(path, true)
 }
 
+/// Create the application-owned `<config>/generated/aliases` chain without
+/// following a link or reparse point at any managed component.
+pub(super) fn ensure_private_aliases_directory(path: &Path) -> Result<(), StoreError> {
+    let (config, generated) = alias_directory_chain(path)?;
+    for candidate in [config, generated, path] {
+        match fs::symlink_metadata(candidate) {
+            Ok(metadata) => validate_directory(&metadata)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir(candidate).map_err(StoreError::io)?;
+                validate_directory(
+                    &fs::symlink_metadata(candidate).map_err(StoreError::io)?,
+                )?;
+            }
+            Err(error) => return Err(StoreError::io(error)),
+        }
+        apply_private_permissions(candidate, true)?;
+    }
+    validate_private_aliases_directory(path)
+}
+
+pub(super) fn validate_private_aliases_directory(path: &Path) -> Result<(), StoreError> {
+    let (config, generated) = alias_directory_chain(path)?;
+    for candidate in [config, generated, path] {
+        validate_directory(&fs::symlink_metadata(candidate).map_err(StoreError::io)?)?;
+    }
+    apply_private_permissions(generated, true)?;
+    apply_private_permissions(path, true)
+}
+
+pub(super) fn ensure_private_child_directory(path: &Path) -> Result<(), StoreError> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| StoreError::new(StoreErrorCode::InvalidRoot))?;
+    validate_directory(&fs::symlink_metadata(parent).map_err(StoreError::io)?)?;
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => validate_directory(&metadata)?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::create_dir(path).map_err(StoreError::io)?;
+            validate_directory(&fs::symlink_metadata(path).map_err(StoreError::io)?)?;
+        }
+        Err(error) => return Err(StoreError::io(error)),
+    }
+    apply_private_permissions(path, true)
+}
+
+pub(super) fn validate_private_child_directory(path: &Path) -> Result<(), StoreError> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| StoreError::new(StoreErrorCode::InvalidRoot))?;
+    validate_directory(&fs::symlink_metadata(parent).map_err(StoreError::io)?)?;
+    validate_directory(&fs::symlink_metadata(path).map_err(StoreError::io)?)?;
+    apply_private_permissions(path, true)
+}
+
+pub(super) fn inspect_private_aliases_directory(path: &Path) -> Result<(), StoreError> {
+    let (config, generated) = alias_directory_chain(path)?;
+    for candidate in [config, generated, path] {
+        let metadata = fs::symlink_metadata(candidate).map_err(StoreError::io)?;
+        validate_directory(&metadata)?;
+        if candidate != config && !private_permissions_are_safe(candidate, &metadata)? {
+            return Err(StoreError::new(StoreErrorCode::PrivatePermissions));
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn inspect_private_child_directory(path: &Path) -> Result<(), StoreError> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| StoreError::new(StoreErrorCode::InvalidRoot))?;
+    validate_directory(&fs::symlink_metadata(parent).map_err(StoreError::io)?)?;
+    let metadata = fs::symlink_metadata(path).map_err(StoreError::io)?;
+    validate_directory(&metadata)?;
+    if !private_permissions_are_safe(path, &metadata)? {
+        return Err(StoreError::new(StoreErrorCode::PrivatePermissions));
+    }
+    Ok(())
+}
+
+pub(super) fn inspect_private_file(path: &Path) -> Result<(), StoreError> {
+    let metadata = fs::symlink_metadata(path).map_err(StoreError::io)?;
+    validate_regular(&metadata)?;
+    if !private_permissions_are_safe(path, &metadata)? {
+        return Err(StoreError::new(StoreErrorCode::PrivatePermissions));
+    }
+    Ok(())
+}
+
+pub(super) fn inspect_private_directory(path: &Path) -> Result<(), StoreError> {
+    validate_managed_directory_chain(path)?;
+    let metadata = fs::symlink_metadata(path).map_err(StoreError::io)?;
+    validate_directory(&metadata)?;
+    if !private_permissions_are_safe(path, &metadata)? {
+        return Err(StoreError::new(StoreErrorCode::PrivatePermissions));
+    }
+    Ok(())
+}
+
 pub(super) fn validate_private_directory(path: &Path) -> Result<(), StoreError> {
     validate_managed_directory_chain(path)?;
     let metadata = fs::symlink_metadata(path).map_err(StoreError::io)?;
@@ -105,6 +203,10 @@ pub(super) fn apply_private_file_permissions(path: &Path) -> Result<(), StoreErr
     apply_private_permissions(path, false)
 }
 
+pub(super) fn apply_private_directory_permissions(path: &Path) -> Result<(), StoreError> {
+    apply_private_permissions(path, true)
+}
+
 #[cfg(unix)]
 pub(super) fn sync_directory(path: &Path) -> Result<(), StoreError> {
     File::open(path)
@@ -133,6 +235,21 @@ fn validate_managed_directory_chain(path: &Path) -> Result<(), StoreError> {
     }
     Ok(())
 }
+
+fn alias_directory_chain(path: &Path) -> Result<(&Path, &Path), StoreError> {
+    if !path.is_absolute() || path.file_name().is_none_or(|name| name != "aliases") {
+        return Err(StoreError::new(StoreErrorCode::InvalidRoot));
+    }
+    let generated = path
+        .parent()
+        .filter(|parent| parent.file_name().is_some_and(|name| name == "generated"))
+        .ok_or_else(|| StoreError::new(StoreErrorCode::InvalidRoot))?;
+    let config = generated
+        .parent()
+        .ok_or_else(|| StoreError::new(StoreErrorCode::InvalidRoot))?;
+    Ok((config, generated))
+}
+
 fn validate_directory(metadata: &Metadata) -> Result<(), StoreError> {
     if is_link_or_reparse(metadata) {
         return Err(StoreError::new(StoreErrorCode::LinkRejected));
@@ -338,6 +455,96 @@ fn apply_private_permissions(path: &Path, _directory: bool) -> Result<(), StoreE
 #[cfg(not(any(unix, windows)))]
 fn apply_private_permissions(_path: &Path, _directory: bool) -> Result<(), StoreError> {
     Err(StoreError::new(StoreErrorCode::PrivatePermissions))
+}
+
+#[cfg(unix)]
+fn private_permissions_are_safe(
+    _path: &Path,
+    metadata: &Metadata,
+) -> Result<bool, StoreError> {
+    use std::os::unix::fs::PermissionsExt as _;
+    Ok(metadata.permissions().mode() & 0o077 == 0)
+}
+
+#[cfg(windows)]
+fn private_permissions_are_safe(
+    path: &Path,
+    _metadata: &Metadata,
+) -> Result<bool, StoreError> {
+    use std::{ffi::OsStr, mem, os::windows::ffi::OsStrExt as _, ptr};
+    use windows_sys::Win32::{
+        Foundation::LocalFree,
+        Security::{
+            AclSizeInformation,
+            Authorization::{GetNamedSecurityInfoW, SE_FILE_OBJECT},
+            GetAclInformation, GetSecurityDescriptorControl, ACL_SIZE_INFORMATION,
+            DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, SE_DACL_PROTECTED,
+        },
+    };
+
+    struct Descriptor(PSECURITY_DESCRIPTOR);
+    impl Drop for Descriptor {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                // SAFETY: GetNamedSecurityInfoW returns LocalAlloc memory.
+                unsafe { LocalFree(self.0.cast()) };
+            }
+        }
+    }
+
+    let wide = OsStr::new(path)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let mut acl = ptr::null_mut();
+    let mut descriptor = ptr::null_mut();
+    // SAFETY: path is NUL-terminated and all requested output pointers are valid.
+    let result = unsafe {
+        GetNamedSecurityInfoW(
+            wide.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            &mut acl,
+            ptr::null_mut(),
+            &mut descriptor,
+        )
+    };
+    if result != 0 || descriptor.is_null() || acl.is_null() {
+        return Ok(false);
+    }
+    let descriptor = Descriptor(descriptor);
+    let mut control = 0;
+    let mut revision = 0;
+    // SAFETY: descriptor and scalar outputs remain valid for the call.
+    if unsafe { GetSecurityDescriptorControl(descriptor.0, &mut control, &mut revision) }
+        == 0
+    {
+        return Ok(false);
+    }
+    let mut information = ACL_SIZE_INFORMATION::default();
+    // SAFETY: ACL is owned by the descriptor and the output layout is exact.
+    if unsafe {
+        GetAclInformation(
+            acl,
+            (&mut information as *mut ACL_SIZE_INFORMATION).cast(),
+            mem::size_of::<ACL_SIZE_INFORMATION>() as u32,
+            AclSizeInformation,
+        )
+    } == 0
+    {
+        return Ok(false);
+    }
+    Ok(control & SE_DACL_PROTECTED != 0 && information.AceCount == 1)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn private_permissions_are_safe(
+    _path: &Path,
+    _metadata: &Metadata,
+) -> Result<bool, StoreError> {
+    Ok(false)
 }
 
 #[cfg(all(test, windows))]

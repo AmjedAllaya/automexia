@@ -224,6 +224,23 @@ impl QuickActionStore {
         Ok(store)
     }
 
+    pub fn open_existing_read_only(
+        root: impl AsRef<Path>,
+    ) -> Result<Option<Self>, StoreError> {
+        let root = root.as_ref();
+        match fs::symlink_metadata(root) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(None);
+            }
+            Err(error) => return Err(StoreError::io(error)),
+        }
+        secure_fs::inspect_private_directory(root)?;
+        let root = fs::canonicalize(root).map_err(StoreError::io)?;
+        secure_fs::inspect_private_directory(&root)?;
+        Ok(Some(Self { root }))
+    }
+
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -258,6 +275,50 @@ impl QuickActionStore {
                 self.load_previous(Some(error.code()))
             }
             Err(error) => Err(error),
+        }
+    }
+
+    pub fn load_read_only(&self) -> Result<LoadResult, StoreError> {
+        secure_fs::inspect_private_directory(&self.root)?;
+        let primary = read_private_optional(&self.source_path(), MAX_SOURCE_BYTES);
+        match primary {
+            Ok(Some(bytes)) => match snapshot_from_bytes(&bytes, LoadOrigin::Primary) {
+                Ok(snapshot) => Ok(LoadResult {
+                    snapshot: Arc::new(snapshot),
+                    rejected_primary: None,
+                }),
+                Err(primary) if primary_is_recoverable(&primary) => {
+                    self.load_previous_read_only(Some(primary.code()))
+                }
+                Err(error) => Err(error),
+            },
+            Ok(None) => self.load_previous_read_only(None),
+            Err(error) if primary_is_recoverable(&error) => {
+                self.load_previous_read_only(Some(error.code()))
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    fn load_previous_read_only(
+        &self,
+        rejected_primary: Option<StoreErrorCode>,
+    ) -> Result<LoadResult, StoreError> {
+        match read_private_optional(&self.previous_path(), MAX_SOURCE_BYTES)? {
+            Some(bytes) => {
+                let snapshot = snapshot_from_bytes(&bytes, LoadOrigin::PreviousRecovery)?;
+                Ok(LoadResult {
+                    snapshot: Arc::new(snapshot),
+                    rejected_primary,
+                })
+            }
+            None if rejected_primary.is_none() => Ok(LoadResult {
+                snapshot: Arc::new(empty_snapshot()?),
+                rejected_primary: None,
+            }),
+            None => Err(StoreError::new(
+                rejected_primary.unwrap_or(StoreErrorCode::RecoveryRequired),
+            )),
         }
     }
 
@@ -531,6 +592,17 @@ impl QuickActionStore {
     pub(crate) fn hold_write_lock_for_test(&self) -> Result<File, StoreError> {
         self.try_write_lock()
     }
+}
+
+fn read_private_optional(
+    path: &Path,
+    maximum: usize,
+) -> Result<Option<Vec<u8>>, StoreError> {
+    let bytes = secure_fs::read_bounded_regular(path, maximum)?;
+    if bytes.is_some() {
+        secure_fs::inspect_private_file(path)?;
+    }
+    Ok(bytes)
 }
 
 fn primary_is_recoverable(error: &StoreError) -> bool {

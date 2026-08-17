@@ -1,7 +1,7 @@
 # Automexia CP1 Zsh completion adapter. It never invokes compinit and native
 # `_comps` registrations remain authoritative.
 [[ ${AUTOMEXIA_COMPLETION_ADAPTER_ZSH_LOADED:-0} == 1 ]] && return 0
-typeset -gx AUTOMEXIA_COMPLETION_ADAPTER_ZSH_LOADED=1
+typeset -g AUTOMEXIA_COMPLETION_ADAPTER_ZSH_LOADED=1
 if [[ -n ${AUTOMEXIA_CONFIG_HOME:-} ]]; then
   typeset -g __automexia_completion_config_root=$AUTOMEXIA_CONFIG_HOME
 elif [[ ${OSTYPE:-} == darwin* ]]; then
@@ -15,6 +15,7 @@ typeset -g __automexia_completion_loaded=''
 
 __automexia_completion_directory_safe() {
   [[ $__automexia_completion_config_root == /* ]] || return 1
+  [[ ${#__automexia_completion_config_root} -le 4096 ]] || return 1
   local generated_dir=${__automexia_completion_root:h}
   local config_dir=${generated_dir:h}
   local shell_dir="$__automexia_completion_root/zsh"
@@ -41,19 +42,31 @@ __automexia_completion_hash() {
 }
 
 __automexia_load_completion() {
-  local target=$1 file expected actual
+  local target=$1 file expected alternate actual digest digest_count
   file="$__automexia_completion_root/zsh/$target.zsh"
   [[ -f $file && ! -h $file && -f $file.sha256 && ! -h $file.sha256 ]] || return 0
-  [[ $(wc -c <"$file") -le 1114112 && $(wc -c <"$file.sha256") -le 128 ]] || return 0
+  [[ $(wc -c <"$file") -le 1114112 && $(wc -c <"$file.sha256") -le 192 ]] || return 0
   if (( ${+_comps[$target]} )); then
     __automexia_completion_collisions="${__automexia_completion_collisions}${__automexia_completion_collisions:+,}$target"
     return 0
   fi
   (( $+functions[compdef] )) || return 0
-  IFS= read -r expected <"$file.sha256" || return 0
-  [[ $expected =~ '^[0-9a-f]{64}$' ]] || return 0
+  expected=''
+  alternate=''
+  digest_count=0
+  while IFS= read -r digest; do
+    ((digest_count += 1))
+    ((digest_count <= 2)) || return 0
+    [[ $digest =~ '^[0-9a-f]{64}$' ]] || return 0
+    if ((digest_count == 1)); then
+      expected=$digest
+    else
+      alternate=$digest
+    fi
+  done <"$file.sha256"
+  ((digest_count >= 1)) || return 0
   actual=$(__automexia_completion_hash "$file") || return 0
-  [[ $actual == "$expected" ]] || return 0
+  [[ $actual == "$expected" || $actual == "$alternate" ]] || return 0
   source "$file"
   __automexia_completion_loaded="${__automexia_completion_loaded}${__automexia_completion_loaded:+,}$target"
 }

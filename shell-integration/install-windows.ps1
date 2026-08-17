@@ -58,6 +58,7 @@ function Get-SourceFingerprint {
         'powershell\automexia.ps1',
         'powershell\automexia.format.ps1xml',
         'cmd\automexia.cmd',
+        'cmd\automexia-alias-loader.ps1',
         'cmd\automexia-ls.cmd',
         'cmd\automexia-ls.ps1',
         'bash\automexia.bash',
@@ -110,7 +111,7 @@ function Get-SourceFingerprint {
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
             throw "Required shell-integration source is missing: $source"
         }
-        $parts.Add("$relative=$((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant())")
+        $parts.Add("$relative=$(Get-AutomexiaFileSha256 $source)")
     }
     if (-not $SkipWsl) {
         $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
@@ -168,7 +169,7 @@ function Test-StampedInstall([string]$Fingerprint) {
         if ($state.Schema -ne 3 -or $state.Fingerprint -ne $Fingerprint) { return $false }
         foreach ($file in @($state.Files)) {
             if (-not (Test-Path -LiteralPath $file.Path -PathType Leaf)) { return $false }
-            $actual = (Get-FileHash -LiteralPath $file.Path -Algorithm SHA256).Hash.ToLowerInvariant()
+            $actual = Get-AutomexiaFileSha256 $file.Path
             if ($actual -ne $file.Sha256) { return $false }
         }
         if (-not $SkipPowerShell) {
@@ -319,11 +320,14 @@ if (-not $SkipCmd) {
     $cmdListLauncher = [regex]::Replace($cmdListLauncher, "\r?\n", "`r`n")
     $cmdListPath = Join-Path $InstallRoot 'automexia-ls.cmd'
     $cmdListPowerShell = Join-Path $InstallRoot 'automexia-ls.ps1'
+    $cmdAliasLoader = Join-Path $InstallRoot 'automexia-alias-loader.ps1'
     Write-TextAtomically $cmdListPath $cmdListLauncher ([Text.Encoding]::ASCII)
     Copy-Atomically (Join-Path $cmdSourceRoot 'automexia-ls.ps1') $cmdListPowerShell
+    Copy-Atomically (Join-Path $cmdSourceRoot 'automexia-alias-loader.ps1') $cmdAliasLoader
     $installedFiles.Add($cmdIntegration)
     $installedFiles.Add($cmdListPath)
     $installedFiles.Add($cmdListPowerShell)
+    $installedFiles.Add($cmdAliasLoader)
     Write-InstallMessage "Command Prompt integration installed: $cmdIntegration"
 }
 
@@ -441,7 +445,7 @@ printf 'AUTOMEXIA_WSL_INTEGRATION_OK\n'
 $fileState = foreach ($path in $installedFiles) {
     [ordered]@{
         Path = $path
-        Sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+        Sha256 = Get-AutomexiaFileSha256 $path
     }
 }
 $state = [ordered]@{

@@ -7,7 +7,7 @@ use process_wrap::std::ProcessGroup;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::env;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
@@ -27,7 +27,10 @@ const MAX_PROVIDER_STDERR: usize = 256 * 1024;
 const MAX_VERSION_OUTPUT: usize = 16 * 1024;
 const MAX_CONFIG_PATH_BYTES: usize = 4096;
 const MAX_ARTIFACT_BYTES: usize = MAX_PROVIDER_OUTPUT + 64 * 1024;
-const MAX_DIGEST_BYTES: usize = 128;
+// A refresh briefly publishes the previous and candidate digests together so
+// either complete artifact remains usable if the process is interrupted. The
+// steady-state sidecar still contains exactly one digest.
+const MAX_DIGEST_BYTES: usize = 192;
 const MAX_METADATA_BYTES: usize = 64 * 1024;
 const MAX_OVERRIDE_BYTES: usize = 64;
 
@@ -324,14 +327,25 @@ fn parse_operation(args: &[String]) -> TaskResult<ParsedOperation> {
     while index < args.len() {
         match args[index].as_str() {
             "--provider" if index + 1 < args.len() => {
+                if provider.is_some() {
+                    return Err("--provider may be specified only once".into());
+                }
                 provider = Some(Provider::parse(&args[index + 1])?);
                 index += 2;
             }
             "--shell" if index + 1 < args.len() => {
+                if shell.is_some() {
+                    return Err("--shell may be specified only once".into());
+                }
                 shell = Some(CompletionShell::parse(&args[index + 1])?);
                 index += 2;
             }
             "--allow-native-override" => {
+                if allow_native_override {
+                    return Err(
+                        "--allow-native-override may be specified only once".into()
+                    );
+                }
                 allow_native_override = true;
                 index += 1;
             }
@@ -468,6 +482,17 @@ fn refresh(operation: ParsedOperation) -> TaskResult {
         );
     }
 
+    // Validate and create only the bounded managed destination before granting
+    // the provider any process time. A malformed, linked, or unwritable state
+    // root must fail without invoking an external executable.
+    let root = completion_root()?;
+    let (artifact, digest_path, metadata_path, override_path) =
+        artifact_paths(&root, operation.provider, operation.shell);
+    let directory = artifact
+        .parent()
+        .ok_or_else(|| "completion artifact has no parent".to_owned())?;
+    create_secure_directory(directory)?;
+
     let executable = resolve_executable(operation.provider.command())?;
     validate_refresh_executable(&executable)?;
     let executable_handle = File::open(&executable)
@@ -516,13 +541,6 @@ fn refresh(operation: ParsedOperation) -> TaskResult {
     revalidate_executable(&executable, &executable_handle, &executable_fingerprint)?;
     validate_generated_output(&generated.stdout)?;
     let source_digest = sha256_hex(&generated.stdout);
-    let root = completion_root()?;
-    let (artifact, digest_path, metadata_path, override_path) =
-        artifact_paths(&root, operation.provider, operation.shell);
-    let directory = artifact
-        .parent()
-        .ok_or_else(|| "completion artifact has no parent".to_owned())?;
-    create_secure_directory(directory)?;
     let header = generated_header(operation.provider, operation.shell, &source_digest);
     let mut body = header.into_bytes();
     body.extend_from_slice(&generated.stdout);
@@ -530,8 +548,6 @@ fn refresh(operation: ParsedOperation) -> TaskResult {
         body.push(b'\n');
     }
     let artifact_digest = sha256_hex(&body);
-    atomic_write(&artifact, &body)?;
-    atomic_write(&digest_path, format!("{artifact_digest}\n").as_bytes())?;
     let metadata = ArtifactMetadata {
         schema_version: SCHEMA_VERSION,
         provider: operation.provider.id().to_owned(),
@@ -542,7 +558,7 @@ fn refresh(operation: ParsedOperation) -> TaskResult {
         executable_modified_unix_ms: modified_unix_ms(&executable_metadata),
         tool_version,
         source_sha256: source_digest,
-        artifact_sha256: artifact_digest,
+        artifact_sha256: artifact_digest.clone(),
         generated_unix_ms: unix_ms(SystemTime::now()),
         deadline_ms: PROVIDER_DEADLINE.as_millis(),
         output_limit_bytes: MAX_PROVIDER_OUTPUT,
@@ -551,12 +567,22 @@ fn refresh(operation: ParsedOperation) -> TaskResult {
     let mut metadata_bytes = serde_json::to_vec_pretty(&metadata)
         .map_err(|error| format!("could not serialize completion metadata: {error}"))?;
     metadata_bytes.push(b'\n');
-    atomic_write(&metadata_path, &metadata_bytes)?;
+
+    // Publish a two-digest transition before replacing the executable shell
+    // artifact. At every interruption point an adapter can verify either the
+    // previous complete artifact or the new candidate.
+    let previous_digest = runtime_artifact_digest(&artifact, &digest_path);
     if operation.allow_native_override {
         atomic_write(&override_path, b"explicit-native-override-v1\n")?;
     } else {
         remove_regular_file_if_present(&override_path)?;
     }
+    atomic_write(&metadata_path, &metadata_bytes)?;
+    let transition =
+        transition_digest_bytes(previous_digest.as_deref(), &artifact_digest);
+    atomic_write(&digest_path, &transition)?;
+    atomic_write(&artifact, &body)?;
+    atomic_write(&digest_path, format!("{artifact_digest}\n").as_bytes())?;
     emit_output(&format!(
         "PASS: cached {} completion for {} ({} bytes, generator {}, version {}, {} ms)\n",
         operation.provider.id(),
@@ -657,6 +683,12 @@ fn select_config_root(
     if !root.is_absolute() {
         return Err("completion configuration root must be absolute".into());
     }
+    #[cfg(windows)]
+    if platform == HostPlatform::Windows && !is_local_windows_path(&root) {
+        return Err(
+            "completion configuration root must be on a local Windows drive".into(),
+        );
+    }
     Ok(root)
 }
 
@@ -707,16 +739,12 @@ fn inspect_artifact(
         Ok(Some(bytes)) => bytes,
         _ => return ArtifactHealth::Invalid("digest-missing-or-unsafe".into()),
     };
-    let digest = match std::str::from_utf8(&digest) {
-        Ok(value) => value.trim(),
-        Err(_) => return ArtifactHealth::Invalid("digest-encoding".into()),
+    let digests = match parse_digest_sidecar(&digest) {
+        Ok(digests) => digests,
+        Err(reason) => return ArtifactHealth::Invalid(reason.into()),
     };
-    if digest.len() != 64
-        || !digest
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-        || sha256_hex(&artifact) != digest
-    {
+    let artifact_digest = sha256_hex(&artifact);
+    if !digests.iter().any(|digest| *digest == artifact_digest) {
         return ArtifactHealth::Invalid("digest-mismatch".into());
     }
 
@@ -733,7 +761,7 @@ fn inspect_artifact(
         || metadata.provider != provider.id()
         || metadata.command != provider.command()
         || metadata.shell != shell.id()
-        || metadata.artifact_sha256 != digest
+        || metadata.artifact_sha256 != artifact_digest
         || metadata.deadline_ms != PROVIDER_DEADLINE.as_millis()
         || metadata.output_limit_bytes != MAX_PROVIDER_OUTPUT
         || metadata.native_override != expected_override
@@ -795,6 +823,49 @@ fn read_regular_bounded(path: &Path, limit: usize) -> TaskResult<Option<Vec<u8>>
     Ok(Some(bytes))
 }
 
+fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn parse_digest_sidecar(bytes: &[u8]) -> Result<Vec<&str>, &'static str> {
+    let text = std::str::from_utf8(bytes).map_err(|_| "digest-encoding")?;
+    let digests = text.lines().collect::<Vec<_>>();
+    if !(1..=2).contains(&digests.len())
+        || digests.iter().any(|digest| !is_sha256_hex(digest))
+        || !text.ends_with('\n')
+    {
+        return Err("digest-format");
+    }
+    Ok(digests)
+}
+
+fn runtime_artifact_digest(artifact: &Path, digest_path: &Path) -> Option<String> {
+    let artifact = read_regular_bounded(artifact, MAX_ARTIFACT_BYTES)
+        .ok()
+        .flatten()?;
+    let digest = read_regular_bounded(digest_path, MAX_DIGEST_BYTES)
+        .ok()
+        .flatten()?;
+    let actual = sha256_hex(&artifact);
+    parse_digest_sidecar(&digest)
+        .ok()?
+        .iter()
+        .any(|digest| *digest == actual)
+        .then_some(actual)
+}
+
+fn transition_digest_bytes(previous: Option<&str>, candidate: &str) -> Vec<u8> {
+    let mut sidecar = String::new();
+    if let Some(previous) = previous.filter(|previous| *previous != candidate) {
+        let _ = writeln!(sidecar, "{previous}");
+    }
+    let _ = writeln!(sidecar, "{candidate}");
+    sidecar.into_bytes()
+}
+
 fn generated_header(provider: Provider, shell: CompletionShell, digest: &str) -> String {
     let prefix = if shell == CompletionShell::Cmd {
         "rem"
@@ -827,6 +898,11 @@ fn validate_generated_output(output: &[u8]) -> TaskResult {
     }) {
         return Err("completion generator emitted unsupported control characters".into());
     }
+    if text.chars().any(is_bidi_control) {
+        return Err(
+            "completion generator emitted bidirectional control characters".into(),
+        );
+    }
     Ok(())
 }
 
@@ -835,7 +911,8 @@ fn require_success(label: &str, captured: &Captured) -> TaskResult {
         return Ok(());
     }
     let stderr = String::from_utf8_lossy(&captured.stderr);
-    let summary = stderr.lines().next().unwrap_or("no stderr").trim();
+    let summary =
+        sanitize_diagnostic(stderr.lines().next().unwrap_or("no stderr").trim(), 256);
     Err(format!(
         "{label} failed with {} after {} ms: {summary}",
         captured.status,
@@ -848,16 +925,78 @@ fn bounded_utf8<'a>(bytes: &'a [u8], label: &str) -> TaskResult<&'a str> {
 }
 
 fn summarize_version(output: &str) -> String {
-    output
+    let summary = output
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .take(4)
         .collect::<Vec<_>>()
-        .join(" ")
+        .join(" ");
+    sanitize_diagnostic(&summary, 512)
+}
+
+fn is_bidi_control(character: char) -> bool {
+    matches!(
+        character,
+        '\u{061c}'
+            | '\u{200e}'
+            | '\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2066}'..='\u{2069}'
+    )
+}
+
+fn sanitize_diagnostic(value: &str, maximum_chars: usize) -> String {
+    value
         .chars()
-        .take(512)
+        .take(maximum_chars)
+        .map(|character| {
+            if character.is_control() || is_bidi_control(character) {
+                '\u{fffd}'
+            } else {
+                character
+            }
+        })
         .collect()
+}
+
+fn is_safe_search_directory(directory: &Path) -> bool {
+    if !directory.is_absolute() {
+        return false;
+    }
+    #[cfg(windows)]
+    if !is_local_windows_path(directory) {
+        return false;
+    }
+    true
+}
+
+fn filtered_provider_path(path: &OsStr) -> TaskResult<OsString> {
+    env::join_paths(env::split_paths(path).filter(|path| is_safe_search_directory(path)))
+        .map_err(|error| format!("could not construct bounded provider PATH: {error}"))
+}
+
+fn apply_provider_environment(command: &mut Command) -> TaskResult {
+    // Official completion generators are static, local operations. Do not pass
+    // cloud tokens, kubeconfig, Docker config, proxy credentials, HOME/profile
+    // state, or arbitrary application environment into the provider process.
+    command.env_clear();
+    #[cfg(windows)]
+    let public_keys = ["SystemRoot", "WINDIR", "ComSpec", "TEMP", "TMP", "PATHEXT"];
+    #[cfg(not(windows))]
+    let public_keys = ["TMPDIR"];
+    for key in public_keys {
+        if let Some(value) = env::var_os(key) {
+            command.env(key, value);
+        }
+    }
+    if let Some(path) = env::var_os("PATH") {
+        command.env("PATH", filtered_provider_path(&path)?);
+    }
+    command.env("NO_COLOR", "1").env("TERM", "dumb");
+    #[cfg(unix)]
+    command.env("LANG", "C").env("LC_ALL", "C");
+    Ok(())
 }
 
 fn run_bounded(
@@ -868,6 +1007,7 @@ fn run_bounded(
     stderr_limit: usize,
 ) -> TaskResult<Captured> {
     let mut command = Command::new(executable);
+    apply_provider_environment(&mut command)?;
     command
         .args(args)
         .stdin(Stdio::null())
@@ -986,6 +1126,12 @@ fn resolve_executable(command: &str) -> TaskResult<PathBuf> {
         .map(str::to_owned)
         .collect::<Vec<_>>();
     for directory in env::split_paths(&path) {
+        // Empty and relative PATH components search the current working
+        // directory. Refresh can run from an untrusted workspace, so those
+        // components must never select the provider executable.
+        if !is_safe_search_directory(&directory) {
+            continue;
+        }
         #[cfg(windows)]
         let candidates = extensions
             .iter()
@@ -1008,12 +1154,32 @@ fn resolve_executable(command: &str) -> TaskResult<PathBuf> {
                     continue;
                 }
             }
-            return candidate.canonicalize().map_err(|error| {
+            let resolved = candidate.canonicalize().map_err(|error| {
                 format!("cannot resolve {}: {error}", candidate.display())
-            });
+            })?;
+            #[cfg(windows)]
+            if !is_local_windows_path(&resolved) {
+                continue;
+            }
+            return Ok(resolved);
         }
     }
-    Err(format!("{} is not installed on PATH", command))
+    Err(format!(
+        "{} is not installed on an absolute local PATH entry",
+        command
+    ))
+}
+
+#[cfg(windows)]
+fn is_local_windows_path(path: &Path) -> bool {
+    use std::path::{Component, Prefix};
+
+    path.is_absolute()
+        && matches!(
+            path.components().next(),
+            Some(Component::Prefix(prefix))
+                if matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
+        )
 }
 
 fn validate_refresh_executable(executable: &Path) -> TaskResult {
@@ -1272,6 +1438,26 @@ mod tests {
         ])
         .is_err());
         assert!(parse_operation(&["--provider".into(), "unknown".into()]).is_err());
+        assert!(parse_operation(&[
+            "--provider".into(),
+            "kubectl".into(),
+            "--provider".into(),
+            "helm".into(),
+            "--shell".into(),
+            "bash".into(),
+        ])
+        .unwrap_err()
+        .contains("only once"));
+        assert!(parse_operation(&[
+            "--provider".into(),
+            "kubectl".into(),
+            "--shell".into(),
+            "powershell".into(),
+            "--allow-native-override".into(),
+            "--allow-native-override".into(),
+        ])
+        .unwrap_err()
+        .contains("only once"));
     }
 
     #[test]
@@ -1289,6 +1475,7 @@ mod tests {
         assert!(validate_generated_output(b"").is_err());
         assert!(validate_generated_output(b"complete\0bad").is_err());
         assert!(validate_generated_output(b"complete\x1bbad").is_err());
+        assert!(validate_generated_output("complete \u{202e}bad".as_bytes()).is_err());
         assert!(validate_generated_output(&[0xff]).is_err());
         assert!(validate_generated_output(b"complete -F _tool tool\n").is_ok());
     }
@@ -1304,6 +1491,49 @@ mod tests {
             paths.3,
             root.join("bash").join("kubectl.bash.allow-override")
         );
+    }
+
+    #[test]
+    fn transition_digest_preserves_last_known_good_across_interruption_points() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory
+            .path()
+            .join("config")
+            .join("generated")
+            .join("completion");
+        let (artifact, digest, _, _) =
+            artifact_paths(&root, Provider::Kubernetes, CompletionShell::Bash);
+        let previous = b"previous-completion\n";
+        let candidate = b"candidate-completion\n";
+        let previous_digest = sha256_hex(previous);
+        let candidate_digest = sha256_hex(candidate);
+
+        atomic_write(&artifact, previous).unwrap();
+        atomic_write(&digest, format!("{previous_digest}\n").as_bytes()).unwrap();
+        assert_eq!(
+            runtime_artifact_digest(&artifact, &digest).as_deref(),
+            Some(previous_digest.as_str())
+        );
+
+        let transition =
+            transition_digest_bytes(Some(&previous_digest), &candidate_digest);
+        assert_eq!(parse_digest_sidecar(&transition).unwrap().len(), 2);
+        atomic_write(&digest, &transition).unwrap();
+        assert_eq!(
+            runtime_artifact_digest(&artifact, &digest).as_deref(),
+            Some(previous_digest.as_str())
+        );
+
+        atomic_write(&artifact, candidate).unwrap();
+        assert_eq!(
+            runtime_artifact_digest(&artifact, &digest).as_deref(),
+            Some(candidate_digest.as_str())
+        );
+        assert!(
+            parse_digest_sidecar(format!("{candidate_digest}\nextra\n").as_bytes())
+                .is_err()
+        );
+        assert!(parse_digest_sidecar(candidate_digest.as_bytes()).is_err());
     }
 
     #[test]
@@ -1367,6 +1597,41 @@ mod tests {
         assert!(String::from_utf8(captured.stdout)
             .unwrap()
             .contains("automexia-provider"));
+    }
+
+    #[test]
+    fn provider_path_excludes_relative_workspace_entries() {
+        #[cfg(windows)]
+        let absolute = PathBuf::from(r"C:\Program Files\Provider");
+        #[cfg(not(windows))]
+        let absolute = PathBuf::from("/opt/provider/bin");
+        let source =
+            env::join_paths([PathBuf::from("relative-bin"), absolute.clone()]).unwrap();
+        let filtered = filtered_provider_path(&source).unwrap();
+        assert_eq!(
+            env::split_paths(&filtered).collect::<Vec<_>>(),
+            vec![absolute]
+        );
+    }
+
+    #[test]
+    fn provider_process_does_not_inherit_ambient_secret_environment() {
+        const SECRET: &str = "AUTOMEXIA_CP1_SECRET_FIXTURE";
+        env::set_var(SECRET, "must-not-reach-provider");
+        #[cfg(windows)]
+        let probe =
+            "if defined AUTOMEXIA_CP1_SECRET_FIXTURE (exit /B 7) else (echo isolated)";
+        #[cfg(not(windows))]
+        let probe = "if [ -n \"${AUTOMEXIA_CP1_SECRET_FIXTURE+x}\" ]; then exit 7; else echo isolated; fi";
+        let (executable, args) = shell_command(probe);
+        let captured =
+            run_bounded(&executable, &args, Duration::from_secs(2), 1024, 1024);
+        env::remove_var(SECRET);
+        let captured = captured.unwrap();
+        assert!(captured.status.success());
+        assert!(String::from_utf8(captured.stdout)
+            .unwrap()
+            .contains("isolated"));
     }
 
     #[test]
@@ -1485,6 +1750,16 @@ mod tests {
                 .join("Application Support")
                 .join("io.github.AmjedAllaya.AutomexiaTerminal")
         );
+        #[cfg(windows)]
+        assert!(select_config_root(
+            HostPlatform::Windows,
+            Some(PathBuf::from(r"\\server\share\automexia")),
+            None,
+            Some(home.clone()),
+            None,
+        )
+        .unwrap_err()
+        .contains("local Windows drive"));
         assert!(select_config_root(
             HostPlatform::Unix,
             Some(PathBuf::from("relative-config")),
@@ -1579,12 +1854,16 @@ mod tests {
         assert_eq!(MAX_PROVIDER_OUTPUT, 1_048_576);
         assert_eq!(MAX_PROVIDER_STDERR, 262_144);
         assert_eq!(MAX_CONFIG_PATH_BYTES, 4096);
+        assert_eq!(MAX_DIGEST_BYTES, 192);
     }
 
     #[test]
     fn refresh_launcher_policy_avoids_implicit_windows_shell_parsing() {
         #[cfg(windows)]
         {
+            assert!(is_local_windows_path(Path::new(r"C:\Tools")));
+            assert!(!is_local_windows_path(Path::new(r"relative\Tools")));
+            assert!(!is_local_windows_path(Path::new(r"\\server\share\Tools")));
             assert!(validate_refresh_executable(Path::new("kubectl.exe")).is_ok());
             assert!(validate_refresh_executable(Path::new("legacy.com")).is_ok());
             assert!(validate_refresh_executable(Path::new("kubectl.cmd")).is_err());
@@ -1600,6 +1879,12 @@ mod tests {
         let summary = summarize_version(output);
         assert_eq!(summary, "clientVersion: gitVersion: v1.35.0 platform: linux/amd64 extra: ignored-after-four");
         assert!(summary.len() <= 512);
+        let hostile =
+            summarize_version("v1\u{1b}]8;;https://spoof.invalid\u{7}link\u{202e}txt");
+        assert!(!hostile.contains('\u{1b}'));
+        assert!(!hostile.contains('\u{7}'));
+        assert!(!hostile.contains('\u{202e}'));
+        assert!(hostile.contains('\u{fffd}'));
         assert_eq!(
             Provider::Kubernetes.version_args(),
             &["version", "--client=true"]
