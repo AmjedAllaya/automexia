@@ -180,3 +180,49 @@ as other Quick Actions. It always leaves the alias disabled. Eligible inspection
 actions require a separate explicit `automexia aliases enable` review; context-
 changing, authentication, destructive, and privileged pack actions are rejected
 there.
+
+## Native alias imports and workspace task bridges (CP3.3)
+
+```text
+automexia actions import-aliases --source SOURCE --input INVENTORY --name NAME [--name NAME] [--action-id NAME=ACTION_ID] [--json]
+automexia actions import-aliases --source SOURCE --input INVENTORY --name NAME --apply --expected-revision N [--replace-conflicts] [--json]
+automexia actions task-put --workspace PATH --runner RUNNER --task TASK --id ACTION_ID --display-name TEXT --shell SHELL [--shell SHELL] [--description TEXT] [--risk RISK] [--json]
+automexia actions task-put --workspace PATH --runner RUNNER --task TASK --id ACTION_ID --display-name TEXT --shell SHELL --apply --expected-revision N [--replace] [--json]
+automexia actions task-remove --workspace PATH --id ACTION_ID [--json]
+automexia actions task-remove --workspace PATH --id ACTION_ID --apply --expected-revision N [--json]
+automexia actions workspace-trust --workspace PATH [--json]
+automexia actions workspace-trust --workspace PATH --apply --expected-trust-revision N [--json]
+automexia actions workspace-revoke --workspace PATH [--json]
+automexia actions workspace-revoke --workspace PATH --apply --expected-trust-revision N [--json]
+automexia actions workspace-doctor --workspace PATH [--json]
+```
+
+`SOURCE` is one of `powershell`, `bash`, `zsh`, `fish`, `cmd`, or `git`.
+`RUNNER` is `just`, `task`, or `mise`; `SHELL` is repeatable and uses the
+supported Quick Action shell names. Workspace task risk defaults to `mutating`
+and cannot be lowered to read-only.
+
+All mutating CP3.3 commands preview by default. Apply requires the revision
+printed by that preview. Alias import additionally requires at least one exact
+`--name`; repeated names and missing/rejected aliases fail. `--action-id` is an
+explicit native-name-to-portable-ID rename. Existing IDs fail unless
+`--replace-conflicts` is supplied with apply. The input is a bounded regular
+file opened without following a link. Automexia never generates the inventory
+or starts a shell/Git/provider command.
+
+`task-put` writes one exact named insert-only bridge to
+`.automexia/actions.toml`; `--replace` is required for rename/conflict
+replacement. `task-remove` deletes one stable bridge. Neither command lists
+tasks, parses recipes, runs a task, reads credentials, or accesses the network.
+
+`workspace-trust` binds the exact current workspace identity, source digest, and
+source revision in the private path-free trust store. Any source mutation makes
+the receipt stale until the new source is reviewed and trusted. Revoke removes
+the receipt immediately through trust-store CAS. `workspace-doctor` is read-only
+and reports redacted identity/digest/revision/trust status without a workspace
+path. Read-only runtime lookup does not create trust storage.
+
+Trusted workspace actions remain insert-only and unaliased. Search uses bounded
+background ancestor/cache reconciliation; review and insert/copy recheck
+short-lived route authorization. Changed, linked, malformed, revoked, expired,
+or unresolvable WSL guest state fails closed with a refresh-and-review message.

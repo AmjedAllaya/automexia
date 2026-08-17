@@ -1,4 +1,22 @@
 # Changelog
+
+## CP3.3 trusted native imports and workspace task bridges
+
+- Added capability-free parsers for explicitly supplied PowerShell, Bash, Zsh,
+  Fish, CMD/DOSKEY, and Git alias inventories with hostile-input rejection,
+  explicit selection, portable rename, conflict review, dry-run defaults, and
+  atomic revision compare-and-swap import.
+- Added exact insert-only just, Task, and mise workspace task bridges without
+  recipe parsing, task discovery/listing, provider execution, network access,
+  credential reads, or task execution.
+- Added private path-free digest/revision trust receipts, dry-run trust and
+  revocation, conflict/rename/removal lifecycle, no-follow and read-only lookup,
+  bounded background workspace caching, revocation reconciliation, and final
+  review/insertion authorization checks.
+- Added six management commands, focused parser/import/trust/runtime/UI tests,
+  a schema-1 contract and mutations, aggregate source-boundary ratchets, nightly
+  fuzzing, parser/trust benchmarks, ADR 0021, and synchronized documentation.
+
 ## CP3.2 reviewed DevOps Quick Action packs
 
 - Added 11 immutable Git, Docker/Compose, Kubernetes, OpenShift, Helm,

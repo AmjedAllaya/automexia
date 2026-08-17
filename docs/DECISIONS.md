@@ -28,6 +28,7 @@ decision supersedes an old one instead of silently rewriting history.
 | [0018](adr/0018-terminal-first-remote-operations.md) | Terminal-first remote operations | One typed registry powers CLI, leader-key, palette, and accessible overlays while preserving native shell ownership and external secret custody. |
 | [0019](adr/0019-acyclic-owned-crate-dependencies.md) | Acyclic Automexia-owned crate dependencies | Keep shared contracts in the lowest cohesive owner and make the desktop frontend the composition root without reverse dependencies. |
 | [0020](adr/0020-hybrid-build-wrap-adopt-boundary.md) | Hybrid build, wrap, and adopt boundary | Core owns product policy and one process boundary; extensions own domain adapters; mature protocols, authentication, custody, and services remain external. |
+| [0021](adr/0021-trusted-workspace-task-bridges.md) | Trusted workspace task bridges | Import only explicitly supplied native aliases, and expose only explicit task names through exact, receipt-bound workspace trust with revocation-aware authorization. |
 
 ## When an ADR is required
 

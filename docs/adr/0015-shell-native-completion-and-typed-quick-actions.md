@@ -10,10 +10,12 @@ five-shell generations, journaled source/generation CAS, verified native-wins
 startup/reload, diagnostics, rollback, and exact uninstall. CP3.2 implements the
 capability-free static pack boundary: 11 immutable provider manifests, 33
 disabled/unaliased typed actions, pure health and update planning, manifest-aware
-alias denial, and dry-run/CAS enablement. Exact launch, secret expansion,
-trusted-workspace activation, provider-aware candidates, and CP3.3 imports/task
-bridges remain outside that authority. Stable publication still requires hosted
-native and controlled accessibility/performance evidence.
+alias denial, and dry-run/CAS enablement. CP3.3 implements explicitly selected,
+capability-free native alias imports and exact, receipt-bound trusted-workspace
+task bridges under [ADR 0021](0021-trusted-workspace-task-bridges.md). Exact
+launch, secret expansion, provider-aware candidates, and CP5 suggestions remain
+outside that authority. Stable publication still requires hosted native and
+controlled accessibility/performance evidence.
 
 Verification note (2026-08-17): the CP2.2 re-audit made shell-user and
 global-user precedence structurally distinct, revalidates every activation

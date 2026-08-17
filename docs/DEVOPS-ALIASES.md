@@ -1,11 +1,16 @@
 # DevOps Quick Actions and persistent aliases
 
-Status: CP2.0-CP3.2 are implemented locally. CP3.1 generated aliases are active
+Status: CP2.0-CP3.3 are implemented locally. CP3.1 generated aliases are active
 only after explicit user review and opt-in. CP3.2's eleven static provider packs
-and 33 typed actions are shipped disabled by default; CP3.3 trusted bridges,
-trusted workspace actions, secret expansion, and exact launch remain disabled.
+and 33 typed actions are shipped disabled by default. CP3.3 adds explicitly
+selected simple native-alias imports plus explicitly named, trusted, insert-only
+just/Task/mise workspace bridges. Secret expansion and exact launch remain
+disabled.
 Stable publication still requires the phase-specific hosted-native and
 controlled evidence described below.
+
+No native inventory, task discovery, recipe parsing, provider process, network, credential read, or task execution
+occurs automatically or while searching and reviewing CP3.3 actions.
 
 No first-party pack alias is activated by default or shipped implicitly by CP3.2.
 A user must first enable one reviewed action through revision compare-and-swap,
@@ -914,8 +919,11 @@ CP3.0 remains a pure non-activated compiler. CP3.1 now owns only the separate
 application publication boundary and existing managed shell-hook activation; it
 does not move filesystem/process authority into `automexia-devops`. CP3.1 cannot
 execute an action/provider, read secrets, or grant exact launch. CP3.2 owns only
-the separate capability-free pack registry and explicit app-owned enable CLI;
-CP3.3+ retain their later phase-specific implementation and evidence gates.
+the separate capability-free pack registry and explicit app-owned enable CLI.
+CP3.3 owns a capability-free native-inventory/task-bridge model plus an app-owned
+bounded no-follow import/workspace/trust boundary. It grants no shell/provider
+process, recipe parsing, task discovery, network, credential, task-execution,
+alias-projection, secret-expansion, or exact-launch authority.
 
 The schema-1 [`CP3.1 contract`](../tests/fixtures/command-productivity/cp31-contract-v1.json),
 [`check_command_productivity_cp31.py`](../tools/ci/check_command_productivity_cp31.py),
@@ -1303,15 +1311,44 @@ aggregate CI/xtask enforcement, and
 this synchronized documentation. Hosted native results and the controlled
 30-day baseline remain release evidence.
 
-### CP3.3 - explicit import and trusted task-runner bridges
+### CP3.3 - native imports and trusted workspace task bridges
 
-- Import only simple native aliases after dry-run.
-- After workspace trust, allow an action to invoke one explicit named
-  `just`/Task/`mise run` task through normal shell insertion; do not parse/copy
-  recipe bodies or execute listing during automatic discovery.
+**Fully done locally.**
 
-Exit: malicious workspace/task/alias fixtures, revocation, rename/conflict,
-portable export, and clean removal pass. No remote pack marketplace ships.
+- Import consumes only a user-supplied inventory file and never runs a shell,
+  Git, a provider, or a native listing command. Bounded parsers cover exported
+  PowerShell CSV, Bash/Zsh aliases, Fish abbreviations, CMD/DOSKEY macros, and
+  Git aliases. Only simple fixed-token commands are eligible; controls, bidi,
+  duplicates, likely secrets, machine paths, substitution, pipes, redirection,
+  metacharacters, Git `!`, and unsupported native kinds fail closed.
+- Selection is explicit and unique. Preview is the default; apply needs the
+  displayed Quick Action revision, and an ID collision needs explicit replace.
+  A selected alias may receive an explicit portable action-ID rename. One CAS
+  transaction creates independent Imported/Mutating/Insert actions with no
+  alias projection. Native inventory and configuration remain untouched.
+- `.automexia/actions.toml` stores only exact `just <task>`, `task <task>`, or
+  `mise run <task>` bridges. Automexia never parses/copies recipes, discovers or
+  lists tasks, executes a task, runs a provider, reads credentials, or accesses
+  the network. Workspace actions are Mutating, Insert, WorkspaceRoot,
+  WorkspaceTask provenance, and never project an alias.
+- Workspace put/remove and private trust/revoke use bounded no-follow files,
+  nonblocking locks, staged atomic persistence, and revision CAS. Private trust
+  receipts contain no path and bind exact workspace identity, source digest,
+  and revision. Source change, malformed/link state, revocation, or mismatch
+  removes the layer until explicit review and trust.
+- Background lookup walks at most 64 ancestors, caches at most 32 indexes,
+  reconciles after 250 ms, and grants route authorization for at most 30
+  seconds. Review and insert/copy recheck path, identity, and authorization;
+  stale trust produces a textual unavailable/refresh-and-review UX. Read-only
+  lookup never creates or mutates trust state; unresolved WSL guest paths fail
+  closed.
+
+Exit: satisfied by 14 named parser/import/trust/runtime/CLI regressions, Unix
+no-follow link cases, conflict/rename/export/removal/revocation coverage, the
+schema-1 CP3.3 contract and mutations, aggregate source-boundary ratchets,
+nightly six-source fuzzing, parser/trust benchmarks, CI/xtask wiring, ADR 0021,
+and synchronized documentation. Hosted native/accessibility and controlled
+30-day measurements remain release evidence, not missing CP3.3 implementation.
 
 ### CP4 - capsule-aware actions
 
