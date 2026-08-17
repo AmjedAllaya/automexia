@@ -348,13 +348,19 @@ Loom, native resource tests, and human accessibility/visual review.
 
 **Partially implemented.**
 
-Documented: provider-neutral boundaries, exact capability intent, denied direct
-network/secret/arbitrary process access, system OpenSSH choice, platform
-policy, budgets, non-goals, and preservation of manual shell-owned ssh.
+**Fully implemented locally:** the schema-1 D0/D3 contract freezes exact
+package ID/publisher/digest/version/contract and accepted verification classes,
+grant/expiry/revocation/audit fields, strict defaults, runtime authority
+ceiling, and fixed Windows/macOS/Linux/disabled-WSL executable policy. Nineteen
+required scenario rows cover aliases/destinations, user/port, keys, agent,
+certificate, three host-key states, ProxyJump, every forwarding type,
+cancellation, exit, hostile output, offline, shutdown, and 1/10/50 sessions on
+all four targets. The dedicated checker and mutation suite reject weakened or
+drifting claims.
 
-Missing: acceptance of proposed ADR 0012; protected approval; accepted native
-fixtures for host keys, agents, encrypted keys, certificates, ProxyJump,
-forwarding, cancellation, remote exit, hostile output, and cleanup on all OSes.
+**Not done externally:** proposed ADR 0012 still needs security review and two
+protected-path approvals. F4/F5 must execute the native fixture matrix; D0 only
+defines it and keeps production launch disabled.
 
 ### D1 — private contracts and bounded stable types
 
@@ -391,16 +397,20 @@ Production relaunch/login is a D3/D5/D6 dependency, not missing D2 work.
 
 **Partially implemented and intentionally nonactivated.**
 
-Complete in the test-only model: typed scopes, expiring decisions, monotonic
-leases, replay/session-reuse rejection, revocation/cancellation, redacted
-authorization audit, fixed/explicit executable resolution without PATH/cwd
-search, file identity/revalidation, one bounded literal destination, no shell
-evaluation, no inherited environment disclosure, and core-owned cwd fallback.
+**Fully implemented locally in the test-only model:** exact reviewed package
+policy binding (ID, publisher, non-zero digest, version, contract, verification
+class), typed scopes, expiring decisions, monotonic leases, replay/session-
+reuse rejection, revocation/cancellation, redacted audit, platform-specific
+fixed/explicit resolution without PATH/cwd search or override fallback, file
+identity/revalidation, one bounded literal destination, no shell/inherited
+environment/secret authority, and core-owned cwd fallback.
 
-Missing: accepted ADR, visible exact-grant UI, package signature/digest/version
-identity, race-free native check-to-spawn, production process/PTY/route/listener
-attachment, graceful/forced teardown, completion audit, hostile native argv,
-1/10/50-session leak/performance evidence, and D4-to-D5 activation.
+**Not done for activation:** accepted ADR, real package-loader attestation and
+revocation binding, visible exact-grant UI, race-free native check-to-spawn,
+production process/PTY/route/listener ownership, graceful/forced teardown,
+completion audit, execution of hostile native argv/output and host-trust/auth/
+tunnel fixtures, 1/10/50-session leak/performance evidence, and D4-to-D5
+activation.
 
 The production fail-closed state is correct and must not be called shipped.
 
@@ -976,8 +986,9 @@ The maintained checklist and dependencies are in the
 [connectivity and command-productivity focus roadmap](CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md).
 At this audited baseline, the focused order is:
 
-1. Close D0/ADR 0012 and freeze package identity, grants, executable resolution,
-   and complete native SSH fixtures while production launch remains disabled.
+1. Obtain protected acceptance or supersession of ADR 0012. Package identity,
+   grants, executable resolution, strict defaults, and the native fixture
+   definitions are already frozen locally with production launch disabled.
 2. Implement non-executing D5.0 models, then the read-only D5.1 Connection Hub.
 3. Activate D3 only with its capability, atomic spawn, PTY lifecycle, cleanup,
    and three-OS native gates; then deliver D5.2 managed OpenSSH in bounded
@@ -1005,8 +1016,9 @@ production SSH/Connection Hub, remote workspaces, multi-cloud, provider-aware
 actions, Automexia-owned suggestions, full Ghostty compatibility, public
 extensions, and AI remain.
 
-> Current milestone: v0.4 source stabilization, D1/D2, disabled D4, and
-> CP0-CP3.3 are implemented at their stated local/source boundaries. D0/D3 are
-> partial. Stable cross-platform release proof, D5/D6/CP4/CP5 production
-> activation, and the other phases remain partial or not implemented as listed
-> above.
+> Current milestone: v0.4 source stabilization, D1/D2, disabled D4, CP0-CP3.3,
+> and the local D0/D3 package/resolution/fixture contract are implemented at
+> their stated local/source boundaries. D0/D3 remain partial because protected
+> acceptance, production authority, real loader binding, and native execution
+> evidence are open. Stable release proof, D5/D6/CP4/CP5 activation, and the
+> other phases remain partial or not implemented as listed above.

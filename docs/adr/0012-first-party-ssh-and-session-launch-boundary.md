@@ -96,24 +96,30 @@ are exposed.
 
 ## Non-activated implementation evidence
 
-As of 2026-08-15, the typed capability identity, fixed-location executable
-resolver with fail-closed configured overrides, native file-identity
-revalidation, exact one-destination SSH grammar, bounded core-owned
-environment/cwd validation, expiring exact-scope decisions, active
-session/capsule registration, monotonic replay-resistant operation leases,
-bounded lifecycle state, revocation, and redacted authorization audit model
-exist only in a `#[cfg(test)]` frontend module. Architecture verification
-enforces that gate and the absence of process or PTY creation in the broker.
+As of 2026-08-17, the local D0/D3 contract is frozen in
+`tests/fixtures/session-launch/d0-d3-contract-v1.json`. It records the exact
+package ID, publisher, non-zero SHA-256 identity shape, workspace version,
+contract version, accepted verification classes, grant/audit fields, strict
+defaults, authority ceiling, four-platform executable policy, and nineteen
+required native scenarios. A dedicated checker and mutation suite reject
+weakened activation, identity, grants, defaults, authority, evidence, or
+scenario claims.
+
+The test-only broker now binds the verified principal to an exact reviewed
+package policy including digest, version, contract version, and repository-
+reviewed or first-party-signed proof. It also separates Windows, macOS, Linux,
+and disabled WSL resolution, retains native file-identity revalidation, and
+keeps the exact argv, bounded environment/cwd, expiring decision, session/
+capsule, replay, revocation, lifecycle, and redacted-audit controls.
 
 This evidence does not accept this ADR and does not enable the capability. The
-remaining acceptance evidence includes the real package digest/signature,
-compatibility, and revocation proof; visible decision/grant policy; atomic
-native check-to-spawn; application-owned process/PTY/route binding; real native
-spawn/cancel/teardown on Windows/Linux/macOS; D4 SSH security behavior;
+remaining acceptance evidence includes protected approval; binding a real
+package-loader attestation/revocation result to the frozen policy; visible
+decision/grant policy; atomic native check-to-spawn; application-owned process/
+PTY/route binding; execution of the native matrix on Windows/Linux/macOS/WSL;
 redaction across every listed surface; and controlled 1/10/50-session process,
-PTY, renderer, performance, and leak results. The current exact limits and
-commands are in the
-[broker contract](../SESSION-LAUNCH-BROKER.md).
+PTY, renderer, performance, and leak results. Exact limits and commands are in
+the [broker contract](../SESSION-LAUNCH-BROKER.md).
 
 ## Consequences
 

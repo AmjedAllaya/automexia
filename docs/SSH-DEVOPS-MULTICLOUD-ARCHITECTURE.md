@@ -762,6 +762,21 @@ rendering and terminal parser trust boundary.
     compatibility, and revocation status before loading.
 12. Apply memory, CPU, process, file, network, retry, and output quotas.
 
+### Frozen D0/D3 local baseline
+
+The schema-1 D0/D3 contract now makes controls 2, 3, 7, 8, 10, and 11
+machine-checkable without granting runtime authority. It binds
+`automexia.devops-ssh` to an exact publisher, non-zero SHA-256 package
+identity, workspace version, contract version, and reviewed/signed
+verification; unverified or mismatched principals fail closed. Capability
+decisions bind exact operation/session/capsule/resource scope and expiry.
+Windows, macOS, and Linux use fixed system roots, WSL remains disabled, and no
+resolver searches PATH or cwd. Strict host trust is preserved, forwarding and
+remote commands default off, future listener scope is loopback unless separately
+confirmed, and discovery cannot execute config commands. Production process,
+PTY, network, provider, authentication, key-custody, and renderer authority
+remain false until ADR 0012 is accepted and the native F4/F5 gates pass.
+
 ### Local and server-side policy
 
 Local policy can prevent dangerous launches, require confirmation, restrict

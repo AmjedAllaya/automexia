@@ -222,29 +222,34 @@ and recording its size/host manifest.
 
 ### Non-activated session-launch review boundary
 
-The proposed D3 broker is compiled only by frontend tests. Run its complete
-contract and the versioned capability constructors with:
+The proposed D3 broker is compiled only by frontend tests. Run its versioned
+D0/D3 contract, mutation checks, and capability/package constructors with:
 
 ```text
 cargo test -p automexia-extension-api --lib --locked
+python tools/ci/check_session_launch_d0.py
+python tools/ci/test_session_launch_d0.py
 cargo test -p automexia-terminal --bin automexia --locked context::launch_broker::tests
 cargo xtask verify architecture
 ```
 
-The native Windows test target exercises volume/file-index replacement
-detection. Native Linux and macOS test jobs exercise device/inode replacement
-detection. The property case proves every accepted destination remains one
-literal native argument. Denial, mismatch, option confusion, environment and
-secret isolation, fail-closed configured resolution, authorization-owned cwd
-fallback, exact decision expiry/scope, registered capsule rebind, operation
-replay, nonce exhaustion, redaction, revocation, stale lease, sibling-scope,
-and zero-retained-state 1/10/50-cycle cases are deterministic.
+The checker locks production-disabled activation, exact package digest/version/
+contract/verification, grant and audit fields, strict defaults, four-platform
+resolution, the authority ceiling, and nineteen required native scenarios.
+Mutation tests prove those claims cannot silently weaken. Rust tests cover
+Windows volume/file-index and Unix device/inode identity, fixed platform roots,
+unverified/mismatched package denial, one literal destination argument,
+option/environment/secret isolation, fail-closed override resolution,
+authorization-owned cwd fallback, decision expiry/scope, capsule rebind,
+replay, nonce exhaustion, redaction, revocation, stale/sibling leases, and
+zero-retained-state 1/10/50 pure cycles.
 
 These tests do not spawn OpenSSH and are not evidence that managed SSH is
-available. Real process/PTY/route binding, cancellation/teardown, PID reuse,
-application close, atomic native check-to-spawn, package signature/digest,
-host-key/authentication/tunnel behavior, and 1/10/50-session process/PTY/
-renderer resource results remain external activation gates listed in
+available. Protected ADR approval, real package-loader attestation/revocation
+binding, process/PTY/route ownership, cancellation/teardown, PID reuse,
+application close, atomic native check-to-spawn, execution of host-key/auth/
+tunnel/hostile-output scenarios, and 1/10/50-session process/PTY/renderer
+results remain activation gates listed in
 [ADR 0012](adr/0012-first-party-ssh-and-session-launch-boundary.md) and the
 [broker contract](SESSION-LAUNCH-BROKER.md).
 

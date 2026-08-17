@@ -848,7 +848,7 @@ Exit gate: property and native tests prove command/argument injection is not
 possible, denial and revocation are deterministic, and launch/cancel/teardown
 cannot affect another route or leave a child/listener behind.
 
-#### Phase 2 execution ledger (D3 review boundary, 2026-08-15)
+#### Phase 2 execution ledger (D0/D3 review boundary, 2026-08-17)
 
 ADR 0012 remains proposed, so this ledger separates reviewed source preparation
 from activation. The broker module is reachable only through `#[cfg(test)]`;
@@ -857,8 +857,8 @@ the release binary contains no managed-launch success path.
 | Obligation | Status | Implemented evidence |
 |---|---|---|
 | D3.1 application capability broker | Complete as a non-activated review model | `LaunchRequest`, `CapabilityRequest`, and expiring `CapabilityDecision` carry matching operation, session, and capsule scope. The application registers exact active capsules, rebind is monotonic, session IDs cannot be reused, and production/pending mode denies before resolution. |
-| D3.2 canonical executable resolver | Complete for path/identity review; native atomic execution pending | Only fixed platform locations or one explicitly configured absolute exact filename are considered; `PATH` and cwd are never searched and a broken configured override fails closed. Windows records volume/file index and Unix records device/inode, with size/time metadata and descriptor-time revalidation. Activation must still eliminate the remaining check-to-spawn race with a reviewed native primitive. |
-| D3.3 exact first-party grant | Partial by design | The review harness matches the exact repository ID/publisher/version tuple and only the reviewed one-argument `ssh` operation; `ssh-add` and `ssh-keygen` stay denied. The real D4 package does not exist yet, so digest/signature/compatibility/revocation verification is not falsely claimed. DevOps manifests declare no session/process/network authority. |
+| D3.2 canonical executable resolver | Complete for local path/identity review; native atomic execution pending | Windows uses the system-directory OpenSSH root; macOS and Linux have separate fixed root lists; WSL yields no production candidate. `PATH` and cwd are never searched, a configured override replaces defaults and fails closed, and file identity is revalidated. Activation must still close the check-to-spawn race with a reviewed native primitive. |
+| D3.3 exact first-party grant | Complete in the nonactivated local model | The broker binds repository ID, publisher, non-zero digest, exact workspace version, contract version, and reviewed-or-signed verification before resolution. Unverified/mismatched principals fail closed; only the one-argument `ssh` operation is reviewed while `ssh-add` and `ssh-keygen` remain denied. The real loader must still bind live attestation and revocation evidence before activation. |
 | D3.4 exact argv | Complete for the pure/native command boundary; real spawn evidence pending | One bounded ordered destination argument is preserved as one native `Command::arg`; leading-dash, whitespace/control, extra arguments, shell executables, unsupported IDs, and oversized input are denied. The code contains no spawn or shell-evaluation call. Native process-level adversarial evidence remains an activation gate. |
 | D3.5 trusted environment | Complete at the restrictive boundary | Extension-selected inherited environment and secret references are denied. Only bounded, duplicate-free, core-owned public overrides enter the prepared descriptor; audit/debug redaction canaries exclude values and destinations. Public extension deltas remain an empty allowlist until separately reviewed. |
 | D3.6 working directory | Complete in the review model | Requested cwd must be absolute and canonical. The canonical core-owned safe default is captured during authorization and cannot be replaced by a conversion caller; relative/invalid input is denied and no shell, remote target, or session fallback occurs. Native directory-identity/handle evidence remains coupled to activation. |
@@ -867,10 +867,11 @@ the release binary contains no managed-launch success path.
 
 Phase 2 result: the safe review boundary and its deterministic tests are
 implemented, but D3 is not complete as a product capability. The exit gate
-remains blocked on ADR acceptance, package signature/digest identity,
-capability UI/grant policy, atomic native executable launch, real native
-spawn/cancel/teardown evidence on Windows/Linux/macOS, D4-to-D5 activation
-integration, and controlled 1/10/50-session performance/leak results. See the
+remains blocked on protected ADR acceptance, real package-loader attestation/
+revocation binding, capability UI/grant policy, atomic native executable
+launch, execution of the Windows/macOS/Linux/WSL fixture matrix, D4-to-D5
+activation integration, and controlled 1/10/50-session process/PTY/renderer
+performance/leak results. See the
 [exact broker contract](SESSION-LAUNCH-BROKER.md).
 
 ### D4 — safe OpenSSH inventory and persistence

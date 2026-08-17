@@ -65,8 +65,8 @@ documentation, feature assurance, and a change fragment.
 |---|---|---|---|---|
 | Provider-neutral contracts | D1 | Fully done | automexia-extension-api, automexia-extension-runtime, automexia-devops, automexia-ui-model; architecture gates | Hosted release evidence only |
 | Generic context and immutable capsules | D2 | Fully done | extension API/runtime plus application session/context tests | Production login/relaunch belongs to D3/D6 |
-| SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 proposal, threat/architecture docs, test plans | Accept or supersede ADR 0012 and freeze complete native fixtures |
-| Exact-argument launch broker | D3 | Partially done | application launch_broker test model and architecture ratchet | Production capability UI, atomic spawn, PTY/route lifecycle, package identity, native evidence |
+| SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 proposal, exact versioned contract, strict defaults, four-platform fixture matrix, mutation gate | Accept or supersede ADR 0012 through protected review; execute native fixtures in F4/F5 |
+| Exact-argument launch broker | D3 | Partially done | test-only exact package identity, capability scope, platform resolver, file revalidation, lifecycle and audit model | Production capability UI, atomic spawn, PTY/route lifecycle, real package-loader binding, native evidence |
 | Static OpenSSH inventory | D4 | Fully done | automexia-devops-ssh, hostile/property tests, fuzz, benchmark, assurance | Remains deliberately disabled until D5 |
 | Connection Hub model | D5.0 | Not done | Detailed specification only | Frozen schemas, all-state fixtures, responsive/accessibility goldens, mutations |
 | Read-only Connection Hub | D5.1 | Not done | No product owner connected to D4 | Virtualized inventory, persistence, search/grouping, platform guidance, 10,000-item proof |
@@ -165,27 +165,37 @@ Exit: no later phase weakens these contracts or duplicates their owners.
 
 ## F1 - close D0 SSH decision and native fixture baseline
 
-Status: Partially done. This is the next primary phase.
+Status: **Partially done.** The complete local D0/D3 contract is implemented;
+protected acceptance of ADR 0012 and later native runtime evidence remain
+external gates. Production launch is still disabled.
 
-- [ ] Accept or supersede ADR 0012 through protected review.
-- [ ] Freeze exact package identity, digest/version compatibility, capability
-  grant, expiry, revocation, and audit fields.
-- [ ] Freeze system OpenSSH executable resolution policy for Windows, macOS,
-  Linux, and WSL without PATH/cwd ambiguity.
-- [ ] Define native fixtures for direct alias, explicit destination, user/port,
-  encrypted key, agent, certificate, first/known/changed host key, ProxyJump,
-  local/remote/dynamic forwarding, cancellation, remote exit, hostile output,
-  offline state, and shutdown cleanup.
-- [ ] Record strict defaults: host checking preserved, agent forwarding off,
-  listeners loopback-only unless separately confirmed, no config command
-  execution during discovery.
-- [ ] Add a versioned D0/D3 contract and mutation tests that fail when process,
-  network, secret, environment, or shell-evaluation authority widens.
-- [ ] Update threat model, architecture, testing, phase audit, roadmap, feature
-  assurance, and change fragment.
+- [ ] **Not done - protected external gate:** accept or supersede ADR 0012
+  through the security review and two protected-path approvals required by
+  ADR 0003.
+- [x] **Fully done locally:** freeze exact package identity, digest/version
+  and contract compatibility, repository-reviewed/first-party-signed proof,
+  unverified-package denial, capability grant, expiry, revocation, and audit
+  fields.
+- [x] **Fully done locally:** freeze system OpenSSH executable resolution for
+  Windows, macOS, Linux, and disabled WSL without PATH/cwd ambiguity or
+  configured-path fallback.
+- [x] **Fully done as a required matrix:** define direct alias, explicit
+  destination, user/port, encrypted key, agent, certificate, first/known/
+  changed host key, ProxyJump, local/remote/dynamic forwarding, cancellation,
+  remote exit, hostile output, offline, shutdown cleanup, and 1/10/50-session
+  fixtures for Windows, macOS, Linux, and WSL. Native execution belongs to
+  F4/F5 and is not claimed here.
+- [x] **Fully done locally:** record strict host-key, forwarding, loopback,
+  environment, secret, shell, and discovery-command defaults.
+- [x] **Fully done locally:** add a versioned D0/D3 contract and mutation tests
+  that fail when process, network, secret, environment, or shell-evaluation
+  authority widens.
+- [x] **Fully done locally:** update architecture/security guidance, testing,
+  phase audit, roadmaps, feature assurance, decision index, and change fragment.
 
-Exit: the protected decision and fixture contract pass with production launch
-still disabled.
+Exit status: the local fixture/contract gate passes and production launch
+remains disabled. F1 cannot become **Fully done** until protected reviewers
+accept or supersede ADR 0012; native fixture execution remains owned by F4/F5.
 
 ## F2 - implement D5.0 Connection Hub and planning models
 

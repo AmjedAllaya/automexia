@@ -270,13 +270,18 @@ for the exact OpenSSH tools they use. The extension itself has no direct-network
 capability: the approved OpenSSH child connects exactly as it would when typed
 in a shell. Arbitrary process/network access and third-party use remain denied.
 
-Current source status is deliberately narrower. While ADR 0012 is proposed,
-the exact resolver/argv/cwd/environment/lease/audit candidate is included only
-under `#[cfg(test)]`; production builds contain no broker module or successful
-managed-launch path. The review harness converts an authorized request back
-into the existing `SessionLaunchDescriptor` seam but never spawns or attaches a
-process. Exact limits, platform identity rules, verification commands, and
-remaining activation gates are documented in the
+Current source status is deliberately narrower. The D0/D3 schema-1 fixture
+freezes exact package ID/publisher/digest/version/contract compatibility,
+verification classes, grants, audits, strict defaults, authority ceilings,
+Windows/macOS/Linux/disabled-WSL resolver policy, and the native scenario
+matrix. The test-only broker enforces the same package policy before executable
+resolution and revalidates file identity before descriptor conversion.
+
+While ADR 0012 is proposed, this candidate remains under `#[cfg(test)]`;
+production builds contain no broker module or successful managed-launch path.
+The review harness reaches the existing `SessionLaunchDescriptor` seam but
+never spawns or attaches a process. Exact limits, checker commands, fixture
+expectations, and remaining activation gates are documented in the
 [session-launch broker contract](SESSION-LAUNCH-BROKER.md).
 
 ### OpenSSH inventory and persistence boundary
@@ -652,11 +657,13 @@ v0.4 boundary. New capabilities require security review, CODEOWNERS approval,
 two protected-path approvals, and an ADR.
 
 v0.5.0 adds only the replacement-ADR-approved first-party
-`session.launch` capability required by `devops-ssh`. A grant is
-scoped to publisher/extension/version, executable ID, operation kind, session
-and capsule, allowed public environment deltas, and interactive mode. It is
-checked at operation time, revocable, and audited without secrets. It is not a
-general `Command`, shell, scripting, or subprocess API.
+`session.launch` capability required by `devops-ssh`. Before authorization,
+the principal is bound to an exact package digest, publisher/extension/version,
+contract version, and repository-reviewed or first-party-signed proof. A grant
+is scoped to executable resource, operation, session, capsule, decision time,
+expiry, and public environment policy. It is checked at operation time,
+revocable, replay-resistant, and audited without secrets. It is not a general
+`Command`, shell, scripting, or subprocess API.
 
 The first SSH release intentionally grants no direct extension network and no
 raw secret access. The system OpenSSH child owns network and credential-agent

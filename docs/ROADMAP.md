@@ -24,10 +24,10 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | v0.4/S0 | Core identity, hostile-input bounds, atomic reload, and current source gates; stable-release evidence remains external. |
 | **Partially done** | v0.4/S1 | Deterministic and Windows-native assurance exists; controlled Linux/macOS, visual, GPU, accessibility, and baseline evidence remains. |
 | **Not done** | S2 | The 30-day baseline and enforceable latency/memory ratchet are not active. |
-| **Partially done** | D0 | Architecture and threats exist; the replacement launch-capability ADR and complete native SSH fixtures remain. |
+| **Partially done** | D0 | Exact contract, strict defaults, four-platform native fixture matrix, and mutation gate are complete locally; protected ADR acceptance remains. |
 | **Fully done** | D1 | Four private provider-neutral crates and bounded contracts satisfy the source boundary. |
 | **Fully done** | D2 | Generic status, immutable history, capsules, isolation, cancellation, and freshness are implemented. |
-| **Partially done** | D3 | A nonactivated exact-argv review model exists; production capability UX, spawn, lifecycle, and native proof remain. |
+| **Partially done** | D3 | The nonactivated broker now binds exact package identity, grants, platform resolution, file identity, lifecycle, and redacted audit; production UX/spawn/native proof remain. |
 | **Fully done** | D4 | The bounded OpenSSH inventory/persistence package is complete but deliberately disabled. |
 | **Not done** | D5.0-D5.2 | Connection Hub and managed OpenSSH production UX/launch are design only. |
 | **Not done** | D6.0-D6.5 | Provider authentication, capsules, transports, and multi-cloud slices are planned only. |
@@ -275,23 +275,25 @@ The following foundation work is intentionally not claimed by Phase 1:
   environment-changing rebind/relaunch action, and `devops-ssh` activation begin
   with Phase 2/D3 after the replacement ADR is accepted.
 
-#### Phase 2 preparation status (2026-08-15)
+#### Phase 2 preparation status (2026-08-17)
 
-The non-activated D3 review boundary is now implemented and tested. It adds the
-typed `session.launch` capability identity, expiring exact-scope decisions,
-active session/capsule registration, fixed-location OpenSSH resolver with
-fail-closed configured overrides, native executable identity/revalidation,
-exact one-argument SSH grammar, bounded core-owned environment/cwd policy,
-monotonic replay-resistant operation leases, bounded lifecycle state,
-revocation, and redacted audit records. The complete module is test-only and
-the production graph still has no managed process capability.
+The local D0/D3 review contract is now implemented and mutation-checked. Its
+schema-1 fixture freezes exact package ID/publisher/digest/version/contract and
+verification classes, capability/grant/audit fields, strict defaults,
+four-platform resolution, an all-false runtime authority ceiling, and nineteen
+native scenario definitions. The test-only broker enforces matching package
+identity, expiring exact-scope decisions, session/capsule registration,
+fixed-location OpenSSH resolution with fail-closed overrides, native file
+identity/revalidation, one literal destination, bounded core-owned environment/
+cwd, replay-resistant leases, bounded lifecycle, revocation, and redacted
+audit. Production still contains no managed process capability.
 
-D3 is therefore **partial, not shipped**. ADR 0012 is still proposed and the
-real first-party package digest/signature/compatibility/revocation proof,
-capability UI, atomic native check-to-spawn, real process/PTY/route attachment,
-platform-native spawn/cancel/teardown evidence, D4-to-D5 activation integration,
-and controlled process/PTY/renderer performance/leak evidence remain
-required before activation. The exact current contract is documented in
+D0 and D3 are therefore **partial, not shipped**. ADR 0012 protected acceptance,
+real package-loader attestation/revocation binding, capability UI, atomic native
+check-to-spawn, process/PTY/route ownership, execution of the Windows/macOS/
+Linux/WSL fixture matrix, D4-to-D5 activation, and controlled process/PTY/
+renderer performance/leak evidence remain required. The exact current contract
+is documented in
 [Exact-argument session-launch broker](SESSION-LAUNCH-BROKER.md).
 
 #### D4 inventory status (2026-08-15)
