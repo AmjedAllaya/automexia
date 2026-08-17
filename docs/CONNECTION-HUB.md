@@ -3,9 +3,10 @@
 Status: D5.0/F2's non-executing record, state, dry-run planning, and renderer-
 neutral Hub/review/planner baseline is implemented locally. D5.1 is partially
 implemented: its bounded catalog/search/filter/grouping, 10,000-record test,
-rapid-filter benchmark, and D4 revisioned CAS/recovery metadata store pass.
-Application composition, profile/recipe/preference persistence and transfer,
-product UI, platform guidance, and remaining native evidence are not done.
+rapid-filter benchmark, D4 revisioned CAS/recovery metadata store, and
+application-owned explicit-scan composition with last-known-good health and
+platform guidance pass. Profile/recipe/preference persistence and transfer,
+product UI, and remaining native evidence are not done.
 D5.2 managed connection lifecycle is not implemented; no credential custody or
 managed connection capability is shipped in v0.4.
 

@@ -410,6 +410,7 @@ version = "0.4.0"
 dependencies = [
  "ahash",
  "automexia-devops",
+ "automexia-devops-ssh",
  "automexia-extension-api",
  "automexia-extension-runtime",
  "automexia-image",

@@ -6,6 +6,8 @@
 
 pub mod api;
 pub mod builtins;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod connections;
 pub mod marketplace;
 pub mod migration;
 pub mod quick_actions;
