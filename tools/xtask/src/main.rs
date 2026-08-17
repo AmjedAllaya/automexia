@@ -2191,6 +2191,7 @@ fn verify_architecture() -> TaskResult {
                 "blake3",
                 "criterion",
                 "dirs",
+                "proptest",
                 "serde",
                 "serde_json",
                 "toml",
@@ -2214,7 +2215,13 @@ fn verify_architecture() -> TaskResult {
         ("automexia-image", &["image", "libc", "tempfile"]),
         (
             "automexia-ui-model",
-            &["automexia-extension-api", "unicode-segmentation"],
+            &[
+                "automexia-devops",
+                "automexia-extension-api",
+                "serde",
+                "serde_json",
+                "unicode-segmentation",
+            ],
         ),
     ];
     for (name, allowed_dependencies) in private_crates {
@@ -2936,6 +2943,85 @@ fn verify_architecture() -> TaskResult {
         "OpenSSH inventory fuzz or benchmark assurance is missing",
     )?;
 
+    let connection_model = [
+        read(&root().join("automexia-devops/src/connections/documents.rs"))?,
+        read(&root().join("automexia-devops/src/connections/model.rs"))?,
+        read(&root().join("automexia-devops/src/connections/planner.rs"))?,
+        read(&root().join("automexia-devops/src/connections/state.rs"))?,
+        read(&root().join("automexia-devops/src/connections/validation.rs"))?,
+    ]
+    .join("\n");
+    let connection_hub = read(&root().join("automexia-ui-model/src/connection_hub.rs"))?;
+    for invariant in [
+        "pub struct ConnectionDefinition",
+        "pub struct ConnectionObservation",
+        "pub struct ConnectionIntent",
+        "pub struct ConnectionReview",
+        "pub struct ConnectionReceipt",
+        "pub struct ConnectionProfileV1",
+        "pub struct AutomationRecipeV1",
+        "pub struct AutomationStepV1",
+        "pub struct TunnelDefinitionV1",
+        "pub struct ResolvedConnectionPlan",
+        "MAX_STEPS_PER_RECIPE: usize = 64",
+        "MAX_TUNNELS_PER_PROFILE: usize = 32",
+        "execution_enabled: false",
+        "AuthorityKind::Process",
+        "AuthorityKind::Network",
+        "AuthorityKind::Credential",
+        "AuthorityKind::Pty",
+        "AuthorityKind::Listener",
+    ] {
+        require(
+            connection_model.contains(invariant),
+            &format!("F2 connection model lost required invariant {invariant}"),
+        )?;
+    }
+    for invariant in [
+        "pub enum HubLayout",
+        "pub enum HubContentState",
+        "background_inert: true",
+        "focus_trapped: true",
+        "execution_enabled: false",
+        "pty_resize_requested: false",
+        "project_connection_review",
+        "project_recipe_planner",
+    ] {
+        require(
+            connection_hub.contains(invariant),
+            &format!("F2 Hub model lost required invariant {invariant}"),
+        )?;
+    }
+    let f2_source = format!("{connection_model}\n{connection_hub}");
+    for forbidden in [
+        "std::process",
+        "Command::new",
+        "std::net",
+        "TcpStream",
+        "TcpListener",
+        "UdpSocket",
+        "std::fs",
+        "tokio::process",
+        "tokio::net",
+        "reqwest",
+        "unsafe {",
+    ] {
+        require(
+            !f2_source.contains(forbidden),
+            &format!("F2 connection model crossed its disabled authority boundary with {forbidden}"),
+        )?;
+    }
+    require(
+        read(&root().join("fuzz/Cargo.toml"))?.contains("connection_planning")
+            && read(&root().join(".github/workflows/nightly.yml"))?
+                .contains("connection_planning")
+            && read(&root().join("tools/ci/qa.py"))?
+                .contains("benchmark-connection-planning")
+            && root()
+                .join("automexia-devops/benches/connection_planning.rs")
+                .is_file(),
+        "F2 connection planning fuzz or benchmark assurance is missing",
+    )?;
     for engine in ["rio-vt", "teletypewriter", "sugarloaf", "rio-window"] {
         let package = packages
             .iter()

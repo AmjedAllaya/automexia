@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "phase": "F2/D5.0",
+  "status": "implemented-non-executing-external-adr-pending",
+  "limits": {
+    "profiles": 10000,
+    "recipes": 2000,
+    "steps_per_recipe": 64,
+    "variables_per_recipe": 64,
+    "tunnels_per_profile": 32,
+    "tags_per_profile": 32,
+    "jump_profiles": 8,
+    "display_value_bytes": 4096,
+    "document_bytes": 16777216,
+    "automatic_attempts": 3,
+    "step_timeout_ms": 30000
+  },
+  "providers": [
+    "none",
+    "ssh",
+    "aws",
+    "azure",
+    "gcp",
+    "kubernetes",
+    "open-shift",
+    "teleport",
+    "open-bao",
+    "local-container"
+  ],
+  "authentication_states": [
+    "unknown",
+    "checking",
+    "ready",
+    "locked",
+    "missing",
+    "expired",
+    "mfa-required",
+    "authenticating",
+    "cancelled",
+    "offline",
+    "denied",
+    "unsupported",
+    "stale",
+    "error"
+  ],
+  "result_states": [
+    "pending",
+    "running",
+    "waiting-for-user",
+    "succeeded",
+    "warning",
+    "failed",
+    "cancelled",
+    "skipped-by-user",
+    "offline",
+    "denied",
+    "unsupported",
+    "stale",
+    "error"
+  ],
+  "content_states": [
+    "initial-setup",
+    "loading",
+    "empty",
+    "filtered-empty",
+    "ready",
+    "partial-failure",
+    "stale",
+    "offline",
+    "denied",
+    "unsupported",
+    "extension-crashed",
+    "revoked-capability",
+    "error"
+  ],
+  "layout_fixtures": [
+    "wide-1440x900-100",
+    "medium-1024x768-100",
+    "narrow-700x800-200",
+    "extreme-360x640-400"
+  ],
+  "authorities": {
+    "process": false,
+    "network": false,
+    "provider": false,
+    "credential": false,
+    "pty": false,
+    "listener": false,
+    "renderer": false,
+    "gpu": false
+  },
+  "model_files": [
+    "automexia-devops/src/connections/documents.rs",
+    "automexia-devops/src/connections/model.rs",
+    "automexia-devops/src/connections/planner.rs",
+    "automexia-devops/src/connections/state.rs",
+    "automexia-devops/src/connections/validation.rs",
+    "automexia-ui-model/src/connection_hub.rs"
+  ],
+  "test_files": [
+    "automexia-devops/tests/connection_planning.rs",
+    "automexia-devops/tests/connection_properties.rs",
+    "automexia-devops/tests/connection_records.rs",
+    "automexia-devops/tests/connection_state_matrix.rs",
+    "automexia-ui-model/tests/connection_hub.rs",
+    "automexia-ui-model/tests/connection_review.rs"
+  ],
+  "fixture_files": [
+    "tests/fixtures/connection-hub/records/all-providers-v1.json",
+    "tests/fixtures/connection-hub/provider-observations/all-auth-states-v1.json",
+    "tests/fixtures/connection-hub/goldens/layout/responsive-v1.json",
+    "tests/fixtures/connection-hub/goldens/accessibility/modal-grid-v1.json"
+  ],
+  "fuzz_target": "fuzz/fuzz_targets/connection_planning.rs",
+  "benchmark": "automexia-devops/benches/connection_planning.rs",
+  "documents": [
+    "docs/CONNECTION-HUB.md",
+    "docs/SSH-CONNECTION-AUTOMATION.md",
+    "docs/TESTING.md",
+    "docs/PHASE-IMPLEMENTATION-AUDIT.md",
+    "docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md"
+  ]
+}

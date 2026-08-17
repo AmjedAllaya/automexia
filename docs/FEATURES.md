@@ -46,9 +46,12 @@ packs, and CP3.3 selected native imports and exact trusted-workspace task
 bridges are locally implemented for v0.5; their stable release claims remain
 gated by native and controlled evidence.
 Those omissions are deliberate security and product boundaries, not hidden
-features. The managed SSH/multi-cloud [Connection Hub](CONNECTION-HUB.md) is a
-fully specified D5/D6 plan but is likewise not a shipped v0.4 surface. Its
-reusable profiles and typed actions are specified in
+features. The managed SSH/multi-cloud [Connection Hub](CONNECTION-HUB.md) is
+not a shipped v0.4 surface. Its F2/D5.0 bounded records, state reducers, dry-run
+planner, and renderer-neutral Hub/review/planner models are implemented locally
+with all authority disabled; D5.1/D5.2 product UI and execution and all D6
+provider slices remain planned. Its reusable profiles and typed actions are
+specified in
 [SSH connections and automation](SSH-CONNECTION-AUTOMATION.md). The complete
 planned command/leader/picker replacement for GUI-oriented remote-management
 workflows is [Terminal-first remote operations](TERMINAL-FIRST-OPERATIONS.md).

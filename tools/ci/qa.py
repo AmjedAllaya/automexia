@@ -54,6 +54,7 @@ STEP_TIMEOUT_SECONDS = {
     "benchmark-pty": 7200,
     "benchmark-ssh-inventory": 7200,
     "benchmark-quick-actions": 7200,
+    "benchmark-connection-planning": 7200,
     "benchmark-quick-action-store": 7200,
 }
 TOKEN_PATTERNS = (
@@ -760,6 +761,10 @@ def main() -> int:
             (
                 "benchmark-quick-actions",
                 ["cargo", "bench", "-p", "automexia-devops", "--bench", "quick_actions", "--locked", "--", "--noplot"],
+            ),
+            (
+                "benchmark-connection-planning",
+                ["cargo", "bench", "-p", "automexia-devops", "--bench", "connection_planning", "--locked", "--", "--noplot"],
             ),
             (
                 "benchmark-quick-action-store",

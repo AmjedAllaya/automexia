@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "cases": [
+    {"id":"wide-1440x900-100","width":1440,"height":900,"text_scale":1.0,"layout":"wide","navigation_visible":true,"max_visible_rows":13},
+    {"id":"medium-1024x768-100","width":1024,"height":768,"text_scale":1.0,"layout":"medium","navigation_visible":false,"max_visible_rows":11},
+    {"id":"narrow-700x800-200","width":700,"height":800,"text_scale":2.0,"layout":"narrow","navigation_visible":false,"max_visible_rows":4},
+    {"id":"extreme-360x640-400","width":360,"height":640,"text_scale":4.0,"layout":"narrow","navigation_visible":false,"max_visible_rows":1}
+  ],
+  "invariants": {"modal":true,"background_inert":true,"topmost":true,"focus_trapped":true,"execution_enabled":false,"pty_resize_requested":false}
+}

@@ -18,8 +18,13 @@ serde_json = { workspace = true }
 toml = "1.1.4"
 
 [dev-dependencies]
+proptest = { workspace = true }
 criterion = { workspace = true }
 
 [[bench]]
 name = "quick_actions"
+harness = false
+
+[[bench]]
+name = "connection_planning"
 harness = false

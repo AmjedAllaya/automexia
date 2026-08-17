@@ -95,3 +95,10 @@ path = "fuzz_targets/quick_action_imports.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "connection_planning"
+path = "fuzz_targets/connection_planning.rs"
+test = false
+doc = false
+bench = false

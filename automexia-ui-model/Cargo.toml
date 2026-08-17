@@ -11,4 +11,9 @@ repository.workspace = true
 
 [dependencies]
 automexia-extension-api = { workspace = true }
+automexia-devops = { workspace = true }
 unicode-segmentation = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
