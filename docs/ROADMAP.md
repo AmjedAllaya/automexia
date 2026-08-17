@@ -4,6 +4,49 @@ For an evidence-based phase-by-phase comparison of this roadmap with the
 current source, tests, benchmarks, platform coverage, security controls, and
 release gates, see the [phase implementation audit](PHASE-IMPLEMENTATION-AUDIT.md).
 
+<!-- roadmap-status-register:start -->
+## Current feature status
+
+The status appears before every feature/phase and uses exactly **Fully done**,
+**Partially done**, or **Not done**. It describes implementation at the phase's
+defined source/local boundary; release evidence remains a separate gate and is
+summarized in the linked phase audit. This register is machine-checked against
+the audit's executive matrix so the two cannot drift.
+
+| Status | Feature / phase | Current scope |
+|---|---|---|
+| **Fully done** | v0.4/S0 | Core identity, hostile-input bounds, atomic reload, and current source gates; stable-release evidence remains external. |
+| **Partially done** | v0.4/S1 | Deterministic and Windows-native assurance exists; controlled Linux/macOS, visual, GPU, accessibility, and baseline evidence remains. |
+| **Not done** | S2 | The 30-day baseline and enforceable latency/memory ratchet are not active. |
+| **Partially done** | D0 | Architecture and threats exist; the replacement launch-capability ADR and complete native SSH fixtures remain. |
+| **Fully done** | D1 | Four private provider-neutral crates and bounded contracts satisfy the source boundary. |
+| **Fully done** | D2 | Generic status, immutable history, capsules, isolation, cancellation, and freshness are implemented. |
+| **Partially done** | D3 | A nonactivated exact-argv review model exists; production capability UX, spawn, lifecycle, and native proof remain. |
+| **Fully done** | D4 | The bounded OpenSSH inventory/persistence package is complete but deliberately disabled. |
+| **Not done** | D5.0-D5.2 | Connection Hub and managed OpenSSH production UX/launch are design only. |
+| **Not done** | D6.0-D6.5 | Provider authentication, capsules, transports, and multi-cloud slices are planned only. |
+| **Not done** | D7 | Public ecosystem, direct APIs, sandboxed extensions, and AI execution are deferred. |
+| **Fully done** | CP0 | Architecture, threat model, ceilings, fixtures, mutation tests, and nonactivation policy are complete. |
+| **Fully done** | CP1 | Native shell completion, diagnostics, explicit bounded refresh, precedence, and lifecycle are complete locally. |
+| **Fully done** | CP2.0 | The bounded typed Quick Action model and hostile corpus are complete at their pure boundary. |
+| **Fully done** | CP2.1 | Private atomic persistence, compare-and-swap, recovery, watches, and benchmarks are complete as an internal library. |
+| **Fully done** | CP2.2 | Local layered search, review, administration, import/export, recovery, and insert/copy UI are implemented; hosted evidence remains. |
+| **Fully done** | CP3.0 | The pure five-shell compiler recomputes source identity; requires complete collision/completion/tool evidence; verifies owner, structured, body, and rollback identities; retains degraded tool UX detail; and has serializer/native/tamper tests, all-shell fuzzing, a 256-binding benchmark, and mutation ratchets with activation disabled. |
+| **Fully done** | CP3.1 | Explicit opt-in persistent aliases, crash-safe atomic generations, active/rollback topology and permission verification, exact compiler-bound native startup/reload, detailed reusable-CAS dry runs, stable diagnostics, rollback, exact uninstall, and WSL lifecycle gates are implemented at the source/local boundary. |
+| **Not done** | CP3.2-CP3.3 | First-party static packs and trusted import/task bridges are not implemented. |
+| **Not done** | CP4 | Capsule/provider actions wait for activated D3 and D5/D6 context. |
+| **Not done** | CP5.0-CP5.6 | The optional suggestion bridge/UI is planned; CP1 remains the complete fallback. |
+| **Not done** | CP6 | Signed ecosystem packs and AI tools are deferred to later gates. |
+| **Partially done** | G0 | Shared safety prerequisites exist; fixtures, generation, checksums, and the replacement ADR remain. |
+| **Not done** | G1 | No private typed/compiled keybinding registry exists. |
+| **Partially done** | G2 | Generic last-known-good reload exists; profile layers, migration, and compilation remain. |
+| **Partially done** | G3 | Some fallthrough behavior exists; structured outcomes, sequences, tables, and chains remain. |
+| **Partially done** | G4 | Some actions exist; remaining clear, selection/search, zoom/equalize, and export actions are incomplete. |
+| **Not done** | G5 | Generated profiles/tooling, migration CLI, compatibility fuzzing, and registry benchmarks are absent. |
+| **Not done** | G6 | Inspector and parked-PTY undo/redo are deferred pending separate safety design. |
+
+<!-- roadmap-status-register:end -->
+
 ## v0.4 — standalone stability
 
 Complete product rebranding, configuration coexistence/migration, contributor
@@ -307,7 +350,7 @@ send command data elsewhere, or override user completion frameworks. This plan
 does not claim that Automexia-rendered suggestions, Quick Actions, or generated
 aliases are shipped in v0.4.
 
-#### CP0-CP1 command-productivity status (2026-08-16)
+#### CP0-CP1 command-productivity status (2026-08-17)
 
 CP0 is complete as a non-runtime architecture gate. ADR 0015 is accepted; the
 native shell/provider compatibility baseline, conflict/precedence matrix,
@@ -324,6 +367,29 @@ review, bounded administration/import/export, and insertion are implemented
 locally. Hosted native shell insertion, controlled screen-reader evidence, and
 the 30-day performance/resource baseline remain release gates; exact launch
 remains disabled behind D3.
+
+#### CP3.1 persistent alias status (2026-08-17)
+
+- **Fully done** — One private immutable generation publishes exact PowerShell,
+  Bash, Zsh, Fish, and CMD artifacts with source-CAS/pointer-last recovery and
+  one authenticated rollback generation.
+- **Fully done** — Read-only doctor and startup verify active plus retained
+  generations, exact directory topology, permissions/ACLs, SHA-256, source and
+  shell identity, and the exact `automexia-devops/0.4.0` compiler manifest.
+- **Fully done** — Dry runs expose directly reusable revision/generation CAS
+  inputs, source/artifact identity, bindings, collisions and exact owner
+  fingerprints, completion state, and tool health; repeated local executable and
+  completion observations are cached per unique identity.
+- **Fully done** — Twenty-one owned security/lifecycle regressions, three CLI detail
+  tests, eight contract mutations, strict Clippy, native Windows checks, and the
+  full local WSL Bash/Zsh/Fish lifecycle pass. The final local 256-alias release
+  benchmark measured 24.228-26.100 ms compile, 35.476-37.391 ms durable publish,
+  and 8.580-9.228 ms doctor; nightly and release workflows own the WSL lifecycle gate.
+- **Partially done** — Hosted macOS/native matrix publication and the controlled
+  named-hardware 30-day startup/resource baseline remain release evidence; they
+  are not missing CP3.1 implementation.
+- **Not done** — CP3.2 first-party packs and CP3.3 trusted import/task bridges
+  remain separate phases and are not activated by CP3.1.
 
 #### CP5 Shell Completion and Suggestions order
 

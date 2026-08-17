@@ -3,12 +3,14 @@
 - Status: Accepted for v0.5
 - Date: 2026-08-15
 
-Implementation note (2026-08-16): CP2.2 now implements the bounded local
-search, placeholder/risk/conflict review, dry-run administration/import/export,
-and explicit insert/copy slice of this decision. Exact launch, secret expansion,
-trusted-workspace activation, aliases, and provider-aware candidates remain
-outside that authority. Stable publication still requires hosted native and
-controlled accessibility/performance evidence.
+Implementation note (updated 2026-08-17): CP2.2 implements bounded local search,
+review, dry-run administration/import/export, and explicit insert/copy. CP3.1
+implements explicitly opted-in persistent user aliases through private immutable
+five-shell generations, journaled source/generation CAS, verified native-wins
+startup/reload, diagnostics, rollback, and exact uninstall. Exact launch, secret
+expansion, trusted-workspace activation, built-in packs, and provider-aware
+candidates remain outside that authority. Stable publication still requires
+hosted native and controlled accessibility/performance evidence.
 
 Verification note (2026-08-17): the CP2.2 re-audit made shell-user and
 global-user precedence structurally distinct, revalidates every activation
@@ -65,8 +67,9 @@ The detailed schema, shell strategy, delivery phases, limits, verification
 matrix, and acceptance criteria are in
 [Command Productivity](../COMMAND-PRODUCTIVITY.md). The concrete CP2/CP3 alias
 and first-party pack specification is
-[DevOps Quick Actions and persistent aliases](../DEVOPS-ALIASES.md). This link
-does not activate those planned capabilities.
+[DevOps Quick Actions and persistent aliases](../DEVOPS-ALIASES.md). CP3.1
+activation is authorized only by an explicit dry-run-reviewed user mutation;
+the link and this ADR activate no alias by themselves.
 
 ## Consequences
 

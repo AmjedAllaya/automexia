@@ -441,7 +441,7 @@ forbidden in the renderer, input, VT, PTY, and extension runtime paths.
 Exit: clean install/update/uninstall, quoting, cursor, history, exit-status,
 startup-time, disabled-integration, and collision tests pass natively.
 
-CP1 status (2026-08-16): implemented. PowerShell, Bash, Zsh, Fish, CMD, and WSL
+CP1 status (2026-08-17): implemented. PowerShell, Bash, Zsh, Fish, CMD, and WSL
 retain their native editors. Managed Bash/Zsh/Fish adapters inventory existing
 definitions before sourcing a fixed, digest-verified artifact; native entries
 win. Because PowerShell exposes no supported read-only argument-completer
@@ -465,17 +465,33 @@ and only for shells their installed CLI supports. Git, AWS, Azure, GCP, and
 OpenSSH remain package/provider-owned. Terraform and OpenTofu profile-mutating
 installers require their own reviewed manual consent and are never invoked by
 Automexia. Refresh resolves one executable, passes exact argv with null stdin,
-terminates at 750 ms, bounds stdout/stderr, validates UTF-8/control bytes, and
-publishes private fixed-name files using same-directory atomic replacement.
+terminates at 750 ms, bounds stdout/stderr, validates UTF-8 plus C0 and
+bidirectional controls, and publishes private fixed-name files using
+same-directory atomic replacement. The child environment is cleared and rebuilt
+from OS process essentials, a local absolute-only `PATH`, deterministic locale/
+color controls, and no home, provider configuration, proxy, credential, or
+arbitrary application variables. Hostile provider diagnostics are bounded and
+terminal-control sanitized.
 Provider commands run inside a POSIX process group or Windows Job Object, so a
 timeout, output overflow, or early leader exit terminates descendants that still
 hold output pipes; the command never leaves detached capture threads or provider
 children behind. The executable is held open and its stable file identity is
 revalidated after version discovery and generation, rejecting replacement races.
 Windows refresh accepts only native `.exe`/`.com` images and never implicitly
-routes a provider through `.cmd`/`.bat` shell parsing. Shell adapters reject a
-linked or non-directory component anywhere in their managed parent chain, and
-all persistence overrides must be absolute. macOS uses
+routes a provider through `.cmd`/`.bat` shell parsing. Windows completion state
+and the canonical provider image must remain on a local drive; UNC roots and
+remote canonical redirects fail before startup or execution I/O. Shell adapters
+reject a linked or non-directory component anywhere in their managed parent
+chain and enforce the 4096-byte configuration-root ceiling.
+Windows installer and completion integrity checks use the platform SHA-256 API
+directly and do not depend on `Microsoft.PowerShell.Utility` auto-loading during
+clean installation or shell startup.
+
+Refresh publishes a bounded two-digest transition before replacing an existing
+artifact, then collapses it to one digest. Bash, Zsh, Fish, and PowerShell can
+therefore verify the previous or candidate artifact at every interruption point
+without sourcing unverified text. All persistence overrides must be absolute.
+macOS uses
 `~/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal`; Linux
 and BSD use `${XDG_CONFIG_HOME:-~/.config}/automexia`. Installers repair a stale
 owned profile block in place; uninstallers preflight every exact owned target
@@ -537,16 +553,41 @@ baseline. Renderer-neutral layout/accessibility labels, quoting/Unicode,
 privacy, worker lifecycle, storage/recovery, mutation, and short benchmark gates
 are automated now.
 
-### CP3 — aliases and first-party DevOps packs
+### CP3 — projection, aliases, and first-party DevOps packs
 
-- Generate reversible shell functions/aliases from enabled user choices.
-- Deliver versioned Git, Docker, Kubernetes/OpenShift, Helm,
-  Terraform/OpenTofu, AWS, Azure, GCP, and SSH packs.
-- Add risk labeling, tool/version health, collision resolution, and completion
-  linkage for every enabled alias.
+**CP3.0 complete at its pure boundary:** `automexia-devops::actions` compiles
+validated aliases deterministically for PowerShell, Bash, Zsh, Fish, and CMD.
+Portable eligibility, exact user override consent, native ownership, completion
+and tool health, rollback/source/artifact metadata, hard observation/file limits,
+tamper verification, hostile quoting, and typed argument policies are enforced.
+The compiler independently recomputes canonical source identity, requires
+complete collision/completion/tool inventories, and accepts a same-action owner
+only when its deterministic fingerprint matches. Missing and unsupported tool
+details remain in decisions for actionable UI. The compiler returns in-memory
+artifacts with activation disabled and owns no profile, filesystem, process,
+environment, network, secret, or execution capability. Thirteen focused tests,
+native syntax/capture checks, mutation gates, an all-five-shell libFuzzer target,
+and a 256-binding Criterion target own this boundary.
 
-Exit: no default collision, native aliases win, every projection round-trips,
-and pack actions remain review-before-insert across all supported shells.
+**CP3.1 fully done at the source/local boundary:** explicit opt-in aliases use
+private immutable content-addressed generations, SHA-256 manifests, source and
+generation compare-and-swap, a crash-recovery journal, a pointer-last commit,
+and one verified rollback generation. The existing managed hook validates the
+ordered exact compiler/source/shell manifest and activates one file per shell;
+native definitions win, authenticated exact-owner consent is rechecked, reload
+is last-known-good, and uninstall preserves saved actions. Dry-run-first
+management reports directly reusable CAS values plus full collision/completion/
+tool detail; read-only doctor verifies active/rollback topology and permissions
+and returns stable malformed-source/unsafe-root health. Unique executable and
+completion observations are cached across shells. Native Windows and full local
+WSL Bash/Zsh/Fish lifecycle tests, configured nightly/release WSL gates, a
+256-alias benchmark, fuzz/property coverage, and mutation/contract ratchets own
+the boundary.
+
+**CP3.2-CP3.3 not done:** versioned Git/Docker/Kubernetes/OpenShift/Helm/
+Terraform/OpenTofu/AWS/Azure/GCP/SSH packs and trusted alias/task imports remain
+separate work. The named-hardware 30-day CP3.1 baseline is also pending release
+evidence; it does not make the implemented source boundary partial.
 
 ### CP4 — capsule/provider-aware productivity
 

@@ -1,13 +1,13 @@
 # DevOps Quick Actions and persistent aliases
 
-Status: planned for CP2 (persistent typed Quick Actions) and CP3 (native-shell
-alias projections and first-party packs). CP1 is shipped and CP2.0-CP2.2 are
-implemented locally through reviewed insert/copy. Predefined packs, generated
-aliases, trusted workspace actions, secret expansion, and exact launch are not
-shipped in v0.4. Stable CP2.2 publication still requires hosted native and
-controlled evidence.
+Status: CP2.0-CP3.1 are implemented locally. CP3.1 generated aliases are active
+only after explicit user review and opt-in; CP3.2 packs, CP3.3 trusted bridges,
+trusted workspace actions, secret expansion, and exact launch remain disabled.
+Stable publication still requires the phase-specific hosted-native and
+controlled evidence described below.
 
-Generated aliases and first-party packs are not shipped in v0.4.
+No first-party pack alias is activated or shipped by CP3.1. Saved user aliases
+remain disabled until the user applies an explicit dry-run-reviewed change.
 
 This document is the implementation authority for predefined DevOps shortcuts
 and user-created alias persistence. The broader
@@ -139,7 +139,8 @@ built-in pack + canonical user source + trusted workspace source
   -> user reviews and enables one alias projection
   -> pure shell-specific compiler builds a candidate artifact
   -> syntax/native semantic test + digest/permission validation
-  -> same-directory atomic replacement under generated/aliases
+  -> private immutable content-addressed generation under generated/aliases
+  -> durable journal + source CAS + activation-pointer-last commit
   -> existing managed shell hook verifies and loads it in future sessions
 ```
 
@@ -231,6 +232,10 @@ contracts:
 - **TypedBindings:** named action fields map to bounded positional/named
   arguments with type, required/default rules, and shell-native completion.
 
+Native command aliases and Fish abbreviations are used only for an argument-free
+stored template with `ForwardAll`, where the shell's normal appended arguments
+are the contract. `None` uses a wrapper on PowerShell/Bash/Zsh/Fish so extra
+user arguments fail instead of becoming an accidental provider operation.
 String interpolation, `eval`, command substitution, redirection, pipelines,
 backgrounding, multi-command separators, inline environment assignment, and
 shell parsing are not argument policies. An action needing those constructs is
@@ -273,38 +278,47 @@ shell:
   `automexia-devops` package; not copied into user state unless customized.
 - Trusted workspace source: `.automexia/actions.toml`, disabled until the user
   trusts that exact workspace revision.
-- Generated aliases:
-  `<config-root>/generated/aliases/<shell>/automexia-aliases.<ext>`.
+- Generated aliases: immutable
+  `<config-root>/generated/aliases/generations/<sha256>/<shell>/automexia-aliases.<ext>`
+  artifacts plus `generation.manifest`.
+- Activation/rollback pointers: exact bounded `current` and `previous` files.
+  The private `.aliases.lock` serializes writers and `transaction.pending`
+  records the only recoverable source/generation transition.
 - Generated completion remains under the existing
   `<config-root>/generated/completion/<shell>/` CP1 root.
 
-User data and generated data never share a file. Deleting `generated/aliases`
-removes active projections but does not delete saved actions. Uninstall removes
-the exact managed hook/projections and preserves `actions.toml` unless the user
-separately chooses `Delete my action data` with a preview.
+User data and generated data never share a file. `current=disabled` removes
+activation without deleting saved actions or immutable generations. Uninstall
+first validates the exact bounded generated-alias topology, removes only that
+topology, and preserves `actions.toml`; unexpected entries make it refuse before
+profile or state mutation. Canonical data deletion is a separate user decision.
 
 ### Transaction contract
 
-1. Read the current version/revision through bounded no-follow checks.
-2. Parse a complete candidate with deny-unknown-fields and all hard limits.
-3. Resolve scopes, conflicts, tools, completion linkage, and projection
-   eligibility without executing an action.
-4. Compile all selected shell artifacts into private same-directory staging
-   files.
-5. Run syntax and semantic fixture validation; calculate schema/generator/source
-   digests and file metadata.
-6. Serialize writers. Across application processes use an exact lock and
-   compare-and-swap source revision so one process cannot silently overwrite a
-   newer edit.
-7. Flush staged source/artifacts, rotate at most one private previous source,
-   atomically replace, then publish one immutable application snapshot.
-8. On any failure retain the complete last-known-good source and generated set;
-   never publish half of a multi-shell change.
+1. Read the source revision and activation generation through bounded no-follow
+   checks; mutations require both displayed compare-and-swap values.
+2. Parse and validate the complete candidate with deny-unknown-fields and all
+   CP0 limits. Resolve scopes, native owners, tools, completion linkage, risk,
+   and projection eligibility without executing an action or provider.
+3. Compile all five shell artifacts, validate them, and write a private immutable
+   content-addressed generation. Every artifact and the exact ten-line manifest
+   carries SHA-256 integrity; compiler source/body/decision identities are also
+   verified before activation.
+4. Acquire the nonblocking private cross-process writer lock, recheck both CAS
+   values, and durably write `transaction.pending` with old/new source and
+   generation identities.
+5. Durably save the canonical source by revision CAS. Commit `current` last and
+   retain at most one `previous` generation; then durably remove the journal.
+6. Recovery while holding the same lock observes source identity: if the source
+   was not saved it restores all-old, if it was saved it completes all-new, and
+   any contradictory state refuses repair. A stale writer cannot publish.
 
-Temporary/previous files use the same user-only permissions and size ceilings as
-the source. Disk-full, permission, antivirus lock, process crash, stale revision,
-and concurrent-window failures return an actionable result and leave the old
-state usable.
+Staging, journal, pointer, manifest, artifact, lock, and generation paths use
+strict user-only permissions and bounded exact names/topology. Disk-full,
+permission, antivirus lock, process crash, stale revision/generation, and
+concurrent-window failures return actionable redacted codes and keep a complete
+last-known-good state. `doctor`, list, preview, and test open source/generated
+state strictly read-only and never create, lock, repair, or clean live state.
 
 ### New and active sessions
 
@@ -373,9 +387,12 @@ this exact native definition`. Override is never preselected and can be revoked
 without editing the native definition.
 
 If a collision appears later, the next verified load disables the Automexia
-projection rather than racing or shadowing it. Generated-file tampering is not
-imported as a customization; the UI offers `Regenerate from source`, `Inspect
-diff`, or `Keep disabled`.
+projection rather than racing or shadowing it. An advanced exact override is
+reused only from an authenticated active/previous manifest and only when the
+same observable PATH/builtin owner fingerprint remains. Shell aliases/functions
+that cannot be restored exactly stay native winners. Generated-file tampering is
+not imported as customization; recovery is explicit regeneration, rollback, or
+disable.
 
 ## Shell-specific projections
 
@@ -570,33 +587,44 @@ Health states include `Ready`, `Disabled`, `Missing tool`, `Unsupported tool`,
 failed`. Each has one primary recovery action and preserves last-known-good
 behavior.
 
-`doctor` is read-only. It checks source/artifact bounds, versions, digests,
-permissions, exact parent chains, tool resolution, names, collisions, completion
-linkage, and reload state. It never invokes providers, evaluates definitions,
-reads history/secrets, or repairs automatically.
+`doctor` is read-only. It verifies the active and retained rollback generations,
+exact bounded directory entries, source/artifact bounds, exact compiler/source/
+shell metadata, SHA-256, permissions/ACLs, parent chains, names, collisions,
+completion linkage, and reload state. Unsafe roots and malformed canonical source
+produce stable health reports instead of an unstructured exit. It never invokes
+providers, evaluates definitions, reads history/secrets, or repairs automatically.
 
-### Planned product CLI
+### Implemented product CLI
 
-The CP2/CP3 implementation should expose scriptable, noninteractive management:
+CP3.1 exposes scriptable, noninteractive management:
 
 ```text
-automexia actions list [--scope <scope>] [--json]
-automexia actions show <id> [--json]
-automexia actions add --file <candidate.toml> --dry-run
-automexia actions remove <id> --dry-run
 automexia aliases list [--shell <shell>] [--json]
-automexia aliases enable <action-id> --name <name> --shell <shell> --dry-run
-automexia aliases disable <action-id> [--shell <shell>] --dry-run
+automexia aliases preview [--shell <shell>] [--show-source] [--json]
+automexia aliases test [--shell <shell>] [--json]
+automexia aliases enable <action-id> --name <name> --shell <shell>... [policy flags]
+automexia aliases disable <action-id> [--shell <shell>]
+automexia aliases rename <action-id> <name>
+automexia aliases regenerate
+automexia aliases disable-all
+automexia aliases rollback <current-generation>
 automexia aliases doctor [--json]
-automexia aliases regenerate [--shell <shell>] --dry-run
-automexia aliases export --output <file>
-automexia aliases import --input <file> --dry-run
+automexia aliases reload --shell <shell>
 ```
 
-Mutating commands support `--dry-run`, stable structured output, nonzero failure
-codes, no prompts in JSON mode, optimistic source revision, and no provider
-execution. `--force` cannot bypass security ceilings, secret rules, path safety,
-native ownership, destructive alias policy, or unknown schema versions.
+`enable`, `disable`, `rename`, `regenerate`, and `disable-all` are non-mutating
+previews unless `--apply` is present. Applied source changes require
+`--expected-revision` and `--expected-generation`; generation-only operations
+require the expected generation. `rollback` also requires explicit `--apply`.
+Stable JSON/text output exposes the proposed source revision/digest, current CAS
+revision and generation, published generation, artifact/compiler identity,
+bindings, collision kind/owner/exact fingerprint, completion state, and tool
+health without prompts or secret reads. The dry-run CAS values can be copied
+directly into the reviewed `--apply` invocation. `test` verifies compiler
+integrity and installed native parsers; repository native fixtures own exact
+argv/exit and lifecycle semantics. No flag bypasses
+security ceilings, risk acknowledgement, secret/path safety, native ownership,
+or schema checks, and no command executes an action/provider.
 
 ## Built-in first-party DevOps packs
 
@@ -741,17 +769,31 @@ without importing their execution engines into terminal core.
 
 ### Dependency recommendation
 
-Add no runtime crate merely to generate aliases. Reuse the existing TOML/Serde
-stack, SHA-256/digest utilities, atomic/private-file helpers, bounded worker and
-watcher lifecycle, typed UI model, and CP1 shell installers. Keep each shell
-serializer small and pure.
+CP3.0 adds one direct dependency on the workspace's already-locked BLAKE3
+implementation for canonical source and artifact identities. A hand-written
+digest was rejected on correctness and maintenance grounds; a process-backed
+platform utility would violate purity and portability; and adding another hash
+family would increase the lock graph without improving this non-secret integrity
+use. BLAKE3 is maintained and declares CC0-1.0 or Apache-2.0 (including the
+LLVM-exception option), has portable Windows/macOS/Linux behavior, and
+introduced no new
+workspace package because it was already locked. The direct edge and its
+compile/binary cost remain covered by dependency, advisory, license, benchmark-
+build, and size gates. The 256-projection Criterion target provides the measured
+comparison point; no 30-day latency claim is made yet.
 
-If a new locking, diff, or matcher dependency is proposed, require a written
-comparison of correctness, advisory/license history, transitive/binary/compile
-cost, Windows/macOS/Linux behavior, maintenance, and measured benefit. The
-1,024-action search path can initially use the project's existing deterministic
-matcher; CP5's separate matcher evaluation must not expand CP3's dependency
-surface by accident.
+CP3.1 adds a direct `sha2` 0.11 edge to the application boundary for standard
+SHA-256 manifests that native shell/platform tools can verify without importing
+Rust-specific state. A handwritten hash and process-backed hashing in the app
+were rejected; RustCrypto is maintained, portable, permissively licensed, and
+already covered by advisory/license/lock/build checks. The pure compiler keeps
+BLAKE3 identities; the SHA-256 edge is confined to publication verification.
+No locking, diff, matcher, shell parser, or process dependency was added.
+
+The serializers remain small and pure and reuse the typed model. Any future
+dependency still requires a written comparison of correctness, advisory/license
+history, transitive/binary/compile cost, Windows/macOS/Linux behavior,
+maintenance, and measured benefit.
 
 ## Security and privacy
 
@@ -824,7 +866,7 @@ are not current v0.4 claims.
 | Search/filter 1,024 actions | <= 16 ms p95; deterministic and allocation-bounded |
 | Collision check for 256 aliases | <= 25 ms p95 from cached shell inventory; no definition body execution |
 | Compile one shell's 256 projections | <= 50 ms p95 background target |
-| Verify/source one generated alias file at shell startup | <= 50 ms p95 post-warmup, no subprocess/network |
+| Verify/source one generated alias file at shell startup | <= 50 ms p95 post-warmup; no provider, network, action execution, or per-alias subprocess |
 | Regenerate all five shell artifacts | Bounded/cancellable; atomic all-or-old publication |
 | Active in-process action/health cache | <= 8 MiB |
 | Canonical source/generated file | <= existing 1 MiB per-file ceiling |
@@ -868,21 +910,29 @@ loop rewrites files continuously; backoff is bounded and repair is explicit.
 
 ## Verification plan
 
-The planned boundary is protected by the versioned
+The implemented boundary is protected by the versioned
 [`CP2/CP3 alias specification fixture`](../tests/fixtures/command-productivity/cp2-cp3-alias-spec-v1.json),
 [`check_devops_alias_spec.py`](../tools/ci/check_devops_alias_spec.py), and its
-mutation suite. CP2.0 additionally provides the capability-free
-`automexia-devops::actions` model, bounded in-memory TOML parser, deterministic
-validator, readable valid fixture, and an eleven-case hostile TOML corpus. The
-machine gates freeze the exact three-file source allowlist and reject filesystem,
-process, network, environment, UI, PTY, shell-profile, async-runtime, and unsafe
-code authority in that boundary.
+mutation suite. The separate schema-1
+[`CP3.0 contract`](../tests/fixtures/command-productivity/cp30-contract-v1.json)
+freezes the exact five-file pure model boundary, five serializer modes, hard
+limits, thirteen tests, fuzz target, benchmark, and zero activation/profile/
+filesystem/process/environment/network/secret authority. Mutations prove those
+ratchets fail closed.
 
-The overall CP2/CP3 status remains planned and non-activated. There is no action
-store, watcher, runtime alias, generated shell file, provider call, UI, or exact
-launch in CP2.0. Those capabilities still require the later phase-specific
-implementation and native evidence below; a valid model is not evidence that
-aliases are shipped.
+CP3.0 remains a pure non-activated compiler. CP3.1 now owns only the separate
+application publication boundary and existing managed shell-hook activation; it
+does not move filesystem/process authority into `automexia-devops`. CP3.1 cannot
+execute an action/provider, read secrets, or grant exact launch. CP3.2+ features
+retain their own later phase-specific implementation and evidence gates.
+
+The schema-1 [`CP3.1 contract`](../tests/fixtures/command-productivity/cp31-contract-v1.json),
+[`check_command_productivity_cp31.py`](../tools/ci/check_command_productivity_cp31.py),
+and eight mutation cases freeze publication order, exact compiler identity,
+private/no-follow state, active/rollback topology and permission verification,
+complete dry-run diagnostics, five native adapters, WSL workflow ownership,
+uninstall preservation, focused Rust/CLI tests, and the 256-alias publication/
+verification benchmark.
 
 ### Pure model and persistence tests
 
@@ -976,7 +1026,9 @@ not by comparing generated strings between shells.
 - Criterion targets for parse/merge 1/256/1,024 actions, collision 1/64/256,
   compile/verify each shell, search, reload, and pack update diff.
 - Native post-warmup startup measurement compares CP1 baseline, CP1+empty CP3,
-  and 256 aliases for each shell/OS.
+  and 256 aliases for each shell/OS. The Fish loader batches fixed-path metadata
+  and SHA-256 verification through one bounded constant helper invocation; it
+  never evaluates generated action/provider text or starts one process per alias.
 - 1,000 save/regenerate/reload cycles plus concurrent-window, watcher-storm,
   antivirus-lock, sleep/resume, shell churn, and application shutdown assert
   bounded memory, CPU, files, storage, handles/descriptors, watchers, locks,
@@ -1153,24 +1205,73 @@ secret read, or exact-launch authority is granted by CP2.2.
 
 ### CP3.0 - projection compiler baseline
 
-- Freeze portable names, alias eligibility, shell model, collision inventory,
-  completion health, generated metadata, and rollback/uninstall contract.
-- Implement pure PowerShell/Bash/Zsh/Fish/CMD serializers plus capture-fixture
-  semantic equivalence; keep activation disabled.
+**Fully implemented at the pure compiler boundary; activation is disabled.**
 
-Exit: property/fuzz/native syntax and exact-argv tests pass for all supported
-shells without touching real profiles.
+- The validated action model enforces user/global-or-shell scope, inherited
+  CWD, no exact launch, argument-policy shape, user-only explicit overrides,
+  safe tokens, and CMD's required one-through-nine typed binding limit with
+  stable error codes.
+- Caller-supplied collision, completion, tool identity, and exact-override
+  observations are complete, duplicate-free, and bounded; incomplete tool data
+  fails exactly like incomplete collision or completion data. Native definitions
+  win by default; an exact override requires matching shell, name, owner
+  fingerprint, and User provenance. A claimed same-action Automexia owner is
+  accepted only when its domain-separated deterministic owner fingerprint also
+  matches, while another or forged owner remains protected.
+- Separate pure PowerShell, Bash, Zsh, Fish, and CMD serializers preserve typed
+  positional arguments, fixed tokens, and forwarded arguments. Unsafe or
+  unrepresentable input produces an explicit decision and never falls back to
+  raw shell text.
+- Artifacts are deterministic and sorted. Schema/generator/source/shell/tool
+  identity, owner fingerprint, prior-artifact digest, binding/decision manifest
+  digests, body digest, and `activation_enabled = false` metadata support
+  verification and future rollback without granting publication authority. The
+  compiler recomputes the canonical source digest and rejects a well-formed but
+  unrelated caller digest. Structured decisions retain missing or unsupported
+  tool health for an actionable UI.
+- Thirteen focused tests cover all five serializers, argument policies,
+  eligibility, collision ownership/consent, completion and tool health,
+  incomplete/duplicate inventories, source mismatch, forged same-owner identity,
+  disabled-completion collisions, structured/text tampering, hostile quoting,
+  the 256-binding ceiling, native syntax, and harmless exact argument capture
+  where the native shell exposes a noninteractive capture path. CMD additionally
+  receives native macro-file loading plus exact `$1`..`$9`/`$*` golden semantics
+  because DOSKEY expansion is interactive-only.
+- The libFuzzer target generates bounded valid actions across all five shells,
+  three argument policies, completion/tool degradation, native collisions, and
+  artifact tampering; nightly owns it. Criterion compiles the 256-binding Bash
+  projection target. The CP3.0 policy checker and nine mutations freeze purity,
+  integrity, disabled publication, rollback/uninstall ownership, and evidence.
+
+Exit at the implementation boundary: satisfied without reading or touching a
+real profile. Hosted all-platform runs and the controlled 30-day performance
+baseline remain release evidence, not missing compiler authority.
 
 ### CP3.1 - persistent opt-in user aliases
 
-- Extend the existing CP1 managed hook to verify/load one exact alias file.
-- Add preview/test/enable/disable/rename/reload/doctor/regenerate with atomic
-  all-or-old generation and native-wins conflicts.
-- Keep aliases limited to global/shell user scopes and eligible risks/templates.
+- **Fully done** — The CP1 managed hook verifies the ordered ten-line exact
+  `automexia-devops/0.4.0` manifest and loads one private content-addressed alias
+  artifact for each of five shells.
+- **Fully done** — Dry-run-first list/preview/test/enable/disable/rename/
+  regenerate/disable-all/rollback/doctor/reload management is implemented with
+  reusable source/generation CAS plus complete collision/completion/tool detail.
+- **Fully done** — Durable journaled all-old/all-new publication, one verified
+  rollback generation, exact topology and permission/ACL checks, compiler/source/
+  shell identity verification, native-wins late collision, authenticated same-
+  owner override revalidation, and last-known-good reload are implemented without
+  startup action/provider/network execution.
+- **Fully done** — Executable identities and completion artifacts are observed
+  once per unique key across all shell projections; exact bounded uninstall
+  preserves canonical actions and refuses unexpected topology.
+- **Fully done** — Twenty-one owned Rust security/lifecycle cases, three CLI detail
+  cases, properties/contention, native Windows and local WSL Bash/Zsh/Fish
+  lifecycle/performance and wrong-compiler tests, eight contract mutations,
+  nightly/release WSL ownership, and the 256-alias benchmark own the phase.
 
-Exit: aliases survive new sessions/restarts on Windows/Linux/macOS/WSL; active
-reload is truthful; startup budgets, completion linkage, uninstall, and repeated
-resource cycles pass.
+Exit at the source/local boundary: satisfied. Local Windows and full WSL shell
+plus Unix-permission evidence pass; published hosted native/macOS results and the
+named-hardware 30-day resource/startup baseline remain release evidence and do
+not enable CP3.2/CP3.3.
 
 ### CP3.2 - first-party static DevOps packs
 

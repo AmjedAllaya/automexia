@@ -78,7 +78,10 @@ cargo xtask completion refresh --provider kubernetes --shell powershell --allow-
 Refresh is the only operation that starts a provider. It uses the installed
 official CLI with exact arguments and no stdin, a 750 ms deadline, 1 MiB stdout
 and 256 KiB stderr ceilings, fixed private destinations, SHA-256 sidecars, and
-atomic replacement. Restart the shell after refresh, enable, disable, or remove.
+atomic replacement. Provider processes receive an explicit secret-free
+environment with a local absolute-only helper `PATH`; they do not inherit home,
+provider configuration, proxy, credential, or arbitrary application variables.
+Restart the shell after refresh, enable, disable, or remove.
 `doctor` resolves executable names without executing them and validates each
 bounded artifact, digest, metadata record, provenance
 header, PowerShell consent marker, and managed parent chain. It does not run a
@@ -99,18 +102,38 @@ artifact or managed parent, non-directory path component, oversized file,
 unsupported shell/provider, missing tool, timeout, or malformed output fails
 closed to native shell behavior.
 
+During refresh, a two-digest sidecar temporarily accepts the verified previous
+or candidate artifact, so interruption never requires sourcing unverified text
+and does not discard the last usable cache. The successful steady state contains
+one digest.
+
 `AUTOMEXIA_CONFIG_HOME`, when set, must be absolute. The native defaults are
 `%LOCALAPPDATA%\Automexia\Terminal` on Windows,
 `~/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal` on
 macOS, and `${XDG_CONFIG_HOME:-$HOME/.config}/automexia` on Linux/BSD. Managed
-profile blocks are updated in place when their owned source line becomes stale;
-uninstall validates every exact owned target before changing profiles or files.
+completion state enforces a 4096-byte root ceiling; Windows completion state is
+local-drive-only and rejects UNC roots before any startup filesystem probe.
+Windows installer and PowerShell adapter hashing use the platform SHA-256 API
+directly, so clean install and shell startup do not depend on PowerShell module
+auto-loading.
+Managed profile blocks are updated in place when their owned source line becomes
+stale; uninstall validates every exact owned target before changing profiles or
+files.
 
-Persistent user aliases are not part of the shipped CP1 completion adapter.
-CP2/CP3 will reuse the existing managed integration lifecycle when persistent
-integration is enabled rather than install a second startup hook. Its typed
-source, opt-in generation, shell
-semantics, collision policy, and uninstall contract are specified in
+CP3.1 persistent user aliases reuse the shipped CP1 managed integration block;
+no second profile block or per-alias profile edit is installed. When explicitly
+enabled, PowerShell, Bash, Zsh, Fish, and CMD derive their platform-private
+configuration root, reject linked/reparse or permission-unsafe state, verify the
+exact ordered ten-line `automexia-devops/0.4.0` content-addressed generation
+manifest and shell artifact, recheck late native collisions, and load one bounded
+generated file. A self-consistent manifest from any other compiler is tampered
+state and cannot replace the last-known-good aliases. Fish batches only the
+fixed metadata/digest probes in one constant bounded helper; generated provider
+or action text is never passed to it. PowerShell/Bash/Zsh/Fish support explicit
+last-known-good reload; CMD asks for a new session because safe
+in-process DOSKEY ownership cannot be proven. Uninstall removes only the exact
+validated generated-alias topology and preserves canonical Quick Actions. The
+full typed-source, collision, recovery, and command contract is specified in
 [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md).
 
 On Windows, detected PowerShell profiles may live below a OneDrive-redirected

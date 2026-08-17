@@ -28,8 +28,13 @@ the claim.
 - `docs/ARCHITECTURE.md` and `docs/adr/` own technical rationale.
 - `docs/BUILD-WRAP-ADOPT-ARCHITECTURE.md` owns the planned technology
   decision matrix and the core/first-party-extension/external-authority split.
+- `docs/COMMAND-PRODUCTIVITY.md` owns CP0-CP6 sequencing and
+  `docs/DEVOPS-ALIASES.md` owns the CP2/CP3 typed-action, pure projection,
+  collision/completion, metadata, CP3.1 private transaction/publication, native
+  activation/reload, rollback, and uninstall boundaries.
 - `docs/TESTING.md` owns evidence levels and commands.
-- `docs/ROADMAP.md` owns release sequencing.
+- `docs/ROADMAP.md` owns release sequencing and the status-first feature/phase
+  register.
 - `docs/TERMINAL-FIRST-OPERATIONS.md` owns the planned command-first remote
   operations vocabulary and its cross-feature D/CP phase mapping. It does not
   define shipped CLI behavior until the exact reference and feature ledger are
@@ -52,7 +57,10 @@ Every feature entry in `tests/assurance/feature-matrix.json` declares:
 The repository validator rejects missing files, anchors, non-Markdown targets,
 unsupported documentation keys, empty categories, and feature entries without
 all three forms. A new or materially changed feature must update its docs links,
-quality evidence, platform evidence, tests, and changelog fragment together.
+quality evidence, platform evidence, tests, roadmap status, phase audit, and
+changelog fragment together. Every behavior-affecting code, configuration, or
+test change updates its affected guide/reference/testing text in the same change,
+even when the feature's roadmap status does not change.
 
 ## Writing rules
 
@@ -75,24 +83,39 @@ quality evidence, platform evidence, tests, and changelog fragment together.
    include meaningful alternative text in web assets.
 10. Keep examples minimal and tested. Prefer a secure default and explain
     opt-outs rather than requiring configuration for normal use.
-11. When a canonical roadmap adds, renames, or removes a phase, update
-    `PHASE-IMPLEMENTATION-AUDIT.md` in the same change. Every phase needs an
-    explicit status, source evidence, remaining work, and honest external
-    validation limits.
+11. When a canonical roadmap adds, renames, removes, or changes a phase, update
+    both the `docs/ROADMAP.md` status-first register and
+    `PHASE-IMPLEMENTATION-AUDIT.md` in the same change. The register uses only
+    **Fully done**, **Partially done**, or **Not done**; every phase also needs
+    source evidence, remaining work, and honest external validation limits.
+12. Documentation is part of implementation, not a later follow-up. Update the
+    affected guide, reference, testing evidence, roadmap/audit status, and
+    changelog together with the behavior they describe.
 
 ## Change checklist
 
 - Update the guide, reference, and explanation affected by the change.
+- Confirm every behavior-affecting code, configuration, or test change updates
+  its documentation in the same change.
 - Update `docs/index.md` when adding a canonical page.
 - Update `docs/FEATURES.md` and the feature assurance ledger for a new feature.
-- Update `docs/PHASE-IMPLEMENTATION-AUDIT.md` when roadmap scope or phase
-  status changes.
+- Update the `docs/ROADMAP.md` status-first register and
+  `docs/PHASE-IMPLEMENTATION-AUDIT.md` together when roadmap scope or phase
+  status changes; use only the three canonical roadmap labels.
 - Add or supersede an ADR for a durable boundary decision.
 - Update `SUPPORT.md`, `SECURITY.md`, migration, or release docs when their
   contracts change.
 - Add a `changes/` fragment unless the PR has an allowed docs-only label.
-- Run `python tools/ci/check_phase_implementation_audit.py`,
+- Run `python tools/ci/test_pr_policy.py`,
+  `python tools/ci/check_phase_implementation_audit.py`,
+  `python tools/ci/test_phase_implementation_audit.py`,
   `python tools/ci/validate_repository.py`, and `cargo ready`.
+
+The pull-request policy rejects source, configuration, test, workflow, asset,
+or packaging changes that do not update at least one affected `docs/*.md` file
+in the same pull request. A changelog fragment does not count as documentation;
+documentation-only and changelog-only changes do not create a circular
+requirement.
 
 The policy job also runs an offline Markdown link check. External URLs should
 be primary, authoritative sources and are reviewed for content relevance even

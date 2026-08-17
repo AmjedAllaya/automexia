@@ -87,11 +87,13 @@ The documentation is organized by reader intent:
   persistence, refresh, threat model, and verification contract.
 - [Command productivity](COMMAND-PRODUCTIVITY.md): CP0 architecture baseline,
   shipped CP1 native completion, locally implemented CP2.2 reviewed Quick
-  Actions, and the ordered CP3-CP6 delivery plan including CP5 local-only Shell
-  Completion and Suggestions.
+  Actions, pure CP3.0 shell projection compilation, implemented explicit CP3.1
+  persistent aliases, and the ordered CP3.2-CP6 delivery plan including CP5
+  local-only Shell Completion and Suggestions.
 - [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md): the
-  implementation-ready CP2/CP3 model, persistent user workflow, native-shell
-  projections, first-party packs, security budgets, and verification gates.
+  implemented CP2 model/persistence/review flow, CP3.0 pure five-shell compiler,
+  and CP3.1 private transactional activation, plus planned packs, security
+  budgets, and gates.
 - [Command-productivity compatibility](COMMAND-PRODUCTIVITY-COMPATIBILITY.md):
   accepted shell/editor ownership, provider, precedence, fallback, and
   platform contract.
@@ -124,6 +126,7 @@ Current behavior is defined by the product guides and references above.
 Every implemented feature must have a user or contributor guide, an exact
 reference, and an explanation or ADR. These links are declared beside the
 feature's test evidence in `tests/assurance/feature-matrix.json` and validated
-on every pull request. A public behavior change is incomplete until its docs,
-tests, changelog fragment, and—when the decision crosses a durable
-boundary—ADR change land together.
+on every pull request. A behavior-affecting change is incomplete until its docs,
+tests, and changelog fragment land together. A phase-status change must also
+update the main roadmap's status-first register and the phase audit in the same
+change; a decision that crosses a durable boundary must include its ADR update.

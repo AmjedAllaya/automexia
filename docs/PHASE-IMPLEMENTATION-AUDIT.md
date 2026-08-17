@@ -1,8 +1,8 @@
 # Phase implementation audit
 
-Audit date: 2026-08-16
+Audit date: 2026-08-17
 
-Audited source baseline: eda44bd50937cded310045bd970f54d7d22f74d3
+Audited source baseline: 22367d2888b1af3911bcac5768a18d1cac47ab69
 
 Scope: every execution phase defined by the product, stabilization, DevOps/SSH,
 Connection Hub, command-productivity, persistent-alias, and Ghostty
@@ -36,6 +36,12 @@ Authoritative design sources:
 | **Partially implemented** | Useful source or test infrastructure exists, but activation, required behavior, native-host evidence, controlled measurement, review, or an external prerequisite remains. |
 | **Not implemented** | The phase is design-only, planned, or deliberately deferred; no production capability satisfies its exit gate. |
 | **External gate** | Source cannot complete it: credentials, hosted policy, another OS, controlled hardware, elapsed time, rights, or private contact/configuration is required. |
+
+The status-first register in [the main roadmap](ROADMAP.md#current-feature-status)
+normalizes implementation to exactly **Fully done**, **Partially done**, or
+**Not done**. Those labels map respectively to fully implemented, partial, and
+not implemented in the executive matrix. Repository validation compares every
+phase and normalized label in both tables; release evidence remains separate.
 
 Implementation status and release-evidence status are separate. A disabled
 package can be complete at its package boundary without being a shipped
@@ -90,7 +96,9 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Productivity | CP2.0 | **Fully implemented** | **Partial** | Bounded typed Quick Action model and hostile corpus exist with no runtime authority. |
 | Productivity | CP2.1 | **Fully implemented as internal library** | **Partial** | Private atomic persistence, CAS, recovery, watches, and benchmarks exist; no startup/UI activation. |
 | Productivity | CP2.2 | **Implemented locally** | **Partial** | Layered search, placeholder/risk/conflict review, bounded import/export/CRUD/recovery, and explicit insert/copy UI are present. Hosted native shells, controlled screen readers, and 30-day performance/resource evidence remain release gates. |
-| Productivity | CP3.0-CP3.3 | **Not implemented** | **Not started** | Projection compiler, aliases, static packs, and trusted import/task bridges remain. |
+| Productivity | CP3.0 | **Fully implemented at pure boundary** | **Partial** | Five pure serializers, bounded inventories, metadata/tamper verification, tests, fuzz, benchmark, and policy ratchets are complete; activation is disabled and hosted native evidence remains. |
+| Productivity | CP3.1 | **Fully implemented locally** | **Partial** | Explicit opt-in persistence, crash-safe all-old/all-new publication, verified five-shell startup/reload, diagnostics, rollback, and exact uninstall are implemented; hosted native/macOS/WSL and controlled-baseline evidence remains. |
+| Productivity | CP3.2-CP3.3 | **Not implemented** | **Not started** | First-party static packs and trusted import/task bridges remain. |
 | Productivity | CP4 | **Not implemented** | **Blocked** | Requires activated D3 and D5/D6 capsule/provider context. |
 | Productivity | CP5.0-CP5.6 | **Not implemented** | **Not started** | Detailed bridge/sources/ranking/UI/release plan exists; CP1 remains fallback. |
 | Productivity | CP6 | **Not implemented; deferred** | **Blocked by design** | Signed ecosystem packs and AI tools require v0.6 gates. |
@@ -495,10 +503,17 @@ Mutation/repository/architecture gates own it. CP0 grants no runtime feature.
 - Exact argv/null stdin/750 ms deadline/capture caps/UTF-8 controls/process
   group or Job Object/descendant cleanup/stable executable validation/private
   atomic artifacts are implemented.
+- Refresh validates its bounded destination before process launch, clears the
+  child environment to an explicit secret-free allowlist, rejects relative PATH
+  entries and Windows remote roots/redirects, and sanitizes hostile diagnostics.
+- A bounded two-digest publication transition preserves a verifiable
+  last-known-good artifact across every in-process interruption point; all
+  adapters enforce its exact framing and the 4096-byte root ceiling.
 - PowerShell override requires consent; CMD truthfully remains DOSKEY fallback.
 - No provider runs at startup, keystroke, rendering, or doctor.
 - Tests cover lifecycle, collisions, integrity, timeout/overflow/leader exit,
-  Unicode/spaces, and platform paths.
+  Unicode/spaces, bidi/control output, secret-environment isolation,
+  interrupted publication, and platform paths.
 
 Remaining: exact hosted Windows/Linux/macOS and controlled hostile-provider
 evidence. There is no custom popup or Quick Action UI.
@@ -559,15 +574,90 @@ remains blocked.
 
 ### CP3.0 — projection compiler
 
-**Not implemented.** Needs pure PowerShell/Bash/Zsh/Fish/CMD serializers,
-portable names, collision/completion contracts, fixture equivalence,
-property/fuzz/native syntax tests, rollback metadata, and no real-profile writes.
+**Fully implemented at the pure source boundary; release evidence is partial.**
+The 2026-08-17 follow-up audit reconciled the phase again against code, tests,
+contracts, CI, and documentation. The exact capability-free model boundary
+includes a deterministic projection compiler for PowerShell, Bash, Zsh, Fish,
+and CMD. Validation rejects unsafe scope, exact launch, CWD, override provenance,
+argument-policy mismatch, hostile tokens, and unsupported CMD typed shapes with
+stable codes. Complete bounded caller inventories drive native ownership,
+matching-fingerprint user override consent, completion health, and tool identity;
+missing or ambiguous evidence fails closed.
+
+The follow-up closed four residual gaps: the compiler now recomputes canonical
+source identity instead of trusting a well-formed caller digest; tool observations
+have an explicit completeness bit; a claimed same-action owner also needs the
+deterministic owner fingerprint; and decisions retain missing/unsupported tool
+detail for the UI. Existing completion collisions block even when generation is
+disabled. The malformed CI step that overwrote one of the two mutation-suite
+commands was repaired, and YAML parsing now validates both independent steps.
+
+Generated artifacts are sorted, size-limited, nonactivated, and carry schema,
+generator, source, shell, tool/version/file identity, owner fingerprint,
+previous-artifact digest, binding/decision manifests, and verified BLAKE3 body
+identity. Thirteen focused tests cover all serializers, typed/forward/fixed
+arguments, ownership and override rules, inventory-order determinism, degraded
+completion/tool state, source mismatch, invalid/duplicate/incomplete observations,
+structured/text tampering, hostile quoting, the 256-binding ceiling, and available
+native syntax/exact capture/exit status. The nightly fuzz target now generates
+bounded valid cases across all five shells and degradation/collision/tamper states.
+A 256-binding Criterion target, schema-1 contract, static capability checker, and
+nine policy mutations prevent regression.
+An optimized local diagnostic compiled 256 Bash bindings, including independent
+source recomputation, in 2.7919-2.9846 ms per iteration. This is not a substitute
+for the named-hardware 30-day release baseline.
+
+No test or compiler path reads or writes a real profile, executes a provider, or
+grants filesystem/process/environment/network/secret/exact-launch authority.
+CMD native evidence loads the macro file and tests exact positional golden
+semantics because DOSKEY expansion is interactive-only. Hosted platform runs and
+the 30-day controlled performance baseline remain release evidence; managed
+publication, reload, exact uninstall, and shell startup integration belong to CP3.1.
 
 ### CP3.1 — persistent opt-in aliases
 
-**Not implemented.** Needs one exact CP1-loaded file; preview/test/enable/
-disable/rename/reload/doctor/regenerate; native wins; atomic generations;
-Windows/Linux/macOS/WSL persistence; startup/completion/uninstall/leak proof.
+**Fully done — fully implemented at the source/local boundary.**
+
+- **Fully done** — The existing CP1 managed hook verifies the exact ten-line,
+  versioned compiler manifest and loads exactly one bounded, private,
+  SHA-256-authenticated artifact from an immutable content-addressed generation
+  for PowerShell, Bash, Zsh, Fish, and CMD.
+- **Fully done** — `list`, `preview`, `test`, `enable`, `disable`, `rename`,
+  `regenerate`, `disable-all`, `rollback`, `doctor`, and `reload` are explicit.
+  Mutations are dry-run by default; their JSON/text output supplies the current
+  revision and generation values required to apply, plus source identity,
+  bindings, collisions/owner fingerprints, completion, and tool health.
+- **Fully done** — A private cross-process lock, durable transaction journal,
+  source compare-and-swap, immutable generation, `current` pointer committed
+  last, one `previous` generation, and deterministic crash recovery guarantee an
+  all-old or all-new result. Disabling/uninstalling preserves canonical actions.
+- **Fully done** — Startup and doctor reject links/reparse points, unsafe
+  permissions/ACLs, unexpected directory entries, malformed metadata, digest or
+  exact compiler/source/shell identity mismatch, active or retained-generation
+  tampering, and late native collisions without executing a provider, action,
+  network operation, or canonical rewrite. Malformed source and unsafe roots are
+  returned as stable health states.
+- **Fully done** — Native definitions win. An advanced exact override is reused
+  only from an authenticated manifest and only while the same observable owner
+  fingerprint is still present; shell aliases/functions that cannot be restored
+  safely remain native winners.
+- **Fully done** — Active PowerShell/Bash/Zsh/Fish reload removes only unchanged
+  Automexia-owned definitions and retains the last-known-good set on failure.
+  CMD truthfully requires a new session because reversible DOSKEY ownership
+  cannot be proven. Executable and completion observations are hashed once per
+  unique identity rather than once per shell.
+- **Fully done** — Twenty-one owned Rust security/lifecycle cases across platform
+  conditions, three CLI detail regressions, hostile-manifest properties,
+  cross-process contention, native Windows plus WSL Bash/Zsh/Fish lifecycle and
+  wrong-compiler tests, exact uninstall preservation/refusal, a 256-alias
+  benchmark, the versioned contract, eight mutations, aggregate policy, and
+  configured nightly/release WSL gates protect the phase.
+
+Release evidence is **Partially done**: local Windows and WSL Bash/Zsh/Fish
+suites pass, including the Unix-only unsafe-permission regression. Hosted CI now
+owns the complete WSL lifecycle in nightly/release and the native Linux/macOS
+matrix. Published hosted results and the named-hardware 30-day startup/resource
+baseline remain release gates, not missing CP3.1 source.
 
 ### CP3.2 — first-party static DevOps packs
 

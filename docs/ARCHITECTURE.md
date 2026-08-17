@@ -356,6 +356,25 @@ The concrete CP2/CP3 ownership map, canonical schema, atomic persistence
 transaction, per-shell projection boundary, and resource budgets are specified
 in [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md).
 
+
+CP3.0 now implements the per-shell projection boundary inside
+`automexia-devops::actions`: validated tokens plus complete bounded caller
+collision/completion/tool inventories produce deterministic in-memory PowerShell,
+Bash, Zsh, Fish, or CMD artifacts and explicit decisions. The boundary recomputes
+canonical source identity, verifies same-owner fingerprints, retains degraded
+tool health for presentation, and verifies structured/body/rollback identities.
+The crate performs no profile discovery, filesystem/process/environment/network/
+secret work, publication, or activation.
+CP3.1 now owns the application-side managed-file lifecycle: the app publishes
+private immutable five-shell generations under a cross-process lock, commits the
+activation pointer only after source compare-and-swap, recovers journaled
+transitions to all-old or all-new, and exposes read-only health. The verifier
+checks active and rollback generations, exact directory topology, permissions/
+ACLs, SHA-256, and exact compiler/source/shell identity without repair. Existing
+shell integration accepts the ordered versioned compiler manifest and applies
+native-wins, last-known-good startup/reload without giving the pure compiler
+filesystem or process authority. Local observations cache each executable and
+completion identity once across all five projections.
 The planned CP5 surface adds no second line editor. Shell integration is the
 only adapter allowed to observe editor-owned bounded state through a versioned,
 opt-in, session-capability-authenticated local pipe/socket. A renderer-/PTY-/
