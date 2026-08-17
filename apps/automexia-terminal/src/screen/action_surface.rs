@@ -145,6 +145,9 @@ impl Screen<'_> {
         choice: crate::renderer::command_palette::QuickActionReviewChoice,
         clipboard: &mut Clipboard,
     ) {
+        if !self.ensure_selected_workspace_action_authorized() {
+            return;
+        }
         let Some(expanded) = self.action_surface.state.expanded.clone() else {
             return;
         };
@@ -211,14 +214,22 @@ impl Screen<'_> {
 
     fn submit_action_search(&mut self, query: String) {
         self.action_surface.state.search_query = query.clone();
-        let route_id = self.context_manager.current().route_id;
+        let (route_id, workspace_path) = {
+            let current = self.context_manager.current();
+            (
+                current.route_id,
+                current.renderable_content.current_directory.clone(),
+            )
+        };
         let context = self.current_action_context();
         let wake = self.context_manager.devops_refresh_completion(route_id);
-        match self
-            .action_surface
-            .runtime
-            .submit(route_id, query, context, wake)
-        {
+        match self.action_surface.runtime.submit_for_workspace(
+            route_id,
+            query,
+            context,
+            workspace_path,
+            wake,
+        ) {
             crate::automexia::quick_actions::SearchSubmission::Queued { request_id } => {
                 self.action_surface.state.last_request = request_id
             }
@@ -233,6 +244,9 @@ impl Screen<'_> {
     }
 
     fn continue_action_review(&mut self) {
+        if !self.ensure_selected_workspace_action_authorized() {
+            return;
+        }
         let Some(action) = self.action_surface.state.selected.as_ref() else {
             return;
         };
@@ -290,6 +304,38 @@ impl Screen<'_> {
                 self.renderer.command_palette.enter_action_review(view);
             }
         }
+    }
+
+    fn ensure_selected_workspace_action_authorized(&mut self) -> bool {
+        let Some(action) = self.action_surface.state.selected.clone() else {
+            return true;
+        };
+        let (route_id, workspace_path) = {
+            let current = self.context_manager.current();
+            (
+                current.route_id,
+                current.renderable_content.current_directory.clone(),
+            )
+        };
+        if self.action_surface.runtime.workspace_action_is_authorized(
+            route_id,
+            workspace_path.as_deref(),
+            &action,
+        ) {
+            return true;
+        }
+        self.action_surface.state.expanded = None;
+        self.action_surface.state.confirmation_armed = false;
+        self.renderer
+            .command_palette
+            .enter_action_review(QuickActionReviewView::new(
+                action.id.clone(),
+                action.display_name.clone(),
+                "Workspace trust changed or expired; refresh and review again".into(),
+                risk(action.risk),
+                QuickActionMode::Unavailable,
+            ));
+        false
     }
 
     fn current_action_context(&self) -> SearchContext {

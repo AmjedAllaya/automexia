@@ -402,8 +402,13 @@ impl WorkspaceTrustStore {
     }
 
     pub fn load(&self) -> Result<WorkspaceTrustSnapshot, WorkspaceError> {
-        secure_fs::validate_private_child_directory(&self.root)
-            .map_err(map_store_error)?;
+        if self.read_only {
+            secure_fs::inspect_private_child_directory(&self.root)
+                .map_err(map_store_error)?;
+        } else {
+            secure_fs::validate_private_child_directory(&self.root)
+                .map_err(map_store_error)?;
+        }
         let Some(bytes) =
             secure_fs::read_bounded_regular(&self.source_path(), MAX_SOURCE_BYTES)
                 .map_err(map_store_error)?
@@ -484,6 +489,9 @@ impl WorkspaceTrustStore {
         expected_revision: u64,
         mutate: impl FnOnce(&mut WorkspaceTrustDocument) -> Result<(), WorkspaceError>,
     ) -> Result<WorkspaceTrustSnapshot, WorkspaceError> {
+        if self.read_only {
+            return Err(WorkspaceError::new(WorkspaceErrorCode::InvalidWorkspace));
+        }
         let _lock = try_lock(open_lock(&self.lock_path(), true)?)?;
         cleanup_staging(&self.root, TRUST_STAGING_PREFIX)?;
         let current = self.load()?;
