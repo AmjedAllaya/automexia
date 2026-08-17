@@ -483,20 +483,22 @@ network lifecycle are separate, still-not-implemented phases.
 
 **Partially implemented.**
 
-Implemented in the first F3 slice: a renderer-neutral, 10,000-record/16 MiB
-catalog with deterministic search, favorite/recent/tag/source filters, source
-revision propagation, environment/source/favorite grouping, truthful empty
-states, hostile control/bidi rejection, bounded group/tag/query metadata,
-existing virtualized one-target focus behavior, and a rapid-filter Criterion
-gate. The local Windows release benchmark measured 7.0513-7.4408 ms for a full
-10,000-record filter/group projection, below the 16 ms reviewed target.
+Implemented in F3: a renderer-neutral, 10,000-record/16 MiB catalog with
+deterministic search/filter/grouping, source revisions, truthful empty states,
+hostile-text rejection, bounded metadata, virtualized one-target focus, and a
+rapid-filter Criterion gate. The local Windows release benchmark measured
+7.0513-7.4408 ms for a full 10,000-record filter/group projection, below the
+16 ms reviewed target. D4 favorites/tags/recent metadata now supports revision-
+zero migration, private no-follow locking, CAS, bounded atomic replacement, one
+validated previous generation, truthful fallback, explicit reviewed recovery,
+stale-writer/contention rejection, and Windows user-only ACL round trips.
 
 Remaining: application-owned D4 snapshot composition and explicit scan,
-favorites/tags/recent mutation persistence, stale/last-known-good health, OS
-guidance, secure profile/recipe/preference storage and transfer, product
-rendering, storage-failure evidence, native macOS/Linux permissions, and
-controlled screen-reader verification. Connection actions remain disabled
-until D5.2.
+favorites/tags/recent mutation UI, stale/last-known-good health, OS guidance,
+secure profile/recipe/preference storage and redacted transfer, product
+rendering, fault-injected read-only/disk-full evidence, native macOS/Linux
+permission evidence for this revision, and controlled screen-reader
+verification. Connection actions remain disabled until D5.2.
 
 ### D5.2 — managed OpenSSH launch and lifecycle
 

@@ -99,6 +99,8 @@ impl ConnectionMetadata {
 pub struct MetadataDocument {
     pub schema: u32,
     #[serde(default)]
+    pub revision: u64,
+    #[serde(default)]
     pub connections: Vec<ConnectionMetadata>,
 }
 
@@ -106,6 +108,7 @@ impl Default for MetadataDocument {
     fn default() -> Self {
         Self {
             schema: SCHEMA_VERSION,
+            revision: 0,
             connections: Vec::new(),
         }
     }
@@ -149,12 +152,22 @@ fn validate_text(name: &str, value: &str) -> Result<(), InventoryError> {
     if value.trim().is_empty()
         || value.len() > MAX_DISPLAY_BYTES
         || value.chars().any(char::is_control)
+        || value.chars().any(is_unsafe_format_character)
     {
         return Err(InventoryError::InvalidMetadata(format!(
             "{name} violates the public metadata bounds"
         )));
     }
     Ok(())
+}
+
+fn is_unsafe_format_character(character: char) -> bool {
+    let codepoint = character as u32;
+    codepoint == 0x061c
+        || (0x200b..=0x200f).contains(&codepoint)
+        || (0x202a..=0x202e).contains(&codepoint)
+        || (0x2060..=0x206f).contains(&codepoint)
+        || codepoint == 0xfeff
 }
 
 #[cfg(test)]
@@ -187,6 +200,13 @@ mod tests {
             ..ConnectionMetadata::default()
         };
         assert!(metadata.validate().is_err());
+
+        let hostile = ConnectionMetadata {
+            connection_id: "openssh:prod".into(),
+            tags: vec![format!("spoof{}tag", char::from_u32(0x2066).unwrap())],
+            ..ConnectionMetadata::default()
+        };
+        assert!(hostile.validate().is_err());
     }
 
     #[test]
@@ -198,6 +218,7 @@ mod tests {
         let document = MetadataDocument {
             schema: SCHEMA_VERSION,
             connections: vec![duplicate.clone(), duplicate],
+            revision: 0,
         };
         assert!(document.validate().is_err());
 

@@ -69,7 +69,7 @@ documentation, feature assurance, and a change fragment.
 | Exact-argument launch broker | D3 | Partially done | test-only exact package identity, capability scope, platform resolver, file revalidation, lifecycle and audit model | Production capability UI, atomic spawn, PTY/route lifecycle, real package-loader binding, native evidence |
 | Static OpenSSH inventory | D4 | Fully done | automexia-devops-ssh, hostile/property tests, fuzz, benchmark, assurance | Remains deliberately disabled until D5 |
 | Connection Hub model | D5.0 | Partially done | All local F2 schemas, state reducers, dry-run planner, Hub/review/planner projections, fixtures, goldens, fuzz, mutation tests, and benchmark are implemented | Protected ADR 0012 acceptance remains; D5.1 renderer/inventory integration and D5.2 activation are separate phases |
-| Read-only Connection Hub | D5.1 | Partially done | Bounded deterministic search/filter/grouping catalog, hostile-text defenses, source revisions, 10,000-record virtualization/focus tests, and rapid-filter benchmark | D4 application composition, secure persistence/transfer, product UI, platform guidance, storage/native/accessibility evidence |
+| Read-only Connection Hub | D5.1 | Partially done | Bounded catalog/search/filter/grouping, source revisions, 10,000-record focus/performance proof, and revisioned CAS/recovery for D4 favorites/tags/recent metadata | D4 application composition, profile/recipe/preference storage and transfer, product UI, platform guidance, fault/native/accessibility evidence |
 | Managed OpenSSH | D5.2 | Not done | Design and disabled D3/D4 foundations | Reviewed launch, PTY lifecycle, jumps, tunnels, host trust, reconnect, native proof |
 | Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, and approval fingerprints are implemented in F2 | Private persistence, product editor, remote workspace lifecycle, and separately gated execution remain |
 | Multi-cloud framework and providers | D6.0-D6.5 | Not done | Provider-neutral D1/D2 types only | Auth state machine, exact official CLI adapters, isolation, provider-by-provider gates |
@@ -286,10 +286,11 @@ Status: Partially done.
   composition and product rendering remain.
 - [ ] **Partially done** — Add explicit local scan plus favorites, tags, recent,
   grouping, search, filter, source revision, truthful stale/last-known-good
-  health, and setup guidance. Deterministic combined catalog search, favorite/
-  recent/tag/source filters, source revisions, grouping, and truthful empty
-  states are implemented; D4 scan composition, stale health, and setup guidance
-  remain.
+  health, and setup guidance. Deterministic combined catalog search and filters
+  are implemented. D4 favorites/tags/recent metadata now has revision-zero
+  migration, private writer locking, CAS, atomic one-generation rotation,
+  truthful fallback, and explicit recovery; application scan composition, stale
+  health projection, mutation UI, and setup guidance remain.
 - [ ] **Not done** — Add bounded private profile/recipe/preference persistence
   with no-follow reads, user-only permissions, CAS, atomic replacement,
   recovery, import/export redaction, and new local IDs for imports.
@@ -300,8 +301,10 @@ Status: Partially done.
 - [ ] **Partially done** — Test 10,000 records, hostile config, permission/link/
   read-only/disk-full failures, rapid filtering, focus restoration, 100-300%
   scale, and tiny-to-8K layouts. Catalog limits, hostile text, deterministic
-  filtering, 10,000 records, existing one-target focus, 300% scale, and 8K
-  virtualization pass; storage failures and full product rendering remain.
+  filtering, 10,000 records, one-target focus, 300% scale, 8K virtualization,
+  CAS conflicts, writer contention, malformed-primary fallback, explicit
+  recovery, and Windows private-ACL round trips pass. Fault-injected read-only/
+  disk-full product storage and full product rendering remain.
 - [ ] **Not done** — Run native static persistence/permission evidence on
   Windows, macOS, and Linux and controlled screen-reader model verification.
 
