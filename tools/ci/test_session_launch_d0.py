@@ -28,13 +28,25 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
                 policy.load_contract(path)
 
     def test_canonical_repository_contract_and_sources_pass(self) -> None:
-        self.assertEqual(policy.validate_repository(), {"scenarios": 19, "sources": 3, "documents": 11, "production_enabled": 0})
+        self.assertEqual(
+            policy.validate_repository(),
+            {
+                "schema": 2,
+                "scenarios": 19,
+                "boundaries": 9,
+                "sources": 3,
+                "documents": 11,
+                "production_enabled": 0,
+            },
+        )
 
     def test_activation_identity_grant_and_defaults_cannot_weaken(self) -> None:
         mutations = [
             lambda d: d["activation"].__setitem__("production_enabled", True),
             lambda d: d["activation"].__setitem__("required_protected_approvals", 1),
             lambda d: d["package_identity"].__setitem__("compatibility", "semver"),
+            lambda d: d["package_identity"].__setitem__("digest_size_bytes", 0),
+            lambda d: d["package_identity"].__setitem__("digest_source", "caller"),
             lambda d: d["package_identity"].__setitem__("unverified_denied", False),
             lambda d: d["package_identity"]["allowed_verification"].append("unverified"),
             lambda d: d["grant"].__setitem__("persistent_grants", True),
@@ -70,6 +82,28 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
         self.validate_mutation(lambda d: d["external_prerequisites"].pop())
         self.validate_mutation(lambda d: d.__setitem__("status", "fully-done"))
 
+    def test_manual_boundary_and_native_harness_contract_cannot_drift(self) -> None:
+        mutations = [
+            lambda d: d["manual_baseline"].__setitem__("preserved", False),
+            lambda d: d["manual_baseline"].__setitem__(
+                "download_or_install_during_startup_or_launch", True
+            ),
+            lambda d: d["trust_boundaries"].pop(),
+            lambda d: d["native_fixture_protocol"].__setitem__(
+                "arbitrary_sleeps", True
+            ),
+            lambda d: d["native_fixture_protocol"]["timeouts_ms"].__setitem__(
+                "case", 0
+            ),
+            lambda d: d["native_fixture_protocol"]["cleanup_invariants"].pop(),
+            lambda d: d["native_fixture_protocol"]["redaction_surfaces"].pop(),
+            lambda d: d["native_fixture_protocol"]["platform_activation"].__setitem__(
+                "wsl", "scenario-outcome-required-before-any-managed-launch"
+            ),
+        ]
+        for mutate in mutations:
+            self.validate_mutation(mutate)
+
     def test_duplicate_contract_key_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "contract.json"
@@ -90,6 +124,32 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
         with mock.patch.object(policy, "bounded_text", side_effect=mutated):
             with self.assertRaisesRegex(policy.SessionLaunchD0Error, "missing D0/D3 evidence"):
                 policy.validate_sources(self.contract)
+
+    def test_production_guard_and_runtime_authority_cannot_widen(self) -> None:
+        original = policy.bounded_text
+
+        def validate(rewrite) -> None:
+            def mutated(path, maximum=policy.MAX_EVIDENCE_BYTES):
+                return rewrite(path, original(path, maximum))
+
+            with mock.patch.object(policy, "bounded_text", side_effect=mutated):
+                with self.assertRaises(policy.SessionLaunchD0Error):
+                    policy.validate_sources(self.contract)
+
+        validate(
+            lambda path, source: source.replace(
+                "#[cfg(test)]\npub mod launch_broker;",
+                "#[cfg(test)]\npub mod renderable;\npub mod launch_broker;",
+            )
+            if path.name == "mod.rs"
+            else source
+        )
+        validate(
+            lambda path, source: source
+            + '\nfn widened() { let _ = std::process::Command::new("ssh").spawn(); }\n'
+            if path.name == "launch_broker.rs"
+            else source
+        )
 
     def test_audit_forbidden_fields_are_rejected(self) -> None:
         original = policy.bounded_text

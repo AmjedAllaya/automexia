@@ -61,6 +61,17 @@ The extension never receives or controls a PTY handle, process handle, route,
 renderer object, terminal contents, inherited environment, agent protocol, or
 resolved credential.
 
+### Frozen trust-boundary ledger
+
+The active schema-2 contract records nine boundaries: extension model,
+application capability broker, future PTY/process owner, renderer/VT parser,
+OpenSSH child, OpenSSH configuration, agent/keychain/hardware owner, remote
+host, and future provider helper. Every row fixes accepted and returned data,
+the applicable size/time ceiling, cancellation owner, log policy, and
+fail-safe behavior. The future PTY/process and provider rows are specifications,
+not enabled code; their failure rule is to remain disabled until their later
+review and native evidence pass.
+
 ## Authorization contract
 
 A request is rejected unless all of these conditions hold:
@@ -200,13 +211,34 @@ destination argument.
 
 ## D0/D3 fixture contract
 
-`tests/fixtures/session-launch/d0-d3-contract-v1.json` is the canonical local
-decision and native-fixture baseline. For Windows, macOS, Linux, and WSL it
+`tests/fixtures/session-launch/d0-d3-contract-v2.json` is the canonical
+local decision and native-fixture baseline. The schema-1 fixture remains
+unchanged as historical evidence and its exact hash is checked. For Windows,
+macOS, Linux, and WSL it
 defines direct/explicit/user-port connections, encrypted-key prompts, agents,
 certificates, new/known/changed host keys, ProxyJump, every forwarding type,
 cancellation, exit classification, hostile output, offline behavior, shutdown
-cleanup, and 1/10/50-session resource proof. Each row freezes its expected safe
-outcome rather than only naming a case.
+cleanup, and 1/10/50-session resource proof. Each row freezes its expected
+safe outcome rather than only naming a case.
+
+Schema 2 also freezes how those later native cases must run: an ephemeral
+loopback OpenSSH server, no Internet or cloud account, a private per-case
+workspace, disposable credentials, isolated `known_hosts` and agent state,
+fixed recorded randomness, bounded readiness probes with no arbitrary sleeps,
+and explicit readiness/connect/cancel/force-close/shutdown/case timeouts.
+Cancellation must be exercised during DNS, connect, and authentication. Every
+case must finish with no owned child, PTY, listener, tunnel, route, or temporary
+secret file and must record platform/architecture, OpenSSH versions, fixture
+hashes, duration, peak resource counts, lifecycle counts, and redaction-canary
+results in a private bounded redacted artifact manifest.
+
+The manual path is frozen separately: typing `ssh host` remains owned by the
+interactive PowerShell, CMD, Bash, Zsh, or WSL shell. Managed launch is
+additive, never downloads or installs OpenSSH during startup or launch, and a
+missing client must yield redacted platform installation guidance without
+substitution. Windows, macOS, and Linux require their scenario outcome before
+managed activation; WSL managed launch remains denied until its own native
+scenario outcomes pass.
 
 The same contract keeps process, PTY, network, provider, authentication,
 key-custody, and renderer authority false. Strict host-key checking is
@@ -232,8 +264,10 @@ cargo test -p automexia-terminal --bin automexia --locked context::launch_broker
 cargo xtask verify architecture
 ```
 
-The suite covers contract mutation, hard production denial, exact package
-digest/version/contract/verification matching, four-platform fixed roots,
+The suite covers schema-1 immutability, schema-2 contract mutation, hard
+production denial, exact package digest source/size/version/contract/
+verification matching, manual-path preservation, nine trust boundaries,
+hermetic fixture and evidence rules, four-platform fixed roots,
 principal/capability/decision scope, future/expired/denied decisions, capsule
 registration/rebind, replay and nonce exhaustion, broad-spawn and shell/WSL
 rejection, leading-dash and extra-argument rejection, literal native argv,

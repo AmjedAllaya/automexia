@@ -24,7 +24,7 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | v0.4/S0 | Core identity, hostile-input bounds, atomic reload, and current source gates; stable-release evidence remains external. |
 | **Partially done** | v0.4/S1 | Deterministic and Windows-native assurance exists; controlled Linux/macOS, visual, GPU, accessibility, and baseline evidence remains. |
 | **Not done** | S2 | The 30-day baseline and enforceable latency/memory ratchet are not active. |
-| **Partially done** | D0 | Exact contract, strict defaults, four-platform native fixture matrix, and mutation gate are complete locally; protected ADR acceptance remains. |
+| **Partially done** | D0 | Schema-2 manual/trust/default/hermetic-fixture contract, four-platform matrix, and mutation gate are complete locally; protected ADR acceptance and native execution remain. |
 | **Fully done** | D1 | Four private provider-neutral crates and bounded contracts satisfy the source boundary. |
 | **Fully done** | D2 | Generic status, immutable history, capsules, isolation, cancellation, and freshness are implemented. |
 | **Partially done** | D3 | The nonactivated broker now binds exact package identity, grants, platform resolution, file identity, lifecycle, and redacted audit; production UX/spawn/native proof remain. |
@@ -277,15 +277,20 @@ The following foundation work is intentionally not claimed by Phase 1:
 
 #### Phase 2 preparation status (2026-08-17)
 
-The local D0/D3 review contract is now implemented and mutation-checked. Its
-schema-1 fixture freezes exact package ID/publisher/digest/version/contract and
-verification classes, capability/grant/audit fields, strict defaults,
-four-platform resolution, an all-false runtime authority ceiling, and nineteen
-native scenario definitions. The test-only broker enforces matching package
-identity, expiring exact-scope decisions, session/capsule registration,
-fixed-location OpenSSH resolution with fail-closed overrides, native file
-identity/revalidation, one literal destination, bounded core-owned environment/
-cwd, replay-resistant leases, bounded lifecycle, revocation, and redacted
+The local D0/D3 review contract is implemented and mutation-checked. Its active
+schema-2 fixture preserves the immutable schema-1 history and freezes the
+manual-shell/missing-client baseline, exact package digest source/size and
+identity/version/contract/verification policy, grants/audits/defaults, nine
+trust boundaries, four-platform resolution, all-false runtime authority, and
+nineteen scenario definitions.
+
+The fixture protocol requires hermetic loopback infrastructure, isolated
+disposable credentials/`known_hosts`/agent state, bounded readiness and
+lifecycle timeouts, DNS/connect/auth cancellation, six zero-resource cleanup
+invariants, nine redaction surfaces, and reproducible native evidence metadata.
+The test-only broker enforces matching package identity, expiring exact-scope
+decisions, fixed resolution/revalidation, literal bounded argv, core-owned
+environment/cwd, replay-resistant leases, revocation, lifecycle, and redacted
 audit. Production still contains no managed process capability.
 
 D0 and D3 are therefore **partial, not shipped**. ADR 0012 protected acceptance,

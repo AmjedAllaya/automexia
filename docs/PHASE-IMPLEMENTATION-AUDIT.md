@@ -84,7 +84,7 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Core | v0.4/S0 | **Fully implemented locally** | **Partial** | Identity, hostile-input bounds, atomic reload, and current terminal source gates are complete; stable release gates remain. |
 | Assurance | v0.4/S1 | **Partial** | **Partial** | Strong deterministic, Windows-native, QA, fuzz, resource, and workflow machinery exists; controlled Linux/macOS visual/GPU/accessibility evidence and the full baseline remain. |
 | Performance | S2 | **Not implemented** | **Not started** | The 30-day comparable baseline is incomplete, so the 5% latency/10% memory ratchet is inactive. |
-| DevOps | D0 | **Partial** | **Partial** | Design and threats exist, but ADR 0012 remains proposed and complete native SSH fixtures are not accepted. |
+| DevOps | D0 | **Partial** | **Partial** | Schema-2 threat/manual/fixture definitions are complete locally; ADR 0012 remains proposed and native execution is pending in F4/F5. |
 | DevOps | D1 | **Fully implemented** | **Partial** | Four private provider-neutral crates and bounded contracts satisfy their source boundary. |
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
 | DevOps | D3 | **Partial; nonactivated** | **Blocked** | A test-only exact-argv review model exists; production launch, capability UX, atomic spawn, and native lifecycle proof do not. |
@@ -348,15 +348,20 @@ Loom, native resource tests, and human accessibility/visual review.
 
 **Partially implemented.**
 
-**Fully implemented locally:** the schema-1 D0/D3 contract freezes exact
-package ID/publisher/digest/version/contract and accepted verification classes,
-grant/expiry/revocation/audit fields, strict defaults, runtime authority
-ceiling, and fixed Windows/macOS/Linux/disabled-WSL executable policy. Nineteen
-required scenario rows cover aliases/destinations, user/port, keys, agent,
-certificate, three host-key states, ProxyJump, every forwarding type,
-cancellation, exit, hostile output, offline, shutdown, and 1/10/50 sessions on
-all four targets. The dedicated checker and mutation suite reject weakened or
-drifting claims.
+**Fully implemented locally:** the active schema-2 D0/D3 contract preserves
+immutable schema-1 history and freezes manual PowerShell/CMD/Bash/Zsh/WSL SSH,
+missing-client behavior, exact trusted-loader digest source/size and package
+identity/version/contract/verification, grant/expiry/revocation/audit fields,
+strict defaults, nine trust boundaries, the all-false authority ceiling, and
+fixed Windows/macOS/Linux/disabled-WSL executable policy.
+
+Nineteen required scenario rows cover aliases/destinations, user/port, keys,
+agent success/failure, certificate, three host-key states, ProxyJump, every
+forwarding type, DNS/connect/auth cancellation, exit, hostile output, offline,
+shutdown, and 1/10/50 sessions on all four targets. The hermetic fixture
+protocol freezes isolated loopback setup/authentication state, bounded
+readiness/lifecycle, platform gates, cleanup/resource invariants, redaction,
+evidence, and artifacts. Mutation tests reject weakened or drifting claims.
 
 **Not done externally:** proposed ADR 0012 still needs security review and two
 protected-path approvals. F4/F5 must execute the native fixture matrix; D0 only

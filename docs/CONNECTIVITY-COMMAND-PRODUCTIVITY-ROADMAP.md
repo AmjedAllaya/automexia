@@ -65,7 +65,7 @@ documentation, feature assurance, and a change fragment.
 |---|---|---|---|---|
 | Provider-neutral contracts | D1 | Fully done | automexia-extension-api, automexia-extension-runtime, automexia-devops, automexia-ui-model; architecture gates | Hosted release evidence only |
 | Generic context and immutable capsules | D2 | Fully done | extension API/runtime plus application session/context tests | Production login/relaunch belongs to D3/D6 |
-| SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 proposal, exact versioned contract, strict defaults, four-platform fixture matrix, mutation gate | Accept or supersede ADR 0012 through protected review; execute native fixtures in F4/F5 |
+| SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 proposal, exact schema-2 manual/trust/default/fixture protocol, four-platform matrix, mutation gate | Accept or supersede ADR 0012 through protected review; execute native fixtures in F4/F5 |
 | Exact-argument launch broker | D3 | Partially done | test-only exact package identity, capability scope, platform resolver, file revalidation, lifecycle and audit model | Production capability UI, atomic spawn, PTY/route lifecycle, real package-loader binding, native evidence |
 | Static OpenSSH inventory | D4 | Fully done | automexia-devops-ssh, hostile/property tests, fuzz, benchmark, assurance | Remains deliberately disabled until D5 |
 | Connection Hub model | D5.0 | Not done | Detailed specification only | Frozen schemas, all-state fixtures, responsive/accessibility goldens, mutations |
@@ -172,6 +172,12 @@ external gates. Production launch is still disabled.
 - [ ] **Not done - protected external gate:** accept or supersede ADR 0012
   through the security review and two protected-path approvals required by
   ADR 0003.
+- [x] **Fully done locally:** preserve manual `ssh host` ownership in
+  PowerShell, CMD, Bash, Zsh, and WSL; managed launch is additive, never
+  downloads or installs OpenSSH at startup/launch, and missing clients produce
+  redacted platform guidance without substitution.
+- [x] **Fully done locally:** freeze all nine D0 trust boundaries with accepted
+  and returned data, limits, cancellation owner, log policy, and failure mode.
 - [x] **Fully done locally:** freeze exact package identity, digest/version
   and contract compatibility, repository-reviewed/first-party-signed proof,
   unverified-package denial, capability grant, expiry, revocation, and audit
@@ -185,11 +191,17 @@ external gates. Production launch is still disabled.
   remote exit, hostile output, offline, shutdown cleanup, and 1/10/50-session
   fixtures for Windows, macOS, Linux, and WSL. Native execution belongs to
   F4/F5 and is not claimed here.
+- [x] **Fully done as a fixture protocol:** freeze hermetic loopback setup,
+  isolated disposable credentials/`known_hosts`/agent state, bounded probes and
+  timeouts, DNS/connect/auth cancellation points, platform activation semantics,
+  six zero-resource cleanup invariants, evidence metadata, artifact policy, and
+  nine redaction surfaces. Execution remains F4/F5-owned.
 - [x] **Fully done locally:** record strict host-key, forwarding, loopback,
   environment, secret, shell, and discovery-command defaults.
-- [x] **Fully done locally:** add a versioned D0/D3 contract and mutation tests
-  that fail when process, network, secret, environment, or shell-evaluation
-  authority widens.
+- [x] **Fully done locally:** retain immutable schema 1, enforce schema 2, and
+  add mutation tests that fail when process, network, secret, environment,
+  shell-evaluation, manual-baseline, trust-boundary, fixture, cleanup,
+  evidence, or redaction guarantees widen or drift.
 - [x] **Fully done locally:** update architecture/security guidance, testing,
   phase audit, roadmaps, feature assurance, decision index, and change fragment.
 
@@ -614,7 +626,8 @@ These do not become silently complete from local Windows development:
 
 ## Current next action
 
-The next primary implementation request is **F1 - close D0 SSH decision and
-native fixture baseline**. The only safe parallel research task is **P1 -
-execute CP5.0 native autocomplete research**. No later phase should be marked
-started until its listed dependencies and evidence are present.
+The current blocking action is protected acceptance or supersession of
+ADR 0012, which keeps F1 **Partially done**. After that decision, the next
+primary implementation phase is **F2 - implement D5.0 Connection Hub and
+planning models**. P1 autocomplete research is independently safe; no later
+phase should be marked started until its listed dependencies and evidence pass.

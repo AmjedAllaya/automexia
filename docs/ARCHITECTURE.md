@@ -270,12 +270,14 @@ for the exact OpenSSH tools they use. The extension itself has no direct-network
 capability: the approved OpenSSH child connects exactly as it would when typed
 in a shell. Arbitrary process/network access and third-party use remain denied.
 
-Current source status is deliberately narrower. The D0/D3 schema-1 fixture
-freezes exact package ID/publisher/digest/version/contract compatibility,
-verification classes, grants, audits, strict defaults, authority ceilings,
-Windows/macOS/Linux/disabled-WSL resolver policy, and the native scenario
-matrix. The test-only broker enforces the same package policy before executable
-resolution and revalidates file identity before descriptor conversion.
+Current source status is deliberately narrower. The active D0/D3 schema-2
+fixture freezes the manual-shell/missing-client baseline, exact package
+ID/publisher/digest source and size/version/contract compatibility, verification
+classes, grants, audits, strict defaults, authority ceilings, nine explicit
+trust boundaries, Windows/macOS/Linux/disabled-WSL resolver policy, and the
+hermetic native-scenario execution/evidence protocol. Schema 1 remains immutable
+historical evidence. The test-only broker enforces the same package policy before
+executable resolution and revalidates file identity before descriptor conversion.
 
 While ADR 0012 is proposed, this candidate remains under `#[cfg(test)]`;
 production builds contain no broker module or successful managed-launch path.

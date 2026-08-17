@@ -233,16 +233,22 @@ cargo test -p automexia-terminal --bin automexia --locked context::launch_broker
 cargo xtask verify architecture
 ```
 
-The checker locks production-disabled activation, exact package digest/version/
-contract/verification, grant and audit fields, strict defaults, four-platform
+The checker locks schema-1 immutability and the active schema-2 contract:
+production-disabled activation, trusted-loader digest source/size, exact package
+version/contract/verification, manual-shell and missing-client behavior, grant
+and audit fields, strict defaults, nine trust boundaries, four-platform
 resolution, the authority ceiling, and nineteen required native scenarios.
-Mutation tests prove those claims cannot silently weaken. Rust tests cover
-Windows volume/file-index and Unix device/inode identity, fixed platform roots,
-unverified/mismatched package denial, one literal destination argument,
-option/environment/secret isolation, fail-closed override resolution,
-authorization-owned cwd fallback, decision expiry/scope, capsule rebind,
-replay, nonce exhaustion, redaction, revocation, stale/sibling leases, and
-zero-retained-state 1/10/50 pure cycles.
+
+The mutation suite also locks the hermetic loopback protocol, isolated
+disposable credential/`known_hosts`/agent state, bounded probes and exact
+timeouts, DNS/connect/auth cancellation, platform activation rules, cleanup
+invariants, evidence metadata, artifact policy, and nine redaction surfaces.
+Rust tests cover Windows volume/file-index and Unix device/inode identity,
+fixed platform roots, unverified/mismatched package denial, one literal
+destination argument, option/environment/secret isolation, fail-closed
+override resolution, authorization-owned cwd fallback, decision expiry/scope,
+capsule rebind, replay, nonce exhaustion, redaction, revocation, stale/sibling
+leases, and zero-retained-state 1/10/50 pure cycles.
 
 These tests do not spawn OpenSSH and are not evidence that managed SSH is
 available. Protected ADR approval, real package-loader attestation/revocation

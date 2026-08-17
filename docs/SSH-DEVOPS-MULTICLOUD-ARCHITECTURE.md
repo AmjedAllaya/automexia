@@ -764,18 +764,24 @@ rendering and terminal parser trust boundary.
 
 ### Frozen D0/D3 local baseline
 
-The schema-1 D0/D3 contract now makes controls 2, 3, 7, 8, 10, and 11
-machine-checkable without granting runtime authority. It binds
-`automexia.devops-ssh` to an exact publisher, non-zero SHA-256 package
-identity, workspace version, contract version, and reviewed/signed
-verification; unverified or mismatched principals fail closed. Capability
+The active schema-2 D0/D3 contract now makes controls 2, 3, 7, 8, 10,
+and 11 machine-checkable without granting runtime authority; schema 1 remains
+immutable historical evidence. It preserves interactive-shell ownership of
+manual SSH, forbids download/install or substitution during startup and launch,
+and binds `automexia.devops-ssh` to an exact publisher, trusted-loader SHA-256
+identity source/size, workspace version, contract version, and reviewed/signed
+verification. Unverified or mismatched principals fail closed. Capability
 decisions bind exact operation/session/capsule/resource scope and expiry.
-Windows, macOS, and Linux use fixed system roots, WSL remains disabled, and no
-resolver searches PATH or cwd. Strict host trust is preserved, forwarding and
-remote commands default off, future listener scope is loopback unless separately
-confirmed, and discovery cannot execute config commands. Production process,
-PTY, network, provider, authentication, key-custody, and renderer authority
-remain false until ADR 0012 is accepted and the native F4/F5 gates pass.
+
+Nine boundary rows fix accepted/returned data, limits, cancellation, logging,
+and failure behavior. Windows, macOS, and Linux use fixed system roots, WSL
+remains disabled, and no resolver searches PATH or cwd. The hermetic native
+protocol fixes loopback-only setup, isolated disposable authentication state,
+bounded probes/timeouts, DNS/connect/auth cancellation, cleanup invariants,
+evidence fields, redaction surfaces, and WSL's deny-until-native-gate behavior.
+Strict host trust is preserved; forwarding and remote commands default off.
+Production process, PTY, network, provider, authentication, key-custody, and
+renderer authority remain false until ADR 0012 is accepted and F4/F5 pass.
 
 ### Local and server-side policy
 
