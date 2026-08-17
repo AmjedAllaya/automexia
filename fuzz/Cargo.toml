@@ -88,3 +88,10 @@ path = "fuzz_targets/quick_action_packs.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "quick_action_imports"
+path = "fuzz_targets/quick_action_imports.rs"
+test = false
+doc = false
+bench = false

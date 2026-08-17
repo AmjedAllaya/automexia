@@ -9,7 +9,10 @@ use rio_vt::performer::handler::Processor;
 fuzz_target!(|data: &[u8]| {
     let selector = data.first().copied().unwrap_or_default() % 3;
     let chunk_width = usize::from(data.get(1).copied().unwrap_or(31)) + 1;
-    let seed = data.get(2..).filter(|seed| !seed.is_empty()).unwrap_or(b"A");
+    let seed = data
+        .get(2..)
+        .filter(|seed| !seed.is_empty())
+        .unwrap_or(b"A");
     let (prefix, retained_limit) = match selector {
         0 => (b"\x1b]52;s;".as_slice(), 1024 * 1024),
         1 => (b"\x1b_25a1;s;".as_slice(), 96 * 1024),
