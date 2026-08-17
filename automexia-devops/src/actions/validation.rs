@@ -4,7 +4,8 @@ use std::collections::HashSet;
 use std::fmt;
 
 use super::model::{
-    ActionProvenance, ActionTemplate, AliasProjectionMode, ArgumentToken, ExecutionMode,
+    ActionProvenance, ActionScope, ActionTemplate, AliasArgumentPolicy,
+    AliasProjectionMode, ArgumentToken, ExecutionMode, OverridePolicy,
     PlaceholderSensitivity, QuickAction, QuickActionDocument, RiskClass, ShellKind,
     WorkingDirectoryPolicy, QUICK_ACTION_SCHEMA_VERSION,
 };
@@ -49,6 +50,14 @@ pub enum ValidationCode {
     SecretDefaultDenied,
     MutatingAliasNotAcknowledged,
     ExactLaunchRawInsertDenied,
+    DuplicateAliasName,
+    AliasScopeDenied,
+    AliasExactLaunchDenied,
+    AliasArgumentPolicyMismatch,
+    AliasOverrideDenied,
+    AliasWorkingDirectoryDenied,
+    AliasUnsafeToken,
+    CmdTypedBindingsUnsupported,
 }
 
 impl ValidationCode {
@@ -84,6 +93,14 @@ impl ValidationCode {
             Self::SecretDefaultDenied => "secret-default-denied",
             Self::MutatingAliasNotAcknowledged => "mutating-alias-not-acknowledged",
             Self::ExactLaunchRawInsertDenied => "exact-launch-raw-insert-denied",
+            Self::DuplicateAliasName => "duplicate-alias-name",
+            Self::AliasScopeDenied => "alias-scope-denied",
+            Self::AliasExactLaunchDenied => "alias-exact-launch-denied",
+            Self::AliasArgumentPolicyMismatch => "alias-argument-policy-mismatch",
+            Self::AliasOverrideDenied => "alias-override-denied",
+            Self::AliasWorkingDirectoryDenied => "alias-working-directory-denied",
+            Self::AliasUnsafeToken => "alias-unsafe-token",
+            Self::CmdTypedBindingsUnsupported => "cmd-typed-bindings-unsupported",
         }
     }
 }
@@ -158,6 +175,7 @@ pub fn validate_document(document: &QuickActionDocument) -> Result<(), Validatio
     }
 
     let mut action_ids = HashSet::with_capacity(document.actions.len());
+    let mut alias_names = HashSet::new();
     let mut enabled_aliases = 0usize;
     for action in &document.actions {
         if !action_ids.insert(action.id.as_str()) {
@@ -169,6 +187,18 @@ pub fn validate_document(document: &QuickActionDocument) -> Result<(), Validatio
             ));
         }
         validate_action(action)?;
+        if let Some(alias) = &action.alias_projection {
+            for shell in &alias.shells {
+                if !alias_names.insert((*shell, alias.requested_name.as_str())) {
+                    return Err(ValidationError::action(
+                        action,
+                        ValidationCode::DuplicateAliasName,
+                        "alias_projection.requested_name",
+                        "projected names must be unique within each shell",
+                    ));
+                }
+            }
+        }
         enabled_aliases += usize::from(
             action.enabled
                 && action
@@ -420,7 +450,118 @@ fn validate_alias(
             "command aliases are limited to argument-free commands",
         ));
     }
+    if !matches!(
+        action.scope,
+        ActionScope::ShellUser | ActionScope::GlobalUser
+    ) {
+        return Err(ValidationError::action(
+            action,
+            ValidationCode::AliasScopeDenied,
+            "scope",
+            "CP3 aliases are limited to shell-user and global-user actions",
+        ));
+    }
+    if action.execution == ExecutionMode::ExactLaunch {
+        return Err(ValidationError::action(
+            action,
+            ValidationCode::AliasExactLaunchDenied,
+            "execution",
+            "aliases cannot bypass the disabled exact-launch broker",
+        ));
+    }
+    if !matches!(
+        action.working_directory_policy,
+        WorkingDirectoryPolicy::Inherit
+    ) {
+        return Err(ValidationError::action(
+            action,
+            ValidationCode::AliasWorkingDirectoryDenied,
+            "working_directory_policy",
+            "alias projection cannot change or infer a working directory",
+        ));
+    }
+    if alias.override_policy == OverridePolicy::ExplicitExactOverride
+        && !matches!(&action.provenance, ActionProvenance::User)
+    {
+        return Err(ValidationError::action(
+            action,
+            ValidationCode::AliasOverrideDenied,
+            "alias_projection.override_policy",
+            "only a user-authored action may request an exact reviewed override",
+        ));
+    }
+    let ActionTemplate::TypedArgv { arguments, .. } = &action.template else {
+        unreachable!("raw projections are rejected above");
+    };
+    if arguments.iter().any(|argument| {
+        matches!(argument, ArgumentToken::Literal { value } if value.chars().any(is_projection_unsafe_character))
+    }) {
+        return Err(ValidationError::action(
+            action,
+            ValidationCode::AliasUnsafeToken,
+            "template.arguments.value",
+            "projected literals cannot contain controls or bidirectional formatting",
+        ));
+    }
+    let referenced = arguments
+        .iter()
+        .filter_map(|argument| match argument {
+            ArgumentToken::Placeholder { name } => Some(name.as_str()),
+            ArgumentToken::Literal { .. } => None,
+        })
+        .collect::<HashSet<_>>();
+    let policy_matches = match alias.argument_policy {
+        AliasArgumentPolicy::None | AliasArgumentPolicy::ForwardAll => {
+            referenced.is_empty() && action.placeholders.is_empty()
+        }
+        AliasArgumentPolicy::TypedBindings => {
+            !action.placeholders.is_empty()
+                && action
+                    .placeholders
+                    .iter()
+                    .all(|placeholder| referenced.contains(placeholder.name.as_str()))
+        }
+    };
+    if !policy_matches
+        || (alias.mode == AliasProjectionMode::CommandAlias
+            && alias.argument_policy != AliasArgumentPolicy::ForwardAll)
+        || (alias.mode == AliasProjectionMode::FishAbbreviation
+            && alias.argument_policy != AliasArgumentPolicy::ForwardAll)
+    {
+        return Err(ValidationError::action(
+            action,
+            ValidationCode::AliasArgumentPolicyMismatch,
+            "alias_projection.argument_policy",
+            "argument policy must exactly match fixed, forwarded, or typed tokens",
+        ));
+    }
+    if alias.shells.contains(&ShellKind::Cmd)
+        && alias.argument_policy == AliasArgumentPolicy::TypedBindings
+        && (action.placeholders.len() > 9
+            || action.placeholders.iter().any(|placeholder| {
+                !placeholder.required || placeholder.default.is_some()
+            }))
+    {
+        return Err(ValidationError::action(
+            action,
+            ValidationCode::CmdTypedBindingsUnsupported,
+            "alias_projection.argument_policy",
+            "CMD supports at most nine required positional bindings without defaults",
+        ));
+    }
     Ok(())
+}
+
+fn is_projection_unsafe_character(character: char) -> bool {
+    character.is_control()
+        || matches!(
+            character,
+            '\u{061c}'
+                | '\u{200e}'
+                | '\u{200f}'
+                | '\u{202a}'..='\u{202e}'
+                | '\u{2066}'..='\u{2069}'
+        )
 }
 
 fn validate_action_id(action: &QuickAction) -> Result<(), ValidationError> {
