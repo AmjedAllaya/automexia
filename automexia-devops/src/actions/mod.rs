@@ -5,6 +5,7 @@
 //! UI, and provider work belong to separate reviewed phases.
 
 mod activation;
+mod imports;
 mod model;
 mod packs;
 mod projection;
@@ -18,11 +19,18 @@ pub use activation::{
     PlaceholderBindings, SearchContext, MAX_EXPANDED_COMMAND_BYTES, MAX_QUERY_BYTES,
     MAX_SEARCH_RESULTS,
 };
+pub use imports::{
+    build_trusted_task_bridge, preview_native_alias_import, trusted_workspace_layer,
+    workspace_source_digest, NativeAliasImportError, NativeAliasImportPreview,
+    NativeAliasPreviewEntry, NativeAliasRejectionCode, NativeAliasSource,
+    TaskBridgeError, TaskBridgeRequest, WorkspaceTrustError, WorkspaceTrustReceipt,
+    MAX_NATIVE_ALIAS_RECORDS,
+};
 pub use model::{
     ActionProvenance, ActionScope, ActionTemplate, AliasArgumentPolicy, AliasProjection,
     AliasProjectionMode, ArgumentToken, CompletionMode, ExecutionMode, OverridePolicy,
     Placeholder, PlaceholderSensitivity, QuickAction, QuickActionDocument, RiskClass,
-    ShellKind, WorkingDirectoryPolicy, QUICK_ACTION_SCHEMA_VERSION,
+    ShellKind, TaskRunner, WorkingDirectoryPolicy, QUICK_ACTION_SCHEMA_VERSION,
 };
 pub use packs::{
     action_digest, builtin_pack, builtin_packs, evaluate_pack_health,

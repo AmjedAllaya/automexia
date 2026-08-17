@@ -147,6 +147,19 @@ pub enum ActionProvenance {
     Imported {
         source_digest: String,
     },
+    WorkspaceTask {
+        runner: TaskRunner,
+        task_name: String,
+        workspace_identity: String,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TaskRunner {
+    Just,
+    Task,
+    Mise,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

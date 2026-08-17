@@ -137,6 +137,27 @@ pub enum ActionsAction {
         #[clap(long)]
         json: bool,
     },
+    /// Preview or import explicitly selected, simple native aliases.
+    ImportAliases {
+        #[clap(long, value_enum)]
+        source: NativeAliasKind,
+        #[clap(long, value_hint = ValueHint::FilePath)]
+        input: PathBuf,
+        /// Native alias name to import. Repeat to select multiple aliases.
+        #[clap(long, required = true)]
+        name: Vec<String>,
+        /// Optional `native-name=stable-action-id` mapping.
+        #[clap(long)]
+        action_id: Vec<String>,
+        #[clap(long, requires = "expected_revision")]
+        apply: bool,
+        #[clap(long, requires = "apply")]
+        expected_revision: Option<u64>,
+        #[clap(long, requires = "apply")]
+        replace_conflicts: bool,
+        #[clap(long)]
+        json: bool,
+    },
     /// Export a portable, checksummed transfer document.
     Export {
         #[clap(value_hint = ValueHint::FilePath)]
@@ -169,12 +190,141 @@ pub enum ActionsAction {
         #[clap(long)]
         apply: bool,
     },
+    /// Preview or save one explicit workspace task bridge without discovery.
+    TaskPut {
+        #[clap(long, value_hint = ValueHint::DirPath)]
+        workspace: PathBuf,
+        #[clap(long, value_enum)]
+        runner: TaskRunnerKind,
+        #[clap(long)]
+        task: String,
+        #[clap(long)]
+        id: String,
+        #[clap(long)]
+        display_name: String,
+        #[clap(long, default_value = "Explicit workspace task bridge")]
+        description: String,
+        #[clap(long, value_enum, required = true)]
+        shell: Vec<AliasShell>,
+        #[clap(long, value_enum, default_value = "mutating")]
+        risk: TaskRisk,
+        #[clap(long, requires = "expected_revision")]
+        apply: bool,
+        #[clap(long, requires = "apply")]
+        expected_revision: Option<u64>,
+        #[clap(long, requires = "apply")]
+        replace: bool,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Preview or remove one workspace task bridge by stable ID.
+    TaskRemove {
+        #[clap(long, value_hint = ValueHint::DirPath)]
+        workspace: PathBuf,
+        #[clap(long)]
+        id: String,
+        #[clap(long, requires = "expected_revision")]
+        apply: bool,
+        #[clap(long, requires = "apply")]
+        expected_revision: Option<u64>,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Preview or trust the exact current workspace action source.
+    WorkspaceTrust {
+        #[clap(long, value_hint = ValueHint::DirPath)]
+        workspace: PathBuf,
+        #[clap(long, requires = "expected_trust_revision")]
+        apply: bool,
+        #[clap(long, requires = "apply")]
+        expected_trust_revision: Option<u64>,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Preview or revoke workspace action trust immediately.
+    WorkspaceRevoke {
+        #[clap(long, value_hint = ValueHint::DirPath)]
+        workspace: PathBuf,
+        #[clap(long, requires = "expected_trust_revision")]
+        apply: bool,
+        #[clap(long, requires = "apply")]
+        expected_trust_revision: Option<u64>,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Report workspace source and exact trust status without mutation.
+    WorkspaceDoctor {
+        #[clap(long, value_hint = ValueHint::DirPath)]
+        workspace: PathBuf,
+        #[clap(long)]
+        json: bool,
+    },
     /// Report store health, revision, action count, and redacted status.
     Doctor {
         /// Emit stable JSON.
         #[clap(long)]
         json: bool,
     },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum NativeAliasKind {
+    Powershell,
+    Bash,
+    Zsh,
+    Fish,
+    Cmd,
+    Git,
+}
+
+impl From<NativeAliasKind> for automexia_devops::actions::NativeAliasSource {
+    fn from(value: NativeAliasKind) -> Self {
+        match value {
+            NativeAliasKind::Powershell => Self::Powershell,
+            NativeAliasKind::Bash => Self::Bash,
+            NativeAliasKind::Zsh => Self::Zsh,
+            NativeAliasKind::Fish => Self::Fish,
+            NativeAliasKind::Cmd => Self::Cmd,
+            NativeAliasKind::Git => Self::Git,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum TaskRunnerKind {
+    Just,
+    Task,
+    Mise,
+}
+
+impl From<TaskRunnerKind> for automexia_devops::actions::TaskRunner {
+    fn from(value: TaskRunnerKind) -> Self {
+        match value {
+            TaskRunnerKind::Just => Self::Just,
+            TaskRunnerKind::Task => Self::Task,
+            TaskRunnerKind::Mise => Self::Mise,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum TaskRisk {
+    Mutating,
+    Destructive,
+    Privileged,
+}
+
+impl From<TaskRisk> for automexia_devops::actions::RiskClass {
+    fn from(value: TaskRisk) -> Self {
+        match value {
+            TaskRisk::Mutating => Self::Mutating,
+            TaskRisk::Destructive => Self::Destructive,
+            TaskRisk::Privileged => Self::Privileged,
+        }
+    }
 }
 
 #[derive(Args, Debug)]
@@ -444,6 +594,98 @@ mod tests {
                 action: ActionsAction::Remove {
                     apply: true,
                     expected_revision: Some(7),
+                    ..
+                }
+            }))
+        ));
+    }
+
+    #[test]
+    fn cp33_native_import_and_workspace_mutations_are_explicit_and_cas_guarded() {
+        let import = Cli::try_parse_from([
+            "automexia",
+            "actions",
+            "import-aliases",
+            "--source",
+            "bash",
+            "--input",
+            "aliases.txt",
+            "--name",
+            "gst",
+            "--action-id",
+            "gst=team.git-status",
+        ])
+        .unwrap();
+        assert!(matches!(
+            import.command,
+            Some(CliCommand::Actions(ActionsCommand {
+                action: ActionsAction::ImportAliases { apply: false, .. }
+            }))
+        ));
+        assert!(Cli::try_parse_from([
+            "automexia",
+            "actions",
+            "import-aliases",
+            "--source",
+            "bash",
+            "--input",
+            "aliases.txt",
+            "--name",
+            "gst",
+            "--apply",
+        ])
+        .is_err());
+
+        let task = Cli::try_parse_from([
+            "automexia",
+            "actions",
+            "task-put",
+            "--workspace",
+            ".",
+            "--runner",
+            "mise",
+            "--task",
+            "ci:test",
+            "--id",
+            "workspace.ci-test",
+            "--display-name",
+            "Run CI tests",
+            "--shell",
+            "bash",
+        ])
+        .unwrap();
+        assert!(matches!(
+            task.command,
+            Some(CliCommand::Actions(ActionsCommand {
+                action: ActionsAction::TaskPut { apply: false, .. }
+            }))
+        ));
+        assert!(Cli::try_parse_from([
+            "automexia",
+            "actions",
+            "workspace-trust",
+            "--workspace",
+            ".",
+            "--apply",
+        ])
+        .is_err());
+        let trust = Cli::try_parse_from([
+            "automexia",
+            "actions",
+            "workspace-trust",
+            "--workspace",
+            ".",
+            "--apply",
+            "--expected-trust-revision",
+            "3",
+        ])
+        .unwrap();
+        assert!(matches!(
+            trust.command,
+            Some(CliCommand::Actions(ActionsCommand {
+                action: ActionsAction::WorkspaceTrust {
+                    apply: true,
+                    expected_trust_revision: Some(3),
                     ..
                 }
             }))
