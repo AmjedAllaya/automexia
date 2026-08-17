@@ -292,6 +292,27 @@ fn validate_action(action: &QuickAction) -> Result<(), ValidationError> {
         ActionProvenance::Imported { source_digest } => {
             validate_text(action, "provenance.source_digest", source_digest, false)?;
         }
+        ActionProvenance::WorkspaceTask {
+            task_name,
+            workspace_identity,
+            ..
+        } => {
+            validate_text(action, "provenance.task_name", task_name, false)?;
+            validate_text(
+                action,
+                "provenance.workspace_identity",
+                workspace_identity,
+                false,
+            )?;
+            if action.scope != ActionScope::TrustedWorkspace {
+                return Err(ValidationError::action(
+                    action,
+                    ValidationCode::UnsafeText,
+                    "provenance",
+                    "workspace task provenance requires trusted-workspace scope",
+                ));
+            }
+        }
         ActionProvenance::User => {}
     }
 

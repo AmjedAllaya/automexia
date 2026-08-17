@@ -9,6 +9,7 @@
 mod aliases;
 mod aliases_cli;
 mod cli;
+mod native_import;
 mod packs_cli;
 mod refresh;
 mod secure_fs;
@@ -16,10 +17,17 @@ mod service;
 mod store;
 mod transfer;
 mod worker;
+mod workspace;
 
 pub use aliases_cli::execute_aliases_command;
 pub use cli::execute_actions_command;
 pub use packs_cli::execute_packs_command;
+
+pub use native_import::{
+    apply_native_alias_import, preview_native_alias_import_file,
+    AppliedNativeAliasImport, NativeAliasImportFilePreview, NativeAliasImportSelection,
+    NativeImportError,
+};
 
 pub use aliases::{
     collect_local_alias_observations, projection_file_name, shell_label,
@@ -50,4 +58,11 @@ pub use transfer::{
 pub use worker::{
     QuickActionRuntime, QuickActionRuntimeErrorCode, QuickActionRuntimeStatus,
     QuickActionSearchResult, SearchSubmission,
+};
+pub use workspace::{
+    WorkspaceActionSnapshot, WorkspaceActionStore, WorkspaceError, WorkspaceErrorCode,
+    WorkspaceTaskBridgeInput, WorkspaceTrustSnapshot, WorkspaceTrustStore,
+    MAX_WORKSPACE_TRUST_RECEIPTS, WORKSPACE_ACTION_DIRECTORY_NAME,
+    WORKSPACE_ACTION_FILE_NAME, WORKSPACE_TRUST_FILE_NAME,
+    WORKSPACE_TRUST_SCHEMA_VERSION,
 };

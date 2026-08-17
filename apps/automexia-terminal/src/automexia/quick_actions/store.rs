@@ -723,6 +723,15 @@ fn estimated_resident_bytes(document: &QuickActionDocument) -> usize {
             ActionProvenance::Imported { source_digest } => {
                 bytes = bytes.saturating_add(source_digest.capacity());
             }
+            ActionProvenance::WorkspaceTask {
+                task_name,
+                workspace_identity,
+                ..
+            } => {
+                bytes = bytes
+                    .saturating_add(task_name.capacity())
+                    .saturating_add(workspace_identity.capacity());
+            }
             ActionProvenance::User => {}
         }
         if let Some(alias) = &action.alias_projection {
