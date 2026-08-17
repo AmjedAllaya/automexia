@@ -281,16 +281,18 @@ proposed. D5.1 and D5.2 are not implied or activated.
 Status: Partially done.
 
 - [ ] **Partially done** — Connect D4 snapshots to a virtualized Hub without
-  changing D4 authority. The pure 10,000-record catalog now projects bounded
-  public records into the existing virtualized renderer-neutral Hub; application
-  composition and product rendering remain.
+  changing D4 authority. The application now composes explicit D4 scan results
+  and revisioned public metadata into the pure 10,000-record catalog on one
+  cancellable worker, while discarding obsolete generations. Product rendering
+  remains.
 - [ ] **Partially done** — Add explicit local scan plus favorites, tags, recent,
   grouping, search, filter, source revision, truthful stale/last-known-good
   health, and setup guidance. Deterministic combined catalog search and filters
   are implemented. D4 favorites/tags/recent metadata now has revision-zero
   migration, private writer locking, CAS, atomic one-generation rotation,
-  truthful fallback, and explicit recovery; application scan composition, stale
-  health projection, mutation UI, and setup guidance remain.
+  truthful fallback, and explicit recovery. Explicit scans now retain last-known-
+  good results under a redacted stale state, and Windows/macOS/Linux setup
+  guidance truthfully requires exact user-selected files. Mutation UI remains.
 - [ ] **Not done** — Add bounded private profile/recipe/preference persistence
   with no-follow reads, user-only permissions, CAS, atomic replacement,
   recovery, import/export redaction, and new local IDs for imports.

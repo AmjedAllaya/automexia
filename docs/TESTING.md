@@ -1151,6 +1151,21 @@ atomic replacement, interrupted staging, redacted malformed/oversized input,
 exact removal, Unix mode, and Windows current-user DACL coverage. Application
 composition and profile/recipe/preference persistence remain separate F3 gates.
 
+### Connection Hub F3 application composition
+
+The native application owns explicit D4 grants, generation-scoped background
+refresh, public snapshot/metadata composition, last-known-good health, and
+static platform setup guidance without activating connection authority:
+
+    cargo test -p automexia-terminal --test connection_hub_runtime --no-default-features --locked
+    cargo clippy -p automexia-terminal --test connection_hub_runtime --no-default-features --locked -- -D warnings
+
+The focused contract proves that opening the runtime does not scan; only exact
+user-provided grants start work; metadata and OpenSSH records produce a bounded
+public catalog; newer generations supersede older work; failures retain the
+last good catalog with a path-free diagnostic code; and Windows, macOS, and
+Linux guidance claims neither process nor network activity. Profile/recipe/
+preference storage and native product rendering remain separate F3 gates.
 ### Remaining Connection Hub activation assurance
 
 D5.1/D5.2 and D6 remain planned/non-activated work. Before activation they must

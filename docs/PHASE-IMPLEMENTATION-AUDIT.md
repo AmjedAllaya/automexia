@@ -492,11 +492,17 @@ rapid-filter Criterion gate. The local Windows release benchmark measured
 zero migration, private no-follow locking, CAS, bounded atomic replacement, one
 validated previous generation, truthful fallback, explicit reviewed recovery,
 stale-writer/contention rejection, and Windows user-only ACL round trips.
+The application composition root now owns explicit grants and one bounded
+inventory worker, cancels superseded requests, discards obsolete completions,
+merges only public D4 records and metadata, and retains last-known-good catalog
+entries behind a redacted stale diagnostic. Opening the runtime performs no
+scan, process launch, network request, authentication, or PTY work. Static
+Windows, macOS, and Linux guidance lists candidate paths but requires exact
+user-selected files before scanning.
 
-Remaining: application-owned D4 snapshot composition and explicit scan,
-favorites/tags/recent mutation UI, stale/last-known-good health, OS guidance,
-secure profile/recipe/preference storage and redacted transfer, product
-rendering, fault-injected read-only/disk-full evidence, native macOS/Linux
+Remaining: favorites/tags/recent mutation UI, secure profile/recipe/preference
+storage and redacted transfer, product rendering, fault-injected read-only/disk-
+full evidence, native macOS/Linux
 permission evidence for this revision, and controlled screen-reader
 verification. Connection actions remain disabled until D5.2.
 

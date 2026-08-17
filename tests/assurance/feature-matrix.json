@@ -561,6 +561,31 @@
         "linux": {"level": "pr", "evidence": ["automexia-ui-model/tests/connection_catalog.rs", ".github/workflows/ci.yml#native"]},
         "macos": {"level": "pr", "evidence": ["automexia-ui-model/tests/connection_catalog.rs", ".github/workflows/ci.yml#native"]}
       }
+    },
+    {
+      "id": "connection-hub-f3-composition",
+      "title": "Explicit SSH inventory composition with generation safety and last-known-good health",
+      "components": ["apps/automexia-terminal", "extensions/devops-ssh", "automexia-ui-model"],
+      "documentation": {
+        "guide": ["docs/CONNECTION-HUB.md#search-filters-and-refresh"],
+        "reference": ["docs/TESTING.md#connection-hub-f3-application-composition"],
+        "explanation": ["docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md#f3-implement-d51-read-only-connection-hub"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "Truthful state and setup labels are model-level evidence; native product and controlled screen-reader evidence remain an F3 gate."},
+        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs"]},
+        "security": {"level": "pr", "evidence": ["extensions/devops-ssh/src/lib.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "The application passes only explicit exact grants to capability-free static inventory and adds no process, network, authentication, credential, listener, or PTY authority."},
+        "performance": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "One worker serializes bounded scans and obsolete generations cannot publish; controlled end-to-end refresh latency remains later evidence."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs"], "rationale": "Cancellation is explicit and the worker holds only a weak runtime reference, so dropping all handles closes its channel and releases the thread after bounded current work."},
+        "storage_hygiene": {"level": "pr", "evidence": ["extensions/devops-ssh/src/persistence.rs", "extensions/devops-ssh/tests/metadata_store.rs"], "rationale": "Composition reads the validated transactional D4 metadata document and does not add another metadata authority."},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "Failed refreshes retain the immutable last-known-good catalog behind a redacted stale state and stale completions cannot replace a newer request."},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "This application service slice contains no renderer; product rendering remains a separate F3 gate."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs", ".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs", ".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs", ".github/workflows/ci.yml#native"]}
+      }
     }
   ]
 }
