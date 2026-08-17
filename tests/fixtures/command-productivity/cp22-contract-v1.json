@@ -74,6 +74,7 @@
     "automexia-devops/src/actions/activation.rs",
     "automexia-devops/src/actions/mod.rs",
     "automexia-devops/src/actions/model.rs",
+    "automexia-devops/src/actions/projection.rs",
     "automexia-devops/src/actions/validation.rs"
   ],
   "application_files": [

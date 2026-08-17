@@ -57,8 +57,8 @@ class CommandProductivityPolicyTests(unittest.TestCase):
         self.assertEqual(counts["providers"], 11)
         self.assertEqual(counts["threats"], 16)
         self.assertGreater(counts["runtime_files"], 100)
-        self.assertEqual(counts["cp2_pure_action_files"], 4)
-        self.assertEqual(counts["cp2_persistence_files"], 8)
+        self.assertEqual(counts["cp2_pure_action_files"], 5)
+        self.assertEqual(counts["cp2_persistence_files"], 10)
 
     def test_versioned_hostile_mutation_corpus_is_rejected(self) -> None:
         self.assertEqual(set(self.hostile), {"schema", "phase", "cases"})
@@ -355,6 +355,40 @@ class CommandProductivityPolicyTests(unittest.TestCase):
                 POLICY.CommandProductivityError, "exact reviewed boundary"
             ):
                 POLICY.validate_persistence_sources(root, files)
+    def test_persistence_boundary_accepts_exact_reviewed_cp31_expansion(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = self._persistence_fixture(root)
+            for relative in sorted(POLICY.CP31_PUBLICATION_FILES):
+                path = root / relative
+                path.write_text("struct PublicationBoundary;\n", encoding="utf-8")
+                files.append(path)
+            self.assertEqual(
+                POLICY.validate_persistence_sources(root, files),
+                POLICY.CP2_PERSISTENCE_FILES | POLICY.CP31_PUBLICATION_FILES,
+            )
+
+    def test_persistence_boundary_rejects_partial_or_capability_bearing_cp31(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = self._persistence_fixture(root)
+            publication = sorted(POLICY.CP31_PUBLICATION_FILES)
+            first = root / publication[0]
+            first.write_text("struct PublicationBoundary;\n", encoding="utf-8")
+            files.append(first)
+            with self.assertRaisesRegex(
+                POLICY.CommandProductivityError, "exact reviewed boundary"
+            ):
+                POLICY.validate_persistence_sources(root, files)
+
+            second = root / publication[1]
+            second.write_text("use std::net::TcpStream;\n", encoding="utf-8")
+            files.append(second)
+            with self.assertRaisesRegex(
+                POLICY.CommandProductivityError, "CP3.1 publication-only"
+            ):
+                POLICY.validate_persistence_sources(root, files)
+
     def test_scanned_source_size_ceiling_is_enforced_before_read(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "oversized.rs"

@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "phase": "CP3.0",
+  "status": "active-pure-compiler-activation-disabled",
+  "limits": {
+    "generated_file_bytes": 1048576,
+    "collision_entries": 4096,
+    "observation_entries": 256,
+    "cmd_typed_bindings": 9
+  },
+  "shell_modes": {
+    "powershell": ["command-alias", "wrapper-function"],
+    "bash": ["command-alias", "wrapper-function"],
+    "zsh": ["command-alias", "wrapper-function"],
+    "fish": ["abbreviation", "wrapper-function"],
+    "cmd": ["doskey-macro"]
+  },
+  "capabilities": {
+    "activation": false,
+    "profile_read": false,
+    "profile_write": false,
+    "filesystem": false,
+    "process": false,
+    "environment": false,
+    "network": false,
+    "secret_read": false,
+    "implicit_exact_override": false
+  },
+  "observations": {
+    "collision_complete": true,
+    "completion_complete": true,
+    "tool_complete": true,
+    "same_action_owner_fingerprint_required": true,
+    "tool_health_retained_in_decisions": true
+  },
+  "integrity": {
+    "source_digest_recomputed": true,
+    "structured_manifest_verified": true,
+    "body_digest_verified": true
+  },
+  "publication": {
+    "activation": "disabled",
+    "profile_hook": false,
+    "rollback_anchor": "previous-artifact-digest",
+    "uninstall_owner": "CP3.1-exact-managed-artifact"
+  },
+  "model_files": [
+    "automexia-devops/src/actions/activation.rs",
+    "automexia-devops/src/actions/mod.rs",
+    "automexia-devops/src/actions/model.rs",
+    "automexia-devops/src/actions/projection.rs",
+    "automexia-devops/src/actions/validation.rs"
+  ],
+  "test_file": "automexia-devops/tests/quick_action_projection.rs",
+  "required_tests": [
+    "every_shell_compiler_is_deterministic_bounded_and_nonactivated",
+    "typed_bindings_compile_to_native_positional_contracts",
+    "none_policy_uses_rejecting_wrappers_where_native_aliases_append_arguments",
+    "eligibility_denies_unsafe_scope_execution_cwd_override_and_argument_shapes",
+    "cmd_typed_bindings_reject_defaults_optional_values_and_tenth_position",
+    "native_wins_and_exact_override_requires_matching_user_consent",
+    "native_wins_and_automexia_ownership_are_fail_closed",
+    "completion_and_tool_health_are_truthful_and_never_fall_back",
+    "incomplete_invalid_or_duplicate_observations_fail_before_generation",
+    "metadata_verification_detects_body_header_and_digest_tampering",
+    "hostile_shell_text_is_quoted_or_explicitly_unrepresentable",
+    "two_hundred_fifty_six_bindings_remain_deterministic_and_bounded",
+    "available_native_shells_parse_and_capture_exact_typed_arguments"
+  ],
+  "fuzz_target": "fuzz/fuzz_targets/quick_action_projection.rs",
+  "benchmark": "automexia-devops/benches/quick_actions.rs",
+  "documents": [
+    "docs/COMMAND-PRODUCTIVITY.md",
+    "docs/DEVOPS-ALIASES.md",
+    "docs/PHASE-IMPLEMENTATION-AUDIT.md",
+    "docs/ROADMAP.md",
+    "docs/TESTING.md"
+  ]
+}

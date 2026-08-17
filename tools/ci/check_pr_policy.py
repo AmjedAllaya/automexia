@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate DCO, PR title, changelog, and protected-path review policy."""
+"""Validate DCO, documentation, changelog, and protected-path review policy."""
 
 from __future__ import annotations
 
@@ -38,6 +38,25 @@ TITLE = re.compile(
     r"(?:\([a-z0-9._/-]+\))?!?: .+"
 )
 SIGNOFF = re.compile(r"(?im)^Signed-off-by:\s*.+\s+<[^<>\s]+@[^<>\s]+>$")
+DOCUMENTATION_REQUIRED_SUFFIXES = (
+    ".bash",
+    ".cmd",
+    ".fish",
+    ".json",
+    ".lock",
+    ".ps1",
+    ".py",
+    ".rs",
+    ".sh",
+    ".toml",
+    ".wgsl",
+    ".wxs",
+    ".xml",
+    ".yaml",
+    ".yml",
+    ".zsh",
+)
+DOCUMENTATION_REQUIRED_PREFIXES = ("assets/", "packaging/")
 
 
 def git(*args: str) -> str:
@@ -45,6 +64,22 @@ def git(*args: str) -> str:
         ["git", *args], check=True, text=True, stdout=subprocess.PIPE
     )
     return result.stdout
+
+
+def missing_documentation_for(changed: set[str]) -> list[str]:
+    if any(
+        path.startswith("docs/") and path.endswith(".md") for path in changed
+    ):
+        return []
+    return sorted(
+        path
+        for path in changed
+        if not path.startswith(("docs/", "changes/"))
+        and (
+            path.endswith(DOCUMENTATION_REQUIRED_SUFFIXES)
+            or path.startswith(DOCUMENTATION_REQUIRED_PREFIXES)
+        )
+    )
 
 
 def main() -> int:
@@ -70,6 +105,12 @@ def main() -> int:
     )
     if not has_fragment and not labels.intersection(EXEMPT_LABELS):
         failures.append("PR needs a changes/ fragment or an explicit exempt label")
+    undocumented = missing_documentation_for(changed)
+    if undocumented:
+        failures.append(
+            "behavior/configuration/test changes require an affected docs/*.md "
+            "update in the same pull request: " + ", ".join(undocumented)
+        )
 
     messages = git("log", "--format=%H%x00%B%x00", f"{base}..{head}").split("\x00")
     for index in range(0, len(messages) - 1, 2):
@@ -116,7 +157,7 @@ def main() -> int:
         for failure in failures:
             print(f"- {failure}", file=sys.stderr)
         return 1
-    print("PASS: title, DCO, changelog, and protected-path review policy")
+    print("PASS: title, DCO, documentation, changelog, and protected-path review policy")
     return 0
 
 
