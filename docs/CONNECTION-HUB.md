@@ -5,8 +5,9 @@ neutral Hub/review/planner baseline is implemented locally. D5.1 is partially
 implemented: its bounded catalog/search/filter/grouping, 10,000-record test,
 rapid-filter benchmark, D4 revisioned CAS/recovery metadata store, and
 application-owned explicit-scan composition with last-known-good health and
-platform guidance pass. Profile/recipe/preference persistence and transfer,
-product UI, and remaining native evidence are not done.
+platform guidance pass. Private profile/recipe/preference persistence, failure-
+safe recovery, and redacted fresh-ID transfer also pass. Product UI and
+remaining native evidence are not done.
 D5.2 managed connection lifecycle is not implemented; no credential custody or
 managed connection capability is shipped in v0.4.
 
