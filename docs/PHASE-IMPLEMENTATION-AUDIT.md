@@ -65,10 +65,10 @@ remain subject to their documented protected milestones and evidence.
 
 | Check | Result on the audited commit |
 |---|---|
-| Feature assurance | Passed: 16 feature families, 25 components, 8 benchmark targets, 8 fuzz targets, 66 documentation references, and 346 evidence links. |
+| Feature assurance | Passed: 19 feature families, 25 components, 8 benchmark targets, 10 fuzz targets, 84 documentation references, and 457 evidence links. |
 | Platform coverage policy | Passed: Windows/Linux/macOS, PowerShell/CMD/Unix shells, X11/Wayland, alternate architectures, nightly artifacts, deep Windows/WSL jobs, and release validators are machine-enforced. |
 | Documentation coverage | Passed: 11 public pages, 172 configuration keys, 73 binding actions, 6 application flags, and 21 xtask commands. |
-| Repository validation | Passed: 41 TOML, 14 YAML, 13 JSON, 6 XML, one desktop file, 119 Markdown files, 69 pinned Actions, release trust, assurance, and CP policy contracts. |
+| Repository validation | Passed: 41 TOML, 14 YAML, 17 JSON, 6 XML, one desktop file, 139 Markdown files, 69 pinned Actions, release trust, assurance, and CP policy contracts. |
 
 The hosted GitHub run state was not independently queried because GitHub CLI is
 not installed on this host. The latest readiness record says hosted jobs were
@@ -98,7 +98,8 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Productivity | CP2.2 | **Implemented locally** | **Partial** | Layered search, placeholder/risk/conflict review, bounded import/export/CRUD/recovery, and explicit insert/copy UI are present. Hosted native shells, controlled screen readers, and 30-day performance/resource evidence remain release gates. |
 | Productivity | CP3.0 | **Fully implemented at pure boundary** | **Partial** | Five pure serializers, bounded inventories, metadata/tamper verification, tests, fuzz, benchmark, and policy ratchets are complete; activation is disabled and hosted native evidence remains. |
 | Productivity | CP3.1 | **Fully implemented locally** | **Partial** | Explicit opt-in persistence, crash-safe all-old/all-new publication, verified five-shell startup/reload, diagnostics, rollback, and exact uninstall are implemented; hosted native/macOS/WSL and controlled-baseline evidence remains. |
-| Productivity | CP3.2-CP3.3 | **Not implemented** | **Not started** | First-party static packs and trusted import/task bridges remain. |
+| Productivity | CP3.2 | **Fully implemented locally** | **Partial** | Eleven static provider packs, 33 disabled-by-default actions, health/update/alias-safety, CLI, tests, fuzz, benchmarks, and policy gates are complete; hosted evidence remains. |
+| Productivity | CP3.3 | **Not implemented** | **Not started** | Trusted native-alias import and task-runner bridges remain. |
 | Productivity | CP4 | **Not implemented** | **Blocked** | Requires activated D3 and D5/D6 capsule/provider context. |
 | Productivity | CP5.0-CP5.6 | **Not implemented** | **Not started** | Detailed bridge/sources/ranking/UI/release plan exists; CP1 remains fallback. |
 | Productivity | CP6 | **Not implemented; deferred** | **Blocked by design** | Signed ecosystem packs and AI tools require v0.6 gates. |
@@ -157,7 +158,7 @@ repository administration. These do not reopen source implementation.
   cancellation, recovery, repeated attack, lazy allocation, ordinary-buffer
   reuse, saturating size arithmetic, and retained-memory release. A dedicated
   parser-construction Criterion case protects the allocation fast path.
-- Eight assurance-owned fuzz targets cover VT, OSC, control strings, images,
+- Ten assurance-owned fuzz targets cover VT, OSC, control strings, images,
   migration, sanitization, semantic classification, and OpenSSH inventory.
 
 Remaining: retained hosted fuzz/sanitizer/Miri, longer persisted campaigns, and
@@ -661,10 +662,30 @@ baseline remain release gates, not missing CP3.1 source.
 
 ### CP3.2 — first-party static DevOps packs
 
-**Not implemented.** Needs reviewed Git, Docker, Kubernetes/OpenShift, Helm,
-Terraform/OpenTofu, AWS, Azure, GCP, and SSH manifests; no short default alias;
-tool/version/risk/completion/docs/update/absence/integrity tests. Destructive,
-privileged, and context-changing actions cannot receive aliases.
+**Fully implemented locally.** The capability-free registry contains immutable
+schema-1 Git, Docker/Compose, Kubernetes, OpenShift, Helm, Terraform, OpenTofu,
+AWS, Azure, Google Cloud, and OpenSSH manifests. Each pack has exactly three
+typed actions (33 total), a reviewed minimum tool version, exact version argv,
+HTTPS documentation, completion policy, stable provenance, and effect/risk
+classification. Every built-in is `BuiltinDisabled`, insert-only, unaliased,
+and materializes only after explicit selection.
+
+Pure health evaluation accepts only bounded caller-supplied Missing/Detected/
+Unobserved observations and never starts a provider. The update planner rejects
+version regression and stale overlay digests, preserves valid custom overlays,
+and reports added, updated, unchanged, deprecated, and removed actions. The
+generic validator rechecks manifest identity before allowing a built-in alias;
+context-changing, authentication, destructive, and privileged effects fail
+closed. `automexia packs list/show/doctor/enable` is read-only by default;
+enablement requires revision CAS, never overwrites an action, and never enables
+an alias.
+
+Evidence: 11 integration cases plus two registry unit/mutation cases, focused
+CLI parser cases, a 33-action registry/health Criterion target, a nightly pack
+fuzzer, a schema-1 contract, seven mutation cases, aggregate repository/xtask
+wiring, and synchronized architecture/product/testing/roadmap documentation.
+Hosted cross-platform and the named-hardware baseline remain release evidence,
+not missing source behavior.
 
 ### CP3.3 — import and trusted task bridges
 

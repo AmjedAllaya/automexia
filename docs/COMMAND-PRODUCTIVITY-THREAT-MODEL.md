@@ -275,3 +275,18 @@ profile root; new shell/provider/plugin/generator; network/process/secret/
 clipboard/history capability; rich completion/editor bridge; remote install or
 sync; third-party pack distribution; telemetry/crash payload change; exact-launch
 activation; or a security incident affecting any boundary above.
+
+## CP3.2 implemented controls
+
+The CP3.2 static pack registry adds no provider, filesystem, environment,
+credential, network, shell-profile, or execution capability. All 33 built-ins
+are disabled, unaliased, insert-only typed argv. Health evaluates only bounded
+caller observations and reports Unobserved/Missing/UnsupportedVersion/
+CompletionUnavailable/Ready without probing a tool. Pack enablement is dry-run
+first, compare-and-swap protected, refuses overwrite, and never enables an
+alias. Canonical manifest revalidation denies alias projection for context
+changes, authentication, destructive operations, privileged operations,
+provenance drift, and payload drift. Update planning rejects version regression
+and stale overlay digests while preserving valid user overlays and explicit
+deprecation mappings. Contract mutations, hostile version tests, fuzzing, and
+nightly gates keep these denials fail-closed.

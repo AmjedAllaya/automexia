@@ -90,13 +90,13 @@ The documentation is organized by reader intent:
   persistence, refresh, threat model, and verification contract.
 - [Command productivity](COMMAND-PRODUCTIVITY.md): CP0 architecture baseline,
   shipped CP1 native completion, locally implemented CP2.2 reviewed Quick
-  Actions, pure CP3.0 shell projection compilation, implemented explicit CP3.1
-  persistent aliases, and the ordered CP3.2-CP6 delivery plan including CP5
-  local-only Shell Completion and Suggestions.
-- [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md): the
-  implemented CP2 model/persistence/review flow, CP3.0 pure five-shell compiler,
-  and CP3.1 private transactional activation, plus planned packs, security
-  budgets, and gates.
+  Actions, pure CP3.0 shell projection compilation, explicit CP3.1 persistent
+  aliases, fully implemented CP3.2 reviewed static DevOps packs, and the ordered
+  CP3.3-CP6 plan including local-only CP5 suggestions.
+- [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md): implemented
+  CP2 model/persistence/review, CP3.0 pure five-shell compiler, CP3.1 private
+  transactional activation, and CP3.2's 11 manifests/33 disabled-by-default
+  actions with health, update, alias-safety, security budgets, and gates.
 - [Command-productivity compatibility](COMMAND-PRODUCTIVITY-COMPATIBILITY.md):
   accepted shell/editor ownership, provider, precedence, fallback, and
   platform contract.

@@ -1,13 +1,16 @@
 # DevOps Quick Actions and persistent aliases
 
-Status: CP2.0-CP3.1 are implemented locally. CP3.1 generated aliases are active
-only after explicit user review and opt-in; CP3.2 packs, CP3.3 trusted bridges,
+Status: CP2.0-CP3.2 are implemented locally. CP3.1 generated aliases are active
+only after explicit user review and opt-in. CP3.2's eleven static provider packs
+and 33 typed actions are shipped disabled by default; CP3.3 trusted bridges,
 trusted workspace actions, secret expansion, and exact launch remain disabled.
 Stable publication still requires the phase-specific hosted-native and
 controlled evidence described below.
 
-No first-party pack alias is activated or shipped by CP3.1. Saved user aliases
-remain disabled until the user applies an explicit dry-run-reviewed change.
+No first-party pack alias is activated by default or shipped implicitly by CP3.2.
+A user must first enable one reviewed action through revision compare-and-swap,
+and must separately opt into an eligible alias. Context-changing,
+authentication, destructive, and privileged pack actions cannot acquire aliases.
 
 This document is the implementation authority for predefined DevOps shortcuts
 and user-created alias persistence. The broader
@@ -651,35 +654,22 @@ are never activated automatically.
 
 ### Curated baseline
 
-| Pack | Example action ID | Token intent | Risk | Suggested alias |
-|---|---|---|---|---|
-| Git | `git.status` | `git status --short --branch` | ReadOnly | `gst` |
-| Git | `git.log.graph` | `git log --graph --decorate --oneline --all` | ReadOnly | `glg` |
-| Git | `git.diff.staged` | `git diff --staged` | ReadOnly | `gds` |
-| Git | `git.switch` | explicit branch argument | Mutating | `gsw` after review |
-| Docker | `docker.ps` | running container summary | ReadOnly | `dps` |
-| Docker | `docker.compose.ps` | Compose service summary | ReadOnly | `dcps` |
-| Docker | `docker.logs` | logs for explicit container/service | ReadOnly | `dlog` |
-| Docker | `docker.inspect` | inspect explicit object | ReadOnly | `dins` |
-| Kubernetes | `kubernetes.get-pods` | pods in explicit/current capsule namespace | ReadOnly | `kgp` |
-| Kubernetes | `kubernetes.get-services` | services in explicit/current capsule namespace | ReadOnly | `kgs` |
-| Kubernetes | `kubernetes.describe` | explicit resource kind/name | ReadOnly | `kdesc` |
-| Kubernetes | `kubernetes.logs` | explicit pod/container | ReadOnly | `klog` |
-| OpenShift | `openshift.get-pods` | pods in explicit/current capsule project | ReadOnly | `ogp` |
-| OpenShift | `openshift.current-project` | show current project only | ReadOnly | `oproj` |
-| Helm | `helm.list` | releases in explicit namespace | ReadOnly | `hls` |
-| Helm | `helm.status` | status for explicit release | ReadOnly | `hst` |
-| Terraform | `terraform.fmt-check` | formatting check only | ReadOnly | `tfmtc` |
-| Terraform | `terraform.validate` | validate current reviewed directory | ReadOnly | `tfval` |
-| Terraform | `terraform.plan` | explicit reviewed plan path/options | Mutating/network | no built-in short alias |
-| OpenTofu | `opentofu.validate` | validate current reviewed directory | ReadOnly | `toval` |
-| OpenTofu | `opentofu.plan` | explicit reviewed plan path/options | Mutating/network | no built-in short alias |
-| AWS | `aws.identity` | show current caller identity | ReadOnly/network | `awho` after CP4 context |
-| Azure | `azure.account-show` | show selected account/subscription | ReadOnly | `azwho` after CP4 context |
-| Google Cloud | `gcp.config-list` | show selected configuration/project | ReadOnly | `gcctx` after CP4 context |
-| SSH | `ssh.agent-public-list` | list public agent fingerprints | ReadOnly | `sshkeys` |
-| SSH | `ssh.connect` | selected reviewed OpenSSH alias | Remote/session | no static CP3 alias; CP4/D5 action |
+The compiled registry is the source of truth. Every row below ships as a
+disabled, insert-only `TypedArgv` action with no alias projection.
 
+| Pack | Reviewed action IDs | Effect and alias policy |
+|---|---|---|
+| AWS CLI | `aws.caller-identity`, `aws.regions`, `aws.sso-login` | First two are inspection and eligible only after separate alias opt-in; SSO login is authentication and alias-denied. |
+| Azure CLI | `azure.account-list`, `azure.account-set`, `azure.account-show` | List/show are inspection; subscription selection is context-changing and alias-denied. |
+| Docker/Compose | `docker.compose-ps`, `docker.info`, `docker.ps` | All three inspect Compose/container/daemon state; no prune action is shipped. |
+| Google Cloud CLI | `gcloud.config-list`, `gcloud.project-set`, `gcloud.projects-list` | List actions are inspection; project selection is context-changing and alias-denied. |
+| Git | `git.log-recent`, `git.status`, `git.switch` | History/status are inspection; branch switching is context-changing and alias-denied. |
+| Helm | `helm.get-values`, `helm.list`, `helm.status` | All three inspect release values/status; no uninstall action is shipped. |
+| Kubernetes | `kubernetes.current-context`, `kubernetes.get-pods`, `kubernetes.use-context` | Context/pods are inspection; context selection is context-changing and alias-denied. |
+| OpenShift | `openshift.get-pods`, `openshift.project`, `openshift.status` | Pods/status are inspection; project selection is context-changing and alias-denied. |
+| OpenSSH | `openssh.connect`, `openssh.list-key-algorithms`, `openssh.print-config` | Algorithm/config inspection is eligible after review; connect is authentication and alias-denied. |
+| OpenTofu | `opentofu.validate`, `opentofu.workspace-select`, `opentofu.workspace-show` | Validate/show are inspection; workspace selection is context-changing and alias-denied. |
+| Terraform | `terraform.validate`, `terraform.workspace-select`, `terraform.workspace-show` | Validate/show are inspection; workspace selection is context-changing and alias-denied. |
 The actual manifest tokens must be verified against supported tool versions;
 the table is the product baseline, not permission to hard-code unstable output
 parsing. Pack documentation explains whether an action may contact a daemon,
@@ -691,7 +681,7 @@ cluster, provider, backend, or remote even when it is logically read-only.
   in CI. There is no background pack download in CP3.
 - A pack update creates a new immutable version. Unmodified user enablement can
   adopt it after compatibility checks; token/risk/name changes require review.
-- Customized actions are forks/overlays. They never get overwritten; the UI
+- Customized actions are explicit user-provenance forks/overlays. They never get overwritten; the UI
   shows old/new semantic diff and offers keep, merge, or create another action.
 - Removed/deprecated tool commands disable the affected action with an
   explanation. They never fall back to a similarly named command.
@@ -923,8 +913,9 @@ ratchets fail closed.
 CP3.0 remains a pure non-activated compiler. CP3.1 now owns only the separate
 application publication boundary and existing managed shell-hook activation; it
 does not move filesystem/process authority into `automexia-devops`. CP3.1 cannot
-execute an action/provider, read secrets, or grant exact launch. CP3.2+ features
-retain their own later phase-specific implementation and evidence gates.
+execute an action/provider, read secrets, or grant exact launch. CP3.2 owns only
+the separate capability-free pack registry and explicit app-owned enable CLI;
+CP3.3+ retain their later phase-specific implementation and evidence gates.
 
 The schema-1 [`CP3.1 contract`](../tests/fixtures/command-productivity/cp31-contract-v1.json),
 [`check_command_productivity_cp31.py`](../tools/ci/check_command_productivity_cp31.py),
@@ -1275,13 +1266,34 @@ not enable CP3.2/CP3.3.
 
 ### CP3.2 - first-party static DevOps packs
 
-- Ship reviewed Git, Docker/Compose, Kubernetes/OpenShift, Helm,
-  Terraform/OpenTofu, AWS, Azure, Google Cloud, and SSH manifests.
-- Enable no alias by default. Validate tool versions, risk floors, completion,
-  documentation, update/overlay/deprecation, and provider absence.
+**Fully done locally — CP3.2 - reviewed first-party DevOps packs.**
 
-Exit: every action/pack test passes and destructive/privileged/context-changing
-actions cannot acquire an alias.
+- The capability-free schema-1 registry owns eleven immutable manifests and
+  exactly 33 sorted typed actions. Each records stable ID/provenance, reviewed
+  minimum tool version and version argv, HTTPS documentation, completion policy,
+  placeholders, effect, and exact risk floor.
+- Built-ins are `BuiltinDisabled`, unaliased, insert-only, and directory-neutral.
+  `materialize_pack_action` creates a user-enabled copy only after explicit
+  selection and still leaves aliases disabled.
+- Bounded caller-supplied Unobserved/Missing/Detected health distinguishes
+  missing tools, unsupported versions, missing completion, and ready providers;
+  health code starts no provider and reads no credentials, files, or network.
+- Update planning rejects version regressions and stale overlay digests,
+  preserves valid custom overlays, and reports add/update/unchanged/deprecated/
+  removed states with exact replacement IDs.
+- Manifest-aware alias validation rechecks canonical payload and provenance.
+  Context-changing, authentication, destructive, and privileged actions cannot
+  acquire aliases; generic secret, risk, scope, working-directory, collision,
+  and completion rules still apply.
+- `automexia packs list`, `show`, and `doctor` are read-only. `enable` is a dry
+  run unless `--apply --expected-revision N` is supplied, never overwrites an
+  existing action, and never enables an alias.
+
+Exit: satisfied at the source/local boundary by 13 pack unit/integration cases,
+two CLI parser cases, registry and health benchmarks, the nightly pack fuzzer,
+a schema-1 contract and seven mutations, aggregate CI/xtask enforcement, and
+this synchronized documentation. Hosted native results and the controlled
+30-day baseline remain release evidence.
 
 ### CP3.3 - explicit import and trusted task-runner bridges
 

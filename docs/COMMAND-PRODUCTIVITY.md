@@ -584,10 +584,18 @@ WSL Bash/Zsh/Fish lifecycle tests, configured nightly/release WSL gates, a
 256-alias benchmark, fuzz/property coverage, and mutation/contract ratchets own
 the boundary.
 
-**CP3.2-CP3.3 not done:** versioned Git/Docker/Kubernetes/OpenShift/Helm/
-Terraform/OpenTofu/AWS/Azure/GCP/SSH packs and trusted alias/task imports remain
-separate work. The named-hardware 30-day CP3.1 baseline is also pending release
-evidence; it does not make the implemented source boundary partial.
+**CP3.2 fully done locally:** the capability-free schema-1 registry provides
+Git, Docker/Compose, Kubernetes, OpenShift, Helm, Terraform, OpenTofu, AWS,
+Azure, Google Cloud, and OpenSSH packs: 11 manifests and 33 disabled-by-default
+`TypedArgv` actions. Bounded caller observations drive version/provider-absence/
+completion health without starting tools. Effect/risk floors deny aliases for
+context, authentication, destructive, and privileged actions. Overlay-safe
+updates, deprecations, dry-run/CAS CLI enablement, 12 focused pack cases, two CLI
+parser cases, Criterion, nightly fuzz, and mutation-gated contracts own CP3.2.
+
+**CP3.3 not done:** trusted native-alias import and explicit just/Task/mise task
+bridges remain separate work. The named-hardware 30-day baseline is pending
+release evidence; it does not make CP3.2's implemented source boundary partial.
 
 ### CP4 — capsule/provider-aware productivity
 

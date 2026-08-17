@@ -154,3 +154,23 @@ cleanup. Full test ownership and expected duration are in
 Do not lower storage guards in routine development or CI. See
 [Configuration](CONFIGURATION.md) and [WSL development](WSL-DEVELOPMENT.md) for
 precedence and lifecycle details.
+
+## Reviewed DevOps packs (CP3.2)
+
+```text
+automexia packs list [--json]
+automexia packs show PACK_ID [--json]
+automexia packs doctor [--json]
+automexia packs doctor PACK_ID [--missing | --tool-version TEXT] [--completion-shell SHELL]... [--json]
+automexia packs enable PACK_ID ACTION_ID [--json]
+automexia packs enable PACK_ID ACTION_ID --apply --expected-revision N [--json]
+```
+
+`list`, `show`, and `doctor` are read-only and never start a provider. Doctor
+reports the registry as ready when no pack is selected; pack health uses only
+the supplied Missing/Detected/Unobserved observation. `enable` previews by
+default, refuses to overwrite an existing action, and applies through the same
+private revision compare-and-swap store as other Quick Actions. It always leaves
+the alias disabled. Eligible inspection actions require a separate explicit
+`automexia aliases enable` review; context-changing, authentication,
+destructive, and privileged pack actions are rejected there.
