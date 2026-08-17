@@ -53,6 +53,9 @@ The documentation is organized by reader intent:
 
 - [Contributing](../CONTRIBUTING.md): branch, DCO, testing, documentation, and
   review requirements.
+- [AI contributor workflow](../AGENTS.md): repository audit, primary-source
+  research, architecture planning, TDD, security/performance/UX evidence,
+  documentation, and DCO commit/push requirements for coding agents.
 - [Testing and verification](TESTING.md): PR, nightly, controlled-hardware,
   performance, security, and release evidence.
 - [Releasing](../RELEASING.md) and [packaging](../packaging/README.md): artifact,

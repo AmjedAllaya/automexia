@@ -4,6 +4,11 @@ Thank you for contributing. By submitting a contribution you agree to the
 Developer Certificate of Origin 1.1. Add a sign-off to every commit with
 `git commit -s`; a pull request cannot merge if any commit lacks it.
 
+AI coding agents must also follow the repository-level
+[AI contributor workflow](AGENTS.md). It defines the required audit, research,
+planning, test-driven implementation, evidence, documentation, and safe
+commit/push sequence without replacing this human contributor policy.
+
 ## Start here
 
 1. Install the pinned Rust toolchain and platform dependencies.
