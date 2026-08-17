@@ -589,9 +589,13 @@ Git, Docker/Compose, Kubernetes, OpenShift, Helm, Terraform, OpenTofu, AWS,
 Azure, Google Cloud, and OpenSSH packs: 11 manifests and 33 disabled-by-default
 `TypedArgv` actions. Bounded caller observations drive version/provider-absence/
 completion health without starting tools. Effect/risk floors deny aliases for
-context, authentication, destructive, and privileged actions. Overlay-safe
-updates, deprecations, dry-run/CAS CLI enablement, 12 focused pack cases, two CLI
-parser cases, Criterion, nightly fuzz, and mutation-gated contracts own CP3.2.
+context, authentication, destructive, and privileged actions. A reviewed digest
+freezes the complete registry payload; version-only provenance updates remain
+unchanged while functional metadata changes are reported as updates. Dry-run/CAS
+enablement previews exact argv/effect/risk/documentation and rejects stale
+revisions before store creation. Fourteen pack unit/integration cases, five CLI
+parser/rendering/preflight cases, Criterion, nightly fuzz, an exact-payload
+contract, and eight mutations own CP3.2.
 
 **CP3.3 not done:** trusted native-alias import and explicit just/Task/mise task
 bridges remain separate work. The named-hardware 30-day baseline is pending

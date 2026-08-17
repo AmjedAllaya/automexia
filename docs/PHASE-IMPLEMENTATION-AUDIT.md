@@ -668,21 +668,28 @@ AWS, Azure, Google Cloud, and OpenSSH manifests. Each pack has exactly three
 typed actions (33 total), a reviewed minimum tool version, exact version argv,
 HTTPS documentation, completion policy, stable provenance, and effect/risk
 classification. Every built-in is `BuiltinDisabled`, insert-only, unaliased,
-and materializes only after explicit selection.
+and materializes only after explicit selection. A reviewed digest asserts the
+complete serialized registry during initialization, freezing exact argv,
+versions, URLs, completion, effects, risks, and provenance.
 
 Pure health evaluation accepts only bounded caller-supplied Missing/Detected/
 Unobserved observations and never starts a provider. The update planner rejects
 version regression and stale overlay digests, preserves valid custom overlays,
-and reports added, updated, unchanged, deprecated, and removed actions. The
-generic validator rechecks manifest identity before allowing a built-in alias;
+and reports added, updated, unchanged, deprecated, and removed actions. It
+normalizes only manifest provenance versions, so version-only upgrades are
+unchanged while functional metadata changes remain updates. The generic
+validator rechecks manifest identity before allowing a built-in alias;
 context-changing, authentication, destructive, and privileged effects fail
 closed. `automexia packs list/show/doctor/enable` is read-only by default;
-enablement requires revision CAS, never overwrites an action, and never enables
-an alias.
+registry doctor reports only registry readiness, while enable preview exposes
+exact argv/effect/risk/documentation and the reusable CAS revision. Apply rejects
+a stale revision before store creation, never overwrites an action, and never
+enables an alias.
 
-Evidence: 11 integration cases plus two registry unit/mutation cases, focused
-CLI parser cases, a 33-action registry/health Criterion target, a nightly pack
-fuzzer, a schema-1 contract, seven mutation cases, aggregate repository/xtask
+Evidence: 12 integration cases plus two registry unit/mutation cases and five
+focused CLI parser/rendering/preflight cases; a 33-action registry/health
+Criterion target; a nightly pack fuzzer; a schema-1 exact-payload contract; eight
+mutation cases; aggregate repository/xtask
 wiring, and synchronized architecture/product/testing/roadmap documentation.
 Hosted cross-platform and the named-hardware baseline remain release evidence,
 not missing source behavior.

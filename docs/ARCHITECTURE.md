@@ -729,21 +729,27 @@ CP3.2 is fully implemented at a capability-free/application-owned split:
 - `automexia-devops/src/actions/packs.rs` owns immutable schema-1 provider
   manifests, typed action construction, validation, pure health evaluation,
   manifest-aware alias eligibility, digests, deprecations, and update/overlay
-  planning. It has no filesystem, process, environment, network, credential,
+  planning. Initialization asserts the reviewed full-registry digest, and update
+  comparison normalizes only the manifest provenance version so functional
+  metadata still produces an update. The module has no filesystem, process,
+  environment, network, credential,
   shell-profile, UI, PTY, or execution authority.
 - `validation.rs` delegates built-in alias review back to the immutable registry,
   so provenance drift and context/authentication/destructive/privileged effects
   fail closed even if a caller adds generic acknowledgement.
 - `packs_cli.rs` owns explicit application configuration discovery and the
   existing private Quick Action transaction service. List/show/doctor never
-  write or start a provider. Enable is dry-run first, requires revision
-  compare-and-swap to apply, refuses overwrite, and leaves alias projection
-  absent.
+  write or start a provider. Enable is dry-run first and exposes exact typed argv,
+  effect/risk, documentation, alias eligibility, registry digest, and CAS
+  revision. Apply rejects an already-stale revision before opening a writable
+  store, still rechecks CAS against races, refuses overwrite, and leaves alias
+  projection absent.
 - Pack health consumes bounded observations supplied by a caller. Runtime tool
   discovery/execution is deliberately absent; CP1 continues to own explicit
   completion refresh and later CP4/D5/D6 own provider-aware context.
 
-The exact 11-pack/33-action inventory and source boundary are frozen by the
-CP3.2 machine contract, mutation checker, integration tests, Criterion targets,
+The exact serialized 11-pack/33-action payload, inventory, and source boundary
+are frozen by the CP3.2 machine contract, reviewed digest assertion, mutation
+checker, integration/CLI tests, Criterion targets,
 and nightly libFuzzer target. CP3.3 imports and task bridges are outside this
 boundary.

@@ -282,11 +282,18 @@ The CP3.2 static pack registry adds no provider, filesystem, environment,
 credential, network, shell-profile, or execution capability. All 33 built-ins
 are disabled, unaliased, insert-only typed argv. Health evaluates only bounded
 caller observations and reports Unobserved/Missing/UnsupportedVersion/
-CompletionUnavailable/Ready without probing a tool. Pack enablement is dry-run
-first, compare-and-swap protected, refuses overwrite, and never enables an
-alias. Canonical manifest revalidation denies alias projection for context
+CompletionUnavailable/Ready without probing a tool. A reviewed digest freezes
+the entire serialized 11-pack/33-action registry and is asserted during
+initialization, so command argv, version, URL, completion, effect/risk, or
+provenance drift fails closed.
+
+Pack enablement is dry-run first and exposes exact argv, effect, risk,
+documentation, alias eligibility, registry digest, and CAS revision. A stale
+revision fails before store creation; apply refuses overwrite and never enables
+an alias. Canonical manifest revalidation denies alias projection for context
 changes, authentication, destructive operations, privileged operations,
 provenance drift, and payload drift. Update planning rejects version regression
-and stale overlay digests while preserving valid user overlays and explicit
-deprecation mappings. Contract mutations, hostile version tests, fuzzing, and
-nightly gates keep these denials fail-closed.
+and stale overlay digests while preserving valid user overlays and distinguishing
+version-only provenance changes from functional updates. Contract mutations,
+hostile version/manifest tests, fuzzing, and nightly gates keep these denials
+fail-closed.

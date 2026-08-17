@@ -33,7 +33,7 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | CP2.2 | Local layered search, review, administration, import/export, recovery, and insert/copy UI are implemented; hosted evidence remains. |
 | **Fully done** | CP3.0 | The pure five-shell compiler recomputes source identity; requires complete collision/completion/tool evidence; verifies owner, structured, body, and rollback identities; retains degraded tool UX detail; and has serializer/native/tamper tests, all-shell fuzzing, a 256-binding benchmark, and mutation ratchets with activation disabled. |
 | **Fully done** | CP3.1 | Explicit opt-in persistent aliases, crash-safe atomic generations, active/rollback topology and permission verification, exact compiler-bound native startup/reload, detailed reusable-CAS dry runs, stable diagnostics, rollback, exact uninstall, and WSL lifecycle gates are implemented at the source/local boundary. |
-| **Fully done** | CP3.2 | Eleven reviewed static DevOps packs provide 33 disabled-by-default typed actions, health/version/completion evaluation, safe updates/overlays/deprecations, and fail-closed alias eligibility. |
+| **Fully done** | CP3.2 | Eleven reviewed static DevOps packs provide 33 disabled-by-default typed actions, an exact-payload digest, truthful health/version/completion evaluation, correct update/overlay/deprecation semantics, exact review previews, stale-revision preflight, and fail-closed alias eligibility. |
 | **Not done** | CP3.3 | Trusted native-alias import and task-runner bridges are not implemented. |
 | **Not done** | CP4 | Capsule/provider actions wait for activated D3 and D5/D6 context. |
 | **Not done** | CP5.0-CP5.6 | The optional suggestion bridge/UI is planned; CP1 remains the complete fallback. |
@@ -390,9 +390,12 @@ remains disabled behind D3.
   named-hardware 30-day startup/resource baseline remain release evidence; they
   are not missing CP3.1 implementation.
 - **Fully done** — CP3.2 ships eleven immutable first-party manifests and 33
-  disabled-by-default typed actions with no default aliases, pure caller-supplied
-  health evaluation, effect/risk floors, overlay-safe updates, deprecations,
-  fuzzing, benchmarks, and mutation-gated documentation.
+  disabled-by-default typed actions with no default aliases. A reviewed digest
+  freezes the exact payload; pure caller-supplied health distinguishes registry
+  readiness from provider readiness; version-only updates remain unchanged;
+  exact argv/effect/risk/documentation previews and stale-revision preflight
+  protect enablement; fuzzing, benchmarks, eight mutations, and synchronized
+  documentation gate the phase.
 - **Not done** — CP3.3 trusted native-alias import and task-runner bridges remain
   separate and are not activated by CP3.2.
 
