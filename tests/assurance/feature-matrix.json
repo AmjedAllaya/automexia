@@ -536,6 +536,31 @@
         "linux": {"level": "pr", "evidence": ["automexia-devops/tests/connection_planning.rs", "automexia-ui-model/tests/connection_hub.rs", ".github/workflows/ci.yml#native"]},
         "macos": {"level": "pr", "evidence": ["automexia-devops/tests/connection_planning.rs", "automexia-ui-model/tests/connection_hub.rs", ".github/workflows/ci.yml#native"]}
       }
+    },
+    {
+      "id": "connection-hub-f3-catalog",
+      "title": "Bounded read-only Connection Hub catalog, filtering, grouping, and virtualization",
+      "components": ["automexia-ui-model"],
+      "documentation": {
+        "guide": ["docs/CONNECTION-HUB.md#search-filters-and-refresh"],
+        "reference": ["docs/TESTING.md#connection-hub-f3-catalog-contract"],
+        "explanation": ["docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md#f3-implement-d51-read-only-connection-hub"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs", "automexia-ui-model/tests/connection_hub.rs"], "rationale": "The pure projection preserves the existing virtualized managed-focus model; native product and controlled screen-reader evidence remain later F3 gates."},
+        "correctness": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs"]},
+        "security": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs"], "rationale": "Public metadata is bounded and hostile control or direction-format text fails closed; D4 composition and persistent transfer require separate assurance."},
+        "performance": {"level": "controlled", "evidence": ["apps/automexia-terminal/benches/connection_catalog.rs", ".github/workflows/nightly.yml#benchmarks-controlled"], "rationale": "The local 10,000-record release benchmark is below the 16 ms reviewed target; named-hardware longitudinal enforcement remains controlled evidence."},
+        "resource_lifetime": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs"], "rationale": "This slice is a synchronous pure projection with bounded owned collections and no workers, files, processes, sockets, listeners, PTYs, or GPU resources."},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "The catalog slice performs no persistence; secure profile, recipe, metadata, and preference storage remains an explicit F3 gate."},
+        "resilience": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs"]},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs", "tests/fixtures/connection-hub/goldens/layout/responsive-v1.json"], "rationale": "The renderer-neutral model proves maximum-cardinality virtualization and responsive geometry without claiming native product pixels."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["automexia-ui-model/tests/connection_catalog.rs", ".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": ["automexia-ui-model/tests/connection_catalog.rs", ".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": ["automexia-ui-model/tests/connection_catalog.rs", ".github/workflows/ci.yml#native"]}
+      }
     }
   ]
 }

@@ -1,9 +1,13 @@
 # Connection Hub product, security, and delivery specification
 
 Status: D5.0/F2's non-executing record, state, dry-run planning, and renderer-
-neutral Hub/review/planner baseline is implemented locally. D5.1 product UI and
-D5.2 managed connection lifecycle are not implemented; no credential custody
-or managed connection capability is shipped in v0.4.
+neutral Hub/review/planner baseline is implemented locally. D5.1 is partially
+implemented: its bounded renderer-neutral catalog, search/filter/grouping,
+hostile-text defenses, 10,000-record virtualization test, and rapid-filter
+benchmark pass; application composition, persistence, product UI, platform
+guidance, and native evidence remain. D5.2 managed connection lifecycle is not
+implemented; no credential custody or managed connection capability is shipped
+in v0.4.
 
 This document is the implementation authority for Automexia's Connection Hub.
 The [roadmap](ROADMAP.md) owns release order, the

@@ -481,13 +481,22 @@ local F2 exit. D5.1 inventory/UI/persistence integration and D5.2 process/PTY/
 network lifecycle are separate, still-not-implemented phases.
 ### D5.1 — read-only Connection Hub
 
-**Not implemented.**
+**Partially implemented.**
 
-Required: connect D4 to a virtualized Hub; passive no-process discovery and
-explicit scan; favorites/tags/recent/search/filter/grouping; stale truthful
-health; OS guidance; 10,000-record performance; hostile config, privacy,
-storage, responsive, keyboard, focus, and screen-reader-model tests. Connection
-actions remain visibly disabled until D5.2.
+Implemented in the first F3 slice: a renderer-neutral, 10,000-record/16 MiB
+catalog with deterministic search, favorite/recent/tag/source filters, source
+revision propagation, environment/source/favorite grouping, truthful empty
+states, hostile control/bidi rejection, bounded group/tag/query metadata,
+existing virtualized one-target focus behavior, and a rapid-filter Criterion
+gate. The local Windows release benchmark measured 7.0513-7.4408 ms for a full
+10,000-record filter/group projection, below the 16 ms reviewed target.
+
+Remaining: application-owned D4 snapshot composition and explicit scan,
+favorites/tags/recent mutation persistence, stale/last-known-good health, OS
+guidance, secure profile/recipe/preference storage and transfer, product
+rendering, storage-failure evidence, native macOS/Linux permissions, and
+controlled screen-reader verification. Connection actions remain disabled
+until D5.2.
 
 ### D5.2 — managed OpenSSH launch and lifecycle
 

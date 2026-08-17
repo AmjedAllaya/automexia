@@ -1111,6 +1111,28 @@ window server, or GPU. Resource-lifetime and storage evidence are not applicable
 because F2 is synchronous pure modeling with bounded owned collections and no
 resource/persistence owner. This does not waive those gates for D5.1/D5.2.
 
+### Connection Hub F3 catalog contract
+
+The first D5.1 slice adds a pure catalog contract without activating D4 or any
+process, network, authentication, PTY, listener, or provider authority:
+
+    cargo test -p automexia-ui-model --locked
+    cargo bench -p automexia-terminal --bench connection_catalog --no-default-features --no-run --locked
+    cargo bench -p automexia-terminal --bench connection_catalog --no-default-features --locked -- --sample-size 20 --measurement-time 3
+
+The catalog tests cover deterministic combined text/favorite/recent/tag/source
+filtering, source-revision preservation, contiguous bounded grouping, truthful
+empty versus filtered-empty states, hostile controls and bidirectional format
+characters, query/tag/record/memory ceilings, 10,000-record projection, 300%
+text scale, 8K layout, 32-row virtualization, one managed selected row, and the
+all-disabled execution/PTY boundary. On this Windows host on 2026-08-17, the
+release-profile rapid-filter benchmark measured 7.0513-7.4408 ms for complete
+10,000-record filter/group projections, below the 16 ms reviewed target. This
+is local implementation evidence, not the controlled multi-platform baseline.
+
+Application composition, filesystem persistence, native product rendering, and
+platform/screen-reader evidence remain D5.1 gates.
+
 ### Remaining Connection Hub activation assurance
 
 D5.1/D5.2 and D6 remain planned/non-activated work. Before activation they must

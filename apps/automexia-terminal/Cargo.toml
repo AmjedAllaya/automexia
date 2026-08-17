@@ -166,4 +166,8 @@ harness = false
 name = "quick_action_store"
 harness = false
 
+[[bench]]
+name = "connection_catalog"
+harness = false
+
 # "rio-window/wayland-csd-adwaita-crossfont",

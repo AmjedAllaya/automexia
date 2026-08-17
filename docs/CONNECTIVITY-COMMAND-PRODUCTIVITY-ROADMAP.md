@@ -69,7 +69,7 @@ documentation, feature assurance, and a change fragment.
 | Exact-argument launch broker | D3 | Partially done | test-only exact package identity, capability scope, platform resolver, file revalidation, lifecycle and audit model | Production capability UI, atomic spawn, PTY/route lifecycle, real package-loader binding, native evidence |
 | Static OpenSSH inventory | D4 | Fully done | automexia-devops-ssh, hostile/property tests, fuzz, benchmark, assurance | Remains deliberately disabled until D5 |
 | Connection Hub model | D5.0 | Partially done | All local F2 schemas, state reducers, dry-run planner, Hub/review/planner projections, fixtures, goldens, fuzz, mutation tests, and benchmark are implemented | Protected ADR 0012 acceptance remains; D5.1 renderer/inventory integration and D5.2 activation are separate phases |
-| Read-only Connection Hub | D5.1 | Not done | No product owner connected to D4 | Virtualized inventory, persistence, search/grouping, platform guidance, 10,000-item proof |
+| Read-only Connection Hub | D5.1 | Partially done | Bounded deterministic search/filter/grouping catalog, hostile-text defenses, source revisions, 10,000-record virtualization/focus tests, and rapid-filter benchmark | D4 application composition, secure persistence/transfer, product UI, platform guidance, storage/native/accessibility evidence |
 | Managed OpenSSH | D5.2 | Not done | Design and disabled D3/D4 foundations | Reviewed launch, PTY lifecycle, jumps, tunnels, host trust, reconnect, native proof |
 | Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, and approval fingerprints are implemented in F2 | Private persistence, product editor, remote workspace lifecycle, and separately gated execution remain |
 | Multi-cloud framework and providers | D6.0-D6.5 | Not done | Provider-neutral D1/D2 types only | Auth state machine, exact official CLI adapters, isolation, provider-by-provider gates |
@@ -278,22 +278,32 @@ overall phase status remains **Partially done** only because ADR 0012 is still
 proposed. D5.1 and D5.2 are not implied or activated.
 ## F3 - implement D5.1 read-only Connection Hub
 
-Status: Not done.
+Status: Partially done.
 
-- [ ] Connect D4 snapshots to a virtualized Hub without changing D4 authority.
-- [ ] Add explicit local scan plus favorites, tags, recent, grouping, search,
-  filter, source revision, truthful stale/last-known-good health, and setup
-  guidance.
-- [ ] Add bounded private profile/recipe/preference persistence with no-follow
-  reads, user-only permissions, CAS, atomic replacement, recovery, import/export
-  redaction, and new local IDs for imports.
-- [ ] Keep login, connect, automatic actions, network, and provider processes
-  visibly disabled.
-- [ ] Test 10,000 records, hostile config, permission/link/read-only/disk-full
-  failures, rapid filtering, focus restoration, 100-300% scale, and tiny-to-8K
-  layouts.
-- [ ] Run native static persistence/permission evidence on Windows, macOS, and
-  Linux and controlled screen-reader model verification.
+- [ ] **Partially done** — Connect D4 snapshots to a virtualized Hub without
+  changing D4 authority. The pure 10,000-record catalog now projects bounded
+  public records into the existing virtualized renderer-neutral Hub; application
+  composition and product rendering remain.
+- [ ] **Partially done** — Add explicit local scan plus favorites, tags, recent,
+  grouping, search, filter, source revision, truthful stale/last-known-good
+  health, and setup guidance. Deterministic combined catalog search, favorite/
+  recent/tag/source filters, source revisions, grouping, and truthful empty
+  states are implemented; D4 scan composition, stale health, and setup guidance
+  remain.
+- [ ] **Not done** — Add bounded private profile/recipe/preference persistence
+  with no-follow reads, user-only permissions, CAS, atomic replacement,
+  recovery, import/export redaction, and new local IDs for imports.
+- [ ] **Partially done** — Keep login, connect, automatic actions, network, and
+  provider processes visibly disabled. The model continues to expose no
+  execution or PTY authority; the product Hub must make those disabled states
+  visible.
+- [ ] **Partially done** — Test 10,000 records, hostile config, permission/link/
+  read-only/disk-full failures, rapid filtering, focus restoration, 100-300%
+  scale, and tiny-to-8K layouts. Catalog limits, hostile text, deterministic
+  filtering, 10,000 records, existing one-target focus, 300% scale, and 8K
+  virtualization pass; storage failures and full product rendering remain.
+- [ ] **Not done** — Run native static persistence/permission evidence on
+  Windows, macOS, and Linux and controlled screen-reader model verification.
 
 Exit: users can safely browse and diagnose inventory, but cannot launch.
 
