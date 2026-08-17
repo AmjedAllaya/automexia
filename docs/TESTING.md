@@ -104,17 +104,28 @@ python tools/ci/check_documentation_coverage.py
 python tools/ci/test_documentation_coverage.py
 python tools/ci/check_phase_implementation_audit.py
 python tools/ci/test_phase_implementation_audit.py
+python tools/ci/test_pr_policy.py
 python tools/ci/check_platform_coverage.py
 python tools/ci/test_platform_coverage.py
 ```
 
 The phase-audit contract also compares the implementation audit with every
-canonical roadmap. It requires an explicit status for each declared phase,
+canonical roadmap and the main roadmap's status-first feature register. The
+register permits exactly **Fully done**, **Partially done**, or **Not done** and
+must match every phase and normalized implementation status in the executive
+matrix. The checker also requires an explicit status for each declared phase,
 links to all roadmap sources, a pinned audited source baseline, and the shared
 correctness, security, performance, resource, storage, resilience, retry,
 cross-platform, accessibility, visual, test, benchmark, fuzz, coverage, and
-release evidence vocabulary. Its mutation suite proves that missing phases,
-statuses, sources, or evidence dimensions fail closed.
+release evidence vocabulary. Its mutation suite proves that stale, missing,
+duplicated, or nonstandard roadmap statuses and missing phases, sources, or
+evidence dimensions fail closed.
+
+The pull-request policy separately treats source, configuration, test, workflow,
+asset, and packaging changes as documentation-relevant. It rejects such a pull
+request unless an affected `docs/*.md` file changes in the same diff; a
+changelog fragment alone does not satisfy the rule. Its unit suite covers source,
+test/workflow/configuration, asset/packaging, and documentation-only cases.
 
 The canonical ledger, phase audit, and platform matrix are part of repository
 validation, so `cargo ready`, `cargo ci`, and every pull request fail when a
@@ -122,8 +133,9 @@ workspace member, roadmap phase, required repository surface, quality
 dimension, native host, shell contract, display feature, architecture check,
 package validator, or referenced evidence path/job/heading loses ownership. A
 pull request that adds or materially changes a feature or phase must update the
-ledger and phase audit in the same change; neither document replaces the tests
-it references.
+ledger, affected documentation, main-roadmap status register, phase audit, and
+changelog in the same change; none of those records replaces the tests it
+references.
 
 On Windows, the contributor gate scopes RustSec's Git fetch to Git for
 Windows' `schannel` backend when the caller has not supplied an explicit
@@ -1046,8 +1058,9 @@ must remain documented as planned/non-activated.
 
 ## CP2.0-CP2.2 Quick Action assurance
 
-The capability-free schema/parser/validator and activation index remain in the
-exact four-file `automexia-devops/src/actions` boundary. CP2.1/CP2.2 use exactly
+The capability-free schema/parser/validator, activation index, and CP3.0
+projection compiler remain in the exact five-file `automexia-devops/src/actions`
+boundary. CP2.1/CP2.2 use exactly
 eight reviewed app sources under `automexia::quick_actions` for bounded private no-follow storage,
 atomic primary/one-previous recovery, nonblocking cross-process lock/CAS,
 immutable fingerprinted last-known-good snapshots, exact watch filtering,
@@ -1061,9 +1074,9 @@ per-route latest-query coalescing with a 32-route ceiling and fair multi-pane
 publication, activation-time model revalidation, responsive
 placeholder/risk/conflict/health review, explicit empty/error states, dry-run administration and
 digest-checked transfer, plus explicit copy or bracketed-paste insertion without
-Enter. Secret and exact operations are rejected before placeholder input. It
-adds no alias projection, provider work, trusted-workspace activation, secret
-expansion, or exact execution. Native-host and controlled accessibility
+Enter. Secret and exact operations are rejected before placeholder input. CP2.2
+itself adds no alias projection, provider work, trusted-workspace activation,
+secret expansion, or exact execution. Native-host and controlled accessibility
 evidence remains as described in [DevOps Quick Actions and persistent
 aliases](DEVOPS-ALIASES.md#verification-plan).
 
@@ -1103,6 +1116,44 @@ and warnings-denied Linux Clippy, including Unix modes, links, sync, and inotify
 Hosted native Windows/Linux/macOS CI plus the named-hardware 30-day benchmark
 remain mandatory before cross-platform or release-performance claims.
 
+### CP3.0 pure projection compiler
+
+CP3.0 compiles only validated GlobalUser/ShellUser aliases into deterministic
+in-memory PowerShell, Bash, Zsh, Fish, or CMD artifacts. Complete bounded
+collision/completion/tool observations are mandatory. Native definitions win
+unless matching User consent names the exact owner fingerprint. A claimed
+same-action owner must also match the compiler's deterministic fingerprint;
+another or forged Automexia owner cannot be replaced. The compiler recomputes
+canonical source identity, retains degraded tool health in decisions, and
+verifies source, tool, owner, previous-artifact, structured-manifest, and body
+identities while always recording activation disabled. No compiler or test path
+reads/writes a profile or executes a provider.
+
+Run its focused gate with:
+
+```powershell
+cargo test -p automexia-devops --test quick_action_projection --locked
+cargo bench -p automexia-devops --bench quick_actions --no-run --locked
+cargo check --manifest-path fuzz/Cargo.toml --bin quick_action_projection
+python tools/ci/check_command_productivity_cp30.py
+python tools/ci/test_command_productivity_cp30.py
+```
+
+The thirteen Rust cases cover five serializers, typed/fixed/forwarded arguments,
+unsafe eligibility, CMD's nine required typed positions, collision ownership and
+fingerprinted consent, source identity mismatch, truthful completion/tool health,
+bounded complete inventories, disabled-completion collisions, inventory-order
+determinism, structured/text tamper verification, hostile quoting, 256
+deterministic bindings, and available native shell parsing, exact capture, and
+wrapper exit status. On Windows the native path exercises PowerShell exact argv/
+exit status and CMD macro-file loading; Unix hosts syntax-check and capture
+arguments/exit status with each installed Bash/Zsh/Fish. The nightly libFuzzer
+target generates bounded valid actions across all five shells, argument policies,
+completion/tool degradation, collisions, and tampering. The controlled 30-day
+benchmark measured 2.7919-2.9846 ms locally for 256 Bash bindings after the
+integrity hardening. Treat that result as diagnostic only; the named-hardware
+30-day baseline and hosted all-platform results remain release evidence.
+
 The gate must exercise PowerShell 5.1/7+, Bash, Zsh, Fish, CMD, WSL, Windows,
 Linux, and macOS while proving that native definitions win, generated files are
 fully removable, no alias silently executes provider/network/secret work, and
@@ -1111,6 +1162,73 @@ serializer fixtures are required for every PR; controlled native shells remain
 mandatory before a release claim. CP2/CP3 cannot be marked complete merely
 because a generated file parses or an alias works in one interactive shell.
 
+### CP3.1 persistent alias publication and activation
+
+CP3.1 adds two application-owned sources to the eight-file CP2 persistence
+boundary. It publishes all five shell artifacts as one private immutable
+content-addressed generation, verifies SHA-256 plus exact source/shell/compiler
+identity, journals source-CAS/pointer-last changes, retains and verifies one
+rollback generation, and recovers a crash to all-old or all-new. Verification
+rejects unexpected topology and checks artifact permissions even when hashes
+match. Read-only commands never create, lock, repair, or clean live state.
+Startup executes no action/provider/network operation and does not rewrite
+canonical source. Native definitions win; exact consent is accepted only for
+still-observed authenticated owner identity.
+
+Run the focused contract, mutation, Rust, CLI, and benchmark-build gates with:
+
+```powershell
+python tools/ci/check_command_productivity_cp31.py
+python tools/ci/test_command_productivity_cp31.py
+python tools/ci/check_devops_alias_spec.py
+python tools/ci/test_devops_alias_spec.py
+cargo test -p automexia-terminal --lib quick_actions::aliases::tests --locked -- --nocapture
+cargo test -p automexia-terminal --lib cli::tests --locked -- --nocapture
+cargo test -p automexia-terminal --lib aliases_cli::tests --locked -- --nocapture
+cargo clippy -p automexia-devops -p automexia-terminal --all-targets --locked -- -D warnings
+cargo bench -p automexia-terminal --bench quick_action_store --no-run --locked
+```
+
+Run native activation, reload, collision, tamper, disabled-state, startup p95,
+and exact uninstall preservation/refusal with:
+
+```powershell
+pwsh -NoLogo -NoProfile -File tools/ci/test_shell_integration.ps1
+bash tools/ci/test_shell_integration.sh
+bash tools/ci/test_shell_sources.sh
+```
+
+Linux/macOS CI installs and executes the Bash/Zsh/Fish aggregate; Windows CI
+executes PowerShell and CMD. Configured nightly and release WSL runners now run
+the same full aggregate, not only session-clone tests. The fixtures prove one
+exact-compiler verified generation activates in a fresh shell, a self-consistent
+wrong-compiler generation and tampering fail closed while last-known-good stays
+active, late native owners win, disable affects only the pointer, and uninstall
+removes only validated generated aliases while preserving `actions/actions.toml`.
+PowerShell/Bash/Zsh/Fish reload removes only unchanged Automexia-owned definitions;
+CMD truthfully requires a new session. Bash and Zsh take twenty-five reloads
+(five warmups and twenty measured samples); Fish takes five warmups followed by
+twenty shell-native timing samples of three reloads each. Every adapter enforces
+the provisional 50 ms p95 locally. Fish batches fixed-path metadata and digest
+verification into one bounded constant helper invocation, with no provider,
+network, action execution, or per-alias subprocess. This diagnostic budget is
+not the controlled named-hardware 30-day release baseline. A local Windows
+release-profile run on 2026-08-17 measured the 256-binding five-shell compile at
+24.228-26.100 ms, durable publish-and-verify at 35.476-37.391 ms, and read-only
+doctor at 8.580-9.228 ms. Publish and doctor intentionally authenticate every
+active/rollback artifact ACL and exact directory entry; publication also validates
+the rollback pointer both before mutation and during cleanup. These values are
+local diagnostic evidence, not the pending named-hardware baseline.
+
+Twenty-one owned alias-store regressions span common, three Windows-native, and two
+Unix-permission/link cases (19 run on Windows and 18 on Unix), with three focused
+CLI detail regressions and seven CLI parser cases. A hostile-manifest property,
+cross-process lock contention, the schema-1 CP3.1 contract, eight mutations,
+workflow evidence checks, and the aggregate CP2-CP3.1 checker prevent publication-
+order, capability, security, UX, lifecycle, and documentation drift. Local WSL
+also passes the Unix unsafe-artifact-permission case. Published hosted native
+Windows/Linux/macOS/WSL results and the 30-day resource baseline remain release
+evidence; CP3.2/CP3.3 remain disabled.
 ## Command-productivity CP0 contract
 
 CP0 is a non-runtime policy boundary. It does not enable managed completion,
@@ -1152,17 +1270,19 @@ powershell -NoProfile -File tools/ci/test_powershell.ps1
 bash tools/ci/test_shell_sources.sh
 ```
 
-The Rust suite covers provider/shell policy, argument parsing, fixed artifact
-names, invalid UTF-8/NUL/control output, stdout/stderr bounds, timeout kill,
-successful capture, cross-platform descendant/process-tree termination, linked
-destinations and managed directories, early leader exit with inherited pipes,
-provider executable replacement, bounded doctor validation, absolute and
-platform-canonical config roots, atomic replacement, stable SHA-256, and
-immutable limits. Shell suites cover native
-definition precedence, digest tamper fallback, disable behavior, repeated
-sourcing, prompt/editor ownership, install/no-op/repair/uninstall, Unicode
-surrounding profile content, stale owned-block repair, simulated canonical
-macOS installation, relative-root rejection, parent-link/reparse substitution,
+The Rust suite covers provider/shell policy, strict argument parsing, fixed
+artifact names, invalid UTF-8/NUL/C0/bidirectional output, sanitized diagnostics,
+stdout/stderr bounds, timeout kill, successful capture, cross-platform
+descendant/process-tree termination, linked destinations and managed directories,
+early leader exit with inherited pipes, provider executable replacement,
+destination preflight, bounded doctor validation, absolute/local platform roots,
+atomic replacement, two-digest interruption recovery, ambient-secret environment
+isolation, stable SHA-256, and immutable limits. Shell suites cover native
+definition precedence, steady-state and transitional digest verification, tamper
+fallback, disable behavior, repeated sourcing, prompt/editor ownership,
+install/no-op/repair/uninstall, Unicode surrounding profile content, stale
+owned-block repair, simulated canonical macOS installation, relative/overlong
+root rejection, Windows UNC rejection, parent-link/reparse substitution,
 pre-mutation validation, exact owned-file removal, and 20-sample post-warmup
 adapter p95 enforcement against the 50 ms
 registration budget. Because non-interactive Fish does not update
@@ -1170,6 +1290,10 @@ registration budget. Because non-interactive Fish does not update
 exact baseline/source process pairs after five warmups and computes p95 from
 paired registration overhead. Linux/macOS CI
 installs Bash/Zsh/Fish validators; Windows CI runs PowerShell/CMD integration.
+
+Windows source contracts also prohibit module-dependent hashing on installer
+integrity checks and the PowerShell completion startup path; both use the
+platform SHA-256 API directly.
 
 Windows profile-path coverage classifies the complete Microsoft Cloud Files tag
 family separately from name-surrogate tags, accepts a real OneDrive-backed

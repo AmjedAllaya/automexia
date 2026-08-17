@@ -62,6 +62,16 @@ the owning lower layer.
 - Any future provider-to-UI dependency fails `cargo xtask verify architecture`.
 - The application remains the only composition root; no new service locator or
   second lifecycle owner is introduced.
+- CP3.0 shell projection remains a pure `automexia-devops` transformation:
+  complete collision/completion/tool observations enter and bounded in-memory
+  artifacts leave after source, owner, structured-manifest, body, and rollback
+  identity verification.
+  CP3.1 profile publication is implemented only in the desktop composition root;
+  verified shell loading stays in the existing shell-integration package.
+- BLAKE3 is an explicitly reviewed integrity-only dependency of
+  `automexia-devops`; it does not change the owned-crate direction or grant I/O.
+  The application-only `sha2` edge provides interoperable SHA-256 generation
+  manifests and likewise creates no Automexia-owned crate edge.
 
 ## Verification
 
@@ -70,5 +80,9 @@ the owning lower layer.
 - Contract, provider, and UI-model unit tests cover exact limits and Unicode
   grapheme preservation.
 - `cargo xtask verify architecture` enforces the dependency allowlists.
+- The CP3.0 contract freezes the five-file pure boundary and rejects filesystem,
+  process, environment, network, secret, profile, or activation authority. The
+  CP3.1 contract separately freezes the two app-owned publication sources,
+  pointer-last transaction, read-only diagnostics, and native adapters.
 - Workspace formatting, Clippy, tests, and benchmark compilation remain release
   gates.

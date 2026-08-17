@@ -46,6 +46,28 @@ Quick Action administration is bounded and dry-run first:
 | `automexia actions recover PREVIOUS_REVISION [--apply]` | Preview by default; explicitly restore only the validated private previous generation. |
 | `automexia actions doctor [--json]` | None. Reports redacted health, revision, and count. |
 
+Persistent user aliases are explicit and dry-run first:
+
+| Command | Mutation and disclosure |
+|---|---|
+| `automexia aliases list [--shell SHELL] [--json]` | None. Lists saved projections and activation state without revealing generated source. |
+| `automexia aliases preview [--shell SHELL] [--show-source] [--json]` | None. Compiles all shells from a strictly read-only source; source disclosure requires `--show-source`. |
+| `automexia aliases test [--shell SHELL] [--json]` | None. Verifies compiler invariants and each installed native parser in an isolated temporary root. |
+| `automexia aliases enable ACTION_ID --name NAME --shell SHELL... [policy flags]` | Preview only. Reports revision, generation, source, collisions, completion/tool health, and decisions. |
+| `automexia aliases enable ... --apply --expected-revision N --expected-generation DIGEST` | Source-CAS and generation-CAS protected activation after explicit review; mutating risk and exact-owner override have separate consent flags. |
+| `automexia aliases disable ACTION_ID [--shell SHELL] [apply/CAS flags]` | Preview by default; applied changes republish all five shells atomically. |
+| `automexia aliases rename ACTION_ID NAME [apply/CAS flags]` | Preview by default; applied changes republish all five shells atomically. |
+| `automexia aliases regenerate [--apply --expected-generation DIGEST] [--json]` | Preview by default; verifies and publishes one immutable generation without changing canonical actions. |
+| `automexia aliases disable-all [--apply --expected-generation DIGEST]` | Changes only the activation pointer; saved actions and generations remain. |
+| `automexia aliases rollback CURRENT_GENERATION [--apply] [--json]` | Preview by default; swaps only the authenticated current and retained previous generation. |
+| `automexia aliases doctor [--json]` | Strictly read-only. Reports source/generation/integrity/transaction health and performs no repair. |
+| `automexia aliases reload --shell SHELL` | None. Prints the explicit shell-native reload command; CMD requires a new session. |
+
+Supported `SHELL` values are `powershell`, `bash`, `zsh`, `fish`, and `cmd`.
+Applied operations fail fast on stale revisions/generations and never execute an
+action or provider. Native definitions win unless authenticated consent for the
+same still-observed owner is revalidated. Shell aliases/functions whose exact
+restoration cannot be proven are never overridden.
 The Command Center's **Quick Actions** entry provides search, placeholders,
 risk/conflict review, and explicit **Insert without Enter** or copy. It never
 executes a command. Workspace actions, secret expansion, and exact launch are
