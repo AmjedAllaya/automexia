@@ -6,6 +6,7 @@ use automexia_devops::actions::{
     CompletionMode, OverridePolicy, PackActionEffect, PackErrorCode, PackHealthState,
     PackOverlay, PackToolObservation, PackUpdateState, QuickActionDocument, RiskClass,
     ShellKind, ValidationCode, QUICK_ACTION_SCHEMA_VERSION,
+    REVIEWED_PACK_REGISTRY_DIGEST,
 };
 
 #[test]
@@ -34,8 +35,15 @@ fn registry_contains_the_exact_reviewed_provider_set() {
         packs.iter().map(|pack| pack.actions.len()).sum::<usize>(),
         33
     );
-    assert_eq!(pack_registry_digest().len(), 64);
-    assert_eq!(pack_registry_digest(), pack_registry_digest());
+    assert_eq!(pack_registry_digest(), REVIEWED_PACK_REGISTRY_DIGEST);
+    let contract: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/command-productivity/cp32-contract-v1.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        contract["registry_digest"].as_str(),
+        Some(REVIEWED_PACK_REGISTRY_DIGEST)
+    );
     validate_pack_registry(packs).unwrap();
 }
 
@@ -275,6 +283,30 @@ fn updates_preserve_overlays_and_explain_deprecations() {
     assert!(plan.decisions.iter().any(|item| {
         item.action_id == "git.switch" && item.state == PackUpdateState::Updated
     }));
+    assert!(plan.decisions.iter().any(|item| {
+        item.action_id == "git.log-recent" && item.state == PackUpdateState::Unchanged
+    }));
+}
+
+#[test]
+fn version_only_updates_remain_unchanged() {
+    let previous = builtin_pack("git").unwrap();
+    let mut next = previous.clone();
+    next.version = "1.1.0".into();
+    for entry in &mut next.actions {
+        let ActionProvenance::BuiltIn { version, .. } = &mut entry.action.provenance
+        else {
+            unreachable!("reviewed pack action provenance")
+        };
+        *version = next.version.clone();
+    }
+    validate_pack(&next).unwrap();
+
+    let plan = plan_pack_update(previous, &next, &[]).unwrap();
+    assert!(plan
+        .decisions
+        .iter()
+        .all(|decision| decision.state == PackUpdateState::Unchanged));
 }
 
 #[test]

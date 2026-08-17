@@ -18,6 +18,8 @@ use super::{
 
 pub const PACK_SCHEMA_VERSION: u32 = 1;
 pub const PACK_REGISTRY_GENERATOR: &str = "automexia-devops-pack-registry-v1";
+pub const REVIEWED_PACK_REGISTRY_DIGEST: &str =
+    "ddc7ab95790ce93e6621e4eb7aff1b76896f71a217ff283f55f4a8d01adde63e";
 pub const MAX_BUILTIN_PACKS: usize = 32;
 pub const MAX_PACK_ACTIONS: usize = 64;
 pub const MAX_PACK_DEPRECATIONS: usize = 64;
@@ -252,8 +254,8 @@ pub fn builtin_pack(id: &str) -> Option<&'static PackManifest> {
 }
 
 pub fn pack_registry_digest() -> String {
-    let bytes = serde_json::to_vec(builtin_packs()).expect("built-in packs serialize");
-    blake3::hash(&bytes).to_hex().to_string()
+    let _ = builtin_packs();
+    REVIEWED_PACK_REGISTRY_DIGEST.to_owned()
 }
 
 pub fn action_digest(action: &QuickAction) -> String {
@@ -329,10 +331,7 @@ pub fn validate_pack(pack: &PackManifest) -> Result<(), PackError> {
         )
         .pack(&pack.id));
     }
-    if !pack.documentation_url.starts_with("https://")
-        || pack.documentation_url.len() > MAX_PACK_URL_BYTES
-        || !safe_text(&pack.documentation_url, false)
-    {
+    if !valid_documentation_url(&pack.documentation_url) {
         return Err(PackError::new(
             PackErrorCode::InvalidUrl,
             "documentation URL must be a bounded HTTPS URL",
@@ -356,10 +355,10 @@ pub fn validate_pack(pack: &PackManifest) -> Result<(), PackError> {
         )
         .pack(&pack.id));
     }
-    if pack.actions.len() > MAX_PACK_ACTIONS {
+    if pack.actions.is_empty() || pack.actions.len() > MAX_PACK_ACTIONS {
         return Err(PackError::new(
             PackErrorCode::ActionLimit,
-            format!("at most {MAX_PACK_ACTIONS} actions are accepted"),
+            format!("between 1 and {MAX_PACK_ACTIONS} actions are required"),
         )
         .pack(&pack.id));
     }
@@ -460,6 +459,23 @@ pub fn validate_pack(pack: &PackManifest) -> Result<(), PackError> {
         })
         .map_err(|error| quick_action_error(&pack.id, &action.id, error))?;
         previous = Some(action.id.as_str());
+    }
+
+    let completion = pack.actions[0].completion;
+    if pack
+        .actions
+        .iter()
+        .any(|entry| entry.completion != completion)
+        || (completion == PackCompletionRequirement::Native
+            && pack.completion_shells.is_empty())
+        || (completion != PackCompletionRequirement::Native
+            && !pack.completion_shells.is_empty())
+    {
+        return Err(PackError::new(
+            PackErrorCode::InvalidText,
+            "pack completion policy must be consistent and native completion must name its required shells",
+        )
+        .pack(&pack.id));
     }
 
     let mut deprecated = HashSet::new();
@@ -852,9 +868,7 @@ pub fn plan_pack_update(
             (None, Some(entry), None) => {
                 (PackUpdateState::Added, None, Some(entry.action.clone()))
             }
-            (Some(old), Some(new), None)
-                if action_digest(&old.action) == action_digest(&new.action) =>
-            {
+            (Some(old), Some(new), None) if same_pack_action_content(old, new) => {
                 (PackUpdateState::Unchanged, None, Some(new.action.clone()))
             }
             (Some(_), Some(new), None) => {
@@ -895,6 +909,20 @@ pub fn plan_pack_update(
 
 fn compare_versions(left: &str, right: &str) -> Option<std::cmp::Ordering> {
     Some(parse_version(left)?.cmp(&parse_version(right)?))
+}
+
+fn same_pack_action_content(left: &PackAction, right: &PackAction) -> bool {
+    let mut left = left.clone();
+    let mut right = right.clone();
+    normalize_builtin_version(&mut left.action);
+    normalize_builtin_version(&mut right.action);
+    left == right
+}
+
+fn normalize_builtin_version(action: &mut QuickAction) {
+    if let ActionProvenance::BuiltIn { version, .. } = &mut action.provenance {
+        version.clear();
+    }
 }
 
 fn parse_version(value: &str) -> Option<[u32; 4]> {
@@ -975,6 +1003,27 @@ fn safe_text(value: &str, allow_empty: bool) -> bool {
     (allow_empty || !value.trim().is_empty())
         && value.len() <= 4096
         && !value.chars().any(is_unsafe_character)
+}
+
+fn valid_documentation_url(value: &str) -> bool {
+    if !value.starts_with("https://")
+        || value.len() > MAX_PACK_URL_BYTES
+        || !safe_text(value, false)
+        || value.chars().any(char::is_whitespace)
+    {
+        return false;
+    }
+    let host = value[8..].split('/').next().unwrap_or_default();
+    !host.is_empty()
+        && host.contains('.')
+        && host.split('.').all(|label| {
+            !label.is_empty()
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label.bytes().all(|byte| {
+                    byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'
+                })
+        })
 }
 
 fn safe_argument(value: &str) -> bool {
@@ -1097,6 +1146,12 @@ fn build_builtin_packs() -> Vec<PackManifest> {
     packs.sort_by(|left, right| left.id.cmp(&right.id));
     validate_pack_registry(&packs)
         .expect("reviewed built-in pack registry must be valid");
+    let bytes = serde_json::to_vec(&packs).expect("built-in packs serialize");
+    let digest = blake3::hash(&bytes).to_hex().to_string();
+    assert_eq!(
+        digest, REVIEWED_PACK_REGISTRY_DIGEST,
+        "reviewed built-in pack payload changed without an explicit digest review"
+    );
     packs
 }
 fn build_pack(specification: PackSpec<'_>) -> PackManifest {
@@ -1250,6 +1305,20 @@ mod tests {
         assert_eq!(
             validate_pack(&duplicate).unwrap_err().code,
             PackErrorCode::DuplicateAction
+        );
+
+        let mut completion = source.clone();
+        completion.actions[0].completion = PackCompletionRequirement::Native;
+        assert_eq!(
+            validate_pack(&completion).unwrap_err().code,
+            PackErrorCode::InvalidText
+        );
+
+        let mut url = source.clone();
+        url.documentation_url = "https://git-scm.com /docs".into();
+        assert_eq!(
+            validate_pack(&url).unwrap_err().code,
+            PackErrorCode::InvalidUrl
         );
     }
 }

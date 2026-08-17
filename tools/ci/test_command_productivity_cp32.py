@@ -30,25 +30,36 @@ class Cp32ContractTests(unittest.TestCase):
     def test_canonical_repository_contract_and_sources_pass(self) -> None:
         self.assertEqual(policy.validate_repository(), {
             "providers": 11, "actions": 33, "commands": 4,
-            "tests": 11, "documents": 6,
+            "tests": 17, "documents": 8,
         })
 
     def test_provider_inventory_and_counts_cannot_drift(self) -> None:
+        self.validate_mutation(
+            lambda document: document.__setitem__("registry_digest", "0" * 64)
+        )
         self.validate_mutation(lambda document: document["providers"].pop())
         self.validate_mutation(lambda document: document["action_ids"].pop())
         self.validate_mutation(lambda document: document["inventory"].__setitem__("actions", 32))
 
+        original = policy.bounded_text
+
+        def stale_source_digest(path, maximum=policy.MAX_POLICY_BYTES):
+            source = original(path, maximum)
+            if path.name == "packs.rs":
+                source = source.replace(policy.EXPECTED_REGISTRY_DIGEST, "0" * 64)
+            return source
+
+        with mock.patch.object(policy, "bounded_text", side_effect=stale_source_digest):
+            with self.assertRaisesRegex(policy.Cp32Error, "digest does not match"):
+                policy.validate_sources(self.contract)
+
     def test_alias_and_capability_defaults_cannot_weaken(self) -> None:
-        for key in (
-            "aliases_disabled_by_default", "builtin_manifest_identity",
-            "custom_overlays_user_provenance", "context_aliases_denied",
-            "authentication_aliases_denied", "destructive_aliases_denied",
-            "privileged_aliases_denied", "doctor_strictly_read_only",
-            "compare_and_swap_writes", "enable_never_overwrites",
-        ):
-            self.validate_mutation(lambda document, key=key: document["security"].__setitem__(key, False))
-        for key in ("provider_execution", "credential_reads", "network_access"):
-            self.validate_mutation(lambda document, key=key: document["security"].__setitem__(key, True))
+        for key, expected in policy.EXPECTED_SECURITY.items():
+            self.validate_mutation(
+                lambda document, key=key, expected=expected: document["security"].__setitem__(
+                    key, not expected
+                )
+            )
 
     def test_lifecycle_protections_cannot_be_removed(self) -> None:
         for key in policy.EXPECTED_LIFECYCLE:
