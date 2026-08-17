@@ -151,6 +151,9 @@ fn execute_cli_command(
         CliCommand::Aliases(command) => {
             automexia::quick_actions::execute_aliases_command(command)
         }
+        CliCommand::Packs(command) => {
+            automexia::quick_actions::execute_packs_command(command)
+        }
     }
 }
 

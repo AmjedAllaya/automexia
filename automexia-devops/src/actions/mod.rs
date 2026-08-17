@@ -6,6 +6,7 @@
 
 mod activation;
 mod model;
+mod packs;
 mod projection;
 mod validation;
 
@@ -22,6 +23,17 @@ pub use model::{
     AliasProjectionMode, ArgumentToken, CompletionMode, ExecutionMode, OverridePolicy,
     Placeholder, PlaceholderSensitivity, QuickAction, QuickActionDocument, RiskClass,
     ShellKind, WorkingDirectoryPolicy, QUICK_ACTION_SCHEMA_VERSION,
+};
+pub use packs::{
+    action_digest, builtin_pack, builtin_packs, evaluate_pack_health,
+    materialize_pack_action, pack_alias_eligibility, pack_registry_digest,
+    plan_pack_update, validate_pack, validate_pack_registry, PackAction,
+    PackActionEffect, PackAliasEligibility, PackCompletionRequirement, PackDeprecation,
+    PackError, PackErrorCode, PackHealthReport, PackHealthState, PackManifest,
+    PackOverlay, PackToolObservation, PackUpdateDecision, PackUpdatePlan,
+    PackUpdateState, MAX_BUILTIN_PACKS, MAX_PACK_ACTIONS, MAX_PACK_DEPRECATIONS,
+    MAX_PACK_OVERLAYS, MAX_PACK_URL_BYTES, MAX_TOOL_VERSION_BYTES,
+    PACK_REGISTRY_GENERATOR, PACK_SCHEMA_VERSION,
 };
 pub use projection::{
     canonical_projection_source_digest, compile_shell_projection,

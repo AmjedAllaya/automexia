@@ -230,11 +230,46 @@ fn quick_action_projection_compile(criterion: &mut Criterion) {
     });
 }
 
+fn quick_action_pack_registry(criterion: &mut Criterion) {
+    use automexia_devops::actions::{
+        builtin_packs, evaluate_pack_health, validate_pack_registry, PackToolObservation,
+    };
+
+    let observations = builtin_packs()
+        .iter()
+        .map(|pack| {
+            (
+                pack,
+                PackToolObservation::Detected {
+                    version_output: pack.minimum_tool_version.clone(),
+                    completion_shells: pack.completion_shells.clone(),
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+    criterion.bench_function("quick_action_pack_registry_validate_11_33", |bencher| {
+        bencher.iter(|| {
+            black_box(validate_pack_registry(black_box(builtin_packs())))
+                .expect("built-in registry must remain valid")
+        })
+    });
+    criterion.bench_function("quick_action_pack_health_all_11", |bencher| {
+        bencher.iter(|| {
+            for (pack, observation) in black_box(&observations) {
+                black_box(
+                    evaluate_pack_health(pack, observation)
+                        .expect("reviewed observation must remain valid"),
+                );
+            }
+        })
+    });
+}
 criterion_group!(
     benches,
     quick_action_parsing,
     quick_action_search_and_expansion,
     context_label_compaction,
     quick_action_projection_compile,
+    quick_action_pack_registry,
 );
 criterion_main!(benches);

@@ -26,6 +26,58 @@ pub enum CliCommand {
     Actions(ActionsCommand),
     /// Preview, publish, reload, diagnose, or roll back opt-in aliases.
     Aliases(AliasesCommand),
+    /// Inspect and explicitly enable reviewed DevOps Quick Action packs.
+    Packs(PacksCommand),
+}
+
+#[derive(Args, Debug)]
+pub struct PacksCommand {
+    #[clap(subcommand)]
+    pub action: PacksAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum PacksAction {
+    /// List immutable built-in packs without probing provider tools.
+    List {
+        #[clap(long)]
+        json: bool,
+    },
+    /// Show one immutable pack manifest and its reviewed actions.
+    Show {
+        id: String,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Evaluate a caller-supplied provider observation without starting it.
+    Doctor {
+        /// Pack ID. Omit to validate the static registry only.
+        id: Option<String>,
+        /// Bounded output previously obtained from the provider's version command.
+        #[clap(long, conflicts_with = "missing")]
+        tool_version: Option<String>,
+        /// Report that the caller could not find the provider executable.
+        #[clap(long)]
+        missing: bool,
+        /// Native completion shells observed by the caller.
+        #[clap(long, value_enum, requires = "tool_version")]
+        completion_shell: Vec<AliasShell>,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Preview or create one reviewed action. Aliases remain disabled.
+    Enable {
+        pack: String,
+        action: String,
+        /// Persist the selected action. Without this flag no state changes.
+        #[clap(long, requires = "expected_revision")]
+        apply: bool,
+        /// Required compare-and-swap revision when applying.
+        #[clap(long, requires = "apply")]
+        expected_revision: Option<u64>,
+        #[clap(long)]
+        json: bool,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -502,6 +554,102 @@ mod tests {
                 }
             }))
         ));
+    }
+
+    #[test]
+    fn pack_enable_is_dry_run_and_apply_requires_a_revision() {
+        let preview = Cli::try_parse_from([
+            "automexia",
+            "packs",
+            "enable",
+            "git",
+            "git.status",
+            "--json",
+        ])
+        .unwrap();
+        assert!(matches!(
+            preview.command,
+            Some(CliCommand::Packs(PacksCommand {
+                action: PacksAction::Enable {
+                    apply: false,
+                    expected_revision: None,
+                    json: true,
+                    ..
+                }
+            }))
+        ));
+
+        assert!(Cli::try_parse_from([
+            "automexia",
+            "packs",
+            "enable",
+            "git",
+            "git.status",
+            "--apply",
+        ])
+        .is_err());
+
+        let apply = Cli::try_parse_from([
+            "automexia",
+            "packs",
+            "enable",
+            "git",
+            "git.status",
+            "--apply",
+            "--expected-revision",
+            "4",
+        ])
+        .unwrap();
+        assert!(matches!(
+            apply.command,
+            Some(CliCommand::Packs(PacksCommand {
+                action: PacksAction::Enable {
+                    apply: true,
+                    expected_revision: Some(4),
+                    ..
+                }
+            }))
+        ));
+    }
+
+    #[test]
+    fn pack_doctor_observations_are_explicit_and_conflict_checked() {
+        let doctor = Cli::try_parse_from([
+            "automexia",
+            "packs",
+            "doctor",
+            "kubernetes",
+            "--tool-version",
+            "Client Version: v1.30.1",
+            "--completion-shell",
+            "bash",
+        ])
+        .unwrap();
+        assert!(
+            matches!(doctor.command, Some(CliCommand::Packs(PacksCommand {
+            action: PacksAction::Doctor { id: Some(ref id), tool_version: Some(_), missing: false, .. }
+        })) if id == "kubernetes")
+        );
+
+        assert!(Cli::try_parse_from([
+            "automexia",
+            "packs",
+            "doctor",
+            "kubernetes",
+            "--completion-shell",
+            "bash",
+        ])
+        .is_err());
+        assert!(Cli::try_parse_from([
+            "automexia",
+            "packs",
+            "doctor",
+            "git",
+            "--tool-version",
+            "2.45.0",
+            "--missing",
+        ])
+        .is_err());
     }
 }
 
