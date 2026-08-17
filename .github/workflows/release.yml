@@ -33,6 +33,20 @@ jobs:
       - name: Preserve distro, user, shell, directory, and independent PTY state
         shell: pwsh
         run: cargo xtask test session-clone --native-wsl
+      - name: Verify CP3.1 native shell lifecycle in the configured WSL distro
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:AUTOMEXIA_TEST_WSL_DISTRO)) {
+            throw 'AUTOMEXIA_TEST_WSL_DISTRO is required'
+          }
+          $workspace = (& wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO --cd $env:GITHUB_WORKSPACE -- pwd -P).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $workspace.StartsWith('/')) {
+            throw 'could not resolve the checked-out workspace inside WSL'
+          }
+          & wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO -- bash -lc 'set -euo pipefail; cd -- "$1"; command -v python3 shellcheck zsh fish >/dev/null; bash tools/ci/test_shell_sources.sh' automexia-wsl $workspace
+          if ($LASTEXITCODE -ne 0) {
+            throw 'CP3.1 WSL shell lifecycle validation failed'
+          }
 
   preflight:
     needs: [native-gui-resilience, native-wsl-resilience]

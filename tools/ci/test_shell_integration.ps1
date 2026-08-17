@@ -206,7 +206,10 @@ try {
     $cmdIntegrationPath = Join-Path $cmdRoot 'automexia.cmd'
     $cmdListingPath = Join-Path $cmdRoot 'automexia-ls.ps1'
     $cmdLauncherPath = Join-Path $cmdRoot 'automexia-ls.cmd'
-    foreach ($requiredCmdFile in @($cmdIntegrationPath, $cmdListingPath, $cmdLauncherPath)) {
+    $cmdAliasLoaderPath = Join-Path $cmdRoot 'automexia-alias-loader.ps1'
+    foreach ($requiredCmdFile in @(
+        $cmdIntegrationPath, $cmdListingPath, $cmdLauncherPath, $cmdAliasLoaderPath
+    )) {
         if (-not (Test-Path -LiteralPath $requiredCmdFile)) {
             throw "CMD integration file is missing: $requiredCmdFile"
         }
@@ -261,12 +264,15 @@ try {
     )
     $generatedSource = [regex]::Replace($generatedSource, "\r?\n", "`r`n")
     [IO.File]::WriteAllText($generatedCmd, $generatedSource, [Text.Encoding]::ASCII)
+    Copy-Item -LiteralPath $cmdAliasLoaderPath -Destination $cmdProbeRoot
     $probePath = Join-Path $cmdProbeRoot 'probe.cmd'
-    $probeSource = "@echo off`r`ncall `"$generatedCmd`"`r`necho AUTOMEXIA_CMD_LOADED=%AUTOMEXIA_CMD_INTEGRATION_LOADED%`r`necho AUTOMEXIA_CMD_PROMPT=%PROMPT%`r`n"
+    $probeSource = "@echo off`r`ncall `"$generatedCmd`"`r`necho AUTOMEXIA_CMD_LOADED=%AUTOMEXIA_CMD_INTEGRATION_LOADED%`r`necho AUTOMEXIA_ALIAS_STATE=%AUTOMEXIA_ALIAS_STATE%`r`necho AUTOMEXIA_CMD_PROMPT=%PROMPT%`r`n"
     [IO.File]::WriteAllText($probePath, $probeSource, [Text.Encoding]::ASCII)
     $previousCmdPromptGlyph = $env:AUTOMEXIA_CMD_PROMPT_GLYPH
+    $previousCmdConfigHome = $env:AUTOMEXIA_CONFIG_HOME
     try {
         $env:AUTOMEXIA_CMD_PROMPT_GLYPH = [char]0x03BB
+        $env:AUTOMEXIA_CONFIG_HOME = Join-Path $cmdProbeRoot 'empty-config'
         $cmdProbe = & $env:ComSpec /D /C $probePath | Out-String
     } finally {
         if ($null -eq $previousCmdPromptGlyph) {
@@ -274,8 +280,14 @@ try {
         } else {
             $env:AUTOMEXIA_CMD_PROMPT_GLYPH = $previousCmdPromptGlyph
         }
+        if ($null -eq $previousCmdConfigHome) {
+            Remove-Item Env:AUTOMEXIA_CONFIG_HOME -ErrorAction SilentlyContinue
+        } else {
+            $env:AUTOMEXIA_CONFIG_HOME = $previousCmdConfigHome
+        }
     }
     if ($cmdProbe -notmatch 'AUTOMEXIA_CMD_LOADED=1' -or
+        $cmdProbe -notmatch 'AUTOMEXIA_ALIAS_STATE=UNSAFE_PERMISSIONS' -or
         $cmdProbe -notmatch [regex]::Escape('SetUserVar=automexia_shell_name=Q01E') -or
         $cmdProbe -notmatch [regex]::Escape(
             'SetUserVar=automexia_shell_user=' +
@@ -464,6 +476,9 @@ if (-not (Test-Path -LiteralPath $wslTransportPath -PathType Leaf)) {
 $pathSafetySource = Get-Content -LiteralPath $pathSafetyPath -Raw
 $wslTransportSource = Get-Content -LiteralPath $wslTransportPath -Raw
 if ($installerSource -notmatch 'windows-path-safety\.ps1' -or
+    $installerSource -match 'Get-FileHash' -or
+    $pathSafetySource -notmatch 'Get-AutomexiaFileSha256' -or
+    $pathSafetySource -notmatch 'Security\.Cryptography\.SHA256' -or
     $pathSafetySource -notmatch 'GetFileInformationByHandleEx' -or
     $pathSafetySource -notmatch 'AutomexiaCloudReparseTagMask' -or
     $pathSafetySource -notmatch 'AutomexiaNameSurrogateReparseTagMask') {
@@ -646,6 +661,45 @@ try {
         throw 'Windows automatic installer did not repair an altered installed integration'
     }
 
+    $configRoot = $env:AUTOMEXIA_CONFIG_HOME
+    $aliasRoot = Join-Path $configRoot 'generated\aliases'
+    $generation = 'a' * 64
+    $generationRoot = Join-Path $aliasRoot "generations\$generation"
+    $shellFiles = @{
+        powershell = 'automexia-aliases.ps1'
+        bash = 'automexia-aliases.bash'
+        zsh = 'automexia-aliases.zsh'
+        fish = 'automexia-aliases.fish'
+        cmd = 'automexia-aliases.doskey'
+    }
+    foreach ($shell in $shellFiles.Keys) {
+        $shellRoot = Join-Path $generationRoot $shell
+        $null = New-Item -ItemType Directory -Force -Path $shellRoot
+        [IO.File]::WriteAllText(
+            (Join-Path $shellRoot $shellFiles[$shell]),
+            "fixture`n",
+            [Text.UTF8Encoding]::new($false)
+        )
+    }
+    [IO.File]::WriteAllText(
+        (Join-Path $generationRoot 'generation.manifest'),
+        "fixture`n",
+        [Text.UTF8Encoding]::new($false)
+    )
+    [IO.File]::WriteAllText(
+        (Join-Path $aliasRoot 'current'),
+        "$generation`n",
+        [Text.UTF8Encoding]::new($false)
+    )
+    $actionsRoot = Join-Path $configRoot 'actions'
+    $null = New-Item -ItemType Directory -Force -Path $actionsRoot
+    $savedActions = Join-Path $actionsRoot 'actions.toml'
+    [IO.File]::WriteAllText(
+        $savedActions,
+        "schema_version = 1`nrevision = 7`n",
+        [Text.UTF8Encoding]::new($false)
+    )
+
     $junctionTarget = Join-Path $installerFixture 'junction-target'
     $junctionProfileDirectory = Join-Path $installerFixture 'linked-profile-directory'
     $null = New-Item -ItemType Directory -Force -Path $junctionTarget
@@ -695,6 +749,13 @@ try {
     if (Test-Path -LiteralPath $installedRoot) {
         throw 'Windows uninstaller did not remove the isolated managed installation root'
     }
+    if (Test-Path -LiteralPath $aliasRoot) {
+        throw 'Windows uninstaller did not remove the exact generated alias state'
+    }
+    if (-not (Test-Path -LiteralPath $savedActions -PathType Leaf) -or
+        (Get-Content -LiteralPath $savedActions -Raw) -notmatch 'revision = 7') {
+        throw 'Windows uninstaller removed or changed canonical saved actions'
+    }
 } finally {
     $env:LOCALAPPDATA = $previousLocalAppData
     if ($null -eq $previousConfigHome) {
@@ -718,7 +779,9 @@ try {
     $digest = "$artifact.sha256"
     $override = "$artifact.allow-override"
     [IO.File]::WriteAllText($artifact, '$global:AutomexiaCp1FixtureLoaded = $true', [Text.UTF8Encoding]::new($false))
-    [IO.File]::WriteAllText($digest, ((Get-FileHash -LiteralPath $artifact -Algorithm SHA256).Hash.ToLowerInvariant() + "`n"), [Text.UTF8Encoding]::new($false))
+    $artifactDigest = Get-AutomexiaFileSha256 $artifact
+    # Simulate an interrupted refresh where the candidate is the second digest.
+    [IO.File]::WriteAllText($digest, (('0' * 64) + "`n$artifactDigest`n"), [Text.UTF8Encoding]::new($false))
 
     Remove-Variable AutomexiaCompletionAdapterLoaded -Scope Global -ErrorAction SilentlyContinue
     Remove-Variable AutomexiaCp1FixtureLoaded -Scope Global -ErrorAction SilentlyContinue
@@ -769,7 +832,7 @@ try {
     $null = New-Item -ItemType Directory -Force -Path $outsideCompletion
     $outsideArtifact = Join-Path $outsideCompletion 'kubectl.ps1'
     [IO.File]::WriteAllText($outsideArtifact, '$global:AutomexiaCp1FixtureLoaded = $true', [Text.UTF8Encoding]::new($false))
-    [IO.File]::WriteAllText("$outsideArtifact.sha256", ((Get-FileHash -LiteralPath $outsideArtifact -Algorithm SHA256).Hash.ToLowerInvariant() + "`n"), [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText("$outsideArtifact.sha256", ((Get-AutomexiaFileSha256 $outsideArtifact) + "`n"), [Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllText("$outsideArtifact.allow-override", "explicit-native-override-v1`n", [Text.UTF8Encoding]::new($false))
     Remove-Item -LiteralPath $completionDirectory -Recurse -Force
     $null = New-Item -ItemType Junction -Path $completionDirectory -Target $outsideCompletion
@@ -786,6 +849,20 @@ try {
     . $completionAdapter
     if ((Get-AutomexiaCompletionHealth).State -ne 'UnsafePath/NativeFallback') {
         throw 'PowerShell completion did not reject a relative persistence root'
+    }
+
+    $env:AUTOMEXIA_CONFIG_HOME = '\\server\share\automexia'
+    Remove-Variable AutomexiaCompletionAdapterLoaded -Scope Global -ErrorAction SilentlyContinue
+    . $completionAdapter
+    if ((Get-AutomexiaCompletionHealth).State -ne 'UnsafePath/NativeFallback') {
+        throw 'PowerShell completion did not reject a remote persistence root'
+    }
+
+    $env:AUTOMEXIA_CONFIG_HOME = 'C:\' + ('x' * 4097)
+    Remove-Variable AutomexiaCompletionAdapterLoaded -Scope Global -ErrorAction SilentlyContinue
+    . $completionAdapter
+    if ((Get-AutomexiaCompletionHealth).State -ne 'UnsafePath/NativeFallback') {
+        throw 'PowerShell completion did not reject an overlong persistence root'
     }
 } finally {
     if ($null -eq $previousConfigHome) {

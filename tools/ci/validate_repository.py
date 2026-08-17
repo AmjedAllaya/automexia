@@ -26,6 +26,12 @@ from check_command_productivity_cp1 import (
 from check_command_productivity_cp22 import (
     validate_repository as validate_command_productivity_cp22,
 )
+from check_command_productivity_cp30 import (
+    validate_repository as validate_command_productivity_cp30,
+)
+from check_command_productivity_cp31 import (
+    validate_repository as validate_command_productivity_cp31,
+)
 from check_documentation_coverage import validate as validate_documentation_coverage
 from check_devops_alias_spec import validate_repository as validate_devops_alias_spec
 from check_feature_assurance import load_and_validate as validate_feature_assurance
@@ -299,6 +305,10 @@ def validate() -> None:
     counts["command productivity CP1"] = command_productivity_cp1_counts["providers"]
     command_productivity_cp22_counts = validate_command_productivity_cp22()
     counts["command productivity CP2.2"] = command_productivity_cp22_counts["tests"]
+    command_productivity_cp30_counts = validate_command_productivity_cp30()
+    counts["command productivity CP3.0"] = command_productivity_cp30_counts["tests"]
+    command_productivity_cp31_counts = validate_command_productivity_cp31()
+    counts["command productivity CP3.1"] = command_productivity_cp31_counts["tests"]
 
     alias_spec_counts = validate_devops_alias_spec()
     counts["planned CP2/CP3 alias assurance"] = alias_spec_counts[

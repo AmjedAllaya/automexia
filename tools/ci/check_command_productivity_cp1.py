@@ -115,7 +115,7 @@ def validate_adapter_text(relative: str, text: str) -> None:
     if relative.startswith("shell-integration/completion/"):
         if "eval " in folded or "invoke-expression" in folded:
             raise Cp1Error(f"{relative} contains dynamic evaluation")
-        required = ["sha256", "disabled"]
+        required = ["sha256", "disabled", "4096", "192"]
         if relative.endswith(".bash"):
             required += ["complete -p", ". ", "$file", "__automexia_completion_directory_safe", "== /*"]
         elif relative.endswith(".zsh"):
@@ -123,7 +123,7 @@ def validate_adapter_text(relative: str, text: str) -> None:
         elif relative.endswith(".fish"):
             required += ["complete -c", "source", "$file", "__automexia_completion_directory_safe", "^/"]
         elif relative.endswith(".ps1"):
-            required += ["allow-override", "Get-FileHash", ". $file", "Test-AutomexiaCompletionDirectorySafe"]
+            required += ["allow-override", "Get-AutomexiaCompletionFileSha256", "Security.Cryptography.SHA256", ". $file", "Test-AutomexiaCompletionDirectorySafe", "UNC root"]
         if relative.endswith((".bash", ".zsh", ".fish")):
             required += ["Application Support/io.github.AmjedAllaya.AutomexiaTerminal"]
         missing = [token for token in required if token.casefold() not in folded]
@@ -148,6 +148,11 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
         "inspect_artifact", "metadata-mismatch", "revalidate_executable", "MAX_METADATA_BYTES",
         "Application Support", "completion configuration root must be absolute",
         "--allow-native-override", "native/provider-owned", "manual-consent-required",
+        "transition_digest_bytes", "runtime_artifact_digest",
+        "env_clear", "filtered_provider_path", "NO_COLOR",
+        "provider_process_does_not_inherit_ambient_secret_environment",
+        "sanitize_diagnostic", "bidirectional control characters",
+        "absolute local PATH entry", "local Windows drive",
     }
     missing = sorted(token for token in required if token not in xtask)
     if missing:
@@ -189,7 +194,19 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
             "stale-owned-source-line", "relative-root", "config-link",
             "Application Support/io.github.AmjedAllaya.AutomexiaTerminal",
         },
-        "tools/ci/test_shell_integration.ps1": {"relative-config-root"},
+        "tools/ci/test_shell_integration.sh": {
+            "interrupted refresh", "4097",
+        },
+        "tools/ci/test_zsh_integration.zsh": {
+            "interrupted refresh", "4097",
+        },
+        "tools/ci/test_fish_integration.fish": {
+            "interrupted refresh", "4097",
+        },
+        "tools/ci/test_shell_integration.ps1": {
+            "relative-config-root", "interrupted refresh", "4097",
+            "remote persistence root",
+        },
     }
     for relative, tokens in wiring.items():
         text = bounded_text(root / relative, MAX_SOURCE_BYTES, "CP1 wiring")

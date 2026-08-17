@@ -2,7 +2,7 @@
   "schema": 1,
   "phase": "CP2-CP3-SPEC",
   "status": "planned",
-  "implemented_stage": "CP2.2-action-search-review-insert-copy",
+  "implemented_stage": "CP3.1-persistent-explicit-opt-in-aliases",
   "authorities": {
     "product": "docs/DEVOPS-ALIASES.md",
     "architecture": "docs/ARCHITECTURE.md",
@@ -179,6 +179,7 @@
   "model_files": [
     "automexia-devops/src/actions/mod.rs",
     "automexia-devops/src/actions/model.rs",
+    "automexia-devops/src/actions/projection.rs",
     "automexia-devops/src/actions/validation.rs",
     "automexia-devops/src/actions/activation.rs"
   ],
@@ -191,6 +192,8 @@
     "apps/automexia-terminal/src/automexia/quick_actions/store.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/cli.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/transfer.rs",
-    "apps/automexia-terminal/src/automexia/quick_actions/worker.rs"
+    "apps/automexia-terminal/src/automexia/quick_actions/worker.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/aliases.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/aliases_cli.rs"
   ]
 }

@@ -10,6 +10,10 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 AUDIT_PATH = "docs/PHASE-IMPLEMENTATION-AUDIT.md"
+ROADMAP_PATH = "docs/ROADMAP.md"
+ROADMAP_STATUS_START = "<!-- roadmap-status-register:start -->"
+ROADMAP_STATUS_END = "<!-- roadmap-status-register:end -->"
+ROADMAP_STATUS_LABELS = ("Fully done", "Partially done", "Not done")
 CANONICAL_PHASE_SOURCES = (
     "docs/ROADMAP.md",
     "docs/STABILIZATION-ROADMAP.md",
@@ -122,6 +126,127 @@ STATUS = re.compile(
     re.IGNORECASE,
 )
 
+def markdown_table_cells(line: str) -> list[str] | None:
+    stripped = line.strip()
+    if not stripped.startswith("|") or not stripped.endswith("|"):
+        return None
+    return [cell.strip() for cell in stripped[1:-1].split("|")]
+
+
+def is_markdown_separator(cells: list[str]) -> bool:
+    return bool(cells) and all(
+        cell and not (set(cell) - {"-", ":"}) for cell in cells
+    )
+
+
+def normalize_implementation_status(status: str) -> str:
+    folded = status.casefold()
+    if "not implemented" in folded:
+        return "Not done"
+    if "partial" in folded:
+        return "Partially done"
+    if "fully implemented" in folded or "implemented locally" in folded:
+        return "Fully done"
+    raise PhaseAuditError(
+        f"executive phase matrix has an unmapped implementation status {status!r}"
+    )
+
+
+def audit_matrix_statuses(audit: str) -> list[tuple[str, str]]:
+    heading = "## Executive phase matrix"
+    if audit.count(heading) != 1:
+        raise PhaseAuditError("phase audit requires one executive phase matrix")
+    section = audit.split(heading, 1)[1]
+    section = section.split("\n### ", 1)[0]
+    rows: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for line in section.splitlines():
+        cells = markdown_table_cells(line)
+        if cells is None or is_markdown_separator(cells):
+            continue
+        if cells and cells[0] == "Track":
+            continue
+        if len(cells) != 5:
+            raise PhaseAuditError(
+                "executive phase matrix rows must contain exactly five columns"
+            )
+        phase = cells[1]
+        if phase in seen:
+            raise PhaseAuditError(
+                f"executive phase matrix contains duplicate phase {phase!r}"
+            )
+        seen.add(phase)
+        implementation = cells[2].replace("**", "").strip()
+        rows.append((phase, normalize_implementation_status(implementation)))
+    if not rows:
+        raise PhaseAuditError("executive phase matrix contains no feature rows")
+    return rows
+
+
+def roadmap_register_statuses(roadmap: str) -> list[tuple[str, str]]:
+    if (
+        roadmap.count(ROADMAP_STATUS_START) != 1
+        or roadmap.count(ROADMAP_STATUS_END) != 1
+    ):
+        raise PhaseAuditError(
+            "roadmap requires exactly one delimited current feature status register"
+        )
+    before, remainder = roadmap.split(ROADMAP_STATUS_START, 1)
+    block, after = remainder.split(ROADMAP_STATUS_END, 1)
+    if before is None or after is None:
+        raise PhaseAuditError("roadmap status register delimiters are malformed")
+
+    rows: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    label_pattern = re.compile(
+        r"\*\*(Fully done|Partially done|Not done)\*\*"
+    )
+    for line in block.splitlines():
+        cells = markdown_table_cells(line)
+        if cells is None or is_markdown_separator(cells):
+            continue
+        if cells and cells[0] == "Status":
+            continue
+        if len(cells) != 3:
+            raise PhaseAuditError(
+                "roadmap status rows must contain exactly three columns"
+            )
+        match = label_pattern.fullmatch(cells[0])
+        if match is None or match.group(1) not in ROADMAP_STATUS_LABELS:
+            raise PhaseAuditError(
+                f"roadmap contains invalid status label {cells[0]!r}"
+            )
+        phase = cells[1]
+        if phase in seen:
+            raise PhaseAuditError(
+                f"roadmap status register contains duplicate phase {phase!r}"
+            )
+        seen.add(phase)
+        rows.append((phase, match.group(1)))
+    if not rows:
+        raise PhaseAuditError("roadmap status register contains no feature rows")
+    return rows
+
+
+def validate_roadmap_status_register(audit: str, roadmap: str) -> int:
+    expected = audit_matrix_statuses(audit)
+    actual = roadmap_register_statuses(roadmap)
+    expected_phases = [phase for phase, _ in expected]
+    actual_phases = [phase for phase, _ in actual]
+    if actual_phases != expected_phases:
+        missing = [phase for phase in expected_phases if phase not in actual_phases]
+        extra = [phase for phase in actual_phases if phase not in expected_phases]
+        raise PhaseAuditError(
+            "roadmap status phases do not match the executive matrix "
+            f"(missing={missing}, extra={extra}, order_matches={not missing and not extra})"
+        )
+    for (phase, expected_status), (_, actual_status) in zip(expected, actual):
+        if actual_status != expected_status:
+            raise PhaseAuditError(
+                f"roadmap status mismatch for {phase}: "
+                f"expected {expected_status!r}, found {actual_status!r}"
+            )
+    return len(actual)
 
 class PhaseAuditError(ValueError):
     """The implementation audit no longer covers its roadmap contract."""
@@ -252,13 +377,20 @@ def canonical_phase_ids(root: Path = ROOT) -> set[str]:
 
 
 def validate(root: Path = ROOT) -> dict[str, int]:
-    path = root / AUDIT_PATH
-    if not path.is_file():
+    audit_path = root / AUDIT_PATH
+    roadmap_path = root / ROADMAP_PATH
+    if not audit_path.is_file():
         raise PhaseAuditError(f"missing phase implementation audit {AUDIT_PATH}")
-    return validate_text(
-        path.read_text(encoding="utf-8"),
-        canonical_phase_ids(root),
+    if not roadmap_path.is_file():
+        raise PhaseAuditError(f"missing canonical roadmap {ROADMAP_PATH}")
+    audit = audit_path.read_text(encoding="utf-8")
+    roadmap = roadmap_path.read_text(encoding="utf-8")
+    counts = validate_text(audit, canonical_phase_ids(root))
+    counts["roadmap_statuses"] = validate_roadmap_status_register(
+        audit,
+        roadmap,
     )
+    return counts
 
 
 if __name__ == "__main__":
@@ -272,5 +404,6 @@ if __name__ == "__main__":
         f"(sections={counts['phase_sections']}, "
         f"canonical_phases={counts['canonical_phases']}, "
         f"evidence_dimensions={counts['evidence_dimensions']}, "
-        f"sources={counts['source_documents']})"
+        f"sources={counts['source_documents']}, "
+        f"roadmap_statuses={counts['roadmap_statuses']})"
     )

@@ -172,6 +172,7 @@ CP2_PURE_ACTION_FILES = {
     "automexia-devops/src/actions/activation.rs",
     "automexia-devops/src/actions/mod.rs",
     "automexia-devops/src/actions/model.rs",
+    "automexia-devops/src/actions/projection.rs",
     "automexia-devops/src/actions/validation.rs",
 }
 CP2_PERSISTENCE_FILES = {
@@ -183,6 +184,10 @@ CP2_PERSISTENCE_FILES = {
     "apps/automexia-terminal/src/automexia/quick_actions/store.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/transfer.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/worker.rs",
+}
+CP31_PUBLICATION_FILES = {
+    "apps/automexia-terminal/src/automexia/quick_actions/aliases.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/aliases_cli.rs",
 }
 CP2_PERSISTENCE_WIRING_FILES = {
     "apps/automexia-terminal/src/automexia/mod.rs",
@@ -206,6 +211,21 @@ CP2_PERSISTENCE_FORBIDDEN_MARKERS = {
     "clipboard",
     "launch_broker",
     "shell_integration",
+    "rio_vt::",
+    "teletypewriter::",
+    "reqwest",
+    "ureq::",
+    "hyper::",
+    "tokio::",
+    "async_std::",
+    "terminal.grid",
+    "visible_text",
+    "raw_cursor_line_text",
+}
+CP31_PUBLICATION_FORBIDDEN_MARKERS = {
+    "std::net",
+    "clipboard",
+    "launch_broker",
     "rio_vt::",
     "teletypewriter::",
     "reqwest",
@@ -771,7 +791,7 @@ def validate_pure_action_sources(root: Path, runtime_files: list[Path]) -> set[s
     if present != CP2_PURE_ACTION_FILES:
         unexpected = sorted(present.symmetric_difference(CP2_PURE_ACTION_FILES))
         raise CommandProductivityError(
-            f"CP2 pure action source set is not the exact reviewed boundary: {unexpected}"
+            f"CP2/CP3 pure action source set is not the exact reviewed boundary: {unexpected}"
         )
     for relative in sorted(present):
         content = read_lower(root / relative)
@@ -781,7 +801,7 @@ def validate_pure_action_sources(root: Path, runtime_files: list[Path]) -> set[s
         )
         if marker is not None:
             raise CommandProductivityError(
-                f"{relative} crosses the capability-free CP2 model boundary: {marker!r}"
+                f"{relative} crosses the capability-free CP2/CP3 model boundary: {marker!r}"
             )
     return present
 
@@ -796,24 +816,34 @@ def validate_persistence_sources(root: Path, runtime_files: list[Path]) -> set[s
     }
     if not present:
         return set()
-    if present != CP2_PERSISTENCE_FILES:
-        unexpected = sorted(present.symmetric_difference(CP2_PERSISTENCE_FILES))
+    expected = CP2_PERSISTENCE_FILES | CP31_PUBLICATION_FILES
+    cp31_present = present & CP31_PUBLICATION_FILES
+    if (
+        not CP2_PERSISTENCE_FILES.issubset(present)
+        or present - expected
+        or (cp31_present and cp31_present != CP31_PUBLICATION_FILES)
+    ):
+        baseline = expected if cp31_present else CP2_PERSISTENCE_FILES
+        unexpected = sorted(present.symmetric_difference(baseline))
         raise CommandProductivityError(
-            f"CP2.1 persistence source set is not the exact reviewed boundary: {unexpected}"
+            "CP2.1/CP3.1 persistence/publication source set is not the exact "
+            f"reviewed boundary: {unexpected}"
         )
     for relative in sorted(present):
         content = read_rust_code_lower(root / relative)
+        markers = (
+            CP31_PUBLICATION_FORBIDDEN_MARKERS
+            if relative in CP31_PUBLICATION_FILES
+            else CP2_PERSISTENCE_FORBIDDEN_MARKERS
+        )
         marker = next(
-            (
-                item
-                for item in sorted(CP2_PERSISTENCE_FORBIDDEN_MARKERS)
-                if item in content
-            ),
+            (item for item in sorted(markers) if item in content),
             None,
         )
         if marker is not None:
+            phase = "CP3.1 publication" if relative in CP31_PUBLICATION_FILES else "CP2.1 persistence"
             raise CommandProductivityError(
-                f"{relative} crosses the CP2.1 persistence-only capability boundary: {marker!r}"
+                f"{relative} crosses the {phase}-only capability boundary: {marker!r}"
             )
         if "unsafe {" in content and not relative.endswith("/secure_fs.rs"):
             raise CommandProductivityError(
@@ -1029,7 +1059,7 @@ def main() -> int:
         print(f"command productivity CP0 validation failed: {error}", file=sys.stderr)
         return 1
     print(
-        "PASS: command productivity CP0/CP1 and the bounded CP2.0-CP2.2 model/application boundaries are confined to reviewed allowlists "
+        "PASS: command productivity CP0/CP1 and bounded CP2.0-CP3.0 model/application boundaries are confined to reviewed allowlists "
         f"(shells={counts['shells']}, providers={counts['providers']}, "
         f"discoveries={counts['discoveries']}, "
         f"cases={counts['cases']}, threats={counts['threats']}, "

@@ -103,6 +103,13 @@ if command -v fish >/dev/null 2>&1; then
   fish tools/ci/test_fish_integration.fish
 fi
 
+mkdir -p "$installer_config/automexia/actions"
+printf '%s\n' 'schema_version = 1' 'revision = 7' \
+  >"$installer_config/automexia/actions/actions.toml"
+python3 "$root/tools/ci/create_cp31_alias_fixture.py" \
+  --config-root "$installer_config/automexia" --alias aut --value uninstall \
+  >/dev/null
+
 printf '%s\n' 'after-user-content' >>"$installer_home/.bashrc"
 HOME="$installer_home" XDG_CONFIG_HOME="$installer_config" \
   sh "$root/shell-integration/uninstall-unix.sh" >/dev/null
@@ -110,6 +117,8 @@ grep -Fq 'after-user-content' "$installer_home/.bashrc"
 ! grep -Fq '# >>> AUTOMEXIA SHELL INTEGRATION >>>' "$installer_home/.bashrc"
 [[ ! -e "$installer_config/automexia/shell-integration.bash" ]]
 [[ ! -e "$installer_config/fish/conf.d/automexia.fish" ]]
+[[ ! -e "$installer_config/automexia/generated/aliases" ]]
+grep -Fqx 'revision = 7' "$installer_config/automexia/actions/actions.toml"
 
 # Simulate Darwin deterministically and prove the canonical application-support
 # location stays aligned with the frontend and xtask.
@@ -138,6 +147,28 @@ if (cd "$relative_home" && HOME="$relative_home" AUTOMEXIA_CONFIG_HOME=relative-
 fi
 [[ ! -e "$relative_home/relative-root" ]]
 rm -rf "$relative_home"
+
+hostile_home=$(mktemp -d)
+hostile_config="$hostile_home/config/automexia"
+mkdir -p "$hostile_home/config"
+chmod 700 "$hostile_home/config"
+python3 "$root/tools/ci/create_cp31_alias_fixture.py" \
+  --config-root "$hostile_config" --alias badt --value guarded >/dev/null
+touch "$hostile_config/generated/aliases/unexpected-user-file"
+printf '%s\n' \
+  '# >>> AUTOMEXIA SHELL INTEGRATION >>>' \
+  'owned-source-line' \
+  '# <<< AUTOMEXIA SHELL INTEGRATION <<<' \
+  'user-content' >"$hostile_home/.bashrc"
+if HOME="$hostile_home" XDG_CONFIG_HOME="$hostile_home/config" \
+    sh "$root/shell-integration/uninstall-unix.sh" >/dev/null 2>&1; then
+  echo 'uninstall accepted an unexpected generated-alias entry' >&2
+  exit 1
+fi
+grep -Fqx '# >>> AUTOMEXIA SHELL INTEGRATION >>>' "$hostile_home/.bashrc"
+grep -Fqx 'user-content' "$hostile_home/.bashrc"
+[[ -f "$hostile_config/generated/aliases/current" ]]
+rm -rf "$hostile_home"
 
 linked_home=$(mktemp -d)
 linked_outside=$(mktemp -d)

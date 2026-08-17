@@ -32,7 +32,7 @@ class Cp22ContractTests(unittest.TestCase):
 
     def test_canonical_repository_contract_and_sources_pass(self) -> None:
         counts = policy.validate_repository()
-        self.assertEqual(counts["model_files"], 4)
+        self.assertEqual(counts["model_files"], 5)
         self.assertEqual(counts["tests"], 13)
 
     def test_resource_ceiling_expansion_is_rejected(self) -> None:

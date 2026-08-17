@@ -289,27 +289,27 @@
     },
     {
       "id": "command-productivity-cp0-policy",
-      "title": "Accepted shell-native completion and typed Quick Action architecture, threat model, compatibility, and non-activation",
+      "title": "Accepted command-productivity architecture plus the pure nonactivated CP3.0 shell projection compiler",
       "components": ["tools/ci", "tests/fixtures/command-productivity", "automexia-devops"],
       "documentation": {
-        "guide": ["docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md"],
-        "reference": ["docs/COMMAND-PRODUCTIVITY.md#delivery-phases"],
+        "guide": ["docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md", "docs/DEVOPS-ALIASES.md#cp30-projection-compiler-baseline"],
+        "reference": ["docs/COMMAND-PRODUCTIVITY.md#delivery-phases", "docs/TESTING.md#cp30-pure-projection-compiler"],
         "explanation": ["docs/COMMAND-PRODUCTIVITY-THREAT-MODEL.md", "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md"]
       },
       "quality": {
         "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "CP0 activates no UI; CP1 and CP5 retain explicit native and renderer accessibility gates."},
-        "correctness": {"level": "pr", "evidence": ["tools/ci/check_command_productivity.py", "tools/ci/test_command_productivity.py", "automexia-devops/src/actions/validation.rs", "automexia-devops/tests/quick_actions.rs", "tests/fixtures/command-productivity/cp2-hostile-actions-v1.json", "tests/fixtures/command-productivity/cp0-contract-v1.json", "tests/fixtures/command-productivity/cp0-hostile-mutations-v1.json"]},
-        "security": {"level": "pr", "evidence": ["tools/ci/check_command_productivity.py", "tools/ci/test_command_productivity.py", "tools/ci/check_devops_alias_spec.py", "tools/ci/test_devops_alias_spec.py", "automexia-devops/src/actions/mod.rs", "automexia-devops/src/actions/validation.rs", "automexia-devops/tests/quick_actions.rs", "tests/fixtures/command-productivity/cp2-hostile-actions-v1.json", "tests/fixtures/command-productivity/cp0-threats-v1.json", "tests/fixtures/command-productivity/cp0-hostile-mutations-v1.json"]},
+        "correctness": {"level": "pr", "evidence": ["tools/ci/check_command_productivity.py", "tools/ci/test_command_productivity.py", "tools/ci/check_command_productivity_cp30.py", "tools/ci/test_command_productivity_cp30.py", "automexia-devops/src/actions/validation.rs", "automexia-devops/src/actions/projection.rs", "automexia-devops/tests/quick_actions.rs", "automexia-devops/tests/quick_action_projection.rs", "tests/fixtures/command-productivity/cp2-hostile-actions-v1.json", "tests/fixtures/command-productivity/cp0-contract-v1.json", "tests/fixtures/command-productivity/cp0-hostile-mutations-v1.json", "tests/fixtures/command-productivity/cp30-contract-v1.json"]},
+        "security": {"level": "nightly", "evidence": ["tools/ci/check_command_productivity.py", "tools/ci/test_command_productivity.py", "tools/ci/check_devops_alias_spec.py", "tools/ci/test_devops_alias_spec.py", "tools/ci/check_command_productivity_cp30.py", "tools/ci/test_command_productivity_cp30.py", "automexia-devops/src/actions/mod.rs", "automexia-devops/src/actions/validation.rs", "automexia-devops/src/actions/projection.rs", "automexia-devops/tests/quick_actions.rs", "automexia-devops/tests/quick_action_projection.rs", "fuzz/fuzz_targets/quick_action_projection.rs", ".github/workflows/nightly.yml#fuzz", "tests/fixtures/command-productivity/cp2-hostile-actions-v1.json", "tests/fixtures/command-productivity/cp0-threats-v1.json", "tests/fixtures/command-productivity/cp0-hostile-mutations-v1.json", "tests/fixtures/command-productivity/cp30-contract-v1.json"]},
         "performance": {"level": "controlled", "evidence": ["automexia-devops/benches/quick_actions.rs", ".github/workflows/nightly.yml#benchmarks-controlled", "tools/ci/qa.py"]},
-        "resource_lifetime": {"level": "not_applicable", "evidence": [], "rationale": "CP0 starts no workers, watchers, providers, processes, or caches; later phases require lifecycle tests before activation."},
+        "resource_lifetime": {"level": "not_applicable", "evidence": [], "rationale": "CP0 and the pure CP3.0 compiler start no workers, watchers, providers, processes, or caches; activation phases require lifecycle tests."},
         "storage_hygiene": {"level": "pr", "evidence": ["tools/ci/check_command_productivity.py", "tests/fixtures/command-productivity/cp0-contract-v1.json"]},
-        "resilience": {"level": "pr", "evidence": ["tools/ci/test_command_productivity.py", "docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md#version-and-fallback-policy"]},
+        "resilience": {"level": "pr", "evidence": ["tools/ci/test_command_productivity.py", "tools/ci/test_command_productivity_cp30.py", "automexia-devops/tests/quick_action_projection.rs", "docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md#version-and-fallback-policy"]},
         "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "CP0 draws no product UI; later candidate/action surfaces require visual and accessibility evidence."}
       },
       "platforms": {
-        "windows": {"level": "not_applicable", "evidence": [], "rationale": "CP0 activates no Windows runtime behavior; CP1 requires native PowerShell, CMD, and ConPTY evidence."},
-        "linux": {"level": "not_applicable", "evidence": [], "rationale": "CP0 activates no Linux runtime behavior; CP1 requires native Bash, Zsh, Fish, PTY, X11, and Wayland evidence."},
-        "macos": {"level": "not_applicable", "evidence": [], "rationale": "CP0 activates no macOS runtime behavior; CP1 requires native Zsh plus installed Bash/Fish and PTY evidence."}
+        "windows": {"level": "not_applicable", "evidence": [], "rationale": "CP0 and CP3.0 activate no Windows runtime behavior; conditional PowerShell/CMD compiler evidence is correctness-only until CP3.1."},
+        "linux": {"level": "not_applicable", "evidence": [], "rationale": "CP0 and CP3.0 activate no Linux runtime behavior; conditional Bash/Zsh/Fish compiler evidence is correctness-only until CP3.1."},
+        "macos": {"level": "not_applicable", "evidence": [], "rationale": "CP0 and CP3.0 activate no macOS runtime behavior; conditional native compiler evidence is correctness-only until CP3.1."}
       }
     },
     {
@@ -363,6 +363,30 @@
       }
     },
     {
+      "id": "command-productivity-cp31-persistent-aliases",
+      "title": "Explicit opt-in private transactional aliases with verified native startup, reload, rollback, and uninstall",
+      "components": ["apps/automexia-terminal", "shell-integration", "tools/ci", "tests/fixtures/command-productivity"],
+      "documentation": {
+        "guide": ["docs/DEVOPS-ALIASES.md#cp31-persistent-opt-in-user-aliases"],
+        "reference": ["docs/CLI-REFERENCE.md#application-command", "docs/TESTING.md#cp31-persistent-alias-publication-and-activation"],
+        "explanation": ["docs/ARCHITECTURE.md#command-productivity-boundary", "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "CP3.1 uses existing shell-native definitions and a textual CLI; it adds no renderer-owned interactive surface. CP2.2 and CP5 retain their separate accessibility gates."},
+        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/aliases.rs", "apps/automexia-terminal/src/automexia/quick_actions/aliases_cli.rs", "tools/ci/check_command_productivity_cp31.py", "tools/ci/test_command_productivity_cp31.py", "tests/fixtures/command-productivity/cp31-contract-v1.json"]},
+        "security": {"level": "nightly", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/secure_fs.rs", "apps/automexia-terminal/src/automexia/quick_actions/aliases.rs", "tools/ci/test_command_productivity_cp31.py", "fuzz/fuzz_targets/quick_action_projection.rs", ".github/workflows/nightly.yml#fuzz"]},
+        "performance": {"level": "controlled", "evidence": ["apps/automexia-terminal/benches/quick_action_store.rs", "tools/ci/test_shell_integration.sh", "tools/ci/test_shell_integration.ps1", ".github/workflows/nightly.yml#benchmarks-controlled"], "rationale": "Local 25-sample warm reload p95 is enforced; the named-hardware 30-day baseline remains controlled release evidence."},
+        "resource_lifetime": {"level": "pr", "evidence": ["tools/ci/test_shell_integration.sh", "tools/ci/test_shell_integration.ps1", "tools/ci/test_shell_sources.sh"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/aliases.rs", "shell-integration/uninstall-unix.sh", "shell-integration/uninstall-windows.ps1", "tools/ci/test_shell_sources.sh"]},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/aliases.rs", "tools/ci/test_shell_integration.sh", "tools/ci/test_shell_integration.ps1", "tools/ci/test_command_productivity_cp31.py"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "CP3.1 draws no Automexia UI; shell-native expansion and textual health output own presentation."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["tools/ci/test_shell_integration.ps1", ".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_shell_integration.sh", ".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", ".github/workflows/ci.yml#native"]}
+      }
+    },    {
       "id": "command-productivity-cp1-native-completion",
       "title": "Bounded native-shell completion adapters, health, explicit provider refresh, and exact lifecycle",
       "components": ["tools/xtask", "shell-integration", "tests/fixtures/command-productivity"],

@@ -31,6 +31,22 @@ class CompletionAdapterBenchmarkTests(unittest.TestCase):
         self.assertEqual(BENCHMARK.MAX_P95_MS, 50.0)
         self.assertEqual(BENCHMARK.DEADLINE_SECONDS, 2.0)
 
+    def test_fish_wall_time_parser_is_unit_safe_and_bounded(self) -> None:
+        self.assertEqual(
+            BENCHMARK.parse_fish_wall_time("Executed in 750 micros"), 0.75
+        )
+        self.assertEqual(
+            BENCHMARK.parse_fish_wall_time("Executed in 12.5 millis"), 12.5
+        )
+        self.assertEqual(
+            BENCHMARK.parse_fish_wall_time("Executed in 0.02 secs"), 20.0
+        )
+        with self.assertRaisesRegex(RuntimeError, "bounded wall-clock"):
+            BENCHMARK.parse_fish_wall_time("untrusted diagnostic")
+
+    def test_alias_reload_batch_is_fixed(self) -> None:
+        self.assertEqual(BENCHMARK.ALIAS_RELOAD_BATCH, 3)
+
     def test_exact_runner_accepts_success_and_rejects_failure(self) -> None:
         environment = {"PATH": str(Path(sys.executable).parent)}
         elapsed = BENCHMARK.run_exact(
