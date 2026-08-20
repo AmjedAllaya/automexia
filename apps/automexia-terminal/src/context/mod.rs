@@ -310,7 +310,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
 
         let mut terminal = Crosswords::new(
             dimension,
-            CursorShape::from_char(cursor_state.0.content),
+            cursor_state.0.state.content,
             event_proxy.clone(),
             window_id,
             route_id,

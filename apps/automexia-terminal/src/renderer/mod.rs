@@ -47,6 +47,23 @@ fn window_bg_alpha(config: &Config) -> f32 {
     }
 }
 
+#[inline]
+fn dynamic_background_for(
+    config: &Config,
+    named_colors: &Colors,
+) -> ([f32; 4], rio_backend::sugarloaf::Color, bool) {
+    let mut dynamic_background =
+        (named_colors.background.0, named_colors.background.1, false);
+    if config.window.blur.is_glass() || config.window.opacity < 1. {
+        dynamic_background.1.a = window_bg_alpha(config) as f64;
+        dynamic_background.2 = true;
+    } else if config.window.background_image.is_some() {
+        dynamic_background.1 = rio_backend::sugarloaf::Color::TRANSPARENT;
+        dynamic_background.2 = true;
+    }
+    dynamic_background
+}
+
 pub use rio_backend::sugarloaf::{atlas_image_key, kitty_image_key};
 
 #[inline]
@@ -481,8 +498,6 @@ impl Renderer {
         let named_colors = crate::automexia::theme::effective_colors(config.colors);
         let colors = List::from(&named_colors);
 
-        let mut dynamic_background =
-            (named_colors.background.0, named_colors.background.1, false);
         // Window-bg target alpha. Cached here at init and re-applied
         // to every OSC-11-driven `effective_bg` refresh in
         // `Renderer::run` so a runtime bg change doesn't reset
@@ -492,13 +507,7 @@ impl Renderer {
         // that case, so the glass and `opacity < 1` paths share one
         // assignment.
         let target_bg_alpha = window_bg_alpha(config);
-        if config.window.blur.is_glass() || config.window.opacity < 1. {
-            dynamic_background.1.a = target_bg_alpha as f64;
-            dynamic_background.2 = true;
-        } else if config.window.background_image.is_some() {
-            dynamic_background.1 = rio_backend::sugarloaf::Color::TRANSPARENT;
-            dynamic_background.2 = true;
-        }
+        let dynamic_background = dynamic_background_for(config, &named_colors);
 
         let island = if config.navigation.is_enabled() {
             Some(island::Island::new(
@@ -557,6 +566,85 @@ impl Renderer {
             trail_cursor_enabled: config.effects.trail_cursor,
             trail_cursor: trail_cursor::TrailCursor::new(),
         }
+    }
+
+    /// Apply live configuration without replacing the renderer object.
+    ///
+    /// Renderer replacement is unsafe for runtime UI: it resets the command
+    /// palette, search overlay, assistant diagnostics, quit confirmation,
+    /// DevOps prompt caches, VI presentation state, tab-progress state, and
+    /// animation state. A filesystem notification can arrive at any point, so
+    /// config reload must update only config-owned fields and deliberately
+    /// preserve transient interaction state.
+    pub fn update_config(&mut self, config: &Config) {
+        let named_colors = crate::automexia::theme::effective_colors(config.colors);
+        let colors = List::from(&named_colors);
+        let custom_chrome = matches!(
+            config.window.decorations,
+            rio_backend::config::window::Decorations::Disabled
+        );
+
+        if config.navigation.is_enabled() {
+            match self.island.as_mut() {
+                Some(island) => island.update_config(
+                    named_colors.tabs,
+                    named_colors.tabs_active,
+                    config.navigation.hide_if_single,
+                    config.navigation.max_tab_width,
+                    custom_chrome,
+                ),
+                None => {
+                    self.island = Some(island::Island::new(
+                        named_colors.tabs,
+                        named_colors.tabs_active,
+                        config.navigation.hide_if_single,
+                        config.navigation.max_tab_width,
+                        custom_chrome,
+                    ));
+                }
+            }
+        } else {
+            self.island = None;
+        }
+
+        self.unfocused_split_opacity = config.navigation.unfocused_split_opacity;
+        self.unfocused_split_fill = config.navigation.unfocused_split_fill;
+        self.use_drawable_chars = config.fonts.use_drawable_chars;
+        self.draw_bold_text_with_light_colors = config.draw_bold_text_with_light_colors;
+        self.macos_use_unified_titlebar = config.window.macos_use_unified_titlebar;
+        self.config_blinking_interval = config.cursor.blinking_interval.clamp(350, 1200);
+        self.option_as_alt = config.option_as_alt.to_lowercase();
+        self.config_has_blinking_enabled = config.cursor.blinking;
+        self.ignore_selection_fg_color = config.ignore_selection_fg_color;
+        self.colors = colors;
+        self.navigation = config.navigation.clone();
+        self.margin = config.margin;
+        self.named_colors = named_colors;
+        self.dynamic_background = dynamic_background_for(config, &self.named_colors);
+        self.opacity_cells = config.window.opacity_cells;
+        self.cell_bg_alpha =
+            (config.window.opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
+        self.window_bg_alpha = window_bg_alpha(config);
+        self.command_palette.has_adaptive_theme = config.adaptive_colors.is_some();
+
+        if self.scrollbar.is_enabled() != config.enable_scroll_bar {
+            self.scrollbar = scrollbar::Scrollbar::new(config.enable_scroll_bar);
+        }
+
+        self.is_game_mode_enabled = config.renderer.strategy.is_game();
+        self.custom_mouse_cursor = config.effects.custom_mouse_cursor;
+        if self.trail_cursor_enabled != config.effects.trail_cursor {
+            // Do not resume an old cursor trajectory after the feature has
+            // been toggled through live config.
+            self.trail_cursor = trail_cursor::TrailCursor::new();
+        }
+        self.trail_cursor_enabled = config.effects.trail_cursor;
+
+        // Config changes can alter layout and background semantics. Force the
+        // next frame to refresh active-pane and native-window derived state,
+        // while preserving user interaction state above.
+        self.last_active = None;
+        self.last_window_bg = None;
     }
 
     /// Synchronize the cached extension activation state. The fast path is one
@@ -1822,6 +1910,36 @@ mod prompt_visual_anchor_tests {
             flags,
             ..CellStyle::default()
         }
+    }
+
+    #[test]
+    fn live_config_update_preserves_transient_renderer_state() {
+        let mut renderer = Renderer::new(&Config::default());
+        renderer.command_palette.set_enabled(true);
+        renderer.command_palette.set_query("git status".to_string());
+        renderer.search.set_active_search(Some("needle".to_string()));
+        renderer.confirm_quit.set_active(true);
+        renderer.is_window_focused = false;
+        renderer.is_vi_mode_enabled = true;
+
+        let mut updated = Config::default();
+        updated.cursor.blinking_interval = 975;
+        updated.draw_bold_text_with_light_colors = true;
+        updated.ignore_selection_fg_color = true;
+        updated.effects.custom_mouse_cursor = true;
+        renderer.update_config(&updated);
+
+        assert!(renderer.command_palette.is_enabled());
+        assert_eq!(renderer.command_palette.query, "git status");
+        assert!(renderer.search.is_active());
+        assert!(renderer.confirm_quit.is_active());
+        assert!(!renderer.is_window_focused);
+        assert!(renderer.is_vi_mode_enabled);
+
+        assert_eq!(renderer.config_blinking_interval, 975);
+        assert!(renderer.draw_bold_text_with_light_colors);
+        assert!(renderer.ignore_selection_fg_color);
+        assert!(renderer.custom_mouse_cursor);
     }
 
     #[test]

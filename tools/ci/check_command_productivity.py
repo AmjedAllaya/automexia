@@ -202,6 +202,7 @@ CP2_PERSISTENCE_WIRING_FILES = {
     "apps/automexia-terminal/src/automexia/mod.rs",
 }
 CP2_ACTIVATION_WIRING_FILES = {
+    "apps/automexia-terminal/src/automexia/connections/library.rs",
     "apps/automexia-terminal/src/cli.rs",
     "apps/automexia-terminal/src/lib.rs",
     "apps/automexia-terminal/src/main.rs",

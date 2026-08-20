@@ -57,3 +57,7 @@ The set intentionally separates five kinds of information:
 - **Project** pages contain the roadmap and Architecture Decision Records (ADRs). They are not instructions for current product behavior.
 
 The original documentation mixed these roles heavily. The [source consolidation map](project/source-map.md) shows where every previous page was merged and which page is now canonical.
+
+## CP3.3 evidence
+
+CP3.3 native imports and trusted workspace task bridges are part of the reviewed command-productivity architecture contract.

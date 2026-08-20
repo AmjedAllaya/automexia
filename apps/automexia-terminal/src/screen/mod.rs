@@ -16,7 +16,9 @@ use crate::bindings::{
     ViAction,
 };
 use crate::context;
-use crate::context::renderable::{Cursor, RenderableContent};
+use crate::context::renderable::Cursor;
+#[cfg(feature = "native-gui-test-hooks")]
+use crate::context::renderable::RenderableContent;
 use crate::context::{next_rich_text_id, process_open_url, ContextManager};
 use crate::crosswords::{
     grid::{Dimensions, Scroll},
@@ -38,7 +40,7 @@ use rio_backend::clipboard::Clipboard;
 use rio_backend::clipboard::ClipboardType;
 use rio_backend::config::layout::Margin;
 use rio_backend::config::renderer::Backend;
-use rio_backend::crosswords::pos::{Boundary, CursorState, Direction, Line};
+use rio_backend::crosswords::pos::{Boundary, Direction, Line};
 use rio_backend::crosswords::search::RegexSearch;
 use rio_backend::error::{RioError, RioErrorLevel, RioErrorType};
 use rio_backend::event::{ClickState, EventProxy, SearchState};
@@ -696,12 +698,7 @@ impl Screen<'_> {
             margin,
         );
 
-        let cursor = Cursor {
-            content: config.cursor.shape.into(),
-            content_ref: config.cursor.shape.into(),
-            state: CursorState::new(config.cursor.shape.into()),
-            is_ime_enabled: false,
-        };
+        let cursor = Cursor::from_cursor_config(&config.cursor);
 
         let context_manager = context::ContextManager::start(
             // config.cursor.blinking
@@ -1203,18 +1200,11 @@ impl Screen<'_> {
         // rest of the config instead of waiting for a new window.
         self.bindings = crate::bindings::default_key_bindings(config);
 
-        // Preserve existing Island (tab state) and update its colors
-        let old_island = self.renderer.island.take();
-        let was_focused = self.renderer.is_window_focused;
-        self.renderer = Renderer::new(config);
-        self.renderer.is_window_focused = was_focused;
-        if let Some(mut island) = old_island {
-            let automexia_colors =
-                crate::automexia::theme::effective_colors(config.colors);
-            island.update_colors(automexia_colors.tabs, automexia_colors.tabs_active);
-            island.max_tab_width = config.navigation.max_tab_width;
-            self.renderer.island = Some(island);
-        }
+        // Apply configuration in-place. Replacing the renderer here used to
+        // discard transient UI state (command palette, search, diagnostics,
+        // quit confirmation, scrollbar animation, VI mode, etc.) whenever the
+        // filesystem watcher reloaded configuration.
+        self.renderer.update_config(config);
 
         let scale = self.sugarloaf.scale_factor();
         for context_grid in self.context_manager.contexts_mut() {
@@ -1245,8 +1235,9 @@ impl Screen<'_> {
             for current_context in context_grid.contexts_mut().values_mut() {
                 let current_context = current_context.context_mut();
                 let mut terminal = current_context.terminal.lock();
-                current_context.renderable_content =
-                    RenderableContent::from_cursor_config(&config.cursor);
+                current_context
+                    .renderable_content
+                    .update_cursor_config(&config.cursor);
                 let shape = config.cursor.shape;
                 terminal.cursor_shape = shape;
                 terminal.default_cursor_shape = shape;
