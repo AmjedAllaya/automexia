@@ -114,7 +114,7 @@ impl ConnectionHubRuntime {
             sender,
         });
         let weak = Arc::downgrade(&inner);
-        std::thread::Builder::new()
+        let _worker = std::thread::Builder::new()
             .name("automexia-connection-inventory".into())
             .spawn(move || worker_loop(weak, receiver))
             .map_err(|_| {

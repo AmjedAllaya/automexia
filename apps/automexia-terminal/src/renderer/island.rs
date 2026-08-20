@@ -748,6 +748,34 @@ impl Island {
         self.active_text_color = active_text_color;
     }
 
+    /// Apply live-reloadable navigation/window settings without replacing the
+    /// island and losing its runtime tab state (progress, rename input, hover,
+    /// animation state, ...).
+    pub fn update_config(
+        &mut self,
+        inactive_text_color: [f32; 4],
+        active_text_color: [f32; 4],
+        hide_if_single: bool,
+        max_tab_width: f32,
+        custom_chrome: bool,
+    ) {
+        self.update_colors(inactive_text_color, active_text_color);
+        self.hide_if_single = hide_if_single;
+        self.max_tab_width = max_tab_width;
+
+        if self.custom_chrome != custom_chrome {
+            // A drag is expressed in the old chrome geometry. Keeping it
+            // armed across a decorations change can reorder the wrong tab on
+            // the next pointer event, so cancel only this geometry-bound
+            // interaction while preserving the rest of the island state.
+            self.cancel_drag();
+            self.slide_springs.clear();
+            self.chrome_hover = None;
+            self.close_hover = false;
+        }
+        self.custom_chrome = custom_chrome;
+    }
+
     /// Update the progress bar state from an OSC 9;4 report.
     ///
     /// `progress_last_seen` is bumped on every (non-Remove) report so the
@@ -2782,6 +2810,75 @@ mod tests {
             240.0,
             false,
         )
+    }
+
+    #[test]
+    fn live_config_update_preserves_runtime_state() {
+        let mut island = test_island();
+        island.set_progress_report(ProgressReport {
+            state: ProgressState::Set,
+            progress: Some(41),
+        });
+        island.color_picker_tab = Some(2);
+        island.rename_input = "deploy-prod".to_string();
+        island.set_close_hover(true);
+        island.set_chrome_hover(Some(ChromeAction::OpenPalette));
+        let progress_started_at = island.progress_started_at;
+        let progress_last_seen = island.progress_last_seen;
+
+        island.update_config(
+            [0.1, 0.2, 0.3, 1.0],
+            [0.9, 0.8, 0.7, 1.0],
+            true,
+            180.0,
+            false,
+        );
+
+        assert_eq!(island.progress_state, Some(ProgressState::Set));
+        assert_eq!(island.progress_value, Some(41));
+        assert_eq!(island.progress_started_at, progress_started_at);
+        assert_eq!(island.progress_last_seen, progress_last_seen);
+        assert_eq!(island.color_picker_tab, Some(2));
+        assert_eq!(island.rename_input, "deploy-prod");
+        assert!(island.close_hover);
+        assert_eq!(island.chrome_hover, Some(ChromeAction::OpenPalette));
+
+        assert_eq!(island.inactive_text_color, [0.1, 0.2, 0.3, 1.0]);
+        assert_eq!(island.active_text_color, [0.9, 0.8, 0.7, 1.0]);
+        assert!(island.hide_if_single);
+        assert_eq!(island.max_tab_width, 180.0);
+    }
+
+    #[test]
+    fn live_chrome_change_cancels_only_geometry_bound_interactions() {
+        let mut island = test_island();
+        island.set_progress_report(ProgressReport {
+            state: ProgressState::Set,
+            progress: Some(65),
+        });
+        island.color_picker_tab = Some(1);
+        island.rename_input = "keep-me".to_string();
+        island.start_drag(0, 4.0, 32.0);
+        island.set_close_hover(true);
+        island.set_chrome_hover(Some(ChromeAction::Maximize));
+
+        island.update_config(
+            island.inactive_text_color,
+            island.active_text_color,
+            island.hide_if_single,
+            island.max_tab_width,
+            true,
+        );
+
+        assert!(island.drag.is_none());
+        assert!(island.slide_springs.is_empty());
+        assert!(!island.close_hover);
+        assert_eq!(island.chrome_hover, None);
+
+        assert_eq!(island.progress_state, Some(ProgressState::Set));
+        assert_eq!(island.progress_value, Some(65));
+        assert_eq!(island.color_picker_tab, Some(1));
+        assert_eq!(island.rename_input, "keep-me");
     }
 
     #[test]
