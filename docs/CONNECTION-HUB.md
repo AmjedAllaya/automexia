@@ -711,11 +711,13 @@ architecture page.
 
 ## Keyboard, accessibility, and input contract
 
-The first release exposes `Connection Hub: Open` in the application menu and
-command palette. A default global shortcut is assigned only through the typed
-keybinding registry after cross-platform collision testing; user bindings can
-always target the action. This avoids stealing shell/editor or existing pane
-shortcuts merely to match another application.
+The first release exposes `Connection Hub: Open` in the command palette and
+typed keybinding registry. Its collision-tested default is `Ctrl+Shift+H` on
+Windows/Linux/BSD and `Cmd+Shift+H` on macOS; user bindings can target
+`OpenConnectionHub`. The action is inactive while Search, Vi mode, or an
+alternate-screen application owns input. Opening it grants no filesystem,
+network, process, authentication, listener, or PTY authority and never sends
+input to the terminal.
 
 Within the Hub:
 

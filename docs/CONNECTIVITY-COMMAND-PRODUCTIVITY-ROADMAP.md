@@ -295,6 +295,10 @@ platform/accessibility release evidence is **Partially done**.
   grants. Each review token belongs to its initiating screen; another route
   cannot display, confirm, cancel, or revoke it. No selected path is persisted
   or logged; link/reparse and stale-token validation fail closed.
+- [x] **Fully done** — Register a configurable `OpenConnectionHub` action with
+  mnemonic `Ctrl+Shift+H` / `Cmd+Shift+H` defaults, exact palette labels, and
+  cross-platform collision/mode-ownership tests. The launcher only opens the
+  existing read-only controller and adds no terminal or connection authority.
 - [x] **Fully done** — Render the real topmost modal with search, source,
   favorites, recent, tags, grouping, clear-filters, virtualized selection,
   inspector, setup/loading/error/filtered states, keyboard, pointer, IME, focus
@@ -320,6 +324,29 @@ platform/accessibility release evidence is **Partially done**.
 Exit: users can safely browse, diagnose, tag, and favorite reviewed D4 inventory
 without connection, authentication, provider, process, network, listener, or
 PTY authority. D5.2 remains disabled.
+
+### User-visible shortcut completion audit (2026-08-21)
+
+Scope: every command-palette feature that previously had a blank or mismatched
+default. Internal/configuration-only actions remain intentionally outside this
+table; a shortcut is not added merely to increase coverage.
+
+| Feature | Previous evidence | Resulting status | Windows/Linux/BSD | macOS |
+|---|---|---|---|---|
+| Connection Hub | Palette action only; no typed/default binding | **Fully done locally** | `Ctrl+Shift+H` | `Cmd+Shift+H` |
+| Quick Actions | Palette route only; no typed/default binding | **Fully done locally** | `Ctrl+Shift+O` | `Cmd+Shift+O` |
+| Extensions marketplace | Palette route only; no typed/default binding | **Fully done locally** | `Ctrl+Shift+M` | `Cmd+Shift+M` |
+| Font browser | Palette route only; no typed/default binding | **Fully done locally** | `Ctrl+Shift+L` | `Cmd+Shift+L` |
+| Search backward | Working binding; palette label missing | **Fully done** | `Ctrl+Shift+B` | `Cmd+B` |
+| Appearance | Windows-only default; Linux/macOS incomplete | **Fully done locally** | `Alt+Shift+T` | `Cmd+Alt+Shift+T` |
+| Close tab / close surface / close other tabs | Actions existed; labels/defaults overlapped or were blank | **Fully done locally** | `Ctrl+F4` / `Ctrl+Shift+W` / `Ctrl+Shift+F4` | `Cmd+Shift+W` / `Cmd+W` / `Cmd+Alt+W` |
+
+The four launcher actions have stable configuration names and share their
+existing Screen-owned routes. They are inactive under Search, Vi, and
+alternate-screen ownership and never insert or execute PTY input. Host-
+independent tests build all three binding tables; active-platform palette
+completeness is tested on each native job. Native macOS/Linux keyboard-layout
+and controlled assistive-technology evidence remain external release gates.
 
 ## F4 - activate D3 exact-argument process and PTY lifecycle
 
@@ -694,7 +721,8 @@ These do not become silently complete from local Windows development:
 
 The current blocking action is protected acceptance or supersession of
 ADR 0012, which keeps F1 and F2 **Partially done** despite both local contract
-slices passing. After that decision, the next primary implementation phase is
-**F3 - implement D5.1 read-only Connection Hub**. P1 autocomplete research is
-independently safe; no later phase should be marked started until its listed
-dependencies and evidence pass.
+slices passing. F3/D5.1 is fully implemented locally. After the protected
+decision, the next primary implementation phase is **F4 - activate D3
+exact-argument process and PTY lifecycle**, followed by F5 managed OpenSSH.
+P1 autocomplete research is independently safe; no later phase should be
+marked started until its listed dependencies and evidence pass.

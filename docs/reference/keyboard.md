@@ -19,6 +19,8 @@ the action is mode-sensitive.
 | `Ctrl+T` | Create a window-level tab. |
 | `Ctrl+Shift+T` | Create an independent tab inside the selected pane. |
 | `Ctrl+Shift+W` | Close the selected local tab, split, or window tab—whichever owns focus. |
+| `Ctrl+F4` | Close the current local tab, or the current window-level tab when no extra local tab exists; never remove a split. |
+| `Ctrl+Shift+F4` | Close every other window-level tab. |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous window-level tab. |
 | `Alt+PageDown` / `Alt+PageUp` | Next / previous local tab inside the selected pane. |
 | `Ctrl+1` … `Ctrl+8`; `Ctrl+9` | Select window tab 1…8; select the last tab. Windows only. |
@@ -54,9 +56,13 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `F11` or `Alt+Enter` | Toggle fullscreen on Windows. |
 | `Ctrl+Alt+I` | Preview the selected or pointer-targeted local raster image. |
 | `Ctrl+Shift+P` | Open the command palette. |
+| `Ctrl+Shift+H` | Open the read-only Connection Hub. |
+| `Ctrl+Shift+O` | Open Quick Actions search and review. |
+| `Ctrl+Shift+M` | Open the Extensions marketplace. |
+| `Ctrl+Shift+L` | List registered font families. |
 | `Ctrl+,` (Windows) / `Ctrl+Shift+,` (Linux/BSD) | Open the configuration file in the configured editor. |
 | `Ctrl+Alt+Space` | Toggle the quake window on Windows. |
-| `Alt+Shift+T` | Toggle light/dark appearance on Windows. |
+| `Alt+Shift+T` | Toggle light/dark appearance on Windows and Linux/BSD. |
 
 ## macOS defaults
 
@@ -65,6 +71,8 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `Cmd+N` | Create an independent OS window. |
 | `Cmd+T` / `Cmd+Shift+T` | Create a window tab / local tab in the selected pane. |
 | `Cmd+W` | Close the selected local tab, split, or window tab. |
+| `Cmd+Shift+W` | Close the current local tab, or the current window-level tab when no extra local tab exists; never remove a split. |
+| `Cmd+Alt+W` | Close every other window-level tab. |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous window-level tab. |
 | `Cmd+Shift+[` / `Cmd+Shift+]` | Previous / next window-level tab. |
 | `Cmd+Alt+[` / `Cmd+Alt+]` | Previous / next local tab in the selected pane. |
@@ -83,6 +91,11 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `Ctrl+Cmd+F` | Toggle fullscreen. |
 | `Cmd+Alt+I` | Preview selected image. |
 | `Cmd+Shift+P` | Open command palette. |
+| `Cmd+Shift+H` | Open the read-only Connection Hub. |
+| `Cmd+Shift+O` | Open Quick Actions search and review. |
+| `Cmd+Shift+M` | Open the Extensions marketplace. |
+| `Cmd+Shift+L` | List registered font families. |
+| `Cmd+Alt+Shift+T` | Toggle light/dark appearance. |
 | `Cmd+,` | Open the configuration file. |
 | `Cmd+Q`, `Cmd+H`, `Cmd+Alt+H`, `Cmd+M` | Quit, hide, hide others, minimize. |
 
@@ -158,7 +171,9 @@ SelectNextSplit, SelectPrevSplit, SelectPaneLeft, SelectPaneRight,
 SelectPaneUp, SelectPaneDown, SelectNextSplitOrTab,
 SelectPrevSplitOrTab, MoveDividerUp, MoveDividerDown, MoveDividerLeft,
 MoveDividerRight, ToggleViMode, ToggleAppearanceTheme, ToggleFullscreen,
-OpenCommandPalette, PreviewSelectedImage, ReceiveChar, None
+OpenCommandPalette, OpenConnectionHub, OpenActionCenter,
+OpenExtensionMarketplace, OpenFontBrowser, PreviewSelectedImage, ReceiveChar,
+None
 ```
 
 Parameterized actions are `SelectTab(N)`, `Scroll(N)`, and `Run(PROGRAM
@@ -174,6 +189,13 @@ reporting, and the line editor each have scoped ownership. Automexia never
 sends terminal-owned selection motions to the PTY. See
 [Architecture](../developer/architecture.md#keyboard-compatibility-boundary) for why one
 global shortcut table is not used across every mode and OS.
+
+The four app-surface launchers are inactive while Search, Vi mode, or an
+alternate-screen terminal application owns input. They only open application
+UI: Connection Hub remains read-only, and Quick Actions still requires its
+normal review/insert step. None of these shortcuts writes to or executes in the
+PTY. The mnemonic letters are **H**ub, **O**pen actions, **M**arketplace, and
+**L**ist fonts.
 
 
 ## Ghostty compatibility policy
@@ -203,6 +225,7 @@ the [Ghostty compatibility roadmap](../project/roadmap.md).
 | `Ctrl`+`T` | new window-level tab | forwarded to the shell |
 | `Ctrl`+`Shift`+`T` | new pane-local independent tab | new window-level tab |
 | `Ctrl`+`Shift`+`R` / `Ctrl`+`Shift`+`D` | fresh right/down split | Ghostty uses `Ctrl`+`Shift`+`O` / `Ctrl`+`Shift`+`E` |
+| `Ctrl`+`Shift`+`O` | open reviewed Quick Actions | Ghostty uses it for a fresh split; an explicit future Ghostty profile must replace this trigger atomically |
 | `Ctrl`+`R` / `Ctrl`+`D` | clone active session right/down | forwarded to history search / EOF |
 | `Ctrl`+`Alt`+`R` / `Ctrl`+`Alt`+`D` | explicit history-search / EOF passthrough | available for profile-specific actions |
 | `Alt`+Arrow | focus the nearest pane geometrically | geometric split focus uses profile-specific chords |

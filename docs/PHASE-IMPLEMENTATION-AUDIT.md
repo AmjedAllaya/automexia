@@ -497,7 +497,11 @@ already-opened private state and performs no scan, process, network,
 authentication, provider, listener, PTY, or credential work.
 
 The command palette exposes a distinct read-only Connection Hub action. The
-real Sugarloaf modal supports an explicit parented native multi-file picker,
+typed `OpenConnectionHub` registry action and `Ctrl+Shift+H` / `Cmd+Shift+H`
+defaults are fully implemented locally, collision-tested across constructed
+Windows, Linux/BSD, and macOS tables, and suppressed under Search, Vi, and
+alternate-screen ownership. The real Sugarloaf modal supports an explicit
+parented native multi-file picker,
 canonical-path review, confirm/cancel, and a compact first-run setup with one
 primary action. Search, tag/favorite/recent/source filters, grouping, and
 virtualized navigation appear only with a usable catalog; contextual Clear

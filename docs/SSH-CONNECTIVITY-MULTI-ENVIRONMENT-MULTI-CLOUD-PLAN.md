@@ -261,8 +261,11 @@ versioned and readable. No migration or source-file mutation is introduced.
   shutdown, scan cancellation, grant clearing, worker wake, and deterministic
   join for the application lifetime. Its capacity-two inbox never blocks the
   caller; saturation publishes `connection-worker-busy` without secret/path data.
-- [x] **Fully done** — Add an `Open Connection Hub` action/command-palette entry and a
-  window-level modal controller. Opening the Hub must read only the already
+- [x] **Fully done** — Add an `Open Connection Hub` typed action,
+  command-palette entry, mnemonic `Ctrl+Shift+H` / `Cmd+Shift+H` default, and a
+  window-level modal controller. Cross-platform tables are collision-tested;
+  Search, Vi, and alternate-screen owners suppress the launcher. Opening the
+  Hub must read only the already
   opened private state and must not scan, launch, authenticate, connect, or
   resize a PTY.
 - [x] **Fully done** — Implement user-controlled “choose exact files” flow. It must canonicalize
