@@ -11,7 +11,10 @@ provenance, governance, packaging, workflow, CODEOWNERS, audited-base, terminal
 context/process, extension contract/runtime, SSH extension, session-launch
 fixture, or security ADR paths change. The pull-request author, bot accounts,
 case-only duplicate logins, dismissed reviews, and stale superseded reviews do
-not count.
+not count. Each retained approval carries the reviewed commit and must match the
+exact current pull-request head; malformed or missing commit IDs fail closed.
+Review API input is capped at 4 MiB and 10,000 records, and only validated
+login/commit forms may reach the GitHub environment file.
 
 This CI check is defense in depth, not a substitute for server-side protection.
 The repository ruleset must require the policy check and prevent a pull request

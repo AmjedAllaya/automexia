@@ -357,8 +357,9 @@ but production activation is blocked.
 - [ ] **Partially done (external prerequisite)** — Accept or supersede ADR 0012
   with two current independent human approvals and non-bypassable server-side
   protection. Local CI now protects the M2 authority paths and excludes the
-  author, bots, and duplicate logins; the repository currently lacks the needed
-  reviewers/ruleset enforcement.
+  author, bots, duplicate logins, and stale/malformed reviews not bound to the
+  exact pull-request head; the repository currently lacks the needed reviewers/
+  ruleset enforcement.
 - [ ] **Not done** — Bind a real trusted package attestation and implement one
   application-owned ExternalToolRunner with exact executable/argv, bounded
   allowlisted environment, validated cwd, null/PTY stdin policy, output policy,

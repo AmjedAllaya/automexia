@@ -110,7 +110,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          approvals=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/reviews" --paginate --slurp --jq '[add | group_by(.user.login)[] | sort_by(.submitted_at) | last | select(.state == "APPROVED" and .user.type == "User") | .user.login] | unique | join(",")')
+          approvals=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/reviews" --paginate --slurp |
+            python tools/ci/check_pr_policy.py --format-approvals)
           echo "APPROVAL_LOGINS=$approvals" >> "$GITHUB_ENV"
       - name: PR title, DCO, documentation, changelog, and protected reviews
         if: github.event_name == 'pull_request'

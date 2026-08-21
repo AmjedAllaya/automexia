@@ -366,7 +366,7 @@ process/PTY/network authority was added.
 
 | M2 area | Classification | Current evidence | Missing exit proof |
 |---|---|---|---|
-| Protected review policy | Partially done | CI now treats terminal context/process ownership, extension API/runtime, the SSH extension, session-launch fixtures/checkers, security ADRs, and the policy itself as protected. Approval counting is case-normalized and excludes the PR author and bots. | Two current independent human approvals and non-bypassable server-side enforcement are unavailable. |
+| Protected review policy | Partially done | CI now treats terminal context/process ownership, extension API/runtime, the SSH extension, session-launch fixtures/checkers, security ADRs, and the policy itself as protected. Its bounded review adapter validates login/commit forms; counting is case-normalized, excludes the PR author and bots, and rejects stale or malformed records unless the reviewed commit matches the exact PR head. | Two current independent human approvals and non-bypassable server-side enforcement are unavailable. |
 | Inherited S0/v0.4 gates | Not done externally | Local earlier-phase gates exist, but there is no current-revision hosted CI evidence. | Green required CI/CodeQL/native jobs on the protected M2 revision. |
 | Trusted package attestation | Not done | The test-only broker validates a supplied reviewed identity fixture. | A real loader/build provenance receipt with exact digest, version, contract, verification, and revocation state. |
 | Exact runner and lifecycle | Partially done as a pure model; not implemented in production | The test-only broker owns exact scope, literal argv, cwd/environment bounds, replay-safe leases, revocation, redacted authorization audit, and 1/10/50 pure lifecycle tests. | One app-owned runner, atomic native check-to-spawn, PTY/route ownership, teardown, and native proof. |
@@ -385,7 +385,8 @@ permanent repository claim; re-check it before resuming M2.
   review and two protected-path approvals required by ADR 0003, or replace it
   through an equally specific accepted ADR. Local CI now identifies the M2
   authorities and accepts only distinct non-author, non-bot approvals; the
-  actual independent reviewers and server-side enforcement are missing.
+  actual independent exact-head reviewers and server-side enforcement are
+  missing.
 - [ ] **Not done (external prerequisite)** — Confirm all inherited S0/v0.4
   hostile-output and release gates are green on the exact protected M2 revision.
 - [ ] **Not done** — Bind a real trusted package-loader/attestation result to the
