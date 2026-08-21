@@ -222,6 +222,20 @@ and recording its size/host manifest.
 
 ### Non-activated session-launch review boundary
 
+The pull-request policy is part of this fail-closed boundary. It classifies the
+terminal context/process owner, extension API/runtime, SSH extension,
+session-launch fixtures/checkers, security ADRs, workflow, and policy checker as
+protected. Approval normalization rejects the author, bots, and case-only
+duplicates. Run its regression suite with:
+
+```text
+python tools/ci/test_pr_policy.py
+```
+
+This local check is defense in depth. Production activation still requires two
+actual independent human approvals and server-side rules that prevent the
+workflow/checker from weakening itself.
+
 The proposed D3 broker is compiled only by frontend tests. Run its versioned
 D0/D3 contract, mutation checks, and capability/package constructors with:
 

@@ -30,8 +30,39 @@ PROTECTED_PREFIXES = (
     "rio-window/",
     "sugarloaf/",
     "teletypewriter/",
+    "apps/automexia-terminal/src/context/",
+    "automexia-extension-api/",
+    "automexia-extension-runtime/",
+    "docs/adr/",
+    "docs/project/adr/",
+    "extensions/devops-ssh/",
+    "tests/fixtures/session-launch/",
 )
-ENGINE_PREFIXES = PROTECTED_PREFIXES[-12:]
+PROTECTED_EXACT_PATHS = {
+    ".github/BRANCH-PROTECTION.md",
+    "docs/SESSION-LAUNCH-BROKER.md",
+    "tools/ci/check_pr_policy.py",
+    "tools/ci/test_pr_policy.py",
+    "tools/ci/check_session_launch_d0.py",
+    "tools/ci/test_session_launch_d0.py",
+}
+ENGINE_PREFIXES = (
+    "corcovado/",
+    "librio/",
+    "librio-wasm/",
+    "rio-backend/",
+    "rio-fonts/",
+    "rio-graphics/",
+    "rio-grapheme-width/",
+    "rio-notifier/",
+    "rio-vt/",
+    "rio-window/",
+    "sugarloaf/",
+    "teletypewriter/",
+    "apps/automexia-terminal/src/context/",
+    "automexia-extension-api/",
+    "automexia-extension-runtime/",
+)
 EXEMPT_LABELS = {"documentation", "tests-only", "internal-maintenance"}
 TITLE = re.compile(
     r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)"
@@ -66,6 +97,26 @@ def git(*args: str) -> str:
     return result.stdout
 
 
+def protected_paths(changed: set[str]) -> list[str]:
+    return sorted(
+        path
+        for path in changed
+        if path in PROTECTED_EXACT_PATHS
+        or any(path.startswith(prefix) for prefix in PROTECTED_PREFIXES)
+    )
+
+
+def independent_approval_logins(raw: str, author: str) -> set[str]:
+    author_login = author.strip().casefold()
+    return {
+        login
+        for value in raw.split(",")
+        if (login := value.strip().casefold())
+        and login != author_login
+        and not login.endswith("[bot]")
+    }
+
+
 def missing_documentation_for(changed: set[str]) -> list[str]:
     if any(
         path.startswith("docs/") and path.endswith(".md") for path in changed
@@ -89,11 +140,9 @@ def main() -> int:
     labels = {
         label.strip() for label in os.environ.get("PR_LABELS", "").split(",") if label
     }
-    approvals = {
-        login.strip()
-        for login in os.environ.get("APPROVAL_LOGINS", "").split(",")
-        if login.strip()
-    }
+    approvals = independent_approval_logins(
+        os.environ.get("APPROVAL_LOGINS", ""), os.environ.get("PR_AUTHOR", "")
+    )
 
     failures: list[str] = []
     if not TITLE.fullmatch(title):
@@ -119,11 +168,7 @@ def main() -> int:
         if commit and not SIGNOFF.search(body):
             failures.append(f"commit {commit[:12]} lacks a valid DCO Signed-off-by line")
 
-    protected = sorted(
-        path
-        for path in changed
-        if any(path == prefix or path.startswith(prefix) for prefix in PROTECTED_PREFIXES)
-    )
+    protected = protected_paths(changed)
     if protected and len(approvals) < 2:
         failures.append(
             "protected paths require two distinct approving reviewers: "

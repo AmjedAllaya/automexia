@@ -17,6 +17,36 @@ SPEC.loader.exec_module(POLICY)
 
 
 class PullRequestDocumentationPolicyTests(unittest.TestCase):
+    def test_session_launch_and_policy_authorities_are_protected(self) -> None:
+        changed = {
+            ".github/BRANCH-PROTECTION.md",
+            "apps/automexia-terminal/src/context/launch_broker.rs",
+            "automexia-extension-api/src/lib.rs",
+            "automexia-extension-runtime/src/lib.rs",
+            "docs/SESSION-LAUNCH-BROKER.md",
+            "docs/adr/0012-first-party-ssh-and-session-launch-boundary.md",
+            "docs/project/adr/0012-first-party-ssh-and-session-launch-boundary.md",
+            "extensions/devops-ssh/src/lib.rs",
+            "tests/fixtures/session-launch/d0-d3-contract-v2.json",
+            "tools/ci/check_pr_policy.py",
+            "tools/ci/check_session_launch_d0.py",
+        }
+
+        self.assertEqual(POLICY.protected_paths(changed), sorted(changed))
+
+    def test_non_authoritative_roadmap_prose_is_not_a_protected_path(self) -> None:
+        changed = {"docs/ROADMAP.md", "docs/user-guide/connection-hub-and-ssh.md"}
+
+        self.assertEqual(POLICY.protected_paths(changed), [])
+
+    def test_independent_approvals_exclude_author_bots_and_case_duplicates(self) -> None:
+        self.assertEqual(
+            POLICY.independent_approval_logins(
+                "Alice,alice,PR-Author,dependabot[bot],Bob", "pr-author"
+            ),
+            {"alice", "bob"},
+        )
+
     def test_source_change_without_documentation_is_rejected(self) -> None:
         self.assertEqual(
             POLICY.missing_documentation_for({"apps/automexia-terminal/src/main.rs"}),
