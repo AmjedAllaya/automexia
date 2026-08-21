@@ -25,7 +25,7 @@ machine-readable authority is
 | DevOps short aliases | Opt-in native-wins five-shell generations with collision review, private atomic publication, reload, rollback, diagnostics, and exact uninstall | CP3.0/CP3.1 implemented locally | Hosted native/macOS/WSL and longitudinal evidence |
 | Persistent Quick Actions | Bounded private store, joined application worker, layered local search, reviewed placeholders, dry-run CLI/import/export, insert/copy, reviewed static packs, native imports, and trusted local workspace task bridges | CP2.2/CP3.2/CP3.3 implemented locally | Hosted native and controlled accessibility/performance evidence |
 | Provider-aware candidates | Existing status context only, not completion | Not implemented and forbidden on input | CP4 after D6 |
-| Automexia suggestion surface | No app-rendered buffer-aware suggestion UI or editor bridge | Not implemented; CP1/native behavior remains authoritative | CP5 research and separate bridge ADR |
+| Automexia suggestion surface | No app-rendered buffer-aware suggestion UI or editor bridge | CP5.0 research fully done; CP5.1-CP5.6 not implemented; CP1/native behavior remains authoritative | Retain-CP1 report and a separate accepted bridge ADR before any P2 |
 
 This audit is deliberately strict: prompt path styling, icon-aware `ls`, command
 palette commands, OpenSSH host inventory, CP3 alias projection, and shell

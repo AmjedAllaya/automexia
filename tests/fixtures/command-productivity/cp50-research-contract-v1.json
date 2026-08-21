@@ -1,0 +1,168 @@
+{
+  "schema": 1,
+  "phase": "CP5.0",
+  "status": "research-complete-cp1-retained",
+  "decision": {
+    "p2": "deferred",
+    "default_experience": "cp1-shell-native",
+    "runtime_dependency": "none",
+    "runtime_surface": "none",
+    "review_required_to_change": true,
+    "rationale": "No single supported, mutation-free, persistent editor-state bridge preserves every native shell owner; CP1 already supplies the complete reversible completion path."
+  },
+  "capabilities": {
+    "runtime_activation": false,
+    "process_spawn": false,
+    "pty_access": false,
+    "network": false,
+    "secret_read": false,
+    "history_read": false,
+    "buffer_persistence": false,
+    "terminal_grid_inference": false,
+    "profile_mutation": false,
+    "keybinding_mutation": false,
+    "implicit_enter": false
+  },
+  "limits": {
+    "buffer_bytes": 16384,
+    "candidate_count": 512,
+    "candidate_bytes": 1024,
+    "batch_bytes": 524288,
+    "matcher_deadline_ms": 16,
+    "benchmark_warmups": 20,
+    "benchmark_samples": 200
+  },
+  "shell_matrix": [
+    {
+      "id": "powershell-7",
+      "baseline": "PowerShell 7.2+ with PSReadLine 2.2.2+",
+      "native_owner": "PSReadLine",
+      "prototype": "ICommandPredictor plug-in inside the existing host",
+      "verdict": "native-only",
+      "local_evidence": "PowerShell 7.6.4 and PSReadLine 2.4.5"
+    },
+    {
+      "id": "windows-powershell-5.1",
+      "baseline": "Windows PowerShell 5.1",
+      "native_owner": "PSReadLine or console host",
+      "prototype": "no supported predictor plug-in contract",
+      "verdict": "native-only",
+      "local_evidence": "Windows PowerShell 5.1 and PSReadLine 2.0.0"
+    },
+    {
+      "id": "bash",
+      "baseline": "Bash 5.x with Readline",
+      "native_owner": "Readline programmable completion",
+      "prototype": "COMP_LINE and COMP_POINT only inside completion",
+      "verdict": "native-only",
+      "local_evidence": "Bash 5.2.21 no-profile startup"
+    },
+    {
+      "id": "zsh",
+      "baseline": "Zsh 5.8+ with ZLE and compsys",
+      "native_owner": "ZLE and compsys",
+      "prototype": "BUFFER and CURSOR only inside a completion widget",
+      "verdict": "native-only",
+      "local_evidence": "external native gate"
+    },
+    {
+      "id": "fish",
+      "baseline": "Fish 3.6+ native editor",
+      "native_owner": "Fish autosuggestion and completion pager",
+      "prototype": "commandline state only inside a Fish function or binding",
+      "verdict": "native-only",
+      "local_evidence": "external native gate"
+    },
+    {
+      "id": "cmd",
+      "baseline": "supported Windows Command Prompt",
+      "native_owner": "Command Prompt",
+      "prototype": "no supported rich completion or editor-state API",
+      "verdict": "native-only",
+      "local_evidence": "Windows 10.0.26200.9168 no-AutoRun startup"
+    },
+    {
+      "id": "wsl",
+      "baseline": "WSL2 with a supported guest shell",
+      "native_owner": "guest shell editor",
+      "prototype": "delegate to the guest shell; no host grid inference",
+      "verdict": "native-only",
+      "local_evidence": "WSL2 available with Bash guest evidence"
+    }
+  ],
+  "bridge_prototype": {
+    "owner": "research-only pure model",
+    "source": "tools/ci/check_command_productivity_cp50.py",
+    "state": [
+      "ephemeral buffer",
+      "UTF-8 byte cursor",
+      "shell-owned replacement span",
+      "generation"
+    ],
+    "candidate_result": [
+      "generation",
+      "bounded replacement text"
+    ],
+    "insertion_owner": "native-shell-editor",
+    "transport": "none",
+    "persistence": "none",
+    "execution": "never"
+  },
+  "benchmark": {
+    "manifest": "tools/research/cp5-matcher-benchmark/Cargo.toml",
+    "report": "docs/research/CP5-AUTOCOMPLETE-RESEARCH.md",
+    "candidate": "nucleo-matcher=0.3.1",
+    "corpus_sizes": [
+      32,
+      128,
+      512
+    ],
+    "cases": [
+      "ascii-prefix-and-token",
+      "unicode-and-combining",
+      "long-common-prefix",
+      "stale-generation-cancellation"
+    ],
+    "publish_rule": "reject-stale-generation-before-publish",
+    "runtime_dependency": false
+  },
+  "dependency_decisions": [
+    {
+      "name": "in-tree-deterministic-matcher",
+      "role": "retain",
+      "boundary": "existing local quick-action and palette search"
+    },
+    {
+      "name": "nucleo-matcher",
+      "role": "research-only-rejected-for-runtime",
+      "boundary": "standalone reproducible benchmark"
+    },
+    {
+      "name": "reedline",
+      "role": "reference-only",
+      "boundary": "never embed another line editor"
+    },
+    {
+      "name": "carapace",
+      "role": "explicit-external-adapter-only",
+      "boundary": "never bundle or invoke per keystroke"
+    }
+  ],
+  "evidence_dimensions": {
+    "native_completion_and_prediction": "official shell contracts plus CP1 conformance",
+    "startup": "no-profile exact-argument local measurements",
+    "typing_latency": "zero Automexia delta because no runtime surface ships",
+    "memory": "zero Automexia resident delta because no runtime surface ships",
+    "cancellation": "generation rejection prototype and benchmark corpus",
+    "resize": "native shell UI remains owner; CP1 fallback is unchanged",
+    "accessibility": "native shell UI remains owner; controlled screen-reader evidence is external",
+    "disable": "CP1 disable and uninstall contracts remain authoritative",
+    "privacy": "zero shipped delta; no transport, persistence, history read, or grid inference"
+  },
+  "external_gates": [
+    "controlled native Zsh and Fish interaction measurements",
+    "controlled Windows, Linux, and macOS screen-reader assessment",
+    "low-end hardware matcher and shell startup replication",
+    "a separately accepted bridge ADR and machine threat contract before P2"
+  ]
+}
