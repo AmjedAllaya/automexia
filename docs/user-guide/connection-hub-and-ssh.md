@@ -96,6 +96,20 @@ until you select the exact file. Linux/BSD desktop packages need a working XDG
 portal backend or the documented native-dialog fallback; if no picker is
 available, the Hub stays open and fails closed.
 
+## What the next managed-SSH slice currently means
+
+Source builds now contain a tested, non-activated review model for one direct
+OpenSSH alias or literal host. It can reject an unsafe destination and describe
+the intended target, identity readiness, executable, trust policy, risk,
+capability, destination surface, and redacted `ssh <destination>` shape. It is
+not connected to this Hub, always reports M2 approval pending, and cannot launch
+OpenSSH, open the network, create a PTY, reconnect, or write recent-use state.
+
+This model is contributor evidence, not an alternative connection workflow. Do
+not expect a **Connect** button from it. Continue using the system client below;
+if future managed SSH is disabled or unavailable, that manual path remains the
+recovery path.
+
 ## Connect with system OpenSSH today
 
 The read-only Hub does not replace the shell. Use the system client normally:

@@ -13,7 +13,9 @@ fn error(
     ConnectionModelError::new(code, field, detail)
 }
 
-fn hash_serializable(value: &impl Serialize) -> Result<String, ConnectionModelError> {
+pub(super) fn hash_serializable(
+    value: &impl Serialize,
+) -> Result<String, ConnectionModelError> {
     let bytes = serde_json::to_vec(value).map_err(|_| {
         error(
             ConnectionModelErrorCode::MalformedSchema,
@@ -47,7 +49,7 @@ pub fn fingerprint_recipe(
     hash_serializable(&material)
 }
 
-fn digest_is_valid(value: &str) -> bool {
+pub(super) fn digest_is_valid(value: &str) -> bool {
     value.len() == 64
         && value
             .bytes()

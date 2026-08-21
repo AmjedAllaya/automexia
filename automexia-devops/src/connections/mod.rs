@@ -4,12 +4,18 @@
 //! credential, PTY, listener, renderer, or GPU authority. They validate public
 //! intent and produce immutable dry-run plans for later application-owned review.
 
+mod direct_openssh;
 mod documents;
 mod model;
 mod planner;
 mod state;
 mod validation;
 
+pub use direct_openssh::{
+    review_direct_openssh, DirectOpenSshDestinationKind, DirectOpenSshHostTrustPolicy,
+    DirectOpenSshIdentityReadiness, DirectOpenSshRequest, DirectOpenSshReview,
+    MAX_DIRECT_OPENSSH_DESTINATION_BYTES,
+};
 pub use documents::{
     parse_profile_document_json, parse_recipe_document_json, validate_profile_document,
     validate_recipe_document,
