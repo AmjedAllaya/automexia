@@ -45,8 +45,7 @@ fn event_affects_configuration(config_root: &Path, event: &Event) -> bool {
         // it) can be created, removed, or renamed around the active theme. A
         // concrete non-TOML file, on the other hand, cannot be consumed by
         // the theme loader and should not reload the application.
-        path.extension()
-            .is_none_or(|extension| extension == "toml")
+        path.extension().is_none_or(|extension| extension == "toml")
     })
 }
 
@@ -134,8 +133,7 @@ mod tests {
     fn theme_directory_changes_trigger_reload() {
         let root = root();
         for path in [root.join("themes"), root.join("themes").join("team")] {
-            let event =
-                Event::new(EventKind::Remove(RemoveKind::Folder)).add_path(path);
+            let event = Event::new(EventKind::Remove(RemoveKind::Folder)).add_path(path);
             assert!(event_affects_configuration(&root, &event));
         }
     }
@@ -159,7 +157,9 @@ mod tests {
         for path in [
             root.join("logs").join("automexia.log"),
             root.join("actions").join(["actions", ".toml"].concat()),
-            root.join("generated").join("aliases").join("powershell.ps1"),
+            root.join("generated")
+                .join("aliases")
+                .join("powershell.ps1"),
             root.join("extensions").join("state.json"),
         ] {
             let event = Event::new(EventKind::Modify(ModifyKind::Any)).add_path(path);

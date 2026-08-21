@@ -1917,7 +1917,9 @@ mod prompt_visual_anchor_tests {
         let mut renderer = Renderer::new(&Config::default());
         renderer.command_palette.set_enabled(true);
         renderer.command_palette.set_query("git status".to_string());
-        renderer.search.set_active_search(Some("needle".to_string()));
+        renderer
+            .search
+            .set_active_search(Some("needle".to_string()));
         renderer.confirm_quit.set_active(true);
         renderer.is_window_focused = false;
         renderer.is_vi_mode_enabled = true;
