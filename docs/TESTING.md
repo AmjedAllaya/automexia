@@ -1615,11 +1615,37 @@ The authoritative runtime fixture is
 Native hosted macOS and clean-runner evidence remains required before a stable
 release; local WSL success is not represented as macOS evidence.
 
-## Planned CP5 Shell Completion and Suggestions gate
+## Command-productivity CP5.0 research
 
-CP5 has no runtime test command yet because implementation is forbidden until
-its bridge ADR, threat amendment, compatibility version, and machine contract
-are accepted. When activated, PR and nightly ownership must cover:
+CP5.0 has a deterministic, non-activating evidence gate:
+
+    python tools/ci/check_command_productivity_cp50.py
+    python tools/ci/test_command_productivity_cp50.py
+    cargo fmt --manifest-path tools/research/cp5-matcher-benchmark/Cargo.toml -- --check
+    cargo clippy --manifest-path tools/research/cp5-matcher-benchmark/Cargo.toml --all-targets --locked -- -D warnings
+    cargo test --manifest-path tools/research/cp5-matcher-benchmark/Cargo.toml --locked
+    cargo run --release --manifest-path tools/research/cp5-matcher-benchmark/Cargo.toml --locked --quiet
+
+The policy tests fix false runtime capabilities, seven shell-family decisions,
+UTF-8 byte-span validation, stale-generation rejection, count/byte ceilings,
+control-character rejection, replacement-only insertion, dependency isolation,
+and roadmap/documentation wiring. The locked standalone benchmark covers
+32/128/512 candidate corpora, Unicode and combining text, long prefixes, and
+cancellation after a deterministic generation change. It is not a root
+workspace or release dependency.
+
+The local Windows report includes PowerShell 7/5.1, CMD, Bash/WSL startup,
+three repeated matcher runs with 20 warmups and 200 samples, compile/binary/
+startup cost, and the first cold WSL timeout. Native Zsh/Fish, Linux/macOS
+interaction, controlled screen readers, and low-end hardware replication are
+reported as external, not passing. See
+[CP5.0 native autocomplete research](research/CP5-AUTOCOMPLETE-RESEARCH.md).
+
+## Planned CP5.1-CP5.6 Shell Completion and Suggestions gate
+
+CP5.1-CP5.6 have no runtime test command because implementation is forbidden
+until a separate bridge ADR, threat amendment, compatibility version, and
+machine contract are accepted. When activated, PR and nightly ownership cover:
 
 | Layer | PR evidence | Nightly/release evidence |
 |---|---|---|

@@ -42,6 +42,7 @@ The repository also contains substantial v0.5 foundations. Native shell completi
 | Session-only shell integration | **Available now** | [Shell and command productivity](guide/shell-productivity.md) |
 | Native shell completion | **Implemented locally; release evidence still gated** | [Shell and command productivity](guide/shell-productivity.md) |
 | Typed Quick Actions and opt-in aliases | **Implemented locally; release evidence still gated** | [Shell and command productivity](guide/shell-productivity.md) |
+| Optional Automexia autocomplete surface | **Research complete; no runtime surface approved** | [CP5.0 research](research/CP5-AUTOCOMPLETE-RESEARCH.md), [Roadmap](project/roadmap.md) |
 | Static OpenSSH inventory and read-only Hub | **Implemented locally; release evidence gated; no launch authority** | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md) |
 | Connection Hub records/review/dry-run models | **Implemented locally; authority disabled** | [Remote connections](guide/remote-connections.md) |
 | Managed OpenSSH sessions | **Planned** | [Remote connections](guide/remote-connections.md), [Roadmap](project/roadmap.md) |

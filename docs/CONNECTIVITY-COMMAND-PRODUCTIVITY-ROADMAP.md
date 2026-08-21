@@ -80,7 +80,8 @@ documentation, feature assurance, and a change fragment.
 | Aliases and DevOps packs | CP3.0-CP3.2 | Fully done | compiler, private generations, shell activation, packs, fuzz/bench/contracts | Hosted native and controlled baseline evidence |
 | Trusted local workspace tasks | CP3.3 | Fully done | native imports, workspace store/trust/runtime/CLI tests and ADR 0021 | Hosted native/accessibility and longitudinal evidence |
 | Provider-aware Quick Actions | CP4 | Not done | Specification only | Activated D3 and public cached D5/D6 context |
-| Automexia suggestion surface | CP5.0-CP5.6 | Not done | Detailed bridge/source/ranking/UI plan only | Research decision, separate ADR, protocol, sources, ranking, UI, shell and release gates |
+| Autocomplete research | CP5.0/P1 | Fully done | Shell/API matrix, pure bounded insertion prototype, locked matcher benchmark, dependency/privacy review, retain-CP1 decision | External low-end/Zsh/Fish/accessibility evidence applies only to a future P2 proposal |
+| Automexia suggestion surface | CP5.1-CP5.6/P2-P4 | Not done | Detailed bridge/source/ranking/UI plan only | Separate accepted ADR, protocol, sources, ranking, UI, shell and release gates |
 | Ecosystem packs and AI | CP6/D7 | Not done | Deferred specifications | Separate sandbox, provenance, privacy, quota, and revocation programs |
 
 The workspace term has two separate meanings and must remain explicit:
@@ -140,8 +141,8 @@ Primary connectivity chain:
 
 Autocomplete lane:
 
-1. P1/CP5.0 research may run in parallel after F1 planning is frozen.
-2. P2/CP5.1 starts only if research approves a safe bridge and a separate ADR.
+1. P1/CP5.0 research is fully done and retains CP1 as the complete solution.
+2. P2/CP5.1 is deferred; a new proposal needs safe-bridge evidence and a separate accepted ADR.
 3. P3/CP5.2-CP5.3 adds local-only sources and deterministic ranking.
 4. P4/CP5.4-CP5.6 adds the optional UI, shell activation, and release gate.
 
@@ -558,27 +559,40 @@ Exit: provider-aware actions never widen provider or session authority.
 
 ## P1 - execute CP5.0 native autocomplete research
 
-Status: Not done. May run in parallel without blocking F2-F5.
+Status: Fully done at the non-activating research boundary. CP1 remains the
+complete solution and P2 is deferred.
 
-- [ ] Measure PowerShell/PSReadLine, Bash/Readline, Zsh/ZLE/compsys, Fish, CMD,
-  and WSL native completion/prediction UX, latency, memory, cancellation,
-  resize, accessibility, startup, and disable behavior.
-- [ ] Prototype editor-owned state/candidate/insertion APIs without profile or
-  keybinding mutation; retain native-only support where no safe bridge exists.
-- [ ] Compare the in-tree matcher with nucleo-matcher on realistic Unicode and
-  stale-generation corpora; review MPL-2.0, advisories, maintenance, features,
-  binary/compile/startup cost, and low-end performance before adoption.
-- [ ] Treat Reedline as a reference and Carapace as an explicit external
-  adapter only; do not embed another line editor.
-- [ ] Publish the build/wrap/adopt decision, supported shell/version matrix,
-  privacy delta, benchmark data, and native fallback proof.
+- [x] **Fully done — native shell/API baseline.** PowerShell/PSReadLine,
+  Bash/Readline, Zsh/ZLE/compsys, Fish, CMD, and WSL ownership, completion/
+  prediction behavior, startup, typing/memory delta, cancellation, resize,
+  accessibility, disable behavior, local evidence, and honest external gates
+  are recorded in
+  [the CP5.0 research report](research/CP5-AUTOCOMPLETE-RESEARCH.md).
+- [x] **Fully done — editor-owned prototype.** The bounded pure model validates
+  ephemeral buffer/cursor/span/generation state and returns a non-executing
+  replacement request without a transport, profile change, or keybinding
+  mutation. Shells without a safe common bridge remain native-only.
+- [x] **Fully done — matcher and dependency comparison.** The locked standalone
+  benchmark covers 32/128/512 candidates, Unicode/combining/common-prefix
+  corpora, stable generations, compile/binary/startup data, MPL-2.0, features,
+  maintenance, advisories, and same-host performance. Low-end replication
+  remains external; nucleo-matcher is rejected for runtime adoption.
+- [x] **Fully done — serious alternatives.** Reedline remains a reference and
+  Carapace remains an explicit external adapter only; no line editor or
+  per-keystroke external process is embedded.
+- [x] **Fully done — published decision.** The shell/version matrix, zero
+  privacy/authority delta, benchmark evidence, CP1 fallback proof, external
+  gates, and rollback are fixed by
+  <code>cp50-research-contract-v1.json</code> and its mutation tests.
 
-Exit: a reviewed decision either approves P2 or records that CP1 remains the
-complete solution. No runtime dependency is added by popularity alone.
+Exit: satisfied by the reviewed retain-CP1/defer-P2 decision. No runtime
+dependency, editor transport, product surface, profile mutation, or keybinding
+mutation was added.
 
 ## P2 - execute CP5.1 editor bridge
 
-Status: Not done; blocked by P1 and a separate accepted ADR.
+Status: Not done; deferred by P1's retain-CP1 decision and blocked on a separate
+accepted ADR before any runtime implementation.
 
 - [ ] Specify a private Windows named pipe and mode-0600 Unix socket protocol;
   never TCP, OSC, terminal output, or implicit port forwarding.
@@ -724,5 +738,6 @@ ADR 0012, which keeps F1 and F2 **Partially done** despite both local contract
 slices passing. F3/D5.1 is fully implemented locally. After the protected
 decision, the next primary implementation phase is **F4 - activate D3
 exact-argument process and PTY lifecycle**, followed by F5 managed OpenSSH.
-P1 autocomplete research is independently safe; no later phase should be
-marked started until its listed dependencies and evidence pass.
+P1 autocomplete research is now **Fully done** with CP1 retained and P2
+deferred. P2-P4 remain **Not done**; no later phase may be marked started until
+its separate ADR, dependencies, and evidence pass.

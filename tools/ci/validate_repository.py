@@ -38,6 +38,9 @@ from check_command_productivity_cp32 import (
 from check_command_productivity_cp33 import (
     validate_repository as validate_command_productivity_cp33,
 )
+from check_command_productivity_cp50 import (
+    validate_repository as validate_command_productivity_cp50,
+)
 from check_session_launch_d0 import validate_repository as validate_session_launch_d0
 from check_documentation_coverage import validate as validate_documentation_coverage
 from check_devops_alias_spec import validate_repository as validate_devops_alias_spec
@@ -320,6 +323,8 @@ def validate() -> None:
     counts["command productivity CP3.2"] = command_productivity_cp32_counts["tests"]
     command_productivity_cp33_counts = validate_command_productivity_cp33()
     counts["command productivity CP3.3"] = command_productivity_cp33_counts["tests"]
+    command_productivity_cp50_counts = validate_command_productivity_cp50()
+    counts["command productivity CP5.0"] = command_productivity_cp50_counts["shells"]
     session_launch_d0_counts = validate_session_launch_d0()
     counts["session launch D0/D3"] = session_launch_d0_counts["scenarios"]
 

@@ -44,7 +44,8 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | CP3.2 | Eleven reviewed static DevOps packs provide 33 disabled-by-default typed actions, an exact-payload digest, truthful health/version/completion evaluation, correct update/overlay/deprecation semantics, exact review previews, stale-revision preflight, and fail-closed alias eligibility. |
 | **Fully done** | CP3.3 | Explicit selected PowerShell/Bash/Zsh/Fish/CMD/Git alias import and exact just/Task/mise workspace bridges are dry-run/CAS managed, bounded, insert-only, path-free digest/revision trusted, revocable, removal-safe, runtime-authorized, fuzzed, benchmarked, and mutation-gated. |
 | **Not done** | CP4 | Capsule/provider actions wait for activated D3 and D5/D6 context. |
-| **Not done** | CP5.0-CP5.6 | The optional suggestion bridge/UI is planned; CP1 remains the complete fallback. |
+| **Fully done** | CP5.0 | Native API/version research, a bounded non-runtime editor-state prototype, 32/128/512 matcher evidence, dependency review, privacy delta, and a retain-CP1/defer-P2 decision are machine-gated. |
+| **Not done** | CP5.1-CP5.6 | The optional bridge, sources, ranking, suggestion UI, shell activation, and release program require a separate accepted ADR; CP1 remains the complete fallback. |
 | **Not done** | CP6 | Signed ecosystem packs and AI tools are deferred to later gates. |
 | **Partially done** | G0 | Shared safety prerequisites exist; fixtures, generation, checksums, and the replacement ADR remain. |
 | **Not done** | G1 | No private typed/compiled keybinding registry exists. |
@@ -188,7 +189,7 @@ until its protected slice passes review and evidence.
 
 | Release/phase | Terminal-core work | First-party extension work | Adopted/wrapped authority | Explicit hold |
 |---|---|---|---|---|
-| v0.5.0 D3-D5 and CP2-CP3 | Finish one `ExternalToolRunner`; generate CLI/help/completion/schema artifacts from typed registries; add bounded search and application-chrome accessibility adapters only after review; preserve exact launch, session, capsule, risk, redaction, and resource policy | Safe OpenSSH inventory; exact SSH/jump/tunnel requests; Connection Review; typed actions, aliases, and first-party packs | System OpenSSH; shell-native editors/completion; planned `clap_complete`, `clap_mangen`, `schemars`, measured `nucleo`, and AccessKit | Native SSH stack, provider SDK bundle, secret vault, structured SFTP, untrusted extensions |
+| v0.5.0 D3-D5 and CP2-CP3 | Finish one `ExternalToolRunner`; generate CLI/help/completion/schema artifacts from typed registries; add bounded search and application-chrome accessibility adapters only after review; preserve exact launch, session, capsule, risk, redaction, and resource policy | Safe OpenSSH inventory; exact SSH/jump/tunnel requests; Connection Review; typed actions, aliases, and first-party packs | System OpenSSH; shell-native editors/completion; planned `clap_complete`, `clap_mangen`, `schemars`, and AccessKit. CP5.0 retained the in-tree matcher after measuring Nucleo. | Native SSH stack, provider SDK bundle, secret vault, structured SFTP, untrusted extensions |
 | Protected credential slice | Opaque identity references, public auth state, protected input, approval/revocation, and canary/redaction rules | Version-aware Teleport/OpenBao/agent integration returning public state only | Agents, FIDO, external vaults, `tsh`, OpenBao/Smallstep; exact `keyring-core` stores plus `secrecy`/`zeroize` only after a custody ADR | Private-key formats, CA, password manager, credential sync, recovery claims |
 | v0.5.1 D6 and CP4 | Immutable per-pane Capsules, explicit refresh, last-known-good state, provider-neutral inventory, provenance/freshness/risk, and cross-pane isolation | Separately enabled AWS, Azure, GCP, Kubernetes, OpenShift, infrastructure, and enterprise-policy adapters | Official provider CLIs/config first; OPA only for an existing organization policy service | Direct provider SDK until CLI/config cannot meet a measured pagination/watch/cancellation/performance need |
 | v0.6+ D7 and CP5-CP6 protected features | Storage/redaction contracts, file-operation states, WIT capabilities, quotas, signed-bundle policy, AI risk/approval boundary | Transfer, Mosh, serial, logs/search, team Git, collaboration, local policy, sandboxed ecosystem, and AI adapters as separate slices | System `sftp`/`scp`, Mosh, Git, SOPS/age, Upterm, optional `rusqlite`, `openssh-sftp-client`, `serialport`, Cedar, Wasmtime/WASI | Telnet disabled by default; custom relay, embedded inference, SQLCipher, and direct SDKs require independent justification |
@@ -465,9 +466,9 @@ remains disabled behind D3.
 
 When CP2-CP4 dependencies permit, CP5 executes in this fixed order:
 
-1. **CP5.0 research/baseline:** measure native UX and evaluate PSReadLine,
-   Bash/Readline, Zsh compsys, Fish, Reedline as a design reference, Nucleo as a
-   benchmark candidate, and Carapace only as an explicit external adapter.
+1. **CP5.0 research/baseline — fully done:** native UX/API evidence, a pure
+   insertion prototype, matcher comparison, and build/wrap/adopt decision retain
+   CP1 and defer P2 without adding a runtime dependency or surface.
 2. **CP5.1 bridge:** approve an opt-in local named-pipe/Unix-socket protocol with
    strict endpoint permissions, peer/session capability, buffer/cursor/span/
    generation state, bounded framing, privacy exclusions, and native fallback.

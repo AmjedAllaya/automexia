@@ -103,7 +103,8 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Productivity | CP3.2 | **Fully implemented locally** | **Partial** | Eleven static provider packs, 33 disabled-by-default actions, health/update/alias-safety, CLI, tests, fuzz, benchmarks, and policy gates are complete; hosted evidence remains. |
 | Productivity | CP3.3 | **Fully implemented locally** | **Partial** | Six explicit native inventory formats, exact just/Task/mise bridges, bounded dry-run/CAS import/workspace/trust/revocation/removal, path-free digest/revision receipts, background cache authorization, final insertion recheck, tests, mutation, fuzz, benchmark, ADR, CLI, and docs are complete; hosted native/accessibility and 30-day evidence remain. |
 | Productivity | CP4 | **Not implemented** | **Blocked** | Requires activated D3 and D5/D6 capsule/provider context. |
-| Productivity | CP5.0-CP5.6 | **Not implemented** | **Not started** | Detailed bridge/sources/ranking/UI/release plan exists; CP1 remains fallback. |
+| Productivity | CP5.0 | **Fully implemented at research boundary** | **Complete locally** | Seven-shell API matrix, pure insertion prototype, locked matcher/dependency evidence, privacy review, and retain-CP1/defer-P2 decision are machine-gated; no runtime surface exists. |
+| Productivity | CP5.1-CP5.6 | **Not implemented** | **Not started** | A separate accepted bridge ADR plus protocol, sources, ranking, UI, shell activation, and release proof are required; CP1 remains fallback. |
 | Productivity | CP6 | **Not implemented; deferred** | **Blocked by design** | Signed ecosystem packs and AI tools require v0.6 gates. |
 | Compatibility | G0 | **Partial** | **Partial** | Shared safety prerequisites pass; versioned Ghostty fixtures, generation, checksums, and replacement ADR are absent. |
 | Compatibility | G1 | **Not implemented** | **Not started** | No private typed/compiled keybinding registry exists. |
@@ -814,13 +815,24 @@ context only, freshness, explicit refresh, production risk, exact brokered
 launch, isolation, cancellation/revocation/offline/expiry/redacted audit, and
 multi-provider native/resource tests.
 
-### CP5.0-CP5.6 — optional suggestion UI
+### CP5.0 — autocomplete research
+
+**Fully implemented at the research boundary.**
+
+The seven-family shell/API matrix, bounded ephemeral editor-state/insertion
+prototype, 32/128/512-candidate Unicode and stale-generation benchmark,
+Nucleo/Reedline/Carapace dependency decisions, zero privacy/authority delta,
+native fallback, external gates, and rollback are recorded in the CP5.0
+research report and fixed by the machine contract. CP1 remains the complete
+solution; P2 is deferred. No runtime dependency, editor transport, profile,
+keybinding, process, PTY, history source, worker, cache, or product UI exists.
+
+### CP5.1-CP5.6 — optional suggestion UI
 
 **Not implemented; detailed specification exists.**
 
 | Phase | Required work |
 |---|---|
-| CP5.0 | Measure native shells; evaluate PSReadLine APIs, Reedline patterns, Nucleo, Carapace, and in-tree options; record license/advisory/size/startup/latency/privacy decisions. |
 | CP5.1 | Separate ADR; opt-in local pipe/socket, restrictive permissions, peer/session capability, bounded versioned framing, buffer/cursor/span/generation, replay/isolation/cleanup/native fallback. |
 | CP5.2 | Native results, opt-in shell history, cwd/executables, frequency, cached public providers, and typed actions; no network/auth/secrets/history-file/remote-output/per-key process. |
 | CP5.3 | Deterministic ranking, bounded cache/queue, stale cancellation, Unicode/graphemes, shell-returned spans/escaping, rapid-typing properties, Criterion gates. |
@@ -1082,8 +1094,9 @@ At this audited baseline, the focused order is:
 5. Implement D6.0 and each D6.1-D6.5 provider independently through official
    CLI/auth authorities and isolated immutable capsules.
 6. Implement CP4 only after D3/D5/D6 expose bounded cached public context.
-7. Run CP5.0 native autocomplete research as the only safe parallel lane;
-   proceed to CP5.1-CP5.6 only after its separate bridge ADR and gates pass.
+7. Preserve the fully completed CP5.0 retain-CP1 decision. CP5.1-CP5.6 remain
+   not started and may proceed only after a new proposal's separate bridge ADR
+   and gates pass.
 8. Keep v0.4 external release evidence and G0-G6 compatibility work as
    independent evidence tracks; defer D7/CP6/G6 until their protected designs
    pass.

@@ -636,10 +636,11 @@ revocation, cancellation, offline behavior, and provider-native tests pass.
 
 ### CP5 — Shell Completion and Suggestions
 
-Status: planned after CP1. CP5 is optional, is not a v0.5.0 blocker, and does
-not authorize runtime code until its bridge ADR, threat-model amendment,
-machine-readable contract, and native-shell feasibility evidence are accepted.
-The CP1 native experience remains the default and complete fallback.
+Status: CP5.0 research is fully done at its non-activating boundary. CP5.1-
+CP5.6 remain planned and are not authorized until their bridge ADR, threat-
+model amendment, machine-readable contract, and native-shell feasibility
+evidence are accepted. CP5 remains optional and is not a v0.5.0 blocker. The
+CP1 native experience remains the default and complete fallback.
 
 #### CP5.0 — research, baselines, and dependency decision
 
@@ -672,6 +673,24 @@ Exit: a decision report records benchmark inputs/results, adopted/rejected
 components and licenses, shell/version support, binary/startup cost, privacy
 changes, and the native-fallback proof. No runtime dependency is added only
 because it is popular.
+
+##### CP5.0 research decision
+
+CP5.0 is complete. The machine contract
+<code>tests/fixtures/command-productivity/cp50-research-contract-v1.json</code>
+fixes a seven-family native-shell matrix, the bounded replacement-only
+prototype, false runtime capabilities, 32/128/512-candidate benchmark inputs,
+and a reviewed decision to retain CP1 and defer P2. The full evidence and
+reproduction commands are in
+[CP5.0 native autocomplete research](research/CP5-AUTOCOMPLETE-RESEARCH.md).
+
+The existing in-tree matcher is retained. <code>nucleo-matcher 0.3.1</code>
+remains pinned only in a standalone research workspace because it provided no
+measured benefit on the bounded product corpus; it is absent from the root
+manifest, root lockfile, runtime, and release binaries. Reedline remains a UX
+reference, while Carapace remains an explicitly installed external adapter
+candidate. No profile, keybinding, shell process, editor transport, history,
+terminal-grid inference, cache, worker, or product UI was introduced.
 
 #### CP5.1 — versioned editor bridge and ownership
 
