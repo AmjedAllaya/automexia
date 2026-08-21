@@ -1,8 +1,8 @@
 # OpenSSH inventory and Automexia metadata
 
-This page documents the nonactivated D4 OpenSSH inventory package. It is a
-contributor-facing foundation for the future first-party SSH experience, not a
-claim that Automexia can currently start managed SSH connections.
+This page documents the D4 OpenSSH inventory package. D5.1 activates it only
+through an explicit read-only Connection Hub grant/review flow; it remains
+non-executing and does not claim that Automexia can start managed SSH sessions.
 
 ## Using the inventory package
 
@@ -27,10 +27,11 @@ files and bytes. A WatchPlan can be constructed only from those opaque
 scanner-observed files, optionally plus the exact existing MetadataStore file;
 callers cannot create a plan from arbitrary paths.
 
-The package is disabled by default. It is not linked to the renderer, input
-path, PTY transport, or production launch broker. It has no session-launch,
-process-spawn, network, clipboard, environment, terminal-output, or overlay
-capability.
+The package remains incapable of rendering or launching. The D5.1 application
+service calls it only on a joined background worker after exact file review;
+the Screen and renderer consume immutable public projections. D4 has no session-
+launch, process-spawn, network, clipboard, environment, terminal-output, PTY,
+or overlay capability.
 
 Automexia-owned labels, tags, favorites, and recent-use timestamps are stored
 only in the primary and single recovery files:

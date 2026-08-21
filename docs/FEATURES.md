@@ -29,7 +29,7 @@ inferred pass.
 | Capability | What is shipped | Evidence | Canonical docs | Why this design |
 |---|---|---|---|---|
 | Extension contracts | Private versioned API, bounded worker/cache runtime, cancellation, session isolation, renderer-neutral UI model | PR models; nightly Miri/sanitizers | [Architecture](ARCHITECTURE.md#core-and-extension-ownership) | [ADR 0003](adr/0003-extension-capability-and-threading.md) |
-| OpenSSH inventory foundation | Disabled-by-default static concrete-alias indexing, exact grants, bounded includes, user-only atomic metadata, exact-file watchers, and last-known-good refresh; no launch or network authority | PR: Windows/Linux/macOS; nightly fuzz/benchmark | [OpenSSH inventory](SSH-INVENTORY.md) | [ADR 0012](adr/0012-first-party-ssh-and-session-launch-boundary.md) |
+| OpenSSH inventory and read-only Connection Hub (v0.5 release-gated) | Explicit reviewed native files, bounded static alias inventory, virtualized modal search/filter/group, public favorite/tag CAS, read-only recent/library state, and last-known-good refresh; no launch or network authority | PR/source: Windows; external native picker/accessibility: Linux/macOS; nightly fuzz/benchmark | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md), [inventory](SSH-INVENTORY.md) | [ADR 0022](adr/0022-read-only-connection-hub-activation.md), [ADR 0012](adr/0012-first-party-ssh-and-session-launch-boundary.md) |
 | Native completion and Quick Actions | **CP1-CP3.3 fully implemented locally:** shell-owned completion; typed private Quick Actions with bounded search/review/dry-run administration/import/export and insert/copy; pure deterministic five-shell compilation; explicit opt-in persistent aliases using private immutable generations; 11 reviewed static DevOps packs with 33 disabled-by-default typed actions; explicitly selected, capability-free native alias imports; and exact trusted-workspace task bridges with revocation-aware runtime authorization. Secret expansion, exact launch, and CP5 suggestions remain disabled | PR: model/hostile/quoting/Unicode/transfer/CAS/recovery/worker/palette tests; CP3.0 serializer/native-capture/tamper; CP3.1 transaction/contention/loader/uninstall; CP3.2 inventory/health/update/alias/CLI contracts; CP3.3 parser/import/trust/runtime/UI contracts and mutations; nightly: projection, pack, and native-import fuzz; controlled: native platform and 30-day benchmarks | [Command Productivity](COMMAND-PRODUCTIVITY.md), [DevOps aliases](DEVOPS-ALIASES.md), [CP3.3 testing](TESTING.md#cp33-native-imports-and-trusted-workspace-task-bridges), [compatibility](COMMAND-PRODUCTIVITY-COMPATIBILITY.md), [shell integration](SHELL-INTEGRATION.md), [threat model](COMMAND-PRODUCTIVITY-THREAT-MODEL.md) | [ADR 0015](adr/0015-shell-native-completion-and-typed-quick-actions.md), [ADR 0021](adr/0021-trusted-workspace-task-bridges.md), plus a required future CP5 bridge ADR |
 | Native and Wasm embedding | Inherited private C and WebAssembly embedding crates retained for compatibility | PR compilation/tests; nightly static analysis | [Architecture](ARCHITECTURE.md#layers), crate READMEs | [ADR 0001](adr/0001-standalone-product-boundary.md) |
 | Contributor automation | One-command doctor/check/CI/QA/build/run/package/release workflows, isolated cleanup, identity/provenance/architecture contracts | PR on every host | [CLI reference](CLI-REFERENCE.md), [testing](TESTING.md) | [ADR 0005](adr/0005-storage-bounded-build-workflow.md) |
@@ -50,12 +50,14 @@ features. The managed SSH/multi-cloud [Connection Hub](CONNECTION-HUB.md) is
 not a shipped v0.4 surface. Its F2/D5.0 bounded records, operation-correlated
 state reducers, panic-free dry-run planner, and accessible value-redacted Hub/
 review/planner models are implemented locally with all authority disabled.
-The D5.1/F3 foundation also provides bounded catalog search and composition,
-transactional OpenSSH metadata, last-known-good refresh health, and a private
-transactional profile/recipe/preference library. The product still does not
-initialize that library or expose the Hub: exact file selection, favorite/tag
-editing, recent-use display, native rendering/accessibility, D5.2 execution,
-and all D6 provider slices remain planned. Its reusable profiles and typed actions are
+The D5.1/F3 read-only product is fully implemented locally for v0.5 source
+builds: one app-owned joined service, explicit reviewed native file selection,
+bounded modal search/filter/grouping, public favorite/tag CAS review, read-only
+recent and Connection Library state, and visibly disabled execution. It does
+not persist selected paths or add connection, authentication, provider,
+process, network, listener, credential, or PTY authority. Native macOS/Linux
+picker/permission and controlled screen-reader evidence remain release gates;
+D5.2 execution and all D6 provider slices remain planned. Its reusable profiles and typed actions are
 specified in
 [SSH connections and automation](SSH-CONNECTION-AUTOMATION.md). The complete
 planned command/leader/picker replacement for GUI-oriented remote-management

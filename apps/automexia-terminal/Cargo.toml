@@ -67,6 +67,7 @@ corcovado = { workspace = true }
 regex = { workspace = true }
 onig = { workspace = true }
 raw-window-handle = { workspace = true }
+rfd = { workspace = true }
 clap = { version = "4.6.1", features = ["derive"] }
 automexia-devops-ssh = { workspace = true }
 blake3 = "1.8.5"

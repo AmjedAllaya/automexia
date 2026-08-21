@@ -7,6 +7,7 @@
 // which is licensed under Apache 2.0 license.
 
 pub(crate) mod action_surface;
+mod connection_hub;
 pub mod hint;
 pub mod touch;
 
@@ -498,6 +499,7 @@ pub struct Screen<'screen> {
     pub hint_state: HintState,
     image_preview: crate::image_preview::ImagePreview,
     action_surface: action_surface::Controller,
+    connection_hub: crate::automexia::connections::ConnectionHubController,
     pub renderer: Renderer,
     pub sugarloaf: Sugarloaf<'screen>,
     pub context_manager: context::ContextManager<EventProxy>,
@@ -553,6 +555,7 @@ impl Screen<'_> {
         font_library: &rio_backend::sugarloaf::font::FontLibrary,
         open_url: Option<String>,
         action_surface: action_surface::Controller,
+        connection_hub: crate::automexia::connections::ConnectionHubController,
     ) -> Result<Screen<'screen>, Box<dyn Error>> {
         let size = window_properties.size;
         let scale = window_properties.scale;
@@ -732,6 +735,7 @@ impl Screen<'_> {
             hint_state: HintState::new(config.hints.alphabet.clone()),
             image_preview: crate::image_preview::ImagePreview::default(),
             action_surface,
+            connection_hub,
             hints_config: config
                 .hints
                 .rules
@@ -5052,6 +5056,9 @@ impl Screen<'_> {
                 // Handled by the router because it enters a route-scoped,
                 // asynchronous review flow.
             }
+            PaletteAction::OpenConnections => {
+                self.open_connection_hub();
+            }
             PaletteAction::ListFonts => {
                 // Handled in the router: switches the palette into fonts
                 // mode and keeps it open. If we land here it's either a
@@ -5068,6 +5075,7 @@ impl Screen<'_> {
     pub(crate) fn render(&mut self) -> Option<crate::context::renderable::WindowUpdate> {
         self.update_close_button_hover(self.mouse.x, self.mouse.y);
         self.sync_action_surface();
+        self.sync_connection_hub();
 
         let preview_route_id = self.context_manager.current().route_id;
         let completion = self

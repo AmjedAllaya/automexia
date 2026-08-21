@@ -1,15 +1,17 @@
 # Remote connections
 
-Automexia separates **what works in a normal terminal today** from the **managed SSH/Connection Hub product being built for v0.5**. This distinction is important: the repository contains strong data models and security foundations that deliberately have no process or network authority yet.
+Automexia separates **normal shell connections**, the **read-only D5.1 Connection Hub implemented for v0.5 source builds**, and the still-planned managed SSH/provider authority. The read-only product deliberately has no process or network authority.
 
 ## Current product boundary
 
 **Available now:** users can run `ssh`, `mosh`, cloud CLIs, `kubectl`, `oc`, and other tools normally from their shell. The PTY treats remote output as untrusted terminal bytes exactly like local process output.
 
-**Implemented internally, not activated as managed SSH:** a bounded static
-OpenSSH inventory package, exact-grant/session-launch review models, connection/profile/recipe records, authentication/result reducers, deterministic dry-run planning, renderer-independent Connection Hub/review/planner view models, bounded catalog composition, and a private transactional Connection Library.
+**Implemented locally / release-gated:** the read-only product Hub composes
+the bounded static OpenSSH inventory after exact file review, exposes public
+favorites/tags and the private library snapshot, and keeps launch/provider
+authority disabled.
 
-**Planned:** production Connection Hub UI integration, reviewed system-OpenSSH launch, tunnels/routes, provider authentication and multi-cloud adapters, remote-file/session-memory/collaboration features, and later ecosystem/AI features.
+**Planned:** reviewed system-OpenSSH launch, tunnels/routes, provider authentication and multi-cloud adapters, remote-file/session-memory/collaboration features, and later ecosystem/AI features.
 
 ## Internal Connection Library boundary
 
@@ -26,8 +28,8 @@ to enable Connection Hub. Redacted export deliberately removes credential
 references, private local state, and last-used timestamps; import validates all
 values and assigns fresh identifiers.
 
-This internal persistence does not change today's workflow: system OpenSSH and
-its normal configuration remain the only supported connection path.
+This persistence does not add launch authority: system OpenSSH in the shell
+remains the only supported connection path.
 
 ## Product model
 
@@ -43,9 +45,9 @@ Secrets remain with established authorities such as OpenSSH agents/keychains, cl
 
 ## OpenSSH inventory
 
-This page documents the nonactivated D4 OpenSSH inventory package. It is a
-contributor-facing foundation for the future first-party SSH experience, not a
-claim that Automexia can currently start managed SSH connections.
+D4 is the bounded OpenSSH inventory authority used by the read-only D5.1 Hub.
+It remains non-executing and is not a claim that Automexia can start managed
+SSH connections.
 
 ## Using the inventory package
 
@@ -70,10 +72,10 @@ files and bytes. A WatchPlan can be constructed only from those opaque
 scanner-observed files, optionally plus the exact existing MetadataStore file;
 callers cannot create a plan from arbitrary paths.
 
-The package is disabled by default. It is not linked to the renderer, input
-path, PTY transport, or production launch broker. It has no session-launch,
-process-spawn, network, clipboard, environment, terminal-output, or overlay
-capability.
+D5.1 calls the package only on its joined background worker after exact file
+review and renders immutable public projections. D4 itself has no renderer,
+session-launch, process-spawn, network, clipboard, environment, terminal-output,
+PTY, or overlay capability.
 
 Automexia-owned labels, tags, favorites, and recent-use timestamps are stored
 only in the primary and single recovery files:
@@ -159,22 +161,29 @@ release gates. D4 does not bypass any of those decisions.
 
 ## Connection Hub workflow
 
-> **User-facing status:** Connection Hub is not currently exposed as a window, menu, shortcut, CLI command, or configuration surface. Users should use normal system OpenSSH today. See [Connection Hub and SSH](../user-guide/connection-hub-and-ssh.md) for current setup instructions.
+> **User-facing status:** v0.5 M1 source builds expose **Connection Hub
+(read-only)** through the command palette. Users explicitly select and review
+OpenSSH files, browse public inventory, and review favorite/tag changes. Connect,
+Login, cloud refresh, recipe execution, and every process/network/PTY action are
+disabled. See [Connection Hub and SSH](../user-guide/connection-hub-and-ssh.md).
 
-The Connection Hub is the planned renderer-neutral product surface for discovering, reviewing, and launching managed sessions. The same semantic model must work in wide, compact, high-DPI, and keyboard/screen-reader layouts; visual pixels are not the source of truth.
+The modal adapts the renderer-neutral semantic model into one topmost,
+PTY-inert surface. Its implemented journey is:
 
-A typical journey is:
+1. **Open** without scanning or contacting any provider.
+2. **Choose and review** exact local files through the parented native picker;
+   cancellation or replacement revokes the memory-only grant.
+3. **Confirm** a bounded background scan and retain last-known-good results when
+   a later scan fails.
+4. **Browse** with search, grouping, source/favorite/recent/tag filters,
+   virtualization, and a public inspector.
+5. **Review and save** favorite/tag diffs using D4 revision CAS; reload on
+   conflict and never write recent-use.
+6. **Stop at the authority boundary:** selecting a connection or a disabled
+   action never launches a command, PTY, login, or network request.
 
-1. **Discover** bounded local configuration (for example concrete OpenSSH aliases) without executing configuration directives or contacting the network.
-2. **Select** a connection or create a new explicit record.
-3. **Explain** where each effective public value came from and whether any source is stale, unavailable, or conflicted.
-4. **Review** executable identity, exact arguments, route/tunnel intent, capabilities, host-trust state, and any recipe stages.
-5. **Approve** only the capability needed for that launch. Revocation and denial are first-class outcomes.
-6. **Launch** through the single application-owned broker using the canonical system OpenSSH executable; OpenSSH itself continues to own its full configuration, agent, key selection, host-key handling, and protocol implementation.
-7. **Observe** immutable session-scoped context contributions. One session cannot publish provider/context state into another.
-
-The Hub is designed to degrade gracefully. Missing tools or provider authentication should produce a truthful `unavailable`, `stale`, or `error` state rather than blocking unrelated terminal sessions.
-
+D5.2 will add a separate exact launch review only after ADR 0012 and native
+lifecycle gates pass. D5.1 does not pre-authorize that later action.
 ## Exact launch boundary
 
 Managed process launch is intentionally narrower than general process-spawn authority. A launch request identifies an approved first-party publisher/capability, an expected executable kind, exact argv, a bounded environment, a validated working directory, and audit/session identifiers. The broker resolves and verifies the executable according to platform policy, checks grants and current file identity, launches without shell interpretation, associates the PTY with one route/session, and records a redacted result.

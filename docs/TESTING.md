@@ -1171,18 +1171,66 @@ static platform setup guidance without activating connection authority:
     cargo clippy -p automexia-terminal --test connection_hub_runtime --no-default-features --locked -- -D warnings
 
 The focused contract proves that opening the runtime does not scan; only exact
-user-provided grants start work; metadata and OpenSSH records produce a bounded
+reviewed grants start work; metadata and OpenSSH records produce a bounded
 public catalog; newer generations supersede older work; failures retain the
-last good catalog with a path-free diagnostic code; and Windows, macOS, and
-Linux guidance claims neither process nor network activity. The private
-profile/recipe/preference library is covered below; native product rendering
-and application initialization of that library remain separate F3 gates.
+last good catalog with a path-free diagnostic code; metadata writes use reviewed
+revision CAS; and explicit shutdown cancels and joins the single worker. The
+private profile/recipe/preference library and product adapter are covered below.
+
+### Connection Hub M1 read-only product activation
+
+The application Router owns the service, each Screen owns one route-local
+controller, and Sugarloaf owns the topmost modal. The native picker is invoked
+only by an explicit product action and passes selected files to the review/
+worker boundary; it never becomes an ambient scanner or persistent grant.
+
+    cargo test -p automexia-terminal --test connection_hub_runtime --locked
+    cargo test -p automexia-terminal --test connection_hub_controller --locked
+    cargo test -p automexia-terminal --bin automexia connection_hub --locked
+    cargo test -p automexia-terminal --bin automexia command_palette --locked
+    cargo test -p automexia-devops-ssh --locked
+    cargo test -p automexia-ui-model --locked
+    cargo bench -p automexia-terminal --bench connection_catalog --locked -- --noplot
+    cargo deny check
+    cargo build -p automexia-terminal --release --locked
+
+Windows 11 results on 2026-08-21: 10 runtime, 7 controller, 4 renderer, 46
+palette, 33 D4, 32 UI-model, and 5 library tests passed. The contracts cover
+no-scan-on-open, memory-only grant revocation, review tokens, stale generation
+rejection, publish-before-wake, explicit joined shutdown, last-known-good state,
+metadata CAS success/conflict/reload, read-only recent, hostile tags/search,
+keyboard/pointer/IME, focus restoration, inert modal stacking, distinct filter
+pointer actions, and bounded tiny/normal/ultrawide/8K geometry. Connect, Login,
+provider refresh, recipe execution, process, network, authentication, listener,
+and PTY authority remain disabled.
+
+`cargo deny check` passed advisories, bans, licenses, and sources. `rfd` 0.17.2
+is the only new direct dependency and `pollster` is its only new transitive
+package. The release 10,000-record projection measured 7.1790–7.7931 ms versus
+the below-16-ms target. The earlier same-host range was 7.0513–7.4408 ms; this
+single run is not treated as a statistical regression comparison. The release
+executable is 22,670,336 bytes, 650,752 bytes (2.96%) above the 22,019,584-byte
+same-host pre-M1 baseline.
+
+A current release binary was launched on Windows 11 with an isolated
+`AUTOMEXIA_CONFIG_HOME`; foreground PID ownership was verified before opening
+**Connection Hub (read-only)** through the real command palette. The captured
+1280x760 frame confirmed modal activation, terminal dimming, setup hierarchy,
+exact-file guidance, and the no-login/network/process/PTY copy. The host desktop
+was narrower than the test window and Windows retained an occluded GPU frame
+after programmatic resize, so this run is not claimed as a complete native
+responsive-pixel pass. The deterministic tiny-to-8K layout tests remain the
+responsive geometry evidence.
+
+Native macOS/Linux picker and static permission/recovery runs plus controlled
+Narrator/NVDA, VoiceOver, and Orca verification remain external. Local semantic,
+geometry, and limited Windows frame evidence do not substitute for those runs.
 
 ### Connection Hub F3 private profile, recipe, and preference library
 
 The application crate owns a private, versioned Connection Library store for
-saved connection profiles, automation recipes, and user preferences. It is an
-internal persistence boundary and is not initialized by the current product UI:
+saved connection profiles, automation recipes, and user preferences. M1
+initializes it once and exposes only a non-executing snapshot/recovery state:
 
     cargo test -p automexia-terminal --lib automexia::connections::library::tests::injected_read_only_and_disk_full_fail_before_replacing_primary --no-default-features --locked
     cargo test -p automexia-terminal --test connection_library --no-default-features --locked
@@ -1229,33 +1277,26 @@ one desktop file, 199 Markdown files, and 24 assurance entries.
 licensing/provenance, architecture/trust, formatting, isolated all-target
 workspace check, warnings-as-errors workspace Clippy, full workspace unit/
 integration/documentation tests, `cargo deny`, persistent debug application
-build, and `automexia 0.4.0` executable smoke check. The isolated 7.65 GiB
+build, and `automexia 0.4.0` executable smoke check. The isolated 7.75 GiB
 verification target was removed after success. Optional packaging tools that
 were reported missing are not required by this local contributor gate; hosted
 native/release evidence remains separate.
 
 ### Remaining Connection Hub activation assurance
 
-The remaining D5.1 product work, all D5.2 managed launch work, and D6 provider
-work remain planned/non-activated. Before activation they must
-add the deterministic, native, controlled-provider, accessibility, visual,
-security, performance, privacy, persistence, and resource evidence in
-[Connection Hub](CONNECTION-HUB.md#verification-plan).
+D5.1 behavior is fully implemented locally. Its remaining release evidence is
+native macOS/Linux picker and permission/recovery coverage plus controlled
+Narrator/NVDA, VoiceOver, and Orca verification. D5.2 managed launch and D6
+provider work remain non-activated and must add their own deterministic,
+native, controlled-provider, security, performance, privacy, persistence, and
+resource evidence before authority is enabled.
 
-At minimum, later PR evidence must prove no process/network/authentication work
-during passive discovery or search; exact capability approval/revocation;
-hostile OpenSSH/provider/kubeconfig parsing; exact Windows/Unix launch
-arguments; cross-session capsule isolation; a real responsive modal/focus/
-z-order renderer; and 10,000-entry virtualized search without unbounded storage
-or workers.
-
-Native release evidence must cover Windows, macOS, and Linux OpenSSH/agent
-flows; AWS/Azure/Google/Kubernetes/OpenShift expiry, MFA, cancellation, offline,
-and denial; real plus mocked SSH; Narrator/NVDA, VoiceOver, and Orca; and 1/10/50
-session/process/tunnel teardown. Synthetic provider fixtures and renderer-
-neutral goldens remain mandatory but never substitute for controlled native
-evidence. Until those later gates land, the product Hub and managed connection
-lifecycle remain not implemented.
+At minimum, D5.2 must prove exact capability approval/revocation, exact Windows/
+Unix launch arguments, host-trust behavior, session isolation, and bounded
+1/10/50 process/PTY/tunnel teardown. D6 must separately prove provider expiry,
+MFA, cancellation, offline, denial, cache isolation, and external credential
+custody for each provider. Synthetic fixtures remain mandatory but never
+substitute for controlled native evidence.
 ## CP2.0-CP2.2 Quick Action assurance
 
 The capability-free schema/parser/validator, activation index, and CP3.0

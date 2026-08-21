@@ -1,6 +1,7 @@
 pub mod assistant;
 pub mod command_palette;
 pub mod confirm_quit;
+pub mod connection_hub;
 pub mod custom_cursor;
 pub mod devops_status;
 pub mod helpers;
@@ -443,6 +444,7 @@ pub struct Renderer {
     pub margin: rio_backend::config::layout::Margin,
     pub island: Option<island::Island>,
     pub command_palette: command_palette::CommandPalette,
+    pub connection_hub: connection_hub::ConnectionHub,
     pub devops_enabled: bool,
     extension_generation: u32,
     /// Operational prompt state for the selected route.
@@ -547,6 +549,7 @@ impl Renderer {
                 palette.has_adaptive_theme = config.adaptive_colors.is_some();
                 palette
             },
+            connection_hub: connection_hub::ConnectionHub::default(),
             devops_enabled: crate::automexia::runtime::context_status_enabled(),
             extension_generation: crate::automexia::runtime::generation(),
             devops_status: devops_status::DevOpsStatus::default(),
@@ -1603,6 +1606,8 @@ impl Renderer {
         let modal_dimensions = (window_size.width, window_size.height, scale_factor);
         if self.confirm_quit.is_active() {
             self.confirm_quit.render(sugarloaf, modal_dimensions);
+        } else if self.connection_hub.is_active() {
+            self.connection_hub.render(sugarloaf, modal_dimensions);
         } else {
             self.command_palette.render(sugarloaf, modal_dimensions);
         }

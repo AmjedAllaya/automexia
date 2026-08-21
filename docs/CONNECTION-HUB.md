@@ -1,16 +1,12 @@
 # Connection Hub product, security, and delivery specification
 
-Status: D5.0/F2's non-executing record, state, dry-run planning, and renderer-
-neutral Hub/review/planner baseline is implemented locally. D5.1 is partially
-implemented: its bounded catalog/search/filter/grouping, 10,000-record test,
-rapid-filter benchmark, D4 revisioned CAS/recovery metadata store, and
-application-owned explicit-scan composition with last-known-good health and
-platform guidance pass. Private profile/recipe/preference persistence, failure-
-safe recovery, and redacted fresh-ID transfer also pass. Product UI and
-remaining native evidence are not done.
-D5.2 managed connection lifecycle is not implemented; no credential custody or
-managed connection capability is shipped in v0.4.
-
+Status: D5.1/F3 is **fully implemented at the source and local Windows
+boundary**. The product exposes a read-only modal with explicit reviewed native
+file selection, bounded inventory browsing, public favorite/tag CAS review,
+read-only recent/library state, and visibly disabled connection authority.
+Native macOS/Linux picker/permission and controlled Narrator/NVDA, VoiceOver,
+and Orca evidence remain partial external release gates. D5.2 managed launch
+and D6 provider execution are not implemented; v0.4 ships neither.
 This document is the implementation authority for Automexia's Connection Hub.
 The [roadmap](ROADMAP.md) owns release order, the
 [stabilization roadmap](STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track)
@@ -935,10 +931,9 @@ regressions; authority and protected-ADR status did not change.
 
 Implementation owners are `automexia-devops/src/connections`,
 `automexia-ui-model/src/connection_hub.rs`, and
-`tests/fixtures/connection-hub`. The pure Hub is a renderer-neutral projection,
-not a shipped dialog; its primary connection action is disabled and Enter opens
-review only. D5.1 owns product rendering, D4 integration, persistence, and
-10,000-record behavior. D5.2 owns all connection execution and lifecycle.
+`tests/fixtures/connection-hub`. The pure Hub projection remains the semantic source of truth. D5.1 adapts it
+into the read-only product dialog; its primary connection action is disabled and
+Enter opens review only. D5.2 owns all connection execution and lifecycle.
 
 Exit status: architecture, mutation, hostile-fixture, model, layout,
 accessibility, fuzz-build, and benchmark-build gates pass locally with no
@@ -946,15 +941,27 @@ managed process. Overall D5.0 stays **Partially done** until ADR 0012 receives
 its protected decision.
 ### D5.1 - read-only Hub and first-run detection
 
-- Connect the completed D4 inventory to the virtualized Hub.
-- Implement passive discovery, explicit local scan, favorites/tags/recent,
-  search/filter/grouping, stale/last-known-good behavior, and platform setup
-  guidance.
-- Keep status/login/connect operations disabled or clearly non-activated.
+- [x] **Fully done** — Connect D4 snapshots through one Router-owned, joined,
+  generation-safe runtime with last-known-good state and explicit shutdown.
+- [x] **Fully done** — Require an explicitly invoked parented native picker,
+  canonical-path review, and confirmation; cancel/reselect revokes memory-only
+  grants and no raw selection path is persisted or logged.
+- [x] **Fully done** — Render bounded search, tag/favorite/recent/source filters,
+  grouping, clear filters, virtualized rows, inspector, setup/loading/error/
+  recovery states, keyboard, pointer, IME, focus restoration, and responsive
+  tiny-to-8K geometry.
+- [x] **Fully done** — Review favorite/tag public diffs and commit only through
+  D4 revision CAS; reload on conflict and keep recent read-only.
+- [x] **Fully done** — Display profile/recipe/preference counts as local,
+  non-executing state and keep Connect, Login, provider refresh, automatic
+  actions, process/network/listener/PTY work visibly disabled.
+- [ ] **Partially done** — Native macOS/Linux picker/permission runs and
+  controlled Narrator/NVDA, VoiceOver, and Orca evidence remain external.
 
-Exit: 10,000-entry, hostile-config, three-platform static discovery, responsive,
-screen-reader-model, privacy, performance, and storage tests pass.
-
+Exit achieved locally: 10 runtime, 6 controller, 4 renderer, 33 D4, 32 UI-model,
+5 library, and 46 palette tests pass on Windows 11; `cargo deny` passes; the
+10,000-record release projection is 7.1790–7.7931 ms against a below-16-ms
+target. This exit does not activate D5.2.
 ### D5.2 - reviewed OpenSSH launch and lifecycle
 
 - Activate the application-owned exact launch broker after its native gate.

@@ -1,8 +1,13 @@
 # Remote sessions and WSL
 
-> **Looking for Connection Hub? It is not a user-facing feature yet.** There is currently no Hub window, menu, shortcut, CLI command, or managed-SSH configuration to open. For exact current SSH setup and usage, start with **[Connection Hub and SSH](connection-hub-and-ssh.md)**.
+> **Connection Hub is read-only and release-gated.** v0.5 M1 source builds can
+review selected OpenSSH inventory and public favorites/tags, but cannot launch a
+managed session. For the exact workflow, use **[Connection Hub and
+SSH](connection-hub-and-ssh.md)**.
 
-Automexia can already host the real shells and system tools you use for remote work. The important distinction is between **using OpenSSH/WSL normally today** and the **planned first-party managed Connection Hub**.
+Automexia can host the real shells and system tools used for remote work. The
+important distinction is between **using OpenSSH/WSL normally today**, the
+**read-only inventory Hub**, and the still-planned managed launch path.
 
 ## Current status
 
@@ -10,8 +15,8 @@ Automexia can already host the real shells and system tools you use for remote w
 |---|---|---|
 | Run system `ssh`, `scp`, `sftp`, provider CLIs, Kubernetes tools in the shell | **Available now** | Use them normally; they keep their own semantics/auth/config |
 | WSL-hosted shell sessions and Automexia shell/context integration | **Available now** | Use the configured/selected WSL launch path and normal Linux tools |
-| Static bounded OpenSSH inventory parser/models | **Implemented internally, not activated as managed SSH** | Do not mistake internal inventory models for a “connect” feature |
-| Connection Hub review/record/planner models | **Implemented internally, authority disabled** | No user guide should instruct you to click/command a managed launch yet |
+| Static bounded OpenSSH inventory and read-only Hub | **Implemented locally; release evidence gated** | Review inventory/favorites/tags, but use the shell to connect |
+| Connection Hub review/record/planner models | **Implemented locally; authority disabled** | The product modal may review state; Connect/Login remain unavailable |
 | First-party managed OpenSSH session launch | **Planned** | Continue using system OpenSSH in the shell |
 | Multi-cloud provider adapters/managed auth | **Planned** | Continue using official/provider CLIs and their normal auth flows |
 
