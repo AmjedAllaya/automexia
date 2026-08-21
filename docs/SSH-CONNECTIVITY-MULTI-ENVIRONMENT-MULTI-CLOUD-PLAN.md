@@ -1,8 +1,8 @@
 # SSH, connectivity, multi-environment, and multi-cloud implementation plan
 
-Status: active detailed implementation plan and evidence ledger.
+Status: authoritative detailed implementation plan and evidence ledger.
 
-Last reconciled: 2026-08-20.
+Last reconciled: 2026-08-21.
 
 The [Connectivity and command-productivity focus roadmap](CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md)
 remains the owner of canonical phase order and phase status. This document is
@@ -161,24 +161,31 @@ roadmap; update the status only after its evidence ladder passes.
 
 ### M0 — reconcile documentation and protect the current foundations
 
-Status: Not done as a synchronized documentation update.
+Status: **Partially done.** All five M0 documentation deliverables are fully
+done on the 2026-08-21 local boundary; the required contributor gate is blocked
+by pre-existing Rustfmt drift outside this documentation-only change.
 
-- [ ] Reconcile the current F3 Connection Library implementation in
+- [x] **Fully done (was Partially done)** — Reconcile the current F3 Connection Library implementation in
   `PHASE-IMPLEMENTATION-AUDIT.md`, `ROADMAP.md`, the feature assurance/testing
   pages, and user documentation. Earlier audit prose still lists persistence
   and read-only/disk-full evidence as missing even though the committed store
   and tests now cover them.
-- [ ] Keep the D0/D3 statement exact: the broker remains test-only and managed
+- [x] **Fully done (preserved)** — Keep the D0/D3 statement exact: the broker remains test-only and managed
   launch is unavailable until ADR 0012 is accepted or superseded.
-- [ ] Add this plan to the documentation navigation without editing unrelated
+- [x] **Fully done (was Not done)** — Add this plan to the documentation navigation without editing unrelated
   current work; update `docs/index.md` only in a coherent documentation commit.
-- [ ] Record the current local evidence commands, platform, revision, test
+- [x] **Fully done (was Partially done)** — Record the current local evidence commands, platform, revision, test
   results, benchmark hardware, and any unavailable native/release evidence.
-- [ ] Add a `changes/` fragment for each released user-visible slice, not for
+- [x] **Fully done (was Partially done)** — Add a `changes/` fragment for each released user-visible slice, not for
   this planning-only document unless project policy requests one.
 
-Exit: all relevant roadmap/audit/reference/user documents make the same
-truthful claim about F3, D3, and the provider backlog.
+Documentation exit achieved locally: all relevant roadmap/audit/reference/user
+documents make the same truthful claim about F3, D3, and the provider backlog.
+The phase remains **Partially done** until `cargo fmt --all --check` and
+`cargo ready` pass; both currently stop on formatting drift in unchanged
+`context/renderable.rs`, `renderer/mod.rs`, and `watcher.rs`. Hosted
+validation and native macOS/Linux permission evidence remain external release
+evidence.
 
 ### M1 — finish F3/D5.1 as a real read-only Connection Hub
 

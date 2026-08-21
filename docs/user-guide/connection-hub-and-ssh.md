@@ -3,6 +3,8 @@
 > **Connection Hub is not available as a user-facing feature yet.**
 >
 > In the current documented release there is **no Connection Hub window, menu item, shortcut, CLI command, or configuration screen** to open. Automexia contains internal inventory/review/planning models for a future managed SSH experience, but process/network authority is intentionally disabled. To connect to remote machines today, use the system OpenSSH client from the Automexia shell.
+>
+> The source tree also contains a private transactional Connection Library implementation, but the application does not initialize or expose it. It is not a hidden opt-in feature.
 
 ## What to use today
 
@@ -30,7 +32,9 @@ Use the normal OpenSSH configuration file for your operating system.
 | macOS | `~/.ssh/config` |
 | Windows OpenSSH | `%USERPROFILE%\.ssh\config` |
 
-Automexia does not currently provide a separate Connection Hub configuration file that users should edit.
+Automexia does not currently provide a separate Connection Hub configuration
+file that users should edit. Do not create or manually edit an internal
+`library.v1.json` file; it is not a supported activation or migration path.
 
 ## Configure a simple saved host
 

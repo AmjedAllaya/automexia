@@ -29,15 +29,17 @@ The documentation authorities have distinct jobs:
 
 1. [Roadmap](ROADMAP.md) owns release sequencing and canonical phase status.
 2. This page owns the focused execution order, dependencies, and checklists.
-3. [Phase implementation audit](PHASE-IMPLEMENTATION-AUDIT.md) owns the
+3. The [detailed SSH, connectivity, multi-environment, and multi-cloud plan](SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md)
+   owns the checklist-level M0-M13 implementation and evidence protocol.
+4. [Phase implementation audit](PHASE-IMPLEMENTATION-AUDIT.md) owns the
    evidence-backed fully/partially/not-implemented reconciliation.
-4. [Command Productivity](COMMAND-PRODUCTIVITY.md), [Connection Hub](CONNECTION-HUB.md),
+5. [Command Productivity](COMMAND-PRODUCTIVITY.md), [Connection Hub](CONNECTION-HUB.md),
    [SSH connections and automation](SSH-CONNECTION-AUTOMATION.md), and
    [Terminal-first remote operations](TERMINAL-FIRST-OPERATIONS.md) own detailed
    product and technical contracts.
-5. Accepted ADRs own durable trust, process, credential, and architecture
+6. Accepted ADRs own durable trust, process, credential, and architecture
    decisions. An accepted ADR wins if prose conflicts.
-6. Source, tests, benchmarks, feature assurance, and current documentation must
+7. Source, tests, benchmarks, feature assurance, and current documentation must
    agree before a checkbox or status advances.
 
 When a future request says "next phase", execute the first unchecked primary
@@ -69,9 +71,9 @@ documentation, feature assurance, and a change fragment.
 | Exact-argument launch broker | D3 | Partially done | test-only exact package identity, capability scope, platform resolver, file revalidation, lifecycle and audit model | Production capability UI, atomic spawn, PTY/route lifecycle, real package-loader binding, native evidence |
 | Static OpenSSH inventory | D4 | Fully done | automexia-devops-ssh, hostile/property tests, fuzz, benchmark, assurance | Remains deliberately disabled until D5 |
 | Connection Hub model | D5.0 | Partially done | All local F2 schemas, state reducers, dry-run planner, Hub/review/planner projections, fixtures, goldens, fuzz, mutation tests, and benchmark are implemented | Protected ADR 0012 acceptance remains; D5.1 renderer/inventory integration and D5.2 activation are separate phases |
-| Read-only Connection Hub | D5.1 | Partially done | Bounded catalog/search/filter/grouping, source revisions, 10,000-record focus/performance proof, and revisioned CAS/recovery for D4 favorites/tags/recent metadata | D4 application composition, profile/recipe/preference storage and transfer, product UI, platform guidance, fault/native/accessibility evidence |
+| Read-only Connection Hub | D5.1 | Partially done | Bounded catalog/search/filter/grouping, D4 metadata CAS/recovery, explicit-grant application composition with last-known-good health and platform guidance, plus private profile/recipe/preference storage and redacted transfer | Product state-root/controller, exact file-selection UI, favorite/tag mutation UI, rendered modal, and native/accessibility evidence |
 | Managed OpenSSH | D5.2 | Not done | Design and disabled D3/D4 foundations | Reviewed launch, PTY lifecycle, jumps, tunnels, host trust, reconnect, native proof |
-| Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, and approval fingerprints are implemented in F2 | Private persistence, product editor, remote workspace lifecycle, and separately gated execution remain |
+| Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, approval fingerprints, and private transactional Connection Library persistence/redacted transfer are implemented | Product editor, remote workspace lifecycle, and separately gated execution remain |
 | Multi-cloud framework and providers | D6.0-D6.5 | Not done | Provider-neutral D1/D2 types only | Auth state machine, exact official CLI adapters, isolation, provider-by-provider gates |
 | Native completion | CP1 | Fully done | shell integration, xtask completion manager, CP1 contract/tests | Hosted three-OS and longitudinal release evidence |
 | Quick Actions and persistence | CP2.0-CP2.2 | Fully done | automexia-devops model, application store/worker/UI/CLI tests | Hosted shell insertion, controlled accessibility, longitudinal evidence |

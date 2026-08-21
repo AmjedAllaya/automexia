@@ -552,7 +552,7 @@
         "security": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs"], "rationale": "Public metadata is bounded and hostile control or direction-format text fails closed; D4 composition and persistent transfer require separate assurance."},
         "performance": {"level": "controlled", "evidence": ["apps/automexia-terminal/benches/connection_catalog.rs", ".github/workflows/nightly.yml#benchmarks-controlled"], "rationale": "The local 10,000-record release benchmark is below the 16 ms reviewed target; named-hardware longitudinal enforcement remains controlled evidence."},
         "resource_lifetime": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs"], "rationale": "This slice is a synchronous pure projection with bounded owned collections and no workers, files, processes, sockets, listeners, PTYs, or GPU resources."},
-        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "The catalog slice performs no persistence; secure profile, recipe, metadata, and preference storage remains an explicit F3 gate."},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "The catalog slice performs no persistence; metadata and the private Connection Library have separate F3 assurance owners."},
         "resilience": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs"]},
         "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs", "tests/fixtures/connection-hub/goldens/layout/responsive-v1.json"], "rationale": "The renderer-neutral model proves maximum-cardinality virtualization and responsive geometry without claiming native product pixels."}
       },
@@ -585,6 +585,31 @@
         "windows": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs", ".github/workflows/ci.yml#native"]},
         "linux": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs", ".github/workflows/ci.yml#native"]},
         "macos": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs", ".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "connection-hub-f3-library",
+      "title": "Private transactional Connection Hub profile, recipe, and preference library",
+      "components": ["apps/automexia-terminal", "automexia-devops", "automexia-ui-model"],
+      "documentation": {
+        "guide": ["docs/guide/remote-connections.md#internal-connection-library-boundary"],
+        "reference": ["docs/TESTING.md#connection-hub-f3-private-profile-recipe-and-preference-library"],
+        "explanation": ["docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md#f3-implement-d51-read-only-connection-hub"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "This slice owns no UI; product controls, focus, and controlled screen-reader evidence remain separate F3 gates."},
+        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/tests/connection_library.rs"]},
+        "security": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Ingress is bounded and validated, no-follow opens protect supported file paths, logs/errors omit values and paths, and redacted transfer strips credential references and private state."},
+        "performance": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "The 16 MiB store is explicitly bounded and remains off startup, renderer, input, resize, PTY, and catalog-search hot paths; controlled long-session persistence measurements remain external evidence."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Operations are synchronous, bounded, close file handles by scope, clean staging files after failed commits, and own no workers, processes, sockets, listeners, PTYs, or GPU resources."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Expected-revision CAS, same-directory atomic replacement, one validated previous generation, explicit recovery, permission hardening, and failure-before-replacement tests protect the private store."},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Tests cover stale and concurrent writers, interrupted staging, malformed primary/previous documents, reviewed recovery, canary preservation, read-only and disk-full injection, and Unix link substitution."},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "This persistence slice has no renderer; native product pixels remain a separate F3 gate."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_library.rs", ".github/workflows/ci.yml#native"], "rationale": "Windows-local tests exercise transactional persistence and injected failure paths; hosted native evidence remains the release authority."},
+        "linux": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_library.rs", ".github/workflows/ci.yml#native"], "rationale": "Unix-only no-follow link tests are owned here; a native run was not part of the M0 Windows reconciliation."},
+        "macos": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_library.rs", ".github/workflows/ci.yml#native"], "rationale": "Unix-only no-follow link tests are owned here; a native run was not part of the M0 Windows reconciliation."}
       }
     }
   ]

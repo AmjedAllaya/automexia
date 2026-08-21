@@ -9,6 +9,8 @@ implementation checklist, use the
 [connectivity and command-productivity focus roadmap](CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md).
 This roadmap continues to own release sequencing and canonical phase status;
 the focus roadmap owns the next executable checklist and dependencies.
+The [detailed SSH/connectivity/multi-environment/multi-cloud plan](SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md)
+owns the M0-M13 implementation and evidence checklist used for future phases.
 
 <!-- roadmap-status-register:start -->
 ## Current feature status
@@ -29,7 +31,7 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | D2 | Generic status, immutable history, capsules, isolation, cancellation, and freshness are implemented. |
 | **Partially done** | D3 | The nonactivated broker now binds exact package identity, grants, platform resolution, file identity, lifecycle, and redacted audit; production UX/spawn/native proof remain. |
 | **Fully done** | D4 | The bounded OpenSSH inventory/persistence package is complete but deliberately disabled. |
-| **Partially done** | D5.0-D5.2 | D5.0 non-executing records, validation, state reducers, dry-run planning, Hub/review/planner models, fixtures, goldens, and assurance are complete locally; ADR acceptance plus D5.1 product integration and D5.2 managed launch remain. |
+| **Partially done** | D5.0-D5.2 | D5.0 non-executing models and D5.1 catalog, metadata, explicit-grant composition, setup guidance, and private Connection Library persistence are complete locally; ADR acceptance, the rendered/product-controlled Hub, and D5.2 managed launch remain. |
 | **Not done** | D6.0-D6.5 | Provider authentication, capsules, transports, and multi-cloud slices are planned only. |
 | **Not done** | D7 | Public ecosystem, direct APIs, sandboxed extensions, and AI execution are deferred. |
 | **Fully done** | CP0 | Architecture, threat model, ceilings, fixtures, mutation tests, and nonactivation policy are complete. |
@@ -335,10 +337,13 @@ close or activate.
 | Process/network/provider/credential/PTY/listener authority | **Fully disabled** | F2 has no filesystem, process, socket, provider, credential, PTY, window, or GPU owner. |
 | ADR 0012 protected acceptance | **Not done externally** | Required before overall D5.0 closure and any D5.1/D5.2 activation. |
 
-This status does not claim a shipped Connection Hub. D5.1 still owns D4 snapshot
-integration, private persistence, virtualized 10,000-record search, and native
-read-only UI evidence; D5.2 separately owns reviewed OpenSSH execution and
-lifecycle.
+This status does not claim a shipped Connection Hub. D5.1 already has D4
+explicit-grant snapshot composition, private metadata and Connection Library
+persistence, virtualized 10,000-record search, stale last-known-good health,
+and static platform guidance. It still owns application state-root/controller
+wiring, exact file-selection and metadata-mutation UI, product rendering, and
+native/accessibility evidence; D5.2 separately owns reviewed OpenSSH execution
+and lifecycle.
 ### v0.5.x command productivity track
 
 Command completion and persistent DevOps shortcuts are now an explicit parallel

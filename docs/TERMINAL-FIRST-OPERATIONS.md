@@ -193,7 +193,7 @@ workflow does not yet ship.
 | Mosh | Typed `connect --transport mosh` adapter | D7 review | Not implemented |
 | Telnet | Explicit insecure `connect --transport telnet` adapter | D7 review | Not implemented |
 | Serial | `automexia serial open` and exact device parameters | D7 review | Not implemented |
-| Recent/favorite hosts | `inventory list --recent`, pin, fuzzy picker | D5.0-D5.1 | F2 record/view fields only; D5.1 product inventory is not implemented |
+| Recent/favorite hosts | `inventory list --recent`, pin, fuzzy picker | D5.0-D5.1 | F2 models plus F3 catalog, transactional metadata, and private library foundations; product inventory remains unimplemented |
 | Hosts and groups | Declarative records, paths, tags, saved queries | D4-D5 | D4 bounded aliases only |
 | Inherited group settings | Layered configuration plus `inventory explain` | D5-D6 | Not implemented |
 | Keychain | External identity references and `identity doctor` | D5 | Not implemented |

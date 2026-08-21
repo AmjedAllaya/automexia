@@ -1,11 +1,13 @@
 # SSH access, multi-cloud connections, and automation recipes
 
 Status: the F2/D5.0 non-executing connection/profile/recipe/state/dry-run model
-baseline is implemented locally; D5.1 product integration, D5.2 execution, and
-D6 multi-cloud delivery are not implemented. Automexia v0.4 does not ship
-managed connections or automatic remote actions. Ordinary user-entered `ssh`,
-`aws`, `az`, `gcloud`, `kubectl`, and `oc` commands continue to use installed
-system tools.
+baseline is implemented locally. D5.1 is partially implemented: its catalog,
+D4 metadata, explicit-grant composition, setup guidance, and private Connection
+Library persistence pass, while product UI/controller work remains. D5.2
+execution and D6 multi-cloud delivery are not implemented. Automexia v0.4 does
+not ship managed connections or automatic remote actions. Ordinary user-entered
+`ssh`, `aws`, `az`, `gcloud`, `kubectl`, and `oc` commands continue to
+use installed system tools.
 
 This document is the implementation authority for connection profiles and
 connection-scoped automation. The [Connection Hub](CONNECTION-HUB.md) owns the
@@ -47,12 +49,20 @@ The current repository provides:
 - the complete Connection Hub and security specifications; and
 - the F2/D5.0 bounded public-only records, strict validation, authentication/
   result reducers, deterministic non-executing planner/fingerprints, pure Hub/
-  review/planner projections, fixtures, fuzz, mutation, and benchmark owners.
+  review/planner projections, fixtures, fuzz, mutation, and benchmark owners;
+- the F3 bounded 10,000-record catalog, local filtering/grouping, source
+  revisions, and renderer-neutral virtualization;
+- the F3 explicit-grant application composition worker with generation
+  supersession, redacted stale last-known-good health, and static platform
+  guidance; and
+- the F3 private transactional Connection Library for validated profiles,
+  recipes, and Hub preferences, with CAS/recovery and redacted fresh-ID
+  transfer.
 
-It does **not** yet provide a rendered/persisted production Connection Hub,
-automatic SSH launch, profile/recipe editor, recipe executor, cloud transport
-adapters, or remote action handshake. UI examples beyond the pure F2 projection
-models remain planned contracts, not instructions for a shipped v0.4 feature.
+It does **not** yet provide a rendered product Connection Hub, a user-facing
+profile/recipe editor, automatic SSH launch, recipe executor, cloud transport
+adapters, or remote action handshake. UI examples remain planned contracts, not
+instructions for a shipped v0.4 feature.
 
 ### F2/D5.0 implementation ledger (2026-08-17)
 
@@ -72,9 +82,12 @@ models remain planned contracts, not instructions for a shipped v0.4 feature.
   modal cycles, and value-redacted human labels. Thirty required regressions and
   structured provider/auth/layout/accessibility fixtures have property,
   mutation, architecture, fuzz, and benchmark ownership.
-- **Not done externally:** ADR 0012 protected acceptance. Private persistence,
-  renderer/product wiring, a profile/recipe editor, and every execution path are
-  also later D5.1/D5.2 work.
+- **Not done externally:** ADR 0012 protected acceptance.
+- **Fully done separately in D5.1:** private transactional profile/recipe/
+  preference persistence, explicit recovery, fault-preserving writes, and
+  redacted fresh-ID transfer.
+- **Partially done in D5.1:** catalog and explicit-grant composition foundations
+  exist; application/product wiring, the editor, and every execution path remain.
 
 Therefore F2/D5.0 is **Partially done** overall despite its complete local
 non-executing exit. No account, filesystem, process, network, credential, PTY,
@@ -729,17 +742,30 @@ Status: **Partially done** overall.
 Exit status: hostile/mutation/property/record/state/model/layout/accessibility
 tests pass and the synthetic slice is reviewable without an account, PTY,
 network, window, or GPU. Protected ADR acceptance remains the overall blocker.
+
 ### D5B - read-only Connection Hub
 
-- Connect the current D4 inventory to virtualized search and grouping.
-- Add explicit local scan, favorites, tags, recent use, stale health, source
-  revision, and platform setup guidance.
-- Implement profile and recipe persistence, import/export safety, and
-  last-known-good recovery.
-- Keep Connect and automatic actions visibly disabled.
+Status: **Partially done**.
 
-Exit gate: 10,000-profile search/layout/resource budgets and Windows, macOS,
-and Linux persistence/permission tests pass.
+- [ ] **Partially done:** the bounded catalog and explicit-grant composition
+  service connect public D4 records to pure search/grouping; product
+  state-root/controller and rendered-modal wiring remain.
+- [ ] **Partially done:** explicit scans, metadata-backed favorite/tag/recent
+  values, source revision, stale last-known-good health, and static platform
+  guidance exist; exact file-selection and favorite/tag mutation UI remain,
+  while recent must stay read-only until managed D5.2 success receipts exist.
+- [x] **Fully done locally:** private profile/recipe/preference persistence,
+  strict transfer parsing, canary redaction, fresh local import IDs, revision
+  CAS, concurrent-writer exclusion, atomic previous-generation recovery, and
+  read-only/disk-full preservation pass.
+- [ ] **Partially done:** pure projections expose no execution authority, but
+  the product modal must visibly explain why Connect and automatic actions are
+  disabled.
+
+Exit gate: the 10,000-profile pure search budget and Windows-local Connection
+Library persistence tests pass. Product rendering, application ownership,
+native macOS/Linux permission runs, controlled screen readers, and the
+remaining exact-selection/mutation flows are still required.
 
 ### D5C - recipe editor and dry-run planner
 

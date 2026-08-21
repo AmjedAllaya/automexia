@@ -1,8 +1,8 @@
 # Phase implementation audit
 
-Audit date: 2026-08-17
+Audit date: 2026-08-21
 
-Audited source baseline: 2d9079ab036cf34b313d7a09e5b0d7ea9a2e85b6
+Audited source baseline: 074bb49e6c93bac231a8acb408e99992f557c25d plus the M0 documentation reconciliation
 
 Scope: every execution phase defined by the product, stabilization, DevOps/SSH,
 Connection Hub, command-productivity, persistent-alias, and Ghostty
@@ -20,6 +20,7 @@ Authoritative design sources:
 
 - [Product roadmap](ROADMAP.md)
 - [Connectivity and command-productivity focus roadmap](CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md)
+- [Detailed SSH, connectivity, multi-environment, and multi-cloud plan](SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md)
 - [Stabilization roadmap](STABILIZATION-ROADMAP.md)
 - [Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md)
 - [Readiness audit](READINESS-AUDIT.md)
@@ -66,10 +67,10 @@ remain subject to their documented protected milestones and evidence.
 
 | Check | Result on the audited commit |
 |---|---|
-| Feature assurance | Passed: 20 feature families, 25 components, 8 benchmark targets, 11 fuzz targets, 90 documentation references, and 498 evidence links. |
+| Feature assurance | Passed: 24 feature families, 26 components, 10 benchmark targets, 12 fuzz targets, 104 documentation references, and 620 evidence links. |
 | Platform coverage policy | Passed: Windows/Linux/macOS, PowerShell/CMD/Unix shells, X11/Wayland, alternate architectures, nightly artifacts, deep Windows/WSL jobs, and release validators are machine-enforced. |
 | Documentation coverage | Passed: 12 public pages, 172 configuration keys, 73 binding actions, 6 application flags, and 21 xtask commands. |
-| Repository validation | Passed: 41 TOML, 14 YAML, 18 JSON, 6 XML, one desktop file, 143 Markdown files, 69 pinned Actions, release trust, assurance, and CP policy contracts. |
+| Repository validation | Passed: 41 TOML, 14 YAML, 25 JSON, 6 XML, one desktop file, 199 Markdown files, 69 pinned Actions, release trust, assurance, and roadmap policy contracts. |
 
 The hosted GitHub run state was not independently queried because GitHub CLI is
 not installed on this host. The latest readiness record says hosted jobs were
@@ -89,7 +90,7 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
 | DevOps | D3 | **Partial; nonactivated** | **Blocked** | A test-only exact-argv review model exists; production launch, capability UX, atomic spawn, and native lifecycle proof do not. |
 | DevOps | D4 | **Fully implemented as disabled package** | **Partial** | Bounded OpenSSH inventory/persistence exists without process/network authority; no production UI or launch is connected. |
-| SSH UX | D5.0-D5.2 | **Partial; D5.0 local model complete, later slices pending** | **Blocked** | Bounded records, validation, state reducers, dry-run planning, renderer-neutral Hub/review/planner models, fixtures, goldens, fuzz, mutation, and benchmark evidence exist with every authority disabled; ADR acceptance, product integration, and managed OpenSSH remain. |
+| SSH UX | D5.0-D5.2 | **Partial; D5.0 and D5.1 foundations implemented, product/launch pending** | **Blocked** | Bounded records, planning and Hub models, catalog composition, transactional metadata/library persistence, fixtures, fuzz, mutation, and local benchmark evidence exist with every authority disabled; ADR acceptance, product rendering/accessibility, application store initialization, and managed OpenSSH remain. |
 | Multi-cloud | D6.0-D6.5 | **Not implemented** | **Blocked** | Provider auth, capsules, transports, and provider slices are planned only. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
@@ -477,8 +478,10 @@ Implemented evidence:
 Not implemented externally: ADR 0012 remains proposed and requires protected
 acceptance or supersession. That single external decision keeps D5.0
 **Partially done** and prevents activation; it does not invalidate the complete
-local F2 exit. D5.1 inventory/UI/persistence integration and D5.2 process/PTY/
-network lifecycle are separate, still-not-implemented phases.
+local F2 exit. The non-executing D5.1 catalog, composition, metadata, and
+Connection Library foundations are partially implemented; D5.1 product UI and
+all D5.2 process/PTY/network lifecycle work remain open.
+
 ### D5.1 — read-only Connection Hub
 
 **Partially implemented.**
@@ -500,11 +503,20 @@ scan, process launch, network request, authentication, or PTY work. Static
 Windows, macOS, and Linux guidance lists candidate paths but requires exact
 user-selected files before scanning.
 
-Remaining: favorites/tags/recent mutation UI, secure profile/recipe/preference
-storage and redacted transfer, product rendering, fault-injected read-only/disk-
-full evidence, native macOS/Linux
-permission evidence for this revision, and controlled screen-reader
-verification. Connection actions remain disabled until D5.2.
+The application-owned Connection Library now stores validated profile, recipe,
+and Hub-preference documents under a 16 MiB ceiling with private no-follow
+storage, revision CAS, concurrent-writer exclusion, atomic one-generation
+recovery, explicit reviewed restoration, and redacted transfer that generates
+fresh local IDs. Focused tests prove hostile/unknown-field rejection, canary
+redaction, read-only/disk-full last-known-good preservation, and Windows-local
+round trips without adding process, network, authentication, credential, PTY,
+or listener authority.
+
+Remaining: initialize the stores once from the application state root, add an
+exact user-selected-file product flow, add reviewed favorite/tag mutation UI
+while keeping recent read-only until D5.2, render the product modal and disabled
+actions, and obtain native macOS/Linux permission plus controlled Narrator/NVDA,
+VoiceOver, and Orca evidence. Connection actions remain disabled until D5.2.
 
 ### D5.2 — managed OpenSSH launch and lifecycle
 
@@ -832,7 +844,7 @@ Planned work, with no shipped-command claim:
 | Product surface | Owning gate | Audit status |
 |---|---|---|
 | Canonical operation registry, `automexia` domains, generated palette/help/accessibility, optional collision-safe `ax` | CP2.2-CP3/D5 | Not implemented |
-| Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | F2 records and renderer-neutral review projections implemented; D5.1 product Hub and D5.2 connect/reconnect remain not implemented |
+| Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | F2 models plus D5.1 catalog, metadata, explicit-grant composition, and private library are implemented; product Hub controls/rendering and D5.2 connect/reconnect remain open |
 | Identity references, agent/certificate state, known-host explanation, routes/jumps/proxies/tunnels | D5.2 | Not implemented |
 | Quick Actions, aliases, lifecycle hooks, reviewed multi-target execution | CP2.2-CP4/D5E | Model/store foundations only |
 | Declarative workspace persistence/restoration and visibly armed broadcast | D5/CP4 | Existing layout primitives only |
@@ -1038,7 +1050,8 @@ At this audited baseline, the focused order is:
 1. Obtain protected acceptance or supersession of ADR 0012. Package identity,
    grants, executable resolution, strict defaults, and the native fixture
    definitions are already frozen locally with production launch disabled.
-2. Preserve the completed non-executing D5.0/F2 boundary; after the protected decision, implement the read-only D5.1 Connection Hub.
+2. Preserve D5.0/F2 and the completed D5.1 foundations; finish the read-only
+   product Hub while D5.2 managed launch waits for the protected decision.
 3. Activate D3 only with its capability, atomic spawn, PTY lifecycle, cleanup,
    and three-OS native gates; then deliver D5.2 managed OpenSSH in bounded
    direct, route/host-trust, tunnel, and native-evidence slices.

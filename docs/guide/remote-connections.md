@@ -6,9 +6,28 @@ Automexia separates **what works in a normal terminal today** from the **managed
 
 **Available now:** users can run `ssh`, `mosh`, cloud CLIs, `kubectl`, `oc`, and other tools normally from their shell. The PTY treats remote output as untrusted terminal bytes exactly like local process output.
 
-**Implemented internally, not activated as managed SSH:** a bounded static OpenSSH inventory package, exact-grant/session-launch review models, connection/profile/recipe records, authentication/result reducers, deterministic dry-run planning, and renderer-independent Connection Hub/review/planner view models.
+**Implemented internally, not activated as managed SSH:** a bounded static
+OpenSSH inventory package, exact-grant/session-launch review models, connection/profile/recipe records, authentication/result reducers, deterministic dry-run planning, renderer-independent Connection Hub/review/planner view models, bounded catalog composition, and a private transactional Connection Library.
 
 **Planned:** production Connection Hub UI integration, reviewed system-OpenSSH launch, tunnels/routes, provider authentication and multi-cloud adapters, remote-file/session-memory/collaboration features, and later ecosystem/AI features.
+
+## Internal Connection Library boundary
+
+The source tree contains an internal, versioned Connection Library store for
+profiles, recipes, and preferences. It is bounded, compare-and-swap protected,
+atomically replaced, recoverable only through an explicit reviewed operation,
+and designed to persist public metadata plus opaque credential references—not
+passwords, private keys, tokens, or provider credentials.
+
+The current application root does not initialize this store and no supported UI,
+CLI, or configuration key exposes it. Its internal file name and schema are not
+a user-editing contract: do not create or edit a `library.v1.json` file to try
+to enable Connection Hub. Redacted export deliberately removes credential
+references, private local state, and last-used timestamps; import validates all
+values and assigns fresh identifiers.
+
+This internal persistence does not change today's workflow: system OpenSSH and
+its normal configuration remain the only supported connection path.
 
 ## Product model
 

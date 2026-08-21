@@ -1130,8 +1130,17 @@ release-profile rapid-filter benchmark measured 7.0513-7.4408 ms for complete
 10,000-record filter/group projections, below the 16 ms reviewed target. This
 is local implementation evidence, not the controlled multi-platform baseline.
 
-Application composition, filesystem persistence, native product rendering, and
-platform/screen-reader evidence remain D5.1 gates.
+A fresh M0 rerun on 2026-08-21 at revision
+`074bb49e6c93bac231a8acb408e99992f557c25d` plus the documentation-only diff
+measured 8.1839-8.8694 ms (8.4996 ms estimate) with 20 samples and a three-second
+measurement window. The Windows 11 `10.0.26200` host used an AMD Ryzen 5 5600H
+(6 cores/12 logical processors) and 27.9 GiB RAM. The result remains below the
+16 ms target; it is a same-host spot measurement, not longitudinal enforcement.
+
+The catalog benchmark does not by itself prove persistence, rendering, or
+native accessibility. Application composition and private persistence have
+their own contracts below; native product rendering and platform/screen-reader
+evidence remain D5.1 gates.
 
 ### Connection Hub F3 transactional OpenSSH metadata
 
@@ -1149,7 +1158,8 @@ revision, unnecessary-recovery refusal, process-local writer contention, and
 Unix no-follow recovery paths. The full D4 suite retains bounded serialization,
 atomic replacement, interrupted staging, redacted malformed/oversized input,
 exact removal, Unix mode, and Windows current-user DACL coverage. Application
-composition and profile/recipe/preference persistence remain separate F3 gates.
+composition and the private profile/recipe/preference library are separate F3
+contracts below; the product editor and rendered metadata controls remain open.
 
 ### Connection Hub F3 application composition
 
@@ -1164,11 +1174,64 @@ The focused contract proves that opening the runtime does not scan; only exact
 user-provided grants start work; metadata and OpenSSH records produce a bounded
 public catalog; newer generations supersede older work; failures retain the
 last good catalog with a path-free diagnostic code; and Windows, macOS, and
-Linux guidance claims neither process nor network activity. Profile/recipe/
-preference storage and native product rendering remain separate F3 gates.
+Linux guidance claims neither process nor network activity. The private
+profile/recipe/preference library is covered below; native product rendering
+and application initialization of that library remain separate F3 gates.
+
+### Connection Hub F3 private profile, recipe, and preference library
+
+The application crate owns a private, versioned Connection Library store for
+saved connection profiles, automation recipes, and user preferences. It is an
+internal persistence boundary and is not initialized by the current product UI:
+
+    cargo test -p automexia-terminal --lib automexia::connections::library::tests::injected_read_only_and_disk_full_fail_before_replacing_primary --no-default-features --locked
+    cargo test -p automexia-terminal --test connection_library --no-default-features --locked
+    cargo clippy -p automexia-terminal --lib --test connection_library --no-default-features --locked -- -D warnings
+
+The 16 MiB document boundary validates every imported or loaded value before
+publication. Persistence uses an expected-revision compare-and-swap contract,
+same-directory staging and atomic replacement, one validated previous
+generation, and explicit reviewed recovery. No-follow file opening rejects
+link substitution where the platform adapter supports it. Redacted transfer
+omits opaque credential references, last-used timestamps, and private local
+state; import generates fresh identifiers. Deterministic tests cover hostile
+controls, oversized and unknown data, stale writers, concurrent contention,
+interrupted and corrupt writes, recovery, canary preservation, and injected
+read-only/disk-full failures before primary replacement.
+
+On 2026-08-21, at source revision
+`074bb49e6c93bac231a8acb408e99992f557c25d` plus the documentation-only M0
+reconciliation, Windows 11 `10.0.26200` on an AMD Ryzen 5 5600H recorded one
+focused failure-path unit test passing and all five Windows-applicable
+integration tests passing. The Unix symlink substitution case was compiled but
+not executed on Windows; native Linux/macOS runs remain external evidence.
+
+#### M0 local reconciliation evidence
+
+The documentation-only reconciliation used these final local gates:
+
+    cargo clippy -p automexia-terminal --lib --test connection_library --no-default-features --locked -- -D warnings
+    python tools/ci/check_feature_assurance.py
+    python tools/ci/check_documentation_coverage.py
+    python tools/ci/check_platform_coverage.py
+    python tools/ci/validate_repository.py
+    cargo fmt --all --check
+    cargo ready
+    git diff --check
+
+Focused Clippy, all four Python policy/coverage validators, and the diff check
+passed. Repository validation counted 41 TOML, 14 YAML, 25 JSON, 6 XML, one
+desktop file, 199 Markdown files, and 24 assurance entries. `cargo fmt` and
+`cargo ready` both stopped at the same pre-existing formatting drift in
+`apps/automexia-terminal/src/context/renderable.rs`,
+`apps/automexia-terminal/src/renderer/mod.rs`, and
+`apps/automexia-terminal/src/watcher.rs`; none is changed by M0. The isolated
+`cargo ready` artifacts were removed, but its later phases did not run.
+
 ### Remaining Connection Hub activation assurance
 
-D5.1/D5.2 and D6 remain planned/non-activated work. Before activation they must
+The remaining D5.1 product work, all D5.2 managed launch work, and D6 provider
+work remain planned/non-activated. Before activation they must
 add the deterministic, native, controlled-provider, accessibility, visual,
 security, performance, privacy, persistence, and resource evidence in
 [Connection Hub](CONNECTION-HUB.md#verification-plan).

@@ -14,6 +14,7 @@ This documentation is organized around **reader intent**, not implementation pha
 | Learn command lines and which command surface to use | [Commands and shell workflows](user-guide/commands-and-shell.md) |
 | Learn the practical keyboard/mouse controls | [Shortcuts and input](user-guide/shortcuts.md) |
 | Use completion, Quick Actions, aliases, and workspace tasks | [Command productivity](user-guide/productivity.md) |
+| Review the exact Quick Action and alias architecture | [DevOps alias specification](DEVOPS-ALIASES.md) |
 | Customize shell, font, window, theme, navigation, and bindings | [Configuration and customization](user-guide/customization.md) |
 | Configure SSH or find Connection Hub | **[Connection Hub and SSH](user-guide/connection-hub-and-ssh.md)** |
 | Work with images, listings, semantic output, or WSL | [Files and images](user-guide/files-and-images.md), [Remote and WSL](user-guide/remote-and-wsl.md) |
@@ -26,6 +27,7 @@ This documentation is organized around **reader intent**, not implementation pha
 | Understand the technical design | [Architecture](developer/architecture.md) |
 | Run verification or understand release gates | [Testing and release](developer/testing-release.md) |
 | See future work / decision history | [Roadmap](project/roadmap.md), [Decision index](project/decisions.md) |
+| Follow the detailed SSH and multi-cloud implementation phases | [SSH, connectivity, multi-environment, and multi-cloud plan](SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md) |
 
 ## What is available today
 
