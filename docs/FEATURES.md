@@ -49,9 +49,13 @@ Those omissions are deliberate security and product boundaries, not hidden
 features. The managed SSH/multi-cloud [Connection Hub](CONNECTION-HUB.md) is
 not a shipped v0.4 surface. Its F2/D5.0 bounded records, operation-correlated
 state reducers, panic-free dry-run planner, and accessible value-redacted Hub/
-review/planner models are implemented locally with all authority disabled;
-D5.1/D5.2 product UI and execution and all D6
-provider slices remain planned. Its reusable profiles and typed actions are
+review/planner models are implemented locally with all authority disabled.
+The D5.1/F3 foundation also provides bounded catalog search and composition,
+transactional OpenSSH metadata, last-known-good refresh health, and a private
+transactional profile/recipe/preference library. The product still does not
+initialize that library or expose the Hub: exact file selection, favorite/tag
+editing, recent-use display, native rendering/accessibility, D5.2 execution,
+and all D6 provider slices remain planned. Its reusable profiles and typed actions are
 specified in
 [SSH connections and automation](SSH-CONNECTION-AUTOMATION.md). The complete
 planned command/leader/picker replacement for GUI-oriented remote-management
