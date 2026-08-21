@@ -144,8 +144,9 @@ impl Screen<'_> {
             return true;
         }
 
+        let catalog_controls_visible = self.connection_hub.catalog_controls_visible();
         let focus = self.connection_hub.focus();
-        if matches!(focus, HubFocus::Search) {
+        if catalog_controls_visible && matches!(focus, HubFocus::Search) {
             match &key_event.logical_key {
                 Key::Named(NamedKey::Backspace) => {
                     self.connection_hub.backspace_search();
@@ -165,7 +166,8 @@ impl Screen<'_> {
                 _ => {}
             }
         }
-        if !matches!(self.connection_hub.focus(), HubFocus::Search)
+        if catalog_controls_visible
+            && !matches!(self.connection_hub.focus(), HubFocus::Search)
             && !modifiers.control_key()
             && !modifiers.super_key()
             && !modifiers.alt_key()
@@ -215,9 +217,14 @@ impl Screen<'_> {
             Key::Named(NamedKey::Enter) => Some(HubKey::Enter),
             Key::Named(NamedKey::Tab) if modifiers.shift_key() => Some(HubKey::ShiftTab),
             Key::Named(NamedKey::Tab) => Some(HubKey::Tab),
-            Key::Character(value) if value.as_str() == "/" => Some(HubKey::Slash),
             Key::Character(value)
-                if value.eq_ignore_ascii_case("f")
+                if catalog_controls_visible && value.as_str() == "/" =>
+            {
+                Some(HubKey::Slash)
+            }
+            Key::Character(value)
+                if catalog_controls_visible
+                    && value.eq_ignore_ascii_case("f")
                     && (modifiers.control_key() || modifiers.super_key()) =>
             {
                 Some(HubKey::Find)

@@ -1,7 +1,8 @@
 //! Sugarloaf adapter for the renderer-neutral read-only Connection Hub.
 
 use automexia_ui_model::connection_hub::{
-    HubCatalogGrouping, HubCatalogSource, HubContentState, HubLayout,
+    hub_catalog_controls_visible, HubCatalogGrouping, HubCatalogSource, HubContentState,
+    HubLayout,
 };
 use rio_backend::sugarloaf::{text::DrawOpts, Sugarloaf};
 
@@ -16,9 +17,31 @@ const SCRIM: [f32; 4] = [0.0, 0.012, 0.028, 0.84];
 const OUTLINE: [f32; 4] = [0.0, 0.66, 0.93, 1.0];
 const CARD: [f32; 4] = [0.012, 0.035, 0.062, 1.0];
 const SURFACE: [f32; 4] = [0.025, 0.07, 0.105, 1.0];
+const SURFACE_RAISED: [f32; 4] = [0.037, 0.095, 0.14, 1.0];
 const SELECTED: [f32; 4] = [0.025, 0.19, 0.27, 1.0];
+const PRIMARY: [f32; 4] = [0.0, 0.34, 0.50, 1.0];
+const READ_ONLY_BADGE: [f32; 4] = [0.035, 0.16, 0.18, 1.0];
 const DISABLED: [f32; 4] = [0.12, 0.13, 0.15, 1.0];
-const SUCCESS: [f32; 4] = [0.45, 0.86, 0.45, 1.0];
+const CYAN: [f32; 4] = [0.28, 0.79, 0.91, 1.0];
+const VIOLET: [f32; 4] = [0.70, 0.58, 1.0, 1.0];
+const FAVORITE: [f32; 4] = [0.96, 0.74, 0.25, 1.0];
+const RECENT: [f32; 4] = [0.32, 0.84, 0.72, 1.0];
+const SUCCESS: [f32; 4] = [0.36, 0.83, 0.59, 1.0];
+const WARNING: [f32; 4] = [1.0, 0.60, 0.26, 1.0];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HubIcon {
+    Connections,
+    FolderAdd,
+    Search,
+    Group,
+    Favorite,
+    Recent,
+    Source,
+    Clear,
+    Shield,
+    Status,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Rect {
@@ -73,6 +96,8 @@ struct Layout {
     rows: Vec<(Rect, Rect)>,
     inspector: Option<Rect>,
     edit_tags: Option<Rect>,
+    setup_panel: Option<Rect>,
+    catalog_chrome_visible: bool,
     compact: bool,
 }
 
@@ -130,20 +155,25 @@ impl ConnectionHub {
         {
             return Some(ConnectionHubHit::CancelReviewedScan);
         }
-        if layout.search.contains(mouse_x, mouse_y) {
-            return Some(ConnectionHubHit::Search);
-        }
-        for (index, filter) in layout.filters.iter().enumerate() {
-            if filter.contains(mouse_x, mouse_y) {
-                let hit = match index {
-                    0 => ConnectionHubHit::CycleGrouping,
-                    1 => ConnectionHubHit::ToggleFavoritesFilter,
-                    2 => ConnectionHubHit::ToggleRecentFilter,
-                    3 => ConnectionHubHit::CycleSourceFilter,
-                    4 => ConnectionHubHit::ClearFilters,
-                    _ => continue,
-                };
-                return Some(hit);
+        if layout.catalog_chrome_visible {
+            if layout.search.contains(mouse_x, mouse_y) {
+                return Some(ConnectionHubHit::Search);
+            }
+            for (index, filter) in layout.filters.iter().enumerate() {
+                if index == 4 && !filters_are_active(presentation) {
+                    continue;
+                }
+                if filter.contains(mouse_x, mouse_y) {
+                    let hit = match index {
+                        0 => ConnectionHubHit::CycleGrouping,
+                        1 => ConnectionHubHit::ToggleFavoritesFilter,
+                        2 => ConnectionHubHit::ToggleRecentFilter,
+                        3 => ConnectionHubHit::CycleSourceFilter,
+                        4 => ConnectionHubHit::ClearFilters,
+                        _ => continue,
+                    };
+                    return Some(hit);
+                }
             }
         }
         if layout
@@ -199,91 +229,177 @@ impl ConnectionHub {
         );
 
         let title = text(20.0, [238, 249, 255, 255], true);
-        let body = text(13.0, [171, 201, 218, 255], false);
-        let small = text(11.0, [125, 164, 187, 255], false);
-        let label = text(12.0, [235, 248, 255, 255], true);
+        let body = text(13.0, [183, 211, 226, 255], false);
+        let small = text(11.0, [139, 177, 198, 255], false);
+        let label = text(12.0, [241, 250, 255, 255], true);
         let operation_status = operation_status(presentation);
         let left = layout.card.x + if layout.compact { 14.0 } else { 22.0 };
-        sugarloaf
-            .text_mut()
-            .draw(left, layout.card.y + 20.0, "Connection Hub", &title);
-        sugarloaf.text_mut().draw(
-            left,
-            layout.card.y + 49.0,
-            "Read-only SSH inventory · no login, network, process, or PTY authority",
-            &small,
-        );
 
-        rounded(sugarloaf, layout.search, SURFACE, 8.0);
-        let query = if let (None, Some(preedit)) = (
-            &presentation.tag_editor,
-            presentation.ime_preedit.as_deref(),
-        ) {
-            format!("{}{}", presentation.query, preedit)
-        } else if presentation.query.is_empty() {
-            "Search public connections...".to_owned()
-        } else {
-            presentation.query.clone()
+        let brand = Rect {
+            x: left,
+            y: layout.card.y + 18.0,
+            width: 36.0,
+            height: 36.0,
         };
-        sugarloaf.text_mut().draw(
-            layout.search.x + 12.0,
-            layout.search.y + 10.0,
-            &query,
-            &body,
-        );
-        button(
+        rounded(sugarloaf, brand, SURFACE_RAISED, 10.0);
+        draw_hub_icon(
             sugarloaf,
-            layout.review_files,
-            "Review SSH files",
-            false,
-            &label,
+            HubIcon::Connections,
+            brand.x + 7.0,
+            brand.y + 7.0,
+            CYAN,
+            SURFACE_RAISED,
         );
+        sugarloaf.text_mut().draw(
+            left + 48.0,
+            layout.card.y + 18.0,
+            "Connection Hub",
+            &title,
+        );
+        if layout.card.width >= 340.0 {
+            sugarloaf.text_mut().draw(
+                left + 48.0,
+                layout.card.y + 45.0,
+                "SSH inventory",
+                &small,
+            );
+        }
+
+        if layout.card.width >= 430.0 {
+            let badge = Rect {
+                x: layout.close.x - 116.0,
+                y: layout.card.y + 22.0,
+                width: 104.0,
+                height: 28.0,
+            };
+            rounded(sugarloaf, badge, READ_ONLY_BADGE, 14.0);
+            draw_hub_icon(
+                sugarloaf,
+                HubIcon::Shield,
+                badge.x + 10.0,
+                badge.y + 4.0,
+                SUCCESS,
+                READ_ONLY_BADGE,
+            );
+            sugarloaf
+                .text_mut()
+                .draw(badge.x + 34.0, badge.y + 7.0, "Read-only", &small);
+        }
         button(sugarloaf, layout.close, "×", false, &label);
+
+        if layout.catalog_chrome_visible {
+            rounded(sugarloaf, layout.search, SURFACE, 8.0);
+            draw_hub_icon(
+                sugarloaf,
+                HubIcon::Search,
+                layout.search.x + 11.0,
+                layout.search.y + 8.0,
+                CYAN,
+                SURFACE,
+            );
+            let query = if let (None, Some(preedit)) = (
+                &presentation.tag_editor,
+                presentation.ime_preedit.as_deref(),
+            ) {
+                format!("{}{}", presentation.query, preedit)
+            } else if presentation.query.is_empty() {
+                "Search connections".to_owned()
+            } else {
+                presentation.query.clone()
+            };
+            sugarloaf.text_mut().draw(
+                layout.search.x + 40.0,
+                layout.search.y + 10.0,
+                &query,
+                &body,
+            );
+            action_button(
+                sugarloaf,
+                layout.review_files,
+                if layout.compact {
+                    "Add files"
+                } else {
+                    "Add SSH files"
+                },
+                HubIcon::FolderAdd,
+                PRIMARY,
+                [0.90, 0.98, 1.0, 1.0],
+                &label,
+            );
+
+            let grouping = grouping_label(presentation.catalog_query.grouping);
+            let source = source_label(presentation.catalog_query.source);
+            let filter_labels = if layout.compact {
+                [
+                    grouping.to_owned(),
+                    "Favorites".to_owned(),
+                    "Recent".to_owned(),
+                    source.to_owned(),
+                    "Clear".to_owned(),
+                ]
+            } else {
+                [
+                    format!("Grouped: {grouping}"),
+                    "Favorites".to_owned(),
+                    "Recent".to_owned(),
+                    format!("Source: {source}"),
+                    "Clear".to_owned(),
+                ]
+            };
+            let filter_active = [
+                presentation.catalog_query.grouping != HubCatalogGrouping::None,
+                presentation.catalog_query.favorites_only,
+                presentation.catalog_query.recent_only,
+                presentation.catalog_query.source.is_some(),
+                filters_are_active(presentation),
+            ];
+            let filter_icons = [
+                HubIcon::Group,
+                HubIcon::Favorite,
+                HubIcon::Recent,
+                HubIcon::Source,
+                HubIcon::Clear,
+            ];
+            let filter_colors = [VIOLET, FAVORITE, RECENT, CYAN, WARNING];
+            for (index, rect) in layout.filters.iter().copied().enumerate() {
+                if index == 4 && !filters_are_active(presentation) {
+                    continue;
+                }
+                filter_button(
+                    sugarloaf,
+                    rect,
+                    &filter_labels[index],
+                    filter_icons[index],
+                    filter_colors[index],
+                    filter_active[index],
+                    &small,
+                );
+            }
+        } else if layout.setup_panel.is_none() {
+            action_button(
+                sugarloaf,
+                layout.review_files,
+                "Choose different files",
+                HubIcon::FolderAdd,
+                SURFACE_RAISED,
+                CYAN,
+                &label,
+            );
+        }
+
         if let Some((_, rect)) = layout.confirm_scan {
-            button(sugarloaf, rect, "Scan reviewed files", false, &label);
+            action_button(
+                sugarloaf,
+                rect,
+                "Scan selected files",
+                HubIcon::Status,
+                PRIMARY,
+                [0.90, 0.98, 1.0, 1.0],
+                &label,
+            );
         }
         if let Some(rect) = layout.cancel_scan {
-            button(sugarloaf, rect, "Cancel selection", false, &label);
-        }
-
-        let grouping = grouping_label(presentation.catalog_query.grouping);
-        let source = source_label(presentation.catalog_query.source);
-        let filter_labels = if layout.compact {
-            [
-                format!("G {grouping}"),
-                "Favorites".to_owned(),
-                "Recent".to_owned(),
-                format!("S {source}"),
-                "Clear".to_owned(),
-            ]
-        } else {
-            [
-                format!("Group: {grouping} (G)"),
-                "Favorites only (V)".to_owned(),
-                "Recent only (R)".to_owned(),
-                format!("Source: {source} (S)"),
-                "Clear filters (X)".to_owned(),
-            ]
-        };
-        let any_filter = presentation.catalog_query.favorites_only
-            || presentation.catalog_query.recent_only
-            || presentation.catalog_query.source.is_some()
-            || presentation.catalog_query.tag.is_some();
-        let filter_active = [
-            presentation.catalog_query.grouping != HubCatalogGrouping::None,
-            presentation.catalog_query.favorites_only,
-            presentation.catalog_query.recent_only,
-            presentation.catalog_query.source.is_some(),
-            any_filter,
-        ];
-        for ((rect, value), active) in layout
-            .filters
-            .iter()
-            .copied()
-            .zip(filter_labels)
-            .zip(filter_active)
-        {
-            filter_button(sugarloaf, rect, &value, active, &small);
+            button(sugarloaf, rect, "Cancel", false, &label);
         }
 
         for (visible_index, row) in presentation.view.rows.iter().enumerate() {
@@ -332,12 +448,13 @@ impl ConnectionHub {
                     &small,
                 );
             }
-            let star = if row.favorite { "★" } else { "☆" };
-            sugarloaf.text_mut().draw(
-                favorite_rect.x + 8.0,
-                favorite_rect.y + 7.0,
-                star,
-                &label,
+            draw_hub_icon(
+                sugarloaf,
+                HubIcon::Favorite,
+                favorite_rect.x + 6.0,
+                favorite_rect.y + (favorite_rect.height - 22.0) * 0.5,
+                if row.favorite { FAVORITE } else { CYAN },
+                if row.selected { SELECTED } else { SURFACE },
             );
         }
 
@@ -380,21 +497,29 @@ impl ConnectionHub {
             sugarloaf.text_mut().draw(
                 inspector.x + 14.0,
                 inspector.y + inspector.height - 42.0,
-                "Connect and Login are unavailable",
+                "Browsing only · connection stays closed",
                 &small,
             );
         }
 
-        if presentation.view.rows.is_empty()
+        if let Some(panel) = layout.setup_panel {
+            render_setup_state(
+                sugarloaf,
+                panel,
+                layout.review_files,
+                presentation,
+                &operation_status,
+                layout.compact,
+            );
+        } else if presentation.view.rows.is_empty()
             && layout.review_panel.is_none()
             && layout.overlay_panel.is_none()
         {
             let heading = match presentation.view.content_state {
-                HubContentState::InitialSetup => "Choose exact SSH files to begin",
                 HubContentState::FilteredEmpty => "No connections match these filters",
-                HubContentState::Loading => "Loading the local connection library",
+                HubContentState::Loading => "Preparing your local inventory",
                 HubContentState::Error => "Connection inventory is unavailable",
-                _ => "No public connections are available",
+                _ => "No SSH hosts yet",
             };
             sugarloaf.text_mut().draw(
                 layout.filters[0].x,
@@ -402,28 +527,12 @@ impl ConnectionHub {
                 heading,
                 &label,
             );
-            let guidance =
-                if presentation.view.content_state == HubContentState::InitialSetup {
-                    presentation.setup_guidance.message
-                } else {
-                    operation_status.as_str()
-                };
             sugarloaf.text_mut().draw(
                 layout.filters[0].x,
                 layout.filters[0].y + 75.0,
-                &truncated(guidance, if layout.compact { 58 } else { 120 }),
+                &truncated(&operation_status, if layout.compact { 58 } else { 110 }),
                 &body,
             );
-            if presentation.view.content_state == HubContentState::InitialSetup {
-                let locations =
-                    presentation.setup_guidance.candidate_locations.join(" · ");
-                sugarloaf.text_mut().draw(
-                    layout.filters[0].x,
-                    layout.filters[0].y + 102.0,
-                    &truncated(&locations, if layout.compact { 58 } else { 120 }),
-                    &small,
-                );
-            }
         }
 
         if let (Some(panel), GrantReviewState::Ready { ref files, .. }) =
@@ -461,58 +570,16 @@ impl ConnectionHub {
             }
         }
 
-        let status_y = layout.card.y + layout.card.height - 67.0;
-        let status_color = if presentation.view.content_state == HubContentState::Ready {
-            SUCCESS
-        } else {
-            OUTLINE
-        };
-        sugarloaf.rect(
-            None,
+        render_status_footer(
+            sugarloaf,
+            presentation,
+            &layout,
             left,
-            status_y + 4.0,
-            4.0,
-            16.0,
-            status_color,
-            0.0,
-            ORDER,
-        );
-        sugarloaf
-            .text_mut()
-            .draw(left + 11.0, status_y, &operation_status, &body);
-        let tag_filter = presentation
-            .catalog_query
-            .tag
-            .as_deref()
-            .map(|tag| format!(" · tag filter {}", truncated(tag, 20)))
-            .unwrap_or_default();
-        let library = format!(
-            "Local library r{}: {} profiles · {} recipes · preferences read-only{}{}",
-            presentation.library.revision,
-            presentation.library.profile_count,
-            presentation.library.recipe_count,
-            if presentation.library.recovered {
-                " · recovered"
-            } else {
-                ""
-            },
-            tag_filter
-        );
-        sugarloaf.text_mut().draw(
-            left,
-            status_y + 21.0,
-            &truncated(&library, if layout.compact { 62 } else { 132 }),
-            &small,
-        );
-        sugarloaf.text_mut().draw(
-            left,
-            status_y + 39.0,
-            "Connect · Login · Cloud refresh · Run recipe — unavailable",
+            &operation_status,
             &small,
         );
         sugarloaf.end_modal_layer();
     }
-
     fn layout(
         presentation: &HubControllerPresentation,
         dimensions: (f32, f32, f32),
@@ -523,8 +590,16 @@ impl ConnectionHub {
         } else {
             18.0
         };
-        let width = 1100.0_f32.min((viewport.width - margin * 2.0).max(1.0));
-        let height = 760.0_f32.min((viewport.height - margin * 2.0).max(1.0));
+        let catalog_chrome_visible = catalog_chrome_visible(presentation);
+        let overlay_active =
+            presentation.metadata_review.is_some() || presentation.tag_editor.is_some();
+        let review_ready =
+            matches!(presentation.grant_review, GrantReviewState::Ready { .. });
+        let simple_state = !catalog_chrome_visible && !review_ready && !overlay_active;
+        let maximum_width: f32 = if simple_state { 760.0 } else { 1100.0 };
+        let maximum_height: f32 = if simple_state { 480.0 } else { 760.0 };
+        let width = maximum_width.min((viewport.width - margin * 2.0).max(1.0));
+        let height = maximum_height.min((viewport.height - margin * 2.0).max(1.0));
         let card = Rect {
             x: ((viewport.width - width) * 0.5).max(0.0),
             y: ((viewport.height - height) * 0.5).max(0.0),
@@ -536,29 +611,53 @@ impl ConnectionHub {
         let inner = if compact { 12.0 } else { 20.0 };
         let close = bounded_to(
             Rect {
-                x: card.x + card.width - inner - 34.0,
-                y: card.y + 14.0,
-                width: 34.0,
-                height: 30.0,
+                x: card.x + card.width - inner - 40.0,
+                y: card.y + 16.0,
+                width: 40.0,
+                height: 40.0,
             },
             card,
         );
-        let action_width = if compact { 134.0 } else { 164.0 };
-        let review_files = bounded_to(
-            Rect {
-                x: card.x + card.width - inner - action_width,
-                y: card.y + 76.0,
-                width: action_width,
-                height: 38.0,
-            },
-            card,
-        );
+        let setup_panel = simple_state.then(|| {
+            bounded_to(
+                Rect {
+                    x: card.x + inner,
+                    y: card.y + 76.0,
+                    width: (card.width - inner * 2.0).max(1.0),
+                    height: (card.height - 134.0).max(1.0),
+                },
+                card,
+            )
+        });
+        let action_width = if compact { 142.0 } else { 174.0 };
+        let review_files = if let Some(panel) = setup_panel {
+            let width = 224.0_f32.min((panel.width - 24.0).max(1.0));
+            bounded_to(
+                Rect {
+                    x: panel.x + (panel.width - width) * 0.5,
+                    y: panel.y + (panel.height - 76.0).max(2.0),
+                    width,
+                    height: 44.0,
+                },
+                panel,
+            )
+        } else {
+            bounded_to(
+                Rect {
+                    x: card.x + card.width - inner - action_width,
+                    y: card.y + 78.0,
+                    width: action_width,
+                    height: 40.0,
+                },
+                card,
+            )
+        };
         let search = bounded_to(
             Rect {
                 x: card.x + inner,
-                y: card.y + 76.0,
+                y: card.y + 78.0,
                 width: (card.width - inner * 2.0 - action_width - gap).max(1.0),
-                height: 38.0,
+                height: 40.0,
             },
             card,
         );
@@ -568,9 +667,9 @@ impl ConnectionHub {
             bounded_to(
                 Rect {
                     x: card.x + inner + index as f32 * (filter_width + filter_gap),
-                    y: card.y + 120.0,
+                    y: card.y + 126.0,
                     width: filter_width,
-                    height: 30.0,
+                    height: 32.0,
                 },
                 card,
             )
@@ -581,9 +680,9 @@ impl ConnectionHub {
                 bounded_to(
                     Rect {
                         x: card.x + inner,
-                        y: card.y + 156.0,
-                        width: (card.width - inner * 2.0).min(190.0),
-                        height: 32.0,
+                        y: card.y + 130.0,
+                        width: (card.width - inner * 2.0).min(210.0),
+                        height: 36.0,
                     },
                     card,
                 ),
@@ -595,16 +694,22 @@ impl ConnectionHub {
                 Rect {
                     x: confirm.x + confirm.width + gap,
                     y: confirm.y,
-                    width: if compact { 118.0 } else { 148.0 },
+                    width: if compact { 92.0 } else { 112.0 },
                     height: confirm.height,
                 },
                 card,
             )
         });
-        let rows_top = card.y + if confirm_scan.is_some() { 196.0 } else { 160.0 };
-        let overlay_active =
-            presentation.metadata_review.is_some() || presentation.tag_editor.is_some();
-        let inspector_width = if confirm_scan.is_none()
+        let rows_top = card.y
+            + if confirm_scan.is_some() {
+                176.0
+            } else if catalog_chrome_visible {
+                168.0
+            } else {
+                84.0
+            };
+        let inspector_width = if catalog_chrome_visible
+            && confirm_scan.is_none()
             && !overlay_active
             && presentation.view.inspector_visible
         {
@@ -630,7 +735,7 @@ impl ConnectionHub {
         } else {
             52.0
         };
-        let rows_bottom = card.y + card.height - 82.0;
+        let rows_bottom = card.y + card.height - 58.0;
         let review_panel = confirm_scan.map(|_| {
             bounded_to(
                 Rect {
@@ -731,11 +836,415 @@ impl ConnectionHub {
             rows,
             inspector,
             edit_tags,
+            setup_panel,
+            catalog_chrome_visible,
             compact,
         }
     }
 }
+fn catalog_chrome_visible(presentation: &HubControllerPresentation) -> bool {
+    matches!(presentation.grant_review, GrantReviewState::None)
+        && presentation.metadata_review.is_none()
+        && presentation.tag_editor.is_none()
+        && hub_catalog_controls_visible(presentation.view.content_state)
+}
 
+fn filters_are_active(presentation: &HubControllerPresentation) -> bool {
+    !presentation.query.is_empty()
+        || presentation.catalog_query.favorites_only
+        || presentation.catalog_query.recent_only
+        || presentation.catalog_query.source.is_some()
+        || presentation.catalog_query.tag.is_some()
+}
+
+fn render_setup_state(
+    sugarloaf: &mut Sugarloaf,
+    panel: Rect,
+    action: Rect,
+    presentation: &HubControllerPresentation,
+    operation_status: &str,
+    compact: bool,
+) {
+    rounded(sugarloaf, panel, SURFACE, 12.0);
+    let heading = text(
+        if compact { 16.0 } else { 18.0 },
+        [241, 250, 255, 255],
+        true,
+    );
+    let body = text(13.0, [183, 211, 226, 255], false);
+    let small = text(11.0, [139, 177, 198, 255], false);
+    let label = text(12.0, [241, 250, 255, 255], true);
+    let detailed = panel.width >= 340.0 && panel.height >= 250.0;
+    let state = presentation.view.content_state;
+    let title = match (&presentation.grant_review, state) {
+        (GrantReviewState::Reviewing { .. }, _) => "Reviewing your selection",
+        (GrantReviewState::Error { .. }, _) => "Choose SSH files again",
+        (_, HubContentState::InitialSetup) => "Bring in your SSH hosts",
+        (_, HubContentState::Loading) => "Preparing your SSH inventory",
+        (_, HubContentState::Error) => "SSH inventory needs attention",
+        _ => "No SSH hosts yet",
+    };
+    let description = match (&presentation.grant_review, state) {
+        (GrantReviewState::Reviewing { .. } | GrantReviewState::Error { .. }, _) => {
+            operation_status
+        }
+        (_, HubContentState::InitialSetup) => {
+            "Choose an OpenSSH config file to build a local connection list."
+        }
+        (_, HubContentState::Loading | HubContentState::Error) => operation_status,
+        _ => "Choose another OpenSSH config file when you are ready.",
+    };
+    let icon_color =
+        if matches!(presentation.grant_review, GrantReviewState::Error { .. })
+            || state == HubContentState::Error
+        {
+            WARNING
+        } else {
+            VIOLET
+        };
+
+    if detailed {
+        let orb = Rect {
+            x: panel.x + (panel.width - 60.0) * 0.5,
+            y: panel.y + 28.0,
+            width: 60.0,
+            height: 60.0,
+        };
+        rounded(sugarloaf, orb, SURFACE_RAISED, 30.0);
+        draw_hub_icon(
+            sugarloaf,
+            HubIcon::Connections,
+            orb.x + 19.0,
+            orb.y + 19.0,
+            icon_color,
+            SURFACE_RAISED,
+        );
+        draw_centered(sugarloaf, panel, panel.y + 105.0, title, &heading, 7.5);
+        draw_centered(sugarloaf, panel, panel.y + 139.0, description, &body, 7.0);
+
+        let safety = Rect {
+            x: panel.x + (panel.width - 270.0_f32.min(panel.width - 20.0)) * 0.5,
+            y: panel.y + 177.0,
+            width: 270.0_f32.min(panel.width - 20.0),
+            height: 30.0,
+        };
+        rounded(sugarloaf, safety, READ_ONLY_BADGE, 15.0);
+        draw_hub_icon(
+            sugarloaf,
+            HubIcon::Shield,
+            safety.x + 12.0,
+            safety.y + 5.0,
+            SUCCESS,
+            READ_ONLY_BADGE,
+        );
+        sugarloaf.text_mut().draw(
+            safety.x + 38.0,
+            safety.y + 8.0,
+            "Local scan · no connection opened",
+            &small,
+        );
+    } else if panel.height >= 44.0 {
+        draw_centered(sugarloaf, panel, panel.y + 14.0, title, &heading, 7.5);
+    }
+
+    let action_label =
+        if matches!(presentation.grant_review, GrantReviewState::Error { .. })
+            || state == HubContentState::Empty
+        {
+            "Choose another file"
+        } else {
+            "Choose SSH files"
+        };
+    action_button(
+        sugarloaf,
+        action,
+        action_label,
+        HubIcon::FolderAdd,
+        PRIMARY,
+        [0.90, 0.98, 1.0, 1.0],
+        &label,
+    );
+
+    if detailed {
+        if let Some(location) = presentation.setup_guidance.candidate_locations.first() {
+            draw_centered(
+                sugarloaf,
+                panel,
+                action.y + action.height + 12.0,
+                &format!("Typical location: {}", truncated(location, 58)),
+                &small,
+                7.0,
+            );
+        }
+    }
+}
+
+fn render_status_footer(
+    sugarloaf: &mut Sugarloaf,
+    presentation: &HubControllerPresentation,
+    layout: &Layout,
+    left: f32,
+    operation_status: &str,
+    options: &DrawOpts,
+) {
+    let footer = Rect {
+        x: left,
+        y: layout.card.y + layout.card.height - 44.0,
+        width: (layout.card.x + layout.card.width
+            - left
+            - if layout.compact { 14.0 } else { 22.0 })
+        .max(1.0),
+        height: 30.0,
+    };
+    rounded(sugarloaf, footer, SURFACE_RAISED, 9.0);
+    let warning = matches!(presentation.grant_review, GrantReviewState::Error { .. })
+        || matches!(
+            presentation.view.content_state,
+            HubContentState::Denied
+                | HubContentState::Unsupported
+                | HubContentState::RevokedCapability
+                | HubContentState::Error
+        );
+    let icon_color = if warning {
+        WARNING
+    } else if presentation.view.content_state == HubContentState::Loading {
+        CYAN
+    } else {
+        SUCCESS
+    };
+    draw_hub_icon(
+        sugarloaf,
+        HubIcon::Status,
+        footer.x + 10.0,
+        footer.y + 4.0,
+        icon_color,
+        SURFACE_RAISED,
+    );
+    let summary = status_summary(presentation, operation_status);
+    sugarloaf.text_mut().draw(
+        footer.x + 39.0,
+        footer.y + 8.0,
+        &truncated(
+            &summary,
+            ((footer.width - 49.0) / 7.0).floor().max(8.0) as usize,
+        ),
+        options,
+    );
+}
+
+fn status_summary(
+    presentation: &HubControllerPresentation,
+    operation_status: &str,
+) -> String {
+    match &presentation.grant_review {
+        GrantReviewState::Reviewing { .. } => "Reviewing selected files".into(),
+        GrantReviewState::Ready { files, .. } => {
+            format!("{} file(s) selected · review before scanning", files.len())
+        }
+        GrantReviewState::Error { .. } => operation_status.into(),
+        GrantReviewState::None => match presentation.view.content_state {
+            HubContentState::InitialSetup => "Ready for local SSH files".into(),
+            HubContentState::Loading => "Preparing local inventory".into(),
+            HubContentState::Ready => format!(
+                "{} connection(s) shown · local browsing only",
+                presentation.view.rows.len()
+            ),
+            HubContentState::FilteredEmpty => {
+                "No matches · adjust or clear filters".into()
+            }
+            HubContentState::Empty => "Local inventory is empty".into(),
+            HubContentState::PartialFailure => {
+                "Some sources need attention · cached results remain".into()
+            }
+            HubContentState::Stale => "Cached results · refresh when ready".into(),
+            HubContentState::Offline => "Offline · cached results remain".into(),
+            _ => operation_status.into(),
+        },
+    }
+}
+
+fn draw_centered(
+    sugarloaf: &mut Sugarloaf,
+    panel: Rect,
+    y: f32,
+    value: &str,
+    options: &DrawOpts,
+    approximate_character_width: f32,
+) {
+    let maximum = (panel.width / approximate_character_width).floor().max(3.0) as usize;
+    let visible = truncated(value, maximum);
+    let width = sugarloaf.text_mut().measure(&visible, options);
+    sugarloaf.text_mut().draw(
+        panel.x + ((panel.width - width) * 0.5).max(2.0),
+        y,
+        &visible,
+        options,
+    );
+}
+
+struct HubIconCanvas<'a, 'font> {
+    sugarloaf: &'a mut Sugarloaf<'font>,
+    x: f32,
+    y: f32,
+    color: [f32; 4],
+    fill: [f32; 4],
+}
+
+impl HubIconCanvas<'_, '_> {
+    fn line(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) {
+        self.sugarloaf.line(
+            self.x + x1,
+            self.y + y1,
+            self.x + x2,
+            self.y + y2,
+            1.45,
+            0.13,
+            self.color,
+            ORDER,
+        );
+    }
+
+    fn outline(&mut self, x: f32, y: f32, width: f32, height: f32, radius: f32) {
+        self.sugarloaf.rounded_rect(
+            None,
+            self.x + x,
+            self.y + y,
+            width,
+            height,
+            self.color,
+            0.12,
+            radius,
+            ORDER,
+        );
+        let stroke = 1.4_f32.min(width * 0.2).min(height * 0.2);
+        self.sugarloaf.rounded_rect(
+            None,
+            self.x + x + stroke,
+            self.y + y + stroke,
+            (width - stroke * 2.0).max(0.1),
+            (height - stroke * 2.0).max(0.1),
+            self.fill,
+            0.13,
+            (radius - stroke).max(0.0),
+            ORDER,
+        );
+    }
+
+    fn dot(&mut self, x: f32, y: f32, size: f32) {
+        self.sugarloaf.rounded_rect(
+            None,
+            self.x + x,
+            self.y + y,
+            size,
+            size,
+            self.color,
+            0.13,
+            size * 0.5,
+            ORDER,
+        );
+    }
+
+    fn plus(&mut self, x: f32, y: f32, radius: f32) {
+        self.line(x - radius, y, x + radius, y);
+        self.line(x, y - radius, x, y + radius);
+    }
+
+    fn check(&mut self, x: f32, y: f32) {
+        self.line(x, y + 2.0, x + 3.0, y + 5.0);
+        self.line(x + 3.0, y + 5.0, x + 8.0, y - 1.0);
+    }
+}
+
+fn draw_hub_icon(
+    sugarloaf: &mut Sugarloaf,
+    icon: HubIcon,
+    x: f32,
+    y: f32,
+    color: [f32; 4],
+    fill: [f32; 4],
+) {
+    let mut canvas = HubIconCanvas {
+        sugarloaf,
+        x,
+        y,
+        color,
+        fill,
+    };
+    match icon {
+        HubIcon::Connections => {
+            canvas.outline(2.0, 2.5, 18.0, 6.5, 2.5);
+            canvas.outline(2.0, 13.0, 18.0, 6.5, 2.5);
+            canvas.dot(5.0, 4.8, 2.0);
+            canvas.dot(5.0, 15.3, 2.0);
+            canvas.line(10.0, 9.0, 10.0, 13.0);
+        }
+        HubIcon::FolderAdd => {
+            canvas.line(2.0, 7.0, 8.0, 7.0);
+            canvas.line(8.0, 7.0, 11.0, 10.0);
+            canvas.line(11.0, 10.0, 20.0, 10.0);
+            canvas.line(20.0, 10.0, 20.0, 20.0);
+            canvas.line(20.0, 20.0, 2.0, 20.0);
+            canvas.line(2.0, 20.0, 2.0, 7.0);
+            canvas.plus(15.0, 15.0, 2.6);
+        }
+        HubIcon::Search => {
+            canvas.outline(2.0, 2.0, 13.0, 13.0, 6.5);
+            canvas.line(14.0, 14.0, 20.0, 20.0);
+        }
+        HubIcon::Group => {
+            canvas.dot(2.0, 3.0, 3.0);
+            canvas.dot(2.0, 10.0, 3.0);
+            canvas.dot(2.0, 17.0, 3.0);
+            canvas.line(8.0, 4.5, 20.0, 4.5);
+            canvas.line(8.0, 11.5, 17.0, 11.5);
+            canvas.line(8.0, 18.5, 19.0, 18.5);
+        }
+        HubIcon::Favorite => {
+            for (x1, y1, x2, y2) in [
+                (11.0, 2.0, 13.5, 8.0),
+                (13.5, 8.0, 20.0, 8.5),
+                (20.0, 8.5, 15.0, 12.5),
+                (15.0, 12.5, 16.5, 19.0),
+                (16.5, 19.0, 11.0, 15.5),
+                (11.0, 15.5, 5.5, 19.0),
+                (5.5, 19.0, 7.0, 12.5),
+                (7.0, 12.5, 2.0, 8.5),
+                (2.0, 8.5, 8.5, 8.0),
+                (8.5, 8.0, 11.0, 2.0),
+            ] {
+                canvas.line(x1, y1, x2, y2);
+            }
+        }
+        HubIcon::Recent => {
+            canvas.outline(2.0, 2.0, 18.0, 18.0, 9.0);
+            canvas.line(11.0, 6.0, 11.0, 11.0);
+            canvas.line(11.0, 11.0, 15.0, 13.5);
+        }
+        HubIcon::Source => {
+            canvas.outline(2.0, 3.0, 18.0, 6.0, 2.5);
+            canvas.outline(2.0, 13.0, 18.0, 6.0, 2.5);
+            canvas.dot(5.0, 5.0, 2.0);
+            canvas.dot(5.0, 15.0, 2.0);
+        }
+        HubIcon::Clear => {
+            canvas.line(5.0, 5.0, 17.0, 17.0);
+            canvas.line(17.0, 5.0, 5.0, 17.0);
+        }
+        HubIcon::Shield => {
+            canvas.line(11.0, 2.0, 18.0, 5.0);
+            canvas.line(18.0, 5.0, 17.0, 14.0);
+            canvas.line(17.0, 14.0, 11.0, 20.0);
+            canvas.line(11.0, 20.0, 5.0, 14.0);
+            canvas.line(5.0, 14.0, 4.0, 5.0);
+            canvas.line(4.0, 5.0, 11.0, 2.0);
+            canvas.check(7.0, 9.0);
+        }
+        HubIcon::Status => {
+            canvas.outline(2.0, 2.0, 18.0, 18.0, 9.0);
+            canvas.check(7.0, 9.0);
+        }
+    }
+}
 fn operation_status(presentation: &HubControllerPresentation) -> String {
     match &presentation.grant_review {
         GrantReviewState::Reviewing { .. } => {
@@ -1030,25 +1539,64 @@ fn filter_button(
     sugarloaf: &mut Sugarloaf,
     rect: Rect,
     label: &str,
+    icon: HubIcon,
+    icon_color: [f32; 4],
     active: bool,
     options: &DrawOpts,
 ) {
-    rounded(
+    let fill = if active { SELECTED } else { SURFACE };
+    rounded(sugarloaf, rect, fill, 8.0);
+    let maximum = (((rect.width - 34.0) / 7.0).floor() as usize).max(3);
+    let visible = truncated(label, maximum);
+    let label_width = sugarloaf.text_mut().measure(&visible, options);
+    let content_width = 22.0 + 7.0 + label_width;
+    let start = rect.x + ((rect.width - content_width) * 0.5).max(5.0);
+    draw_hub_icon(
         sugarloaf,
-        rect,
-        if active { SELECTED } else { SURFACE },
-        7.0,
+        icon,
+        start,
+        rect.y + (rect.height - 22.0) * 0.5,
+        icon_color,
+        fill,
     );
-    let visible = truncated(label, ((rect.width / 7.0).floor() as usize).max(3));
-    let width = sugarloaf.text_mut().measure(&visible, options);
     sugarloaf.text_mut().draw(
-        rect.x + ((rect.width - width) * 0.5).max(3.0),
+        start + 29.0,
         rect.y + ((rect.height - options.font_size) * 0.5).max(3.0) - 1.0,
         &visible,
         options,
     );
 }
 
+fn action_button(
+    sugarloaf: &mut Sugarloaf,
+    rect: Rect,
+    label: &str,
+    icon: HubIcon,
+    fill: [f32; 4],
+    icon_color: [f32; 4],
+    options: &DrawOpts,
+) {
+    rounded(sugarloaf, rect, fill, 9.0);
+    let maximum = (((rect.width - 38.0) / 7.0).floor() as usize).max(1);
+    let visible = truncated(label, maximum);
+    let label_width = sugarloaf.text_mut().measure(&visible, options);
+    let content_width = 22.0 + 8.0 + label_width;
+    let start = rect.x + ((rect.width - content_width) * 0.5).max(4.0);
+    draw_hub_icon(
+        sugarloaf,
+        icon,
+        start,
+        rect.y + (rect.height - 22.0) * 0.5,
+        icon_color,
+        fill,
+    );
+    sugarloaf.text_mut().draw(
+        start + 30.0,
+        rect.y + ((rect.height - options.font_size) * 0.5).max(3.0) - 1.0,
+        &visible,
+        options,
+    );
+}
 fn button(
     sugarloaf: &mut Sugarloaf,
     rect: Rect,
@@ -1204,7 +1752,8 @@ mod tests {
 
     #[test]
     fn every_visible_filter_has_a_distinct_pointer_action() {
-        let presentation = presentation();
+        let mut presentation = presentation();
+        presentation.view.content_state = HubContentState::Ready;
         let dimensions = (1280.0, 720.0, 1.0);
         let layout = ConnectionHub::layout(&presentation, dimensions);
         let expected = [
@@ -1212,11 +1761,10 @@ mod tests {
             ConnectionHubHit::ToggleFavoritesFilter,
             ConnectionHubHit::ToggleRecentFilter,
             ConnectionHubHit::CycleSourceFilter,
-            ConnectionHubHit::ClearFilters,
         ];
         let mut hub = ConnectionHub::default();
-        hub.set_presentation(Some(presentation));
-        for (rect, expected) in layout.filters.into_iter().zip(expected) {
+        hub.set_presentation(Some(presentation.clone()));
+        for (rect, expected) in layout.filters.into_iter().take(4).zip(expected) {
             assert_eq!(
                 hub.hit_test(
                     rect.x + rect.width * 0.5,
@@ -1224,6 +1772,71 @@ mod tests {
                     dimensions,
                 ),
                 Some(expected)
+            );
+        }
+        let clear = layout.filters[4];
+        assert_eq!(
+            hub.hit_test(
+                clear.x + clear.width * 0.5,
+                clear.y + clear.height * 0.5,
+                dimensions,
+            ),
+            Some(ConnectionHubHit::Inert)
+        );
+
+        presentation.query = "alpha".into();
+        hub.set_presentation(Some(presentation));
+        assert_eq!(
+            hub.hit_test(
+                clear.x + clear.width * 0.5,
+                clear.y + clear.height * 0.5,
+                dimensions,
+            ),
+            Some(ConnectionHubHit::ClearFilters)
+        );
+    }
+
+    #[test]
+    fn initial_setup_prioritizes_one_centered_action_without_catalog_hit_targets() {
+        let presentation = presentation();
+        let dimensions = (1280.0, 720.0, 1.0);
+        let layout = ConnectionHub::layout(&presentation, dimensions);
+        let mut hub = ConnectionHub::default();
+        hub.set_presentation(Some(presentation));
+
+        assert!(layout.card.width <= 780.0);
+        assert!(layout.card.height <= 520.0);
+        assert!(layout.review_files.width >= 200.0);
+        assert!(
+            ((layout.review_files.x + layout.review_files.width * 0.5)
+                - (layout.card.x + layout.card.width * 0.5))
+                .abs()
+                <= 1.0
+        );
+        assert_eq!(
+            hub.hit_test(
+                layout.review_files.x + layout.review_files.width * 0.5,
+                layout.review_files.y + layout.review_files.height * 0.5,
+                dimensions,
+            ),
+            Some(ConnectionHubHit::ReviewFiles)
+        );
+        assert_eq!(
+            hub.hit_test(
+                layout.search.x + layout.search.width * 0.5,
+                layout.search.y + layout.search.height * 0.5,
+                dimensions,
+            ),
+            Some(ConnectionHubHit::Inert)
+        );
+        for filter in layout.filters {
+            assert_eq!(
+                hub.hit_test(
+                    filter.x + filter.width * 0.5,
+                    filter.y + filter.height * 0.5,
+                    dimensions,
+                ),
+                Some(ConnectionHubHit::Inert)
             );
         }
     }

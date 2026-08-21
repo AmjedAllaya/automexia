@@ -12,7 +12,7 @@
 1. Open the command palette with `Ctrl+Shift+P` on Windows/Linux/BSD or
    `Cmd+Shift+P` on macOS.
 2. Choose **Connection Hub (read-only)**.
-3. Select **Review SSH files**. The native file picker accepts one or more exact
+3. Select **Choose SSH files**. The native file picker accepts one or more exact
    files, including an extensionless `config` file.
 4. Read the canonical-path review. Use Up/Down, Page Up/Page Down, Home/End, or
    the pointer to inspect it. Press Enter or choose the confirmation action to
@@ -33,7 +33,11 @@ operation settles.
 
 ## Browse efficiently
 
-The modal keeps terminal input inert until it closes. These controls work while
+The first-run setup keeps one primary action visible: **Choose SSH files**.
+Search, filters, grouping, and catalog shortcuts appear only after a usable
+catalog exists; hidden controls cannot receive pointer, keyboard, or IME input.
+**Clear** appears only while a filter is active. The modal keeps terminal input
+inert until it closes. Once the catalog is visible, these controls work while
 the search field is not receiving text:
 
 | Key | Result |

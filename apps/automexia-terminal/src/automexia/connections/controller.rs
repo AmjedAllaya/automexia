@@ -5,8 +5,8 @@ use std::{path::PathBuf, sync::Arc};
 use automexia_devops_ssh::GrantKind;
 use automexia_extension_runtime::CompletionWake;
 use automexia_ui_model::connection_hub::{
-    apply_hub_key, project_connection_catalog, project_connection_hub,
-    validate_connection_catalog_query, ConnectionCatalogEntry,
+    apply_hub_key, hub_catalog_controls_visible, project_connection_catalog,
+    project_connection_hub, validate_connection_catalog_query, ConnectionCatalogEntry,
     ConnectionCatalogProjection, ConnectionCatalogQuery, ConnectionHubView,
     ConnectionSummary, HubCatalogGrouping, HubCatalogSource, HubContentState, HubFocus,
     HubKey, HubProjectionRequest, HubVisualPreferences, InteractionEffect,
@@ -150,6 +150,13 @@ impl ConnectionHubController {
         self.active
     }
 
+    pub fn catalog_controls_visible(&self) -> bool {
+        hub_catalog_controls_visible(self.content_state())
+            && self.owned_grant_review().is_none()
+            && self.metadata_review.is_none()
+            && self.tag_editor.is_none()
+    }
+
     pub fn close(&mut self) -> String {
         self.discard_owned_review();
         self.metadata_review = None;
@@ -214,6 +221,11 @@ impl ConnectionHubController {
             self.ime_preedit = Some(value.to_owned());
             return true;
         }
+        if !self.catalog_controls_visible() || self.interaction.focus != HubFocus::Search
+        {
+            self.ime_preedit = None;
+            return false;
+        }
         let mut candidate = self.query.clone();
         candidate.text.push_str(value);
         if validate_connection_catalog_query(&candidate).is_err() {
@@ -226,8 +238,12 @@ impl ConnectionHubController {
     pub fn commit_ime(&mut self, value: &str) -> bool {
         let accepted = if self.tag_editor.is_some() {
             self.append_tag_editor(value)
-        } else {
+        } else if self.catalog_controls_visible()
+            && self.interaction.focus == HubFocus::Search
+        {
             self.append_search_text(value)
+        } else {
+            false
         };
         if accepted {
             self.ime_preedit = None;
@@ -281,6 +297,8 @@ impl ConnectionHubController {
     }
 
     pub fn clear_filters(&mut self) {
+        self.query.text.clear();
+        self.ime_preedit = None;
         self.query.favorites_only = false;
         self.query.recent_only = false;
         self.query.tag = None;
@@ -746,6 +764,21 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+
+    #[test]
+    fn initial_setup_does_not_expose_catalog_controls() {
+        let temporary = tempfile::tempdir().unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        let mut controller = ConnectionHubController::new(runtime);
+        controller.open("terminal-grid");
+
+        assert_eq!(controller.content_state(), HubContentState::InitialSetup);
+        assert!(!controller.catalog_controls_visible());
+        assert!(!controller.set_ime_preedit(Some("hidden")));
+        assert!(!controller.commit_ime("hidden"));
+        assert!(controller.query().is_empty());
+    }
 
     #[test]
     fn unchanged_sync_and_presentation_reuse_the_cached_projection() {

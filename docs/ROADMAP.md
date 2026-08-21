@@ -349,7 +349,11 @@ OpenSSH execution and lifecycle.
 
 Status: **Fully done locally; release evidence partially done.** All requested
 read-only product behavior and non-authority boundaries are implemented. The
-local 10,000-record release benchmark measured 7.1790–7.7931 ms against the
+first-run modal is now a compact one-action setup; catalog-only controls appear
+only when useful, hidden controls reject input and leave accessibility order,
+and restrained semantic colors are redundant with code-native icons and text.
+A prompt-ready 1600x950 Windows frame at 125% scale passed manual visual review.
+The local 10,000-record release benchmark measured 7.1790–7.7931 ms against the
 below-16-ms target; the release executable is 22,670,336 bytes, a 650,752-byte
 (2.96%) increase from the same-host pre-M1 baseline. The remaining evidence is
 native macOS/Linux picker and permission/recovery coverage plus controlled

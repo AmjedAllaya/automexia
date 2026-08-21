@@ -122,7 +122,7 @@ native/release claim.
 | D3 launch broker | Partially done | `context/launch_broker.rs` has package, capability, resolver, lease, audit and pure lifecycle tests | It is exclusively `#[cfg(test)]`, has a constant production denial, and cannot spawn/attach a PTY. Implement F4 only after ADR gate. |
 | D4 static OpenSSH inventory | Fully done locally | `extensions/devops-ssh`: bounded parser, grants, hostile/property/fuzz tests, 10,000-alias benchmark, private revisioned metadata | Deliberately remains non-executing; hosted macOS/longitudinal release proof remains external. |
 | F2/D5.0 Hub and planning model | Partially done overall; fully done locally | Pure records, validation, reducers, fingerprints, review/planner projection, accessibility goldens, fuzz and benchmark | ADR 0012 acceptance blocks phase closure; no product authority is granted. |
-| F3/D5.1 read-only Connection Hub | Fully done locally; external evidence partially done | App-owned joined runtime, exact reviewed native selection, product modal, bounded browse/filter/group, D4 favorite/tag CAS, read-only recent/library state, disabled authority, Windows tests/benchmark/build | Native macOS/Linux picker/permission and controlled screen-reader evidence remain external. |
+| F3/D5.1 read-only Connection Hub | Fully done locally; external evidence partially done | App-owned joined runtime, exact reviewed native selection, compact progressive setup, bounded browse/filter/group, redundant text/icon/color semantics, D4 favorite/tag CAS, read-only recent/library state, disabled authority, Windows tests/benchmark/build/native frame | Native macOS/Linux picker/permission and controlled screen-reader evidence remain external. |
 | F3 Connection Library | Fully done locally | `ConnectionLibraryStore` has 16 MiB private documents, CAS, recovery, transfer redaction, fresh import IDs, read-only/disk-full and link tests | Product editor/manager belongs to F6; macOS/Linux native permission and controlled screen-reader evidence remain. |
 | F5 managed OpenSSH | Not done | Only disabled D3/D4/F2 foundations | No reviewed launch, OpenSSH child, host-trust UX, routes/tunnels, lifecycle, or native sessions. |
 | F6 recipes and remote declarative workspaces | Not done | Typed pure profile/recipe models and F3 private persistence are reusable; CP3.3 local task bridges are separately complete | No compiler/runtime/editor/remote shell contract/layout restoration/broadcast. |
@@ -211,9 +211,11 @@ Acceptance criteria:
    completions, publishes immutable state before its route-specific wake, and
    is explicitly cancelled and joined at application shutdown.
 4. The real modal reuses the renderer-neutral virtualized catalog, focus, and
-   accessibility model. Search/filter/group/selection/review, setup, loading,
-   stale/error/recovery, keyboard, pointer, IME, scaling, contrast, reduced
-   motion/transparency, and modal-stack behavior are deterministic.
+   accessibility model. First-run setup presents one compact primary action;
+   catalog search/filter/group controls appear only when useful and are absent
+   from hidden pointer, keyboard, IME, and accessibility navigation. Selection/
+   review, loading, stale/error/recovery, scaling, contrast, reduced motion/
+   transparency, and modal-stack behavior are deterministic.
 5. Favorite/tag edits show a public diff, validate the existing D4 schema, use
    revision compare-and-swap, surface contention without overwriting, and
    recompose the last-known-good catalog after success. Recent-use remains
@@ -232,7 +234,7 @@ Evidence ledger before implementation:
 | Explicit-grant catalog composition, cancellation, last-known-good state, and setup guidance | Fully done locally | Router-owned `ConnectionHubRuntime`; bounded-saturation and runtime integration tests | One joined worker owns a capacity-two non-blocking inbox, grants, generations, CAS recomposition, route wakes, and deterministic shutdown. |
 | Application lifetime and product controller | Fully done locally | Router/application/Screen owners; two-controller isolation and projection-cache tests | One app service and per-screen controller preserve route-owned review tokens, generation, focus, modal isolation, and cached steady-frame projection. |
 | Native exact-file selection | Fully done locally; external native coverage partial | Pinned `rfd` 0.17.2 adapter parented to the active window | Explicit multi-file selection is cancellable and memory-only; hosted macOS/Linux picker runs remain external. |
-| Product modal and input/accessibility adapter | Fully done locally | Sugarloaf modal, Screen adapter, renderer/controller tests | Keyboard, pointer, IME, focus, overlays, disabled authority, and bounded tiny-to-8K geometry are covered structurally. |
+| Product modal and input/accessibility adapter | Fully done locally | Sugarloaf modal, Screen adapter, renderer/controller tests, prompt-ready Windows frame | Compact progressive setup, contextual catalog controls, text-plus-vector-icon semantic color, keyboard, pointer, IME, focus, overlays, disabled authority, and bounded tiny-to-8K geometry are covered; controlled screen-reader evidence remains external. |
 | Favorite/tag mutation UI | Fully done locally | Controller/runtime CAS review flow and conflict tests | Public diffs require confirmation; conflicts reload rather than overwrite; recent remains read-only. |
 | Windows/macOS/Linux controlled product evidence | Partially done | Windows 11 source, test, dependency, release-build, and benchmark evidence | Native macOS/Linux picker/permission and Narrator/NVDA/VoiceOver/Orca runs remain external. |
 
@@ -278,10 +280,12 @@ versioned and readable. No migration or source-file mutation is introduced.
 #### M1.2 Read-only UX and metadata changes
 
 - [x] **Fully done** — Adapt the existing pure Hub catalog/view model into the real modal:
-  virtualized rows, local cancellable search, filters, grouping, source
-  revision/freshness, selection, inspector/detail route, focus trap/restore,
-  and empty/filtered/loading/stale/error/setup states. Unchanged frames reuse a
-  cached projection; IME preedit validates without a catalog traversal.
+  compact first-run setup, virtualized rows, local cancellable search,
+  contextual filters/grouping/source controls, revision/freshness, selection,
+  inspector/detail route, focus trap/restore, and empty/filtered/loading/stale/
+  error/setup states. Hidden catalog controls are removed from visual and
+  accessibility order and reject pointer, shortcut, and IME input. Unchanged
+  frames reuse a cached projection; IME preedit validates without traversal.
 - [x] **Fully done** — Implement truthful platform-specific setup guidance for Windows, macOS,
   and Linux. It may show candidate locations but must state that exact selection
   is required and that no process/network/login runs.
@@ -317,7 +321,7 @@ versioned and readable. No migration or source-file mutation is introduced.
 #### M1 completion evidence (2026-08-21)
 
 - **Fully done locally — correctness and lifecycle:** 10 runtime, 8 controller,
-  2 bounded-worker/projection-cache unit, 4 renderer, 33 D4, 32 UI-model,
+  3 targeted worker/controller/cache unit, 5 renderer, 33 D4, 33 UI-model,
   5 Connection Library, and 46 command-palette tests passed on Windows 11. The
   contracts include no-scan-on-open, grant token isolation/revocation, bounded
   saturation, stale-generation rejection, steady-frame cache reuse,
@@ -334,6 +338,11 @@ versioned and readable. No migration or source-file mutation is introduced.
   executable remains 22,670,336 bytes, 650,752 bytes (2.96%) above the same-host
   pre-M1 baseline. Unchanged frames do not reproject or clone the full catalog;
   the runtime stays off PTY/input/render hot paths.
+- **Fully done locally — Windows visual evidence:** a feature-gated test
+  control waited for the renderer-neutral prompt-active signal before opening
+  the Hub. The resulting 1600x950 frame at 125% scale was inspected for complete
+  bounds, hierarchy, restrained semantic color, icon/text redundancy, focus,
+  and absence of the setup-only catalog toolbar.
 - **Partially done — external evidence:** native macOS/Linux file-picker and
   permission/recovery runs plus controlled Narrator/NVDA, VoiceOver, and Orca
   verification require their respective hosted systems. Structural semantics

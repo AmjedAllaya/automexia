@@ -498,15 +498,19 @@ authentication, provider, listener, PTY, or credential work.
 
 The command palette exposes a distinct read-only Connection Hub action. The
 real Sugarloaf modal supports an explicit parented native multi-file picker,
-canonical-path review, confirm/cancel, search, tag/favorite/recent/source
-filters, grouping, filter reset, virtualized navigation, selection/inspector,
-keyboard, pointer, IME, focus restoration, responsive tiny-to-8K geometry, and
-truthful setup/loading/error/recovery states. Exact-file review tokens are
-visible and revocable only by the initiating controller. Catalog projection and
-summary clones are cached across unchanged frames, while IME preedit uses the
-query-only hostile-input validator. Connect, Login, provider refresh, and recipe
-execution are visibly disabled. Profile/recipe/preference data is a
-non-executing local snapshot.
+canonical-path review, confirm/cancel, and a compact first-run setup with one
+primary action. Search, tag/favorite/recent/source filters, grouping, and
+virtualized navigation appear only with a usable catalog; contextual Clear
+appears only with an active filter. Hidden controls are removed from visual and
+accessibility order and reject pointer, keyboard, shortcut, and IME input.
+Code-native vector icons, restrained semantic colors, and text labels provide
+redundant meaning. The modal also preserves selection/inspector, focus restore,
+responsive tiny-to-8K geometry, and truthful loading/error/recovery states.
+Exact-file review tokens are visible and revocable only by the initiating
+controller. Catalog projection and summary clones are cached across unchanged
+frames, while IME preedit uses the query-only hostile-input validator. Connect,
+Login, provider refresh, and recipe execution are visibly disabled. Profile/
+recipe/preference data is a non-executing local snapshot.
 
 Favorites and tags use only the D4 public metadata store. Every change shows a
 before/after diff and requires the reviewed revision; conflicts reload instead
@@ -514,9 +518,13 @@ of overwriting, hostile control/bidi tags fail closed, and recent-use remains
 read-only until a successful managed D5.2 connection exists. No selected path,
 host, identity, query, or provider value is persisted in grants or logged.
 
-Windows 11 evidence passed 10 runtime, 8 controller, 2 bounded-worker/cache
-unit, 4 renderer, 33 D4, 32 UI-model, 5 Connection Library, and 46
-command-palette tests plus `cargo deny`. The 50-sample warm 10,000-record
+Windows 11 evidence passed 10 runtime, 8 controller, 3 targeted worker/
+controller/cache unit, 5 renderer, 33 D4, 33 UI-model, 5 Connection Library,
+and 46
+command-palette tests plus `cargo deny`. A feature-gated test control waited for prompt-active state before opening the
+Hub; the complete 1600x950 frame at 125% scale was inspected for bounds,
+hierarchy, icon/text redundancy, semantic color, and absence of setup-only
+catalog controls. The 50-sample warm 10,000-record
 projection measured 7.2849–7.5959 ms against the below-16-ms target. The first
 immediate post-LTO run measured a noisier 8.5180–9.5607 ms and was investigated
 rather than silently retried. The release executable remains 22,670,336 bytes,
