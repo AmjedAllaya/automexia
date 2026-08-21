@@ -2,7 +2,8 @@ use std::{fs, time::Duration};
 
 use automexia_devops_ssh::{GrantKind, InventoryGrant, MetadataStore};
 use automexia_terminal::automexia::connections::{
-    ConnectionHubController, ConnectionHubRuntime, HubControllerEffect, HubRuntimeState,
+    ConnectionHubController, ConnectionHubRuntime, GrantReviewState, HubControllerEffect,
+    HubRuntimeErrorCode, HubRuntimeState,
 };
 use automexia_ui_model::connection_hub::{
     HubCatalogGrouping, HubCatalogSource, HubFocus, HubKey, HubVisualPreferences,
@@ -279,4 +280,57 @@ fn ime_composition_targets_the_active_search_or_tag_editor() {
     assert_eq!(presentation.tag_editor.as_deref(), Some("チーム"));
     assert!(presentation.ime_preedit.is_none());
     assert_eq!(controller.query(), "");
+}
+
+#[test]
+fn exact_file_review_is_visible_and_revocable_only_by_its_owning_controller() {
+    let temporary = tempfile::tempdir().unwrap();
+    let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    let source = temporary.path().join("config");
+    fs::write(&source, "Host isolated\n  HostName isolated.example.test\n").unwrap();
+
+    let mut owner = ConnectionHubController::new(runtime.clone());
+    let mut other = ConnectionHubController::new(runtime.clone());
+    owner.open("owner-terminal-grid");
+    other.open("other-terminal-grid");
+    let review = owner
+        .review_exact_files(vec![source], GrantKind::User, Box::new(|| {}))
+        .unwrap();
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    owner.sync();
+    other.sync();
+
+    assert_eq!(owner.pending_grant_review_request(), Some(review));
+    assert!(matches!(
+        owner
+            .presentation(
+                Viewport::new(1_200.0, 720.0, 1.0),
+                HubVisualPreferences::default(),
+            )
+            .grant_review,
+        GrantReviewState::Ready { request, .. } if request == review
+    ));
+    assert_eq!(other.pending_grant_review_request(), None);
+    assert_eq!(
+        other
+            .presentation(
+                Viewport::new(1_200.0, 720.0, 1.0),
+                HubVisualPreferences::default(),
+            )
+            .grant_review,
+        GrantReviewState::None
+    );
+    assert_eq!(
+        other.confirm_reviewed_scan(review, Box::new(|| {})),
+        Err(HubRuntimeErrorCode::StaleReview)
+    );
+
+    other.cancel_grant_review();
+    let _ = other.close();
+    owner.sync();
+    assert_eq!(owner.pending_grant_review_request(), Some(review));
+
+    owner.cancel_grant_review();
+    assert_eq!(runtime.snapshot().grant_review, GrantReviewState::None);
 }

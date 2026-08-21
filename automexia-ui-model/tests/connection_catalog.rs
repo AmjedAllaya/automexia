@@ -1,9 +1,10 @@
 use automexia_devops::connections::{AuthState, EnvironmentRisk, ProviderKind};
 use automexia_ui_model::connection_hub::{
-    project_connection_catalog, project_connection_hub, ConnectionCatalogEntry,
-    ConnectionCatalogQuery, ConnectionSummary, HubCatalogErrorCode, HubCatalogGrouping,
-    HubCatalogSource, HubContentState, HubFocus, HubProjectionRequest, HubRoute,
-    HubVisualPreferences, Viewport,
+    project_connection_catalog, project_connection_hub,
+    validate_connection_catalog_query, ConnectionCatalogEntry, ConnectionCatalogQuery,
+    ConnectionSummary, HubCatalogErrorCode, HubCatalogGrouping, HubCatalogSource,
+    HubContentState, HubFocus, HubProjectionRequest, HubRoute, HubVisualPreferences,
+    Viewport,
 };
 
 fn entry(index: usize) -> ConnectionCatalogEntry {
@@ -101,14 +102,13 @@ fn catalog_distinguishes_empty_and_filtered_empty_without_losing_revision() {
 fn catalog_rejects_hostile_or_oversized_queries_and_metadata() {
     let entries = vec![entry(1)];
     for text in ["bad\u{202e}query", "bad\nquery"] {
-        let error = project_connection_catalog(
-            &entries,
-            &ConnectionCatalogQuery {
-                text: text.into(),
-                ..ConnectionCatalogQuery::default()
-            },
-        )
-        .unwrap_err();
+        let query = ConnectionCatalogQuery {
+            text: text.into(),
+            ..ConnectionCatalogQuery::default()
+        };
+        let error = validate_connection_catalog_query(&query).unwrap_err();
+        assert_eq!(error.code(), HubCatalogErrorCode::UnsafeText);
+        let error = project_connection_catalog(&entries, &query).unwrap_err();
         assert_eq!(error.code(), HubCatalogErrorCode::UnsafeText);
     }
 
@@ -119,6 +119,12 @@ fn catalog_rejects_hostile_or_oversized_queries_and_metadata() {
             ..ConnectionCatalogQuery::default()
         },
     )
+    .unwrap_err();
+    assert_eq!(error.code(), HubCatalogErrorCode::LimitExceeded);
+    let error = validate_connection_catalog_query(&ConnectionCatalogQuery {
+        text: "x".repeat(513),
+        ..ConnectionCatalogQuery::default()
+    })
     .unwrap_err();
     assert_eq!(error.code(), HubCatalogErrorCode::LimitExceeded);
 

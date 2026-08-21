@@ -1,13 +1,14 @@
 //! Route-local, renderer-neutral controller for the read-only Connection Hub.
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use automexia_devops_ssh::GrantKind;
 use automexia_extension_runtime::CompletionWake;
 use automexia_ui_model::connection_hub::{
     apply_hub_key, project_connection_catalog, project_connection_hub,
-    ConnectionCatalogEntry, ConnectionCatalogProjection, ConnectionCatalogQuery,
-    ConnectionHubView, HubCatalogGrouping, HubCatalogSource, HubContentState, HubFocus,
+    validate_connection_catalog_query, ConnectionCatalogEntry,
+    ConnectionCatalogProjection, ConnectionCatalogQuery, ConnectionHubView,
+    ConnectionSummary, HubCatalogGrouping, HubCatalogSource, HubContentState, HubFocus,
     HubKey, HubProjectionRequest, HubVisualPreferences, InteractionEffect,
     InteractionState, Viewport, MAX_CATALOG_QUERY_BYTES, MAX_VISIBLE_ROWS,
 };
@@ -83,11 +84,15 @@ pub struct ConnectionHubController {
     query: ConnectionCatalogQuery,
     ime_preedit: Option<String>,
     grant_review_offset: usize,
+    grant_review_request: Option<u64>,
     metadata_review: Option<MetadataChangeReview>,
     tag_editor: Option<String>,
     projection: ConnectionCatalogProjection,
+    projected_summaries: Vec<ConnectionSummary>,
     interaction: InteractionState,
     selected_id: Option<String>,
+    #[cfg(test)]
+    projection_refresh_count: u64,
     library_preferences_applied: bool,
     active: bool,
 }
@@ -103,21 +108,28 @@ impl ConnectionHubController {
                 source_revision: 0,
                 content_state: HubContentState::Empty,
             });
+        let projected_summaries =
+            projected_summaries(&runtime_snapshot.catalog, &projection);
+        let result_count = projection.indices.len();
         Self {
             runtime,
             runtime_snapshot,
             query,
             ime_preedit: None,
             grant_review_offset: 0,
+            grant_review_request: None,
             metadata_review: None,
             tag_editor: None,
             projection,
+            projected_summaries,
             interaction: InteractionState::new(
-                0,
+                result_count,
                 MAX_VISIBLE_ROWS,
                 "terminal-grid".into(),
             ),
             selected_id: None,
+            #[cfg(test)]
+            projection_refresh_count: 1,
             library_preferences_applied: false,
             active: false,
         }
@@ -139,7 +151,7 @@ impl ConnectionHubController {
     }
 
     pub fn close(&mut self) -> String {
-        self.runtime.discard_review();
+        self.discard_owned_review();
         self.metadata_review = None;
         self.tag_editor = None;
         self.active = false;
@@ -178,10 +190,13 @@ impl ConnectionHubController {
     pub fn set_search_text(&mut self, value: &str) -> bool {
         let mut query = self.query.clone();
         query.text = value.to_owned();
-        if project_connection_catalog(&self.runtime_snapshot.catalog, &query).is_err() {
+        let Ok(projection) =
+            project_connection_catalog(&self.runtime_snapshot.catalog, &query)
+        else {
             return false;
-        }
+        };
         self.query = query;
+        self.install_projection(projection);
         true
     }
 
@@ -201,8 +216,7 @@ impl ConnectionHubController {
         }
         let mut candidate = self.query.clone();
         candidate.text.push_str(value);
-        if project_connection_catalog(&self.runtime_snapshot.catalog, &candidate).is_err()
-        {
+        if validate_connection_catalog_query(&candidate).is_err() {
             return false;
         }
         self.ime_preedit = Some(value.to_owned());
@@ -235,10 +249,12 @@ impl ConnectionHubController {
 
     pub fn toggle_favorites_filter(&mut self) {
         self.query.favorites_only = !self.query.favorites_only;
+        self.refresh_projection();
     }
 
     pub fn toggle_recent_filter(&mut self) {
         self.query.recent_only = !self.query.recent_only;
+        self.refresh_projection();
     }
 
     pub fn cycle_source_filter(&mut self) {
@@ -251,6 +267,7 @@ impl ConnectionHubController {
             }
             Some(HubCatalogSource::ImportedProfile) => None,
         };
+        self.refresh_projection();
     }
 
     pub fn cycle_grouping(&mut self) {
@@ -260,6 +277,7 @@ impl ConnectionHubController {
             HubCatalogGrouping::Environment => HubCatalogGrouping::Favorite,
             HubCatalogGrouping::Favorite => HubCatalogGrouping::None,
         };
+        self.refresh_projection();
     }
 
     pub fn clear_filters(&mut self) {
@@ -267,50 +285,54 @@ impl ConnectionHubController {
         self.query.recent_only = false;
         self.query.tag = None;
         self.query.source = None;
+        self.refresh_projection();
     }
 
     pub fn grant_review_is_pending(&self) -> bool {
         matches!(
-            self.runtime_snapshot.grant_review,
-            GrantReviewState::Ready { .. }
+            self.owned_grant_review(),
+            Some(GrantReviewState::Ready { .. })
         )
     }
 
     pub fn pending_grant_review_request(&self) -> Option<u64> {
-        match self.runtime_snapshot.grant_review {
-            GrantReviewState::Ready { request, .. } => Some(request),
+        match self.owned_grant_review() {
+            Some(GrantReviewState::Ready { request, .. }) => Some(*request),
             _ => None,
         }
     }
 
     pub fn jump_grant_review(&mut self, end: bool) {
-        let len = match self.runtime_snapshot.grant_review {
-            GrantReviewState::Ready { ref files, .. } => files.len(),
+        let len = match self.owned_grant_review() {
+            Some(GrantReviewState::Ready { files, .. }) => files.len(),
             _ => 0,
         };
         self.grant_review_offset = if end { len.saturating_sub(1) } else { 0 };
     }
 
     pub fn scroll_grant_review(&mut self, delta: isize) {
-        let GrantReviewState::Ready { ref files, .. } =
-            self.runtime_snapshot.grant_review
+        let Some(GrantReviewState::Ready { files, .. }) = self.owned_grant_review()
         else {
             self.grant_review_offset = 0;
             return;
         };
+        let last = files.len().saturating_sub(1);
         self.grant_review_offset = self
             .grant_review_offset
             .saturating_add_signed(delta)
-            .min(files.len().saturating_sub(1));
+            .min(last);
     }
 
     pub fn cancel_grant_review(&mut self) {
-        self.runtime.discard_review();
-        self.grant_review_offset = 0;
+        self.discard_owned_review();
     }
 
     pub fn sync(&mut self) {
-        self.runtime_snapshot = self.runtime.snapshot();
+        let next_snapshot = self.runtime.snapshot();
+        let catalog_changed =
+            !Arc::ptr_eq(&self.runtime_snapshot.catalog, &next_snapshot.catalog);
+        self.runtime_snapshot = next_snapshot;
+        let mut refresh_projection = catalog_changed;
         if !self.library_preferences_applied
             && !matches!(self.runtime_snapshot.state, HubRuntimeState::Initializing)
         {
@@ -321,40 +343,29 @@ impl ConnectionHubController {
             self.query.source = preferences.source;
             self.query.grouping = preferences.grouping;
             self.library_preferences_applied = true;
+            refresh_projection = true;
         }
         if self.metadata_review.as_ref().is_some_and(|review| {
             review.expected_revision != self.runtime_snapshot.metadata_revision
         }) {
             self.metadata_review = None;
         }
-        self.projection =
-            project_connection_catalog(&self.runtime_snapshot.catalog, &self.query)
-                .unwrap_or_else(|_| ConnectionCatalogProjection {
-                    indices: Vec::new(),
-                    groups: Vec::new(),
-                    source_revision: self.runtime_snapshot.metadata_revision,
-                    content_state: HubContentState::Error,
-                });
-        if let GrantReviewState::Ready { ref files, .. } =
-            self.runtime_snapshot.grant_review
+        if self.grant_review_request.is_some()
+            && self.grant_review_request
+                != grant_review_request(&self.runtime_snapshot.grant_review)
         {
-            self.grant_review_offset =
-                self.grant_review_offset.min(files.len().saturating_sub(1));
-        } else {
+            self.grant_review_request = None;
             self.grant_review_offset = 0;
         }
-        self.interaction.result_count = self.projection.indices.len();
-        self.interaction.selected_index = self
-            .selected_id
-            .as_deref()
-            .and_then(|selected| {
-                self.projection.indices.iter().position(|index| {
-                    self.runtime_snapshot.catalog[*index].summary.id == selected
-                })
-            })
-            .unwrap_or(self.interaction.selected_index)
-            .min(self.projection.indices.len().saturating_sub(1));
-        self.selected_id = self.selected_entry().map(|entry| entry.summary.id.clone());
+        if refresh_projection {
+            self.refresh_projection();
+        }
+        let review_len = match self.owned_grant_review() {
+            Some(GrantReviewState::Ready { files, .. }) => files.len(),
+            _ => 0,
+        };
+        self.grant_review_offset =
+            self.grant_review_offset.min(review_len.saturating_sub(1));
     }
 
     pub fn presentation(
@@ -362,19 +373,13 @@ impl ConnectionHubController {
         viewport: Viewport,
         preferences: HubVisualPreferences,
     ) -> HubControllerPresentation {
-        let summaries = self
-            .projection
-            .indices
-            .iter()
-            .map(|index| self.runtime_snapshot.catalog[*index].summary.clone())
-            .collect::<Vec<_>>();
         let content_state = self.content_state();
         let view = project_connection_hub(HubProjectionRequest {
             viewport,
             preferences,
             content_state,
             route: self.interaction.route,
-            connections: &summaries,
+            connections: &self.projected_summaries,
             selected_id: self.selected_id.as_deref(),
             focus: self.interaction.focus.clone(),
             opener_id: &self.interaction.opener_id,
@@ -401,7 +406,10 @@ impl ConnectionHubController {
             metadata_review: self.metadata_review.clone(),
             tag_editor: self.tag_editor.clone(),
             selected_entry: self.selected_entry().cloned(),
-            grant_review: self.runtime_snapshot.grant_review.clone(),
+            grant_review: self
+                .owned_grant_review()
+                .cloned()
+                .unwrap_or(GrantReviewState::None),
             metadata_change: self.runtime_snapshot.metadata_change.clone(),
             library: self.runtime_snapshot.library.clone(),
             store_state: self.runtime_snapshot.store_state,
@@ -438,7 +446,7 @@ impl ConnectionHubController {
                 return self.toggle_favorite_at(*selected_index);
             }
             InteractionEffect::CloseAndRestoreFocus(opener) => {
-                self.runtime.discard_review();
+                self.discard_owned_review();
                 self.active = false;
                 return HubControllerEffect::Closed {
                     restore_focus_to: opener.clone(),
@@ -563,8 +571,10 @@ impl ConnectionHubController {
         kind: GrantKind,
         wake: CompletionWake,
     ) -> Result<u64, HubRuntimeErrorCode> {
+        let request = self.runtime.review_exact_files(paths, kind, wake)?;
         self.grant_review_offset = 0;
-        self.runtime.review_exact_files(paths, kind, wake)
+        self.grant_review_request = Some(request);
+        Ok(request)
     }
 
     pub fn confirm_reviewed_scan(
@@ -572,15 +582,72 @@ impl ConnectionHubController {
         review: u64,
         wake: CompletionWake,
     ) -> Result<u64, HubRuntimeErrorCode> {
+        if self.grant_review_request != Some(review) {
+            return Err(HubRuntimeErrorCode::StaleReview);
+        }
         let result = self.runtime.confirm_reviewed_scan(review, wake);
         if result.is_ok() {
             self.grant_review_offset = 0;
+            self.grant_review_request = None;
         }
         result
     }
 
     pub fn shutdown(&self) {
         self.runtime.shutdown();
+    }
+
+    fn owned_grant_review(&self) -> Option<&GrantReviewState> {
+        let request = self.grant_review_request?;
+        (grant_review_request(&self.runtime_snapshot.grant_review) == Some(request))
+            .then_some(&self.runtime_snapshot.grant_review)
+    }
+
+    fn discard_owned_review(&mut self) {
+        if let Some(request) = self.grant_review_request.take() {
+            let _ = self.runtime.discard_review(request);
+        }
+        self.grant_review_offset = 0;
+    }
+
+    fn refresh_projection(&mut self) {
+        let projection =
+            project_connection_catalog(&self.runtime_snapshot.catalog, &self.query)
+                .unwrap_or_else(|_| ConnectionCatalogProjection {
+                    indices: Vec::new(),
+                    groups: Vec::new(),
+                    source_revision: self.runtime_snapshot.metadata_revision,
+                    content_state: HubContentState::Error,
+                });
+        self.install_projection(projection);
+    }
+
+    fn install_projection(&mut self, projection: ConnectionCatalogProjection) {
+        self.projected_summaries =
+            projected_summaries(&self.runtime_snapshot.catalog, &projection);
+        self.projection = projection;
+        #[cfg(test)]
+        {
+            self.projection_refresh_count =
+                self.projection_refresh_count.saturating_add(1);
+        }
+        self.interaction.result_count = self.projection.indices.len();
+        self.interaction.selected_index = self
+            .selected_id
+            .as_deref()
+            .and_then(|selected| {
+                self.projection.indices.iter().position(|index| {
+                    self.runtime_snapshot.catalog[*index].summary.id == selected
+                })
+            })
+            .unwrap_or(self.interaction.selected_index)
+            .min(self.projection.indices.len().saturating_sub(1));
+        self.selected_id = self.selected_entry().map(|entry| entry.summary.id.clone());
+    }
+
+    #[cfg(test)]
+    const fn projection_refresh_count(&self) -> u64 {
+        self.projection_refresh_count
     }
 
     fn entry_at(&self, projected_index: usize) -> Option<&ConnectionCatalogEntry> {
@@ -628,6 +695,27 @@ impl ConnectionHubController {
     }
 }
 
+fn grant_review_request(state: &GrantReviewState) -> Option<u64> {
+    match state {
+        GrantReviewState::Reviewing { request }
+        | GrantReviewState::Ready { request, .. }
+        | GrantReviewState::Error { request, .. } => Some(*request),
+        GrantReviewState::None => None,
+    }
+}
+
+fn projected_summaries(
+    catalog: &[ConnectionCatalogEntry],
+    projection: &ConnectionCatalogProjection,
+) -> Vec<ConnectionSummary> {
+    projection
+        .indices
+        .iter()
+        .filter_map(|index| catalog.get(*index))
+        .map(|entry| entry.summary.clone())
+        .collect()
+}
+
 fn unsafe_metadata_character(character: char) -> bool {
     let codepoint = character as u32;
     character.is_control()
@@ -650,5 +738,37 @@ fn current_platform() -> PlatformFamily {
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         PlatformFamily::Linux
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    #[test]
+    fn unchanged_sync_and_presentation_reuse_the_cached_projection() {
+        let temporary = tempfile::tempdir().unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        let mut controller = ConnectionHubController::new(runtime);
+        controller.open("terminal-grid");
+        let refreshes = controller.projection_refresh_count();
+
+        for _ in 0..32 {
+            controller.sync();
+            let _ = controller.presentation(
+                Viewport::new(1_280.0, 800.0, 1.0),
+                HubVisualPreferences::default(),
+            );
+        }
+        assert_eq!(controller.projection_refresh_count(), refreshes);
+
+        controller.toggle_favorites_filter();
+        assert_eq!(
+            controller.projection_refresh_count(),
+            refreshes.saturating_add(1)
+        );
     }
 }

@@ -59,6 +59,8 @@ pub fn platform_setup_guidance(platform: PlatformFamily) -> SetupGuidance {
 
 const SELECTION_DIAGNOSTIC: &str = "ssh-inventory-selection-rejected";
 const REFRESH_DIAGNOSTIC: &str = "ssh-inventory-refresh-failed";
+const WORKER_BUSY_DIAGNOSTIC: &str = "connection-worker-busy";
+const WORK_QUEUE_CAPACITY: usize = 2;
 const STORE_DIAGNOSTIC: &str = "connection-private-store-unavailable";
 const METADATA_DIAGNOSTIC: &str = "connection-metadata-write-failed";
 const MAX_REVIEW_PATH_DISPLAY_BYTES: usize = 1_024;
@@ -74,6 +76,7 @@ pub enum HubStoreState {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HubRuntimeErrorCode {
     WorkerUnavailable,
+    WorkerBusy,
     StoreUnavailable,
     InvalidSelection,
     StaleReview,
@@ -82,17 +85,24 @@ pub enum HubRuntimeErrorCode {
     StaleMetadata,
 }
 
-impl fmt::Display for HubRuntimeErrorCode {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
+impl HubRuntimeErrorCode {
+    pub const fn diagnostic_code(self) -> &'static str {
+        match self {
             Self::WorkerUnavailable => "connection-worker-unavailable",
+            Self::WorkerBusy => WORKER_BUSY_DIAGNOSTIC,
             Self::StoreUnavailable => "connection-private-store-unavailable",
             Self::InvalidSelection => "connection-selection-invalid",
             Self::StaleReview => "connection-selection-review-stale",
             Self::UnknownConnection => "connection-record-unavailable",
             Self::InvalidMetadata => "connection-metadata-invalid",
             Self::StaleMetadata => "connection-metadata-review-stale",
-        })
+        }
+    }
+}
+
+impl fmt::Display for HubRuntimeErrorCode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.diagnostic_code())
     }
 }
 
@@ -225,6 +235,11 @@ enum Work {
         cancellation: ScanCancellation,
     },
     ApplyMetadata(MetadataChangeReview),
+    #[cfg(test)]
+    TestBarrier {
+        started: mpsc::Sender<()>,
+        release: Arc<(Mutex<bool>, Condvar)>,
+    },
 }
 
 struct WorkRequest {
@@ -259,7 +274,7 @@ struct RuntimeData {
 struct RuntimeInner {
     data: Mutex<RuntimeData>,
     settled: Condvar,
-    sender: Mutex<Option<mpsc::Sender<WorkRequest>>>,
+    sender: Mutex<Option<mpsc::SyncSender<WorkRequest>>>,
     handle: Mutex<Option<JoinHandle<()>>>,
 }
 
@@ -321,7 +336,7 @@ impl ConnectionHubRuntime {
         startup: Startup,
         initialization_request: u64,
     ) -> Result<Self, InventoryError> {
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = mpsc::sync_channel(WORK_QUEUE_CAPACITY);
         let inner = Arc::new(RuntimeInner {
             data: Mutex::new(RuntimeData {
                 requested: initialization_request,
@@ -405,9 +420,10 @@ impl ConnectionHubRuntime {
             .as_ref()
             .cloned()
             .ok_or(HubRuntimeErrorCode::WorkerUnavailable)?;
-        sender
-            .send(request)
-            .map_err(|_| HubRuntimeErrorCode::WorkerUnavailable)
+        sender.try_send(request).map_err(|error| match error {
+            mpsc::TrySendError::Full(_) => HubRuntimeErrorCode::WorkerBusy,
+            mpsc::TrySendError::Disconnected(_) => HubRuntimeErrorCode::WorkerUnavailable,
+        })
     }
 
     fn begin_request(&self) -> Result<u64, HubRuntimeErrorCode> {
@@ -438,18 +454,15 @@ impl ConnectionHubRuntime {
             data.active_cancellation = Some(cancellation.clone());
             data.state = HubRuntimeState::Loading { request };
         }
-        if self
-            .enqueue(WorkRequest {
-                request,
-                work: Work::Scan {
-                    grants,
-                    cancellation,
-                },
-                wake: None,
-            })
-            .is_err()
-        {
-            complete_scan_failure(&self.inner, request);
+        if let Err(error) = self.enqueue(WorkRequest {
+            request,
+            work: Work::Scan {
+                grants,
+                cancellation,
+            },
+            wake: None,
+        }) {
+            complete_scan_failure_with(&self.inner, request, error.diagnostic_code());
         }
         request
     }
@@ -477,7 +490,7 @@ impl ConnectionHubRuntime {
             work: Work::ReviewFiles { paths, kind },
             wake: Some(wake),
         }) {
-            complete_review_error(&self.inner, request);
+            complete_review_error(&self.inner, request, error.diagnostic_code());
             return Err(error);
         }
         Ok(request)
@@ -517,22 +530,30 @@ impl ConnectionHubRuntime {
             },
             wake: Some(wake),
         }) {
-            complete_scan_failure(&self.inner, request);
+            complete_scan_failure_with(&self.inner, request, error.diagnostic_code());
             return Err(error);
         }
         Ok(request)
     }
 
-    pub fn discard_review(&self) {
+    pub fn discard_review(&self, reviewed_request: u64) -> bool {
         let mut data = lock(&self.inner.data);
-        if data.shutdown || matches!(data.grant_review, GrantReviewState::None) {
-            return;
+        let owns_review = matches!(
+            data.grant_review,
+            GrantReviewState::Reviewing { request }
+                | GrantReviewState::Ready { request, .. }
+                | GrantReviewState::Error { request, .. }
+                if request == reviewed_request
+        );
+        if data.shutdown || !owns_review {
+            return false;
         }
         data.requested = data.requested.saturating_add(1);
         data.completed = data.requested;
         data.reviewed_grants = None;
         data.grant_review = GrantReviewState::None;
         self.inner.settled.notify_all();
+        true
     }
 
     pub fn review_metadata_change(
@@ -611,7 +632,7 @@ impl ConnectionHubRuntime {
             work: Work::ApplyMetadata(review),
             wake: Some(wake),
         }) {
-            complete_metadata_error(&self.inner, request);
+            complete_metadata_error(&self.inner, request, error.diagnostic_code());
             return Err(error);
         }
         Ok(request)
@@ -699,7 +720,7 @@ fn worker_loop(inner: Weak<RuntimeInner>, receiver: mpsc::Receiver<WorkRequest>)
             work,
             wake,
         } = work_request;
-        let is_initialization = matches!(work, Work::Initialize(_));
+        let is_initialization = matches!(&work, Work::Initialize(_));
         if !is_initialization && !is_current_request(&inner, request) {
             continue;
         }
@@ -716,6 +737,18 @@ fn worker_loop(inner: Weak<RuntimeInner>, receiver: mpsc::Receiver<WorkRequest>)
             } => complete_scan(&inner, request, grants, cancellation, stores.is_some()),
             Work::ApplyMetadata(review) => {
                 complete_metadata_change(&inner, request, review, stores.as_ref())
+            }
+            #[cfg(test)]
+            Work::TestBarrier { started, release } => {
+                let _ = started.send(());
+                let (released, ready) = &*release;
+                let mut released = lock(released);
+                while !*released {
+                    released = ready
+                        .wait(released)
+                        .unwrap_or_else(|error| error.into_inner());
+                }
+                true
             }
         };
         if published {
@@ -911,8 +944,12 @@ fn unsafe_format_character(character: char) -> bool {
         || codepoint == 0xfeff
 }
 
-fn complete_review_error(inner: &RuntimeInner, request: u64) -> bool {
-    complete_review_failure(inner, request, SELECTION_DIAGNOSTIC)
+fn complete_review_error(
+    inner: &RuntimeInner,
+    request: u64,
+    diagnostic_code: &'static str,
+) -> bool {
+    complete_review_failure(inner, request, diagnostic_code)
 }
 
 fn complete_review_failure(
@@ -1093,8 +1130,12 @@ fn complete_metadata_conflict(
     true
 }
 
-fn complete_metadata_error(inner: &RuntimeInner, request: u64) -> bool {
-    complete_metadata_failure(inner, request, METADATA_DIAGNOSTIC)
+fn complete_metadata_error(
+    inner: &RuntimeInner,
+    request: u64,
+    diagnostic_code: &'static str,
+) -> bool {
+    complete_metadata_failure(inner, request, diagnostic_code)
 }
 
 fn complete_metadata_failure(
@@ -1222,4 +1263,50 @@ const fn identity_label(hint: IdentityHint) -> &'static str {
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn saturated_work_queue_rejects_immediately_and_remains_bounded() {
+        let temporary = tempfile::tempdir().unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+
+        let request = {
+            let mut data = lock(&runtime.inner.data);
+            data.requested = data.requested.saturating_add(1);
+            data.requested
+        };
+        let (started, observed_start) = mpsc::channel();
+        let release = Arc::new((Mutex::new(false), Condvar::new()));
+        let work = || WorkRequest {
+            request,
+            work: Work::TestBarrier {
+                started: started.clone(),
+                release: Arc::clone(&release),
+            },
+            wake: None,
+        };
+
+        assert_eq!(runtime.enqueue(work()), Ok(()));
+        observed_start
+            .recv_timeout(Duration::from_secs(2))
+            .expect("worker must enter the deterministic barrier");
+        for _ in 0..WORK_QUEUE_CAPACITY {
+            assert_eq!(runtime.enqueue(work()), Ok(()));
+        }
+        assert_eq!(
+            runtime.enqueue(work()),
+            Err(HubRuntimeErrorCode::WorkerBusy)
+        );
+
+        let (released, ready) = &*release;
+        *lock(released) = true;
+        ready.notify_all();
+        runtime.shutdown();
+        assert_eq!(runtime.state(), HubRuntimeState::Shutdown);
+    }
 }
