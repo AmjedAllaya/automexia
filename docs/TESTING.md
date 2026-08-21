@@ -1191,11 +1191,13 @@ worker boundary; it never becomes an ambient scanner or persistent grant.
     cargo test -p automexia-devops-ssh --locked
     cargo test -p automexia-ui-model --locked
     cargo bench -p automexia-terminal --bench connection_catalog --locked -- --noplot
+    cargo build -p automexia-terminal --bin automexia --features native-gui-test-hooks --locked
     cargo deny check
     cargo build -p automexia-terminal --release --locked
 
-Windows 11 results on 2026-08-21: 10 runtime, 7 controller, 4 renderer, 46
-palette, 33 D4, 32 UI-model, and 5 library tests passed. The contracts cover
+Windows 11 results on 2026-08-21: 10 runtime, 8 controller integration, 3
+targeted worker/controller/cache unit, 5 renderer, 46 palette, 33 D4, 33
+UI-model, and 5 library tests passed. The contracts cover
 no-scan-on-open, memory-only grant revocation, review tokens, stale generation
 rejection, publish-before-wake, explicit joined shutdown, last-known-good state,
 metadata CAS success/conflict/reload, read-only recent, hostile tags/search,
@@ -1212,15 +1214,17 @@ single run is not treated as a statistical regression comparison. The release
 executable is 22,670,336 bytes, 650,752 bytes (2.96%) above the 22,019,584-byte
 same-host pre-M1 baseline.
 
-A current release binary was launched on Windows 11 with an isolated
-`AUTOMEXIA_CONFIG_HOME`; foreground PID ownership was verified before opening
-**Connection Hub (read-only)** through the real command palette. The captured
-1280x760 frame confirmed modal activation, terminal dimming, setup hierarchy,
-exact-file guidance, and the no-login/network/process/PTY copy. The host desktop
-was narrower than the test window and Windows retained an occluded GPU frame
-after programmatic resize, so this run is not claimed as a complete native
-responsive-pixel pass. The deterministic tiny-to-8K layout tests remain the
-responsive geometry evidence.
+For the current visual review, the feature-gated native test control first
+waited for the renderer-neutral prompt-active signal. Only then did it open
+Connection Hub, avoiding the startup race caused by sending a shortcut before
+the terminal was ready. A direct native-window capture at 1600x950 physical
+pixels and 125% scale was inspected on Windows 11. The complete frame showed a
+centered 760x480-logical setup surface, one clear primary action, complete
+bounds, distinct hierarchy, restrained semantic color, code-native icons with
+redundant text, and no setup-only search/filter toolbar or verbose disabled-
+action footer. The hook is excluded from normal builds.
+
+Renderer-neutral tests remain the evidence for tiny-to-8K responsive geometry.
 
 Native macOS/Linux picker and static permission/recovery runs plus controlled
 Narrator/NVDA, VoiceOver, and Orca verification remain external. Local semantic,

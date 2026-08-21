@@ -235,6 +235,42 @@ fn every_empty_failure_and_authentication_state_has_stable_text_and_actions() {
 }
 
 #[test]
+fn initial_setup_omits_catalog_only_controls_from_visual_and_accessible_order() {
+    let connections = Vec::new();
+    let mut input = request(&connections, Viewport::new(1_280.0, 720.0, 1.0));
+    input.content_state = HubContentState::InitialSetup;
+    let view = project_connection_hub(input);
+
+    assert!(!view.search_visible);
+    assert!(!view.navigation_visible);
+    for hidden in [
+        "connection-groups",
+        "connection-search",
+        "connection-filters",
+        "connection-results",
+    ] {
+        assert!(!view.reading_order.iter().any(|id| id == hidden));
+        assert!(!view.accessibility_tree.iter().any(|node| node.id == hidden));
+    }
+    assert_eq!(
+        view.reading_order,
+        [
+            "connection-hub-title",
+            "connection-status",
+            "connection-primary-action",
+            "connection-close",
+        ]
+    );
+
+    let ready =
+        project_connection_hub(request(&summaries(), Viewport::new(1_280.0, 720.0, 1.0)));
+    assert!(ready.search_visible);
+    assert!(ready.accessibility_tree.iter().any(|node| {
+        node.id == "connection-search" && node.role == AccessibilityRole::SearchBox
+    }));
+}
+
+#[test]
 fn keyboard_navigation_never_connects_from_the_results_and_restores_focus() {
     let mut state = InteractionState::new(14, 5, "terminal-pane-7".into());
     assert_eq!(

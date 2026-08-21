@@ -134,6 +134,20 @@ impl HubContentState {
     }
 }
 
+/// Catalog search, filters, navigation, and results are useful only once there
+/// is a stable result surface to operate on. Setup/loading/terminal empty and
+/// blocking-error states instead expose their recovery action directly.
+pub const fn hub_catalog_controls_visible(state: HubContentState) -> bool {
+    matches!(
+        state,
+        HubContentState::Ready
+            | HubContentState::FilteredEmpty
+            | HubContentState::PartialFailure
+            | HubContentState::Stale
+            | HubContentState::Offline
+    )
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HubRoute {
@@ -751,6 +765,7 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
         })
         .collect::<Vec<_>>();
 
+    let catalog_controls_visible = hub_catalog_controls_visible(request.content_state);
     let mut accessibility_tree = Vec::with_capacity(rows.len() + 9);
     let mut dialog = AccessibilityNode::new(
         "connection-hub",
@@ -765,58 +780,60 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
         AccessibilityRole::Heading,
         "Connection Hub",
     ));
-    accessibility_tree.push(AccessibilityNode::new(
-        "connection-groups",
-        AccessibilityRole::Navigation,
-        "Connection groups",
-    ));
-    let mut search = AccessibilityNode::new(
-        "connection-search",
-        AccessibilityRole::SearchBox,
-        "Search public connections",
-    );
-    search.focusable = true;
-    accessibility_tree.push(search);
-    accessibility_tree.push(AccessibilityNode::new(
-        "connection-filters",
-        AccessibilityRole::Toolbar,
-        "Connection filters",
-    ));
-    let mut grid = AccessibilityNode::new(
-        "connection-results",
-        AccessibilityRole::Grid,
-        format!("{} connection results", request.connections.len()),
-    );
-    grid.focusable = rows.is_empty();
-    grid.actions = vec![
-        "move-previous".into(),
-        "move-next".into(),
-        "move-first".into(),
-        "move-last".into(),
-        "open-review".into(),
-    ];
-    accessibility_tree.push(grid);
-    for row in &rows {
-        let mut node = AccessibilityNode::new(
-            format!("connection-row-{}", row.id),
-            AccessibilityRole::Row,
-            format!(
-                "{}, {}, {}, {} risk",
-                row.display_name, row.provider_label, row.state_label, row.risk_label
-            ),
+    if catalog_controls_visible {
+        accessibility_tree.push(AccessibilityNode::new(
+            "connection-groups",
+            AccessibilityRole::Navigation,
+            "Connection groups",
+        ));
+        let mut search = AccessibilityNode::new(
+            "connection-search",
+            AccessibilityRole::SearchBox,
+            "Search public connections",
         );
-        node.description = format!(
-            "Target {}; identity {}; environment {}. {}",
-            row.target, row.identity, row.environment, row.primary_action_label
+        search.focusable = true;
+        accessibility_tree.push(search);
+        accessibility_tree.push(AccessibilityNode::new(
+            "connection-filters",
+            AccessibilityRole::Toolbar,
+            "Connection filters",
+        ));
+        let mut grid = AccessibilityNode::new(
+            "connection-results",
+            AccessibilityRole::Grid,
+            format!("{} connection results", request.connections.len()),
         );
-        node.focusable = row.selected;
-        node.selected = row.selected;
-        node.actions = vec![
+        grid.focusable = rows.is_empty();
+        grid.actions = vec![
+            "move-previous".into(),
+            "move-next".into(),
+            "move-first".into(),
+            "move-last".into(),
             "open-review".into(),
-            "toggle-favorite".into(),
-            "show-menu".into(),
         ];
-        accessibility_tree.push(node);
+        accessibility_tree.push(grid);
+        for row in &rows {
+            let mut node = AccessibilityNode::new(
+                format!("connection-row-{}", row.id),
+                AccessibilityRole::Row,
+                format!(
+                    "{}, {}, {}, {} risk",
+                    row.display_name, row.provider_label, row.state_label, row.risk_label
+                ),
+            );
+            node.description = format!(
+                "Target {}; identity {}; environment {}. {}",
+                row.target, row.identity, row.environment, row.primary_action_label
+            );
+            node.focusable = row.selected;
+            node.selected = row.selected;
+            node.actions = vec![
+                "open-review".into(),
+                "toggle-favorite".into(),
+                "show-menu".into(),
+            ];
+            accessibility_tree.push(node);
+        }
     }
     let role = match request.content_state {
         HubContentState::Loading => AccessibilityRole::Progress,
@@ -849,6 +866,24 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
     );
     close.focusable = true;
     accessibility_tree.push(close);
+    let reading_order = if catalog_controls_visible {
+        vec![
+            "connection-hub-title".into(),
+            "connection-search".into(),
+            "connection-filters".into(),
+            "connection-results".into(),
+            "connection-status".into(),
+            "connection-primary-action".into(),
+            "connection-close".into(),
+        ]
+    } else {
+        vec![
+            "connection-hub-title".into(),
+            "connection-status".into(),
+            "connection-primary-action".into(),
+            "connection-close".into(),
+        ]
+    };
 
     ConnectionHubView {
         layout,
@@ -860,8 +895,8 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
         focus_trapped: true,
         restore_focus_to: request.opener_id.to_owned(),
         focus: request.focus,
-        search_visible: true,
-        navigation_visible: layout == HubLayout::Wide,
+        search_visible: catalog_controls_visible,
+        navigation_visible: catalog_controls_visible && layout == HubLayout::Wide,
         inspector_visible: layout == HubLayout::Wide
             && request.route != HubRoute::Results,
         high_contrast: request.preferences.high_contrast,
@@ -871,15 +906,7 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
         recovery_label: request.content_state.recovery_label(),
         visible_range: range,
         rows,
-        reading_order: vec![
-            "connection-hub-title".into(),
-            "connection-search".into(),
-            "connection-filters".into(),
-            "connection-results".into(),
-            "connection-status".into(),
-            "connection-primary-action".into(),
-            "connection-close".into(),
-        ],
+        reading_order,
         accessibility_tree,
         live_announcement: request.live_announcement.map(str::to_owned),
         execution_enabled: false,

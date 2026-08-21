@@ -5961,6 +5961,12 @@ impl Screen<'_> {
                 self.renderer.command_palette.set_enabled(true);
                 self.mark_dirty();
             }
+            "open-connection-hub" => {
+                self.renderer.command_palette.set_enabled(false);
+                self.renderer.confirm_quit.set_active(false);
+                self.open_connection_hub();
+                self.mark_dirty();
+            }
             "confirm-quit" => {
                 self.renderer.command_palette.set_enabled(false);
                 self.renderer.confirm_quit.set_active(true);

@@ -166,6 +166,7 @@ fn controller_exposes_bounded_filter_and_group_controls() {
     controller.open("terminal-grid");
     controller.sync();
 
+    assert!(controller.set_search_text("alpha"));
     controller.toggle_favorites_filter();
     controller.toggle_recent_filter();
     controller.cycle_source_filter();
@@ -178,6 +179,7 @@ fn controller_exposes_bounded_filter_and_group_controls() {
     assert_eq!(query.grouping, HubCatalogGrouping::Source);
 
     controller.clear_filters();
+    assert!(controller.query().is_empty());
     let query = controller.catalog_query();
     assert!(!query.favorites_only);
     assert!(!query.recent_only);
@@ -249,6 +251,8 @@ fn ime_composition_targets_the_active_search_or_tag_editor() {
     let mut controller = ConnectionHubController::new(runtime);
     controller.open("terminal-grid");
     controller.sync();
+    assert!(controller.catalog_controls_visible());
+    controller.focus_search();
 
     assert!(controller.set_ime_preedit(Some("a")));
     assert_eq!(
