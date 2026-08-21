@@ -225,8 +225,11 @@ and recording its size/host manifest.
 The pull-request policy is part of this fail-closed boundary. It classifies the
 terminal context/process owner, extension API/runtime, SSH extension,
 session-launch fixtures/checkers, security ADRs, workflow, and policy checker as
-protected. Approval normalization rejects the author, bots, and case-only
-duplicates. Run its regression suite with:
+protected. Approval normalization rejects the author, bots, case-only
+duplicates, malformed records, and approvals whose reviewed commit does not
+match the exact pull-request head. Review JSON is capped at 4 MiB/10,000
+records, and newline/delimiter injection in logins or 40/64-hex commit IDs is
+rejected before writing the GitHub environment. Run its regression suite with:
 
 ```text
 python tools/ci/test_pr_policy.py

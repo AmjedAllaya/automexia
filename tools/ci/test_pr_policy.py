@@ -39,13 +39,112 @@ class PullRequestDocumentationPolicyTests(unittest.TestCase):
 
         self.assertEqual(POLICY.protected_paths(changed), [])
 
-    def test_independent_approvals_exclude_author_bots_and_case_duplicates(self) -> None:
+    def test_independent_approvals_require_the_exact_head_commit(self) -> None:
+        old = "a" * 40
+        head = "b" * 40
         self.assertEqual(
             POLICY.independent_approval_logins(
-                "Alice,alice,PR-Author,dependabot[bot],Bob", "pr-author"
+                f"Alice|{head},alice|{head.upper()},PR-Author|{head},"
+                f"dependabot[bot]|{head},Bob|{head},Carol|{old},"
+                f"Mallory\nAPPROVAL_LOGINS=owned|{head},malformed",
+                "pr-author",
+                head.upper(),
             ),
             {"alice", "bob"},
         )
+
+    def test_stale_or_missing_commit_approvals_do_not_count(self) -> None:
+        old = "a" * 40
+        head = "b" * 40
+        self.assertEqual(
+            POLICY.independent_approval_logins(
+                f"Alice|{old},Bob|,Carol", "pr-author", head
+            ),
+            set(),
+        )
+
+    def test_ci_collects_the_reviewed_commit_with_each_approval(self) -> None:
+        workflow = (
+            MODULE_PATH.parents[2] / ".github" / "workflows" / "ci.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("--paginate --slurp |", workflow)
+        self.assertIn(
+            "python tools/ci/check_pr_policy.py --format-approvals", workflow
+        )
+        self.assertNotIn("--slurp --jq", workflow)
+        self.assertNotIn("jq -r", workflow)
+
+    def test_review_pages_keep_only_each_humans_latest_approval_record(self) -> None:
+        old = "a" * 40
+        current = "b" * 40
+        pages = [
+            [
+                {
+                    "id": 1,
+                    "submitted_at": "2026-08-21T10:00:00Z",
+                    "state": "APPROVED",
+                    "commit_id": old,
+                    "user": {"login": "Alice", "type": "User"},
+                },
+                {
+                    "id": 2,
+                    "submitted_at": "2026-08-21T11:00:00Z",
+                    "state": "DISMISSED",
+                    "commit_id": current,
+                    "user": {"login": "Alice", "type": "User"},
+                },
+                {
+                    "id": 3,
+                    "submitted_at": "2026-08-21T12:00:00Z",
+                    "state": "APPROVED",
+                    "commit_id": current,
+                    "user": {"login": "build-bot", "type": "Bot"},
+                },
+            ],
+            [
+                {
+                    "id": 4,
+                    "submitted_at": "2026-08-21T13:00:00Z",
+                    "state": "APPROVED",
+                    "commit_id": old,
+                    "user": {"login": "Bob", "type": "User"},
+                },
+                {
+                    "id": 5,
+                    "submitted_at": "2026-08-21T14:00:00Z",
+                    "state": "APPROVED",
+                    "commit_id": current,
+                    "user": {"login": "Carol", "type": "User"},
+                },
+                {
+                    "id": 6,
+                    "submitted_at": "2026-08-21T15:00:00Z",
+                    "state": "APPROVED",
+                    "commit_id": current,
+                    "user": {"login": "Mallory\nINJECTED=1", "type": "User"},
+                },
+                {
+                    "id": 7,
+                    "submitted_at": "2026-08-21T16:00:00Z",
+                    "state": "APPROVED",
+                    "commit_id": current + "\nINJECTED=1",
+                    "user": {"login": "David", "type": "User"},
+                },
+                {"malformed": True},
+            ],
+        ]
+
+        self.assertEqual(
+            POLICY.approval_records_from_review_pages(pages),
+            f"Bob|{old},Carol|{current}",
+        )
+
+    def test_review_page_count_is_bounded(self) -> None:
+        pages = [[{}] * (POLICY.MAX_REVIEW_COUNT + 1)]
+
+        with self.assertRaisesRegex(ValueError, "bounded review count"):
+            POLICY.approval_records_from_review_pages(pages)
 
     def test_source_change_without_documentation_is_rejected(self) -> None:
         self.assertEqual(
