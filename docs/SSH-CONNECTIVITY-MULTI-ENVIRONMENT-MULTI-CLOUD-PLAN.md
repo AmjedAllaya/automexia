@@ -358,68 +358,100 @@ authority is introduced.
 
 ### M2 — complete the D0 external decision and activate F4/D3 safely
 
-Status: D0/F4 remain Partially done; no production code may enable launch first.
+Status: **Partially done.** The nonactivated contract and local protected-review
+policy are strengthened; production activation remains blocked and no
+process/PTY/network authority was added.
+
+#### M2 implementation audit and protected gate (2026-08-21)
+
+| M2 area | Classification | Current evidence | Missing exit proof |
+|---|---|---|---|
+| Protected review policy | Partially done | CI now treats terminal context/process ownership, extension API/runtime, the SSH extension, session-launch fixtures/checkers, security ADRs, and the policy itself as protected. Approval counting is case-normalized and excludes the PR author and bots. | Two current independent human approvals and non-bypassable server-side enforcement are unavailable. |
+| Inherited S0/v0.4 gates | Not done externally | Local earlier-phase gates exist, but there is no current-revision hosted CI evidence. | Green required CI/CodeQL/native jobs on the protected M2 revision. |
+| Trusted package attestation | Not done | The test-only broker validates a supplied reviewed identity fixture. | A real loader/build provenance receipt with exact digest, version, contract, verification, and revocation state. |
+| Exact runner and lifecycle | Partially done as a pure model; not implemented in production | The test-only broker owns exact scope, literal argv, cwd/environment bounds, replay-safe leases, revocation, redacted authorization audit, and 1/10/50 pure lifecycle tests. | One app-owned runner, atomic native check-to-spawn, PTY/route ownership, teardown, and native proof. |
+| Capability/recovery UX | Not done | The Hub truthfully reports launch unavailable. | Accessible review, approval, distinct recovery states, focus behavior, and visual/native evidence. |
+
+Remote prerequisite snapshot on 2026-08-21: the repository returned one
+collaborator, no pull request or hosted CI run for the current revision, and a
+403 response for ruleset inspection/enforcement on the current private hosting
+plan. The two-reviewer gate therefore cannot be satisfied by the current
+repository configuration. This snapshot is evidence for the blocker, not a
+permanent repository claim; re-check it before resuming M2.
 
 #### M2.1 Protected prerequisites
 
-- [ ] Obtain the ADR 0012 security review and the two protected-path approvals
-  required by ADR 0003, or replace it through an equally specific accepted ADR.
-- [ ] Confirm all inherited S0/v0.4 hostile-output and release gates are green.
-- [ ] Bind a real trusted package-loader/attestation result to the existing
+- [ ] **Partially done (external prerequisite)** — Obtain the ADR 0012 security
+  review and two protected-path approvals required by ADR 0003, or replace it
+  through an equally specific accepted ADR. Local CI now identifies the M2
+  authorities and accepts only distinct non-author, non-bot approvals; the
+  actual independent reviewers and server-side enforcement are missing.
+- [ ] **Not done (external prerequisite)** — Confirm all inherited S0/v0.4
+  hostile-output and release gates are green on the exact protected M2 revision.
+- [ ] **Not done** — Bind a real trusted package-loader/attestation result to the
   reviewed package policy: extension ID, publisher, exact version, contract
   version, non-zero digest, first-party/repository verification, and revocation
-  state. A test fixture or crate name is not production proof.
+  state. A test fixture, crate name, install marker, or unverified local build is
+  not production proof.
 
 #### M2.2 One application-owned `ExternalToolRunner`
 
-- [ ] Design tests first for the actual application launch/PTY seam, then add a
-  single runner in `apps/automexia-terminal`. It accepts only a prepared
-  canonical executable, exact argument vector, validated cwd, bounded
-  allowlisted environment values supplied by the application, explicit stdin/
-  output policy, deadline, cancellation token, route destination, and lease.
-- [ ] Keep broad `ProcessSpawn`, arbitrary executable, shell profile, inherited
-  environment selection, raw command text, and secret references denied.
-- [ ] Implement OS-specific executable identity revalidation and close the
-  check-to-spawn race. Review a native mechanism for Unix (for example a
-  descriptor-based execution strategy) and an explicit Windows application-path
-  strategy before implementation; prove replacement resistance natively.
-- [ ] Atomically bind verified package, executable identity, capability decision,
-  operation lease, session, capsule revision, target/connection reference,
-  argv, newly created PTY, route/pane destination, and owned tunnels before
-  publication. Wake the renderer only after state is visible.
-- [ ] Implement graceful cancellation, bounded forced termination, process-tree
-  cleanup, listener/tunnel closure, close/rebind/shutdown reconciliation, and
-  PID-reuse-safe lease completion. There must be no unbounded tombstone set.
-- [ ] Preserve redacted structured audit fields only. Never record argv, cwd,
-  executable path, environment values, username, PID, secrets, terminal bytes,
-  or raw provider/OpenSSH diagnostics.
+- [ ] **Not done** — Design tests first for the actual application launch/PTY
+  seam, then add a single runner in `apps/automexia-terminal`. It accepts only a
+  prepared canonical executable, exact argument vector, validated cwd, bounded
+  allowlisted application environment, explicit stdin/output policy, deadline,
+  cancellation token, route destination, and lease.
+- [x] **Fully done at the nonactivated boundary; preserve during M2** — Broad
+  `ProcessSpawn`, arbitrary executables, shell profiles, inherited environment
+  selection, raw command text, secret references, and production launch remain
+  denied by the contract, source checker, and mutation tests.
+- [ ] **Partially done** — The pure broker resolves fixed platform roots and
+  revalidates file identity. Native Unix descriptor-based and Windows explicit
+  application-path strategies, atomic check-to-spawn, and replacement-resistance
+  evidence are not implemented.
+- [ ] **Partially done** — The broker binds reviewed package identity,
+  executable identity, capability decision, operation lease, session, capsule
+  revision, and argv. Target/connection, new PTY, route/pane destination,
+  tunnels, publish-before-wake ordering, and atomic creation are not implemented.
+- [ ] **Partially done** — Pure cancellation, completion, rebind, revocation,
+  stale-lease isolation, sibling preservation, and bounded 1/10/50 cycles pass.
+  Graceful/forced child-tree termination, PTY/listener/tunnel closure, shutdown
+  reconciliation, PID-reuse-safe native completion, and resource proof remain.
+- [ ] **Partially done** — Authorization audit fields are structured and
+  redacted. Native completion/failure persistence must retain the same rule and
+  never record argv, cwd, executable path, environment values, username, PID,
+  secrets, terminal bytes, or raw provider/OpenSSH diagnostics.
 
 #### M2.3 Capability/recovery UX
 
-- [ ] Render an accessible review/approval surface before any launch. It shows
-  extension/package identity, capability, public target, route, risk, exact
-  operation summary, expiration, scope, destination, and deny/allow-once/
-  allow-session behavior where supported.
-- [ ] Make expiry, revocation, loader verification change, stale source/capsule,
-  missing executable, cancellation, and failure states distinct and recoverable
-  without suggesting a security bypass.
-- [ ] Keep grants session-scoped by default. Any persisted grant requires a
-  separate threat model, schema/migration, explicit revocation UX, and ADR
-  review; it is not part of initial F4.
+- [ ] **Not done** — Render an accessible review/approval surface before any
+  launch. It shows extension/package identity, capability, public target, route,
+  risk, exact operation summary, expiration, scope, destination, and deny/
+  allow-once/allow-session behavior where supported.
+- [ ] **Partially done as a pure denial model** — Expiry, revocation, loader or
+  executable change, stale scope, missing executable, cancellation, and failure
+  have distinct typed results in the broker. Product recovery UI and
+  accessibility/visual/native evidence are not implemented.
+- [x] **Fully done in the initial contract; preserve during M2** — Grants are
+  session-scoped or allow-once and no persistent grant schema exists. Persisted
+  grants remain outside initial F4 and require a separate threat model,
+  migration, revocation UX, and ADR review.
 
 #### M2.4 M2 tests and native evidence
 
-- [ ] Add deterministic fake-runner tests for hostile/Unicode/whitespace/
-  leading-dash/metacharacter/max-size argv, null stdin, output caps, duplicate/
-  replay/stale/expired decisions, package/executable replacement, session/window
-  isolation, cancellation, shutdown, and 1/10/50 lifecycle cycles.
-- [ ] Execute the frozen loopback fixture protocol with real system OpenSSH and
-  native PTYs: Windows ConPTY, macOS PTY, Linux PTY, and separately gated WSL.
-  Capture the private/redacted required artifact manifest, resource peaks, and
-  all six zero-resource cleanup invariants.
-- [ ] Measure controlled launch-to-prompt, cancellation, input/render latency,
-  CPU, memory, process/handle/descriptor/task/route counts, and repeated-close
-  baseline. Fix regressions before widening capability use.
+- [ ] **Partially done** — Deterministic pure-broker tests cover hostile,
+  Unicode, whitespace, leading-dash, metacharacter, maximum/oversized argv,
+  environment/secret denial, duplicate/replay/stale/expired decisions,
+  executable replacement, session isolation, cancellation, shutdown-equivalent
+  revocation, and 1/10/50 model cycles. Actual fake-runner stdin/output/deadline,
+  window isolation, forced cleanup, and publish-order tests are missing.
+- [ ] **Not done (external native evidence)** — Execute the frozen loopback
+  fixture with real system OpenSSH and native Windows ConPTY, macOS PTY, Linux
+  PTY, and separately gated WSL. Capture the private/redacted manifest, resource
+  peaks, and all six zero-resource cleanup invariants.
+- [ ] **Not done (external controlled evidence)** — Measure launch-to-prompt,
+  cancellation, input/render latency, CPU, memory, process/handle/descriptor/
+  task/route counts, and repeated-close baseline on the exact approved build.
 
 Exit: the generic broker is production-capable and independently testable, but
 no provider receives a grant merely because the runner exists.

@@ -68,7 +68,7 @@ documentation, feature assurance, and a change fragment.
 | Provider-neutral contracts | D1 | Fully done | automexia-extension-api, automexia-extension-runtime, automexia-devops, automexia-ui-model; architecture gates | Hosted release evidence only |
 | Generic context and immutable capsules | D2 | Fully done | extension API/runtime plus application session/context tests | Production login/relaunch belongs to D3/D6 |
 | SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 proposal, exact schema-2 manual/trust/default/fixture protocol, four-platform matrix, mutation gate | Accept or supersede ADR 0012 through protected review; execute native fixtures in F4/F5 |
-| Exact-argument launch broker | D3 | Partially done | test-only exact package identity, capability scope, platform resolver, file revalidation, lifecycle and audit model | Production capability UI, atomic spawn, PTY/route lifecycle, real package-loader binding, native evidence |
+| Exact-argument launch broker | D3 | Partially done | test-only exact package identity, capability scope, platform resolver, file revalidation, lifecycle/audit model, and local independent-human protected-path policy | External reviewers/server-side enforcement, production capability UI, atomic spawn, PTY/route lifecycle, real package-loader binding, native evidence |
 | Static OpenSSH inventory | D4 | Fully done | automexia-devops-ssh, hostile/property tests, fuzz, benchmark, assurance | Remains deliberately disabled until D5 |
 | Connection Hub model | D5.0 | Partially done | All local F2 schemas, reducers, dry-run planner, Hub/review/planner projections, fixtures, goldens, fuzz, mutations, and benchmark are implemented | Protected ADR 0012 acceptance remains for D5.0 closure/D5.2; capability-free D5.1 is complete under ADR 0022 |
 | Read-only Connection Hub | D5.1 | Fully done locally; external evidence partial | App-scoped joined runtime, exact reviewed native selection, bounded modal/search/filter/grouping, CAS favorite/tag diffs, read-only recent/library data, disabled authority, tests, benchmark, and release-build evidence | Native macOS/Linux picker/permission plus controlled Narrator/NVDA, VoiceOver, and Orca evidence |
@@ -351,24 +351,35 @@ and controlled assistive-technology evidence remain external release gates.
 
 ## F4 - activate D3 exact-argument process and PTY lifecycle
 
-Status: Partially done; production activation is not done.
+Status: **Partially done**; local review-policy and pure broker foundations exist,
+but production activation is blocked.
 
-- [ ] Implement one application-owned ExternalToolRunner with exact executable,
-  argv, bounded allowlisted environment, validated cwd, null/PTY stdin policy,
-  output policy, deadline, cancellation, and descendant cleanup.
-- [ ] Add visible exact capability review, deny, expiry, revocation, audit, and
-  recovery UI.
-- [ ] Bind package identity, executable file identity, session, capsule,
-  operation lease, target, arguments, and destination atomically through
-  check-to-spawn.
-- [ ] Attach the child to exactly one new PTY/route/pane destination and publish
-  lifecycle before wake.
-- [ ] Implement graceful cancellation followed by bounded forced teardown,
-  shutdown reconciliation, and no orphan process/listener state.
-- [ ] Test hostile argv, Unicode/spaces/leading dashes, executable replacement,
-  replay, stale grants, pane/window isolation, and 1/10/50 process cycles.
-- [ ] Pass native Windows ConPTY, macOS PTY, and Linux PTY process-tree evidence
-  plus controlled latency/handle/resource checks.
+- [ ] **Partially done (external prerequisite)** — Accept or supersede ADR 0012
+  with two current independent human approvals and non-bypassable server-side
+  protection. Local CI now protects the M2 authority paths and excludes the
+  author, bots, and duplicate logins; the repository currently lacks the needed
+  reviewers/ruleset enforcement.
+- [ ] **Not done** — Bind a real trusted package attestation and implement one
+  application-owned ExternalToolRunner with exact executable/argv, bounded
+  allowlisted environment, validated cwd, null/PTY stdin policy, output policy,
+  deadline, cancellation, and descendant cleanup.
+- [ ] **Not done** — Add visible exact capability review, deny, expiry,
+  revocation, audit, recovery, keyboard/focus, and accessibility UI.
+- [ ] **Partially done** — The pure broker binds package, executable file
+  identity, session, capsule, decision, operation lease, and arguments. Atomic
+  native check-to-spawn, target and destination binding remain missing.
+- [ ] **Not done** — Attach the child to exactly one new PTY/route/pane
+  destination and publish lifecycle before wake.
+- [ ] **Partially done** — Pure cancellation/rebind/revocation and bounded
+  lifecycle cycles pass. Graceful then forced process-tree teardown and
+  listener/PTY/route reconciliation are not implemented.
+- [ ] **Partially done** — Hostile argv, Unicode/spaces/leading dashes,
+  executable replacement, replay, stale grants, session isolation, and 1/10/50
+  pure cycles pass. Fake-runner, pane/window, native process, and publish-order
+  tests remain.
+- [ ] **Not done (external native evidence)** — Pass Windows ConPTY, macOS PTY,
+  Linux PTY, and separately gated WSL process-tree evidence plus controlled
+  latency/handle/resource checks on the exact approved build.
 
 Exit: the generic broker is production-capable but no provider inherits a grant.
 

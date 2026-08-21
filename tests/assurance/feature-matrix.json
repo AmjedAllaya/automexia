@@ -199,7 +199,7 @@
       "quality": {
         "accessibility": {"level": "pr", "evidence": ["automexia-extension-api/src/lib.rs", "automexia-ui-model/src/lib.rs"]},
         "correctness": {"level": "pr", "evidence": ["automexia-extension-api/src/lib.rs", "automexia-extension-runtime/src/lib.rs", "apps/automexia-terminal/src/context/launch_broker.rs", "tests/fixtures/session-launch/d0-d3-contract-v2.json", "tests/fixtures/session-launch/d0-d3-contract-v1.json", "tools/ci/check_session_launch_d0.py", "tools/ci/test_session_launch_d0.py"]},
-        "security": {"level": "nightly", "evidence": ["automexia-extension-api/src/lib.rs", "apps/automexia-terminal/src/context/launch_broker.rs", "tests/fixtures/session-launch/d0-d3-contract-v2.json", "tests/fixtures/session-launch/d0-d3-contract-v1.json", "tools/ci/check_session_launch_d0.py", ".github/workflows/nightly.yml#miri"]},
+        "security": {"level": "nightly", "evidence": ["automexia-extension-api/src/lib.rs", "apps/automexia-terminal/src/context/launch_broker.rs", "tests/fixtures/session-launch/d0-d3-contract-v2.json", "tests/fixtures/session-launch/d0-d3-contract-v1.json", "tools/ci/check_session_launch_d0.py", "tools/ci/check_pr_policy.py", "tools/ci/test_pr_policy.py", ".github/workflows/ci.yml#policy", ".github/workflows/nightly.yml#miri"]},
         "performance": {"level": "nightly", "evidence": ["apps/automexia-terminal/benches/automexia_services.rs"]},
         "resource_lifetime": {"level": "pr", "evidence": ["automexia-extension-runtime/src/lib.rs", "apps/automexia-terminal/src/context/launch_broker.rs"]},
         "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "The current private runtime has no extension download or persistent package store."},
