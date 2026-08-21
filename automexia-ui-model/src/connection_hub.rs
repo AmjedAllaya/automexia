@@ -308,16 +308,14 @@ pub fn project_connection_catalog(
     })
 }
 
-fn validate_catalog(
-    entries: &[ConnectionCatalogEntry],
+/// Validate query input without traversing or projecting the catalog.
+///
+/// This is intended for transient input such as IME preedit text, where the
+/// caller must reject hostile or oversized input before committing it but
+/// must not perform catalog-sized work on every composition update.
+pub fn validate_connection_catalog_query(
     query: &ConnectionCatalogQuery,
 ) -> Result<(), HubCatalogError> {
-    if entries.len() > MAX_CATALOG_ENTRIES {
-        return Err(catalog_error(
-            HubCatalogErrorCode::LimitExceeded,
-            "entry count",
-        ));
-    }
     if query.text.len() > MAX_CATALOG_QUERY_BYTES {
         return Err(catalog_error(
             HubCatalogErrorCode::LimitExceeded,
@@ -328,7 +326,20 @@ fn validate_catalog(
     if let Some(tag) = query.tag.as_deref() {
         validate_catalog_text(tag, "tag filter")?;
     }
+    Ok(())
+}
 
+fn validate_catalog(
+    entries: &[ConnectionCatalogEntry],
+    query: &ConnectionCatalogQuery,
+) -> Result<(), HubCatalogError> {
+    if entries.len() > MAX_CATALOG_ENTRIES {
+        return Err(catalog_error(
+            HubCatalogErrorCode::LimitExceeded,
+            "entry count",
+        ));
+    }
+    validate_connection_catalog_query(query)?;
     let mut resident_bytes = 0_usize;
     for entry in entries {
         if entry.tags.len() > MAX_CATALOG_TAGS {

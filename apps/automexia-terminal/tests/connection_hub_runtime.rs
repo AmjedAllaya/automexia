@@ -247,7 +247,7 @@ fn discarding_a_review_revokes_the_memory_only_file_grants() {
         GrantReviewState::Ready { .. }
     ));
 
-    runtime.discard_review();
+    assert!(runtime.discard_review(review));
 
     assert_eq!(runtime.snapshot().grant_review, GrantReviewState::None);
     assert_eq!(
