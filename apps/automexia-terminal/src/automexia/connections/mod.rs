@@ -1,7 +1,12 @@
 //! Application-owned composition for the non-executing Connection Hub.
 
+mod controller;
 mod library;
 mod runtime;
+pub use controller::{
+    ConnectionHubController, DisabledHubAction, HubControllerEffect,
+    HubControllerPresentation,
+};
 pub use library::{
     ConnectionLibraryDocument, ConnectionLibraryStore, HubPreferences, LibraryError,
     LibraryErrorCode, LibraryLoadOrigin, LibraryLoadResult, LibraryTransferDocument,
@@ -11,6 +16,8 @@ pub use library::{
 };
 
 pub use runtime::{
-    platform_setup_guidance, ConnectionHubRuntime, HubRuntimeState, PlatformFamily,
-    SetupGuidance,
+    platform_setup_guidance, ConnectionHubRuntime, GrantReviewState, HubLibrarySnapshot,
+    HubMetadataChangeState, HubMetadataValues, HubRuntimeErrorCode, HubRuntimeSnapshot,
+    HubRuntimeState, HubStoreState, MetadataChangeReview, PlatformFamily,
+    ReviewedGrantFile, SetupGuidance,
 };

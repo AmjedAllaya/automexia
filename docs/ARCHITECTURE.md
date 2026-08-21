@@ -199,11 +199,15 @@ is discovery/UI metadata and cannot replace OpenSSH's complete configuration
 semantics.
 
 The window-level discovery/review surface is specified by the
-[Connection Hub](CONNECTION-HUB.md). F2/D5.0 now implements its pure provider-
-neutral Hub, review, and planner projections in `automexia-ui-model`; no product
-window or renderer wiring is active. Provider extensions cannot draw their own
-approval UI, place work on render/input/VT threads, or turn a displayed label
-into executable text. The Hub does not resize a PTY and does not own credentials.
+[Connection Hub](CONNECTION-HUB.md). F2/D5.0 owns the pure provider-neutral Hub,
+review, and planner projections in `automexia-ui-model`. D5.1 adapts those values
+through one Router-owned `ConnectionHubRuntime`, a per-screen controller, and a
+Sugarloaf modal. The runtime owns one joined worker, memory-only reviewed grants,
+generation cancellation, D4 metadata CAS, Connection Library initialization,
+and route-specific publish-before-wake; explicit shutdown cancels and joins it.
+Provider extensions cannot draw approval UI, place work on render/input/VT
+threads, or turn displayed labels into executable text. The Hub does not resize
+a PTY, launch a process, access a network/provider, or own credentials.
 
 ### F2/D5.0 non-executing connection-planning boundary
 
@@ -232,12 +236,12 @@ The boundary is deliberately capability-free:
 - fixed collection/byte/dependency/retry/time ceilings and fallible sequence
   conversion are checked before a plan can be projected.
 
-D4 remains the independent static OpenSSH inventory/persistence owner. D5.1
-must add an explicit adapter from immutable D4 snapshots into these models plus
-private user preference/profile persistence and product rendering; it may not
-move D4 parsing or storage into the UI model. D5.2 must pass the application-
-owned capability/process/PTY/route gate before translating a reviewed plan into
-an execution request. No lower crate may bypass those owners.
+D4 remains the independent static OpenSSH inventory/persistence owner. D5.1's
+application adapter passes only confirmed exact grants into D4, initializes
+private preference/profile state once, and renders immutable projections; D4
+parsing and storage do not move into the UI model. D5.2 must pass the
+application-owned capability/process/PTY/route gate before translating a
+reviewed plan into an execution request. No lower crate may bypass those owners.
 
 ### Environment Capsule contract
 

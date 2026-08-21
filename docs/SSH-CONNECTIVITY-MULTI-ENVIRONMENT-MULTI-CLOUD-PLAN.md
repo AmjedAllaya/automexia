@@ -122,7 +122,7 @@ native/release claim.
 | D3 launch broker | Partially done | `context/launch_broker.rs` has package, capability, resolver, lease, audit and pure lifecycle tests | It is exclusively `#[cfg(test)]`, has a constant production denial, and cannot spawn/attach a PTY. Implement F4 only after ADR gate. |
 | D4 static OpenSSH inventory | Fully done locally | `extensions/devops-ssh`: bounded parser, grants, hostile/property/fuzz tests, 10,000-alias benchmark, private revisioned metadata | Deliberately remains non-executing; hosted macOS/longitudinal release proof remains external. |
 | F2/D5.0 Hub and planning model | Partially done overall; fully done locally | Pure records, validation, reducers, fingerprints, review/planner projection, accessibility goldens, fuzz and benchmark | ADR 0012 acceptance blocks phase closure; no product authority is granted. |
-| F3/D5.1 catalog composition | Partially done | `ConnectionHubRuntime` composes explicit D4 grants and metadata in one cancellable worker; stale last-known-good catalog and setup guidance are tested | No application screen/controller or user-selected-grant flow; no metadata mutation UI; no product visual/accessibility/native evidence. |
+| F3/D5.1 read-only Connection Hub | Fully done locally; external evidence partially done | App-owned joined runtime, exact reviewed native selection, product modal, bounded browse/filter/group, D4 favorite/tag CAS, read-only recent/library state, disabled authority, Windows tests/benchmark/build | Native macOS/Linux picker/permission and controlled screen-reader evidence remain external. |
 | F3 Connection Library | Fully done locally | `ConnectionLibraryStore` has 16 MiB private documents, CAS, recovery, transfer redaction, fresh import IDs, read-only/disk-full and link tests | Product editor/manager belongs to F6; macOS/Linux native permission and controlled screen-reader evidence remain. |
 | F5 managed OpenSSH | Not done | Only disabled D3/D4/F2 foundations | No reviewed launch, OpenSSH child, host-trust UX, routes/tunnels, lifecycle, or native sessions. |
 | F6 recipes and remote declarative workspaces | Not done | Typed pure profile/recipe models and F3 private persistence are reusable; CP3.3 local task bridges are separately complete | No compiler/runtime/editor/remote shell contract/layout restoration/broadcast. |
@@ -188,68 +188,148 @@ documentation/evidence phase.
 
 ### M1 — finish F3/D5.1 as a real read-only Connection Hub
 
-Status: Partially done; the next executable product phase.
+Status: **Fully done at the source and local Windows boundary.** Native macOS/Linux and controlled screen-reader evidence remain **Partially done** external release gates; they do not add missing M1 behavior.
+
+#### M1 implementation audit and bounded design (2026-08-21)
+
+Outcome: ship a product-visible, read-only Connection Hub that can explicitly
+review and scan selected local OpenSSH configuration files, browse the bounded
+D4 catalog, and edit public favorites/tags. The phase does not add connection,
+authentication, provider, process, network, listener, credential, clipboard,
+or PTY authority.
+
+Acceptance criteria:
+
+1. One application-scoped service opens the D4 metadata store at
+   <config>/extensions/devops-ssh and the Connection Library at
+   <config>/connections; recovery/failure is a fixed redacted product state.
+2. Opening the Hub never scans or performs filesystem, process, network,
+   authentication, provider, or PTY work. An exact native file selection is
+   reviewed and confirmed before a bounded scan starts; raw source paths remain
+   memory-only and are never logged or persisted.
+3. The single worker coalesces obsolete work, cancels scans, rejects stale
+   completions, publishes immutable state before its route-specific wake, and
+   is explicitly cancelled and joined at application shutdown.
+4. The real modal reuses the renderer-neutral virtualized catalog, focus, and
+   accessibility model. Search/filter/group/selection/review, setup, loading,
+   stale/error/recovery, keyboard, pointer, IME, scaling, contrast, reduced
+   motion/transparency, and modal-stack behavior are deterministic.
+5. Favorite/tag edits show a public diff, validate the existing D4 schema, use
+   revision compare-and-swap, surface contention without overwriting, and
+   recompose the last-known-good catalog after success. Recent-use remains
+   read-only.
+6. Profiles, recipes, and preferences are displayed only as local,
+   non-executing configuration. Connect, login, automatic actions, provider
+   refresh, and all other authority-bearing actions remain visibly disabled.
+
+Evidence ledger before implementation:
+
+| Item | Classification | Existing owner/evidence | Missing exit proof/action |
+|---|---|---|---|
+| Bounded exact OpenSSH inventory and D4 metadata CAS/recovery | Fully done | automexia-devops-ssh; hostile, permission, cancellation, fuzz, and benchmark evidence | Preserve as the only inventory/metadata authority. |
+| Bounded catalog/query/group/virtualization and modal accessibility/focus projection | Fully done locally | automexia-ui-model::connection_hub; structured layout/accessibility goldens and 10,000-row projection benchmark | Adapt into the product renderer/controller; do not duplicate the model. |
+| Connection Library profile/recipe/preference persistence | Fully done locally | ConnectionLibraryStore; validation, redacted transfer, CAS, recovery, link/read-only/disk-full tests | Initialize once and expose only a non-executing snapshot/recovery state. |
+| Explicit-grant catalog composition, cancellation, last-known-good state, and setup guidance | Fully done locally | Router-owned `ConnectionHubRuntime`; runtime integration tests | One joined worker owns grants, generations, review tokens, CAS recomposition, route wakes, and deterministic shutdown. |
+| Application lifetime and product controller | Fully done locally | Router/application/Screen owners; controller tests | One app service and per-screen controller preserve route, generation, focus, and modal isolation. |
+| Native exact-file selection | Fully done locally; external native coverage partial | Pinned `rfd` 0.17.2 adapter parented to the active window | Explicit multi-file selection is cancellable and memory-only; hosted macOS/Linux picker runs remain external. |
+| Product modal and input/accessibility adapter | Fully done locally | Sugarloaf modal, Screen adapter, renderer/controller tests | Keyboard, pointer, IME, focus, overlays, disabled authority, and bounded tiny-to-8K geometry are covered structurally. |
+| Favorite/tag mutation UI | Fully done locally | Controller/runtime CAS review flow and conflict tests | Public diffs require confirmation; conflicts reload rather than overwrite; recent remains read-only. |
+| Windows/macOS/Linux controlled product evidence | Partially done | Windows 11 source, test, dependency, release-build, and benchmark evidence | Native macOS/Linux picker/permission and Narrator/NVDA/VoiceOver/Orca runs remain external. |
+
+Build/wrap/adopt decision: build Automexia's controller, policy, worker
+lifecycle, rendering adapter, and semantic state; reuse the existing D4,
+Connection Library, route-wakeup, Sugarloaf, and renderer-neutral accessibility
+owners; adopt the operating-system file dialogs through rfd rather than
+building unsafe Win32/AppKit/portal adapters or a second in-app file browser.
+The picker adds no remembered grant and has a fail-closed unavailable/cancelled
+path. ADR 0022 records dependency, lifecycle, platform, rollback, and degraded
+operation consequences.
+
+Rollback: removing the palette action and Router-owned service makes the Hub
+unreachable without affecting normal terminal/OpenSSH use. Removing rfd
+removes only exact native selection; D4 metadata and library documents remain
+versioned and readable. No migration or source-file mutation is introduced.
 
 #### M1.1 App-owned lifetime, configuration, and explicit scan
 
-- [ ] Locate the application configuration/state-root owner and initialize
+- [x] **Fully done** — Locate the application configuration/state-root owner and initialize
   `MetadataStore` and `ConnectionLibraryStore` there once per application
   lifecycle; surface private-store recovery as a redacted actionable state.
-- [ ] Add one joined/cancellable Hub supervisor. The current runtime worker
-  drops through a weak reference but has no product-level ownership/join
-  contract; add explicit shutdown/cancellation/join behavior before wiring a
-  screen.
-- [ ] Add an `Open Connection Hub` action/command-palette entry and a
+- [x] **Fully done** — One joined/cancellable Hub supervisor now owns explicit
+  shutdown, scan cancellation, grant clearing, worker wake, and deterministic
+  join for the application lifetime.
+- [x] **Fully done** — Add an `Open Connection Hub` action/command-palette entry and a
   window-level modal controller. Opening the Hub must read only the already
   opened private state and must not scan, launch, authenticate, connect, or
   resize a PTY.
-- [ ] Implement user-controlled “choose exact files” flow. It must canonicalize
+- [x] **Fully done** — Implement user-controlled “choose exact files” flow. It must canonicalize
   and review each selected local config file before creating an `InventoryGrant`;
   never silently read candidate locations, follow links/reparse points, or use
   a remembered path as a new grant.
-- [ ] Do not persist raw source paths merely for convenience. Initial F3 can ask
+- [x] **Fully done** — Do not persist raw source paths merely for convenience. Initial F3 can ask
   for re-selection after restart; any later persistent grant/reference needs a
   privacy, source-change, revocation, and migration design before it is added.
-- [ ] Wire `request_explicit_scan` to the chosen grants only. Coalesce/revoke a
+- [x] **Fully done** — Wire `request_explicit_scan` to the chosen grants only. Coalesce/revoke a
   prior scan, preserve last-known-good records, publish the snapshot before
   rendering wakeup, and expose only stable redacted diagnostic codes.
 
 #### M1.2 Read-only UX and metadata changes
 
-- [ ] Adapt the existing pure Hub catalog/view model into the real modal:
+- [x] **Fully done** — Adapt the existing pure Hub catalog/view model into the real modal:
   virtualized rows, local cancellable search, filters, grouping, source
   revision/freshness, selection, inspector/detail route, focus trap/restore,
   and empty/filtered/loading/stale/error/setup states.
-- [ ] Implement truthful platform-specific setup guidance for Windows, macOS,
+- [x] **Fully done** — Implement truthful platform-specific setup guidance for Windows, macOS,
   and Linux. It may show candidate locations but must state that exact selection
   is required and that no process/network/login runs.
-- [ ] Add favorite and tag editing through D4 `MetadataStore` only: show a diff,
+- [x] **Fully done** — Add favorite and tag editing through D4 `MetadataStore` only: show a diff,
   validate public text, use revision CAS, handle contention/stale revision, and
   recompose the catalog after a successful write.
-- [ ] Keep `recent` read-only until F5 records a successful managed connection.
+- [x] **Fully done** — Keep `recent` read-only until F5 records a successful managed connection.
   Do not mark a record “recent” from selection, review, scan, or failed launch.
-- [ ] Expose profile/recipe/preference data only as non-executing local
+- [x] **Fully done** — Expose profile/recipe/preference data only as non-executing local
   configuration in this phase. Full editor, migration UX, and remote workspace
   lifecycle remain F6 work.
-- [ ] Make Connect, Login, automatic action, provider refresh, and all network/
+- [x] **Fully done** — Make Connect, Login, automatic action, provider refresh, and all network/
   process actions visibly disabled with a short reason and no hidden fallback.
   Selecting a connection may open a disabled review, but never causes a PTY or
   command.
 
 #### M1.3 M1 tests and evidence
 
-- [ ] Add controller integration tests for explicit grants, no-scan-on-open,
+- [x] **Fully done** — Add controller integration tests for explicit grants, no-scan-on-open,
   stale result rejection, worker cancellation/join, metadata CAS conflicts,
   selection/focus restoration, and disabled-action non-authority.
-- [ ] Add renderer-neutral plus product UI tests for keyboard/pointer/IME,
+- [x] **Fully done** — Add renderer-neutral plus product UI tests for keyboard/pointer/IME,
   screen-reader names, 100–300% scale, tiny/normal/ultrawide/8K layouts,
   high contrast, reduced motion/transparency, long Unicode/bidi-safe labels,
   and modal stacking.
-- [ ] Run native static permission/recovery tests on Windows, macOS, and Linux;
+- [ ] **Partially done** — Run native static permission/recovery tests on Windows, macOS, and Linux;
   perform controlled Narrator/NVDA, VoiceOver, and Orca verification where
   runners are available. Report unavailable systems honestly.
-- [ ] Re-run the 10,000-record filter/projection benchmark against the same-host
+- [x] **Fully done** — Re-run the 10,000-record filter/projection benchmark against the same-host
   baseline and verify open/search does not affect terminal input/render latency.
+
+#### M1 completion evidence (2026-08-21)
+
+- **Fully done locally — correctness and lifecycle:** 10 runtime, 7 controller,
+  4 renderer, 33 D4, 32 UI-model, 5 Connection Library, and 46 command-palette
+  tests passed on Windows 11. The contracts include no-scan-on-open, grant
+  revocation, stale-generation rejection, publish-before-wake, explicit joined
+  shutdown, CAS conflict/reload, PTY-inert modal input, and disabled authority.
+- **Fully done locally — security and dependencies:** `cargo deny check` passed
+  advisories, bans, licenses, and sources. `rfd` is the only new direct
+  dependency; `pollster` is its only new transitive package. No raw selection
+  path is persisted or logged, and fixed diagnostic codes avoid host/path data.
+- **Fully done locally — performance and size:** the Windows release Criterion
+  run projected 10,000 records in 7.1790–7.7931 ms (target below 16 ms). The
+  release executable was 22,670,336 bytes, 650,752 bytes (2.96%) above the
+  same-host pre-M1 baseline. The runtime stays off PTY/input/render hot paths.
+- **Partially done — external evidence:** native macOS/Linux file-picker and
+  permission/recovery runs plus controlled Narrator/NVDA, VoiceOver, and Orca
+  verification require their respective hosted systems. Structural semantics
+  and responsive geometry are tested locally but are not reported as those
+  external native runs.
 
 Exit: a user can safely browse, diagnose, tag, and favorite a D4 inventory in
 the product; no connection, provider, authentication, process, network, or PTY

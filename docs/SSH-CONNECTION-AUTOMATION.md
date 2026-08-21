@@ -1,14 +1,11 @@
 # SSH access, multi-cloud connections, and automation recipes
 
-Status: the F2/D5.0 non-executing connection/profile/recipe/state/dry-run model
-baseline is implemented locally. D5.1 is partially implemented: its catalog,
-D4 metadata, explicit-grant composition, setup guidance, and private Connection
-Library persistence pass, while product UI/controller work remains. D5.2
-execution and D6 multi-cloud delivery are not implemented. Automexia v0.4 does
-not ship managed connections or automatic remote actions. Ordinary user-entered
-`ssh`, `aws`, `az`, `gcloud`, `kubectl`, and `oc` commands continue to
-use installed system tools.
-
+Status: D5.1's read-only product Hub is fully implemented locally: reviewed
+exact-file inventory, bounded browse/filter/group, public favorite/tag CAS,
+read-only local profile/recipe/preference state, and disabled connection actions.
+D5.2 execution and D6 multi-cloud delivery are not implemented. Automexia v0.4
+does not ship managed connections or automatic remote actions; ordinary
+user-entered system-tool commands remain unchanged.
 This document is the implementation authority for connection profiles and
 connection-scoped automation. The [Connection Hub](CONNECTION-HUB.md) owns the
 overall inventory, authentication, review, and responsive UI contract. The
@@ -59,10 +56,10 @@ The current repository provides:
   recipes, and Hub preferences, with CAS/recovery and redacted fresh-ID
   transfer.
 
-It does **not** yet provide a rendered product Connection Hub, a user-facing
-profile/recipe editor, automatic SSH launch, recipe executor, cloud transport
-adapters, or remote action handshake. UI examples remain planned contracts, not
-instructions for a shipped v0.4 feature.
+It now provides the D5.1 rendered read-only Connection Hub in v0.5 source
+builds, but does **not** provide a profile/recipe editor, automatic SSH launch,
+recipe executor, cloud transport adapters, or remote action handshake. D5.2/D6
+UI examples remain planned contracts, not instructions for v0.4.
 
 ### F2/D5.0 implementation ledger (2026-08-17)
 
@@ -86,8 +83,10 @@ instructions for a shipped v0.4 feature.
 - **Fully done separately in D5.1:** private transactional profile/recipe/
   preference persistence, explicit recovery, fault-preserving writes, and
   redacted fresh-ID transfer.
-- **Partially done in D5.1:** catalog and explicit-grant composition foundations
-  exist; application/product wiring, the editor, and every execution path remain.
+- **Fully done separately in D5.1:** catalog, explicit reviewed grants, app-owned
+  joined runtime, read-only modal, and favorite/tag CAS UI are implemented.
+- **Not done in D5.2/D6:** every connection/provider execution path and the full
+  profile/recipe editor remain separately gated.
 
 Therefore F2/D5.0 is **Partially done** overall despite its complete local
 non-executing exit. No account, filesystem, process, network, credential, PTY,

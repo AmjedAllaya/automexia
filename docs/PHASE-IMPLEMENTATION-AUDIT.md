@@ -89,8 +89,8 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | DevOps | D1 | **Fully implemented** | **Partial** | Four private provider-neutral crates and bounded contracts satisfy their source boundary. |
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
 | DevOps | D3 | **Partial; nonactivated** | **Blocked** | A test-only exact-argv review model exists; production launch, capability UX, atomic spawn, and native lifecycle proof do not. |
-| DevOps | D4 | **Fully implemented as disabled package** | **Partial** | Bounded OpenSSH inventory/persistence exists without process/network authority; no production UI or launch is connected. |
-| SSH UX | D5.0-D5.2 | **Partial; D5.0 and D5.1 foundations implemented, product/launch pending** | **Blocked** | Bounded records, planning and Hub models, catalog composition, transactional metadata/library persistence, fixtures, fuzz, mutation, and local benchmark evidence exist with every authority disabled; ADR acceptance, product rendering/accessibility, application store initialization, and managed OpenSSH remain. |
+| DevOps | D4 | **Fully implemented; read-only product adapter active** | **Partial** | Bounded OpenSSH inventory/persistence is connected only to D5.1 reviewed browsing; it retains no process/network/launch authority. |
+| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 fully implemented locally** | **Partial/blocked** | The read-only product Hub now owns exact reviewed selection, joined lifecycle, modal controls, CAS favorites/tags, read-only recent/library data, and disabled authority. D5.0 ADR acceptance, D5.2 launch, and external native/accessibility evidence remain. |
 | Multi-cloud | D6.0-D6.5 | **Not implemented** | **Blocked** | Provider auth, capsules, transports, and provider slices are planned only. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
@@ -478,45 +478,47 @@ Implemented evidence:
 Not implemented externally: ADR 0012 remains proposed and requires protected
 acceptance or supersession. That single external decision keeps D5.0
 **Partially done** and prevents activation; it does not invalidate the complete
-local F2 exit. The non-executing D5.1 catalog, composition, metadata, and
-Connection Library foundations are partially implemented; D5.1 product UI and
-all D5.2 process/PTY/network lifecycle work remain open.
+local F2 exit. D5.1 is now fully implemented locally as a capability-free
+read-only product; its native macOS/Linux and controlled accessibility evidence
+remains partial. All D5.2 process/PTY/network lifecycle work remains open.
 
 ### D5.1 — read-only Connection Hub
 
-**Partially implemented.**
+**Fully implemented locally; external release evidence partially done.**
 
-Implemented in F3: a renderer-neutral, 10,000-record/16 MiB catalog with
-deterministic search/filter/grouping, source revisions, truthful empty states,
-hostile-text rejection, bounded metadata, virtualized one-target focus, and a
-rapid-filter Criterion gate. The local Windows release benchmark measured
-7.0513-7.4408 ms for a full 10,000-record filter/group projection, below the
-16 ms reviewed target. D4 favorites/tags/recent metadata now supports revision-
-zero migration, private no-follow locking, CAS, bounded atomic replacement, one
-validated previous generation, truthful fallback, explicit reviewed recovery,
-stale-writer/contention rejection, and Windows user-only ACL round trips.
-The application composition root now owns explicit grants and one bounded
-inventory worker, cancels superseded requests, discards obsolete completions,
-merges only public D4 records and metadata, and retains last-known-good catalog
-entries behind a redacted stale diagnostic. Opening the runtime performs no
-scan, process launch, network request, authentication, or PTY work. Static
-Windows, macOS, and Linux guidance lists candidate paths but requires exact
-user-selected files before scanning.
+The Router owns one cloneable `ConnectionHubRuntime` for the application
+lifetime. It opens D4 metadata and the Connection Library below the application
+configuration root, owns one cancellable/joined worker, rejects stale review and
+scan generations, publishes immutable state before route wake, preserves a
+last-known-good catalog, clears memory-only grants, and shuts down explicitly.
+Opening the Hub reads only already-opened private state and performs no scan,
+process, network, authentication, provider, listener, PTY, or credential work.
 
-The application-owned Connection Library now stores validated profile, recipe,
-and Hub-preference documents under a 16 MiB ceiling with private no-follow
-storage, revision CAS, concurrent-writer exclusion, atomic one-generation
-recovery, explicit reviewed restoration, and redacted transfer that generates
-fresh local IDs. Focused tests prove hostile/unknown-field rejection, canary
-redaction, read-only/disk-full last-known-good preservation, and Windows-local
-round trips without adding process, network, authentication, credential, PTY,
-or listener authority.
+The command palette exposes a distinct read-only Connection Hub action. The
+real Sugarloaf modal supports an explicit parented native multi-file picker,
+canonical-path review, confirm/cancel, search, tag/favorite/recent/source
+filters, grouping, filter reset, virtualized navigation, selection/inspector,
+keyboard, pointer, IME, focus restoration, responsive tiny-to-8K geometry, and
+truthful setup/loading/error/recovery states. Connect, Login, provider refresh,
+and recipe execution are visibly disabled. Profile/recipe/preference data is a
+non-executing local snapshot.
 
-Remaining: initialize the stores once from the application state root, add an
-exact user-selected-file product flow, add reviewed favorite/tag mutation UI
-while keeping recent read-only until D5.2, render the product modal and disabled
-actions, and obtain native macOS/Linux permission plus controlled Narrator/NVDA,
-VoiceOver, and Orca evidence. Connection actions remain disabled until D5.2.
+Favorites and tags use only the D4 public metadata store. Every change shows a
+before/after diff and requires the reviewed revision; conflicts reload instead
+of overwriting, hostile control/bidi tags fail closed, and recent-use remains
+read-only until a successful managed D5.2 connection exists. No selected path,
+host, identity, query, or provider value is persisted in grants or logged.
+
+Windows 11 evidence passed 10 runtime, 7 controller, 4 renderer, 33 D4, 32
+UI-model, 5 Connection Library, and 46 command-palette tests plus `cargo deny`.
+The release 10,000-record projection measured 7.1790–7.7931 ms against the
+below-16-ms target. The release executable is 22,670,336 bytes, 650,752 bytes
+(2.96%) above the same-host pre-M1 baseline.
+
+Remaining external evidence: native macOS/Linux picker and static permission/
+recovery runs plus controlled Narrator/NVDA, VoiceOver, and Orca verification.
+Local semantic/geometry tests are not reported as those native runs. Connection
+actions remain disabled until D5.2.
 
 ### D5.2 — managed OpenSSH launch and lifecycle
 
@@ -844,7 +846,7 @@ Planned work, with no shipped-command claim:
 | Product surface | Owning gate | Audit status |
 |---|---|---|
 | Canonical operation registry, `automexia` domains, generated palette/help/accessibility, optional collision-safe `ax` | CP2.2-CP3/D5 | Not implemented |
-| Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | F2 models plus D5.1 catalog, metadata, explicit-grant composition, and private library are implemented; product Hub controls/rendering and D5.2 connect/reconnect remain open |
+| Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | D5.1 picker, browse/filter/group, inspector, reviewed favorite/tags, and disabled review are fully implemented locally; D5.2 connect/reconnect/destinations remain not done |
 | Identity references, agent/certificate state, known-host explanation, routes/jumps/proxies/tunnels | D5.2 | Not implemented |
 | Quick Actions, aliases, lifecycle hooks, reviewed multi-target execution | CP2.2-CP4/D5E | Model/store foundations only |
 | Declarative workspace persistence/restoration and visibly armed broadcast | D5/CP4 | Existing layout primitives only |
@@ -1050,8 +1052,9 @@ At this audited baseline, the focused order is:
 1. Obtain protected acceptance or supersession of ADR 0012. Package identity,
    grants, executable resolution, strict defaults, and the native fixture
    definitions are already frozen locally with production launch disabled.
-2. Preserve D5.0/F2 and the completed D5.1 foundations; finish the read-only
-   product Hub while D5.2 managed launch waits for the protected decision.
+2. Preserve the locally complete D5.1 read-only product Hub and obtain its
+   external native/accessibility evidence while D5.2 managed launch waits for
+   the protected decision.
 3. Activate D3 only with its capability, atomic spawn, PTY lifecycle, cleanup,
    and three-OS native gates; then deliver D5.2 managed OpenSSH in bounded
    direct, route/host-trust, tunnel, and native-evidence slices.

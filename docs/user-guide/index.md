@@ -24,7 +24,7 @@ Automexia contains shipped features and work that exists only in local/developme
 | Use completion, Quick Actions, aliases, or workspace tasks | [Command productivity](productivity.md) |
 | Change the shell, font, window, theme, navigation, or bindings | [Configuration and customization](customization.md) |
 | Work with listings, semantic output, selection, and image previews | [Files, output, and images](files-and-images.md) |
-| Configure SSH hosts or understand where Connection Hub is | **[Connection Hub and SSH](connection-hub-and-ssh.md)** |
+| Review SSH inventory in the read-only Hub or connect with system OpenSSH | **[Connection Hub and SSH](connection-hub-and-ssh.md)** |
 | Use WSL or combine local and remote sessions | [Remote sessions and WSL](remote-and-wsl.md) |
 | Copy a practical setup for common development/operations workflows | [Workflow recipes](recipes.md) |
 | Fix a problem | [Troubleshooting](../guide/troubleshooting.md) |

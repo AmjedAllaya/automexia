@@ -15,8 +15,8 @@ A phase can be source-complete while release evidence is still partial. User-fac
 | DevOps | D1 | **Fully implemented** | **Partial** | Four private provider-neutral crates and bounded contracts satisfy their source boundary. |
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
 | DevOps | D3 | **Partial; nonactivated** | **Blocked** | A test-only exact-argv review model exists; production launch, capability UX, atomic spawn, and native lifecycle proof do not. |
-| DevOps | D4 | **Fully implemented as disabled package** | **Partial** | Bounded OpenSSH inventory/persistence exists without process/network authority; no production UI or launch is connected. |
-| SSH UX | D5.0-D5.2 | **Partial; D5.0 models and D5.1 foundations implemented locally** | **Blocked** | Bounded models plus D5.1 catalog, metadata, explicit-grant composition, setup guidance, and private Connection Library persistence exist with every authority disabled; ADR acceptance, the rendered/product-controlled Hub, and managed OpenSSH remain. |
+| DevOps | D4 | **Fully implemented; read-only product adapter active** | **Partial** | Bounded OpenSSH inventory/persistence is connected only to D5.1 reviewed browsing; it retains no process/network/launch authority. |
+| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 fully implemented locally** | **Partial/blocked** | The read-only Hub now has reviewed exact files, app-owned lifecycle, a real modal, CAS favorites/tags, read-only recent/library state, and disabled authority. D5.0 protected acceptance, D5.2 managed OpenSSH, and external native/accessibility evidence remain. |
 | Multi-cloud | D6.0-D6.5 | **Not implemented** | **Blocked** | Provider auth, capsules, transports, and provider slices are planned only. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
@@ -59,7 +59,7 @@ The dependency order is more important than the UI wish list:
 1. Preserve D1/D2 provider-neutral contracts, session isolation, freshness, and bounded workers.
 2. Complete protected review/activation of the D3 exact-argument launch broker.
 3. Keep D4 OpenSSH inventory non-executing and last-known-good.
-4. Integrate the D5.0 Connection Hub models into a read-only D5.1 product surface.
+4. Preserve the locally complete read-only D5.1 product surface and obtain its remaining native/accessibility release evidence.
 5. Enable reviewed system-OpenSSH launch/lifecycle in D5.2 with native security/resource evidence.
 6. Promote the already-local CP1-CP3.3 completion/Quick Action/alias/import/workspace work only after its native/accessibility/performance release evidence passes.
 

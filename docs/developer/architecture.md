@@ -94,7 +94,7 @@ Workers are bounded and cancellable. A result carries the session/generation it 
 
 Automexia owns its configuration root (`config.toml`, themes, logs, extension/action/generated state) and never treats shell profiles or Rio data as its general-purpose database. Canonical user actions are stored as typed private data; completion/alias files are disposable content-addressed projections. Persistent shell-profile integration is an explicit maintenance action and edits only exact marked blocks/resources it owns.
 
-Connection/provider metadata is non-secret and must be user-private, bounded, atomic, and recoverable. Credentials remain in external authorities. OpenSSH inventory and other discovery caches keep last-known-good state with freshness/error metadata instead of replacing usable data with a failed partial refresh.
+Connection/provider metadata is non-secret and must be user-private, bounded, atomic, and recoverable. Credentials remain in external authorities. The D5.1 application service owns one joined worker and memory-only reviewed file grants; OpenSSH inventory and other discovery caches keep last-known-good state with freshness/error metadata instead of replacing usable data with a failed partial refresh. No picker, scan, or metadata write runs on input, PTY, resize, renderer, or startup hot paths.
 
 ## Accessibility architecture
 
@@ -115,4 +115,4 @@ The exact status is maintained in [Roadmap](../project/roadmap.md); version labe
 
 ## Decision references
 
-The most important durable decisions are indexed in [Architecture decisions](../project/decisions.md), especially the standalone boundary, extension capability/threading, native operational chrome, session tabs/footer, shell-integration ownership, SSH launch boundary, renderer-independent accessibility, Quick Actions/completion, acyclic dependencies, build/wrap/adopt policy, and trusted workspace task bridges.
+The most important durable decisions are indexed in [Architecture decisions](../project/decisions.md), especially the standalone boundary, extension capability/threading, native operational chrome, session tabs/footer, shell-integration ownership, SSH launch boundary, renderer-independent accessibility, Quick Actions/completion, acyclic dependencies, build/wrap/adopt policy, trusted workspace task bridges, and read-only Connection Hub activation (ADR 0022).

@@ -70,8 +70,8 @@ documentation, feature assurance, and a change fragment.
 | SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 proposal, exact schema-2 manual/trust/default/fixture protocol, four-platform matrix, mutation gate | Accept or supersede ADR 0012 through protected review; execute native fixtures in F4/F5 |
 | Exact-argument launch broker | D3 | Partially done | test-only exact package identity, capability scope, platform resolver, file revalidation, lifecycle and audit model | Production capability UI, atomic spawn, PTY/route lifecycle, real package-loader binding, native evidence |
 | Static OpenSSH inventory | D4 | Fully done | automexia-devops-ssh, hostile/property tests, fuzz, benchmark, assurance | Remains deliberately disabled until D5 |
-| Connection Hub model | D5.0 | Partially done | All local F2 schemas, state reducers, dry-run planner, Hub/review/planner projections, fixtures, goldens, fuzz, mutation tests, and benchmark are implemented | Protected ADR 0012 acceptance remains; D5.1 renderer/inventory integration and D5.2 activation are separate phases |
-| Read-only Connection Hub | D5.1 | Partially done | Bounded catalog/search/filter/grouping, D4 metadata CAS/recovery, explicit-grant application composition with last-known-good health and platform guidance, plus private profile/recipe/preference storage and redacted transfer | Product state-root/controller, exact file-selection UI, favorite/tag mutation UI, rendered modal, and native/accessibility evidence |
+| Connection Hub model | D5.0 | Partially done | All local F2 schemas, reducers, dry-run planner, Hub/review/planner projections, fixtures, goldens, fuzz, mutations, and benchmark are implemented | Protected ADR 0012 acceptance remains for D5.0 closure/D5.2; capability-free D5.1 is complete under ADR 0022 |
+| Read-only Connection Hub | D5.1 | Fully done locally; external evidence partial | App-scoped joined runtime, exact reviewed native selection, bounded modal/search/filter/grouping, CAS favorite/tag diffs, read-only recent/library data, disabled authority, tests, benchmark, and release-build evidence | Native macOS/Linux picker/permission plus controlled Narrator/NVDA, VoiceOver, and Orca evidence |
 | Managed OpenSSH | D5.2 | Not done | Design and disabled D3/D4 foundations | Reviewed launch, PTY lifecycle, jumps, tunnels, host trust, reconnect, native proof |
 | Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, approval fingerprints, and private transactional Connection Library persistence/redacted transfer are implemented | Product editor, remote workspace lifecycle, and separately gated execution remain |
 | Multi-cloud framework and providers | D6.0-D6.5 | Not done | Provider-neutral D1/D2 types only | Auth state machine, exact official CLI adapters, isolation, provider-by-provider gates |
@@ -277,47 +277,44 @@ Implementation evidence (2026-08-17):
 Exit status: the entire local product slice is testable without an account,
 network, process, PTY, window system, or GPU. The technical F2 exit passes;
 overall phase status remains **Partially done** only because ADR 0012 is still
-proposed. D5.1 and D5.2 are not implied or activated.
+proposed. F2 alone implied neither D5.1 nor D5.2; F3/ADR 0022 now activate
+only the capability-free D5.1 product.
+
 ## F3 - implement D5.1 read-only Connection Hub
 
-Status: Partially done.
+Status: **Fully done at the source and local Windows boundary.** External native
+platform/accessibility release evidence is **Partially done**.
 
-- [ ] **Partially done** — Connect D4 snapshots to a virtualized Hub without
-  changing D4 authority. The application now composes explicit D4 scan results
-  and revisioned public metadata into the pure 10,000-record catalog on one
-  cancellable worker, while discarding obsolete generations. Product rendering
-  remains.
-- [ ] **Partially done** — Add explicit local scan plus favorites, tags, recent,
-  grouping, search, filter, source revision, truthful stale/last-known-good
-  health, and setup guidance. Deterministic combined catalog search and filters
-  are implemented. D4 favorites/tags/recent metadata now has revision-zero
-  migration, private writer locking, CAS, atomic one-generation rotation,
-  truthful fallback, and explicit recovery. Explicit scans now retain last-known-
-  good results under a redacted stale state, and Windows/macOS/Linux setup
-  guidance truthfully requires exact user-selected files. Mutation UI remains.
-- [x] **Fully done** — Add bounded private profile/recipe/preference persistence
-  with no-follow reads, user-only permissions, CAS, atomic replacement,
-  recovery, import/export redaction, and new local IDs for imports. One 16 MiB
-  application-owned document now validates the F2 profile/recipe schemas,
-  stores bounded preferences, retains one validated recovery generation, and
-  redacts targets, identities, references, capsule values, recipe bodies,
-  descriptions, prior IDs, and approval fingerprints during transfer.
-- [ ] **Partially done** — Keep login, connect, automatic actions, network, and
-  provider processes visibly disabled. The model continues to expose no
-  execution or PTY authority; the product Hub must make those disabled states
-  visible.
-- [ ] **Partially done** — Test 10,000 records, hostile config, permission/link/
-  read-only/disk-full failures, rapid filtering, focus restoration, 100-300%
-  scale, and tiny-to-8K layouts. Catalog limits, hostile text, deterministic
-  filtering, 10,000 records, one-target focus, 300% scale, 8K virtualization,
-  CAS conflicts, writer contention, malformed-primary fallback, explicit
-  recovery, Windows private-ACL round trips, fault-injected read-only/disk-full
-  preservation, strict transfer parsing, canary redaction, fresh imported IDs,
-  and concurrent-writer exclusion pass. Full product rendering remains.
-- [ ] **Not done** — Run native static persistence/permission evidence on
-  Windows, macOS, and Linux and controlled screen-reader model verification.
+- [x] **Fully done** — Connect immutable D4 snapshots to the existing bounded,
+  virtualized Hub catalog through one Router-owned service. One joined worker
+  coalesces generations, cancels obsolete scans, publishes before route wake,
+  retains last-known-good state, and shuts down deterministically.
+- [x] **Fully done** — Require an explicit, parented native multi-file picker,
+  exact canonical-path review, and confirmation before creating memory-only D4
+  grants. Cancel/reselect revokes grants; no selected path is persisted or
+  logged; link/reparse and stale-token validation fail closed.
+- [x] **Fully done** — Render the real topmost modal with search, source,
+  favorites, recent, tags, grouping, clear-filters, virtualized selection,
+  inspector, setup/loading/error/filtered states, keyboard, pointer, IME, focus
+  restoration, responsive geometry, and disabled Connect/Login/refresh/run.
+- [x] **Fully done** — Edit only public favorites and tags through reviewed
+  before/after diffs and D4 revision CAS. Conflicts reload without overwrite;
+  hostile control/bidi tags fail closed; recent remains read-only until D5.2.
+- [x] **Fully done** — Initialize and display the private Connection Library
+  snapshot/recovery state without executing profiles, recipes, or preferences.
+- [x] **Fully done** — Cover 10 runtime, 6 controller, 4 renderer, 33 D4, 32
+  UI-model, 5 library, and 46 palette tests on Windows 11. `cargo deny check`
+  passed. The 10,000-record release projection measured 7.1790–7.7931 ms
+  against the below-16-ms target; the release executable grew 650,752 bytes
+  (2.96%) from the same-host pre-M1 baseline.
+- [ ] **Partially done** — Native macOS/Linux picker and static-permission runs,
+  plus controlled Narrator/NVDA, VoiceOver, and Orca verification, remain
+  external release evidence. Structural accessibility and tiny-to-8K geometry
+  are covered locally and are not presented as native screen-reader proof.
 
-Exit: users can safely browse and diagnose inventory, but cannot launch.
+Exit: users can safely browse, diagnose, tag, and favorite reviewed D4 inventory
+without connection, authentication, provider, process, network, listener, or
+PTY authority. D5.2 remains disabled.
 
 ## F4 - activate D3 exact-argument process and PTY lifecycle
 

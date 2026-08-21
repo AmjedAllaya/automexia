@@ -572,19 +572,44 @@
         "explanation": ["docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md#f3-implement-d51-read-only-connection-hub"]
       },
       "quality": {
-        "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "Truthful state and setup labels are model-level evidence; native product and controlled screen-reader evidence remain an F3 gate."},
+        "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "Truthful state and setup labels are model-level evidence; the product adapter is recorded separately and controlled screen-reader evidence remains external."},
         "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs"]},
         "security": {"level": "pr", "evidence": ["extensions/devops-ssh/src/lib.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "The application passes only explicit exact grants to capability-free static inventory and adds no process, network, authentication, credential, listener, or PTY authority."},
         "performance": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "One worker serializes bounded scans and obsolete generations cannot publish; controlled end-to-end refresh latency remains later evidence."},
-        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs"], "rationale": "Cancellation is explicit and the worker holds only a weak runtime reference, so dropping all handles closes its channel and releases the thread after bounded current work."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "Router owns one service; explicit shutdown cancels current/pending work, clears memory-only grants, wakes the worker, and joins its handle. The last handle repeats the safe teardown."},
         "storage_hygiene": {"level": "pr", "evidence": ["extensions/devops-ssh/src/persistence.rs", "extensions/devops-ssh/tests/metadata_store.rs"], "rationale": "Composition reads the validated transactional D4 metadata document and does not add another metadata authority."},
         "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "Failed refreshes retain the immutable last-known-good catalog behind a redacted stale state and stale completions cannot replace a newer request."},
-        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "This application service slice contains no renderer; product rendering remains a separate F3 gate."}
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "This service slice contains no renderer; the adjacent M1 product assurance entry owns structured rendering evidence."}
       },
       "platforms": {
         "windows": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs", ".github/workflows/ci.yml#native"]},
         "linux": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs", ".github/workflows/ci.yml#native"]},
         "macos": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs", ".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "connection-hub-m1-product",
+      "title": "Read-only Connection Hub product modal, reviewed file grants, and public metadata edits",
+      "components": ["apps/automexia-terminal", "extensions/devops-ssh", "automexia-ui-model"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#use-the-read-only-connection-hub"],
+        "reference": ["docs/TESTING.md#connection-hub-m1-read-only-product-activation"],
+        "explanation": ["docs/adr/0022-read-only-connection-hub-activation.md", "docs/CONNECTION-HUB.md#d51-read-only-hub-and-first-run-detection"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/controller.rs", "apps/automexia-terminal/tests/connection_hub_controller.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs"], "rationale": "Renderer-neutral focus, names, actions, keyboard, pointer, IME, contrast/motion flags, and bounded geometry pass locally; controlled native screen readers remain external."},
+        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/controller.rs", "apps/automexia-terminal/src/screen/connection_hub.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs", "apps/automexia-terminal/tests/connection_hub_controller.rs"]},
+        "security": {"level": "pr", "evidence": ["docs/adr/0022-read-only-connection-hub-activation.md", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/screen/connection_hub.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "Exact reviewed paths remain memory-only, hostile text fails closed, diagnostics are path-free, and all process/network/authentication/provider/listener/PTY authority stays disabled."},
+        "performance": {"level": "controlled", "evidence": ["apps/automexia-terminal/benches/connection_catalog.rs", "docs/TESTING.md#connection-hub-m1-read-only-product-activation"], "rationale": "The local Windows 10,000-record release projection is below 16 ms; named-hardware longitudinal enforcement remains controlled evidence."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "One app service owns one joined worker; shutdown cancels generations, clears grants, wakes, and joins without adding PTY or renderer workers."},
+        "storage_hygiene": {"level": "pr", "evidence": ["extensions/devops-ssh/src/persistence.rs", "apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/tests/connection_hub_controller.rs"], "rationale": "D4 remains public metadata authority, CAS conflicts reload, selected paths are never persisted, and library state remains private and versioned."},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs", "apps/automexia-terminal/tests/connection_hub_controller.rs"], "rationale": "Last-known-good state, stale generation rejection, recovery/unavailable projection, selection cancellation, and metadata conflict reload are deterministic."},
+        "visual_quality": {"level": "pr", "evidence": ["apps/automexia-terminal/src/renderer/connection_hub.rs"], "rationale": "Structured product geometry is bounded from tiny through 8K and modal overlays are inert; controlled native pixel review remains external."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs", "apps/automexia-terminal/tests/connection_hub_controller.rs"]},
+        "linux": {"level": "external", "evidence": ["docs/TESTING.md#connection-hub-m1-read-only-product-activation"]},
+        "macos": {"level": "external", "evidence": ["docs/TESTING.md#connection-hub-m1-read-only-product-activation"]}
       }
     },
     {

@@ -33,7 +33,7 @@ This documentation is organized around **reader intent**, not implementation pha
 
 Automexia v0.4 is a standalone hardware-accelerated terminal for Windows, Linux, and macOS. Its shipped product surface includes the VT/PTY terminal core, tabs and split panes, renderer-owned operational chrome, shell/context integration, icon-aware listings, local and protocol image rendering, TOML configuration with last-known-good reload, and non-destructive Rio migration.
 
-The repository also contains substantial v0.5 foundations. Native shell completion and the CP2/CP3 Quick Action/alias pipeline are implemented locally, but some stable-release claims still depend on hosted native, accessibility, and performance evidence. OpenSSH inventory and Connection Hub planning models exist with process/network authority deliberately disabled. Managed SSH, multi-cloud provider authentication, public extensions, and AI execution are **not** shipped v0.4 behavior.
+The repository also contains substantial v0.5 foundations. Native shell completion and the CP2/CP3 Quick Action/alias pipeline are implemented locally, but some stable-release claims still depend on hosted native, accessibility, and performance evidence. The v0.5 read-only Connection Hub is implemented locally with process/network authority deliberately disabled; native macOS/Linux and controlled accessibility evidence remain release-gated. Managed SSH, multi-cloud provider authentication, public extensions, and AI execution are **not** shipped v0.4 behavior.
 
 | Area | Product status | Where to read |
 |---|---|---|
@@ -42,8 +42,8 @@ The repository also contains substantial v0.5 foundations. Native shell completi
 | Session-only shell integration | **Available now** | [Shell and command productivity](guide/shell-productivity.md) |
 | Native shell completion | **Implemented locally; release evidence still gated** | [Shell and command productivity](guide/shell-productivity.md) |
 | Typed Quick Actions and opt-in aliases | **Implemented locally; release evidence still gated** | [Shell and command productivity](guide/shell-productivity.md) |
-| Static OpenSSH inventory | **Implemented internally, not activated as managed SSH** | [Remote connections](guide/remote-connections.md) |
-| Connection Hub records/review/dry-run models | **Implemented internally, authority disabled** | [Remote connections](guide/remote-connections.md) |
+| Static OpenSSH inventory and read-only Hub | **Implemented locally; release evidence gated; no launch authority** | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md) |
+| Connection Hub records/review/dry-run models | **Implemented locally; authority disabled** | [Remote connections](guide/remote-connections.md) |
 | Managed OpenSSH sessions | **Planned** | [Remote connections](guide/remote-connections.md), [Roadmap](project/roadmap.md) |
 | Multi-cloud/provider adapters | **Planned** | [Roadmap](project/roadmap.md) |
 | Public extension SDK / sandbox / AI execution | **Deferred** | [Roadmap](project/roadmap.md) |

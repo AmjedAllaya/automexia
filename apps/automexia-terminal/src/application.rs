@@ -1376,6 +1376,43 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     return;
                 }
 
+                if route.window.screen.connection_hub_is_active() {
+                    if state == ElementState::Pressed && button == MouseButton::Left {
+                        let scale = route.window.screen.sugarloaf.scale_factor();
+                        let size = route.window.screen.sugarloaf.window_size();
+                        let hit = route.window.screen.renderer.connection_hub.hit_test(
+                            route.window.screen.mouse.x as f32 / scale,
+                            route.window.screen.mouse.y as f32 / scale,
+                            (size.width, size.height, scale),
+                        );
+                        if let Some(hit) = hit {
+                            if hit
+                                == crate::renderer::connection_hub::ConnectionHubHit::ReviewFiles
+                            {
+                                let selected = rfd::FileDialog::new()
+                                    .set_title("Review exact OpenSSH configuration files")
+                                    .set_parent(&route.window.winit_window)
+                                    .pick_files();
+                                if let Some(paths) = selected {
+                                    route.window.screen.review_connection_files(paths);
+                                }
+                            } else {
+                                route.window.screen.handle_connection_hub_hit(hit);
+                            }
+                            route.request_redraw();
+                        }
+                    }
+                    if state == ElementState::Released && button == MouseButton::Left {
+                        route.window.screen.mouse.left_button_state =
+                            ElementState::Released;
+                        route.window.screen.mouse.hint_click_latched = None;
+                        route.window.screen.mouse.image_preview_click_latched = false;
+                        route.window.screen.renderer.scrollbar.end_drag();
+                        route.window.screen.resize_state = None;
+                    }
+                    return;
+                }
+
                 if route.path != RoutePath::Terminal {
                     #[cfg(target_os = "macos")]
                     if state == ElementState::Pressed
@@ -1816,6 +1853,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
 
                 if route.path != RoutePath::Terminal
                     || route.window.screen.renderer.confirm_quit.is_active()
+                    || route.window.screen.connection_hub_is_active()
                 {
                     route.window.winit_window.set_cursor(CursorIcon::Default);
                     return;
@@ -2175,6 +2213,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             WindowEvent::MouseWheel { delta, phase, .. } => {
                 if route.path != RoutePath::Terminal
                     || route.window.screen.renderer.confirm_quit.is_active()
+                    || route.window.screen.connection_hub_is_active()
                 {
                     return;
                 }
@@ -2281,6 +2320,22 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     return;
                 }
 
+                if route.window.screen.connection_hub_is_active() {
+                    match ime {
+                        Ime::Commit(text) => {
+                            route.window.screen.connection_hub_ime_commit(&text);
+                        }
+                        Ime::Preedit(text, _) => {
+                            route.window.screen.connection_hub_ime_preedit(
+                                (!text.is_empty()).then_some(text.as_str()),
+                            );
+                        }
+                        Ime::Enabled | Ime::Disabled => {}
+                    }
+                    route.request_redraw();
+                    return;
+                }
+
                 match ime {
                     Ime::Commit(text) => {
                         // Don't use bracketed paste for single char input.
@@ -2327,6 +2382,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
             }
             WindowEvent::Touch(touch) => {
+                if route.window.screen.connection_hub_is_active() {
+                    return;
+                }
                 on_touch(route, touch, &mut self.router.clipboard);
             }
 
@@ -2576,6 +2634,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
     // This is irreversible - if this event is emitted, it is guaranteed to be the last event that gets emitted.
     // You generally want to treat this as an “do on quit” event.
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        self.router.shutdown_services();
         // Ensure that all the windows are dropped, so the destructors for
         // Renderer and contexts ran.
         self.router.routes.clear();

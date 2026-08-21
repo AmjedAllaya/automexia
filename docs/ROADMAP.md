@@ -31,7 +31,7 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | D2 | Generic status, immutable history, capsules, isolation, cancellation, and freshness are implemented. |
 | **Partially done** | D3 | The nonactivated broker now binds exact package identity, grants, platform resolution, file identity, lifecycle, and redacted audit; production UX/spawn/native proof remain. |
 | **Fully done** | D4 | The bounded OpenSSH inventory/persistence package is complete but deliberately disabled. |
-| **Partially done** | D5.0-D5.2 | D5.0 non-executing models and D5.1 catalog, metadata, explicit-grant composition, setup guidance, and private Connection Library persistence are complete locally; ADR acceptance, the rendered/product-controlled Hub, and D5.2 managed launch remain. |
+| **Partially done** | D5.0-D5.2 | D5.1 read-only Hub is fully implemented locally with explicit reviewed files, app-owned lifecycle, modal controls, CAS favorite/tags, disabled authority, and Windows evidence. D5.0 ADR acceptance, D5.2 managed launch, and external native/accessibility evidence remain. |
 | **Not done** | D6.0-D6.5 | Provider authentication, capsules, transports, and multi-cloud slices are planned only. |
 | **Not done** | D7 | Public ecosystem, direct APIs, sandboxed extensions, and AI execution are deferred. |
 | **Fully done** | CP0 | Architecture, threat model, ceilings, fixtures, mutation tests, and nonactivation policy are complete. |
@@ -335,15 +335,26 @@ close or activate.
 | Hub, Connection Review, and recipe-planner projection contract | **Fully done locally** | Wide/medium/narrow/text-scale, stale-selection focus recovery, live progress, route-aware modal focus, value-redacted labels, reading order, all-state accessibility, and structured goldens pass without a renderer. |
 | Synthetic/deep assurance | **Fully done locally** | Ten-provider/all-auth fixtures, 64-step benchmark, fuzz target, 30 required regressions, and bypass/panic mutation ratchets are owned. |
 | Process/network/provider/credential/PTY/listener authority | **Fully disabled** | F2 has no filesystem, process, socket, provider, credential, PTY, window, or GPU owner. |
-| ADR 0012 protected acceptance | **Not done externally** | Required before overall D5.0 closure and any D5.1/D5.2 activation. |
+| ADR 0012 protected acceptance | **Not done externally** | Required before D5.0 closure and any D5.2 execution; capability-free D5.1 is governed by accepted ADR 0022. |
 
-This status does not claim a shipped Connection Hub. D5.1 already has D4
-explicit-grant snapshot composition, private metadata and Connection Library
-persistence, virtualized 10,000-record search, stale last-known-good health,
-and static platform guidance. It still owns application state-root/controller
-wiring, exact file-selection and metadata-mutation UI, product rendering, and
-native/accessibility evidence; D5.2 separately owns reviewed OpenSSH execution
-and lifecycle.
+This status does not activate connection authority. D5.1 now owns one app-scoped
+joined runtime, exact reviewed native file selection, virtualized product modal,
+public favorite/tag CAS review, read-only recent/library projections, and
+visibly disabled execution. Windows source/test/security/performance/release-
+build evidence passes locally. Native macOS/Linux picker/permission and
+controlled screen-reader runs remain external; D5.2 separately owns reviewed
+OpenSSH execution and lifecycle.
+
+#### D5.1 read-only Connection Hub status (2026-08-21)
+
+Status: **Fully done locally; release evidence partially done.** All requested
+read-only product behavior and non-authority boundaries are implemented. The
+local 10,000-record release benchmark measured 7.1790–7.7931 ms against the
+below-16-ms target; the release executable is 22,670,336 bytes, a 650,752-byte
+(2.96%) increase from the same-host pre-M1 baseline. The remaining evidence is
+native macOS/Linux picker and permission/recovery coverage plus controlled
+Narrator/NVDA, VoiceOver, and Orca verification. Those external gates do not
+permit or block ordinary terminal/manual OpenSSH use and do not imply D5.2.
 ### v0.5.x command productivity track
 
 Command completion and persistent DevOps shortcuts are now an explicit parallel

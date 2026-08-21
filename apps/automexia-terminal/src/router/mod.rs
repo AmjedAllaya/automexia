@@ -148,6 +148,7 @@ impl Route<'_> {
 
     #[inline]
     pub fn quit(&mut self) {
+        self.window.screen.shutdown_connection_hub();
         std::process::exit(0);
     }
 
@@ -450,6 +451,11 @@ impl Route<'_> {
             return true;
         }
 
+        if self.window.screen.handle_connection_hub_key(key_event) {
+            self.request_overlay_redraw();
+            return true;
+        }
+
         if self.path == RoutePath::Terminal {
             return false;
         }
@@ -484,6 +490,7 @@ pub struct Router<'a> {
     pub clipboard: Clipboard,
     current_tab_id: u64,
     quick_actions: crate::automexia::quick_actions::QuickActionRuntime,
+    connection_hub: crate::automexia::connections::ConnectionHubRuntime,
 }
 
 impl Router<'_> {
@@ -513,12 +520,18 @@ impl Router<'_> {
             current_tab_id: 0,
             quick_actions:
                 crate::automexia::quick_actions::QuickActionRuntime::open_default(),
+            connection_hub:
+                crate::automexia::connections::ConnectionHubRuntime::open_default(),
         }
     }
 
     #[inline]
     pub fn propagate_error_to_next_route(&mut self, error: RioError) {
         self.propagated_report = Some(error);
+    }
+
+    pub fn shutdown_services(&self) {
+        self.connection_hub.shutdown();
     }
 
     #[inline]
@@ -594,6 +607,7 @@ impl Router<'_> {
             None,
             false,
             self.quick_actions.clone(),
+            self.connection_hub.clone(),
         );
         let id: WindowId = window.winit_window.id().into();
         let route = Route::new(Assistant::new(), RoutePath::Terminal, window);
@@ -659,6 +673,7 @@ impl Router<'_> {
             app_id,
             false,
             self.quick_actions.clone(),
+            self.connection_hub.clone(),
         );
         let id: WindowId = window.winit_window.id().into();
 
@@ -696,6 +711,7 @@ impl Router<'_> {
             None,
             true,
             self.quick_actions.clone(),
+            self.connection_hub.clone(),
         );
         let id: WindowId = window.winit_window.id().into();
         self.routes.insert(
@@ -730,6 +746,7 @@ impl Router<'_> {
             None,
             false,
             self.quick_actions.clone(),
+            self.connection_hub.clone(),
         );
         self.routes.insert(
             window.winit_window.id().into(),
@@ -859,6 +876,7 @@ impl<'a> RouteWindow<'a> {
         app_id: Option<&str>,
         quake: bool,
         quick_actions: crate::automexia::quick_actions::QuickActionRuntime,
+        connection_hub: crate::automexia::connections::ConnectionHubRuntime,
     ) -> RouteWindow<'a> {
         #[allow(unused_mut)]
         let mut window_builder =
@@ -898,6 +916,7 @@ impl<'a> RouteWindow<'a> {
             font_library,
             open_url,
             crate::screen::action_surface::Controller::new(quick_actions),
+            crate::automexia::connections::ConnectionHubController::new(connection_hub),
         )
         .expect("Screen not created");
 

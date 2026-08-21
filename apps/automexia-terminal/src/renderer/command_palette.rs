@@ -245,6 +245,9 @@ pub enum PaletteAction {
     ClearScreen,
     CloseCurrentSplitOrTab,
     OpenMarket,
+    /// Open the application-owned, read-only Connection Hub. This action
+    /// grants no filesystem, network, process, authentication, or PTY access.
+    OpenConnections,
     /// Search typed Quick Actions. Selection enters a separate review step;
     /// this action never writes to the PTY itself.
     OpenActions,
@@ -284,6 +287,7 @@ enum CommandIcon {
     Search,
     Image,
     History,
+    Connections,
     Extension,
     Font,
     Power,
@@ -425,6 +429,10 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
         OpenMarket => RowPresentation {
             icon: CommandIcon::Extension,
             accent: BRAND_LIME,
+        },
+        OpenConnections => RowPresentation {
+            icon: CommandIcon::Connections,
+            accent: BRAND_BLUE,
         },
         OpenActions => RowPresentation {
             icon: CommandIcon::Code,
@@ -608,6 +616,11 @@ const COMMANDS: &[Command] = &[
         title: "Clear Screen and History",
         shortcut: SHORTCUT_CLEAR_SCREEN,
         action: PaletteAction::ClearScreen,
+    },
+    Command {
+        title: "Connection Hub (read-only)",
+        shortcut: "",
+        action: PaletteAction::OpenConnections,
     },
     Command {
         title: "Quick Actions",
@@ -1166,6 +1179,15 @@ fn draw_command_icon(
             canvas.line(11.0, 6.0, 11.0, 11.0);
             canvas.line(11.0, 11.0, 15.0, 13.5);
             canvas.chevron_left(2.5, 6.0, 2.0);
+        }
+        CommandIcon::Connections => {
+            canvas.outline(2.0, 3.0, 18.0, 6.0, 2.5);
+            canvas.dot(5.0, 5.0, 2.0);
+            canvas.line(9.0, 6.0, 17.0, 6.0);
+            canvas.outline(2.0, 13.0, 18.0, 6.0, 2.5);
+            canvas.dot(5.0, 15.0, 2.0);
+            canvas.line(9.0, 16.0, 17.0, 16.0);
+            canvas.line(11.0, 9.0, 11.0, 13.0);
         }
         CommandIcon::Extension => {
             canvas.outline(5.0, 5.0, 12.0, 12.0, 3.0);
@@ -2177,6 +2199,7 @@ mod tests {
             PaletteAction::WindowCreateNew,
             PaletteAction::ToggleFullscreen,
             PaletteAction::ToggleAppearanceTheme,
+            PaletteAction::OpenConnections,
             PaletteAction::OpenMarket,
             PaletteAction::Quit,
         ]
