@@ -264,7 +264,9 @@ mod live_config_tests {
         content.current_directory = Some(PathBuf::from("workspace"));
         content.terminal_title = "long-running shell".to_string();
         content.shell_integration = true;
-        content.pending_update.set_terminal_damage(TerminalDamage::Partial);
+        content
+            .pending_update
+            .set_terminal_damage(TerminalDamage::Partial);
 
         let updated = CursorConfig {
             shape: CursorShape::Beam,
@@ -277,11 +279,17 @@ mod live_config_tests {
         assert_eq!(content.cursor.state.content, CursorShape::Beam);
         assert_eq!(content.cursor.state.pos, Pos::new(Line(7), Column(3)));
         assert!(content.selection_range.is_some());
-        assert_eq!(content.current_directory.as_deref(), Some(std::path::Path::new("workspace")));
+        assert_eq!(
+            content.current_directory.as_deref(),
+            Some(std::path::Path::new("workspace"))
+        );
         assert_eq!(content.terminal_title, "long-running shell");
         assert!(content.shell_integration);
         assert!(content.pending_update.is_dirty());
-        assert_eq!(content.pending_update.take_terminal_damage(), Some(TerminalDamage::Partial));
+        assert_eq!(
+            content.pending_update.take_terminal_damage(),
+            Some(TerminalDamage::Partial)
+        );
     }
 
     #[test]
@@ -296,9 +304,8 @@ mod live_config_tests {
 
     #[test]
     fn cursor_config_update_does_not_overwrite_active_ime_preedit() {
-        let mut content = RenderableContent::new(Cursor::from_cursor_config(
-            &CursorConfig::default(),
-        ));
+        let mut content =
+            RenderableContent::new(Cursor::from_cursor_config(&CursorConfig::default()));
         content.cursor.is_ime_enabled = true;
         content.cursor.content = '文';
 

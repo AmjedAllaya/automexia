@@ -161,9 +161,7 @@ roadmap; update the status only after its evidence ladder passes.
 
 ### M0 — reconcile documentation and protect the current foundations
 
-Status: **Partially done.** All five M0 documentation deliverables are fully
-done on the 2026-08-21 local boundary; the required contributor gate is blocked
-by pre-existing Rustfmt drift outside this documentation-only change.
+Status: **Fully done** on the 2026-08-21 local evidence boundary.
 
 - [x] **Fully done (was Partially done)** — Reconcile the current F3 Connection Library implementation in
   `PHASE-IMPLEMENTATION-AUDIT.md`, `ROADMAP.md`, the feature assurance/testing
@@ -179,13 +177,14 @@ by pre-existing Rustfmt drift outside this documentation-only change.
 - [x] **Fully done (was Partially done)** — Add a `changes/` fragment for each released user-visible slice, not for
   this planning-only document unless project policy requests one.
 
-Documentation exit achieved locally: all relevant roadmap/audit/reference/user
-documents make the same truthful claim about F3, D3, and the provider backlog.
-The phase remains **Partially done** until `cargo fmt --all --check` and
-`cargo ready` pass; both currently stop on formatting drift in unchanged
-`context/renderable.rs`, `renderer/mod.rs`, and `watcher.rs`. Hosted
-validation and native macOS/Linux permission evidence remain external release
-evidence.
+Exit achieved locally: all relevant roadmap/audit/reference/user documents make
+the same truthful claim about F3, D3, and the provider backlog. The Rustfmt
+baseline was restored and `cargo ready` passed the repository validation,
+PowerShell integration, policy, architecture, formatting, workspace check,
+warnings-as-errors Clippy, full workspace tests, dependency policy, application
+build, and executable smoke gates. Hosted validation and native macOS/Linux
+permission evidence remain external release evidence and do not reopen this
+documentation/evidence phase.
 
 ### M1 — finish F3/D5.1 as a real read-only Connection Hub
 

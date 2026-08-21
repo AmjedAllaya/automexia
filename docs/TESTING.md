@@ -1219,14 +1219,20 @@ The documentation-only reconciliation used these final local gates:
     cargo ready
     git diff --check
 
-Focused Clippy, all four Python policy/coverage validators, and the diff check
-passed. Repository validation counted 41 TOML, 14 YAML, 25 JSON, 6 XML, one
-desktop file, 199 Markdown files, and 24 assurance entries. `cargo fmt` and
-`cargo ready` both stopped at the same pre-existing formatting drift in
-`apps/automexia-terminal/src/context/renderable.rs`,
-`apps/automexia-terminal/src/renderer/mod.rs`, and
-`apps/automexia-terminal/src/watcher.rs`; none is changed by M0. The isolated
-`cargo ready` artifacts were removed, but its later phases did not run.
+Focused Clippy, all four Python policy/coverage validators, Rustfmt, and the diff
+check passed. The follow-up completion audit also ran 105 application library
+tests and all five Windows-applicable Connection Library integration tests with
+no failures. Repository validation counted 41 TOML, 14 YAML, 25 JSON, 6 XML,
+one desktop file, 199 Markdown files, and 24 assurance entries.
+
+`cargo ready` passed its repository validation, PowerShell integration,
+licensing/provenance, architecture/trust, formatting, isolated all-target
+workspace check, warnings-as-errors workspace Clippy, full workspace unit/
+integration/documentation tests, `cargo deny`, persistent debug application
+build, and `automexia 0.4.0` executable smoke check. The isolated 7.65 GiB
+verification target was removed after success. Optional packaging tools that
+were reported missing are not required by this local contributor gate; hosted
+native/release evidence remains separate.
 
 ### Remaining Connection Hub activation assurance
 
