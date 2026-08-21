@@ -229,8 +229,8 @@ Evidence ledger before implementation:
 | Bounded exact OpenSSH inventory and D4 metadata CAS/recovery | Fully done | automexia-devops-ssh; hostile, permission, cancellation, fuzz, and benchmark evidence | Preserve as the only inventory/metadata authority. |
 | Bounded catalog/query/group/virtualization and modal accessibility/focus projection | Fully done locally | automexia-ui-model::connection_hub; structured layout/accessibility goldens and 10,000-row projection benchmark | Adapt into the product renderer/controller; do not duplicate the model. |
 | Connection Library profile/recipe/preference persistence | Fully done locally | ConnectionLibraryStore; validation, redacted transfer, CAS, recovery, link/read-only/disk-full tests | Initialize once and expose only a non-executing snapshot/recovery state. |
-| Explicit-grant catalog composition, cancellation, last-known-good state, and setup guidance | Fully done locally | Router-owned `ConnectionHubRuntime`; runtime integration tests | One joined worker owns grants, generations, review tokens, CAS recomposition, route wakes, and deterministic shutdown. |
-| Application lifetime and product controller | Fully done locally | Router/application/Screen owners; controller tests | One app service and per-screen controller preserve route, generation, focus, and modal isolation. |
+| Explicit-grant catalog composition, cancellation, last-known-good state, and setup guidance | Fully done locally | Router-owned `ConnectionHubRuntime`; bounded-saturation and runtime integration tests | One joined worker owns a capacity-two non-blocking inbox, grants, generations, CAS recomposition, route wakes, and deterministic shutdown. |
+| Application lifetime and product controller | Fully done locally | Router/application/Screen owners; two-controller isolation and projection-cache tests | One app service and per-screen controller preserve route-owned review tokens, generation, focus, modal isolation, and cached steady-frame projection. |
 | Native exact-file selection | Fully done locally; external native coverage partial | Pinned `rfd` 0.17.2 adapter parented to the active window | Explicit multi-file selection is cancellable and memory-only; hosted macOS/Linux picker runs remain external. |
 | Product modal and input/accessibility adapter | Fully done locally | Sugarloaf modal, Screen adapter, renderer/controller tests | Keyboard, pointer, IME, focus, overlays, disabled authority, and bounded tiny-to-8K geometry are covered structurally. |
 | Favorite/tag mutation UI | Fully done locally | Controller/runtime CAS review flow and conflict tests | Public diffs require confirmation; conflicts reload rather than overwrite; recent remains read-only. |
@@ -257,7 +257,8 @@ versioned and readable. No migration or source-file mutation is introduced.
   lifecycle; surface private-store recovery as a redacted actionable state.
 - [x] **Fully done** — One joined/cancellable Hub supervisor now owns explicit
   shutdown, scan cancellation, grant clearing, worker wake, and deterministic
-  join for the application lifetime.
+  join for the application lifetime. Its capacity-two inbox never blocks the
+  caller; saturation publishes `connection-worker-busy` without secret/path data.
 - [x] **Fully done** — Add an `Open Connection Hub` action/command-palette entry and a
   window-level modal controller. Opening the Hub must read only the already
   opened private state and must not scan, launch, authenticate, connect, or
@@ -271,14 +272,16 @@ versioned and readable. No migration or source-file mutation is introduced.
   privacy, source-change, revocation, and migration design before it is added.
 - [x] **Fully done** — Wire `request_explicit_scan` to the chosen grants only. Coalesce/revoke a
   prior scan, preserve last-known-good records, publish the snapshot before
-  rendering wakeup, and expose only stable redacted diagnostic codes.
+  rendering wakeup, skip obsolete queued generations, and expose only stable
+  redacted diagnostic codes.
 
 #### M1.2 Read-only UX and metadata changes
 
 - [x] **Fully done** — Adapt the existing pure Hub catalog/view model into the real modal:
   virtualized rows, local cancellable search, filters, grouping, source
   revision/freshness, selection, inspector/detail route, focus trap/restore,
-  and empty/filtered/loading/stale/error/setup states.
+  and empty/filtered/loading/stale/error/setup states. Unchanged frames reuse a
+  cached projection; IME preedit validates without a catalog traversal.
 - [x] **Fully done** — Implement truthful platform-specific setup guidance for Windows, macOS,
   and Linux. It may show candidate locations but must state that exact selection
   is required and that no process/network/login runs.
@@ -299,7 +302,8 @@ versioned and readable. No migration or source-file mutation is introduced.
 
 - [x] **Fully done** — Add controller integration tests for explicit grants, no-scan-on-open,
   stale result rejection, worker cancellation/join, metadata CAS conflicts,
-  selection/focus restoration, and disabled-action non-authority.
+  selection/focus restoration, disabled-action non-authority, deterministic
+  queue saturation, per-controller review isolation, and steady-frame cache reuse.
 - [x] **Fully done** — Add renderer-neutral plus product UI tests for keyboard/pointer/IME,
   screen-reader names, 100–300% scale, tiny/normal/ultrawide/8K layouts,
   high contrast, reduced motion/transparency, long Unicode/bidi-safe labels,
@@ -312,19 +316,24 @@ versioned and readable. No migration or source-file mutation is introduced.
 
 #### M1 completion evidence (2026-08-21)
 
-- **Fully done locally — correctness and lifecycle:** 10 runtime, 7 controller,
-  4 renderer, 33 D4, 32 UI-model, 5 Connection Library, and 46 command-palette
-  tests passed on Windows 11. The contracts include no-scan-on-open, grant
-  revocation, stale-generation rejection, publish-before-wake, explicit joined
-  shutdown, CAS conflict/reload, PTY-inert modal input, and disabled authority.
+- **Fully done locally — correctness and lifecycle:** 10 runtime, 8 controller,
+  2 bounded-worker/projection-cache unit, 4 renderer, 33 D4, 32 UI-model,
+  5 Connection Library, and 46 command-palette tests passed on Windows 11. The
+  contracts include no-scan-on-open, grant token isolation/revocation, bounded
+  saturation, stale-generation rejection, steady-frame cache reuse,
+  publish-before-wake, explicit joined shutdown, CAS conflict/reload,
+  PTY-inert modal input, and disabled authority.
 - **Fully done locally — security and dependencies:** `cargo deny check` passed
   advisories, bans, licenses, and sources. `rfd` is the only new direct
   dependency; `pollster` is its only new transitive package. No raw selection
   path is persisted or logged, and fixed diagnostic codes avoid host/path data.
 - **Fully done locally — performance and size:** the Windows release Criterion
-  run projected 10,000 records in 7.1790–7.7931 ms (target below 16 ms). The
-  release executable was 22,670,336 bytes, 650,752 bytes (2.96%) above the
-  same-host pre-M1 baseline. The runtime stays off PTY/input/render hot paths.
+  50-sample warm run projected 10,000 records in 7.2849–7.5959 ms (target below
+  16 ms). An immediate post-LTO run was noisier at 8.5180–9.5607 ms; the longer
+  rerun investigated rather than erased that first result. The release
+  executable remains 22,670,336 bytes, 650,752 bytes (2.96%) above the same-host
+  pre-M1 baseline. Unchanged frames do not reproject or clone the full catalog;
+  the runtime stays off PTY/input/render hot paths.
 - **Partially done — external evidence:** native macOS/Linux file-picker and
   permission/recovery runs plus controlled Narrator/NVDA, VoiceOver, and Orca
   verification require their respective hosted systems. Structural semantics

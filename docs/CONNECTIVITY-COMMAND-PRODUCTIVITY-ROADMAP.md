@@ -287,26 +287,31 @@ platform/accessibility release evidence is **Partially done**.
 
 - [x] **Fully done** — Connect immutable D4 snapshots to the existing bounded,
   virtualized Hub catalog through one Router-owned service. One joined worker
-  coalesces generations, cancels obsolete scans, publishes before route wake,
-  retains last-known-good state, and shuts down deterministically.
+  uses a capacity-two non-blocking inbox, coalesces obsolete generations,
+  cancels scans, publishes before route wake, retains last-known-good state,
+  reports redacted saturation, and shuts down deterministically.
 - [x] **Fully done** — Require an explicit, parented native multi-file picker,
   exact canonical-path review, and confirmation before creating memory-only D4
-  grants. Cancel/reselect revokes grants; no selected path is persisted or
-  logged; link/reparse and stale-token validation fail closed.
+  grants. Each review token belongs to its initiating screen; another route
+  cannot display, confirm, cancel, or revoke it. No selected path is persisted
+  or logged; link/reparse and stale-token validation fail closed.
 - [x] **Fully done** — Render the real topmost modal with search, source,
   favorites, recent, tags, grouping, clear-filters, virtualized selection,
   inspector, setup/loading/error/filtered states, keyboard, pointer, IME, focus
   restoration, responsive geometry, and disabled Connect/Login/refresh/run.
+  Catalog projections/summaries are cached across unchanged frames, and IME
+  preedit validation does not traverse the catalog.
 - [x] **Fully done** — Edit only public favorites and tags through reviewed
   before/after diffs and D4 revision CAS. Conflicts reload without overwrite;
   hostile control/bidi tags fail closed; recent remains read-only until D5.2.
 - [x] **Fully done** — Initialize and display the private Connection Library
   snapshot/recovery state without executing profiles, recipes, or preferences.
-- [x] **Fully done** — Cover 10 runtime, 6 controller, 4 renderer, 33 D4, 32
-  UI-model, 5 library, and 46 palette tests on Windows 11. `cargo deny check`
-  passed. The 10,000-record release projection measured 7.1790–7.7931 ms
-  against the below-16-ms target; the release executable grew 650,752 bytes
-  (2.96%) from the same-host pre-M1 baseline.
+- [x] **Fully done** — Cover 10 runtime, 8 controller, 2 bounded-worker/cache
+  unit, 4 renderer, 33 D4, 32 UI-model, 5 library, and 46 palette tests on
+  Windows 11. `cargo deny check` passed. The 50-sample 10,000-record warm run
+  measured 7.2849–7.5959 ms against the below-16-ms target; the first immediate
+  post-LTO run measured a noisier 8.5180–9.5607 ms and was investigated. The
+  release executable grew 650,752 bytes (2.96%) from the pre-M1 baseline.
 - [ ] **Partially done** — Native macOS/Linux picker and static-permission runs,
   plus controlled Narrator/NVDA, VoiceOver, and Orca verification, remain
   external release evidence. Structural accessibility and tiny-to-8K geometry

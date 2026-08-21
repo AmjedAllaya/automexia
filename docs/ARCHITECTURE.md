@@ -209,6 +209,16 @@ Provider extensions cannot draw approval UI, place work on render/input/VT
 threads, or turn displayed labels into executable text. The Hub does not resize
 a PTY, launch a process, access a network/provider, or own credentials.
 
+The worker inbox has a fixed capacity of two and uses non-blocking submission.
+When saturated it rejects the newest request with the stable redacted
+`connection-worker-busy` diagnostic; obsolete queued generations are discarded
+before work begins. Exact-file reviews also carry the initiating controller's
+request token. Another screen can neither render, confirm, cancel, nor revoke
+that memory-only grant. Catalog projections and their public summaries are
+rebuilt only when the immutable catalog identity, committed query, filters, or
+preferences change; unchanged renderer frames reuse the cached projection, and
+IME preedit performs bounded query validation without traversing the catalog.
+
 ### F2/D5.0 non-executing connection-planning boundary
 
 `automexia-devops::connections` is the provider-neutral owner for strict public

@@ -488,19 +488,24 @@ remains partial. All D5.2 process/PTY/network lifecycle work remains open.
 
 The Router owns one cloneable `ConnectionHubRuntime` for the application
 lifetime. It opens D4 metadata and the Connection Library below the application
-configuration root, owns one cancellable/joined worker, rejects stale review and
-scan generations, publishes immutable state before route wake, preserves a
-last-known-good catalog, clears memory-only grants, and shuts down explicitly.
-Opening the Hub reads only already-opened private state and performs no scan,
-process, network, authentication, provider, listener, PTY, or credential work.
+configuration root and owns one cancellable/joined worker with a capacity-two,
+non-blocking inbox. Saturation fails with `connection-worker-busy`; obsolete
+queued generations are skipped, scans are cancelled, immutable state publishes
+before route wake, last-known-good data survives failure, and shutdown clears
+memory-only grants and joins deterministically. Opening the Hub reads only
+already-opened private state and performs no scan, process, network,
+authentication, provider, listener, PTY, or credential work.
 
 The command palette exposes a distinct read-only Connection Hub action. The
 real Sugarloaf modal supports an explicit parented native multi-file picker,
 canonical-path review, confirm/cancel, search, tag/favorite/recent/source
 filters, grouping, filter reset, virtualized navigation, selection/inspector,
 keyboard, pointer, IME, focus restoration, responsive tiny-to-8K geometry, and
-truthful setup/loading/error/recovery states. Connect, Login, provider refresh,
-and recipe execution are visibly disabled. Profile/recipe/preference data is a
+truthful setup/loading/error/recovery states. Exact-file review tokens are
+visible and revocable only by the initiating controller. Catalog projection and
+summary clones are cached across unchanged frames, while IME preedit uses the
+query-only hostile-input validator. Connect, Login, provider refresh, and recipe
+execution are visibly disabled. Profile/recipe/preference data is a
 non-executing local snapshot.
 
 Favorites and tags use only the D4 public metadata store. Every change shows a
@@ -509,11 +514,13 @@ of overwriting, hostile control/bidi tags fail closed, and recent-use remains
 read-only until a successful managed D5.2 connection exists. No selected path,
 host, identity, query, or provider value is persisted in grants or logged.
 
-Windows 11 evidence passed 10 runtime, 7 controller, 4 renderer, 33 D4, 32
-UI-model, 5 Connection Library, and 46 command-palette tests plus `cargo deny`.
-The release 10,000-record projection measured 7.1790–7.7931 ms against the
-below-16-ms target. The release executable is 22,670,336 bytes, 650,752 bytes
-(2.96%) above the same-host pre-M1 baseline.
+Windows 11 evidence passed 10 runtime, 8 controller, 2 bounded-worker/cache
+unit, 4 renderer, 33 D4, 32 UI-model, 5 Connection Library, and 46
+command-palette tests plus `cargo deny`. The 50-sample warm 10,000-record
+projection measured 7.2849–7.5959 ms against the below-16-ms target. The first
+immediate post-LTO run measured a noisier 8.5180–9.5607 ms and was investigated
+rather than silently retried. The release executable remains 22,670,336 bytes,
+650,752 bytes (2.96%) above the same-host pre-M1 baseline.
 
 Remaining external evidence: native macOS/Linux picker and static permission/
 recovery runs plus controlled Narrator/NVDA, VoiceOver, and Orca verification.

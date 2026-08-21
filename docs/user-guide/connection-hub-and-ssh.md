@@ -25,6 +25,12 @@ in-memory grant for the current application lifetime and must be selected again
 after restart. Canceling or making another selection revokes the older review.
 Automexia never modifies the selected OpenSSH files.
 
+An exact-file review belongs only to the Hub screen that initiated it. Another
+window or screen cannot display, confirm, cancel, or revoke that review. If the
+bounded background worker is temporarily full, the request fails immediately
+with a path-free busy state; close obsolete work or retry after the active local
+operation settles.
+
 ## Browse efficiently
 
 The modal keeps terminal input inert until it closes. These controls work while
@@ -47,6 +53,10 @@ the search field is not receiving text:
 Search and tag fields support normal text input and IME composition. Tags are
 case-insensitively deduplicated. Control and bidirectional formatting characters
 are rejected so labels cannot disguise their visible meaning.
+
+Committed search or filter changes update the bounded catalog once. Normal
+unchanged frames reuse that immutable result, and IME preedit is validated
+without re-searching the complete catalog.
 
 ## Review favorites and tags
 
