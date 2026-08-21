@@ -2228,6 +2228,10 @@ impl Screen<'_> {
                             self.mark_dirty();
                         }
                     }
+                    Act::OpenConnectionHub => self.open_connection_hub(),
+                    Act::OpenActionCenter => self.open_action_center(),
+                    Act::OpenExtensionMarketplace => self.open_extension_marketplace(),
+                    Act::OpenFontBrowser => self.open_font_browser(),
                     Act::Minimize => {
                         self.context_manager.minimize();
                     }
@@ -5049,27 +5053,30 @@ impl Screen<'_> {
                 let mut terminal = self.context_manager.current_mut().terminal.lock();
                 terminal.clear_screen_and_history();
             }
-            PaletteAction::OpenMarket => {
-                // Handled by the router because it changes palette mode.
-            }
-            PaletteAction::OpenActions => {
-                // Handled by the router because it enters a route-scoped,
-                // asynchronous review flow.
-            }
+            PaletteAction::OpenMarket => self.open_extension_marketplace(),
+            PaletteAction::OpenActions => self.open_action_center(),
             PaletteAction::OpenConnections => {
                 self.open_connection_hub();
             }
-            PaletteAction::ListFonts => {
-                // Handled in the router: switches the palette into fonts
-                // mode and keeps it open. If we land here it's either a
-                // bug (router should have intercepted) or an external
-                // caller firing the action directly — do nothing so the
-                // palette just closes without side effects.
-            }
+            PaletteAction::ListFonts => self.open_font_browser(),
             PaletteAction::Quit => {
                 self.context_manager.quit();
             }
         }
+    }
+
+    pub fn open_extension_marketplace(&mut self) {
+        let items = crate::automexia::runtime::market_items();
+        self.renderer.command_palette.set_enabled(true);
+        self.renderer.command_palette.enter_market_mode(items);
+        self.mark_dirty();
+    }
+
+    pub fn open_font_browser(&mut self) {
+        let fonts = self.sugarloaf.font_family_names();
+        self.renderer.command_palette.set_enabled(true);
+        self.renderer.command_palette.enter_fonts_mode(fonts);
+        self.mark_dirty();
     }
 
     pub(crate) fn render(&mut self) -> Option<crate::context::renderable::WindowUpdate> {

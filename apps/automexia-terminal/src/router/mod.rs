@@ -320,12 +320,7 @@ impl Route<'_> {
 
                         match selected_action {
                             Some(PaletteAction::OpenMarket) => {
-                                let items = crate::automexia::runtime::market_items();
-                                self.window
-                                    .screen
-                                    .renderer
-                                    .command_palette
-                                    .enter_market_mode(items);
+                                self.window.screen.open_extension_marketplace();
                             }
                             Some(PaletteAction::OpenActions) => {
                                 self.window.screen.open_action_center();
@@ -335,13 +330,7 @@ impl Route<'_> {
                             // command list to the registered font
                             // family names and keep it open.
                             Some(PaletteAction::ListFonts) => {
-                                let fonts =
-                                    self.window.screen.sugarloaf.font_family_names();
-                                self.window
-                                    .screen
-                                    .renderer
-                                    .command_palette
-                                    .enter_fonts_mode(fonts);
+                                self.window.screen.open_font_browser();
                             }
                             // Any other command is a one-shot: close
                             // the palette first, then dispatch.

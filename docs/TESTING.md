@@ -949,9 +949,11 @@ block, not the configured scrollback depth.
 
 Current keybinding tests construct macOS, Windows, and Linux/BSD default
 tables on every host, verify classic tab/split/clone scopes, geometric pane
-focus, pane-local tab cycling, global-tab separation, and explicit shell
-passthroughs, exercise user overrides and intentional compound actions, and
-reject shortcut collisions and duplicate visible palette labels. Pure layout
+focus, pane-local tab cycling, global-tab separation, explicit shell
+passthroughs, and the four mnemonic app-surface launchers. They exercise stable
+configuration names, user overrides, mode suppression, and intentional
+compound actions, and reject shortcut collisions, blank palette labels, and
+duplicate visible palette labels. Pure layout
 tests cover all four directions, uneven/nested grids, perpendicular-beam
 preference, deterministic ties, edge stopping, and local-tab wraparound. The
 planned compiled-profile suite—including fixture provenance,
@@ -959,6 +961,48 @@ origins and shadowing, atomic reload, fallthrough, sequences/tables/chains,
 generated docs, fuzzing, and hot-path latency—is specified in the
 [full Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md) and must
 not be reported as implemented until those gates exist and pass.
+
+The focused feature-shortcut contract is:
+
+```powershell
+cargo test -p automexia-terminal palette_shortcuts_are_complete_and_unique --locked
+cargo test -p automexia-terminal feature_surface_actions_parse_with_stable_configuration_names --locked
+cargo test -p automexia-terminal automexia_windows_defaults_restore_the_classic_workflow --locked
+cargo test -p automexia-terminal automexia_unix_defaults_restore_the_classic_workflow --locked
+cargo test -p automexia-terminal automexia_macos_defaults_restore_the_classic_workflow --locked
+```
+
+These tests prove table construction and pure dispatch contracts on any host;
+they do not replace native macOS/Linux keyboard-layout or controlled assistive-
+technology runs.
+
+Feature-shortcut completion evidence recorded on native Windows x64 on
+2026-08-21:
+
+- `cargo test -p automexia-terminal --bin automexia --locked` passed all 391
+  frontend tests.
+- `cargo fmt --all -- --check` and warning-denied workspace Clippy passed.
+- `cargo nextest run --workspace --locked --profile ci` passed 1,757 tests;
+  seven explicitly skipped cases remained skipped.
+- `cargo test --workspace --doc --locked` passed 64 documentation tests with
+  three explicitly ignored examples.
+- `python3 tools/ci/qa.py --full` passed repository, shell, architecture,
+  dependency, resize-stress, session-clone, concurrency, workspace, and
+  documentation gates. Its local report is under
+  `target/qa/20260821T180812Z-19980/report.html` and is not committed.
+- `cargo xtask test resize-stress --native-gui` passed on both native WGPU and
+  CPU renderers. The inspected 1750x1080 command-palette capture kept the new
+  `Ctrl+F4` and `Ctrl+Shift+F4` keycaps aligned and unclipped; WGPU/CPU pixels
+  agreed within the harness tolerance.
+- `cargo ready` passed its cold isolated all-target check, warning-denied
+  Clippy, unit/integration/documentation tests, dependency policy, persistent
+  application build, and `automexia 0.4.0` smoke check. The command removed its
+  7.76 GiB disposable verification target after success.
+
+Native Linux/BSD and macOS keyboard-layout checks, controlled assistive-
+technology runs, elevated Application Verifier/WPR work, and controlled
+benchmark campaigns remain external gates; the Windows run does not claim
+those results.
 
 Nightly builds unsigned installers for every artifact target. The Windows x64
 MSI uses cargo-packager/WiX 3; ARM64 uses the pinned repository-owned WiX 5

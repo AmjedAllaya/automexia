@@ -63,6 +63,10 @@ These are source/repository administration commands, not a reason to replace you
 
 A Quick Action stores a structured command template rather than an opaque shell snippet. The intended interaction is review-first:
 
+Open Quick Actions directly with `Ctrl+Shift+O` on Windows/Linux/BSD or
+`Cmd+Shift+O` on macOS. The shortcut only opens search/review; it never inserts,
+presses Enter, or executes an action.
+
 1. Search the action catalog from the appropriate palette/management surface.
 2. Read the title/description and exact command tokens.
 3. Inspect required placeholders and context.

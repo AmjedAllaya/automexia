@@ -13,6 +13,21 @@ This page is the practical shortcut guide: the keys users reach for every day, h
 
 Open the command palette with `Ctrl+Shift+P` on Windows/Linux/BSD or `Cmd+Shift+P` on macOS. If you forget a key chord, use the palette rather than guessing.
 
+## Feature launchers
+
+| Feature | Windows / Linux / BSD | macOS |
+|---|---|---|
+| Read-only Connection **H**ub | `Ctrl+Shift+H` | `Cmd+Shift+H` |
+| **O**pen Quick Actions | `Ctrl+Shift+O` | `Cmd+Shift+O` |
+| Extensions **M**arketplace | `Ctrl+Shift+M` | `Cmd+Shift+M` |
+| **L**ist fonts | `Ctrl+Shift+L` | `Cmd+Shift+L` |
+| Toggle appearance **T**heme | `Alt+Shift+T` | `Cmd+Alt+Shift+T` |
+
+These launchers do not take over Search, Vi mode, or alternate-screen terminal
+applications. They open UI only: Connection Hub remains read-only, and Quick
+Actions still opens search/review without typing, pressing Enter, or executing
+a command.
+
 ## Workspace shortcuts
 
 | Action | Windows / Linux / BSD | macOS |
@@ -21,6 +36,8 @@ Open the command palette with `Ctrl+Shift+P` on Windows/Linux/BSD or `Cmd+Shift+
 | New window-level tab | `Ctrl+T` | `Cmd+T` |
 | New local tab in selected pane | `Ctrl+Shift+T` | `Cmd+Shift+T` |
 | Close selected local tab/split/window tab | `Ctrl+Shift+W` | `Cmd+W` |
+| Close current tab without removing a split | `Ctrl+F4` | `Cmd+Shift+W` |
+| Close other window-level tabs | `Ctrl+Shift+F4` | `Cmd+Alt+W` |
 | Next / previous window tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
 | Next / previous local tab | `Alt+PageDown` / `Alt+PageUp` | `Cmd+Alt+]` / `Cmd+Alt+[` |
 | Fresh split right / down | `Ctrl+Shift+R` / `Ctrl+Shift+D` | `Cmd+D` / `Cmd+Shift+D` |
@@ -122,7 +139,7 @@ The current Windows defaults also include:
 - `Ctrl+Shift+Space` for Vi mode;
 - `Ctrl+Shift+K` to clear history;
 - `Ctrl+Alt+Space` to toggle the quake window;
-- `Alt+Shift+T` to toggle light/dark appearance.
+- `Alt+Shift+T` to toggle light/dark appearance (also available on Linux/BSD).
 
 Linux/BSD additionally supports `Ctrl+Shift+[` / `Ctrl+Shift+]` for previous/next window tab and uses `Alt+Shift+Space` for the common Vi-mode toggle.
 

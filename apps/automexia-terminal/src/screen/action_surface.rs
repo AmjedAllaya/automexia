@@ -60,10 +60,12 @@ struct State {
 impl Screen<'_> {
     pub fn open_action_center(&mut self) {
         self.action_surface.state = State::default();
+        self.renderer.command_palette.set_enabled(true);
         self.renderer
             .command_palette
             .enter_action_search(Vec::new(), String::new());
         self.submit_action_search(String::new());
+        self.mark_dirty();
     }
 
     pub fn set_action_query(&mut self, query: String) {

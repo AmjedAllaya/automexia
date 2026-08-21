@@ -102,13 +102,17 @@ const SHORTCUT_NEW_LOCAL_TAB: &str = "Cmd+Shift+T";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_NEW_LOCAL_TAB: &str = "Ctrl+Shift+T";
 #[cfg(target_os = "macos")]
-const SHORTCUT_CLOSE_TAB: &str = "Cmd+W";
+const SHORTCUT_CLOSE_TAB: &str = "Cmd+Shift+W";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_CLOSE_TAB: &str = "Ctrl+Shift+W";
+const SHORTCUT_CLOSE_TAB: &str = "Ctrl+F4";
+#[cfg(target_os = "macos")]
+const SHORTCUT_CLOSE_OTHER_TABS: &str = "Cmd+Alt+W";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_CLOSE_OTHER_TABS: &str = "Ctrl+Shift+F4";
 #[cfg(target_os = "macos")]
 const SHORTCUT_CLOSE_SURFACE: &str = "Cmd+W";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_CLOSE_SURFACE: &str = "";
+const SHORTCUT_CLOSE_SURFACE: &str = "Ctrl+Shift+W";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SPLIT_RIGHT: &str = "Cmd+D";
 #[cfg(not(target_os = "macos"))]
@@ -172,6 +176,10 @@ const SHORTCUT_SEARCH: &str = "Cmd+F";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_SEARCH: &str = "Ctrl+Shift+F";
 #[cfg(target_os = "macos")]
+const SHORTCUT_SEARCH_BACKWARD: &str = "Cmd+B";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_SEARCH_BACKWARD: &str = "Ctrl+Shift+B";
+#[cfg(target_os = "macos")]
 const SHORTCUT_FONT_UP: &str = "Cmd++";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_FONT_UP: &str = "Ctrl++";
@@ -192,9 +200,25 @@ const SHORTCUT_FULLSCREEN: &str = "Ctrl+Cmd+F";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_FULLSCREEN: &str = "F11";
 #[cfg(target_os = "macos")]
-const SHORTCUT_APPEARANCE: &str = "";
+const SHORTCUT_APPEARANCE: &str = "Cmd+Alt+Shift+T";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_APPEARANCE: &str = "Alt+Shift+T";
+#[cfg(target_os = "macos")]
+const SHORTCUT_CONNECTION_HUB: &str = "Cmd+Shift+H";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_CONNECTION_HUB: &str = "Ctrl+Shift+H";
+#[cfg(target_os = "macos")]
+const SHORTCUT_QUICK_ACTIONS: &str = "Cmd+Shift+O";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_QUICK_ACTIONS: &str = "Ctrl+Shift+O";
+#[cfg(target_os = "macos")]
+const SHORTCUT_EXTENSIONS: &str = "Cmd+Shift+M";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_EXTENSIONS: &str = "Ctrl+Shift+M";
+#[cfg(target_os = "macos")]
+const SHORTCUT_FONT_BROWSER: &str = "Cmd+Shift+L";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_FONT_BROWSER: &str = "Ctrl+Shift+L";
 #[cfg(target_os = "macos")]
 const SHORTCUT_PREVIEW_IMAGE: &str = "Cmd+Alt+I";
 #[cfg(not(target_os = "macos"))]
@@ -469,7 +493,7 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         title: "Close Other Tabs",
-        shortcut: "",
+        shortcut: SHORTCUT_CLOSE_OTHER_TABS,
         action: PaletteAction::TabCloseUnfocused,
     },
     Command {
@@ -604,7 +628,7 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         title: "Search Backward",
-        shortcut: "",
+        shortcut: SHORTCUT_SEARCH_BACKWARD,
         action: PaletteAction::SearchBackward,
     },
     Command {
@@ -619,22 +643,22 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         title: "Connection Hub (read-only)",
-        shortcut: "",
+        shortcut: SHORTCUT_CONNECTION_HUB,
         action: PaletteAction::OpenConnections,
     },
     Command {
         title: "Quick Actions",
-        shortcut: "",
+        shortcut: SHORTCUT_QUICK_ACTIONS,
         action: PaletteAction::OpenActions,
     },
     Command {
-        title: "market",
-        shortcut: "",
+        title: "Extensions",
+        shortcut: SHORTCUT_EXTENSIONS,
         action: PaletteAction::OpenMarket,
     },
     Command {
         title: "List Fonts",
-        shortcut: "",
+        shortcut: SHORTCUT_FONT_BROWSER,
         action: PaletteAction::ListFonts,
     },
     Command {
@@ -2160,7 +2184,7 @@ mod tests {
             .iter()
             .find(|command| command.action == PaletteAction::OpenMarket)
             .expect("market command");
-        assert_eq!(market.title, "market");
+        assert_eq!(market.title, "Extensions");
         assert!(!market.title.starts_with('/'));
     }
 
@@ -2382,12 +2406,14 @@ mod tests {
         );
     }
     #[test]
-    fn visible_palette_shortcuts_are_unique() {
+    fn palette_shortcuts_are_complete_and_unique() {
         let mut shortcuts = std::collections::HashMap::new();
-        for command in COMMANDS
-            .iter()
-            .filter(|command| !command.shortcut.is_empty())
-        {
+        for command in COMMANDS {
+            assert!(
+                !command.shortcut.is_empty(),
+                "missing palette shortcut for {}",
+                command.title
+            );
             assert!(
                 shortcuts.insert(command.shortcut, command.title).is_none(),
                 "duplicate palette shortcut {}",

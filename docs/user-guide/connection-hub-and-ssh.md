@@ -9,21 +9,23 @@
 
 ## Use the read-only Connection Hub
 
-1. Open the command palette with `Ctrl+Shift+P` on Windows/Linux/BSD or
-   `Cmd+Shift+P` on macOS.
-2. Choose **Connection Hub (read-only)**.
-3. Select **Choose SSH files**. The native file picker accepts one or more exact
+1. Press `Ctrl+Shift+H` on Windows/Linux/BSD or `Cmd+Shift+H` on macOS. You can
+   also open the command palette and choose **Connection Hub (read-only)**.
+2. Select **Choose SSH files**. The native file picker accepts one or more exact
    files, including an extensionless `config` file.
-4. Read the canonical-path review. Use Up/Down, Page Up/Page Down, Home/End, or
+3. Read the canonical-path review. Use Up/Down, Page Up/Page Down, Home/End, or
    the pointer to inspect it. Press Enter or choose the confirmation action to
    scan; press Escape or choose Cancel to revoke the selection.
-5. Browse the resulting aliases. Selecting a row opens its public inspector;
+4. Browse the resulting aliases. Selecting a row opens its public inspector;
    it never launches a connection.
 
 Opening the Hub does not scan standard locations. The selected files remain an
 in-memory grant for the current application lifetime and must be selected again
 after restart. Canceling or making another selection revokes the older review.
 Automexia never modifies the selected OpenSSH files.
+
+The direct shortcut is inactive while Search, Vi mode, or an alternate-screen
+terminal application owns input. It never sends a key or command to the PTY.
 
 An exact-file review belongs only to the Hub screen that initiated it. Another
 window or screen cannot display, confirm, cancel, or revoke that review. If the
