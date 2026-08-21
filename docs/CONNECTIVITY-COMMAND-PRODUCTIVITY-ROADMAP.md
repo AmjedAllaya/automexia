@@ -386,16 +386,25 @@ Exit: the generic broker is production-capable but no provider inherits a grant.
 
 ## F5 - implement D5.2 managed OpenSSH
 
-Status: Not done. Deliver in this fixed order.
+Status: **Partially done** at the non-activated F5.1 review-model boundary.
+Production SSH remains blocked by F4/M2. Deliver the remaining work in this
+fixed order.
 
 ### F5.1 direct reviewed SSH
 
-- [ ] Start with one validated concrete OpenSSH alias and one literal destination.
-- [ ] Show Connection Review with target, public identity, executable, route,
-  host-trust policy, risk, capabilities, and destination.
-- [ ] Preserve OpenSSH-owned prompts and diagnostics in the PTY.
-- [ ] Add cancel, reconnect with changed-intent invalidation, notifications,
-  redacted receipts, and independent session cleanup.
+- [ ] **Partially done:** validate one inventory-typed concrete alias and one
+  bounded literal host as one exact redacted argument; reject option-like,
+  empty, whitespace/control/bidi, oversized, and ambiguous values. The pure
+  grammar is complete; D4-record-to-F2 product composition remains not done.
+- [x] **Fully done at the renderer-neutral model boundary:** bind the F2 plan,
+  source/profile/capsule revisions, canonical `ssh` identity, `session.launch`,
+  public target and identity readiness, direct route, trust policy, risk,
+  destination, and redacted argv shape. Execution remains visibly disabled.
+- [ ] **Not done:** preserve OpenSSH-owned prompts and diagnostics in a real PTY.
+- [ ] **Partially done:** changed profile/source/capsule/plan/executable/
+  capability/destination/observation/trust data invalidates review, and the
+  test-only broker owns pure cancel/rebind/revocation. Reconnect, notifications,
+  receipts, and independent process/session cleanup remain not done.
 
 ### F5.2 explicit routes and host trust
 

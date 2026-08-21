@@ -126,6 +126,16 @@ pure responsive Hub/review/planner and accessibility projections. Frozen
 all-provider/all-auth fixtures, hostile/property/mutation tests, fuzz ownership,
 and a 64-step benchmark are registered. Every process, network, provider,
 credential, PTY, listener, renderer, and GPU authority remains absent or false.
+As of 2026-08-21, M3 also has a pure direct-OpenSSH review binding. It accepts
+one inventory-typed concrete alias or one bounded literal ASCII host, binds the exact
+argument to the F2 profile/source/capsule revisions, plan fingerprint,
+canonical `ssh` identity, `session.launch`, validated identity-observation content/generation/freshness,
+and host-trust state, and invalidates every tested replacement. Its
+renderer-neutral projection exposes only public summaries and
+`ssh <destination>` with an M2-pending disabled action. The model has no
+application caller and adds no process, PTY, filesystem, network, credential,
+listener, renderer, or secret authority.
+
 This evidence does not accept this ADR and does not enable the capability. The
 remaining acceptance evidence includes protected approval; binding a real
 package-loader attestation/revocation result to the frozen policy; visible

@@ -1172,6 +1172,44 @@ window server, or GPU. Resource-lifetime and storage evidence are not applicable
 because F2 is synchronous pure modeling with bounded owned collections and no
 resource/persistence owner. This does not waive those gates for D5.1/D5.2.
 
+### M3 direct OpenSSH review contract
+
+The M3 source slice is pure and deliberately non-activated:
+
+    cargo test -p automexia-devops --test direct_openssh_review --locked
+    cargo test -p automexia-ui-model --test direct_openssh_review --locked
+    cargo clippy -p automexia-devops -p automexia-ui-model --all-targets --all-features --locked -- -D warnings
+    cargo xtask verify architecture
+
+Nine model tests cover an inventory-typed concrete alias, one literal host, exact
+single-argument preservation, canonical `ssh`, exact `session.launch`, the
+all-false authority ceiling, the complete canonical no-recipe F2 plan, wrong
+source/executable/capability denial, non-applicable trust denial, misleading
+literal-target denial, option-like/empty/whitespace/control/bidi/oversized/
+ambiguous hostile values, M4 user/port/jump deferral, redacted debug/errors,
+observation readiness/freshness, and profile/source/capsule/destination/plan/executable/
+observation/trust fingerprint invalidation. The UI-model test covers wide,
+medium, and narrow layouts; all nine required decision sections; status
+independent of color; disabled primary action; accessibility names; and
+destination/opaque-reference redaction.
+
+The contract is synchronous and bounded to a 512-byte destination plus existing
+F2 collection ceilings. It allocates no persistent storage and owns no worker,
+file, process, socket, PTY, listener, route, credential, renderer, or GPU
+resource. Owner-crate tests, strict clippy, and architecture verification pass
+on Windows. No native OpenSSH process, PTY, prompt, host-key exchange, network,
+renderer pixels, screen reader, cancellation cleanup, or manual-before/after
+`ssh` run occurred; those remain M2/M3 activation and cross-platform gates.
+
+On the native Windows development host on 2026-08-21/22, both focused tests,
+the owner-crate suites, strict owner Clippy, architecture verification,
+repository validation, `cargo fmt --all -- --check`, full workspace Clippy,
+1,767-test CI-profile nextest run, workspace documentation tests, full QA, and
+`cargo ready` passed. The disposable QA report is under
+`target/qa/20260821T225643Z-23880/report.html`. Controlled native GUI/GPU,
+Application Verifier/WPR, screen-reader, stable-hardware benchmark, Linux, and
+macOS evidence remains external.
+
 ### Connection Hub F3 catalog contract
 
 The first D5.1 slice adds a pure catalog contract without activating D4 or any

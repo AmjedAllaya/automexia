@@ -40,6 +40,21 @@ protocols, or configuration evaluation. This keeps OpenSSH authoritative and
 follows the allowlist-plus-parameterization guidance in the
 [OWASP OS-command injection guidance](https://cheatsheetseries.owasp.org/cheatsheets/OS_Command_Injection_Defense_Cheat_Sheet.html).
 
+## Upstream M3 reviewed request
+
+The non-activated M3 model now prepares the only request shape this broker may
+later consume for direct SSH: canonical executable ID `ssh`, exact capability
+`session.launch`, and one ordered destination argument. It binds that argument
+to profile/source/capsule revisions, the F2 plan fingerprint, executable
+identity digest, validated identity-observation content/generation/freshness, host-trust state, and a fresh
+review fingerprint. Debug and UI views redact the destination argument.
+
+This is not broker activation. There is no production conversion from the M3
+request to `LaunchRequest`, no controller action, and no process or PTY. A
+future app-owned adapter must revalidate the M3 binding and the broker's
+session/capsule/decision/file-identity scopes immediately before the reviewed
+atomic spawn path.
+
 ## Trust and data flow
 
 The proposed flow is:

@@ -2,7 +2,7 @@
 
 Audit date: 2026-08-21
 
-Audited source baseline: 074bb49e6c93bac231a8acb408e99992f557c25d plus the M0 documentation reconciliation
+Audited source baseline: 52fc78dda42da7e826a4505b34787c606031a02a plus the M3 non-activated review slice
 
 Scope: every execution phase defined by the product, stabilization, DevOps/SSH,
 Connection Hub, command-productivity, persistent-alias, and Ghostty
@@ -90,7 +90,7 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
 | DevOps | D3 | **Partial; nonactivated** | **Blocked** | A test-only exact-argv model and hardened local two-independent-human, exact-head review policy exist; external reviewers/server-side enforcement, real attestation, production launch, capability UX, atomic spawn, and native lifecycle proof do not. |
 | DevOps | D4 | **Fully implemented; read-only product adapter active** | **Partial** | Bounded OpenSSH inventory/persistence is connected only to D5.1 reviewed browsing; it retains no process/network/launch authority. |
-| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 fully implemented locally** | **Partial/blocked** | The read-only product Hub now owns exact reviewed selection, joined lifecycle, modal controls, CAS favorites/tags, read-only recent/library data, and disabled authority. D5.0 ADR acceptance, D5.2 launch, and external native/accessibility evidence remain. |
+| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 fully implemented locally and D5.2 review model partial** | **Partial/blocked** | The Hub remains read-only. D5.2 now owns exact alias/literal grammar, F2/revision/executable/capability binding, stale invalidation, and a complete disabled renderer-neutral review. Protected M2 activation, product wiring, process/PTY lifecycle, reconnect/receipts, and native/accessibility evidence remain. |
 | Multi-cloud | D6.0-D6.5 | **Not implemented** | **Blocked** | Provider auth, capsules, transports, and provider slices are planned only. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
@@ -542,14 +542,27 @@ actions remain disabled until D5.2.
 
 ### D5.2 — managed OpenSSH launch and lifecycle
 
-**Not implemented.**
+**Partially implemented at a pure, non-activated review boundary.**
 
-Required: accepted D3 activation, Connection Review, destination selection,
-independent PTYs, jumps, typed tunnels, strict host-key explanation, public
-agent/certificate state, cancel/reconnect, grants/revocation, redacted audit,
-mocked plus real native server/client tests, hostile output, cleanup, and
-1/10/50 parallel-session performance/resources. Disabled devops-ssh must leave
-a complete terminal.
+Implemented locally: one owner validates an inventory-typed concrete alias or bounded
+literal host as one exact argument; binds it to the F2 profile, source and
+capsule revisions, plan fingerprint, canonical `ssh` identity,
+`session.launch`, validated identity-observation content/generation/freshness, and host-trust state; rejects
+hostile or ambiguous destinations; invalidates stale replacements; and produces
+a renderer-neutral wide/medium/narrow review that names the public target,
+identity readiness, direct route, executable identity, strict trust policy,
+capability, environment risk, destination surface, and only
+`ssh <destination>`. The action is always disabled and the model owns no
+process, PTY, filesystem, network, credential, listener, renderer, or secret
+authority.
+
+Not implemented: accepted D3/M2 activation, D4-to-F2 product composition,
+controller/native renderer wiring, independent PTYs, real OpenSSH prompt and
+diagnostic passthrough, reconnect, notifications, completion receipts,
+process-tree cleanup, jumps, typed user/port/routes/tunnels, full host-key and
+agent/certificate UX, mocked/native server-client tests, hostile remote output,
+and 1/10/50 parallel-session performance/resources. The before/after native
+manual-`ssh` regression also remains external because no managed process exists.
 
 ### D6.0-D6.5 — providers and multi-cloud
 
@@ -877,7 +890,7 @@ Planned work, with no shipped-command claim:
 | Product surface | Owning gate | Audit status |
 |---|---|---|
 | Canonical operation registry, `automexia` domains, generated palette/help/accessibility, optional collision-safe `ax` | CP2.2-CP3/D5 | Not implemented |
-| Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | D5.1 picker, browse/filter/group, inspector, reviewed favorite/tags, and disabled review are fully implemented locally; D5.2 connect/reconnect/destinations remain not done |
+| Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | D5.1 picker/browse/metadata is fully implemented locally; the D5.2 direct-SSH request and disabled renderer-neutral review are partial; product connect/reconnect/destination wiring remains not done |
 | Identity references, agent/certificate state, known-host explanation, routes/jumps/proxies/tunnels | D5.2 | Not implemented |
 | Quick Actions, aliases, lifecycle hooks, reviewed multi-target execution | CP2.2-CP4/D5E | Model/store foundations only |
 | Declarative workspace persistence/restoration and visibly armed broadcast | D5/CP4 | Existing layout primitives only |
@@ -1084,8 +1097,9 @@ At this audited baseline, the focused order is:
    grants, executable resolution, strict defaults, and the native fixture
    definitions are already frozen locally with production launch disabled.
 2. Preserve the locally complete D5.1 read-only product Hub and obtain its
-   external native/accessibility evidence while D5.2 managed launch waits for
-   the protected decision.
+   external native/accessibility evidence. Preserve the new pure D5.2 direct
+   request/review binding while production launch waits for the protected
+   decision.
 3. Activate D3 only with its capability, atomic spawn, PTY lifecycle, cleanup,
    and three-OS native gates; then deliver D5.2 managed OpenSSH in bounded
    direct, route/host-trust, tunnel, and native-evidence slices.

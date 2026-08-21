@@ -31,7 +31,7 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | D2 | Generic status, immutable history, capsules, isolation, cancellation, and freshness are implemented. |
 | **Partially done** | D3 | The nonactivated broker binds exact package identity, grants, platform resolution, file identity, lifecycle, and redacted audit. Local CI now protects launch/capability authorities and counts only independent human approvals bound to the exact pull-request head; real reviews, server-side enforcement, attestation, production UX/spawn, and native proof remain. |
 | **Fully done** | D4 | The bounded OpenSSH inventory/persistence package is complete but deliberately disabled. |
-| **Partially done** | D5.0-D5.2 | D5.1 read-only Hub is fully implemented locally with explicit reviewed files, app-owned lifecycle, modal controls, CAS favorite/tags, disabled authority, and Windows evidence. D5.0 ADR acceptance, D5.2 managed launch, and external native/accessibility evidence remain. |
+| **Partially done** | D5.0-D5.2 | D5.1 read-only Hub is fully implemented locally. D5.2 now has a pure, non-activated direct-SSH grammar, stale review binding, and complete renderer-neutral review projection; M2 approval, product wiring, process/PTY lifecycle, reconnect/receipts, and native/accessibility evidence remain. |
 | **Not done** | D6.0-D6.5 | Provider authentication, capsules, transports, and multi-cloud slices are planned only. |
 | **Not done** | D7 | Public ecosystem, direct APIs, sandboxed extensions, and AI execution are deferred. |
 | **Fully done** | CP0 | Architecture, threat model, ceilings, fixtures, mutation tests, and nonactivation policy are complete. |

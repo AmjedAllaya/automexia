@@ -459,22 +459,36 @@ no provider receives a grant merely because the runner exists.
 
 ### M3 — F5.1 direct reviewed OpenSSH
 
-Status: Not done; depends on M2.
+Status: **Partially done** at the non-activated pure-model boundary; production
+connection behavior remains blocked by M2.
 
-- [ ] Add an exact reviewed request grammar for one D4 concrete alias and one
-  typed literal destination. Reject option-like, empty, control/bidi, whitespace
-  where disallowed, or ambiguous destination values before review.
-- [ ] Build Connection Review from the pure F2 plan and show public target,
-  identity reference/readiness, canonical `ssh` identity, route, strict host
-  trust policy, capabilities, risk, pane/tab/window destination, and redacted
-  argv shape.
-- [ ] Launch system OpenSSH only through M2 into a new independent PTY. Preserve
-  all prompts and diagnostics in that PTY; Automexia must not parse passwords,
-  passphrases, MFA, or terminal content to decide authentication.
-- [ ] Implement cancel, reconnect, stale-intent/source/capsule invalidation,
-  nonintrusive notifications, redacted receipt, and independent session cleanup.
-- [ ] Test manual `ssh host` with the extension disabled before/after every
-  managed-path test to prove the ordinary terminal remains unchanged.
+- [ ] **Partially done:** add an exact reviewed request grammar for one
+  inventory-typed concrete alias and one typed literal destination. The pure
+  grammar is complete and rejects option-like, empty, control/bidi, whitespace,
+  oversized, or ambiguous values before review. D4-record-to-F2 product
+  composition remains not done. The initial literal is one bounded ASCII host
+  token; typed user, port, URI, IPv6, jump, tunnel, and free-form option forms
+  remain outside M3.
+- [x] **Fully done at the renderer-neutral model boundary:** build Connection
+  Review from the pure F2 plan and show public target, identity reference and
+  readiness, canonical `ssh` identity, direct route, strict host-trust policy,
+  exact `session.launch` capability, risk, pane/tab/window destination, and a
+  redacted one-argument shape. The action is disabled with the M2 approval
+  reason; app controller/renderer wiring and native visual/accessibility proof
+  remain not done.
+- [ ] **Not done:** launch system OpenSSH only through M2 into a new independent
+  PTY. Preserve all prompts and diagnostics in that PTY; Automexia must not
+  parse passwords, passphrases, MFA, or terminal content to decide
+  authentication.
+- [ ] **Partially done:** immutable reviews now invalidate on profile, source,
+  capsule, F2 plan, canonical executable identity, capability, destination,
+  observation content/generation/freshness, or host-trust change. The existing test-only M2
+  broker covers pure cancel/rebind/revocation. Reconnect orchestration,
+  nonintrusive notifications, redacted completion receipts, and independent
+  process/session cleanup remain not done.
+- [ ] **Partially done:** the production module graph remains unchanged and the
+  D0 manual-shell baseline is mutation-checked. No managed process exists yet,
+  so the required before/after native `ssh host` test remains not done.
 
 Exit: a reviewed direct SSH session is additive and isolated, with no secret
 custody or alternate SSH implementation.

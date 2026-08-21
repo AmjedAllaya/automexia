@@ -1,11 +1,12 @@
 # SSH access, multi-cloud connections, and automation recipes
 
-Status: D5.1's read-only product Hub is fully implemented locally: reviewed
-exact-file inventory, bounded browse/filter/group, public favorite/tag CAS,
-read-only local profile/recipe/preference state, and disabled connection actions.
-D5.2 execution and D6 multi-cloud delivery are not implemented. Automexia v0.4
-does not ship managed connections or automatic remote actions; ordinary
-user-entered system-tool commands remain unchanged.
+Status: D5.1's read-only product Hub is fully implemented locally. D5.2 is
+**partially done** only at a pure, non-activated M3 review boundary: exact direct
+destination grammar, stale plan/revision binding, and a complete disabled
+renderer-neutral review exist. Product connection wiring, OpenSSH/PTY launch,
+reconnect/receipts/cleanup, native evidence, and D6 multi-cloud delivery are not
+implemented. Automexia v0.4 does not ship managed connections or automatic
+remote actions; ordinary user-entered system-tool commands remain unchanged.
 This document is the implementation authority for connection profiles and
 connection-scoped automation. The [Connection Hub](CONNECTION-HUB.md) owns the
 overall inventory, authentication, review, and responsive UI contract. The
@@ -54,7 +55,11 @@ The current repository provides:
   guidance; and
 - the F3 private transactional Connection Library for validated profiles,
   recipes, and Hub preferences, with CAS/recovery and redacted fresh-ID
-  transfer.
+  transfer; and
+- the M3 pure direct-OpenSSH review binding: one inventory-typed concrete alias or
+  one bounded literal host, exact `ssh`/`session.launch` identity, profile/
+  source/capsule/observation/trust invalidation, redacted argv shape, and a
+  renderer-neutral disabled review with no added authority.
 
 It now provides the D5.1 rendered read-only Connection Hub in v0.5 source
 builds, but does **not** provide a profile/recipe editor, automatic SSH launch,
@@ -784,14 +789,24 @@ is not done.
 Exit status: supported model actions and hostile parameters have deterministic
 validation, redaction, accessibility, and layout coverage. Editor interaction,
 persistence/migration, and native UI evidence remain before D5C is fully done.
+
 ### D5D - managed system OpenSSH
 
-- Activate only the reviewed one-argument OpenSSH alias path first.
-- Add Connection Review, capability lifecycle, executable identity
-  revalidation, independent PTY attachment, host-key passthrough, cancellation,
-  reconnect, route cleanup, and notifications.
-- Add explicit destinations, config-defined jump chains, then typed jumps and
-  tunnels in separately reviewed slices.
+Status: **Partially done** at the non-activated M3 review-model boundary.
+
+- [ ] **Partially done:** the reviewed one-argument inventory-typed alias and
+  literal-host grammar, exact F2/revision/executable/capability binding, hostile
+  rejection, stale invalidation, redacted debug/argv shape, and complete
+  renderer-neutral review exist; D4-record-to-F2 product composition remains.
+- [ ] **Not done:** product controller/renderer connection action, accepted M2
+  activation, independent PTY attachment, system OpenSSH launch, prompt and
+  diagnostic passthrough, and native/manual compatibility evidence.
+- [ ] **Partially done:** pure cancel/rebind/revocation already belongs to the
+  test-only broker; reconnect, notifications, receipts, process cleanup, and
+  route cleanup remain not done.
+- [ ] **Not done:** explicit user/port/IPv6 destinations, config-defined jump
+  chains, typed jumps, host-key detail, public identity readiness probes, and
+  tunnels remain separately reviewed M4/M5 slices.
 
 Exit gate: deterministic mock-server and controlled native OpenSSH evidence
 passes on Windows, macOS, and Linux.

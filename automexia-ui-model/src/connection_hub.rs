@@ -6,8 +6,10 @@
 use std::{cmp::Ordering, fmt, ops::Range};
 
 use automexia_devops::connections::{
-    ActionRisk, AuthState, AutomationAction, ConnectionReview, EnvironmentRisk,
-    ExecutionStage, HostTrustState, ProviderKind, ResolvedConnectionPlan, StaleAuthState,
+    ActionRisk, AuthState, AutomationAction, ConnectionReview, DestinationSurface,
+    DirectOpenSshHostTrustPolicy, DirectOpenSshIdentityReadiness, DirectOpenSshReview,
+    EnvironmentRisk, ExecutionStage, HostTrustState, ProviderKind,
+    ResolvedConnectionPlan, StaleAuthState,
 };
 use serde::{Deserialize, Serialize};
 
@@ -1181,6 +1183,146 @@ pub fn project_connection_review(
     }
 }
 
+fn direct_ssh_readiness_label(readiness: DirectOpenSshIdentityReadiness) -> &'static str {
+    match readiness {
+        DirectOpenSshIdentityReadiness::Unknown => "Unknown",
+        DirectOpenSshIdentityReadiness::Checking => "Checking",
+        DirectOpenSshIdentityReadiness::Ready => "Ready",
+        DirectOpenSshIdentityReadiness::AttentionRequired => "Attention required",
+        DirectOpenSshIdentityReadiness::Stale => "Stale",
+    }
+}
+
+fn destination_surface_label(surface: DestinationSurface) -> &'static str {
+    match surface {
+        DestinationSurface::Pane => "Pane",
+        DestinationSurface::PaneTab => "Pane tab",
+        DestinationSurface::WorkspaceTab => "Workspace tab",
+        DestinationSurface::Window => "Window",
+    }
+}
+
+/// Project the non-activated M3 review without exposing the exact destination
+/// argument, executable digest, opaque identity references, or terminal data.
+pub fn project_direct_openssh_review(
+    reviewed: &DirectOpenSshReview,
+    viewport: Viewport,
+) -> ConnectionReviewView {
+    let intent = &reviewed.review.normalized_intent;
+    let readiness = direct_ssh_readiness_label(reviewed.identity_readiness);
+    let trust_policy = match reviewed.host_trust_policy {
+        DirectOpenSshHostTrustPolicy::AskOnFirstUseRejectChanged => {
+            "Strict: ask on first use; changed keys blocked"
+        }
+    };
+    let sections = vec![
+        ReviewSectionView {
+            id: "identity".into(),
+            heading: "Identity readiness",
+            summary: format!("{} · {readiness}", intent.identity.public_label),
+            blocking: matches!(
+                reviewed.identity_readiness,
+                DirectOpenSshIdentityReadiness::AttentionRequired
+                    | DirectOpenSshIdentityReadiness::Stale
+            ),
+        },
+        ReviewSectionView {
+            id: "target".into(),
+            heading: "Public target",
+            summary: intent.public_destination.clone(),
+            blocking: false,
+        },
+        ReviewSectionView {
+            id: "transport".into(),
+            heading: "Transport and route",
+            summary: "System OpenSSH · direct".into(),
+            blocking: false,
+        },
+        ReviewSectionView {
+            id: "executable".into(),
+            heading: "Reviewed executable",
+            summary: format!(
+                "{} · canonical identity bound",
+                reviewed.executable_identity.executable_id
+            ),
+            blocking: false,
+        },
+        ReviewSectionView {
+            id: "host-trust".into(),
+            heading: "Host trust policy",
+            summary: trust_policy.into(),
+            blocking: matches!(
+                reviewed.review.host_trust,
+                HostTrustState::Changed { .. }
+            ),
+        },
+        ReviewSectionView {
+            id: "capabilities".into(),
+            heading: "Exact capability",
+            summary: intent.requested_capabilities.join(", "),
+            blocking: true,
+        },
+        ReviewSectionView {
+            id: "risk".into(),
+            heading: "Environment risk",
+            summary: risk_label(reviewed.environment_risk).into(),
+            blocking: reviewed.environment_risk == EnvironmentRisk::Production,
+        },
+        ReviewSectionView {
+            id: "destination".into(),
+            heading: "Open in",
+            summary: destination_surface_label(intent.destination_surface).into(),
+            blocking: false,
+        },
+        ReviewSectionView {
+            id: "argv".into(),
+            heading: "Reviewed argument shape",
+            summary: "ssh <destination>".into(),
+            blocking: false,
+        },
+    ];
+    let mut accessibility_tree = vec![AccessibilityNode::new(
+        "direct-openssh-review",
+        AccessibilityRole::Group,
+        "Direct OpenSSH Connection Review",
+    )];
+    for section in &sections {
+        let name = if section.id == "argv" {
+            "Reviewed OpenSSH argument shape"
+        } else {
+            section.heading
+        };
+        let mut node = AccessibilityNode::new(
+            format!("direct-openssh-review-{}", section.id),
+            if section.blocking {
+                AccessibilityRole::Alert
+            } else {
+                AccessibilityRole::Group
+            },
+            name,
+        );
+        node.description = section.summary.clone();
+        accessibility_tree.push(node);
+    }
+    let mut primary = AccessibilityNode::new(
+        "direct-openssh-review-primary",
+        AccessibilityRole::Button,
+        "Connection unavailable; M2 approval is pending",
+    );
+    primary.disabled = true;
+    primary.focusable = true;
+    accessibility_tree.push(primary);
+
+    ConnectionReviewView {
+        layout: hub_layout(viewport),
+        sections,
+        changed_fields: reviewed.review.changed_fields.clone(),
+        warnings: reviewed.review.warnings.clone(),
+        primary_label: "Connection unavailable—M2 approval pending",
+        execution_enabled: false,
+        accessibility_tree,
+    }
+}
 fn action_label(action: &AutomationAction) -> &'static str {
     match action {
         AutomationAction::ResolveConnection => "Resolve connection",

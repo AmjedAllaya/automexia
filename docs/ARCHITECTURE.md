@@ -253,6 +253,26 @@ parsing and storage do not move into the UI model. D5.2 must pass the
 application-owned capability/process/PTY/route gate before translating a
 reviewed plan into an execution request. No lower crate may bypass those owners.
 
+### M3 direct OpenSSH review boundary
+
+`automexia-devops::connections::direct_openssh` extends the existing F2 owner
+without adding a crate edge or authority. It accepts only a validated SSH
+profile, all-false F2 plan, exact identity observation, and public host-trust
+state. It emits an immutable request bound to the profile/source/capsule
+revisions, F2 approval fingerprint, canonical `ssh` file identity,
+`session.launch`, destination, validated observation content/generation and freshness, and trust state. The
+initial grammar is one inventory-typed concrete alias or one bounded literal ASCII
+host token; user, port, URI, IPv6, routes, and tunnels remain later slices.
+
+`automexia-ui-model::connection_hub` owns the corresponding disabled responsive
+and accessibility projection. It shows only public summaries and
+`ssh <destination>`; exact destination arguments, opaque references, and
+executable digests do not enter the view. The desktop application remains the
+only future composition root for D4 records, F2 profiles, broker decisions,
+process/PTY creation, and cleanup. Because M2 is not accepted, no production
+caller, renderer route, process, PTY, filesystem, network, credential, listener,
+or secret authority is added by M3.
+
 ### Environment Capsule contract
 
 Every managed session has a non-secret, immutable `EnvironmentCapsule`:
