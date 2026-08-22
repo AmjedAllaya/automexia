@@ -275,7 +275,10 @@ conservatively classified as production risk.
 
 automexia-ui-model owns the nine-section pending and identity-bound projections
 plus the literal editor's textbox/instructions/status/Review/Cancel reading
-order. The application controller discards or rebuilds inventory preparation
+order. While that nested editor owns the modal, the renderer omits the redundant
+top-level close action so its hit area cannot compete with the field; visible
+Cancel and Escape retain deterministic dismissal. The application controller
+discards or rebuilds inventory preparation
 after selection, route, runtime-state, generation, catalog, or metadata changes;
 literal review is isolated from those unrelated refreshes and editor state is
 cleared on cancel, close, or successful preparation. The native renderer

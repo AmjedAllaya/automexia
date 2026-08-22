@@ -404,8 +404,9 @@ fixed order.
   Connection/Safety/Launch groups, icons plus text/color, a disabled action,
   pointer/keyboard controls, and no opaque reference or digest exposure. The
   literal editor has a 512-byte exact grammar, atomic paste/IME rejection,
-  `L` mnemonic, trapped focus, disabled invalid review, cancel/close cleanup,
-  conservative production risk, and tiny-to-8K hit geometry.
+  a screen-tested `L` mnemonic, trapped focus, disabled invalid review, one
+  visible Cancel path plus Escape/owning-surface cleanup, conservative
+  production risk, and non-overlapping tiny-to-8K hit geometry.
 - [ ] **Not done:** M2 current executable/identity observation and protected
   activation remain required before any review can become executable.
 - [ ] **Not done:** preserve OpenSSH-owned prompts and diagnostics in a real PTY.

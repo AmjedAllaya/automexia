@@ -972,10 +972,11 @@ target. This exit does not activate D5.2.
   D4 record or one bounded transient literal host into the canonical pending F2
   plan and shared disabled Connection Review.
 - [x] **Fully done at the non-activated product boundary** — Provide the
-  **Enter host** action, `L` mnemonic, 512-byte exact grammar, atomic
-  paste/IME rejection, field/Review/Cancel focus loop, pointer controls,
-  conservative production risk, cancel/close cleanup, no persistence/history,
-  and tiny-to-8K responsive geometry.
+  **Enter host** action, screen-tested `L` mnemonic, 512-byte exact grammar,
+  atomic paste/IME rejection, field/Review/Cancel focus loop, one visible
+  Cancel path plus Escape/owning-surface cleanup, non-overlapping pointer
+  controls, conservative production risk, no persistence/history, and
+  tiny-to-8K responsive geometry.
 - [ ] **Not done** — Activate the application-owned exact launch broker only
   after protected approval, executable/identity observation, atomic
   check-to-spawn, PTY/process ownership, cancellation, cleanup, and native

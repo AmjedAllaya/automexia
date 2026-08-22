@@ -2,7 +2,7 @@
 
 Audit date: 2026-08-22
 
-Audited source baseline: 4641f1f63793053b938216c15005e9621379adb1 plus the current non-activated M3 literal-host review slice
+Audited source baseline: 3f7c00ed8b7d0dee37853654e2db08cd3b324572 plus the current M3 UX/evidence re-audit
 
 Scope: every execution phase defined by the product, stabilization, DevOps/SSH,
 Connection Hub, command-productivity, persistent-alias, and Ghostty
@@ -557,9 +557,12 @@ every authority false, and cannot execute.
 
 A selected Hub row or the dedicated **Enter host** action opens the shared
 disabled Connection Review. The literal editor has a 512-byte ASCII grammar,
-atomic paste/IME rejection, the `L` mnemonic, trapped field/Review/Cancel
-focus, disabled invalid submission, pointer/keyboard controls, cancel/close
-cleanup, and an inert background. The semantic model exposes nine public
+atomic paste/IME rejection, a screen-tested `L` mnemonic, trapped field/Review/
+Cancel focus, disabled invalid submission, pointer/keyboard controls, one
+visible Cancel path plus Escape/owning-surface cleanup, and an inert background.
+The redundant top-level close action is absent while the nested editor owns the
+modal, so it cannot overlap the field at small scaled viewports. The semantic
+model exposes nine public
 decisions; the renderer groups them into compact Connection, Safety, and Launch
 cards with redundant icons/text/color and responsive stacked/horizontal
 geometry. Exact inventory aliases, opaque references, executable digests,

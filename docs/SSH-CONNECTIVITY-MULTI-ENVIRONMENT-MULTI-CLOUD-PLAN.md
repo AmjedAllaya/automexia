@@ -475,10 +475,11 @@ production connection behavior remains blocked by M2.
   Review with public target, identity verification state, system
   OpenSSH/direct route, pending executable, strict host-trust policy, exact
   `session.launch`, environment risk, pane-tab destination, and
-  `ssh <destination>`. The literal editor provides the `L` mnemonic,
-  512-byte exact validation, atomic paste/IME rejection, trapped focus,
-  disabled invalid review, cancel/close cleanup, conservative production risk,
-  inert background controls, and tiny-to-8K hit geometry. Exact inventory
+  `ssh <destination>`. The literal editor provides a screen-tested `L`
+  mnemonic, 512-byte exact validation, atomic paste/IME rejection, trapped
+  focus, disabled invalid review, one visible Cancel path plus Escape/owning-
+  surface cleanup, conservative production risk, inert background controls,
+  and non-overlapping tiny-to-8K hit geometry. Exact inventory
   aliases, opaque references, and fingerprints do not enter presentation state.
   Controlled native pixel and screen-reader evidence remains external.
 - [ ] **Not done:** the M2-provided current executable/identity observation and

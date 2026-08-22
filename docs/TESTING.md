@@ -1181,6 +1181,7 @@ deliberately non-activated:
     cargo test -p automexia-ui-model --test direct_openssh_review --locked
     cargo test -p automexia-ui-model --test connection_hub --locked
     cargo test -p automexia-terminal --lib automexia::connections --locked
+    cargo test -p automexia-terminal --bin automexia screen::connection_hub::tests --locked
     cargo test -p automexia-terminal --bin automexia renderer::connection_hub::tests --locked
     cargo clippy -p automexia-devops -p automexia-ui-model -p automexia-terminal --all-targets --all-features --locked -- -D warnings
     cargo bench -p automexia-devops --bench connection_planning --locked -- direct_openssh_prepare_selected --warm-up-time 1 --measurement-time 2 --sample-size 20
@@ -1203,12 +1204,15 @@ Application tests cover stable D4-record mapping plus a transient literal host,
 empty and exact 512/513-byte boundaries, option/whitespace/control/bidi/user/
 port/URI/wildcard/metacharacter/Unicode rejection, opaque IDs and debug,
 conservative risk, current/unknown/stale runtime selection, invalid and
-unsupported records, atomic paste/IME handling, focus trapping, cancel/close
-cleanup, generation isolation, redacted diagnostics, Enter-to-review, and
-Escape-to-results. Seven renderer tests cover the three icon-and-color review
-groups, literal field/Review/Cancel hits, inert background and invalid Review,
-route-specific chrome/status, pointer Back, and non-overlapping geometry from
-90x70 through 7680x4320 at 200 percent scale.
+unsupported records, atomic paste/IME handling, focus trapping, cancel/owning-
+surface cleanup, generation isolation, redacted diagnostics, Enter-to-review,
+and Escape-to-results. One screen-input test proves the unmodified case-
+insensitive L mnemonic and prevents Control, Alt, Super, or multi-character key
+theft. Seven renderer tests cover the three icon-and-color review groups,
+literal field/Review/Cancel hits, suppression of the overlapping redundant
+top-level Close hit target, inert background and invalid Review, route-specific
+chrome/status, pointer Back, and bounded non-overlapping geometry from 90x70
+through 7680x4320 at 200 percent scale.
 
 The contract is synchronous and bounded to one selected record or one transient
 512-byte destination plus existing F2 collection ceilings. The lightweight
@@ -1222,12 +1226,12 @@ by unrelated catalog refresh.
 On the native Windows development host on 2026-08-22, the focused literal-host,
 UI-model, controller, and renderer suites, strict owner Clippy, architecture
 verification, repository validation, `cargo fmt --all -- --check`, full
-workspace Clippy, the 1,781-test CI-profile nextest run (7 skipped), workspace
-documentation tests, full QA, and `cargo ready` passed. `cargo ready` also
-passed a clean isolated workspace check/Clippy/test build, dependency policy,
-persistent application build, and version smoke test. The disposable QA
-evidence report is under
-`target/qa/20260822T015154Z-30816/report.html` (UTC timestamp).
+workspace Clippy, the 1,782-test CI-profile nextest run (7 skipped), workspace
+documentation tests, full QA, and `cargo ready` passed after the UX re-audit.
+`cargo ready` also passed a clean isolated workspace check/Clippy/test build,
+dependency policy, persistent application build, and version smoke test. The
+disposable QA evidence report is under
+`target/qa/20260822T022956Z-26248/report.html` (UTC timestamp).
 
 The same-host Criterion sample for `direct_openssh_prepare_selected` measured a
 95 percent interval of 6.3520-6.6011 microseconds with 2 of 20 outliers; this is

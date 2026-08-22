@@ -134,7 +134,9 @@ impl ConnectionHub {
     ) -> Option<ConnectionHubHit> {
         let presentation = self.presentation.as_ref()?;
         let layout = Self::layout(presentation, dimensions);
-        if layout.close.contains(mouse_x, mouse_y) {
+        if presentation.literal_destination.is_none()
+            && layout.close.contains(mouse_x, mouse_y)
+        {
             return Some(ConnectionHubHit::Close);
         }
         if layout.overlay_panel.is_some() {
@@ -342,7 +344,9 @@ impl ConnectionHub {
                 .text_mut()
                 .draw(badge.x + 34.0, badge.y + 7.0, "Read-only", &small);
         }
-        button(sugarloaf, layout.close, "×", false, &label);
+        if presentation.literal_destination.is_none() {
+            button(sugarloaf, layout.close, "×", false, &label);
+        }
 
         if layout.catalog_chrome_visible {
             rounded(sugarloaf, layout.search, SURFACE, 8.0);
@@ -2234,6 +2238,15 @@ mod tests {
             let underlying = layout.filters[0];
             let mut hub = ConnectionHub::default();
             hub.set_presentation(Some(presentation));
+            assert_ne!(
+                hub.hit_test(
+                    layout.close.x + layout.close.width * 0.5,
+                    layout.close.y + layout.close.height * 0.5,
+                    dimensions,
+                ),
+                Some(ConnectionHubHit::Close),
+                "the nested host editor's Cancel action must replace the overlapping top-level close hit target",
+            );
             assert_eq!(
                 hub.hit_test(field.x + 1.0, field.y + 1.0, dimensions),
                 Some(ConnectionHubHit::LiteralDestinationField)
