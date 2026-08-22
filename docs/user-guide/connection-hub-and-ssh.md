@@ -1,26 +1,32 @@
 # Connection Hub and SSH
 
 > **Implemented locally / release-gated:** v0.5 source builds expose a read-only
-> Connection Hub. After exact OpenSSH file review, it can browse public
-> inventory, edit public favorites/tags, and open a disabled preparation review
-> for one supported direct alias. It cannot connect, login, refresh a cloud
-> provider, run a recipe, launch a process, access the network, or create a PTY.
-> Automexia v0.4 users should continue using normal system OpenSSH in the shell.
+> Connection Hub. It can review one bounded host typed by the user or, after
+> exact OpenSSH file review, browse public inventory and edit public
+> favorites/tags. Both paths end at a disabled preparation review. The Hub
+> cannot connect, login, refresh a cloud provider, run a recipe, launch a
+> process, access the network, or create a PTY. Automexia v0.4 users should
+> continue using normal system OpenSSH in the shell.
 ## Use the read-only Connection Hub
 
 1. Press `Ctrl+Shift+H` on Windows/Linux/BSD or `Cmd+Shift+H` on macOS. You can
    also open the command palette and choose **Connection Hub (read-only)**.
-2. Select **Choose SSH files**. The native file picker accepts one or more exact
-   files, including an extensionless `config` file.
-3. Read the canonical-path review. Use Up/Down, Page Up/Page Down, Home/End, or
+2. To review one host without adding inventory, choose **Enter host** or press
+   `L`. Enter a host or alias containing only ASCII letters, numbers, dots,
+   underscores, or hyphens (maximum 512 bytes). The value cannot start with a
+   hyphen. Press Enter to review or Escape to cancel.
+3. Alternatively, select **Choose SSH files**. The native file picker accepts
+   one or more exact files, including an extensionless `config` file.
+4. Read the canonical-path review. Use Up/Down, Page Up/Page Down, Home/End, or
    the pointer to inspect it. Press Enter or choose the confirmation action to
    scan; press Escape or choose Cancel to revoke the selection.
-4. Browse the resulting aliases. Select a row and press Enter to open its
-   disabled Connection Review. Review the public target, identity verification,
-   direct system-OpenSSH route, strict host-key policy, requested capability,
-   environment risk, destination, and ssh <destination> shape.
-5. Press Escape, activate the focused Back control with Enter, or choose Back
-   with the pointer to return. The review never launches a connection.
+5. Browse the resulting aliases. Select a row and press Enter to open its
+   disabled Connection Review.
+6. Review the public target, identity verification, direct system-OpenSSH route,
+   strict host-key policy, requested capability, environment risk, destination,
+   and `ssh <destination>` shape. Press Escape, activate the focused Back
+   control with Enter, or choose Back with the pointer to return. The review
+   never launches a connection.
 
 Opening the Hub does not scan standard locations. The selected files remain an
 in-memory grant for the current application lifetime and must be selected again
@@ -38,17 +44,18 @@ operation settles.
 
 ## Browse efficiently
 
-The first-run setup keeps one primary action visible: **Choose SSH files**.
-Search, filters, grouping, and catalog shortcuts appear only after a usable
-catalog exists; hidden controls cannot receive pointer, keyboard, or IME input.
-**Clear** appears only while a filter is active. The modal keeps terminal input
-inert until it closes. Once the catalog is visible, these controls work while
-the search field is not receiving text:
+The first-run setup keeps two clear choices visible: **Enter host** and
+**Choose SSH files**. Search, filters, grouping, and catalog shortcuts appear
+only after a usable catalog exists; hidden controls cannot receive pointer,
+keyboard, or IME input. **Clear** appears only while a filter is active. The
+modal keeps terminal input inert until it closes. These controls work from the
+results route while the search field is not receiving text:
 
 | Key | Result |
 |---|---|
 | Up/Down, Page Up/Page Down, Home/End | Move the managed selection |
 | Enter | Open the disabled preparation review; activate Back when it is focused |
+| `L` | Open the direct-host editor; Search still receives `l` as text while focused |
 | `/` or `Ctrl/Cmd+F` | Focus search |
 | Tab / Shift+Tab | Move modal focus |
 | Space | Review a favorite change for the selected row |
@@ -102,19 +109,29 @@ available, the Hub stays open and fails closed.
 
 ## What the current managed-SSH preparation means
 
-For a selected direct inventory alias, the Hub now builds a current,
-generation-bound public profile and canonical pending F2 plan, then shows it in
-a compact Connection/Safety/Launch review. Identity and executable verification
+For a selected direct inventory alias, the Hub builds a current,
+generation-bound public profile and canonical pending F2 plan. A typed literal
+host uses the same pure preparation, but remains transient and is classified as
+production risk until a trusted profile can classify it. Both paths end in the
+compact Connection/Safety/Launch review. Identity and executable verification
 are explicitly pending, host-key handling stays owned by system OpenSSH, the
-only requested capability is session.launch, and the primary action remains
+only requested capability is `session.launch`, and the primary action remains
 disabled.
 
-The exact alias, opaque identity/source references, executable digest, and plan
-fingerprints are not copied into the presentation model. Selection, route,
-catalog, metadata, runtime-state, or generation changes discard or rebuild the
-preparation. Unsupported ProxyJump inventory entries fail closed with a
-path-free diagnostic. No OpenSSH process, network connection, PTY, login,
-reconnect, or recent-use write occurs.
+The literal editor accepts one exact host argument only. User, port, URI, IPv6,
+jump, tunnel, wildcard, Unicode, whitespace, control, bidirectional, option, and
+shell forms fail closed; rejected paste or IME text is not partially inserted.
+Tab and Shift+Tab stay inside the editor, Review, and Cancel controls. Cancel,
+close, or successful preparation clears the editor.
+
+Exact inventory aliases, opaque identity/source references, executable digests,
+and plan fingerprints are not copied into presentation state. Inventory
+selection, route, catalog, metadata, runtime-state, or generation changes
+discard or rebuild inventory preparation; an unrelated catalog refresh cannot
+rewrite a transient literal review. Unsupported ProxyJump inventory entries
+fail closed with a path-free diagnostic. No OpenSSH process, network
+connection, PTY, login, reconnect, persistence, history, or recent-use write
+occurs.
 
 This is a review-preparation workflow, not a Connect button. Continue using the
 system client below; if future managed SSH is disabled or unavailable, that
@@ -147,8 +164,8 @@ root:
 
 D4 favorite/tag metadata is under `extensions/devops-ssh`; the private local
 profile/recipe/preference document is under `connections`. Raw selected paths,
-keys, passphrases, tokens, provider credentials, search text, and terminal
-history are not stored by the M1 Hub. Each owned store is bounded, user-private,
+typed literal hosts, keys, passphrases, tokens, provider credentials, search
+text, and terminal history are not stored by the M1/M3 Hub. Each owned store is bounded, user-private,
 compare-and-swap protected, atomically replaced, and retains at most one
 validated recovery generation.
 
@@ -162,9 +179,9 @@ configuration, keys, agents, or `known_hosts` as a Hub recovery step.
 ## What remains planned
 
 D5.2 still owns reviewed system-OpenSSH launch, current executable/identity
-observation, a product literal destination entry, independent PTYs, jumps,
-tunnels, full host-trust explanation, cancellation, reconnect, receipts, and
-lifecycle evidence. D6 separately owns AWS, Azure, Google Cloud, Kubernetes,
+observation, independent PTYs, typed user/port/routes, jumps, tunnels, full
+host-trust explanation, cancellation, reconnect, receipts, and lifecycle
+evidence. D6 separately owns AWS, Azure, Google Cloud, Kubernetes,
 OpenShift, Teleport, and OpenBao adapters. There is no current Hub remote-file
 browser, credential vault, automatic provider login, or cloud refresh.
 

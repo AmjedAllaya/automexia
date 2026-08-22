@@ -139,6 +139,8 @@ fn request<'a>(
         focus: HubFocus::Results,
         opener_id: "terminal-pane-7",
         live_announcement: Some("14 cached connections"),
+        literal_destination_entry: false,
+        literal_destination_valid: false,
     }
 }
 
@@ -268,6 +270,68 @@ fn initial_setup_omits_catalog_only_controls_from_visual_and_accessible_order() 
     assert!(ready.accessibility_tree.iter().any(|node| {
         node.id == "connection-search" && node.role == AccessibilityRole::SearchBox
     }));
+}
+
+#[test]
+fn literal_destination_entry_replaces_catalog_semantics_and_exposes_a_focusable_dialog_order(
+) {
+    let connections = summaries();
+    let mut input = request(&connections, Viewport::new(1_280.0, 720.0, 1.0));
+    input.literal_destination_entry = true;
+    input.literal_destination_valid = false;
+    input.focus = HubFocus::LiteralDestination;
+    let view = project_connection_hub(input);
+
+    assert!(!view.search_visible);
+    assert!(!view.navigation_visible);
+    for hidden in [
+        "connection-search",
+        "connection-filters",
+        "connection-results",
+        "connection-primary-action",
+    ] {
+        assert!(!view.accessibility_tree.iter().any(|node| node.id == hidden));
+    }
+    let field = view
+        .accessibility_tree
+        .iter()
+        .find(|node| node.id == "literal-ssh-destination")
+        .unwrap();
+    assert_eq!(field.role, AccessibilityRole::TextBox);
+    assert!(field.focusable);
+    let review = view
+        .accessibility_tree
+        .iter()
+        .find(|node| node.id == "literal-ssh-review")
+        .unwrap();
+    assert!(review.disabled);
+    assert_eq!(
+        view.reading_order,
+        [
+            "connection-hub-title",
+            "literal-ssh-instructions",
+            "literal-ssh-destination",
+            "literal-ssh-status",
+            "literal-ssh-review",
+            "literal-ssh-cancel",
+            "connection-close",
+        ]
+    );
+
+    let mut valid = request(&connections, Viewport::new(1_280.0, 720.0, 1.0));
+    valid.literal_destination_entry = true;
+    valid.literal_destination_valid = true;
+    let view = project_connection_hub(valid);
+    assert!(
+        !view
+            .accessibility_tree
+            .iter()
+            .find(|node| node.id == "literal-ssh-review")
+            .unwrap()
+            .disabled
+    );
+    assert!(!view.execution_enabled);
+    assert!(!view.pty_resize_requested);
 }
 
 #[test]

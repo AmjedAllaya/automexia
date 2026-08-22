@@ -5,6 +5,10 @@ use std::{path::PathBuf, sync::Arc};
 use automexia_devops::connections::DirectOpenSshPreparation;
 use automexia_devops_ssh::GrantKind;
 use automexia_extension_runtime::CompletionWake;
+
+use super::direct_openssh::{
+    prepare_literal_direct_openssh, validate_literal_direct_openssh_destination,
+};
 use automexia_ui_model::connection_hub::{
     apply_hub_key, hub_catalog_controls_visible, project_connection_catalog,
     project_connection_hub, project_direct_openssh_preparation,
@@ -52,11 +56,18 @@ const DISABLED_ACTIONS: [DisabledHubAction; 4] = [
     },
 ];
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DirectOpenSshPreparationOrigin {
+    Inventory,
+    Literal,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HubControllerEffect {
     None,
     Interaction(InteractionEffect),
     MetadataReviewReady,
+    LiteralReviewReady,
     MetadataSubmitted { request: u64 },
     Closed { restore_focus_to: String },
     Error(HubRuntimeErrorCode),
@@ -69,6 +80,9 @@ pub struct HubControllerPresentation {
     pub catalog_query: ConnectionCatalogQuery,
     pub row_group_labels: Vec<Option<String>>,
     pub ime_preedit: Option<String>,
+    pub literal_destination: Option<String>,
+    pub literal_destination_diagnostic: Option<&'static str>,
+    pub literal_destination_valid: bool,
     pub grant_review_offset: usize,
     pub metadata_review: Option<MetadataChangeReview>,
     pub tag_editor: Option<String>,
@@ -88,6 +102,8 @@ pub struct ConnectionHubController {
     runtime_snapshot: HubRuntimeSnapshot,
     query: ConnectionCatalogQuery,
     ime_preedit: Option<String>,
+    literal_destination: Option<String>,
+    literal_destination_diagnostic: Option<&'static str>,
     grant_review_offset: usize,
     grant_review_request: Option<u64>,
     metadata_review: Option<MetadataChangeReview>,
@@ -97,6 +113,7 @@ pub struct ConnectionHubController {
     interaction: InteractionState,
     selected_id: Option<String>,
     direct_openssh_preparation: Option<DirectOpenSshPreparation>,
+    direct_openssh_preparation_origin: Option<DirectOpenSshPreparationOrigin>,
     direct_openssh_diagnostic: Option<&'static str>,
     #[cfg(test)]
     projection_refresh_count: u64,
@@ -123,6 +140,8 @@ impl ConnectionHubController {
             runtime_snapshot,
             query,
             ime_preedit: None,
+            literal_destination: None,
+            literal_destination_diagnostic: None,
             grant_review_offset: 0,
             grant_review_request: None,
             metadata_review: None,
@@ -136,6 +155,7 @@ impl ConnectionHubController {
             ),
             selected_id: None,
             direct_openssh_preparation: None,
+            direct_openssh_preparation_origin: None,
             direct_openssh_diagnostic: None,
             #[cfg(test)]
             projection_refresh_count: 1,
@@ -146,6 +166,8 @@ impl ConnectionHubController {
 
     pub fn open(&mut self, opener_id: impl Into<String>) {
         let opener_id = opener_id.into();
+        self.cancel_literal_destination_entry();
+        self.clear_direct_openssh_preparation();
         self.active = true;
         self.interaction = InteractionState::new(
             self.projection.indices.len(),
@@ -165,10 +187,12 @@ impl ConnectionHubController {
             && self.owned_grant_review().is_none()
             && self.metadata_review.is_none()
             && self.tag_editor.is_none()
+            && self.literal_destination.is_none()
     }
 
     pub fn close(&mut self) -> String {
         self.clear_direct_openssh_preparation();
+        self.cancel_literal_destination_entry();
         self.discard_owned_review();
         self.metadata_review = None;
         self.tag_editor = None;
@@ -194,6 +218,150 @@ impl ConnectionHubController {
 
     pub fn focus_search(&mut self) {
         self.interaction.focus = HubFocus::Search;
+    }
+
+    pub fn can_begin_literal_destination_entry(&self) -> bool {
+        self.active
+            && self.interaction.route == HubRoute::Results
+            && self.literal_destination.is_none()
+            && self.owned_grant_review().is_none()
+            && self.metadata_review.is_none()
+            && self.tag_editor.is_none()
+    }
+
+    pub fn begin_literal_destination_entry(&mut self) -> bool {
+        if !self.can_begin_literal_destination_entry() {
+            return false;
+        }
+        self.clear_direct_openssh_preparation();
+        self.literal_destination = Some(String::new());
+        self.literal_destination_diagnostic = None;
+        self.ime_preedit = None;
+        self.interaction.focus = HubFocus::LiteralDestination;
+        true
+    }
+
+    pub fn literal_destination_entry_is_active(&self) -> bool {
+        self.literal_destination.is_some()
+    }
+
+    pub fn literal_destination(&self) -> Option<&str> {
+        self.literal_destination.as_deref()
+    }
+
+    pub const fn literal_destination_diagnostic(&self) -> Option<&'static str> {
+        self.literal_destination_diagnostic
+    }
+
+    pub fn literal_destination_is_valid(&self) -> bool {
+        self.literal_destination_diagnostic.is_none()
+            && self
+                .literal_destination
+                .as_deref()
+                .is_some_and(|destination| {
+                    validate_literal_direct_openssh_destination(destination).is_ok()
+                })
+    }
+
+    pub fn focus_literal_destination(&mut self) {
+        if self.literal_destination.is_some() {
+            self.interaction.focus = HubFocus::LiteralDestination;
+        }
+    }
+
+    pub fn append_literal_destination(&mut self, value: &str) -> bool {
+        let Some(current) = self.literal_destination.as_ref() else {
+            return false;
+        };
+        if self.interaction.focus != HubFocus::LiteralDestination {
+            return false;
+        }
+        let mut candidate = current.clone();
+        candidate.push_str(value);
+        match validate_literal_direct_openssh_destination(&candidate) {
+            Ok(()) => {
+                self.literal_destination = Some(candidate);
+                self.literal_destination_diagnostic = None;
+                true
+            }
+            Err(error) => {
+                self.literal_destination_diagnostic = Some(error.diagnostic());
+                false
+            }
+        }
+    }
+
+    pub fn backspace_literal_destination(&mut self) {
+        if self.interaction.focus != HubFocus::LiteralDestination {
+            return;
+        }
+        if let Some(destination) = self.literal_destination.as_mut() {
+            destination.pop();
+            self.literal_destination_diagnostic = None;
+            self.ime_preedit = None;
+        }
+    }
+
+    pub fn cycle_literal_destination_focus(&mut self, reverse: bool) {
+        if self.literal_destination.is_none() {
+            return;
+        }
+        self.interaction.focus = match (reverse, &self.interaction.focus) {
+            (false, HubFocus::LiteralDestination) | (true, HubFocus::Back) => {
+                HubFocus::PrimaryAction
+            }
+            (false, HubFocus::PrimaryAction) | (true, HubFocus::LiteralDestination) => {
+                HubFocus::Back
+            }
+            _ => HubFocus::LiteralDestination,
+        };
+    }
+
+    pub fn confirm_literal_destination(&mut self) -> HubControllerEffect {
+        let Some(destination) = self.literal_destination.as_deref() else {
+            return HubControllerEffect::None;
+        };
+        match prepare_literal_direct_openssh(destination) {
+            Ok(prepared) => {
+                self.literal_destination = None;
+                self.literal_destination_diagnostic = None;
+                self.ime_preedit = None;
+                self.direct_openssh_preparation = Some(prepared);
+                self.direct_openssh_preparation_origin =
+                    Some(DirectOpenSshPreparationOrigin::Literal);
+                self.direct_openssh_diagnostic = None;
+                self.interaction.route = HubRoute::Review;
+                self.interaction.focus = HubFocus::Review;
+                HubControllerEffect::LiteralReviewReady
+            }
+            Err(error) => {
+                self.literal_destination_diagnostic = Some(error.diagnostic());
+                self.interaction.focus = HubFocus::LiteralDestination;
+                HubControllerEffect::None
+            }
+        }
+    }
+
+    pub fn activate_literal_destination_focus(&mut self) -> HubControllerEffect {
+        match self.interaction.focus {
+            HubFocus::LiteralDestination | HubFocus::PrimaryAction => {
+                self.confirm_literal_destination()
+            }
+            HubFocus::Back => {
+                self.cancel_literal_destination_entry();
+                HubControllerEffect::None
+            }
+            _ => HubControllerEffect::None,
+        }
+    }
+
+    pub fn cancel_literal_destination_entry(&mut self) {
+        self.literal_destination = None;
+        self.literal_destination_diagnostic = None;
+        self.ime_preedit = None;
+        if self.interaction.route == HubRoute::Results {
+            self.interaction.focus = HubFocus::Results;
+        }
     }
 
     pub fn select_projected_index(&mut self, index: usize) {
@@ -224,6 +392,26 @@ impl ConnectionHubController {
             self.ime_preedit = None;
             return true;
         };
+        if let Some(destination) = self.literal_destination.as_ref() {
+            if self.interaction.focus != HubFocus::LiteralDestination {
+                self.ime_preedit = None;
+                return false;
+            }
+            let mut candidate = destination.clone();
+            candidate.push_str(value);
+            return match validate_literal_direct_openssh_destination(&candidate) {
+                Ok(()) => {
+                    self.literal_destination_diagnostic = None;
+                    self.ime_preedit = Some(value.to_owned());
+                    true
+                }
+                Err(error) => {
+                    self.ime_preedit = None;
+                    self.literal_destination_diagnostic = Some(error.diagnostic());
+                    false
+                }
+            };
+        }
         if let Some(editor) = self.tag_editor.as_ref() {
             if editor.len().saturating_add(value.len()) > MAX_CATALOG_QUERY_BYTES
                 || value.chars().any(unsafe_metadata_character)
@@ -248,7 +436,9 @@ impl ConnectionHubController {
     }
 
     pub fn commit_ime(&mut self, value: &str) -> bool {
-        let accepted = if self.tag_editor.is_some() {
+        let accepted = if self.literal_destination.is_some() {
+            self.append_literal_destination(value)
+        } else if self.tag_editor.is_some() {
             self.append_tag_editor(value)
         } else if self.catalog_controls_visible()
             && self.interaction.focus == HubFocus::Search
@@ -393,7 +583,11 @@ impl ConnectionHubController {
         if refresh_projection {
             self.refresh_projection();
         }
-        if review_binding_changed && self.interaction.route == HubRoute::Review {
+        if review_binding_changed
+            && self.interaction.route == HubRoute::Review
+            && self.direct_openssh_preparation_origin
+                == Some(DirectOpenSshPreparationOrigin::Inventory)
+        {
             self.refresh_direct_openssh_preparation();
         }
         let review_len = match self.owned_grant_review() {
@@ -419,7 +613,11 @@ impl ConnectionHubController {
             selected_id: self.selected_id.as_deref(),
             focus: self.interaction.focus.clone(),
             opener_id: &self.interaction.opener_id,
-            live_announcement: self.live_announcement(),
+            live_announcement: self
+                .literal_destination_diagnostic
+                .or_else(|| self.live_announcement()),
+            literal_destination_entry: self.literal_destination.is_some(),
+            literal_destination_valid: self.literal_destination_is_valid(),
         });
         let row_group_labels = view
             .visible_range
@@ -438,6 +636,9 @@ impl ConnectionHubController {
             catalog_query: self.query.clone(),
             row_group_labels,
             ime_preedit: self.ime_preedit.clone(),
+            literal_destination: self.literal_destination.clone(),
+            literal_destination_diagnostic: self.literal_destination_diagnostic,
+            literal_destination_valid: self.literal_destination_is_valid(),
             grant_review_offset: self.grant_review_offset,
             metadata_review: self.metadata_review.clone(),
             tag_editor: self.tag_editor.clone(),
@@ -466,6 +667,28 @@ impl ConnectionHubController {
     ) -> HubControllerEffect {
         if !self.active {
             return HubControllerEffect::None;
+        }
+        if self.literal_destination.is_some() {
+            return match key {
+                HubKey::Enter => self.activate_literal_destination_focus(),
+                HubKey::Escape => {
+                    self.cancel_literal_destination_entry();
+                    HubControllerEffect::None
+                }
+                HubKey::Tab => {
+                    self.cycle_literal_destination_focus(false);
+                    HubControllerEffect::Interaction(InteractionEffect::FocusChanged(
+                        self.interaction.focus.clone(),
+                    ))
+                }
+                HubKey::ShiftTab => {
+                    self.cycle_literal_destination_focus(true);
+                    HubControllerEffect::Interaction(InteractionEffect::FocusChanged(
+                        self.interaction.focus.clone(),
+                    ))
+                }
+                _ => HubControllerEffect::None,
+            };
         }
         if self.metadata_review.is_some() {
             return match key {
@@ -651,6 +874,7 @@ impl ConnectionHubController {
 
     fn refresh_direct_openssh_preparation(&mut self) {
         self.direct_openssh_preparation = None;
+        self.direct_openssh_preparation_origin = None;
         self.direct_openssh_diagnostic = None;
         let Some(connection_id) = self.selected_id.as_deref() else {
             self.direct_openssh_diagnostic =
@@ -658,13 +882,18 @@ impl ConnectionHubController {
             return;
         };
         match self.runtime.prepare_direct_openssh(connection_id) {
-            Ok(prepared) => self.direct_openssh_preparation = Some(prepared),
+            Ok(prepared) => {
+                self.direct_openssh_preparation = Some(prepared);
+                self.direct_openssh_preparation_origin =
+                    Some(DirectOpenSshPreparationOrigin::Inventory);
+            }
             Err(error) => self.direct_openssh_diagnostic = Some(error.diagnostic_code()),
         }
     }
 
     fn clear_direct_openssh_preparation(&mut self) {
         self.direct_openssh_preparation = None;
+        self.direct_openssh_preparation_origin = None;
         self.direct_openssh_diagnostic = None;
     }
 
@@ -856,6 +1085,134 @@ mod tests {
             controller.projection_refresh_count(),
             refreshes.saturating_add(1)
         );
+    }
+
+    #[test]
+    fn literal_destination_entry_is_bounded_focus_trapped_transient_and_review_only() {
+        let temporary = tempfile::tempdir().unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        let mut controller = ConnectionHubController::new(runtime);
+        controller.open("terminal-grid");
+
+        assert!(controller.begin_literal_destination_entry());
+        assert!(controller.literal_destination_entry_is_active());
+        assert_eq!(controller.focus(), HubFocus::LiteralDestination);
+        assert!(controller.append_literal_destination("host"));
+        assert!(!controller.append_literal_destination("@operator"));
+        assert_eq!(controller.literal_destination(), Some("host"));
+        assert_eq!(
+            controller.literal_destination_diagnostic(),
+            Some("Use one host or alias with letters, numbers, dots, underscores, or hyphens.")
+        );
+        assert!(controller.append_literal_destination(".example.invalid"));
+        assert!(controller.set_ime_preedit(Some("-canary")));
+        assert!(controller.commit_ime("-canary"));
+        assert_eq!(
+            controller.literal_destination(),
+            Some("host.example.invalid-canary")
+        );
+        assert!(controller.literal_destination_is_valid());
+
+        controller.cycle_literal_destination_focus(false);
+        assert_eq!(controller.focus(), HubFocus::PrimaryAction);
+        controller.cycle_literal_destination_focus(false);
+        assert_eq!(controller.focus(), HubFocus::Back);
+        controller.cycle_literal_destination_focus(false);
+        assert_eq!(controller.focus(), HubFocus::LiteralDestination);
+
+        let before = controller.presentation(
+            Viewport::new(1_280.0, 800.0, 1.0),
+            HubVisualPreferences::default(),
+        );
+        assert_eq!(
+            before.literal_destination.as_deref(),
+            Some("host.example.invalid-canary")
+        );
+        assert_eq!(before.library.profile_count, 0);
+        assert!(before.direct_openssh_review.is_none());
+
+        assert_eq!(
+            controller.confirm_literal_destination(),
+            HubControllerEffect::LiteralReviewReady
+        );
+        let prepared = controller.presentation(
+            Viewport::new(1_280.0, 800.0, 1.0),
+            HubVisualPreferences::default(),
+        );
+        assert_eq!(prepared.view.route, HubRoute::Review);
+        assert!(prepared.literal_destination.is_none());
+        assert!(prepared.literal_destination_diagnostic.is_none());
+        assert_eq!(prepared.library.profile_count, 0);
+        let review = prepared.direct_openssh_review.unwrap();
+        assert!(!review.execution_enabled);
+        assert!(review.sections.iter().any(|section| {
+            section.heading == "Environment risk"
+                && section.summary == "Production"
+                && section.blocking
+        }));
+        assert!(review.sections.iter().any(|section| {
+            section.heading == "Public target"
+                && section.summary == "host.example.invalid-canary"
+        }));
+
+        controller.sync();
+        let after_sync = controller.presentation(
+            Viewport::new(1_280.0, 800.0, 1.0),
+            HubVisualPreferences::default(),
+        );
+        assert!(after_sync.direct_openssh_review.is_some());
+
+        let effect = controller.handle_key(HubKey::Escape, Box::new(|| {}));
+        assert_eq!(
+            effect,
+            HubControllerEffect::Interaction(InteractionEffect::BackToResults)
+        );
+        assert!(controller
+            .presentation(
+                Viewport::new(1_280.0, 800.0, 1.0),
+                HubVisualPreferences::default(),
+            )
+            .direct_openssh_review
+            .is_none());
+    }
+
+    #[test]
+    fn literal_destination_cancel_and_close_clear_transient_editor_state() {
+        let temporary = tempfile::tempdir().unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        let mut controller = ConnectionHubController::new(runtime);
+        controller.open("terminal-grid");
+
+        assert!(controller.begin_literal_destination_entry());
+        assert!(controller.append_literal_destination("cancel-canary"));
+        assert_eq!(
+            controller.handle_key(HubKey::Tab, Box::new(|| {})),
+            HubControllerEffect::Interaction(InteractionEffect::FocusChanged(
+                HubFocus::PrimaryAction
+            ))
+        );
+        assert_eq!(
+            controller.handle_key(HubKey::ShiftTab, Box::new(|| {})),
+            HubControllerEffect::Interaction(InteractionEffect::FocusChanged(
+                HubFocus::LiteralDestination
+            ))
+        );
+        assert_eq!(
+            controller.handle_key(HubKey::Escape, Box::new(|| {})),
+            HubControllerEffect::None
+        );
+        assert!(!controller.literal_destination_entry_is_active());
+        assert!(controller.literal_destination_diagnostic().is_none());
+        assert_eq!(controller.focus(), HubFocus::Results);
+
+        assert!(controller.begin_literal_destination_entry());
+        assert!(controller.append_literal_destination("close-canary"));
+        assert_eq!(controller.close(), "terminal-grid");
+        assert!(!controller.is_active());
+        assert!(!controller.literal_destination_entry_is_active());
+        assert!(controller.literal_destination_diagnostic().is_none());
     }
 
     #[test]

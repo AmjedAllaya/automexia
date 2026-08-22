@@ -163,6 +163,7 @@ pub enum HubRoute {
 pub enum HubFocus {
     Title,
     Search,
+    LiteralDestination,
     Filters,
     Results,
     Result(String),
@@ -530,6 +531,7 @@ pub enum AccessibilityRole {
     Heading,
     Navigation,
     SearchBox,
+    TextBox,
     Toolbar,
     Grid,
     Row,
@@ -633,6 +635,8 @@ pub struct HubProjectionRequest<'a> {
     pub focus: HubFocus,
     pub opener_id: &'a str,
     pub live_announcement: Option<&'a str>,
+    pub literal_destination_entry: bool,
+    pub literal_destination_valid: bool,
 }
 
 fn provider_label(provider: ProviderKind) -> &'static str {
@@ -767,7 +771,8 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
         })
         .collect::<Vec<_>>();
 
-    let catalog_controls_visible = hub_catalog_controls_visible(request.content_state);
+    let catalog_controls_visible = hub_catalog_controls_visible(request.content_state)
+        && !request.literal_destination_entry;
     let mut accessibility_tree = Vec::with_capacity(rows.len() + 9);
     let mut dialog = AccessibilityNode::new(
         "connection-hub",
@@ -775,116 +780,189 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
         "Connection Hub",
     );
     dialog.modal = true;
-    dialog.description = request.content_state.status_text().to_owned();
+    dialog.description = if request.literal_destination_entry {
+        "Review one direct SSH host without opening a connection".into()
+    } else {
+        request.content_state.status_text().to_owned()
+    };
     accessibility_tree.push(dialog);
     accessibility_tree.push(AccessibilityNode::new(
         "connection-hub-title",
         AccessibilityRole::Heading,
-        "Connection Hub",
+        if request.literal_destination_entry {
+            "Review direct SSH host"
+        } else {
+            "Connection Hub"
+        },
     ));
-    if catalog_controls_visible {
+
+    let reading_order = if request.literal_destination_entry {
         accessibility_tree.push(AccessibilityNode::new(
-            "connection-groups",
-            AccessibilityRole::Navigation,
-            "Connection groups",
+            "literal-ssh-instructions",
+            AccessibilityRole::Group,
+            "Enter one host or SSH alias. User, port, URI, options, and jump routes are unavailable.",
         ));
-        let mut search = AccessibilityNode::new(
-            "connection-search",
-            AccessibilityRole::SearchBox,
-            "Search public connections",
+        let mut destination = AccessibilityNode::new(
+            "literal-ssh-destination",
+            AccessibilityRole::TextBox,
+            "SSH host or alias",
         );
-        search.focusable = true;
-        accessibility_tree.push(search);
-        accessibility_tree.push(AccessibilityNode::new(
-            "connection-filters",
-            AccessibilityRole::Toolbar,
-            "Connection filters",
-        ));
-        let mut grid = AccessibilityNode::new(
-            "connection-results",
-            AccessibilityRole::Grid,
-            format!("{} connection results", request.connections.len()),
+        destination.description =
+            "ASCII letters, numbers, dots, underscores, and hyphens; 512 bytes maximum."
+                .into();
+        destination.focusable = true;
+        destination.actions = vec!["edit".into()];
+        accessibility_tree.push(destination);
+        let mut status = AccessibilityNode::new(
+            "literal-ssh-status",
+            AccessibilityRole::Status,
+            request.live_announcement.unwrap_or(
+                "Preparation only; no process, PTY, credential, or network access",
+            ),
         );
-        grid.focusable = rows.is_empty();
-        grid.actions = vec![
-            "move-previous".into(),
-            "move-next".into(),
-            "move-first".into(),
-            "move-last".into(),
-            "open-review".into(),
-        ];
-        accessibility_tree.push(grid);
-        for row in &rows {
-            let mut node = AccessibilityNode::new(
-                format!("connection-row-{}", row.id),
-                AccessibilityRole::Row,
-                format!(
-                    "{}, {}, {}, {} risk",
-                    row.display_name, row.provider_label, row.state_label, row.risk_label
-                ),
-            );
-            node.description = format!(
-                "Target {}; identity {}; environment {}. {}",
-                row.target, row.identity, row.environment, row.primary_action_label
-            );
-            node.focusable = row.selected;
-            node.selected = row.selected;
-            node.actions = vec![
-                "open-review".into(),
-                "toggle-favorite".into(),
-                "show-menu".into(),
-            ];
-            accessibility_tree.push(node);
-        }
-    }
-    let role = match request.content_state {
-        HubContentState::Loading => AccessibilityRole::Progress,
-        HubContentState::Denied
-        | HubContentState::ExtensionCrashed
-        | HubContentState::RevokedCapability
-        | HubContentState::Error => AccessibilityRole::Alert,
-        _ => AccessibilityRole::Status,
-    };
-    let mut status = AccessibilityNode::new(
-        "connection-status",
-        role,
-        request.content_state.status_text(),
-    );
-    status.live = request.content_state == HubContentState::Loading
-        || request.live_announcement.is_some();
-    accessibility_tree.push(status);
-    let mut primary = AccessibilityNode::new(
-        "connection-primary-action",
-        AccessibilityRole::Button,
-        "Review plan; connection execution is unavailable in this phase",
-    );
-    primary.focusable = true;
-    primary.disabled = true;
-    accessibility_tree.push(primary);
-    let mut close = AccessibilityNode::new(
-        "connection-close",
-        AccessibilityRole::Button,
-        "Close Connection Hub",
-    );
-    close.focusable = true;
-    accessibility_tree.push(close);
-    let reading_order = if catalog_controls_visible {
+        status.live = request.live_announcement.is_some();
+        accessibility_tree.push(status);
+        let mut review = AccessibilityNode::new(
+            "literal-ssh-review",
+            AccessibilityRole::Button,
+            "Review direct SSH host",
+        );
+        review.focusable = true;
+        review.disabled = !request.literal_destination_valid;
+        review.actions = vec!["open-review".into()];
+        accessibility_tree.push(review);
+        let mut cancel = AccessibilityNode::new(
+            "literal-ssh-cancel",
+            AccessibilityRole::Button,
+            "Cancel direct SSH host entry",
+        );
+        cancel.focusable = true;
+        cancel.actions = vec!["cancel".into()];
+        accessibility_tree.push(cancel);
+        let mut close = AccessibilityNode::new(
+            "connection-close",
+            AccessibilityRole::Button,
+            "Close Connection Hub",
+        );
+        close.focusable = true;
+        accessibility_tree.push(close);
         vec![
             "connection-hub-title".into(),
-            "connection-search".into(),
-            "connection-filters".into(),
-            "connection-results".into(),
-            "connection-status".into(),
-            "connection-primary-action".into(),
+            "literal-ssh-instructions".into(),
+            "literal-ssh-destination".into(),
+            "literal-ssh-status".into(),
+            "literal-ssh-review".into(),
+            "literal-ssh-cancel".into(),
             "connection-close".into(),
         ]
     } else {
-        vec![
-            "connection-hub-title".into(),
-            "connection-status".into(),
-            "connection-primary-action".into(),
-            "connection-close".into(),
-        ]
+        if catalog_controls_visible {
+            accessibility_tree.push(AccessibilityNode::new(
+                "connection-groups",
+                AccessibilityRole::Navigation,
+                "Connection groups",
+            ));
+            let mut search = AccessibilityNode::new(
+                "connection-search",
+                AccessibilityRole::SearchBox,
+                "Search public connections",
+            );
+            search.focusable = true;
+            accessibility_tree.push(search);
+            accessibility_tree.push(AccessibilityNode::new(
+                "connection-filters",
+                AccessibilityRole::Toolbar,
+                "Connection filters",
+            ));
+            let mut grid = AccessibilityNode::new(
+                "connection-results",
+                AccessibilityRole::Grid,
+                format!("{} connection results", request.connections.len()),
+            );
+            grid.focusable = rows.is_empty();
+            grid.actions = vec![
+                "move-previous".into(),
+                "move-next".into(),
+                "move-first".into(),
+                "move-last".into(),
+                "open-review".into(),
+            ];
+            accessibility_tree.push(grid);
+            for row in &rows {
+                let mut node = AccessibilityNode::new(
+                    format!("connection-row-{}", row.id),
+                    AccessibilityRole::Row,
+                    format!(
+                        "{}, {}, {}, {} risk",
+                        row.display_name,
+                        row.provider_label,
+                        row.state_label,
+                        row.risk_label
+                    ),
+                );
+                node.description = format!(
+                    "Target {}; identity {}; environment {}. {}",
+                    row.target, row.identity, row.environment, row.primary_action_label
+                );
+                node.focusable = row.selected;
+                node.selected = row.selected;
+                node.actions = vec![
+                    "open-review".into(),
+                    "toggle-favorite".into(),
+                    "show-menu".into(),
+                ];
+                accessibility_tree.push(node);
+            }
+        }
+        let role = match request.content_state {
+            HubContentState::Loading => AccessibilityRole::Progress,
+            HubContentState::Denied
+            | HubContentState::ExtensionCrashed
+            | HubContentState::RevokedCapability
+            | HubContentState::Error => AccessibilityRole::Alert,
+            _ => AccessibilityRole::Status,
+        };
+        let mut status = AccessibilityNode::new(
+            "connection-status",
+            role,
+            request.content_state.status_text(),
+        );
+        status.live = request.content_state == HubContentState::Loading
+            || request.live_announcement.is_some();
+        accessibility_tree.push(status);
+        let mut primary = AccessibilityNode::new(
+            "connection-primary-action",
+            AccessibilityRole::Button,
+            "Review plan; connection execution is unavailable in this phase",
+        );
+        primary.focusable = true;
+        primary.disabled = true;
+        accessibility_tree.push(primary);
+        let mut close = AccessibilityNode::new(
+            "connection-close",
+            AccessibilityRole::Button,
+            "Close Connection Hub",
+        );
+        close.focusable = true;
+        accessibility_tree.push(close);
+        if catalog_controls_visible {
+            vec![
+                "connection-hub-title".into(),
+                "connection-search".into(),
+                "connection-filters".into(),
+                "connection-results".into(),
+                "connection-status".into(),
+                "connection-primary-action".into(),
+                "connection-close".into(),
+            ]
+        } else {
+            vec![
+                "connection-hub-title".into(),
+                "connection-status".into(),
+                "connection-primary-action".into(),
+                "connection-close".into(),
+            ]
+        }
     };
 
     ConnectionHubView {

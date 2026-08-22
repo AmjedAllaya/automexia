@@ -166,6 +166,8 @@ fn ten_thousand_records_remain_virtualized_and_have_one_managed_focus_row() {
         focus: HubFocus::Results,
         opener_id: "terminal-pane-7",
         live_announcement: None,
+        literal_destination_entry: false,
+        literal_destination_valid: false,
     });
     assert!(view.rows.len() <= 32);
     assert_eq!(view.rows.iter().filter(|row| row.selected).count(), 1);

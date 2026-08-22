@@ -144,6 +144,37 @@ impl Screen<'_> {
             return true;
         }
 
+        if self.connection_hub.literal_destination_entry_is_active() {
+            match &key_event.logical_key {
+                Key::Named(NamedKey::Escape) => {
+                    self.connection_hub.cancel_literal_destination_entry();
+                }
+                Key::Named(NamedKey::Enter) => {
+                    let _ = self.connection_hub.activate_literal_destination_focus();
+                }
+                Key::Named(NamedKey::Tab) => {
+                    self.connection_hub
+                        .cycle_literal_destination_focus(modifiers.shift_key());
+                }
+                Key::Named(NamedKey::Backspace)
+                    if self.connection_hub.focus() == HubFocus::LiteralDestination =>
+                {
+                    self.connection_hub.backspace_literal_destination();
+                }
+                Key::Character(value)
+                    if self.connection_hub.focus() == HubFocus::LiteralDestination
+                        && ((!modifiers.control_key() && !modifiers.super_key())
+                            || (modifiers.control_key() && modifiers.alt_key())) =>
+                {
+                    let _ = self.connection_hub.append_literal_destination(value);
+                }
+                _ => {}
+            }
+            self.sync_connection_hub();
+            self.mark_dirty();
+            return true;
+        }
+
         let catalog_controls_visible = self.connection_hub.catalog_controls_visible();
         let focus = self.connection_hub.focus();
         if catalog_controls_visible && matches!(focus, HubFocus::Search) {
@@ -166,6 +197,21 @@ impl Screen<'_> {
                 _ => {}
             }
         }
+        if self.connection_hub.can_begin_literal_destination_entry()
+            && !modifiers.control_key()
+            && !modifiers.super_key()
+            && !modifiers.alt_key()
+            && matches!(
+                &key_event.logical_key,
+                Key::Character(value) if value.eq_ignore_ascii_case("l")
+            )
+        {
+            let _ = self.connection_hub.begin_literal_destination_entry();
+            self.sync_connection_hub();
+            self.mark_dirty();
+            return true;
+        }
+
         if catalog_controls_visible
             && !matches!(self.connection_hub.focus(), HubFocus::Search)
             && !modifiers.control_key()
@@ -260,6 +306,18 @@ impl Screen<'_> {
         let route_id = self.context_manager.current().route_id;
         match hit {
             ConnectionHubHit::Search => self.connection_hub.focus_search(),
+            ConnectionHubHit::BeginLiteralDestination => {
+                let _ = self.connection_hub.begin_literal_destination_entry();
+            }
+            ConnectionHubHit::LiteralDestinationField => {
+                self.connection_hub.focus_literal_destination();
+            }
+            ConnectionHubHit::ConfirmLiteralDestination => {
+                let _ = self.connection_hub.confirm_literal_destination();
+            }
+            ConnectionHubHit::CancelLiteralDestination => {
+                self.connection_hub.cancel_literal_destination_entry();
+            }
             ConnectionHubHit::CycleGrouping => self.connection_hub.cycle_grouping(),
             ConnectionHubHit::ToggleFavoritesFilter => {
                 self.connection_hub.toggle_favorites_filter();

@@ -1193,35 +1193,41 @@ pending preparation without a fabricated executable identity, wrong source/
 executable/capability denial, non-applicable trust denial, misleading targets,
 option-like/empty/whitespace/control/bidi/oversized/ambiguous hostile values,
 M4 user/port/jump deferral, profile-identifier/destination/reference-redacted
-debug and errors, observation readiness and
-fingerprint invalidation. Two UI-model review tests cover all nine decisions,
-disabled action, accessibility names, redaction, and application-preparation
-projection. Twelve Hub-model tests include keyboard Back focus restoration.
+debug and errors, observation readiness, and fingerprint invalidation. Two
+UI-model review tests cover all nine decisions, disabled action, accessibility
+names, redaction, and application-preparation projection. Thirteen Hub-model
+tests add the literal textbox role, reading order, invalid disabled action,
+hidden catalog semantics, and focus restoration.
 
-Eight application connection tests cover stable D4-record mapping, invalid and
-unsupported records, current/unknown/stale runtime selection, one bounded
-immutable controller-owned preparation, generation invalidation, redacted
-diagnostics, Enter-to-review, and Escape-to-results. Six renderer tests cover
-the three icon-and-color groups, route-specific chrome, an inert disabled
-primary action, pointer Back, truthful route-specific status, readable group
-labels at 360x280, and bounded geometry at 1280x720 and 7680x4320 at 200
-percent scale.
+Application tests cover stable D4-record mapping plus a transient literal host,
+empty and exact 512/513-byte boundaries, option/whitespace/control/bidi/user/
+port/URI/wildcard/metacharacter/Unicode rejection, opaque IDs and debug,
+conservative risk, current/unknown/stale runtime selection, invalid and
+unsupported records, atomic paste/IME handling, focus trapping, cancel/close
+cleanup, generation isolation, redacted diagnostics, Enter-to-review, and
+Escape-to-results. Seven renderer tests cover the three icon-and-color review
+groups, literal field/Review/Cancel hits, inert background and invalid Review,
+route-specific chrome/status, pointer Back, and non-overlapping geometry from
+90x70 through 7680x4320 at 200 percent scale.
 
-The contract is synchronous and bounded to one selected record, a 512-byte
-destination, and existing F2 collection ceilings. It adds no worker, file,
-process, socket, PTY, listener, route, credential, persistence, or GPU resource.
-The existing runtime clones the selected public record under its catalog lock;
-pure preparation and projection occur after the lock is released. Review state
-is discarded when the selection, metadata, catalog generation, or route changes.
+The contract is synchronous and bounded to one selected record or one transient
+512-byte destination plus existing F2 collection ceilings. The lightweight
+validator runs only on the bounded host editor; composition runs on explicit
+Review. It adds no worker, file, process, socket, PTY, listener, route,
+credential, persistence, or GPU resource. The existing runtime clones an
+inventory record under its catalog lock and composes it after lock release.
+Literal state is memory-only, clears on cancel/close/success, and is not rebuilt
+by unrelated catalog refresh.
 
-On the native Windows development host on 2026-08-22, the focused suites,
-strict owner Clippy, architecture verification, repository validation,
-`cargo fmt --all -- --check`, full workspace Clippy, the 1,775-test CI-profile
-nextest run (7 skipped), workspace documentation tests, full QA, and
-`cargo ready` passed. `cargo ready` also passed a clean isolated workspace
-check/Clippy/test build, dependency policy, persistent application build, and
-version smoke test. The disposable QA evidence report is under
-`target/qa/20260822T001824Z-2240/report.html` (UTC timestamp).
+On the native Windows development host on 2026-08-22, the focused literal-host,
+UI-model, controller, and renderer suites, strict owner Clippy, architecture
+verification, repository validation, `cargo fmt --all -- --check`, full
+workspace Clippy, the 1,781-test CI-profile nextest run (7 skipped), workspace
+documentation tests, full QA, and `cargo ready` passed. `cargo ready` also
+passed a clean isolated workspace check/Clippy/test build, dependency policy,
+persistent application build, and version smoke test. The disposable QA
+evidence report is under
+`target/qa/20260822T015154Z-30816/report.html` (UTC timestamp).
 
 The same-host Criterion sample for `direct_openssh_prepare_selected` measured a
 95 percent interval of 6.3520-6.6011 microseconds with 2 of 20 outliers; this is
