@@ -3,15 +3,17 @@
 //! This module projects already validated public records. It cannot launch,
 //! authenticate, open a listener, resize a PTY, or access a renderer.
 
-use std::{cmp::Ordering, fmt, ops::Range};
+use std::{cmp::Ordering, collections::HashSet, fmt, ops::Range};
 
 use automexia_devops::connections::{
-    ActionRisk, AuthState, AutomationAction, ConnectionReview, DestinationSurface,
+    ActionRisk, AuthState, AutomationAction, BroadcastLifecycle, BroadcastReview,
+    BroadcastState, BroadcastTargetOutcome, ConnectionReview, DestinationSurface,
     DirectOpenSshHostTrustPolicy, DirectOpenSshIdentityReadiness,
     DirectOpenSshPreparation, DirectOpenSshReview, DirectOpenSshTunnelConfirmation,
     DirectOpenSshTunnelDescriptor, DirectOpenSshTunnelLifecycle, DirectOpenSshTunnelPlan,
     DirectOpenSshTunnelState, EnvironmentRisk, ExecutionStage, HostTrustState,
     ProviderKind, ResolvedConnectionPlan, StaleAuthState, TunnelKind,
+    WorkspaceRestorePlan,
 };
 use serde::{Deserialize, Serialize};
 
@@ -1860,6 +1862,271 @@ pub fn project_recipe_planner(
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SemanticTone {
+    Neutral,
+    Accent,
+    Success,
+    Warning,
+    Danger,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkspaceRestoreTargetView {
+    pub id: String,
+    pub icon: &'static str,
+    pub label: String,
+    pub location: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkspaceRestoreView {
+    pub layout: HubLayout,
+    pub title: &'static str,
+    pub icon: &'static str,
+    pub tone: SemanticTone,
+    pub summary: String,
+    pub targets: Vec<WorkspaceRestoreTargetView>,
+    pub review_required: bool,
+    pub automatic_reconnect: bool,
+    pub resume_interrupted_actions: bool,
+    pub execution_enabled: bool,
+    pub primary_label: &'static str,
+    pub restore_focus_to: String,
+    pub accessibility_tree: Vec<AccessibilityNode>,
+}
+
+pub fn project_workspace_restore(
+    plan: &WorkspaceRestorePlan,
+    viewport: Viewport,
+    restore_focus_to: impl Into<String>,
+) -> WorkspaceRestoreView {
+    let window_count = plan
+        .targets
+        .iter()
+        .map(|target| target.window_id.as_str())
+        .collect::<HashSet<_>>()
+        .len();
+    let summary = format!(
+        "{} connections · {window_count} windows",
+        plan.targets.len()
+    );
+    let targets = plan
+        .targets
+        .iter()
+        .map(|target| WorkspaceRestoreTargetView {
+            id: target.connection_id.clone(),
+            icon: "↗",
+            label: target.connection_id.clone(),
+            location: format!("{} · {}", target.window_id, target.pane_id),
+        })
+        .collect::<Vec<_>>();
+    let mut accessibility_tree = vec![AccessibilityNode::new(
+        "workspace-restore",
+        AccessibilityRole::Group,
+        "Workspace restore review",
+    )];
+    accessibility_tree.push(AccessibilityNode::new(
+        "workspace-restore-status",
+        AccessibilityRole::Status,
+        format!(
+            "{summary}; review required; automatic reconnect is off; interrupted actions will not resume"
+        ),
+    ));
+    for (index, target) in targets.iter().enumerate() {
+        let mut node = AccessibilityNode::new(
+            format!("workspace-restore-target-{}", target.id),
+            AccessibilityRole::Row,
+            format!(
+                "Connection {} of {}, {}",
+                index + 1,
+                targets.len(),
+                target.label
+            ),
+        );
+        node.description = target.location.clone();
+        accessibility_tree.push(node);
+    }
+    let mut primary = AccessibilityNode::new(
+        "workspace-restore-primary",
+        AccessibilityRole::Button,
+        "Review workspace restore",
+    );
+    primary.focusable = true;
+    primary.disabled = !plan.execution_enabled;
+    accessibility_tree.push(primary);
+    WorkspaceRestoreView {
+        layout: hub_layout(viewport),
+        title: "Restore workspace",
+        icon: "▦",
+        tone: SemanticTone::Accent,
+        summary,
+        targets,
+        review_required: plan.review_required,
+        automatic_reconnect: plan.automatic_reconnect,
+        resume_interrupted_actions: plan.resume_interrupted_actions,
+        execution_enabled: false,
+        primary_label: "Review restore",
+        restore_focus_to: restore_focus_to.into(),
+        accessibility_tree,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BroadcastTargetView {
+    pub id: String,
+    pub label: String,
+    pub outcome: &'static str,
+    pub icon: &'static str,
+    pub tone: SemanticTone,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct BroadcastReviewView {
+    pub layout: HubLayout,
+    exact_command: String,
+    pub state_label: &'static str,
+    pub state_icon: &'static str,
+    pub tone: SemanticTone,
+    pub target_summary: String,
+    pub targets: Vec<BroadcastTargetView>,
+    pub production_confirmation_required: bool,
+    pub execution_enabled: bool,
+    pub enter_requested: bool,
+    pub restore_focus_to: String,
+    pub accessibility_tree: Vec<AccessibilityNode>,
+}
+
+impl fmt::Debug for BroadcastReviewView {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BroadcastReviewView")
+            .field("exact_command", &"<redacted>")
+            .field("state_label", &self.state_label)
+            .field("state_icon", &self.state_icon)
+            .field("tone", &self.tone)
+            .field("target_summary", &self.target_summary)
+            .field("target_count", &self.targets.len())
+            .field(
+                "production_confirmation_required",
+                &self.production_confirmation_required,
+            )
+            .field("execution_enabled", &self.execution_enabled)
+            .field("enter_requested", &self.enter_requested)
+            .finish()
+    }
+}
+
+impl BroadcastReviewView {
+    pub fn exact_command(&self) -> &str {
+        &self.exact_command
+    }
+}
+
+fn broadcast_state_presentation(
+    state: &BroadcastState,
+) -> (&'static str, &'static str, SemanticTone) {
+    match state {
+        BroadcastState::Disarmed => ("DISARMED", "○", SemanticTone::Neutral),
+        BroadcastState::Armed { .. } => ("ARMED", "●", SemanticTone::Danger),
+        BroadcastState::Completed => ("COMPLETE", "✓", SemanticTone::Success),
+        BroadcastState::Cancelled => ("CANCELLED", "■", SemanticTone::Warning),
+        BroadcastState::Expired => ("EXPIRED", "!", SemanticTone::Warning),
+    }
+}
+
+fn broadcast_outcome_presentation(
+    outcome: &BroadcastTargetOutcome,
+) -> (&'static str, &'static str, SemanticTone) {
+    match outcome {
+        BroadcastTargetOutcome::Pending => ("Pending", "○", SemanticTone::Neutral),
+        BroadcastTargetOutcome::Succeeded => ("Succeeded", "✓", SemanticTone::Success),
+        BroadcastTargetOutcome::Failed { .. } => ("Failed", "!", SemanticTone::Danger),
+        BroadcastTargetOutcome::Cancelled => ("Cancelled", "■", SemanticTone::Warning),
+    }
+}
+
+pub fn project_broadcast_review(
+    review: &BroadcastReview,
+    lifecycle: &BroadcastLifecycle,
+    viewport: Viewport,
+    restore_focus_to: impl Into<String>,
+) -> BroadcastReviewView {
+    let (state_label, state_icon, tone) = broadcast_state_presentation(&lifecycle.state);
+    let targets = review
+        .targets
+        .iter()
+        .map(|target| {
+            let outcome = lifecycle
+                .targets
+                .iter()
+                .find(|result| result.target_id == target.id)
+                .map_or(&BroadcastTargetOutcome::Pending, |result| &result.outcome);
+            let (outcome, icon, tone) = broadcast_outcome_presentation(outcome);
+            BroadcastTargetView {
+                id: target.id.clone(),
+                label: target.public_label.clone(),
+                outcome,
+                icon,
+                tone,
+            }
+        })
+        .collect::<Vec<_>>();
+    let target_summary = format!("{} reviewed targets", targets.len());
+    let human_state = match lifecycle.state {
+        BroadcastState::Armed { .. } => "Armed",
+        BroadcastState::Disarmed => "Disarmed",
+        BroadcastState::Completed => "Complete",
+        BroadcastState::Cancelled => "Cancelled",
+        BroadcastState::Expired => "Expired",
+    };
+    let mut accessibility_tree = vec![AccessibilityNode::new(
+        "broadcast-state",
+        AccessibilityRole::Alert,
+        format!(
+            "Broadcast {human_state}; {target_summary}; production confirmation {}",
+            if review.production_confirmation_required {
+                "required"
+            } else {
+                "not required"
+            }
+        ),
+    )];
+    let mut command = AccessibilityNode::new(
+        "broadcast-command-preview",
+        AccessibilityRole::TextBox,
+        "Exact command preview",
+    );
+    command.description = review.exact_command().to_owned();
+    command.disabled = true;
+    accessibility_tree.push(command);
+    for target in &targets {
+        let mut node = AccessibilityNode::new(
+            format!("broadcast-target-{}", target.id),
+            AccessibilityRole::Row,
+            format!("{}, {}", target.label, target.outcome),
+        );
+        node.description = format!("{} state", target.outcome);
+        accessibility_tree.push(node);
+    }
+    BroadcastReviewView {
+        layout: hub_layout(viewport),
+        exact_command: review.exact_command().to_owned(),
+        state_label,
+        state_icon,
+        tone,
+        target_summary,
+        targets,
+        production_confirmation_required: review.production_confirmation_required,
+        execution_enabled: false,
+        enter_requested: false,
+        restore_focus_to: restore_focus_to.into(),
+        accessibility_tree,
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

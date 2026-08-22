@@ -1,13 +1,17 @@
 use automexia_devops::connections::{
-    ActionRisk, AuthState, AuthorityKind, AuthorityState, AutomationAction,
-    ConfirmationPolicy, ExecutionStage, FailurePolicy, PlanStepOriginKind, ProviderKind,
-    ReconnectPolicy, ResolvedConnectionPlan, ResolvedPlanStep, RetryPolicy,
+    apply_broadcast_event, review_broadcast, ActionRisk, AuthState, AuthorityKind,
+    AuthorityState, AutomationAction, BroadcastEvent, BroadcastLifecycle,
+    BroadcastTargetV1, ConfirmationPolicy, DestinationSurface, EnvironmentRisk,
+    ExecutionStage, FailurePolicy, PlanStepOriginKind, ProviderKind, ReconnectPolicy,
+    ResolvedConnectionPlan, ResolvedPlanStep, RetryPolicy, WorkspaceRestorePlan,
+    WorkspaceRestoreTarget,
 };
 use automexia_ui_model::connection_hub::{
-    apply_hub_key, project_connection_hub, project_recipe_planner, AccessibilityRole,
+    apply_hub_key, project_broadcast_review, project_connection_hub,
+    project_recipe_planner, project_workspace_restore, AccessibilityRole,
     ConnectionSummary, HubContentState, HubFocus, HubKey, HubLayout,
     HubProjectionRequest, HubRoute, HubVisualPreferences, InteractionEffect,
-    InteractionState, Viewport,
+    InteractionState, SemanticTone, Viewport,
 };
 
 fn all_states() -> Vec<(ProviderKind, AuthState)> {
@@ -706,4 +710,117 @@ fn planner_accessibility_summary_does_not_expose_public_value_contents() {
         accessibility["planner_action_values_redacted"].as_bool(),
         Some(true),
     );
+}
+
+#[test]
+fn workspace_restore_projection_is_compact_accessible_and_restores_focus_without_execution(
+) {
+    let plan = WorkspaceRestorePlan {
+        schema_version: 1,
+        workspace_id: "operations".into(),
+        workspace_revision: 4,
+        connection_generation: 8,
+        workspace_fingerprint: "a".repeat(64),
+        targets: vec![
+            WorkspaceRestoreTarget {
+                connection_id: "production-api".into(),
+                window_id: "primary".into(),
+                pane_id: "left".into(),
+                profile_id: "profile-production".into(),
+                profile_revision: 3,
+                destination_surface: DestinationSurface::Pane,
+            },
+            WorkspaceRestoreTarget {
+                connection_id: "staging-api".into(),
+                window_id: "secondary".into(),
+                pane_id: "monitoring".into(),
+                profile_id: "profile-staging".into(),
+                profile_revision: 2,
+                destination_surface: DestinationSurface::PaneTab,
+            },
+        ],
+        review_required: true,
+        automatic_reconnect: false,
+        resume_interrupted_actions: false,
+        execution_enabled: false,
+    };
+    let view = project_workspace_restore(
+        &plan,
+        Viewport::new(360.0, 640.0, 4.0),
+        "terminal-pane-7",
+    );
+    assert_eq!(view.layout, HubLayout::Narrow);
+    assert_eq!(view.summary, "2 connections · 2 windows");
+    assert_eq!(view.targets.len(), 2);
+    assert_eq!(view.tone, SemanticTone::Accent);
+    assert!(view.review_required);
+    assert!(!view.execution_enabled);
+    assert!(!view.automatic_reconnect);
+    assert_eq!(view.restore_focus_to, "terminal-pane-7");
+    assert!(view.accessibility_tree.iter().any(|node| {
+        node.role == AccessibilityRole::Status
+            && node.name.contains("automatic reconnect is off")
+    }));
+}
+
+#[test]
+fn broadcast_projection_uses_redundant_armed_semantics_exact_preview_and_redacted_debug()
+{
+    let targets = vec![
+        BroadcastTargetV1 {
+            id: "production".into(),
+            public_label: "Production API".into(),
+            profile_id: "profile-production".into(),
+            profile_revision: 3,
+            environment_risk: EnvironmentRisk::Production,
+        },
+        BroadcastTargetV1 {
+            id: "staging".into(),
+            public_label: "Staging API".into(),
+            profile_id: "profile-staging".into(),
+            profile_revision: 2,
+            environment_risk: EnvironmentRisk::Staging,
+        },
+    ];
+    let review =
+        review_broadcast("echo transient-ui-canary", &targets, 10, 5_000).unwrap();
+    let mut lifecycle = BroadcastLifecycle::new(&review, 3);
+    let disarmed = project_broadcast_review(
+        &review,
+        &lifecycle,
+        Viewport::new(1_024.0, 768.0, 1.0),
+        "terminal-pane-7",
+    );
+    assert_eq!(disarmed.state_label, "DISARMED");
+    assert_eq!(disarmed.state_icon, "○");
+    assert_eq!(disarmed.tone, SemanticTone::Neutral);
+    assert_eq!(disarmed.exact_command(), "echo transient-ui-canary");
+    assert!(disarmed.production_confirmation_required);
+    assert!(!disarmed.execution_enabled);
+    assert!(!format!("{disarmed:?}").contains("transient-ui-canary"));
+    assert!(disarmed.accessibility_tree.iter().any(|node| {
+        node.role == AccessibilityRole::Alert && node.name.contains("Disarmed")
+    }));
+
+    apply_broadcast_event(
+        &mut lifecycle,
+        &review,
+        BroadcastEvent::Arm {
+            now_ms: 11,
+            production_confirmed: true,
+        },
+    )
+    .unwrap();
+    let armed = project_broadcast_review(
+        &review,
+        &lifecycle,
+        Viewport::new(1_024.0, 768.0, 1.0),
+        "terminal-pane-7",
+    );
+    assert_eq!(armed.state_label, "ARMED");
+    assert_eq!(armed.state_icon, "●");
+    assert_eq!(armed.tone, SemanticTone::Danger);
+    assert!(armed.accessibility_tree.iter().any(|node| {
+        node.role == AccessibilityRole::Alert && node.name.contains("Armed")
+    }));
 }

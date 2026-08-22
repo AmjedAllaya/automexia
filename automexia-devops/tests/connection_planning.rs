@@ -1,15 +1,22 @@
 use std::collections::BTreeMap;
 
 use automexia_devops::connections::{
-    apply_auth_event, apply_result_event, parse_profile_json, parse_recipe_json,
-    resolve_connection_plan, AuthEvent, AuthState, ConnectionModelErrorCode,
-    ConnectionProfileV1, OperationResultEvent, OperationResultState, PlanContext,
-    ResolvedExecutable,
+    apply_auth_event, apply_result_event, fingerprint_recipe, parse_profile_json,
+    parse_recipe_json, resolve_connection_plan, AuthEvent, AuthState,
+    ConnectionModelErrorCode, ConnectionProfileV1, OperationResultEvent,
+    OperationResultState, PlanContext, ResolvedExecutable,
 };
 use serde_json::{json, Value};
 
 fn digest(byte: char) -> String {
     byte.to_string().repeat(64)
+}
+
+fn recipe_fingerprint() -> String {
+    let recipe = parse_recipe_json(&serde_json::to_vec(&recipe_value()).unwrap())
+        .unwrap()
+        .into_inner();
+    fingerprint_recipe(&recipe).unwrap()
 }
 
 fn profile_value() -> Value {
@@ -49,7 +56,7 @@ fn profile_value() -> Value {
             "context_references": ["context-prod"]
         },
         "recipe_references": [
-            {"id": "recipe-base", "revision": 2, "fingerprint": digest('a')}
+            {"id": "recipe-base", "revision": 2, "fingerprint": recipe_fingerprint()}
         ],
         "tunnels": [{
             "schema_version": 1,
@@ -253,9 +260,6 @@ fn every_material_plan_change_invalidates_the_fingerprint() {
         Box::new(|value| value["identity"]["reference"] = json!("identity-other")),
         Box::new(|value| value["transport"]["proxy_jump"] = json!(["jump-other"])),
         Box::new(|value| value["tunnels"][0]["listen_port"] = json!(25432)),
-        Box::new(|value| {
-            value["recipe_references"][0]["fingerprint"] = json!(digest('b'))
-        }),
         Box::new(|value| value["source"]["revision"] = json!("9")),
     ];
     for mutate in mutations {
@@ -270,6 +274,20 @@ fn every_material_plan_change_invalidates_the_fingerprint() {
         .approval_fingerprint;
         assert_ne!(baseline, changed);
     }
+
+    let mut mismatched_reference = profile_value();
+    mismatched_reference["recipe_references"][0]["fingerprint"] = json!(digest('b'));
+    let changed = resolve_connection_plan(
+        &parse_profile(&mismatched_reference),
+        std::slice::from_ref(&recipe),
+        &plan_context(),
+    )
+    .unwrap();
+    assert_ne!(baseline, changed.approval_fingerprint);
+    assert!(changed
+        .warnings
+        .iter()
+        .any(|warning| warning == "recipe-fingerprint-changed:recipe-base"));
 
     let mut executable = plan_context();
     executable.executable_identities[0].identity_digest = digest('f');

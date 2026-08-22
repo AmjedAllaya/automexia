@@ -157,7 +157,7 @@ fn validate_target(value: &str, field: &'static str) -> Result<(), ConnectionMod
     Ok(())
 }
 
-fn validate_identifier(
+pub(super) fn validate_identifier(
     value: &str,
     field: &'static str,
 ) -> Result<(), ConnectionModelError> {
@@ -1156,6 +1156,25 @@ fn validate_step(step: &AutomationStepV1) -> Result<(), ConnectionModelError> {
         ));
     }
     validate_retry(step)
+}
+
+pub(super) fn validate_resolved_step_policy(
+    step: &ResolvedPlanStep,
+) -> Result<(), ConnectionModelError> {
+    validate_step(&AutomationStepV1 {
+        schema_version: CONNECTION_SCHEMA_VERSION,
+        id: "resolved-step".to_owned(),
+        stage: step.stage,
+        action: step.action.clone(),
+        depends_on: Vec::new(),
+        preconditions: Vec::new(),
+        timeout_ms: step.timeout_ms,
+        failure_policy: step.failure_policy,
+        retry_policy: step.retry_policy.clone(),
+        risk: step.risk,
+        confirmation_policy: step.confirmation_policy,
+        reconnect_policy: step.reconnect_policy,
+    })
 }
 
 fn dependency_cycle(steps: &[AutomationStepV1], indices: &HashMap<&str, usize>) -> bool {

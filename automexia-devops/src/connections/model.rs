@@ -772,6 +772,21 @@ pub enum ExecutionStage {
     Cleanup,
 }
 
+impl ExecutionStage {
+    pub const ORDER: [Self; 10] = [
+        Self::Resolve,
+        Self::Preflight,
+        Self::Authenticate,
+        Self::BeforeConnect,
+        Self::Connect,
+        Self::RemoteInitialize,
+        Self::Verify,
+        Self::Ready,
+        Self::BeforeDisconnect,
+        Self::Cleanup,
+    ];
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ActionRisk {
