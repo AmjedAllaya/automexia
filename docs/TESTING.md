@@ -244,6 +244,8 @@ D0/D3 contract, mutation checks, and capability/package constructors with:
 
 ```text
 cargo test -p automexia-extension-api --lib --locked
+cargo test -p teletypewriter --locked
+cargo check -p teletypewriter --target x86_64-apple-darwin --locked
 python tools/ci/check_session_launch_d0.py
 python tools/ci/test_session_launch_d0.py
 cargo test -p automexia-terminal --bin automexia --locked context::launch_broker::tests
@@ -267,12 +269,18 @@ override resolution, authorization-owned cwd fallback, decision expiry/scope,
 capsule rebind, replay, nonce exhaustion, redaction, revocation, stale/sibling
 leases, and zero-retained-state 1/10/50 pure cycles.
 
+The PTY tests now exercise the guarded native seam on Windows: replacement is
+denied while the executable handle is held, CreateProcessW receives an exact
+application path, the managed environment does not inherit PATH, the child
+exit is observed, and repeated ConPTY cycles close. The installed macOS target
+cross-checks the descriptor implementation but is not a native runtime test.
+
 These tests do not spawn OpenSSH and are not evidence that managed SSH is
-available. Protected ADR approval, real package-loader attestation/revocation
-binding, process/PTY/route ownership, cancellation/teardown, PID reuse,
-application close, atomic native check-to-spawn, execution of host-key/auth/
-tunnel/hostile-output scenarios, and 1/10/50-session process/PTY/renderer
-results remain activation gates listed in
+available. Protected approvals, real package-loader attestation/revocation
+binding, application runner/PTY/route ownership, cancellation/teardown, PID
+reuse, application close, native Linux/macOS execution of host-key/auth/tunnel/
+hostile-output scenarios, and 1/10/50-session process/PTY/renderer results remain
+activation gates listed in
 [ADR 0012](adr/0012-first-party-ssh-and-session-launch-boundary.md) and the
 [broker contract](SESSION-LAUNCH-BROKER.md).
 
