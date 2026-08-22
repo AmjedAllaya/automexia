@@ -85,12 +85,12 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Core | v0.4/S0 | **Fully implemented locally** | **Partial** | Identity, hostile-input bounds, atomic reload, and current terminal source gates are complete; stable release gates remain. |
 | Assurance | v0.4/S1 | **Partial** | **Partial** | Strong deterministic, Windows-native, QA, fuzz, resource, and workflow machinery exists; controlled Linux/macOS visual/GPU/accessibility evidence and the full baseline remain. |
 | Performance | S2 | **Not implemented** | **Not started** | The 30-day comparable baseline is incomplete, so the 5% latency/10% memory ratchet is inactive. |
-| DevOps | D0 | **Partial** | **Partial** | ADR 0012 is accepted by the project owner and schema-2 threat/manual/fixture definitions pass locally; ADR 0003 protected approvals and native execution remain pending in F4/F5. |
+| DevOps | D0 | **Partial** | **Partial** | ADR 0012 is accepted and active schema 3 ratchets immutable schema 1/2 with exact managed options, lifecycle/receipt/reconnect rules, and the native matrix; protected approvals and native execution remain. |
 | DevOps | D1 | **Fully implemented** | **Partial** | Four private provider-neutral crates and bounded contracts satisfy their source boundary. |
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
-| DevOps | D3 | **Partial; nonactivated** | **Blocked** | The production-compiled broker remains fail-closed. One application runner, exact package/scope/argv policy, bounded environment/cwd/audit/lifecycle, guarded Windows/Unix PTY seam, approval UX, and route publication are implemented locally. Independent exact-head approvals, server enforcement, real attestation, forced descendant-cleanup proof, and the native OpenSSH/resource/accessibility matrix remain. |
+| DevOps | D3 | **Partial; nonactivated** | **Blocked** | The fail-closed broker/runner now binds exact managed argv and current executable identity, reconciles actual child status, emits redacted outcomes, and queues bounded receipts through the guarded PTY/route owner. Protected approvals, real attestation/activation, forced descendant proof, and native OpenSSH/resource/accessibility evidence remain. |
 | DevOps | D4 | **Fully implemented; read-only product adapter active** | **Partial** | Bounded OpenSSH inventory/persistence is connected only to D5.1 reviewed browsing; it retains no process/network/launch authority. |
-| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 fully implemented locally and D5.2 nonactivated runner/route path partial** | **Partial/blocked** | A selected D4 record or bounded literal host opens an actionable, accessible Connection Review. Exact typed intent now reaches the fail-closed runner and guarded PTY/route publication seam, but no child can start while activation is false and package verification is untrusted. Protected activation, attestation, reconnect/receipts, routes/trust/tunnels, and controlled native evidence remain. |
+| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 and nonactivated F5.1 source complete locally** | **Partial/blocked** | Exact managed argv, review/executable binding, guarded PTY publication, truthful child outcomes, redacted notifications, bounded durable receipts, and stale-source reconnect preparation pass locally. Protected activation/attestation, real SSH/forced cleanup, M4/M5 routes/trust/tunnels, and controlled native evidence remain. |
 | Multi-cloud | D6.0-D6.5 | **Not implemented** | **Blocked** | Provider auth, capsules, transports, and provider slices are planned only. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
@@ -350,8 +350,8 @@ Loom, native resource tests, and human accessibility/visual review.
 
 **Partially implemented.**
 
-**Fully implemented locally:** the active schema-2 D0/D3 contract preserves
-immutable schema-1 history and freezes manual PowerShell/CMD/Bash/Zsh/WSL SSH,
+**Fully implemented locally:** the active schema-3 D0/D3 contract preserves
+immutable schema-1/schema-2 history and freezes manual PowerShell/CMD/Bash/Zsh/WSL SSH,
 missing-client behavior, exact trusted-loader digest source/size and package
 identity/version/contract/verification, grant/expiry/revocation/audit fields,
 strict defaults, nine trust boundaries, the all-false authority ceiling, and
@@ -550,44 +550,48 @@ actions remain disabled until D5.2.
 
 ### D5.2 — managed OpenSSH launch and lifecycle
 
-**Partially implemented at a nonactivated review-to-route boundary.**
+**Partially implemented overall; F5.1 is fully implemented at the nonactivated source boundary.**
 
-Implemented locally: the pure owner validates one concrete inventory alias or
-one bounded literal host as an exact destination and produces an immutable
-identity-bound review when supplied a current canonical `ssh` observation. The
-application maps the selection to a stable opaque profile and canonical F2 plan;
-inventory review is generation/revision-bound, literal review is memory-only,
-and both request only `session.launch` with conservative production risk.
+The pure owner accepts one concrete inventory alias or bounded literal host,
+freezes 17 defensive OpenSSH options followed by one destination, and can create
+an opaque launch binding only when a freshly rebuilt review is exactly equal.
+Profile/source/capsule/plan, destination, capability, host trust, observation
+freshness/generation, and canonical executable identity all invalidate stale
+work. The broker re-hashes current native file identity before authorization and
+rejects reordered, omitted, changed, or additional arguments. It deliberately
+does not set `KexAlgorithms` or `WarnWeakCrypto`, preserving current OpenSSH
+post-quantum defaults and downgrade warnings.
 
-The shared Connection Review presents compact Connection, Safety, and Launch
-cards with icon/text/color redundancy and exact public launcher/package, target,
-route, risk, capability, 60-second approval, one-argument, and PTY I/O
-explanations. Allow once, allow for session, and deny are available through
-pointer targets, A/Enter, S, D, modal focus, and accessibility nodes. The
-512-byte literal editor preserves atomic paste/IME rejection, the `L` mnemonic,
-trapped focus, invalid-state denial, one Cancel/Escape path, inert background,
-and non-overlapping tiny-to-8K geometry. Exact aliases, opaque references,
-digests, paths, environment, credentials, and terminal data remain outside
-renderer and audit state.
+The Router owns one fail-closed runner and attaches the existing bounded
+Connection Hub worker as a nonblocking receipt sink. ContextManager remains the
+only independent PTY/route owner and application child-exit events reconcile the
+managed lease before normal close. Zero, nonzero, unavailable status,
+cancellation, route close, revocation, and shutdown produce truthful redacted
+outcomes and fixed notifications; route close no longer implies success.
 
-The selected typed intent now reaches one Router-owned fail-closed runner. It
-binds exact package/executable/destination/scope, re-compares the guarded
-executable, applies bounded environment/cwd/audit/concurrency policy, and hands
-the lease to ContextManager. ContextManager creates the ordinary terminal PTY,
-inserts one exact route, publishes only after insertion, and reconciles
-failure/close/shutdown. The linked candidate remains `Unverified` and
-`MANAGED_SESSION_LAUNCH_ENABLED` remains false, so this path returns an
-actionable protected-review diagnostic before executable resolution and no
-production child starts.
+Terminal outcomes create provider-neutral receipts without destination,
+terminal text, credential, path, environment, process ID, or executable identity.
+The private atomic store keeps at most 256 records and 2 MiB with a single writer,
+primary/previous recovery, symlink/reparse/permission/size validation, and
+shutdown drain. An opaque reconnect identity is persisted only for inventory
+profiles. Reconnect rebuilds from current D4 inventory, rejects a missing or
+changed source revision, and still requires a fresh executable/host-trust review
+and explicit approval; it never automatically resumes a session or action.
 
-Still missing or external: ADR 0003 protected approvals/server enforcement, real
-loader/build attestation and revocation, a current resolved executable observation bound into a fresh pre-launch review, native graceful-then-forced child-tree
-proof, real OpenSSH prompt/diagnostic and before/after manual-`ssh` regression,
-reconnect, notifications, receipts, jumps, typed user/port/routes/tunnels, full
-host-key and agent/certificate UX, mock/native server cases, hostile remote
-output, controlled pixels/screen readers, and 1/10/50 session resources.
-The existing selected-record Criterion result remains 6.3520–6.6011 µs on the
-recorded Windows development host.
+Schema 3 freezes this source contract while retaining exact hashes for historical
+schema 1 and schema 2. Focused tests cover exact/PQ-preserving argv, full-review
+binding, executable replacement, every terminal outcome, receipt redaction and
+recovery, 256-record bounds, worker saturation, restart, and stale reconnect.
+
+Still external or protected: ADR 0003's two independent exact-head approvals and
+server enforcement, real loader/build attestation and revocation, product
+controller consumption of a current attested executable observation, a real
+managed OpenSSH child, graceful-then-forced descendant cleanup, prompt/
+diagnostic and manual-SSH regression, controlled pixels/screen readers, and
+native Windows/macOS/Linux plus separately gated WSL 1/10/50 resource evidence.
+M4 user/port/routes/host-trust/identity readiness and M5 jumps/tunnels remain
+separate, **Not done** slices.
+
 ### D6.0-D6.5 — providers and multi-cloud
 
 **Not implemented.**
@@ -1124,8 +1128,9 @@ At this audited baseline, the focused order is:
    native/accessibility evidence. Preserve D5.2's nonactivated approval UI,
    application runner, guarded PTY, and exact route-publication path.
 3. Activate D3 only after its protected, attestation, cleanup, and three-OS
-   native gates pass; then deliver D5.2 routes/host trust, reconnect/receipts,
-   tunnels, and native evidence as bounded slices.
+   native gates pass; preserve F5.1 receipts/reconnect and then deliver M4/M5
+routes/host trust/tunnels plus native evidence as bounded slices.
+
 4. Complete connection profiles, typed recipes, and declarative remote
    workspaces before adding provider execution.
 5. Implement D6.0 and each D6.1-D6.5 provider independently through official

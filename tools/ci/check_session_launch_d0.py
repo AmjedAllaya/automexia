@@ -10,19 +10,29 @@ import sys
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-CONTRACT = ROOT / "tests/fixtures/session-launch/d0-d3-contract-v2.json"
-PREVIOUS_CONTRACT = ROOT / "tests/fixtures/session-launch/d0-d3-contract-v1.json"
-PREVIOUS_CONTRACT_SHA256 = "0d2120bd9aef13b3d75053d595356c9b844107bc9ddc98db60f01f0c779bd9d8"
+CONTRACT = ROOT / "tests/fixtures/session-launch/d0-d3-contract-v3.json"
+HISTORICAL_CONTRACTS = [
+    (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v1.json", "0d2120bd9aef13b3d75053d595356c9b844107bc9ddc98db60f01f0c779bd9d8", "schema-1"),
+    (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v2.json", "eb561716075bd546268b1a3c4fdb2d3c3dceaafd5ca2f9fd7113f69c29d9ba4e", "schema-2"),
+]
 MAX_EVIDENCE_BYTES = 262_144
 EXPECTED_KEYS = {
     "schema", "phase", "status", "activation", "package_identity", "grant",
     "audit", "executable_resolution", "strict_defaults", "authority_ceiling",
     "manual_baseline", "trust_boundaries", "native_fixture_protocol",
-    "native_scenarios", "evidence", "external_prerequisites",
+    "native_scenarios", "evidence", "external_prerequisites", "managed_session",
 }
 EXPECTED_NATIVE_PLATFORMS = ["windows", "macos", "linux", "wsl"]
+EXPECTED_MANAGED_OPTIONS = [
+    "-oAddKeysToAgent=no", "-oClearAllForwardings=yes", "-oControlMaster=no",
+    "-oControlPath=none", "-oControlPersist=no", "-oEnableEscapeCommandline=no",
+    "-oForkAfterAuthentication=no", "-oForwardAgent=no", "-oForwardX11=no",
+    "-oGSSAPIDelegateCredentials=no", "-oPermitLocalCommand=no",
+    "-oProxyCommand=none", "-oProxyJump=none", "-oRemoteCommand=none",
+    "-oStdinNull=no", "-oStrictHostKeyChecking=ask", "-oTunnel=no",
+]
 EXPECTED_SCENARIOS = [
-    {"id": "direct-alias", "required": True, "platforms": EXPECTED_NATIVE_PLATFORMS, "expected": "one-literal-destination-argument"},
+    {"id": "direct-alias", "required": True, "platforms": EXPECTED_NATIVE_PLATFORMS, "expected": "exact-managed-options-then-one-literal-destination-argument"},
     {"id": "explicit-destination", "required": True, "platforms": EXPECTED_NATIVE_PLATFORMS, "expected": "explicit-host-connect-without-shell"},
     {"id": "user-and-port", "required": True, "platforms": EXPECTED_NATIVE_PLATFORMS, "expected": "typed-user-host-port-without-option-confusion"},
     {"id": "encrypted-key", "required": True, "platforms": EXPECTED_NATIVE_PLATFORMS, "expected": "prompt-remains-in-pty-no-secret-capture"},
@@ -55,7 +65,7 @@ EXPECTED_TRUST_BOUNDARIES = [
 ]
 EXPECTED_NATIVE_FIXTURE_PROTOCOL = {
     "definition_status": "defined-not-executed",
-    "execution_owner": "F4/F5",
+    "execution_owner": "M3/F5.1",
     "server": "ephemeral-loopback-openssh",
     "network": "loopback-only-no-internet-or-cloud-account",
     "workspace": "per-case-private-temporary-directory",
@@ -83,6 +93,11 @@ EXPECTED_SOURCES = [
     "apps/automexia-terminal/src/screen/connection_hub.rs",
     "automexia-ui-model/src/connection_hub.rs",
     "automexia-extension-api/src/lib.rs",
+    "automexia-devops/src/connections/direct_openssh.rs",
+    "apps/automexia-terminal/src/automexia/connections/receipts.rs",
+    "apps/automexia-terminal/src/automexia/connections/runtime.rs",
+    "apps/automexia-terminal/src/application.rs",
+    "apps/automexia-terminal/src/automexia/connections/private_fs.rs",
 ]
 EXPECTED_CHECKS = [
     "tools/ci/check_session_launch_d0.py",
@@ -132,7 +147,7 @@ def load_contract(path: Path = CONTRACT) -> dict[str, Any]:
     if not isinstance(document, dict) or set(document) != EXPECTED_KEYS:
         raise SessionLaunchD0Error("D0/D3 contract keys changed")
     if (document["schema"], document["phase"], document["status"]) != (
-        2, "F1/D0-D3", "local-contract-complete-protected-approval-pending",
+        3, "F1/D0-D3+M3/F5.1/D5.2", "local-managed-session-source-complete-protected-activation-pending",
     ):
         raise SessionLaunchD0Error("D0/D3 contract identity changed")
     expected_sections = {
@@ -142,11 +157,12 @@ def load_contract(path: Path = CONTRACT) -> dict[str, Any]:
         "grant": {"capability": "session.launch", "required_bindings": ["extension_id", "operation_id", "session_id", "capsule_revision", "resource", "decision", "decided_at_ms", "expires_at_ms"], "decisions": ["allow-once", "allow-session", "deny"], "persistent_grants": False, "replay_denied": True, "scope_rebind_denied": True, "future_decisions_denied": True, "expired_decisions_denied": True},
         "audit": {"allowed": ["extension_id", "extension_version", "publisher", "decision", "operation_kind", "public_connection_id", "operation_id", "session_id", "timestamp_ms", "duration_ms", "result"], "forbidden": ["argv", "environment_values", "cwd", "terminal_content", "username", "secret_reference", "process_id", "executable_path", "package_digest"]},
         "executable_resolution": {"windows": {"mode": "system-directory", "ssh": "OpenSSH/ssh.exe", "ssh_add": "OpenSSH/ssh-add.exe", "ssh_keygen": "OpenSSH/ssh-keygen.exe"}, "macos": {"roots": ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"]}, "linux": {"roots": ["/usr/bin", "/bin", "/usr/local/bin"]}, "wsl": {"production_enabled": False, "future_windows_launcher": "System32/wsl.exe", "future_linux_ssh": "/usr/bin/ssh", "shell": False}, "path_lookup": False, "cwd_lookup": False, "relative_paths": False, "fallback_after_configured_override_failure": False, "identity_revalidated_before_spawn": True},
-        "strict_defaults": {"host_key_checking": "strict", "unknown_host": "deny-until-explicit-trust", "changed_host": "deny", "agent_forwarding": False, "tcp_forwarding": False, "forward_listener_scope": "loopback-unless-explicitly-confirmed", "x11_forwarding": False, "remote_command": False, "config_command_execution_during_discovery": False, "environment_inheritance": False, "secret_resolution": False, "shell_interpretation": False},
+        "strict_defaults": {"host_key_checking": "ask-on-first-use-reject-changed", "unknown_host": "interactive-pty-confirmation", "changed_host": "deny", "agent_forwarding": False, "tcp_forwarding": False, "forward_listener_scope": "loopback-unless-explicitly-confirmed", "x11_forwarding": False, "remote_command": False, "config_command_execution_during_discovery": False, "environment_inheritance": False, "secret_resolution": False, "shell_interpretation": False, "managed_options": EXPECTED_MANAGED_OPTIONS, "openssh_kex_override": False, "openssh_weak_crypto_warning_override": False},
         "authority_ceiling": {"process": False, "pty": False, "network": False, "provider": False, "authentication": False, "key_custody": False, "renderer": False},
         "trust_boundaries": EXPECTED_TRUST_BOUNDARIES,
         "native_fixture_protocol": EXPECTED_NATIVE_FIXTURE_PROTOCOL,
-        "external_prerequisites": ["protected security review", "two protected-path approvals", "native process and PTY evidence in later phases"],
+        "managed_session": {"launch_binding": "fresh-full-review-equality", "argument_shape": "exact-managed-options-then-one-typed-destination", "executable_identity": "reviewed-native-file-identity-revalidated-before-authorization", "user_configuration": "system-openssh-authoritative-launch-helper-risk-reviewed", "terminal_outcome": "child-exit-derived-no-close-assumption", "receipt_store": {"schema": 1, "max_records": 256, "max_bytes": 2097152, "write_owner": "bounded-connection-worker", "persistence": "private-atomic-primary-previous-recovery", "content": "provider-neutral-redacted-no-destination-or-terminal-text"}, "reconnect": "opaque-inventory-identity-current-source-only-fresh-review-and-approval", "notifications": "fixed-redacted-success-failure-status-unavailable-cancelled-and-storage-unavailable", "production_enabled": False},
+        "external_prerequisites": ["protected security review", "two protected exact-head approvals", "real loader attestation and revocation", "native process-tree PTY OpenSSH accessibility and resource evidence"],
     }
     for key, expected in expected_sections.items():
         if document[key] != expected:
@@ -182,6 +198,7 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "package_identity_digest_compatibility_and_verification_fail_closed",
         "platform_resolution_contract_is_fixed_and_wsl_remains_disabled",
         "linked_candidate_path_stays_fail_closed_and_redacted_without_attestation",
+        "reviewed_executable_identity_digest", "DIRECT_OPENSSH_MANAGED_OPTIONS",
     }, root)
     broker_lower = broker.lower()
     broker_authority_markers = {
@@ -212,6 +229,8 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "pub fn cancel",
         "pub fn shutdown_now",
         "VecDeque::with_capacity(MAX_RUNNER_AUDIT_RECORDS)",
+        "DirectOpenSshLaunchBinding", "record_terminal_outcome",
+        "ManagedProcessOutcome::StatusUnavailable", "ManagedReceiptRecord::new",
     }, root)
     runner_lower = runner.lower()
     runner_authority_markers = {
@@ -235,6 +254,7 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "teletypewriter::create_exact_pty(",
         "runner.mark_published(lease, route_id)",
         "managed_session: Option<ManagedSessionGuard>",
+        "reconcile_managed_child_exit", "ManagedProcessOutcome::Failed",
     }, root).replace("\r\n", "\n")
     for declaration in (
         "pub mod external_tool_runner;",
@@ -254,14 +274,16 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "ExternalToolRunner::pending_security_review()",
         "self.external_tool_runner.shutdown_now()",
         "self.external_tool_runner.clone()",
+        "attach_receipt_sink", "Arc::new(connection_hub.clone())",
     }, root)
     require_tokens(document["evidence"]["source"][4], {
         "fn attempt_managed_openssh",
         "Decision::AllowOnce",
         "Decision::AllowSession",
         "ConnectionHubHit::DenyManagedLaunch",
-        "authorize_openssh_candidate(intent)",
-        "publish_managed_context(",
+        "managed_openssh_activation_error",
+        "DirectOpenSshLaunchBinding",
+        "Never fall back",
         "connection-launch-protected-review-pending",
     }, root)
     require_tokens(document["evidence"]["source"][5], {
@@ -277,6 +299,33 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "pub struct CapabilityDecision", "pub operation_id: OperationId",
         "pub session_id: SessionId", "pub capsule_revision: u64",
         "pub expires_at_ms: u64",
+    }, root)
+    require_tokens(document["evidence"]["source"][7], {
+        "DIRECT_OPENSSH_MANAGED_OPTIONS", "pub struct DirectOpenSshLaunchBinding",
+        "pub fn bind_launch",
+    }, root)
+    require_tokens("automexia-devops/tests/direct_openssh_review.rs", {
+        "managed_options_preserve_openssh_post_quantum_defaults_and_warnings",
+        'starts_with("-oKexAlgorithms=")', 'starts_with("-oWarnWeakCrypto=")',
+    }, root)
+    require_tokens(document["evidence"]["source"][8], {
+        "MAX_MANAGED_RECEIPTS: usize = 256", "MAX_MANAGED_RECEIPT_BYTES",
+        "pub trait ManagedReceiptSink", "append_batch", "PreviousRecovery",
+    }, root)
+    require_tokens(document["evidence"]["source"][9], {
+        "Work::FlushReceipts", "impl ManagedReceiptSink for ConnectionHubRuntime",
+        "prepare_managed_reconnect", "StaleReconnect",
+        "managed_receipts_survive_restart_with_only_fresh_review_identity",
+    }, root)
+    require_tokens(document["evidence"]["source"][10], {
+        "RioEvent::ChildExited", "reconcile_managed_child_exit",
+        "handle_desktop_notification",
+    }, root)
+    require_tokens(document["evidence"]["source"][11], {
+        "pub(super) enum PrivateFsErrorCode", "FILE_FLAG_OPEN_REPARSE_POINT",
+        "PROTECTED_DACL_SECURITY_INFORMATION", "libc::O_NOFOLLOW",
+        "same_snapshot", "private_permissions_are_safe",
+        "GetFileInformationByHandle", "nFileIndexHigh",
     }, root)
 
     audit_start = broker.index("pub struct LaunchAuditRecord")
@@ -297,9 +346,10 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
     }
 
 def validate_repository(root: Path = ROOT) -> dict[str, int]:
-    previous = bounded_text(root / PREVIOUS_CONTRACT.relative_to(ROOT)).encode("utf-8")
-    if hashlib.sha256(previous).hexdigest() != PREVIOUS_CONTRACT_SHA256:
-        raise SessionLaunchD0Error("historical D0/D3 schema-1 contract changed")
+    for historical_path, expected_digest, label in HISTORICAL_CONTRACTS:
+        historical = bounded_text(root / historical_path.relative_to(ROOT)).encode("utf-8")
+        if hashlib.sha256(historical).hexdigest() != expected_digest:
+            raise SessionLaunchD0Error(f"historical D0/D3 {label} contract changed")
     document = load_contract(root / CONTRACT.relative_to(ROOT))
     return validate_sources(document, root)
 

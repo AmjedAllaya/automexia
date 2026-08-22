@@ -101,71 +101,30 @@ impl Screen<'_> {
         self.sync_connection_hub();
         self.mark_dirty();
     }
-    fn attempt_managed_openssh(&mut self, decision: Decision) {
-        let Some(preparation) = self.connection_hub.direct_openssh_preparation().cloned()
-        else {
+    fn attempt_managed_openssh(&mut self, _decision: Decision) {
+        let Some(preparation) = self.connection_hub.direct_openssh_preparation() else {
             self.connection_hub
                 .report_direct_openssh_diagnostic("connection-launch-review-stale");
             return;
         };
-        let destination = match preparation.reviewed_destination() {
-            Ok(destination) => destination.to_owned(),
-            Err(_) => {
-                self.connection_hub
-                    .report_direct_openssh_diagnostic("connection-launch-review-stale");
-                return;
-            }
-        };
-        let reservation = match self.context_manager.reserve_managed_route() {
-            Ok(reservation) => reservation,
-            Err(_) => {
-                self.connection_hub.report_direct_openssh_diagnostic(
-                    "connection-launch-route-unavailable",
-                );
-                return;
-            }
-        };
-        let intent = match crate::context::external_tool_runner::OpenSshLaunchIntent::new(
-            reservation,
-            &destination,
-            decision,
-            crate::context::external_tool_runner::current_time_ms(),
-        ) {
-            Ok(intent) => intent,
-            Err(error) => {
-                self.connection_hub
-                    .report_direct_openssh_diagnostic(managed_launch_diagnostic(&error));
-                return;
-            }
-        };
-        let guarded = match self
-            .external_tool_runner
-            .authorize_openssh_candidate(intent)
-        {
-            Ok(guarded) => guarded,
-            Err(error) => {
-                self.connection_hub
-                    .report_direct_openssh_diagnostic(managed_launch_diagnostic(&error));
-                return;
-            }
-        };
-        if self
-            .context_manager
-            .publish_managed_context(
-                reservation,
-                guarded,
-                self.external_tool_runner.clone(),
-                crate::context::next_rich_text_id(),
-            )
-            .is_err()
-        {
+        if preparation.reviewed_destination().is_err() {
             self.connection_hub
-                .report_direct_openssh_diagnostic("connection-launch-publication-failed");
+                .report_direct_openssh_diagnostic("connection-launch-review-stale");
             return;
         }
-        self.connection_hub.close();
-    }
+        if let Some(error) = self.external_tool_runner.managed_openssh_activation_error()
+        {
+            self.connection_hub
+                .report_direct_openssh_diagnostic(managed_launch_diagnostic(&error));
+            return;
+        }
 
+        // Once attestation is available, the controller must supply a fresh
+        // `DirectOpenSshLaunchBinding`. Never fall back to the preparation's
+        // destination when that identity-bound review is absent.
+        self.connection_hub
+            .report_direct_openssh_diagnostic("connection-launch-review-stale");
+    }
     pub fn connection_hub_is_active(&self) -> bool {
         self.connection_hub.is_active()
     }

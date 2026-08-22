@@ -28,6 +28,7 @@ class PullRequestDocumentationPolicyTests(unittest.TestCase):
             "docs/project/adr/0012-first-party-ssh-and-session-launch-boundary.md",
             "extensions/devops-ssh/src/lib.rs",
             "tests/fixtures/session-launch/d0-d3-contract-v2.json",
+            "tests/fixtures/session-launch/d0-d3-contract-v3.json",
             "tools/ci/check_pr_policy.py",
             "tools/ci/check_session_launch_d0.py",
         }

@@ -50,21 +50,21 @@ follows the allowlist-plus-parameterization guidance in the
 
 ## Upstream M3 reviewed request
 
-The non-activated M3 model now prepares the only request shape this broker may
-later consume for direct SSH: canonical executable ID `ssh`, exact capability
-`session.launch`, and one ordered destination argument. It binds that argument
-to profile/source/capsule revisions, the F2 plan fingerprint, executable
-identity digest, validated identity-observation content/generation/freshness, host-trust state, and a fresh
-review fingerprint. Debug and UI views redact the destination argument.
+The nonactivated M3 model prepares the only direct request shape: canonical
+executable ID `ssh`, exact `session.launch`, 17 ordered application-owned safety
+options, and exactly one typed destination. A full current review binds profile/
+source/capsule revisions, F2 plan, destination, executable identity, observation
+content/generation/freshness, host trust, capability, and fingerprint into an
+opaque launch value. Debug and presentation redact all identity-bearing values.
 
-The application adapter now revalidates the current preparation, constructs a
-typed `CapabilityRequest`, expiring `CapabilityDecision`, and one-argument
-`LaunchRequest`, reserves an exact route/session/operation tuple, and submits it
-to the single app-owned runner. The candidate principal remains unverified and
-the protected gate denies before filesystem resolution. On a future successful
-authorization, ContextManager alone consumes the guard and publishes a new
-independent PTY route. Current executable/identity observation and real loader
-attestation remain activation prerequisites.
+The runner accepts that opaque binding rather than rebuilding argv. It creates
+typed capability/decision/launch values, reserves one exact route/session/
+operation tuple, and submits exact ordered arguments to the broker, which
+revalidates current native executable identity. The candidate principal remains
+unverified and the protected gate denies before filesystem resolution. On a
+future successful authorization, ContextManager alone consumes the guard and
+publishes a new independent PTY route. Real loader attestation and product
+controller consumption of a current observation remain activation prerequisites.
 
 ## Trust and data flow
 
@@ -89,7 +89,7 @@ resolved credential.
 
 ### Frozen trust-boundary ledger
 
-The active schema-2 contract records nine boundaries: extension model,
+The active schema-3 contract retains nine boundaries: extension model,
 application capability broker, future PTY/process owner, renderer/VT parser,
 OpenSSH child, OpenSSH configuration, agent/keychain/hardware owner, remote
 host, and future provider helper. Every row fixes accepted and returned data,
@@ -244,9 +244,47 @@ path, environment value, terminal content, private username, process ID,
 credential, or agent data. The broker does not infer a connection ID from a
 destination argument.
 
+## M3 managed direct-session contract
+
+A managed direct request is now an opaque result of a fresh full-review equality
+check, not a destination string that a screen can rebuild. The ordered argv is
+exactly the 17 constants in `DIRECT_OPENSSH_MANAGED_OPTIONS` followed by one
+typed destination. The broker independently verifies this count/order and binds
+the current canonical executable's native file identity digest to the review.
+Any profile, source, capsule, plan, trust, observation, executable, option, or
+destination change requires a new review and approval.
+
+The fixed options disable key addition, all configured forwarding, connection
+multiplexing, escape-commandline, backgrounding, agent/X11/delegated-GSSAPI
+forwarding, local/remote commands, proxy commands/jumps, stdin-null, and tunnels.
+`StrictHostKeyChecking=ask` keeps first-use confirmation and changed-key rejection
+inside OpenSSH's ordinary PTY. User OpenSSH configuration remains authoritative
+for alias lookup and can itself contain helper directives such as `Match exec` or
+`KnownHostsCommand`; activation therefore still requires native descendant-tree
+ownership and cleanup proof. Discovery never executes those directives.
+
+Automexia does not set `KexAlgorithms` or `WarnWeakCrypto`. This preserves the
+system client's current algorithm policy and warnings. The dated upstream
+baseline used for this review is [OpenSSH 10.5, released 2026-08-11](https://www.openbsd.org/openssh/releasenotes.html),
+which includes security fixes for agent session binding/restricted keys and
+forwarding cleanup. OpenSSH 10.0 made hybrid post-quantum
+`mlkem768x25519-sha256` the default, and 10.1 enabled non-post-quantum warnings;
+see the official [OpenSSH post-quantum guidance](https://www.openssh.org/pq.html).
+Distribution backports and provenance matter, so a version string alone never
+satisfies executable/package attestation.
+
+Natural child exit, nonzero exit, unavailable status, cancellation, route close,
+revocation, and shutdown produce distinct redacted results; route close is not
+success. A successful or failed terminal outcome can queue a provider-neutral
+receipt to the Connection Hub worker. The private atomic store is limited to 256
+records and 2 MiB, retains one validated previous generation, and excludes argv,
+destination, terminal text, credentials, paths, environment values, process IDs,
+and executable identity. An opaque inventory/source revision may be retained for
+reconnect. It must match current D4 inventory and still returns to a fresh
+executable/host-trust review and explicit approval; no reconnect auto-runs.
 ## D0/D3 fixture contract
 
-`tests/fixtures/session-launch/d0-d3-contract-v2.json` is the canonical
+`tests/fixtures/session-launch/d0-d3-contract-v3.json` is the canonical
 local decision and native-fixture baseline. The schema-1 fixture remains
 unchanged as historical evidence and its exact hash is checked. For Windows,
 macOS, Linux, and WSL it
@@ -256,7 +294,7 @@ cancellation, exit classification, hostile output, offline behavior, shutdown
 cleanup, and 1/10/50-session resource proof. Each row freezes its expected
 safe outcome rather than only naming a case.
 
-Schema 2 also freezes how those later native cases must run: an ephemeral
+Schema 3 retains schema 2's hermetic rules for how later native cases must run: an ephemeral
 loopback OpenSSH server, no Internet or cloud account, a private per-case
 workspace, disposable credentials, isolated `known_hosts` and agent state,
 fixed recorded randomness, bounded readiness probes with no arbitrary sleeps,
@@ -285,7 +323,7 @@ secrets, and shell evaluation remain unavailable.
 This matrix is a definition, not a claim that native sessions ran. F4/F5 own
 the process/PTY implementation and execution evidence. The contract status
 therefore remains
-`local-contract-complete-protected-approval-pending`.
+`local-managed-session-source-complete-protected-activation-pending`.
 
 
 Run the focused contract with:
@@ -299,7 +337,7 @@ cargo test -p automexia-terminal --bin automexia --locked context::launch_broker
 cargo xtask verify architecture
 ```
 
-The suite covers schema-1 immutability, schema-2 contract mutation, hard
+The suite covers schema-1/schema-2 immutability, schema-3 contract mutation, hard
 production denial, exact package digest source/size/version/contract/
 verification matching, manual-path preservation, nine trust boundaries,
 hermetic fixture and evidence rules, four-platform fixed roots,

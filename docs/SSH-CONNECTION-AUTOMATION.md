@@ -1,12 +1,13 @@
 # SSH access, multi-cloud connections, and automation recipes
 
-Status: D5.1's read-only product Hub is fully implemented locally. D5.2 is
-**partially done and nonactivated**: exact direct preparation, an actionable
-three-decision review, one fail-closed application runner, guarded PTY creation,
-and route publication are implemented locally. Activation remains false and the
-linked package unverified. Protected approvals, attestation, current-executable
-review binding, native OpenSSH/cleanup/resources, reconnect/receipts, later
-routes/tunnels, and D6 multi-cloud remain. Ordinary shell commands are unchanged.
+Status: D5.1's read-only Hub and the nonactivated F5.1 direct lifecycle are fully
+implemented locally. Exact defensive argv, fresh review/current-executable
+binding, guarded PTY/route ownership, truthful child outcomes, fixed redacted
+notifications, bounded private receipts, and stale-source reconnect preparation
+are source-complete. Activation remains false and the linked package unverified.
+Protected approvals, real attestation/controller observation, native OpenSSH/
+forced-cleanup/resources/accessibility, M4/M5 routes/trust/tunnels, and D6
+multi-cloud remain. Ordinary shell commands are unchanged.
 This document is the implementation authority for connection profiles and
 connection-scoped automation. The [Connection Hub](CONNECTION-HUB.md) owns the
 overall inventory, authentication, review, and responsive UI contract. The
@@ -793,29 +794,28 @@ persistence/migration, and native UI evidence remain before D5C is fully done.
 
 ### D5D - managed system OpenSSH
 
-Status: **Partially done at the nonactivated review-to-route boundary.**
+Status: **Partially done overall; direct F5.1 source is fully done and
+nonactivated.**
 
 - [x] **Fully done locally:** one inventory alias or bounded literal host maps
-  to the canonical F2 plan with exact capability/destination/revision binding,
-  hostile rejection, stale invalidation, redaction, and product composition.
-- [x] **Fully done locally; nonactivated:** the product review exposes
-  allow-once/session/deny with pointer, focus-aware A/Enter/S/D keys,
-  accessibility semantics, and fixed redacted recovery.
-- [ ] **Partially done:** one app runner owns exact package/scope/argv,
-  environment/cwd bounds, cancellation/revocation, 50 active operations, 256
-  audits, guarded executable handoff, independent PTY/route publication, and
-  shutdown. Protected activation, attestation, current-executable review
-  binding, native prompt/diagnostic and forced-cleanup evidence remain.
-- [ ] **Partially done:** route close and app shutdown reconcile locally;
-  reconnect, notifications, durable receipts, native process cleanup, and
-  route-resource proof remain.
-- [ ] **Not done:** explicit user/port/IPv6 destinations, config-defined jump
-  chains, typed jumps, host-key detail, public identity readiness probes, and
-  tunnels remain separately reviewed M4/M5 slices.
+  to the canonical plan and accessible approval review with hostile rejection,
+  stale invalidation, and private-value redaction.
+- [x] **Fully done locally; nonactivated:** 17 fixed defensive OpenSSH options
+  plus one destination are bound to a fresh full review and current executable
+  identity; the broker rejects any argv or identity drift.
+- [x] **Fully done locally; nonactivated:** ContextManager-only PTY/route
+  publication, actual child-exit classification, cancellation/revocation/close/
+  shutdown, and fixed redacted notifications have one lifecycle owner.
+- [x] **Fully done locally; nonactivated:** terminal receipts use the private
+  bounded atomic connection worker/store, and opaque inventory reconnect rejects
+  stale source before requiring a new review and approval.
+- [ ] **Partially done / external:** protected activation, real attestation,
+  current observation consumption by the controller, native OpenSSH prompts,
+  forced descendant cleanup, resources, and controlled accessibility remain.
+- [ ] **Not done:** M4 explicit routes/full trust/readiness and M5 jumps/tunnels.
 
-Exit gate: deterministic mock-server and controlled native OpenSSH evidence
-passes on Windows, macOS, and Linux.
-
+Exit gate: deterministic source tests plus controlled native OpenSSH evidence
+pass on Windows, macOS, Linux, and separately gated WSL.
 ### D5E - safe automatic actions
 
 - Execute local/session actions first.

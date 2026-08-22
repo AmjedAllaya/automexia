@@ -96,13 +96,11 @@ are exposed.
 
 ## Non-activated implementation evidence
 
-As of 2026-08-17, the active local D0/D3 contract is
-`tests/fixtures/session-launch/d0-d3-contract-v2.json`; schema 1 is retained
-byte-for-byte and hash-checked as historical evidence. Schema 2 records the
-manual-shell and missing-client baseline, trusted-loader SHA-256 source/size,
-package identity/version/contract/verification, grants/audits/defaults,
-all-false authority ceiling, four-platform executable policy, and nineteen
-native scenarios.
+As of 2026-08-22, the active local D0/D3 contract is
+`tests/fixtures/session-launch/d0-d3-contract-v3.json`; schema 1 and schema 2
+remain byte-for-byte hash-checked history. Schema 3 retains their manual/fixture,
+package/grant/audit/trust-boundary, four-platform, and nineteen-scenario rules
+and adds the exact M3 managed-session lifecycle ratchet.
 
 It also records nine trust boundaries with accepted/returned data, limits,
 cancellation, logging, and failure ownership plus a hermetic fixture protocol:
@@ -129,6 +127,25 @@ route before marking the lease published, and reconciles natural completion.
 The protected activation constant remains false, so this production code cannot
 resolve OpenSSH or create a managed child.
 
+As of 2026-08-22, schema 3 adds the nonactivated M3 source ratchet. Seventeen
+fixed defensive OpenSSH options followed by one destination are bound to a fresh
+full-review equality check and current native executable identity. The broker
+rejects option/order/count or file-identity drift. ContextManager remains the
+only PTY/route owner, application child exit supplies the real result, and
+route close no longer implies success. Fixed redacted notifications and a
+private atomic 256-record/2-MiB receipt store cover success, failure, unavailable
+status, cancel, revoke, close, and shutdown. The connection-owned private-filesystem
+adapter keeps D5.2 independent from Quick Actions while enforcing no-follow opens,
+stable Windows handle identity, link/reparse rejection, private Windows DACL or
+Unix mode checks, bounded snapshots, atomic replacement, and directory
+synchronization. Opaque reconnect identity must
+match current D4 source and always returns to fresh review and approval.
+
+Automexia deliberately leaves OpenSSH key-exchange defaults and weak-crypto
+warnings untouched. User configuration may execute OpenSSH-owned helpers during
+launch, so real descendant-tree cleanup and native resource evidence remain
+activation gates. The source implementation does not satisfy package
+attestation, protected approval, or native execution requirements.
 The F2/D5.0 capability-free baseline is also implemented as of 2026-08-17.
 `automexia-devops::connections` contains bounded public-only records, strict
 validation, exhaustive state reducers, canonical approval fingerprints, and a

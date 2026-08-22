@@ -1,8 +1,20 @@
+#![allow(
+    dead_code,
+    reason = "M3 managed SSH remains compile-time disabled until package attestation and native security gates are approved"
+)]
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use crate::automexia::connections::{
+    ManagedReceiptPersistenceState, ManagedReceiptRecord, ManagedReceiptSink,
+};
+use automexia_devops::connections::{
+    validate_connection_receipt, ConnectionReceipt, DirectOpenSshDestinationKind,
+    DirectOpenSshLaunchBinding, OpaqueReference, OperationResultState,
+    CONNECTION_SCHEMA_VERSION,
+};
 use automexia_extension_api::{
     BoundedText, Capability, CapabilityDecision, CapabilityRequest, Decision,
     ExecutableId, ExtensionId, LaunchKind, LaunchRequest, OperationId, ResourceScope,
@@ -18,6 +30,71 @@ use super::launch_broker::{
 
 pub const MAX_CONCURRENT_EXTERNAL_TOOLS: usize = 50;
 pub const MAX_RUNNER_AUDIT_RECORDS: usize = 256;
+pub const MAX_RUNNER_RECEIPTS: usize = 256;
+pub const MAX_RECONNECT_CANDIDATES: usize = 256;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ManagedProcessOutcome {
+    Succeeded,
+    Failed,
+    StatusUnavailable,
+    Cancelled,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ManagedSessionNotification {
+    pub title: &'static str,
+    pub body: &'static str,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ManagedCompletion {
+    pub audit: LaunchAuditRecord,
+    pub receipt: Option<ConnectionReceipt>,
+    pub receipt_persistence: ManagedReceiptPersistenceState,
+    pub notification: Option<ManagedSessionNotification>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct ManagedReconnectCandidate {
+    public_connection_id: String,
+    source_revision: String,
+    completed_at_ms: u64,
+}
+
+impl fmt::Debug for ManagedReconnectCandidate {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ManagedReconnectCandidate")
+            .field("public_connection_id", &"<opaque>")
+            .field("source_revision", &"<opaque>")
+            .field("completed_at_ms", &self.completed_at_ms)
+            .finish()
+    }
+}
+
+impl ManagedReconnectCandidate {
+    pub fn public_connection_id(&self) -> &str {
+        &self.public_connection_id
+    }
+
+    pub fn source_revision(&self) -> &str {
+        &self.source_revision
+    }
+
+    pub const fn completed_at_ms(&self) -> u64 {
+        self.completed_at_ms
+    }
+
+    pub fn matches_current_source(
+        &self,
+        public_connection_id: &str,
+        source_revision: &str,
+    ) -> bool {
+        self.public_connection_id == public_connection_id
+            && self.source_revision == source_revision
+    }
+}
 
 const CAPABILITY_DECISION_LIFETIME_MS: u64 = 60_000;
 const MAX_TRUSTED_ENVIRONMENT_BYTES: usize = 256 * 1024;
@@ -40,7 +117,7 @@ const OPENSSH_ENVIRONMENT_ALLOWLIST: &[&str] = &[
 
 pub struct OpenSshLaunchIntent {
     reservation: super::ManagedRouteReservation,
-    destination: BoundedText,
+    binding: DirectOpenSshLaunchBinding,
     decision: Decision,
     now_ms: u64,
 }
@@ -50,7 +127,7 @@ impl fmt::Debug for OpenSshLaunchIntent {
         formatter
             .debug_struct("OpenSshLaunchIntent")
             .field("reservation", &self.reservation)
-            .field("destination", &"<redacted>")
+            .field("binding", &self.binding)
             .field("decision", &self.decision)
             .field("now_ms", &self.now_ms)
             .finish()
@@ -60,27 +137,19 @@ impl fmt::Debug for OpenSshLaunchIntent {
 impl OpenSshLaunchIntent {
     pub fn new(
         reservation: super::ManagedRouteReservation,
-        destination: &str,
+        binding: DirectOpenSshLaunchBinding,
         decision: Decision,
         now_ms: u64,
     ) -> Result<Self, RunnerError> {
-        if destination.is_empty()
-            || destination.len() > 512
-            || destination.starts_with('-')
-            || destination.contains('*')
-            || destination.contains('?')
-            || destination.chars().any(|character| {
-                !(character.is_ascii_alphanumeric()
-                    || matches!(character, '.' | '_' | '-'))
-            })
+        if binding.arguments().is_empty()
+            || binding.review_fingerprint().is_empty()
+            || binding.executable_identity_digest().is_empty()
         {
             return Err(invalid_request());
         }
-        let destination =
-            BoundedText::new(destination.to_owned()).map_err(|_| invalid_request())?;
         Ok(Self {
             reservation,
-            destination,
+            binding,
             decision,
             now_ms,
         })
@@ -169,16 +238,29 @@ impl GuardedLaunch {
 }
 
 #[derive(Clone, Debug)]
+struct ReceiptSeed {
+    public_connection_id: String,
+    source_revision: String,
+    approved_intent_digest: String,
+    destination_kind: DirectOpenSshDestinationKind,
+    started_at_ms: u64,
+}
+
+#[derive(Clone, Debug)]
 struct ActiveLaunch {
     lease: OperationLease,
     audit: LaunchAuditRecord,
     route_id: Option<usize>,
+    receipt_seed: Option<ReceiptSeed>,
 }
 
 struct RunnerState {
     broker: CapabilityBroker,
     active: BTreeMap<OperationId, ActiveLaunch>,
     audits: VecDeque<LaunchAuditRecord>,
+    receipts: VecDeque<ConnectionReceipt>,
+    reconnect_candidates: VecDeque<ManagedReconnectCandidate>,
+    receipt_sink: Option<Arc<dyn ManagedReceiptSink>>,
     safe_default_working_directory: Option<PathBuf>,
 }
 
@@ -207,6 +289,103 @@ impl RunnerState {
             .filter(|active| active.lease == lease)
             .ok_or_else(stale_lease)
     }
+    fn push_receipt(&mut self, receipt: ConnectionReceipt) {
+        if self.receipts.len() == MAX_RUNNER_RECEIPTS {
+            self.receipts.pop_front();
+        }
+        self.receipts.push_back(receipt);
+    }
+
+    fn push_reconnect_candidate(&mut self, candidate: ManagedReconnectCandidate) {
+        if self.reconnect_candidates.len() == MAX_RECONNECT_CANDIDATES {
+            self.reconnect_candidates.pop_front();
+        }
+        self.reconnect_candidates.push_back(candidate);
+    }
+
+    fn receipt_for(
+        active: &ActiveLaunch,
+        outcome: ManagedProcessOutcome,
+    ) -> Option<ConnectionReceipt> {
+        let seed = active.receipt_seed.as_ref()?;
+        let route_id = active.route_id?;
+        let outcome = match outcome {
+            ManagedProcessOutcome::Succeeded => OperationResultState::Succeeded,
+            ManagedProcessOutcome::Failed => OperationResultState::Failed {
+                diagnostic_code: "connection-process-exit-failed".into(),
+            },
+            ManagedProcessOutcome::StatusUnavailable => OperationResultState::Error {
+                diagnostic_code: "connection-process-exit-status-unavailable".into(),
+            },
+            ManagedProcessOutcome::Cancelled => OperationResultState::Cancelled {
+                diagnostic_code: "connection-session-cancelled".into(),
+            },
+        };
+        let receipt = ConnectionReceipt {
+            schema_version: CONNECTION_SCHEMA_VERSION,
+            operation_id: format!("operation-{}", active.lease.operation_id().get()),
+            session_id: format!("session-{}", active.lease.session_id().get()),
+            capsule_id: format!(
+                "capsule-{}-r{}",
+                active.lease.session_id().get(),
+                active.lease.capsule_revision()
+            ),
+            approved_intent_digest: seed.approved_intent_digest.clone(),
+            source_revision: seed.source_revision.clone(),
+            process_ownership_references: vec![OpaqueReference::new(format!(
+                "managed-process-{}",
+                active.lease.operation_id().get()
+            ))],
+            route_ownership_references: vec![OpaqueReference::new(format!(
+                "terminal-route-{route_id}"
+            ))],
+            tunnel_ownership_references: Vec::new(),
+            started_at_ms: seed.started_at_ms,
+            outcome,
+        };
+        validate_connection_receipt(&receipt)
+            .is_ok()
+            .then_some(receipt)
+    }
+
+    fn record_terminal_outcome(
+        &mut self,
+        active: &ActiveLaunch,
+        now_ms: u64,
+        outcome: ManagedProcessOutcome,
+    ) -> Option<(ConnectionReceipt, ManagedReceiptPersistenceState)> {
+        let receipt = Self::receipt_for(active, outcome)?;
+        let reconnect_identity = active.receipt_seed.as_ref().and_then(|seed| {
+            (seed.destination_kind == DirectOpenSshDestinationKind::InventoryAlias).then(
+                || {
+                    (
+                        seed.public_connection_id.clone(),
+                        seed.source_revision.clone(),
+                    )
+                },
+            )
+        });
+        if let Some((public_connection_id, source_revision)) = reconnect_identity.as_ref()
+        {
+            self.push_reconnect_candidate(ManagedReconnectCandidate {
+                public_connection_id: public_connection_id.clone(),
+                source_revision: source_revision.clone(),
+                completed_at_ms: now_ms,
+            });
+        }
+        let persistence =
+            ManagedReceiptRecord::new(receipt.clone(), reconnect_identity, now_ms)
+                .ok()
+                .map_or(ManagedReceiptPersistenceState::Unavailable, |record| {
+                    self.receipt_sink
+                        .as_ref()
+                        .map_or(ManagedReceiptPersistenceState::NotConfigured, |sink| {
+                            sink.try_persist(record)
+                        })
+                });
+        self.push_receipt(receipt.clone());
+        Some((receipt, persistence))
+    }
 }
 
 impl Drop for RunnerState {
@@ -228,6 +407,11 @@ impl fmt::Debug for ExternalToolRunner {
             .debug_struct("ExternalToolRunner")
             .field("active_count", &state.active.len())
             .field("audit_count", &state.audits.len())
+            .field("receipt_count", &state.receipts.len())
+            .field(
+                "reconnect_candidate_count",
+                &state.reconnect_candidates.len(),
+            )
             .finish()
     }
 }
@@ -264,17 +448,39 @@ impl ExternalToolRunner {
                 broker,
                 active: BTreeMap::new(),
                 audits: VecDeque::with_capacity(MAX_RUNNER_AUDIT_RECORDS),
+                receipts: VecDeque::with_capacity(MAX_RUNNER_RECEIPTS),
+                reconnect_candidates: VecDeque::with_capacity(MAX_RECONNECT_CANDIDATES),
+                receipt_sink: None,
                 safe_default_working_directory,
             })),
         }
     }
 
+    pub fn attach_receipt_sink(&self, sink: Arc<dyn ManagedReceiptSink>) -> bool {
+        let mut state = self.lock();
+        if !state.active.is_empty() || state.receipt_sink.is_some() {
+            return false;
+        }
+        state.receipt_sink = Some(sink);
+        true
+    }
     fn lock(&self) -> MutexGuard<'_, RunnerState> {
         self.state
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    /// Report the protected activation gate without resolving an executable,
+    /// reserving a route, opening a file, or creating an audit operation.
+    pub fn managed_openssh_activation_error(&self) -> Option<RunnerError> {
+        self.lock()
+            .broker
+            .activation_denial()
+            .map(|code| RunnerError {
+                code: RunnerErrorCode::LaunchDenied(code),
+                audit: None,
+            })
+    }
     pub fn register_session(
         &self,
         session_id: SessionId,
@@ -319,7 +525,12 @@ impl ExternalToolRunner {
             intent.reservation.session_id(),
             intent.reservation.capsule_revision(),
             executable,
-            vec![intent.destination],
+            intent
+                .binding
+                .arguments()
+                .into_iter()
+                .map(|argument| BoundedText::new(argument).map_err(|_| invalid_request()))
+                .collect::<Result<Vec<_>, _>>()?,
             None,
             None,
             Vec::new(),
@@ -360,12 +571,39 @@ impl ExternalToolRunner {
             launch: &launch,
             trusted_environment: &trusted_environment,
             safe_default_working_directory: &safe_default_working_directory,
+            reviewed_executable_identity_digest: Some(
+                intent.binding.executable_identity_digest(),
+            ),
             now_ms: intent.now_ms,
         });
-        if result.is_err() {
-            self.revoke_session(intent.reservation.session_id(), intent.now_ms);
+        match result {
+            Ok(mut guarded) => {
+                let seed = ReceiptSeed {
+                    public_connection_id: intent.binding.public_connection_id().into(),
+                    source_revision: intent.binding.source_revision().into(),
+                    approved_intent_digest: intent.binding.review_fingerprint().into(),
+                    destination_kind: intent.binding.destination_kind(),
+                    started_at_ms: intent.now_ms,
+                };
+                let mut state = self.lock();
+                let Some(active) = state.active.get_mut(&guarded.lease().operation_id())
+                else {
+                    drop(state);
+                    let _ = self.cancel(guarded.lease(), intent.now_ms);
+                    self.revoke_session(intent.reservation.session_id(), intent.now_ms);
+                    return Err(stale_lease());
+                };
+                active.audit.public_connection_id =
+                    Some(seed.public_connection_id.clone());
+                active.receipt_seed = Some(seed.clone());
+                guarded.audit.public_connection_id = Some(seed.public_connection_id);
+                Ok(guarded)
+            }
+            Err(error) => {
+                self.revoke_session(intent.reservation.session_id(), intent.now_ms);
+                Err(error)
+            }
         }
-        result
     }
 
     pub fn authorize(
@@ -426,6 +664,7 @@ impl ExternalToolRunner {
                 lease,
                 audit: audit.clone(),
                 route_id: None,
+                receipt_seed: None,
             },
         );
         Ok(GuardedLaunch {
@@ -461,11 +700,12 @@ impl ExternalToolRunner {
         Ok(())
     }
 
-    pub fn complete(
+    pub fn complete_with_outcome(
         &self,
         lease: OperationLease,
         now_ms: u64,
-    ) -> Result<LaunchAuditRecord, RunnerError> {
+        outcome: ManagedProcessOutcome,
+    ) -> Result<ManagedCompletion, RunnerError> {
         let mut state = self.lock();
         let active = state.active_exact(lease)?.clone();
         if active.route_id.is_none() {
@@ -476,10 +716,38 @@ impl ExternalToolRunner {
         }
         state.broker.complete(lease).map_err(|_| stale_lease())?;
         state.active.remove(&lease.operation_id());
-        let audit =
-            RunnerState::completed_audit(&active, now_ms, AuditResultClass::Completed);
+        let audit_result = match outcome {
+            ManagedProcessOutcome::Succeeded => AuditResultClass::Completed,
+            ManagedProcessOutcome::Failed | ManagedProcessOutcome::StatusUnavailable => {
+                AuditResultClass::Failed
+            }
+            ManagedProcessOutcome::Cancelled => AuditResultClass::Cancelled,
+        };
+        let audit = RunnerState::completed_audit(&active, now_ms, audit_result);
+        let recorded = state.record_terminal_outcome(&active, now_ms, outcome);
+        let (receipt, receipt_persistence) = recorded.map_or(
+            (None, ManagedReceiptPersistenceState::NotConfigured),
+            |(receipt, persistence)| (Some(receipt), persistence),
+        );
+        let notification = receipt
+            .as_ref()
+            .map(|_| notification_for(outcome, receipt_persistence));
         state.push_audit(audit.clone());
-        Ok(audit)
+        Ok(ManagedCompletion {
+            audit,
+            receipt,
+            receipt_persistence,
+            notification,
+        })
+    }
+
+    pub fn complete(
+        &self,
+        lease: OperationLease,
+        now_ms: u64,
+    ) -> Result<LaunchAuditRecord, RunnerError> {
+        self.complete_with_outcome(lease, now_ms, ManagedProcessOutcome::Succeeded)
+            .map(|completion| completion.audit)
     }
 
     pub fn cancel(
@@ -493,6 +761,11 @@ impl ExternalToolRunner {
         state.active.remove(&lease.operation_id());
         let audit =
             RunnerState::completed_audit(&active, now_ms, AuditResultClass::Cancelled);
+        let _ = state.record_terminal_outcome(
+            &active,
+            now_ms,
+            ManagedProcessOutcome::Cancelled,
+        );
         state.push_audit(audit.clone());
         Ok(audit)
     }
@@ -514,6 +787,11 @@ impl ExternalToolRunner {
                     now_ms,
                     AuditResultClass::Cancelled,
                 );
+                let _ = state.record_terminal_outcome(
+                    &active,
+                    now_ms,
+                    ManagedProcessOutcome::Cancelled,
+                );
                 state.push_audit(audit);
             }
         }
@@ -531,14 +809,48 @@ impl ExternalToolRunner {
             let _ = state.broker.cancel(launch.lease);
             let audit =
                 RunnerState::completed_audit(launch, now_ms, AuditResultClass::Cancelled);
+            let _ = state.record_terminal_outcome(
+                launch,
+                now_ms,
+                ManagedProcessOutcome::Cancelled,
+            );
             state.push_audit(audit);
         }
         state.broker.shutdown();
         active.len()
     }
-
     pub fn recent_audits(&self) -> Vec<LaunchAuditRecord> {
         self.lock().audits.iter().cloned().collect()
+    }
+
+    pub fn recent_receipts(&self) -> Vec<ConnectionReceipt> {
+        self.lock().receipts.iter().cloned().collect()
+    }
+
+    pub fn recent_reconnect_candidates(&self) -> Vec<ManagedReconnectCandidate> {
+        self.lock().reconnect_candidates.iter().cloned().collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bind_test_receipt_seed(
+        &self,
+        lease: OperationLease,
+        public_connection_id: &str,
+        source_revision: &str,
+        approved_intent_digest: &str,
+        destination_kind: DirectOpenSshDestinationKind,
+        started_at_ms: u64,
+    ) {
+        let mut state = self.lock();
+        let active = state.active.get_mut(&lease.operation_id()).unwrap();
+        active.audit.public_connection_id = Some(public_connection_id.into());
+        active.receipt_seed = Some(ReceiptSeed {
+            public_connection_id: public_connection_id.into(),
+            source_revision: source_revision.into(),
+            approved_intent_digest: approved_intent_digest.into(),
+            destination_kind,
+            started_at_ms,
+        });
     }
 
     pub fn is_idle(&self) -> bool {
@@ -546,6 +858,37 @@ impl ExternalToolRunner {
     }
 }
 
+fn notification_for(
+    outcome: ManagedProcessOutcome,
+    persistence: ManagedReceiptPersistenceState,
+) -> ManagedSessionNotification {
+    if persistence == ManagedReceiptPersistenceState::Unavailable {
+        return ManagedSessionNotification {
+            title: "SSH session history unavailable",
+            body: "The session ended, but its completion record could not be saved. Select the connection again to reconnect.",
+        };
+    }
+    match outcome {
+        ManagedProcessOutcome::Succeeded => ManagedSessionNotification {
+            title: "SSH session ended",
+            body: "The managed SSH session closed normally.",
+        },
+        ManagedProcessOutcome::Failed => ManagedSessionNotification {
+            title: "SSH session failed",
+            body:
+                "The managed SSH process ended with an error. Review its terminal output.",
+        },
+        ManagedProcessOutcome::StatusUnavailable => ManagedSessionNotification {
+            title: "SSH session status unavailable",
+            body:
+                "The managed SSH session ended, but its process status was unavailable.",
+        },
+        ManagedProcessOutcome::Cancelled => ManagedSessionNotification {
+            title: "SSH session cancelled",
+            body: "The managed SSH session and its owned route were closed.",
+        },
+    }
+}
 fn invalid_request() -> RunnerError {
     RunnerError {
         code: RunnerErrorCode::InvalidRequest,

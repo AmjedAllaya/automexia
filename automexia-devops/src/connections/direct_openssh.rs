@@ -25,6 +25,32 @@ pub const MAX_DIRECT_OPENSSH_DESTINATION_BYTES: usize = 512;
 const DIRECT_OPENSSH_EXECUTABLE_ID: &str = "ssh";
 const DIRECT_OPENSSH_CAPABILITY: &str = "session.launch";
 
+/// Application-owned OpenSSH client options for the M3 direct-session grammar.
+///
+/// These constants precede the single reviewed destination and override unsafe
+/// configuration-file defaults without accepting user-supplied option text.
+/// OpenSSH remains responsible for authentication, host-key prompts, and the
+/// encrypted network protocol.
+pub const DIRECT_OPENSSH_MANAGED_OPTIONS: &[&str] = &[
+    "-oAddKeysToAgent=no",
+    "-oClearAllForwardings=yes",
+    "-oControlMaster=no",
+    "-oControlPath=none",
+    "-oControlPersist=no",
+    "-oEnableEscapeCommandline=no",
+    "-oForkAfterAuthentication=no",
+    "-oForwardAgent=no",
+    "-oForwardX11=no",
+    "-oGSSAPIDelegateCredentials=no",
+    "-oPermitLocalCommand=no",
+    "-oProxyCommand=none",
+    "-oProxyJump=none",
+    "-oRemoteCommand=none",
+    "-oStdinNull=no",
+    "-oStrictHostKeyChecking=ask",
+    "-oTunnel=no",
+];
+
 /// Immutable, non-executing M3 preparation built before executable and identity
 /// observations exist. Its debug representation deliberately omits profile,
 /// destination, source, identity, and plan fingerprint material.
@@ -150,13 +176,34 @@ impl DirectOpenSshRequest {
         self.destination_kind
     }
 
-    /// Return the only argument reviewed for a future native `ssh` launch.
+    /// Return the canonical M3 native `ssh` argument vector.
     ///
-    /// Callers must preserve this as one argument and must not join it into a
-    /// command string. The application launch broker remains the only future
-    /// consumer allowed to turn this data into process state.
-    pub fn arguments(&self) -> [&str; 1] {
-        [self.destination_argument.as_str()]
+    /// The application-owned options disable forwarding, multiplexing, local
+    /// commands, backgrounding, and implicit trust weakening. The last value
+    /// is the only destination. Callers must preserve these as distinct
+    /// arguments and must never join them into a command string.
+    pub fn arguments(&self) -> Vec<&str> {
+        DIRECT_OPENSSH_MANAGED_OPTIONS
+            .iter()
+            .copied()
+            .chain(std::iter::once(self.destination_argument.as_str()))
+            .collect()
+    }
+
+    pub fn public_connection_id(&self) -> &str {
+        &self.public_connection_id
+    }
+
+    pub fn source_revision(&self) -> &str {
+        &self.source_revision
+    }
+
+    pub const fn capsule_revision(&self) -> u64 {
+        self.capsule_revision
+    }
+
+    pub fn executable_identity_digest(&self) -> &str {
+        &self.executable_identity_digest
     }
 
     pub fn review_fingerprint(&self) -> &str {
@@ -228,6 +275,91 @@ impl fmt::Debug for DirectOpenSshReview {
             .field("environment_risk", &self.environment_risk)
             .field("execution_enabled", &self.execution_enabled)
             .finish()
+    }
+}
+/// Opaque proof that an identity-bound M3 review was revalidated immediately
+/// before an application-owned capability decision. It carries no process,
+/// PTY, filesystem, network, or credential authority.
+#[derive(Clone, PartialEq, Eq)]
+pub struct DirectOpenSshLaunchBinding {
+    request: DirectOpenSshRequest,
+}
+
+impl fmt::Debug for DirectOpenSshLaunchBinding {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("DirectOpenSshLaunchBinding")
+            .field("public_connection_id", &self.request.public_connection_id)
+            .field("source_revision", &self.request.source_revision)
+            .field("capsule_revision", &self.request.capsule_revision)
+            .field("destination_kind", &self.request.destination_kind)
+            .field("review_fingerprint", &"<fingerprint>")
+            .field("arguments", &"<redacted>")
+            .finish()
+    }
+}
+
+impl DirectOpenSshLaunchBinding {
+    pub fn arguments(&self) -> Vec<&str> {
+        self.request.arguments()
+    }
+
+    pub fn public_connection_id(&self) -> &str {
+        self.request.public_connection_id()
+    }
+
+    pub fn source_revision(&self) -> &str {
+        self.request.source_revision()
+    }
+
+    pub const fn capsule_revision(&self) -> u64 {
+        self.request.capsule_revision()
+    }
+
+    pub const fn destination_kind(&self) -> DirectOpenSshDestinationKind {
+        self.request.destination_kind()
+    }
+
+    pub fn executable_identity_digest(&self) -> &str {
+        self.request.executable_identity_digest()
+    }
+
+    pub fn review_fingerprint(&self) -> &str {
+        self.request.review_fingerprint()
+    }
+}
+
+impl DirectOpenSshReview {
+    /// Rebuild the complete current review and issue an opaque launch binding
+    /// only when every profile, plan, executable, observation, trust, policy,
+    /// and freshness input still matches byte-for-byte.
+    pub fn bind_launch(
+        &self,
+        profile: &ConnectionProfileV1,
+        plan: &ResolvedConnectionPlan,
+        observation: &ConnectionObservation,
+        host_trust: &HostTrustState,
+        now_ms: u64,
+    ) -> Result<DirectOpenSshLaunchBinding, ConnectionModelError> {
+        self.request
+            .validate_current(profile, plan, observation, host_trust, now_ms)?;
+        let current = review_direct_openssh(
+            profile,
+            plan,
+            observation,
+            host_trust.clone(),
+            now_ms,
+        )?;
+        if *self != current {
+            return Err(error(
+                ConnectionModelErrorCode::InvalidTransition,
+                "direct_openssh.review",
+                "the reviewed OpenSSH decision is stale",
+            ));
+        }
+        Ok(DirectOpenSshLaunchBinding {
+            request: self.request.clone(),
+        })
     }
 }
 
@@ -495,6 +627,7 @@ struct ReviewFingerprintMaterial<'a> {
     host_trust: &'a HostTrustState,
     host_trust_policy: DirectOpenSshHostTrustPolicy,
     environment_risk: EnvironmentRisk,
+    managed_options: &'static [&'static str],
 }
 
 fn validate_m3_review_context(
@@ -572,6 +705,7 @@ fn direct_review_fingerprint(
         host_trust,
         host_trust_policy: DirectOpenSshHostTrustPolicy::AskOnFirstUseRejectChanged,
         environment_risk: profile.environment.risk,
+        managed_options: DIRECT_OPENSSH_MANAGED_OPTIONS,
     })
 }
 
@@ -642,10 +776,17 @@ pub fn review_direct_openssh(
         changed_fields: Vec::new(),
         executable_preview: vec![ExecutablePreview {
             executable_id: DIRECT_OPENSSH_EXECUTABLE_ID.into(),
-            arguments: vec![RedactedArgument {
-                label: "destination".into(),
-                redacted: true,
-            }],
+            arguments: DIRECT_OPENSSH_MANAGED_OPTIONS
+                .iter()
+                .map(|_| RedactedArgument {
+                    label: "managed-security-option".into(),
+                    redacted: false,
+                })
+                .chain(std::iter::once(RedactedArgument {
+                    label: "destination".into(),
+                    redacted: true,
+                }))
+                .collect(),
         }],
         approval_fingerprint: review_fingerprint.clone(),
     };

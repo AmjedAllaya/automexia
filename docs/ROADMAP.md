@@ -26,12 +26,12 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | v0.4/S0 | Core identity, hostile-input bounds, atomic reload, and current source gates; stable-release evidence remains external. |
 | **Partially done** | v0.4/S1 | Deterministic and Windows-native assurance exists; controlled Linux/macOS, visual, GPU, accessibility, and baseline evidence remains. |
 | **Not done** | S2 | The 30-day baseline and enforceable latency/memory ratchet are not active. |
-| **Partially done** | D0 | ADR 0012 is accepted by the project owner; schema-2 manual/trust/default/hermetic-fixture contract, four-platform matrix, and mutation gate are complete locally. ADR 0003 protected approvals and native execution remain. |
+| **Partially done** | D0 | ADR 0012 is accepted; schema 3 freezes exact managed options and lifecycle/receipt/reconnect rules while retaining immutable schema 1/2. Protected approvals and native execution remain. |
 | **Fully done** | D1 | Four private provider-neutral crates and bounded contracts satisfy the source boundary. |
 | **Fully done** | D2 | Generic status, immutable history, capsules, isolation, cancellation, and freshness are implemented. |
-| **Partially done** | D3 | The production-compiled broker remains hard disabled. One application runner, exact typed grant/argv/environment/cwd, executable guard, approval UX, PTY/route publication, bounded lifecycle/audit, and shutdown are complete locally. Exact-head approvals/server enforcement, attestation, native descendant cleanup, OpenSSH/resource/accessibility proof, and activation remain. |
+| **Partially done** | D3 | The hard-disabled broker/runner binds exact managed argv and executable identity, publishes only through ContextManager, reconciles actual child outcomes, and queues bounded redacted receipts. Exact-head approvals/server enforcement, attestation/activation, forced descendant cleanup, and native OpenSSH/resource/accessibility proof remain. |
 | **Fully done** | D4 | The bounded OpenSSH inventory/persistence package is complete but deliberately disabled. |
-| **Partially done** | D5.0-D5.2 | D5.1 is fully implemented locally. D5.2 composes selected or literal hosts into canonical plans and an actionable review; typed decisions now reach the fail-closed runner and exact PTY/route seam. Literal input, shortcuts, focus/IME/pointer/accessibility, redaction, and tiny-to-8K geometry are complete locally. Protected activation, attestation, reconnect/receipts, host trust/routes/tunnels, and controlled native evidence remain. |
+| **Partially done** | D5.0-D5.2 | D5.1 and nonactivated F5.1 are source-complete locally: exact defensive argv, full-review/executable binding, child-exit truth, redacted notifications, bounded durable receipts, and stale-source reconnect preparation pass. Protected activation/attestation, real SSH/forced cleanup, M4/M5 trust/routes/tunnels, and controlled native evidence remain. |
 | **Not done** | D6.0-D6.5 | Provider authentication, capsules, transports, and multi-cloud slices are planned only. |
 | **Not done** | D7 | Public ecosystem, direct APIs, sandboxed extensions, and AI execution are deferred. |
 | **Fully done** | CP0 | Architecture, threat model, ceilings, fixtures, mutation tests, and nonactivation policy are complete. |
@@ -280,8 +280,8 @@ The following foundation work is intentionally not claimed by Phase 1:
 
 #### Phase 2 preparation status (2026-08-22)
 
-ADR 0012 is accepted by the project owner. The mutation-checked schema-2
-contract preserves immutable schema-1 history, manual-shell/missing-client
+ADR 0012 is accepted by the project owner. The mutation-checked schema-3
+contract preserves immutable schema-1/schema-2 history, manual-shell/missing-client
 behavior, package digest/identity/version/contract/verification, grants/audits,
 nine trust boundaries, four-platform resolution, all-false runtime authority,
 and nineteen native scenarios.
@@ -289,7 +289,9 @@ and nineteen native scenarios.
 The production-compiled broker remains hard disabled and the linked package is
 unverified. One Router-owned runner now enforces exact typed scope, 50 active
 operations, 256 redacted audits, bounded public environment, a trusted cwd,
-replay-safe leases, cancellation, route close, and application shutdown. It
+replay-safe leases, actual child outcome, cancellation, route close, redacted
+notifications, bounded durable receipts/reconnect candidates, and application
+shutdown. It
 opens and re-compares the executable guard consumed by ContextManager's exact
 PTY seam; the route is published only after insertion. The review exposes
 allow-once/session/deny pointer, keyboard, focus, accessibility, and fixed

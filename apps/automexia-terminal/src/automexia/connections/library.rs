@@ -22,9 +22,7 @@ use automexia_ui_model::connection_hub::{HubCatalogGrouping, HubCatalogSource};
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 
-use crate::automexia::quick_actions::{
-    secure_fs, StoreError as PrivateFsError, StoreErrorCode as PrivateFsErrorCode,
-};
+use super::private_fs::{self as secure_fs, PrivateFsError, PrivateFsErrorCode};
 
 pub const CONNECTION_LIBRARY_SCHEMA: u16 = 1;
 pub const CONNECTION_LIBRARY_FILE: &str = "library.v1.json";

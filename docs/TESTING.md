@@ -256,7 +256,7 @@ cargo test -p automexia-terminal --bin automexia --locked direct_openssh_review_
 cargo xtask verify architecture
 ```
 
-The checker locks schema-1 immutability and schema-2's production-disabled
+The checker locks schema-1/schema-2 immutability and schema-3's production-disabled
 activation, linked unverified principal, trusted digest source/size, exact
 version/contract/verification, manual-shell behavior, grants/audits/defaults,
 nine trust boundaries, four-platform resolution, authority ceiling, nineteen
@@ -266,7 +266,8 @@ tests reject re-gating the production modules under `cfg(test)` or widening
 their authority.
 
 Rust tests cover fixed roots and native file identity, unverified/mismatched
-package denial before resolution, one literal argument, hostile option/control/
+package denial before resolution, exact managed options plus one destination,
+hostile option/control/
 size cases, bounded environment and trusted cwd, expiry/scope/replay/revocation,
 1/10/50 pure lifecycles, runner capacity and FIFO audit bounds, publish-before-
 complete, cancellation/shutdown, redaction, exact route mapping, focus-aware
@@ -1183,76 +1184,61 @@ resource/persistence owner. This does not waive those gates for D5.1/D5.2.
 
 ### M3 direct OpenSSH review contract
 
-The M3 preparation and Connection Review slice is application-wired but
-deliberately non-activated:
+The M3 source slice is application-wired and deliberately nonactivated:
 
     cargo test -p automexia-devops --test direct_openssh_review --locked
-    cargo test -p automexia-ui-model --test direct_openssh_review --locked
-    cargo test -p automexia-ui-model --test connection_hub --locked
-    cargo test -p automexia-terminal --lib automexia::connections --locked
-    cargo test -p automexia-terminal --bin automexia screen::connection_hub::tests --locked
-    cargo test -p automexia-terminal --bin automexia renderer::connection_hub::tests --locked
-    cargo clippy -p automexia-devops -p automexia-ui-model -p automexia-terminal --all-targets --all-features --locked -- -D warnings
-    cargo bench -p automexia-devops --bench connection_planning --locked -- direct_openssh_prepare_selected --warm-up-time 1 --measurement-time 2 --sample-size 20
-    cargo xtask verify architecture
+    cargo test -p automexia-terminal launch_broker::tests --locked
+    cargo test -p automexia-terminal automexia::connections::receipts::tests --locked
+    cargo test -p automexia-terminal automexia::connections::runtime::tests::managed_receipt --locked
+    python tools/ci/check_session_launch_d0.py
+    python tools/ci/test_session_launch_d0.py
+    python tools/ci/check_feature_assurance.py
 
-Eleven devops-model tests cover inventory-typed concrete aliases, exact
-single-argument preservation, canonical `ssh`, exact `session.launch`, the
-all-false authority ceiling, complete canonical no-recipe F2 planning,
-pending preparation without a fabricated executable identity, wrong source/
-executable/capability denial, non-applicable trust denial, misleading targets,
-option-like/empty/whitespace/control/bidi/oversized/ambiguous hostile values,
-M4 user/port/jump deferral, profile-identifier/destination/reference-redacted
-debug and errors, observation readiness, and fingerprint invalidation. Two
-UI-model review tests cover all nine decisions, disabled action, accessibility
-names, redaction, and application-preparation projection. Thirteen Hub-model
-tests add the literal textbox role, reading order, invalid disabled action,
-hidden catalog semantics, and focus restoration.
+The devops tests cover the exact 17 managed options followed by one destination,
+full-review equality before opaque launch binding, destination and identity
+redaction, observation/trust/source/capsule/plan invalidation, and explicit
+preservation of OpenSSH `KexAlgorithms` and `WarnWeakCrypto` policy. Broker and
+runner tests cover reordered/removed/extra argv, current native executable
+replacement, grant/scope/replay/capacity/publication rules, actual success/
+failure/unavailable/cancel outcomes, fixed notifications, reconnect eligibility,
+and 1/10/50 bounded pure lifecycles.
 
-Application tests cover stable D4-record mapping plus a transient literal host,
-empty and exact 512/513-byte boundaries, option/whitespace/control/bidi/user/
-port/URI/wildcard/metacharacter/Unicode rejection, opaque IDs and debug,
-conservative risk, current/unknown/stale runtime selection, invalid and
-unsupported records, atomic paste/IME handling, focus trapping, cancel/owning-
-surface cleanup, generation isolation, redacted diagnostics, Enter-to-review,
-and Escape-to-results. One screen-input test proves the unmodified case-
-insensitive L mnemonic and prevents Control, Alt, Super, or multi-character key
-theft. Seven renderer tests cover the three icon-and-color review groups,
-literal field/Review/Cancel hits, suppression of the overlapping redundant
-top-level Close hit target, inert background and invalid Review, route-specific
-chrome/status, pointer Back, and bounded non-overlapping geometry from 90x70
-through 7680x4320 at 200 percent scale.
+Receipt tests cover private permissions and no-follow reads, malformed/oversized
+state, model/reconnect identity validation, destination-free debug, 256-record
+and 2-MiB ceilings, atomic primary/previous recovery, read-only/disk-full/busy
+errors, worker queue saturation, shutdown drain, restart recovery, and stale D4
+source rejection. The connection-owned private-filesystem adapter is separately
+ratcheted for no-follow opens, Windows handle volume/file-index identity, native
+link/reparse rejection, private Windows DACL
+or Unix mode validation, and source-identity snapshots; it does not depend on Quick
+Actions. Filesystem work occurs only on the existing bounded connection worker;
+the runner's sink call is nonblocking.
 
-The contract is synchronous and bounded to one selected record or one transient
-512-byte destination plus existing F2 collection ceilings. The lightweight
-validator runs only on the bounded host editor; composition runs on explicit
-Review. It adds no worker, file, process, socket, PTY, listener, route,
-credential, persistence, or GPU resource. The existing runtime clones an
-inventory record under its catalog lock and composes it after lock release.
-Literal state is memory-only, clears on cancel/close/success, and is not rebuilt
-by unrelated catalog refresh.
+On the native Windows x86_64 development host on 2026-08-22, the focused M3,
+Windows handle-identity/ACL, schema/mutation, phase-audit, and assurance tests
+passed. Final gates passed: formatting, warning-denied workspace Clippy, 1,801
+CI-profile tests with 7 explicitly skipped, workspace documentation tests, full
+QA, and `cargo ready`. Full QA also passed resize/session-clone stress, Loom,
+dependency policy, and repository contracts; its report is
+`target/qa/20260822T114111Z-10124/report.html`.
 
-On the native Windows development host on 2026-08-22, the focused literal-host,
-UI-model, controller, and renderer suites, strict owner Clippy, architecture
-verification, repository validation, `cargo fmt --all -- --check`, full
-workspace Clippy, the 1,782-test CI-profile nextest run (7 skipped), workspace
-documentation tests, full QA, and `cargo ready` passed after the UX re-audit.
-`cargo ready` also passed a clean isolated workspace check/Clippy/test build,
-dependency policy, persistent application build, and version smoke test. The
-disposable QA evidence report is under
-`target/qa/20260822T022956Z-26248/report.html` (UTC timestamp).
+The first full nextest attempt had 1,798 passes, 1 architecture-contract failure,
+and 7 skips; two automatic retries reproduced the failure. The receipt source
+had incorrectly imported the Quick Actions private-filesystem module. Moving the
+generic no-follow/native-permission adapter under Connection ownership removed
+that cross-phase runtime edge. The final 1,801-test rerun and architecture
+self-verification passed. The first `cargo ready` preflight also truthfully stopped
+because D: had 10.95 GiB free versus its 12-GiB threshold; the complete rerun used
+a dedicated C: temporary target with 23.58 GiB free, passed all three isolated
+verification phases and the application-version smoke test, then removed its
+7.79-GiB verification tree and disposable outer target.
 
-The same-host Criterion sample for `direct_openssh_prepare_selected` measured a
-95 percent interval of 6.3520-6.6011 microseconds with 2 of 20 outliers; this is
-local bounded-preparation evidence, not a stable-hardware release threshold.
+Active schema 3 freezes those rules and hash-checks historical schema 1 and
+schema 2. No test in this slice enables `MANAGED_SESSION_LAUNCH_ENABLED` for the
+product or treats `Unverified` as attested. Real OpenSSH prompts, network traffic,
+descendant cleanup, manual-SSH regression, native pixels/screen readers, and
+Windows/macOS/Linux/WSL 1/10/50 resource campaigns remain external gates.
 
-No native OpenSSH process, PTY, prompt, host-key exchange, network operation,
-renderer pixel capture, screen-reader run, Application Verifier/WPR campaign,
-or manual before/after `ssh` run occurred. Protected ADR approval, real
-executable identity/attestation, the atomic native check-to-spawn adapter,
-process/PTY/route ownership, cancellation and descendant teardown, PID-reuse
-coverage, Linux/macOS native execution, and controlled accessibility/GPU/
-long-session evidence remain M2/M3 activation or release gates.
 ### Connection Hub F3 catalog contract
 
 The first D5.1 slice adds a pure catalog contract without activating D4 or any

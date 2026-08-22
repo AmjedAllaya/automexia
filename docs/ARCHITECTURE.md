@@ -291,6 +291,16 @@ available but currently end at a protected-review diagnostic before executable
 or filesystem resolution. No process, PTY, network, credential, listener,
 host-trust mutation, persistence, or secret authority is granted.
 
+The dormant post-activation M3 lifecycle keeps ContextManager as the only PTY,
+process, and route owner. Actual child exit, cancel, revoke, route close, and
+shutdown become fixed redacted results. A bounded connection worker persists only
+provider-neutral receipts and opaque reconnect identity; reconnect always returns
+to current D4-source validation and fresh review/approval. Connection Library and
+receipt storage share a connection-owned private-filesystem adapter, not the Quick
+Actions runtime, for stable Windows handle identity, native link/reparse
+rejection, no-follow reads, private
+permissions, identity snapshots, atomic replacement, and directory sync.
+
 ### Environment Capsule contract
 
 Every managed session has a non-secret, immutable `EnvironmentCapsule`:
@@ -357,24 +367,33 @@ for the exact OpenSSH tools they use. The extension itself has no direct-network
 capability: the approved OpenSSH child connects exactly as it would when typed
 in a shell. Arbitrary process/network access and third-party use remain denied.
 
-Current source status remains fail-closed. The active D0/D3 schema-2 fixture
-freezes manual-shell/missing-client behavior, exact package identity and
-verification, grants/audits/defaults, nine trust boundaries, fixed platform
-resolution, and the hermetic native evidence protocol. Schema 1 remains
-immutable history. ADR 0012 is accepted by the project owner.
+Current D0/D3 source status remains fail-closed. Active schema 3 freezes the exact
+17-option-plus-destination M3 grammar, fresh full-review/executable binding,
+actual child-outcome mapping, bounded private receipt/recovery contract, and
+stale-source reconnect rule while retaining schema 1 and schema 2 as immutable
+hash-checked history. The manual-shell baseline, package policy, nine trust
+boundaries, platform resolution, and hermetic native protocol remain unchanged.
+ADR 0012 is accepted by the project owner.
 
 The broker and one Router-owned `ExternalToolRunner` compile in production, but
 `MANAGED_SESSION_LAUNCH_ENABLED` is false and the linked package candidate is
 `Unverified`. Authorization therefore denies before executable/filesystem
-resolution. Behind that denial, the runner owns exact typed scope, a 50-operation
-ceiling, 256-record redacted audit FIFO, bounded allowlisted environment,
-trusted cwd, cancellation, and shutdown. It opens and re-compares the exact
-executable guard consumed only by `ContextManager`, which creates the PTY,
-inserts one route, and marks publication afterward. The Connection Review
-provides allow-once/session/deny actions and fixed recovery states without
-exposing private launch data. No production child can start until ADR 0003
-protected approvals, real loader attestation, and native gates pass. Exact
-limits and remaining gates are documented in the
+resolution. Behind that denial, the runner accepts only an opaque fresh-review
+binding, re-hashes current native executable identity, enforces exact ordered
+argv, and owns 50 active operations plus 256 redacted audits/receipts/reconnect
+candidates. `ContextManager` alone creates the PTY and publishes the route.
+Application child-exit reconciliation supplies the real outcome; close never
+assumes success. A nonblocking Router-attached connection worker persists at
+most 256 provider-neutral receipts/2 MiB with private atomic primary/previous
+recovery. Reconnect uses opaque current-inventory/source identity and always
+returns to fresh review and approval.
+
+No production child can start until ADR 0003 protected approvals, real loader
+attestation/revocation, controller consumption of a current attested executable
+observation, and native forced-cleanup/OpenSSH/resource/accessibility gates pass.
+User-owned OpenSSH configuration remains a launch-time trust surface and may
+spawn helpers, so native descendant-tree proof is mandatory. Exact limits and
+remaining gates are documented in the
 [session-launch broker contract](SESSION-LAUNCH-BROKER.md).
 
 ### OpenSSH inventory and persistence boundary

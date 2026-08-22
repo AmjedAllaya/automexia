@@ -3,7 +3,7 @@
 Status: D5.1/F3 is **fully implemented at the source and local Windows
 boundary**. D5.2 is **partially done and nonactivated**: the read-only Hub,
 literal-host editor, actionable three-decision review, one fail-closed
-application runner, guarded PTY seam, and exact route publication are local.
+application runner, guarded PTY seam, exact route publication, truthful child outcomes, redacted notifications, bounded durable receipts, and stale-source reconnect preparation are local.
 Activation is false and the package unverified, so v0.4 starts no managed child.
 Protected approvals, attestation, current-executable review binding, native
 OpenSSH/cleanup/resources/accessibility, later connection features, and all D6
@@ -969,26 +969,34 @@ Exit achieved locally: 10 runtime, 6 controller, 4 renderer, 33 D4, 32 UI-model,
 target. This exit does not activate D5.2.
 ### D5.2 - reviewed OpenSSH launch and lifecycle
 
-- [x] **Fully done locally; nonactivated** — Compose one current direct D4
-  record or bounded transient literal host into the canonical F2 plan and
-  actionable Connection Review.
-- [x] **Fully done locally; nonactivated** — Provide the `L` editor, 512-byte
-  grammar, atomic paste/IME rejection, one Cancel/Escape path, focus-safe
-  Allow once/session/deny actions, A/Enter/S/D keys, accessibility semantics,
-  fixed recovery, and tiny-to-8K pointer geometry.
-- [x] **Fully done locally; nonactivated** — Own one application runner with
-  exact package/scope/argv/environment/cwd, 50 active operations, 256 audits,
-  executable-guard revalidation, ContextManager-only PTY creation, publication
-  after route insertion, cancellation/revocation, route close, and shutdown.
-- [ ] **Partially done** — ADR 0012 is accepted; ADR 0003 approvals/enforcement,
-  real attestation, current resolved executable in a fresh review, native
-  forced cleanup/OpenSSH/resources/accessibility, and activation remain.
-- [ ] **Not done** — Add typed user/port/routes, identity/agent/certificate
-  public status, reconnect/receipts, jumps, tunnels, and host-key explanation.
+- [x] **Fully done locally; nonactivated** - Compose one current direct D4
+  record or bounded transient literal host into the canonical plan and accessible
+  approval review; all existing literal-editor, focus, IME, pointer, keyboard,
+  redaction, and tiny-to-8K protections remain.
+- [x] **Fully done locally; nonactivated** - Freeze 17 defensive OpenSSH options
+  followed by one destination. Create launch authority only from a fresh complete
+  review and revalidate canonical executable file identity plus exact ordered
+  argv at the broker.
+- [x] **Fully done locally; nonactivated** - Keep ContextManager as the only PTY
+  and route owner. Reconcile the actual child status before close and distinguish
+  success, failure, missing status, cancel, revoke, route close, and shutdown
+  with fixed path/host-free notifications.
+- [x] **Fully done locally; nonactivated** - Persist provider-neutral completion
+  receipts through the bounded connection worker: 256 records, 2 MiB, private
+  atomic primary/previous recovery. Store no destination, terminal content,
+  credential, path, environment, PID, or executable identity. Rebuild reconnect
+  only from current inventory and exact source revision, then require fresh
+  executable/host-trust review and approval.
+- [ ] **Partially done / externally blocked** - ADR 0003 approvals/enforcement,
+  real package attestation/revocation, controller use of a current attested
+  observation, native OpenSSH prompts, forced descendant cleanup, 1/10/50
+  resources, controlled accessibility, and production activation remain.
+- [ ] **Not done** - M4 typed user/port/routes/full host-trust and identity UX,
+  and M5 jumps/tunnels remain separate work.
 
-Exit: D5 native/security/performance matrix passes on Windows/macOS/Linux;
-disabled extension and ordinary manual SSH remain unchanged.
-
+Exit remains unavailable as a shipped connection until the protected and native
+D5 matrix passes on Windows, macOS, Linux, and separately gated WSL; disabled
+managed SSH and ordinary manual SSH must remain unchanged.
 ### D6.0 - provider-neutral capsule and authentication framework
 
 - Activate immutable provider capsules, auth observations/state transitions,

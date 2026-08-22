@@ -3,7 +3,9 @@
 > **Implemented locally / release-gated:** v0.5 source builds expose a read-only
 > Connection Hub plus an actionable managed-SSH approval review. Allow once,
 > Allow for session, and Deny exercise the fail-closed policy boundary; current
-> builds report that protected review is pending. The activation gate is false
+> builds report that protected review is pending. The dormant lifecycle source
+> also owns exact managed options, child outcomes, notifications, bounded receipts,
+> and stale-source reconnect preparation. The activation gate is false
 > and the linked package is unverified, so the Hub cannot launch a process,
 > access the network, or create a managed PTY. Continue using system OpenSSH in
 > the shell.
@@ -24,7 +26,8 @@
    Review.
 6. Review the public launcher/package state, target, direct/new route, strict
    host-key policy, `session.launch` capability, production risk, 60-second
-   approval, one literal argument, and PTY input/output.
+   approval, 17 fixed defensive options plus one literal destination, and PTY
+   input/output.
 7. Choose **Allow once** (A or focused Enter), **Allow for session** (S), or
    **Deny** (D). In the current nonactivated build, either Allow action shows
    **Protected security review is still pending** and starts nothing. Use
@@ -145,6 +148,27 @@ This is an approval-check workflow, not an available Connect button. A fixed
 diagnostic explains the blocked prerequisite without exposing private values.
 Continue using the system client below; the manual path remains the recovery
 path whenever managed SSH is disabled or unavailable.
+## What the managed lifecycle will do after activation
+
+The source path can launch only an opaque fresh-review binding. Seventeen fixed
+options disable forwarding, multiplexing, proxy/jump commands, local/remote
+commands, backgrounding, X11, agent forwarding, and tunnels; exactly one typed
+destination follows. Automexia does not override OpenSSH key-exchange defaults
+or weak-crypto warnings. OpenSSH still owns host-key prompts, authentication,
+agent/certificate/hardware interaction, and all terminal content.
+
+When a managed child ends, its actual status determines success, failure,
+unavailable status, or cancellation. Route close is not success. The UI receives
+fixed host/path-free notifications. Provider-neutral receipts can be queued to a
+private store limited to 256 records and 2 MiB; they contain no destination,
+terminal text, credential, path, environment, process ID, or executable identity.
+Only an opaque inventory/source revision can support reconnect. Current inventory
+must still match, and reconnect always returns to a fresh executable/host-trust
+review and explicit approval—there is no automatic connection or command replay.
+
+This contract is present for review and tests but unreachable in production until
+package attestation, protected approvals, real native OpenSSH and forced child-
+tree cleanup, resource, and accessibility gates pass.
 ## Connect with system OpenSSH today
 
 The read-only Hub does not replace the shell. Use the system client normally:
@@ -172,11 +196,14 @@ root:
 - Linux: `$XDG_CONFIG_HOME/automexia`, or `~/.config/automexia`
 
 D4 favorite/tag metadata is under `extensions/devops-ssh`; the private local
-profile/recipe/preference document is under `connections`. Raw selected paths,
-typed literal hosts, keys, passphrases, tokens, provider credentials, search
-text, and terminal history are not stored by the M1/M3 Hub. Each owned store is bounded, user-private,
-compare-and-swap protected, atomically replaced, and retains at most one
-validated recovery generation.
+profile/recipe/preference document is under `connections`. The dormant managed
+receipt store uses `connections/managed-receipts.v1.json` plus one validated
+previous generation. Raw selected paths, typed literal hosts, destinations,
+keys, passphrases, tokens, provider credentials, search text, terminal history,
+environment, process IDs, and executable identity are not stored in receipts.
+Each owned store is bounded, user-private, atomically replaced, and recoverable
+only from its validated previous generation. No receipt file is written in
+current builds because managed launch cannot start.
 
 To disable the feature, close it and do not invoke the palette action; it does
 no passive scanning or provider work. Removing the palette/runtime code is a
