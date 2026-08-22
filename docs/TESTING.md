@@ -1174,42 +1174,66 @@ resource/persistence owner. This does not waive those gates for D5.1/D5.2.
 
 ### M3 direct OpenSSH review contract
 
-The M3 source slice is pure and deliberately non-activated:
+The M3 preparation and Connection Review slice is application-wired but
+deliberately non-activated:
 
     cargo test -p automexia-devops --test direct_openssh_review --locked
     cargo test -p automexia-ui-model --test direct_openssh_review --locked
-    cargo clippy -p automexia-devops -p automexia-ui-model --all-targets --all-features --locked -- -D warnings
+    cargo test -p automexia-ui-model --test connection_hub --locked
+    cargo test -p automexia-terminal --lib automexia::connections --locked
+    cargo test -p automexia-terminal --bin automexia renderer::connection_hub::tests --locked
+    cargo clippy -p automexia-devops -p automexia-ui-model -p automexia-terminal --all-targets --all-features --locked -- -D warnings
+    cargo bench -p automexia-devops --bench connection_planning --locked -- direct_openssh_prepare_selected --warm-up-time 1 --measurement-time 2 --sample-size 20
     cargo xtask verify architecture
 
-Nine model tests cover an inventory-typed concrete alias, one literal host, exact
+Eleven devops-model tests cover inventory-typed concrete aliases, exact
 single-argument preservation, canonical `ssh`, exact `session.launch`, the
-all-false authority ceiling, the complete canonical no-recipe F2 plan, wrong
-source/executable/capability denial, non-applicable trust denial, misleading
-literal-target denial, option-like/empty/whitespace/control/bidi/oversized/
-ambiguous hostile values, M4 user/port/jump deferral, redacted debug/errors,
-observation readiness/freshness, and profile/source/capsule/destination/plan/executable/
-observation/trust fingerprint invalidation. The UI-model test covers wide,
-medium, and narrow layouts; all nine required decision sections; status
-independent of color; disabled primary action; accessibility names; and
-destination/opaque-reference redaction.
+all-false authority ceiling, complete canonical no-recipe F2 planning,
+pending preparation without a fabricated executable identity, wrong source/
+executable/capability denial, non-applicable trust denial, misleading targets,
+option-like/empty/whitespace/control/bidi/oversized/ambiguous hostile values,
+M4 user/port/jump deferral, profile-identifier/destination/reference-redacted
+debug and errors, observation readiness and
+fingerprint invalidation. Two UI-model review tests cover all nine decisions,
+disabled action, accessibility names, redaction, and application-preparation
+projection. Twelve Hub-model tests include keyboard Back focus restoration.
 
-The contract is synchronous and bounded to a 512-byte destination plus existing
-F2 collection ceilings. It allocates no persistent storage and owns no worker,
-file, process, socket, PTY, listener, route, credential, renderer, or GPU
-resource. Owner-crate tests, strict clippy, and architecture verification pass
-on Windows. No native OpenSSH process, PTY, prompt, host-key exchange, network,
-renderer pixels, screen reader, cancellation cleanup, or manual-before/after
-`ssh` run occurred; those remain M2/M3 activation and cross-platform gates.
+Eight application connection tests cover stable D4-record mapping, invalid and
+unsupported records, current/unknown/stale runtime selection, one bounded
+immutable controller-owned preparation, generation invalidation, redacted
+diagnostics, Enter-to-review, and Escape-to-results. Six renderer tests cover
+the three icon-and-color groups, route-specific chrome, an inert disabled
+primary action, pointer Back, truthful route-specific status, readable group
+labels at 360x280, and bounded geometry at 1280x720 and 7680x4320 at 200
+percent scale.
 
-On the native Windows development host on 2026-08-21/22, both focused tests,
-the owner-crate suites, strict owner Clippy, architecture verification,
-repository validation, `cargo fmt --all -- --check`, full workspace Clippy,
-1,767-test CI-profile nextest run, workspace documentation tests, full QA, and
-`cargo ready` passed. The disposable QA report is under
-`target/qa/20260821T225643Z-23880/report.html`. Controlled native GUI/GPU,
-Application Verifier/WPR, screen-reader, stable-hardware benchmark, Linux, and
-macOS evidence remains external.
+The contract is synchronous and bounded to one selected record, a 512-byte
+destination, and existing F2 collection ceilings. It adds no worker, file,
+process, socket, PTY, listener, route, credential, persistence, or GPU resource.
+The existing runtime clones the selected public record under its catalog lock;
+pure preparation and projection occur after the lock is released. Review state
+is discarded when the selection, metadata, catalog generation, or route changes.
 
+On the native Windows development host on 2026-08-22, the focused suites,
+strict owner Clippy, architecture verification, repository validation,
+`cargo fmt --all -- --check`, full workspace Clippy, the 1,775-test CI-profile
+nextest run (7 skipped), workspace documentation tests, full QA, and
+`cargo ready` passed. `cargo ready` also passed a clean isolated workspace
+check/Clippy/test build, dependency policy, persistent application build, and
+version smoke test. The disposable QA evidence report is under
+`target/qa/20260822T001824Z-2240/report.html` (UTC timestamp).
+
+The same-host Criterion sample for `direct_openssh_prepare_selected` measured a
+95 percent interval of 6.3520-6.6011 microseconds with 2 of 20 outliers; this is
+local bounded-preparation evidence, not a stable-hardware release threshold.
+
+No native OpenSSH process, PTY, prompt, host-key exchange, network operation,
+renderer pixel capture, screen-reader run, Application Verifier/WPR campaign,
+or manual before/after `ssh` run occurred. Protected ADR approval, real
+executable identity/attestation, the atomic native check-to-spawn adapter,
+process/PTY/route ownership, cancellation and descendant teardown, PID-reuse
+coverage, Linux/macOS native execution, and controlled accessibility/GPU/
+long-session evidence remain M2/M3 activation or release gates.
 ### Connection Hub F3 catalog contract
 
 The first D5.1 slice adds a pure catalog contract without activating D4 or any

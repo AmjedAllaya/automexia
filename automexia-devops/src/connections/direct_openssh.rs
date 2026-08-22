@@ -25,6 +25,53 @@ pub const MAX_DIRECT_OPENSSH_DESTINATION_BYTES: usize = 512;
 const DIRECT_OPENSSH_EXECUTABLE_ID: &str = "ssh";
 const DIRECT_OPENSSH_CAPABILITY: &str = "session.launch";
 
+/// Immutable, non-executing M3 preparation built before executable and identity
+/// observations exist. Its debug representation deliberately omits profile,
+/// destination, source, identity, and plan fingerprint material.
+#[derive(Clone, PartialEq, Eq)]
+pub struct DirectOpenSshPreparation {
+    profile: ConnectionProfileV1,
+    plan: ResolvedConnectionPlan,
+}
+
+impl fmt::Debug for DirectOpenSshPreparation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("DirectOpenSshPreparation")
+            .field("profile_revision", &self.profile.revision)
+            .field("environment_risk", &self.profile.environment.risk)
+            .field("destination_surface", &self.profile.destination_preference)
+            .field("execution_enabled", &self.plan.execution_enabled)
+            .finish()
+    }
+}
+
+impl DirectOpenSshPreparation {
+    pub fn profile(&self) -> &ConnectionProfileV1 {
+        &self.profile
+    }
+
+    pub fn plan(&self) -> &ResolvedConnectionPlan {
+        &self.plan
+    }
+
+    /// Reject a cached preparation after any source-owned profile input changes.
+    pub fn validate_current(
+        &self,
+        profile: &ConnectionProfileV1,
+    ) -> Result<(), ConnectionModelError> {
+        let current = prepare_direct_openssh(profile)?;
+        if *self != current {
+            return Err(error(
+                ConnectionModelErrorCode::InvalidTransition,
+                "direct_openssh.preparation",
+                "the prepared OpenSSH request is stale",
+            ));
+        }
+        Ok(())
+    }
+}
+
 fn error(
     code: ConnectionModelErrorCode,
     field: &'static str,
@@ -258,6 +305,31 @@ fn validate_m3_profile(
     Ok(ValidatedDestination {
         kind,
         argument: argument.clone(),
+    })
+}
+
+/// Prepare one exact direct OpenSSH destination without resolving an executable,
+/// observing credentials, opening a network connection, or requesting runtime
+/// process/PTY authority. Later protected phases must replace this pending plan
+/// with a freshly identity-bound review before launch.
+pub fn prepare_direct_openssh(
+    profile: &ConnectionProfileV1,
+) -> Result<DirectOpenSshPreparation, ConnectionModelError> {
+    let _ = validate_m3_profile(profile)?;
+    let plan = resolve_connection_plan(
+        profile,
+        &[],
+        &PlanContext {
+            requested_capabilities: vec![DIRECT_OPENSSH_CAPABILITY.into()],
+            ..PlanContext::default()
+        },
+    )?;
+    debug_assert!(!plan.execution_enabled);
+    debug_assert!(plan.executable_identities.is_empty());
+    debug_assert!(plan.authority_ceiling.iter().all(|state| !state.enabled));
+    Ok(DirectOpenSshPreparation {
+        profile: profile.clone(),
+        plan,
     })
 }
 

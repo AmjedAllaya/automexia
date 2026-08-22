@@ -1,14 +1,15 @@
 use std::collections::BTreeMap;
 
 use automexia_devops::connections::{
-    resolve_connection_plan, review_direct_openssh as review_direct_openssh_at,
-    AuthState, ConnectionModelError, ConnectionObservation, ConnectionProfileV1,
-    ConnectionSource, DestinationSurface, DirectOpenSshDestinationKind,
-    DirectOpenSshHostTrustPolicy, DirectOpenSshIdentityReadiness, DirectOpenSshReview,
-    EnvironmentCapsuleTemplate, EnvironmentClassification, EnvironmentKind,
-    EnvironmentRisk, HostTrustState, IdentityKind, IdentityReference, OpaqueReference,
-    PlanContext, ProviderKind, ResolvedConnectionPlan, ResolvedExecutable, SourceKind,
-    ToolState, TransportDescriptor, TransportState, CONNECTION_SCHEMA_VERSION,
+    prepare_direct_openssh, resolve_connection_plan,
+    review_direct_openssh as review_direct_openssh_at, AuthState, ConnectionModelError,
+    ConnectionObservation, ConnectionProfileV1, ConnectionSource, DestinationSurface,
+    DirectOpenSshDestinationKind, DirectOpenSshHostTrustPolicy,
+    DirectOpenSshIdentityReadiness, DirectOpenSshReview, EnvironmentCapsuleTemplate,
+    EnvironmentClassification, EnvironmentKind, EnvironmentRisk, HostTrustState,
+    IdentityKind, IdentityReference, OpaqueReference, PlanContext, ProviderKind,
+    ResolvedConnectionPlan, ResolvedExecutable, SourceKind, ToolState,
+    TransportDescriptor, TransportState, CONNECTION_SCHEMA_VERSION,
 };
 
 const NOW_MS: u64 = 1_700_000_000_001;
@@ -130,6 +131,39 @@ fn literal_profile(destination: &str) -> ConnectionProfileV1 {
     );
     profile.public_target = destination.into();
     profile
+}
+
+#[test]
+fn inventory_preparation_is_canonical_redacted_and_nonactivated() {
+    let profile = alias_profile("private-preparation-canary");
+    let prepared = prepare_direct_openssh(&profile).unwrap();
+
+    assert_eq!(prepared.profile(), &profile);
+    assert_eq!(prepared.plan().profile_id, profile.id);
+    assert_eq!(prepared.plan().requested_capabilities, ["session.launch"]);
+    assert!(prepared.plan().executable_identities.is_empty());
+    assert!(!prepared.plan().execution_enabled);
+    assert!(prepared
+        .plan()
+        .authority_ceiling
+        .iter()
+        .all(|authority| !authority.enabled));
+    let debug = format!("{prepared:?}");
+    assert!(!debug.contains("private-preparation-canary"));
+    assert!(!debug.contains("profile-prod"));
+}
+
+#[test]
+fn inventory_preparation_rejects_indirect_and_stale_profiles() {
+    let mut indirect = alias_profile("prod");
+    indirect.jump_profile_references.push("jump-profile".into());
+    assert!(prepare_direct_openssh(&indirect).is_err());
+
+    let profile = alias_profile("prod");
+    let prepared = prepare_direct_openssh(&profile).unwrap();
+    let mut changed = profile;
+    changed.revision += 1;
+    assert!(prepared.validate_current(&changed).is_err());
 }
 
 #[test]

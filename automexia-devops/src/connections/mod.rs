@@ -12,8 +12,9 @@ mod state;
 mod validation;
 
 pub use direct_openssh::{
-    review_direct_openssh, DirectOpenSshDestinationKind, DirectOpenSshHostTrustPolicy,
-    DirectOpenSshIdentityReadiness, DirectOpenSshRequest, DirectOpenSshReview,
+    prepare_direct_openssh, review_direct_openssh, DirectOpenSshDestinationKind,
+    DirectOpenSshHostTrustPolicy, DirectOpenSshIdentityReadiness,
+    DirectOpenSshPreparation, DirectOpenSshRequest, DirectOpenSshReview,
     MAX_DIRECT_OPENSSH_DESTINATION_BYTES,
 };
 pub use documents::{

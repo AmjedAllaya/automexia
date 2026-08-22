@@ -1,15 +1,16 @@
 # Remote connections
 
-Automexia separates **normal shell connections**, the **read-only D5.1 Connection Hub implemented for v0.5 source builds**, and the still-planned managed SSH/provider authority. The read-only product deliberately has no process or network authority.
+Automexia separates **normal shell connections**, the **read-only D5.1 Connection Hub plus nonactivated D5.2 preparation review implemented for v0.5 source builds**, and the still-planned managed SSH/provider authority. The product review deliberately has no process or network authority.
 
 ## Current product boundary
 
 **Available now:** users can run `ssh`, `mosh`, cloud CLIs, `kubectl`, `oc`, and other tools normally from their shell. The PTY treats remote output as untrusted terminal bytes exactly like local process output.
 
-**Implemented locally / release-gated:** the read-only product Hub composes
-the bounded static OpenSSH inventory after exact file review, exposes public
-favorites/tags and the private library snapshot, and keeps launch/provider
-authority disabled.
+**Implemented locally / release-gated:** the read-only product Hub composes the
+bounded static OpenSSH inventory after exact file review, exposes public
+favorites/tags and the private library snapshot, and turns one selected direct
+record into a canonical pending F2 plan and disabled Connection Review. Launch
+and provider authority remain disabled.
 
 **Planned:** reviewed system-OpenSSH launch, tunnels/routes, provider authentication and multi-cloud adapters, remote-file/session-memory/collaboration features, and later ecosystem/AI features.
 
@@ -21,10 +22,11 @@ atomically replaced, recoverable only through an explicit reviewed operation,
 and designed to persist public metadata plus opaque credential references—not
 passwords, private keys, tokens, or provider credentials.
 
-The current application root does not initialize this store and no supported UI,
-CLI, or configuration key exposes it. Its internal file name and schema are not
-a user-editing contract: do not create or edit a `library.v1.json` file to try
-to enable Connection Hub. Redacted export deliberately removes credential
+The current v0.5 application root initializes this store once and exposes only
+its read-only profile/recipe/preference counts and recovery state. No supported
+editor, CLI, or configuration key exposes its internal schema. Its file name is
+not a user-editing contract: do not create or edit library.v1.json to try to
+enable connection execution. Redacted export deliberately removes credential
 references, private local state, and last-used timestamps; import validates all
 values and assigns fresh identifiers.
 
@@ -177,13 +179,18 @@ PTY-inert surface. Its implemented journey is:
    a later scan fails.
 4. **Browse** with search, grouping, source/favorite/recent/tag filters,
    virtualization, and a public inspector.
-5. **Review and save** favorite/tag diffs using D4 revision CAS; reload on
+5. **Prepare a supported direct alias** with Enter. The route-owned review shows
+   nine public decisions in compact Connection/Safety/Launch groups, keeps the
+   action disabled, and supports pointer Back, Escape, and Enter on focused
+   Back.
+6. **Review and save** favorite/tag diffs using D4 revision CAS; reload on
    conflict and never write recent-use.
-6. **Stop at the authority boundary:** selecting a connection or a disabled
-   action never launches a command, PTY, login, or network request.
+7. **Stop at the authority boundary:** preparation and every disabled action
+   create no command, PTY, login, network request, or executable identity.
 
-D5.2 will add a separate exact launch review only after ADR 0012 and native
-lifecycle gates pass. D5.1 does not pre-authorize that later action.
+D5.2 launch remains blocked until ADR 0012, the M2 broker, current executable
+and identity observations, and native lifecycle gates pass. The preparation
+review does not pre-authorize that later action.
 ## Exact launch boundary
 
 Managed process launch is intentionally narrower than general process-spawn authority. A launch request identifies an approved first-party publisher/capability, an expected executable kind, exact argv, a bounded environment, a validated working directory, and audit/session identifiers. The broker resolves and verifies the executable according to platform policy, checks grants and current file identity, launches without shell interpretation, associates the PTY with one route/session, and records a redacted result.

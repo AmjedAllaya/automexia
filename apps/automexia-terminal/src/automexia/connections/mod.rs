@@ -1,6 +1,7 @@
 //! Application-owned composition for the non-executing Connection Hub.
 
 mod controller;
+mod direct_openssh;
 mod library;
 mod runtime;
 pub use controller::{

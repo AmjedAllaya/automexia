@@ -7,7 +7,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use automexia_devops::connections::{AuthState, EnvironmentRisk, ProviderKind};
+use automexia_devops::connections::{
+    AuthState, DirectOpenSshPreparation, EnvironmentRisk, ProviderKind,
+};
 use automexia_devops_ssh::{
     scan_inventory_cancellable, ConnectionMetadata, ConnectionRecord, GrantKind,
     IdentityHint, InventoryError, InventoryGrant, InventoryLimits, MetadataDocument,
@@ -19,6 +21,9 @@ use automexia_ui_model::connection_hub::{
     ConnectionCatalogEntry, ConnectionSummary, HubCatalogSource,
 };
 
+use super::direct_openssh::{
+    prepare_inventory_direct_openssh, InventoryPreparationError,
+};
 use super::library::{
     ConnectionLibraryDocument, ConnectionLibraryStore, HubPreferences, LibraryLoadOrigin,
 };
@@ -83,6 +88,9 @@ pub enum HubRuntimeErrorCode {
     UnknownConnection,
     InvalidMetadata,
     StaleMetadata,
+    ConnectionNotReady,
+    UnsupportedConnectionRoute,
+    InvalidConnection,
 }
 
 impl HubRuntimeErrorCode {
@@ -96,6 +104,9 @@ impl HubRuntimeErrorCode {
             Self::UnknownConnection => "connection-record-unavailable",
             Self::InvalidMetadata => "connection-metadata-invalid",
             Self::StaleMetadata => "connection-metadata-review-stale",
+            Self::ConnectionNotReady => "connection-review-not-ready",
+            Self::UnsupportedConnectionRoute => "connection-route-not-supported",
+            Self::InvalidConnection => "connection-review-invalid",
         }
     }
 }
@@ -636,6 +647,54 @@ impl ConnectionHubRuntime {
             return Err(error);
         }
         Ok(request)
+    }
+
+    /// Compose one current inventory record into a pure pending F2 plan.
+    /// The runtime lock is held only while cloning bounded in-memory inputs;
+    /// composition performs no I/O and creates no runtime authority.
+    pub fn prepare_direct_openssh(
+        &self,
+        connection_id: &str,
+    ) -> Result<DirectOpenSshPreparation, HubRuntimeErrorCode> {
+        let (record, metadata, generation, metadata_revision) = {
+            let data = lock(&self.inner.data);
+            let generation = match data.state {
+                HubRuntimeState::Ready { generation }
+                    if generation > 0 && generation == data.successful_generation =>
+                {
+                    generation
+                }
+                _ => return Err(HubRuntimeErrorCode::ConnectionNotReady),
+            };
+            let record = data
+                .records
+                .iter()
+                .find(|record| record.id == connection_id)
+                .cloned()
+                .ok_or(HubRuntimeErrorCode::UnknownConnection)?;
+            let metadata = data
+                .metadata
+                .connections
+                .iter()
+                .find(|item| item.connection_id == connection_id)
+                .cloned();
+            (record, metadata, generation, data.metadata.revision)
+        };
+        prepare_inventory_direct_openssh(
+            &record,
+            metadata.as_ref(),
+            generation,
+            metadata_revision,
+        )
+        .map_err(|error| match error {
+            InventoryPreparationError::UnsupportedRoute => {
+                HubRuntimeErrorCode::UnsupportedConnectionRoute
+            }
+            InventoryPreparationError::InvalidRecord
+            | InventoryPreparationError::InvalidModel => {
+                HubRuntimeErrorCode::InvalidConnection
+            }
+        })
     }
 
     pub fn state(&self) -> HubRuntimeState {
@@ -1308,5 +1367,45 @@ mod tests {
         ready.notify_all();
         runtime.shutdown();
         assert_eq!(runtime.state(), HubRuntimeState::Shutdown);
+    }
+
+    #[test]
+    fn direct_review_preparation_requires_a_current_exact_runtime_record() {
+        let temporary = tempfile::tempdir().unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        let record = ConnectionRecord {
+            id: "openssh:prod".into(),
+            alias: "prod".into(),
+            hostname: Some("prod.example.invalid".into()),
+            username: None,
+            port: None,
+            proxy_jump_configured: false,
+            identity_hint: IdentityHint::AgentOrDefault,
+            source: SourceKind::OpenSshUser,
+        };
+        {
+            let mut data = lock(&runtime.inner.data);
+            data.records = Arc::new(vec![record.clone()]);
+            data.catalog = Arc::new(compose_catalog(&[record], &data.metadata, 9));
+            data.successful_generation = 9;
+            data.state = HubRuntimeState::Ready { generation: 9 };
+        }
+
+        let prepared = runtime.prepare_direct_openssh("openssh:prod").unwrap();
+        assert_eq!(prepared.profile().revision, 9);
+        assert_eq!(
+            runtime.prepare_direct_openssh("openssh:missing"),
+            Err(HubRuntimeErrorCode::UnknownConnection)
+        );
+        lock(&runtime.inner.data).state = HubRuntimeState::Stale {
+            generation: 9,
+            diagnostic_code: REFRESH_DIAGNOSTIC,
+            failed_request: 10,
+        };
+        assert_eq!(
+            runtime.prepare_direct_openssh("openssh:prod"),
+            Err(HubRuntimeErrorCode::ConnectionNotReady)
+        );
     }
 }

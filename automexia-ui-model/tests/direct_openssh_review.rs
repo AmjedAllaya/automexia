@@ -1,23 +1,24 @@
 use std::collections::BTreeMap;
 
 use automexia_devops::connections::{
-    resolve_connection_plan, review_direct_openssh, AuthState, ConnectionObservation,
-    ConnectionProfileV1, ConnectionSource, DestinationSurface,
+    prepare_direct_openssh, resolve_connection_plan, review_direct_openssh, AuthState,
+    ConnectionObservation, ConnectionProfileV1, ConnectionSource, DestinationSurface,
     EnvironmentCapsuleTemplate, EnvironmentClassification, EnvironmentKind,
     EnvironmentRisk, HostTrustState, IdentityKind, IdentityReference, OpaqueReference,
     PlanContext, ProviderKind, ResolvedExecutable, SourceKind, ToolState,
     TransportDescriptor, TransportState, CONNECTION_SCHEMA_VERSION,
 };
 use automexia_ui_model::connection_hub::{
-    project_direct_openssh_review, HubLayout, Viewport,
+    project_direct_openssh_preparation, project_direct_openssh_review, HubLayout,
+    Viewport,
 };
 
 fn digest(byte: char) -> String {
     byte.to_string().repeat(64)
 }
 
-fn fixture() -> automexia_devops::connections::DirectOpenSshReview {
-    let profile = ConnectionProfileV1 {
+fn fixture_profile() -> ConnectionProfileV1 {
+    ConnectionProfileV1 {
         schema_version: CONNECTION_SCHEMA_VERSION,
         id: "profile-prod".into(),
         revision: 7,
@@ -59,7 +60,11 @@ fn fixture() -> automexia_devops::connections::DirectOpenSshReview {
         created_at_ms: 1,
         updated_at_ms: 2,
         last_used_at_ms: None,
-    };
+    }
+}
+
+fn fixture() -> automexia_devops::connections::DirectOpenSshReview {
+    let profile = fixture_profile();
     let plan = resolve_connection_plan(
         &profile,
         &[],
@@ -92,6 +97,37 @@ fn fixture() -> automexia_devops::connections::DirectOpenSshReview {
     };
     review_direct_openssh(&profile, &plan, &observation, HostTrustState::Unknown, 2)
         .unwrap()
+}
+
+#[test]
+fn pending_preparation_is_complete_redacted_disabled_and_responsive() {
+    let prepared = prepare_direct_openssh(&fixture_profile()).unwrap();
+    for (viewport, expected_layout) in [
+        (Viewport::new(1_600.0, 900.0, 1.0), HubLayout::Wide),
+        (Viewport::new(900.0, 700.0, 1.0), HubLayout::Medium),
+        (Viewport::new(480.0, 800.0, 1.0), HubLayout::Narrow),
+    ] {
+        let view = project_direct_openssh_preparation(&prepared, viewport);
+        assert_eq!(view.layout, expected_layout);
+        assert_eq!(view.sections.len(), 9);
+        assert!(view.sections.iter().any(|section| {
+            section.id == "identity" && section.summary.contains("verification pending")
+        }));
+        assert!(view.sections.iter().any(|section| {
+            section.id == "host-trust" && section.summary.contains("changed keys blocked")
+        }));
+        assert!(view.sections.iter().any(|section| {
+            section.id == "argv" && section.summary == "ssh <destination>"
+        }));
+        assert!(!view.execution_enabled);
+        assert_eq!(
+            view.primary_label,
+            "Connection unavailable—verification pending"
+        );
+        let rendered = format!("{view:?}");
+        assert!(!rendered.contains("private-destination-canary"));
+        assert!(!rendered.contains("identity-private-canary"));
+    }
 }
 
 #[test]
