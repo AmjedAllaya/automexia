@@ -6,7 +6,9 @@ mod signals;
 
 extern crate libc;
 
-use crate::{ChildEvent, EventedPty, ProcessReadWrite, Winsize, WinsizeBuilder};
+use crate::{
+    ChildEvent, EventedPty, ExactExecutable, ProcessReadWrite, Winsize, WinsizeBuilder,
+};
 use corcovado::unix::EventedFd;
 #[cfg(target_os = "macos")]
 use macos::*;
@@ -20,6 +22,7 @@ use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::os::fd::OwnedFd;
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -489,6 +492,138 @@ pub fn create_pty_with_spawn(
     width: u16,
     height: u16,
 ) -> Result<Pty, Error> {
+    create_pty_with_spawn_inner(
+        None,
+        shell,
+        args,
+        working_directory,
+        env,
+        columns,
+        rows,
+        width,
+        height,
+    )
+}
+
+/// Create a managed Unix PTY from an opened, identity-bound executable.
+///
+/// The child executes the reviewed descriptor with fexecve, so replacing the
+/// pathname after review cannot redirect execution. Only the supplied
+/// application-owned environment is visible to the child.
+#[allow(clippy::too_many_arguments)]
+pub fn create_exact_pty(
+    executable: ExactExecutable,
+    args: Vec<String>,
+    working_directory: &Option<String>,
+    environment: Vec<(String, String)>,
+    columns: u16,
+    rows: u16,
+    width: u16,
+    height: u16,
+) -> Result<Pty, Error> {
+    let program = executable
+        .path()
+        .to_str()
+        .ok_or_else(|| {
+            Error::new(
+                io::ErrorKind::InvalidInput,
+                "the exact executable path is not valid Unicode",
+            )
+        })?
+        .to_owned();
+    create_pty_with_spawn_inner(
+        Some(executable),
+        Some(&program),
+        args,
+        working_directory,
+        Some(environment),
+        columns,
+        rows,
+        width,
+        height,
+    )
+}
+
+struct ExactExecData {
+    executable: ExactExecutable,
+    _arguments: Vec<CString>,
+    argument_pointers: Vec<usize>,
+    _environment: Vec<CString>,
+    environment_pointers: Vec<usize>,
+    #[cfg(target_os = "macos")]
+    descriptor_path: CString,
+}
+
+impl ExactExecData {
+    fn new(
+        executable: ExactExecutable,
+        args: &[String],
+        environment: &[(String, String)],
+    ) -> Result<Self, Error> {
+        let mut arguments = Vec::with_capacity(args.len() + 1);
+        arguments.push(
+            CString::new(executable.path().as_os_str().as_bytes()).map_err(|_| {
+                Error::new(io::ErrorKind::InvalidInput, "invalid executable path")
+            })?,
+        );
+        for argument in args {
+            arguments.push(CString::new(argument.as_bytes()).map_err(|_| {
+                Error::new(io::ErrorKind::InvalidInput, "invalid argument")
+            })?);
+        }
+        let mut argument_pointers = arguments
+            .iter()
+            .map(|argument| argument.as_ptr() as usize)
+            .collect::<Vec<_>>();
+        argument_pointers.push(0);
+
+        let mut environment_values = Vec::with_capacity(environment.len());
+        for (name, value) in environment {
+            if name.is_empty() || name.contains('=') {
+                return Err(Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "invalid environment name",
+                ));
+            }
+            environment_values.push(CString::new(format!("{name}={value}")).map_err(
+                |_| Error::new(io::ErrorKind::InvalidInput, "invalid environment"),
+            )?);
+        }
+        let mut environment_pointers = environment_values
+            .iter()
+            .map(|entry| entry.as_ptr() as usize)
+            .collect::<Vec<_>>();
+        environment_pointers.push(0);
+
+        #[cfg(target_os = "macos")]
+        let descriptor_path =
+            CString::new(format!("/dev/fd/{}", executable.file.as_raw_fd()))
+                .expect("a numeric file descriptor cannot contain NUL");
+
+        Ok(Self {
+            executable,
+            _arguments: arguments,
+            argument_pointers,
+            _environment: environment_values,
+            environment_pointers,
+            #[cfg(target_os = "macos")]
+            descriptor_path,
+        })
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn create_pty_with_spawn_inner(
+    exact_executable: Option<ExactExecutable>,
+    shell: Option<&str>,
+    args: Vec<String>,
+    working_directory: &Option<String>,
+    env: Option<Vec<(String, String)>>,
+    columns: u16,
+    rows: u16,
+    width: u16,
+    height: u16,
+) -> Result<Pty, Error> {
     #[cfg(not(any(target_os = "macos", target_os = "freebsd")))]
     let mut is_controling_terminal = true;
 
@@ -548,12 +683,23 @@ pub fn create_pty_with_spawn(
     let uses_default_shell = shell.is_none();
     let shell_program = shell.unwrap_or(&user.shell);
 
-    tracing::info!("spawn {:?} {:?}", shell_program, args);
+    tracing::info!(
+        "spawn exact={} argument_count={}",
+        exact_executable.is_some(),
+        args.len()
+    );
+
+    let exact_exec = exact_executable
+        .map(|executable| {
+            ExactExecData::new(executable, &args, env.as_deref().unwrap_or_default())
+        })
+        .transpose()?;
+    let exact_launch = exact_exec.is_some();
 
     let mut builder = {
         #[cfg(target_os = "macos")]
         {
-            if uses_default_shell {
+            if uses_default_shell && !exact_launch {
                 // On macOS, use /usr/bin/login to ensure proper login shell environment
                 // This ensures PATH includes directories like /usr/local/bin
                 let hushlogin =
@@ -582,7 +728,7 @@ pub fn create_pty_with_spawn(
     {
         // If running inside a flatpak sandbox.
         // Must retrieve $SHELL from outside the sandbox, so ask the host.
-        if std::path::PathBuf::from("/.flatpak-info").exists() {
+        if !exact_launch && std::path::PathBuf::from("/.flatpak-info").exists() {
             builder = Command::new("flatpak-spawn");
 
             let mut with_args = vec![
@@ -623,10 +769,14 @@ pub fn create_pty_with_spawn(
     builder.stderr(owned_child.try_clone()?);
     builder.stdout(owned_child);
 
-    builder.env("USER", user.user);
-    builder.env("HOME", user.home);
-    if let Some(env) = env {
-        builder.envs(env);
+    if exact_launch {
+        builder.env_clear();
+    } else {
+        builder.env("USER", user.user);
+        builder.env("HOME", user.home);
+        if let Some(env) = env {
+            builder.envs(env);
+        }
     }
 
     unsafe {
@@ -658,6 +808,25 @@ pub fn create_pty_with_spawn(
             let mut set: libc::sigset_t = std::mem::zeroed();
             libc::sigemptyset(&mut set);
             libc::sigprocmask(libc::SIG_SETMASK, &set, std::ptr::null_mut());
+
+            if let Some(exact) = exact_exec.as_ref() {
+                // Keep the replacement guard live on every platform even when
+                // the descriptor number is embedded in a macOS /dev/fd path.
+                let _replacement_guard = &exact.executable;
+                #[cfg(target_os = "macos")]
+                libc::execve(
+                    exact.descriptor_path.as_ptr(),
+                    exact.argument_pointers.as_ptr() as *const *const libc::c_char,
+                    exact.environment_pointers.as_ptr() as *const *const libc::c_char,
+                );
+                #[cfg(not(target_os = "macos"))]
+                libc::fexecve(
+                    exact.executable.file.as_raw_fd(),
+                    exact.argument_pointers.as_ptr() as *const *const libc::c_char,
+                    exact.environment_pointers.as_ptr() as *const *const libc::c_char,
+                );
+                return Err(Error::last_os_error());
+            }
 
             Ok(())
         });

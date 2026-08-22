@@ -4,9 +4,9 @@ use std::io::Error;
 use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use windows_sys::Win32::Foundation::HANDLE;
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::System::Threading::{
-    GetExitCodeProcess, GetProcessId, RegisterWaitForSingleObject, UnregisterWait,
+    GetExitCodeProcess, GetProcessId, RegisterWaitForSingleObject, UnregisterWaitEx,
     INFINITE, WT_EXECUTEINWAITTHREAD, WT_EXECUTEONLYONCE,
 };
 
@@ -23,7 +23,8 @@ unsafe extern "system" fn child_exit_callback(ctx: *mut c_void, timed_out: bool)
         return;
     }
 
-    let event_tx: Box<ChildExitSender> = unsafe { Box::from_raw(ctx as *mut _) };
+    // The watcher owns this context and waits for callbacks before dropping it.
+    let event_tx = unsafe { &*(ctx as *const ChildExitSender) };
     let mut exit_code = 0_u32;
     let status = unsafe {
         GetExitCodeProcess(
@@ -40,6 +41,7 @@ pub struct ChildExitWatcher {
     event_rx: Receiver<ChildEvent>,
     child_handle: HANDLE,
     pid: Option<NonZeroU32>,
+    _callback_context: Box<ChildExitSender>,
 }
 
 // HANDLE is not Send, so Send is not derived automatically for ChildExitWatcher, but raw pointers
@@ -52,17 +54,20 @@ impl ChildExitWatcher {
         let (event_tx, event_rx) = channel::<ChildEvent>();
 
         let mut wait_handle: HANDLE = std::ptr::null_mut();
-        let sender_ref = Box::new(ChildExitSender {
+        let callback_context = Box::new(ChildExitSender {
             sender: event_tx,
             child_handle: AtomicPtr::from(child_handle),
         });
+        let callback_pointer = (&*callback_context as *const ChildExitSender)
+            .cast_mut()
+            .cast();
 
         let success = unsafe {
             RegisterWaitForSingleObject(
                 &mut wait_handle,
                 child_handle,
                 Some(child_exit_callback),
-                Box::into_raw(sender_ref).cast(),
+                callback_pointer,
                 INFINITE,
                 WT_EXECUTEINWAITTHREAD | WT_EXECUTEONLYONCE,
             )
@@ -77,6 +82,7 @@ impl ChildExitWatcher {
                 event_rx,
                 child_handle,
                 pid,
+                _callback_context: callback_context,
             })
         }
     }
@@ -97,7 +103,13 @@ impl ChildExitWatcher {
 impl Drop for ChildExitWatcher {
     fn drop(&mut self) {
         unsafe {
-            UnregisterWait(self.wait_handle.load(Ordering::Relaxed) as HANDLE);
+            // INVALID_HANDLE_VALUE makes unregistration wait for an in-flight
+            // callback, so callback state and the process handle cannot race.
+            UnregisterWaitEx(
+                self.wait_handle.load(Ordering::Relaxed) as HANDLE,
+                INVALID_HANDLE_VALUE,
+            );
+            CloseHandle(self.child_handle);
         }
     }
 }
@@ -111,14 +123,29 @@ mod tests {
     use corcovado::{event::Events, Poll, PollOpt, Ready, Token};
 
     use super::*;
+    use windows_sys::Win32::Foundation::{DuplicateHandle, DUPLICATE_SAME_ACCESS};
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
     #[test]
     pub fn event_is_emitted_when_child_exits() {
         const WAIT_TIMEOUT: Duration = Duration::from_millis(200);
 
         let mut child = Command::new("cmd.exe").spawn().unwrap();
-        let child_exit_watcher =
-            ChildExitWatcher::new(child.as_raw_handle() as HANDLE).unwrap();
+        let current_process = unsafe { GetCurrentProcess() };
+        let mut watcher_handle: HANDLE = std::ptr::null_mut();
+        let duplicated = unsafe {
+            DuplicateHandle(
+                current_process,
+                child.as_raw_handle() as HANDLE,
+                current_process,
+                &mut watcher_handle,
+                0,
+                false.into(),
+                DUPLICATE_SAME_ACCESS,
+            )
+        };
+        assert_ne!(duplicated, 0);
+        let child_exit_watcher = ChildExitWatcher::new(watcher_handle).unwrap();
 
         let mut events = Events::with_capacity(1);
         let poll = Poll::new().unwrap();

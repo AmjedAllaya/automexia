@@ -4928,6 +4928,7 @@ dependencies = [
  "miow",
  "parking_lot",
  "signal-hook",
+ "tempfile",
  "tracing",
  "windows-sys 0.61.2",
 ]

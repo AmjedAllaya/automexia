@@ -369,7 +369,7 @@ process/PTY/network authority was added.
 | Protected review policy | Partially done | CI now treats terminal context/process ownership, extension API/runtime, the SSH extension, session-launch fixtures/checkers, security ADRs, and the policy itself as protected. Its bounded review adapter validates login/commit forms; counting is case-normalized, excludes the PR author and bots, and rejects stale or malformed records unless the reviewed commit matches the exact PR head. | Two current independent human approvals and non-bypassable server-side enforcement are unavailable. |
 | Inherited S0/v0.4 gates | Not done externally | Local earlier-phase gates exist, but there is no current-revision hosted CI evidence. | Green required CI/CodeQL/native jobs on the protected M2 revision. |
 | Trusted package attestation | Not done | The test-only broker validates a supplied reviewed identity fixture. | A real loader/build provenance receipt with exact digest, version, contract, verification, and revocation state. |
-| Exact runner and lifecycle | Partially done as a pure model; not implemented in production | The test-only broker owns exact scope, literal argv, cwd/environment bounds, replay-safe leases, revocation, redacted authorization audit, and 1/10/50 pure lifecycle tests. | One app-owned runner, atomic native check-to-spawn, PTY/route ownership, teardown, and native proof. |
+| Exact runner and lifecycle | Partially done; guarded native seam implemented, application runner not implemented | The pure broker owns exact scope, literal argv, cwd/environment bounds, replay-safe leases, revocation, redacted authorization audit, and 1/10/50 model cycles. Teletypewriter now owns absolute guarded executable identity, Windows explicit-path/suspended Job Object creation, exact environment isolation, Unix descriptor execution, and handle cleanup. | One app-owned runner must compare and consume the guard, bind PTY/route/session/lease state, persist completion, and pass native OpenSSH/resource proof. |
 | Capability/recovery UX | Not done | The Hub truthfully reports launch unavailable. | Accessible review, approval, distinct recovery states, focus behavior, and visual/native evidence. |
 
 Remote prerequisite snapshot on 2026-08-21: the repository returned one
@@ -407,9 +407,13 @@ permanent repository claim; re-check it before resuming M2.
   selection, raw command text, secret references, and production launch remain
   denied by the contract, source checker, and mutation tests.
 - [ ] **Partially done** — The pure broker resolves fixed platform roots and
-  revalidates file identity. Native Unix descriptor-based and Windows explicit
-  application-path strategies, atomic check-to-spawn, and replacement-resistance
-  evidence are not implemented.
+  revalidates file identity. The low-level PTY seam now adds an absolute guarded
+  executable identity; Windows holds a replacement-resistant handle, passes an
+  explicit application path, creates a suspended kill-on-close Job Object, and
+  uses an exact environment; Unix uses descriptor execution and macOS compiles
+  through its guarded /dev/fd path. Native Windows unit/lifecycle tests and
+  the installed macOS cross-check pass. Broker comparison/consumption, native
+  Linux/macOS/OpenSSH adversarial runs, and product publication remain missing.
 - [ ] **Partially done** — The broker binds reviewed package identity,
   executable identity, capability decision, operation lease, session, capsule
   revision, and argv. Target/connection, new PTY, route/pane destination,
@@ -444,8 +448,11 @@ permanent repository claim; re-check it before resuming M2.
   Unicode, whitespace, leading-dash, metacharacter, maximum/oversized argv,
   environment/secret denial, duplicate/replay/stale/expired decisions,
   executable replacement, session isolation, cancellation, shutdown-equivalent
-  revocation, and 1/10/50 model cycles. Actual fake-runner stdin/output/deadline,
-  window isolation, forced cleanup, and publish-order tests are missing.
+  revocation, and 1/10/50 model cycles. Native Windows tests now prove the guard
+  blocks replacement, exact spawn omits ambient PATH, child exit is observed,
+  and repeated ConPTY cycles close. Actual app-runner stdin/output/deadline,
+  window isolation, publish order, Unix/macOS execution, and controlled forced
+  cleanup/resource tests remain missing.
 - [ ] **Not done (external native evidence)** — Execute the frozen loopback
   fixture with real system OpenSSH and native Windows ConPTY, macOS PTY, Linux
   PTY, and separately gated WSL. Capture the private/redacted manifest, resource

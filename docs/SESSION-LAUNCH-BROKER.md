@@ -152,19 +152,22 @@ After canonicalization, the broker records native identity:
 - Unix: device, inode, size, and nanosecond modification time;
 - other compile targets: size and modification time as a conservative fallback.
 
-The only conversion to the existing launch descriptor revalidates the
-executable and working directory in the same operation, so a future caller
-cannot omit those checks. A rename-and-replace attack is rejected even when the
-new file has the same name and byte length. Activation still requires the
-process owner to close the remaining check-to-spawn race with a platform-owned
-handle or equivalent native primitive and native adversarial evidence.
-[POSIX defines `fexecve`](https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html)
-specifically so a verified file cannot be exchanged between inspection and
-execution. Windows activation must likewise use an explicit application path
-and prove the exact executable/handle strategy; Microsoft
-[warns for `CreateProcessW`](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw)
-that leaving `lpApplicationName` null can execute an unintended binary when
-paths contain spaces.
+The low-level PTY owner now has a separate guarded exact-spawn seam. It opens
+only an absolute canonical executable and retains an opaque native identity and
+replacement guard through process creation. Windows denies write/delete sharing,
+passes a non-null application name to CreateProcessW, supplies an exact
+application-owned environment, creates the child suspended, assigns it to a
+kill-on-close Job Object, and only then resumes it. Unix executes the opened
+descriptor with fexecve; macOS uses its guarded /dev/fd/<n> descriptor path.
+POSIX defines fexecve so a verified file cannot be exchanged between inspection
+and execution, and Microsoft warns that leaving the CreateProcessW application
+name null can execute an unintended binary when paths contain spaces.
+
+This closes the primitive-level check-to-spawn gap, not the product gate. The
+application broker still must open and compare this guard with its reviewed
+identity, atomically bind the lease/session/capsule/route, and publish the
+Context only after successful PTY construction. Native Linux/macOS/OpenSSH
+adversarial execution remains external evidence.
 
 ## Argument, environment, and cwd limits
 
@@ -305,7 +308,8 @@ module gate, maintainers must:
    through the existing application launch path;
 5. add native Windows, macOS, Linux, and WSL spawn/cancel/teardown and hostile-argv
    evidence, including PID reuse and application close;
-6. close the executable check-to-spawn race with a reviewed native mechanism;
+6. bind the implemented guarded native exact-spawn mechanism to the broker's
+   reviewed executable identity and application-owned runner;
 7. connect the completed disabled D4 inventory only through reviewed D5
    surfaces and complete the cross-surface redaction matrix;
 8. pass the controlled 1/10/50-session process, PTY, renderer, performance,

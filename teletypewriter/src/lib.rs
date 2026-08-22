@@ -11,6 +11,73 @@ pub mod windows;
 pub use self::windows::*;
 
 use std::io;
+use std::path::{Path, PathBuf};
+
+/// An executable opened by absolute path and held stable until native process
+/// creation finishes. The opaque identity lets an application policy compare
+/// the file it reviewed with the file this launch seam will execute.
+pub struct ExactExecutable {
+    file: std::fs::File,
+    path: PathBuf,
+    identity: ExactExecutableIdentity,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct ExactExecutableIdentity {
+    canonical_path: PathBuf,
+    platform: ExactExecutablePlatformIdentity,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ExactExecutablePlatformIdentity {
+    #[cfg(unix)]
+    Unix {
+        device: u64,
+        inode: u64,
+        size: u64,
+        modified_seconds: i64,
+        modified_nanoseconds: i64,
+    },
+    #[cfg(windows)]
+    Windows {
+        volume_serial: u32,
+        file_index: u64,
+        size: u64,
+        last_write: u64,
+    },
+}
+
+impl std::fmt::Debug for ExactExecutable {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ExactExecutable")
+            .field("path", &"<redacted>")
+            .field("identity", &"<redacted>")
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for ExactExecutableIdentity {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("ExactExecutableIdentity(<redacted>)")
+    }
+}
+
+impl ExactExecutable {
+    pub fn open(path: &Path) -> io::Result<Self> {
+        exact_executable::open(path)
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn identity(&self) -> &ExactExecutableIdentity {
+        &self.identity
+    }
+}
+
+mod exact_executable;
 
 #[repr(C)]
 pub struct Winsize {
@@ -83,5 +150,34 @@ impl WinsizeBuilder {
             ws_xpixel,
             ws_ypixel,
         }
+    }
+}
+
+#[cfg(test)]
+mod exact_executable_tests {
+    use super::ExactExecutable;
+
+    #[test]
+    fn rejects_relative_executable_paths() {
+        let error = ExactExecutable::open(std::path::Path::new("ssh")).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_guard_prevents_replacement_until_launch_finishes() {
+        use std::io::Write;
+
+        let directory = tempfile::tempdir().unwrap();
+        let executable = directory.path().join("ssh.exe");
+        std::fs::File::create(&executable)
+            .unwrap()
+            .write_all(b"first")
+            .unwrap();
+
+        let guarded = ExactExecutable::open(&executable).unwrap();
+        assert!(std::fs::remove_file(&executable).is_err());
+        drop(guarded);
+        std::fs::remove_file(&executable).unwrap();
     }
 }
