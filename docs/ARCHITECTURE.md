@@ -262,24 +262,30 @@ current ssh executable, identity observation, and host-trust state. Both accept
 only the exact M3 direct alias/literal grammar, canonical F2 planning, exact
 session.launch, and an all-false authority ceiling.
 
-The desktop composition root maps one current direct D4 record into a stable
-public profile. Inventory generation binds profile/capsule revision; metadata
-revision joins the source revision; a domain-separated hash creates the public
-model ID without copying the raw record ID. Unsupported ProxyJump and invalid
-records fail closed. The runtime clones one bounded record under its existing
-lock, then performs pure composition without I/O, worker creation, or renderer-
-path discovery.
+The desktop composition root maps either one current direct D4 record or one
+transient user-entered literal host into a stable opaque public profile.
+Inventory generation binds profile/capsule revision; metadata revision joins
+the source revision; a domain-separated hash creates the public model ID without
+copying the raw record ID or literal host. Unsupported ProxyJump and invalid
+records fail closed. The runtime clones one bounded inventory record under its
+existing lock, then performs pure composition without I/O, worker creation, or
+renderer-path discovery. Literal input is capped at 512 bytes, accepts only one
+ASCII host/alias argument, is never persisted or added to history, and is
+conservatively classified as production risk.
 
-automexia-ui-model owns the nine-section pending and identity-bound projections.
-The application controller discards or rebuilds pending state after selection,
-route, runtime-state, generation, catalog, or metadata changes. The native
-renderer consumes only presentation state and groups it into Connection, Safety,
-and Launch cards. Exact aliases, opaque references, executable digests, and
-fingerprints do not enter that view. Because M2 is not accepted, the action is
-disabled and no process, PTY, filesystem, network, credential, listener, host-
-trust mutation, or secret authority is added.
+automexia-ui-model owns the nine-section pending and identity-bound projections
+plus the literal editor's textbox/instructions/status/Review/Cancel reading
+order. The application controller discards or rebuilds inventory preparation
+after selection, route, runtime-state, generation, catalog, or metadata changes;
+literal review is isolated from those unrelated refreshes and editor state is
+cleared on cancel, close, or successful preparation. The native renderer
+consumes only presentation state, keeps the modal background inert, and groups
+review into Connection, Safety, and Launch cards. Exact inventory aliases,
+opaque references, executable digests, and fingerprints do not enter that view.
+Because M2 is not accepted, the action is disabled and no process, PTY,
+filesystem, network, credential, listener, host-trust mutation, persistence, or
+secret authority is added.
 
-### Environment Capsule contract
 ### Environment Capsule contract
 
 Every managed session has a non-secret, immutable `EnvironmentCapsule`:

@@ -462,25 +462,29 @@ no provider receives a grant merely because the runner exists.
 Status: **Partially done** at the non-activated application-review boundary;
 production connection behavior remains blocked by M2.
 
-- [ ] **Partially done:** the exact grammar for one inventory-typed concrete
-  alias and one typed literal destination is complete. It rejects option-like,
-  empty, control/bidi, whitespace, oversized, and ambiguous values before
-  review. The application now maps one current D4 direct record into a stable
-  public profile and canonical pending F2 plan with session.launch, no
-  executable identity, an all-false authority ceiling, and generation/metadata
-  revision binding. A product literal-entry surface and the M2-provided current
-  executable/identity observation are still not implemented. Typed user, port,
-  URI, IPv6, jump, tunnel, and free-form option forms remain outside M3.
+- [x] **Fully done for non-activated destination preparation:** the exact
+  grammar accepts one inventory-typed concrete alias or one typed literal host
+  and rejects option-like, empty, control/bidi, whitespace, oversized,
+  wildcard, user, port, URI, IPv6, jump, tunnel, Unicode, and shell forms before
+  review. One current D4 direct record or one transient user-entered host maps
+  to a stable opaque public profile and canonical pending F2 plan with exact
+  `session.launch`, no executable identity, an all-false authority ceiling,
+  and no process, network, PTY, persistence, or history owner.
 - [x] **Fully done for the non-activated application surface:** Enter on a
-  selected result now opens a dedicated Connection Review showing public target,
-  identity verification state, system OpenSSH/direct route, pending executable,
-  strict host-trust policy, exact session.launch, environment risk,
-  pane-tab destination, and ssh <destination>. The route uses three compact
-  Connection/Safety/Launch cards with text plus semantic color/icons, a disabled
-  primary action, responsive tiny-to-8K geometry, semantic nine-section
-  accessibility, pointer Back, keyboard Escape, and focused-Back Enter. Exact
+  selected result or the dedicated **Enter host** workflow opens Connection
+  Review with public target, identity verification state, system
+  OpenSSH/direct route, pending executable, strict host-trust policy, exact
+  `session.launch`, environment risk, pane-tab destination, and
+  `ssh <destination>`. The literal editor provides the `L` mnemonic,
+  512-byte exact validation, atomic paste/IME rejection, trapped focus,
+  disabled invalid review, cancel/close cleanup, conservative production risk,
+  inert background controls, and tiny-to-8K hit geometry. Exact inventory
   aliases, opaque references, and fingerprints do not enter presentation state.
   Controlled native pixel and screen-reader evidence remains external.
+- [ ] **Not done:** the M2-provided current executable/identity observation and
+  protected activation remain required before any review can execute. Typed
+  user, port, URI, IPv6, jump, tunnel, and free-form option forms remain M4/M5
+  work.
 - [ ] **Not done:** launch system OpenSSH only through M2 into a new independent
   PTY. Preserve all prompts and diagnostics in that PTY; Automexia must not
   parse passwords, passphrases, MFA, or terminal content to decide
@@ -488,18 +492,21 @@ production connection behavior remains blocked by M2.
 - [ ] **Partially done:** immutable identity-bound reviews invalidate on profile,
   source, capsule, F2 plan, canonical executable identity, capability,
   destination, observation content/generation/freshness, or host-trust change.
-  The application pending preparation is also discarded or rebuilt on
-  selection, route, metadata, catalog, runtime-state, and generation changes.
-  The test-only M2 broker covers pure cancel/rebind/revocation. Reconnect
+  Inventory preparation is discarded or rebuilt on selection, route, metadata,
+  catalog, runtime-state, and generation changes. Transient literal review is
+  isolated from unrelated catalog refresh and its editor clears on cancel or
+  close. The test-only M2 broker covers pure cancel/rebind/revocation. Reconnect
   orchestration, nonintrusive notifications, redacted completion receipts, and
   independent process/session cleanup remain not done.
-- [ ] **Partially done:** the production module graph now contains only the
-  non-executing D4-to-F2 adapter/controller/renderer route; process/network/PTY
-  activation remains absent and the D0 manual-shell baseline is
-  mutation-checked. The selected-host preparation benchmark measured
-  6.3520–6.6011 µs on the 2026-08-22 Windows development host. No managed
-  process exists, so the required before/after native ssh host test remains
-  not done.
+- [ ] **Partially done:** the production module graph now contains only
+  non-executing D4-record and transient-literal adapters plus the shared
+  controller/renderer review route; process/network/PTY activation remains
+  absent and the D0 manual-shell baseline is mutation-checked. Hostile boundary,
+  accessibility, controller lifecycle, keyboard/pointer, inert-background, and
+  tiny-to-8K geometry tests pass locally. The selected-record preparation
+  benchmark measured 6.3520–6.6011 µs on the 2026-08-22 Windows development
+  host. No managed process exists, so the required before/after native
+  `ssh host` test remains not done.
 
 Exit: a reviewed direct SSH session is additive and isolated, with no secret
 custody or alternate SSH implementation.

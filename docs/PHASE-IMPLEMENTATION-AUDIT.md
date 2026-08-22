@@ -1,8 +1,8 @@
 # Phase implementation audit
 
-Audit date: 2026-08-21
+Audit date: 2026-08-22
 
-Audited source baseline: 52fc78dda42da7e826a4505b34787c606031a02a plus the M3 non-activated review slice
+Audited source baseline: 4641f1f63793053b938216c15005e9621379adb1 plus the current non-activated M3 literal-host review slice
 
 Scope: every execution phase defined by the product, stabilization, DevOps/SSH,
 Connection Hub, command-productivity, persistent-alias, and Ghostty
@@ -67,10 +67,10 @@ remain subject to their documented protected milestones and evidence.
 
 | Check | Result on the audited commit |
 |---|---|
-| Feature assurance | Passed: 24 feature families, 26 components, 10 benchmark targets, 12 fuzz targets, 104 documentation references, and 620 evidence links. |
+| Feature assurance | Passed: 27 feature-assurance entries, 276 documented source/evidence entries, and 46 phase-audit entries. |
 | Platform coverage policy | Passed: Windows/Linux/macOS, PowerShell/CMD/Unix shells, X11/Wayland, alternate architectures, nightly artifacts, deep Windows/WSL jobs, and release validators are machine-enforced. |
 | Documentation coverage | Passed: 12 public pages, 172 configuration keys, 73 binding actions, 6 application flags, and 21 xtask commands. |
-| Repository validation | Passed: 41 TOML, 14 YAML, 25 JSON, 6 XML, one desktop file, 199 Markdown files, 69 pinned Actions, release trust, assurance, and roadmap policy contracts. |
+| Repository validation | Passed: 42 TOML, 14 YAML, 26 JSON, 6 XML, one desktop file, 210 Markdown files, 69 pinned Actions, release trust, assurance, and roadmap policy contracts. |
 
 The hosted GitHub run state was not independently queried because GitHub CLI is
 not installed on this host. The latest readiness record says hosted jobs were
@@ -90,7 +90,7 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
 | DevOps | D3 | **Partial; nonactivated** | **Blocked** | A test-only exact-argv model and hardened local two-independent-human, exact-head review policy exist; external reviewers/server-side enforcement, real attestation, production launch, capability UX, atomic spawn, and native lifecycle proof do not. |
 | DevOps | D4 | **Fully implemented; read-only product adapter active** | **Partial** | Bounded OpenSSH inventory/persistence is connected only to D5.1 reviewed browsing; it retains no process/network/launch authority. |
-| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 fully implemented locally and D5.2 nonactivated preparation/review partial** | **Partial/blocked** | The Hub remains non-executing, but a selected direct D4 record now opens a disabled product Connection Review backed by a canonical pending F2 plan. Exact grammar, identity-bound pure review, generation invalidation, and responsive application UI are implemented. Protected M2 activation, real executable/identity observation, process/PTY lifecycle, reconnect/receipts, and native/accessibility evidence remain. |
+| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 fully implemented locally and D5.2 nonactivated preparation/review partial** | **Partial/blocked** | The Hub remains non-executing, but a selected direct D4 record or one bounded transient literal host now opens a disabled Connection Review backed by a canonical pending F2 plan. Exact grammar, literal editor/shortcut/lifecycle, conservative risk, identity-bound pure review, generation isolation, and responsive geometry are implemented. Protected M2 activation, executable/identity observation, process/PTY lifecycle, reconnect/receipts, routes/trust, and controlled native evidence remain. |
 | Multi-cloud | D6.0-D6.5 | **Not implemented** | **Blocked** | Provider auth, capsules, transports, and provider slices are planned only. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
@@ -544,35 +544,41 @@ actions remain disabled until D5.2.
 
 **Partially implemented at a non-activated application-review boundary.**
 
-Implemented locally: the pure owner validates an inventory concrete alias or
-bounded literal host as one exact argument and produces an immutable,
-identity-bound review when supplied a canonical current ssh executable
-identity, observation, and host-trust state. The application composition root
-now maps one current, direct D4 record into a stable public profile and
-canonical pending F2 plan bound to inventory generation and metadata revision.
-That plan requests only session.launch, has no executable identity yet, keeps
+Implemented locally: the pure owner validates one inventory concrete alias or
+one bounded literal host as an exact destination argument and produces an
+immutable identity-bound review when supplied a canonical current `ssh`
+executable identity, observation, and host-trust state. The application maps
+either one current direct D4 record or one transient typed host into a stable
+opaque public profile and canonical pending F2 plan. The inventory path is
+bound to catalog generation and metadata revision; the literal path is
+memory-only, has no history, and is conservatively classified as production
+risk. Both request only `session.launch`, have no executable identity, keep
 every authority false, and cannot execute.
 
-Enter on a supported Hub row opens a dedicated, disabled Connection Review.
-Its semantic model exposes nine public decisions; the renderer groups them into
-compact Connection, Safety, and Launch cards with redundant icons/text/color,
-responsive horizontal/stacked geometry, pointer Back, Escape, Tab/Shift+Tab,
-and Enter on focused Back. Exact aliases, opaque references, executable
-digests, fingerprints, processes, PTYs, credentials, and terminal data remain
-outside renderer-facing state. Runtime/catalog/metadata/generation/selection/
-route changes invalidate or rebuild the pending preparation. Focused model,
-controller, runtime, adapter, keyboard, and tiny/normal/8K geometry tests pass.
-A 20-sample optimized Windows Criterion run measured
-direct_openssh_prepare_selected at 6.3520–6.6011 µs.
+A selected Hub row or the dedicated **Enter host** action opens the shared
+disabled Connection Review. The literal editor has a 512-byte ASCII grammar,
+atomic paste/IME rejection, the `L` mnemonic, trapped field/Review/Cancel
+focus, disabled invalid submission, pointer/keyboard controls, cancel/close
+cleanup, and an inert background. The semantic model exposes nine public
+decisions; the renderer groups them into compact Connection, Safety, and Launch
+cards with redundant icons/text/color and responsive stacked/horizontal
+geometry. Exact inventory aliases, opaque references, executable digests,
+fingerprints, processes, PTYs, credentials, and terminal data remain outside
+renderer-facing state. Inventory runtime/catalog/metadata/generation/selection/
+route changes invalidate or rebuild inventory preparation, while unrelated
+catalog refresh cannot rewrite literal review. Focused hostile, model,
+controller lifecycle, accessibility, keyboard/pointer, inert-hit, and
+tiny-to-8K geometry tests pass. A 20-sample optimized Windows Criterion run
+measured selected-record preparation at 6.3520–6.6011 µs.
 
-Not implemented: accepted D3/M2 activation, a product literal-entry surface,
-current system-executable and identity observations in the app, independent
-PTYs, real OpenSSH prompt/diagnostic passthrough, reconnect, notifications,
-completion receipts, process-tree cleanup, jumps, typed user/port/routes/
-tunnels, full host-key and agent/certificate UX, mocked/native server-client
-tests, hostile remote output, controlled native pixels/screen readers, and
-1/10/50 parallel-session performance/resources. The before/after native
-manual-ssh regression remains external because no managed process exists.
+Not implemented: accepted D3/M2 activation, current system-executable and
+identity observations in the app, independent PTYs, real OpenSSH
+prompt/diagnostic passthrough, reconnect, notifications, completion receipts,
+process-tree cleanup, jumps, typed user/port/routes/tunnels, full host-key and
+agent/certificate UX, mocked/native server-client tests, hostile remote output,
+controlled native pixels/screen readers, and 1/10/50 parallel-session
+performance/resources. The before/after native manual-`ssh` regression remains
+external because no managed process exists.
 ### D6.0-D6.5 — providers and multi-cloud
 
 **Not implemented.**
@@ -899,7 +905,7 @@ Planned work, with no shipped-command claim:
 | Product surface | Owning gate | Audit status |
 |---|---|---|
 | Canonical operation registry, `automexia` domains, generated palette/help/accessibility, optional collision-safe `ax` | CP2.2-CP3/D5 | Not implemented |
-| Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | D5.1 picker/browse/metadata is fully implemented locally; D5.2 selected-record preparation and the disabled product Connection Review are partial; active connect/reconnect/destination launch remains not done |
+| Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | D5.1 picker/browse/metadata is fully implemented locally; D5.2 selected-record plus transient literal-host preparation and the disabled product Connection Review are complete at the non-activated boundary; executable observation and active connect/reconnect/destination launch remain not done |
 | Identity references, agent/certificate state, known-host explanation, routes/jumps/proxies/tunnels | D5.2 | Not implemented |
 | Quick Actions, aliases, lifecycle hooks, reviewed multi-target execution | CP2.2-CP4/D5E | Model/store foundations only |
 | Declarative workspace persistence/restoration and visibly armed broadcast | D5/CP4 | Existing layout primitives only |
@@ -1106,9 +1112,9 @@ At this audited baseline, the focused order is:
    grants, executable resolution, strict defaults, and the native fixture
    definitions are already frozen locally with production launch disabled.
 2. Preserve the locally complete D5.1 read-only product Hub and obtain its
-   external native/accessibility evidence. Preserve the new nonactivated D5.2
-   selected-record preparation and product Connection Review while production
-   launch waits for the protected decision.
+   external native/accessibility evidence. Preserve the nonactivated D5.2
+   selected-record and transient literal-host preparation plus product
+   Connection Review while production launch waits for the protected decision.
 3. Activate D3 only with its capability, atomic spawn, PTY lifecycle, cleanup,
    and three-OS native gates; then deliver D5.2 managed OpenSSH in bounded
    direct, route/host-trust, tunnel, and native-evidence slices.

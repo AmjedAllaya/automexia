@@ -31,7 +31,7 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | D2 | Generic status, immutable history, capsules, isolation, cancellation, and freshness are implemented. |
 | **Partially done** | D3 | The nonactivated broker binds exact package identity, grants, platform resolution, file identity, lifecycle, and redacted audit. Local CI now protects launch/capability authorities and counts only independent human approvals bound to the exact pull-request head; real reviews, server-side enforcement, attestation, production UX/spawn, and native proof remain. |
 | **Fully done** | D4 | The bounded OpenSSH inventory/persistence package is complete but deliberately disabled. |
-| **Partially done** | D5.0-D5.2 | D5.1 is fully implemented locally. D5.2 now composes selected direct D4 records into canonical pending F2 plans and a responsive, accessible, disabled product review, alongside the identity-bound pure review; M2 approval, actual executable/identity observation, process/PTY lifecycle, reconnect/receipts, routes/tunnels, and native accessibility/lifecycle evidence remain. |
+| **Partially done** | D5.0-D5.2 | D5.1 is fully implemented locally. D5.2 now composes either a selected direct D4 record or one bounded transient literal host into a canonical pending F2 plan and responsive disabled review. The literal editor, `L` mnemonic, focus/IME/pointer lifecycle, conservative risk, redaction, and tiny-to-8K geometry are complete at the non-activated boundary; M2 approval, executable/identity observation, process/PTY lifecycle, reconnect/receipts, routes/tunnels, and controlled native evidence remain. |
 | **Not done** | D6.0-D6.5 | Provider authentication, capsules, transports, and multi-cloud slices are planned only. |
 | **Not done** | D7 | Public ecosystem, direct APIs, sandboxed extensions, and AI execution are deferred. |
 | **Fully done** | CP0 | Architecture, threat model, ceilings, fixtures, mutation tests, and nonactivation policy are complete. |
@@ -349,11 +349,14 @@ OpenSSH execution and lifecycle.
 #### D5.1 read-only Connection Hub status (2026-08-21)
 
 Status: **Fully done locally; release evidence partially done.** All requested
-read-only product behavior and non-authority boundaries are implemented. The
-first-run modal is now a compact one-action setup; catalog-only controls appear
-only when useful, hidden controls reject input and leave accessibility order,
-and restrained semantic colors are redundant with code-native icons and text.
-A prompt-ready 1600x950 Windows frame at 125% scale passed manual visual review.
+read-only inventory behavior and non-authority boundaries are implemented.
+Catalog-only controls appear only when useful, hidden controls reject input and
+leave accessibility order, and restrained semantic colors are redundant with
+code-native icons and text. The product first-run frame now presents two
+bounded choices because the non-activated D5.2 literal-host workflow is also
+available. A prompt-ready 1600x950 Windows frame at 125% scale passed the prior
+D5.1 manual visual review; the new literal dialog has renderer-neutral and
+geometry evidence but still needs controlled native pixel/accessibility review.
 The local 10,000-record release benchmark measured 7.1790–7.7931 ms against the
 below-16-ms target; the release executable is 22,670,336 bytes, a 650,752-byte
 (2.96%) increase from the same-host pre-M1 baseline. The remaining evidence is

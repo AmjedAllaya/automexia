@@ -105,6 +105,18 @@ the keyboard anchor. Once a selection exists, an unmodified Arrow key or any
 non-empty text/paste/IME input exits selection mode before the input is
 forwarded to the shell. Search and Vi mode retain their own input ownership.
 
+## Connection Hub controls (v0.5 release-gated)
+
+These shortcuts work only while the read-only Hub owns input. They never send a
+key or command to the PTY.
+
+| Shortcut | Result |
+|---|---|
+| `L` | From Hub results or first-run setup, open the direct-host editor. If Search owns focus, `l` remains search text. |
+| `Tab` / `Shift+Tab` | Move focus among the host field, Review, and Cancel without leaving the modal. |
+| `Enter` | Review a valid host or activate the focused Review/Cancel control. |
+| `Escape` | Cancel and clear the transient host editor; from review, return to results. |
+
 ## Search mode
 
 | Shortcut | Result |

@@ -392,28 +392,35 @@ fixed order.
 
 ### F5.1 direct reviewed SSH
 
-- [ ] **Partially done:** the pure exact grammar for one concrete inventory
-  alias and one bounded literal host is complete. One current direct D4 record
-  now maps to a stable profile and canonical pending F2 plan with exact
-  session.launch, no executable identity, all authority false, and source
-  generation/revision binding. A product literal-entry surface and M2 current
-  executable/identity observation remain missing.
-- [x] **Fully done for the non-activated application surface:** selecting a
-  supported result opens the route-owned responsive Connection Review with all
-  nine required semantic decisions, compact Connection/Safety/Launch groups,
-  icons plus text/color, a disabled action, pointer/keyboard Back, and no exact
-  alias, opaque reference, digest, process, PTY, or network authority.
+- [x] **Fully done for non-activated destination preparation:** the pure exact
+  grammar accepts one concrete inventory alias or one bounded literal host.
+  One current direct D4 record or one transient user-entered host maps to a
+  stable opaque profile and canonical pending F2 plan with exact
+  `session.launch`, no executable identity, all authority false, and no
+  process, network, PTY, persistence, or history owner.
+- [x] **Fully done for the non-activated product surface:** a selected supported
+  result or the dedicated **Enter host** workflow opens the route-owned
+  responsive Connection Review with all nine semantic decisions, compact
+  Connection/Safety/Launch groups, icons plus text/color, a disabled action,
+  pointer/keyboard controls, and no opaque reference or digest exposure. The
+  literal editor has a 512-byte exact grammar, atomic paste/IME rejection,
+  `L` mnemonic, trapped focus, disabled invalid review, cancel/close cleanup,
+  conservative production risk, and tiny-to-8K hit geometry.
+- [ ] **Not done:** M2 current executable/identity observation and protected
+  activation remain required before any review can become executable.
 - [ ] **Not done:** preserve OpenSSH-owned prompts and diagnostics in a real PTY.
 - [ ] **Partially done:** identity-bound review changes invalidate the pure
-  request; selection, route, runtime state, generation, catalog, and metadata
-  changes invalidate or rebuild the product preparation. Reconnect,
-  notifications, receipts, and independent process/session cleanup remain not
-  done.
-- [ ] **Partially done:** model/controller/renderer and tiny-to-8K geometry tests
-  pass locally, and the selected-host Criterion run measured
-  6.3520–6.6011 µs on the 2026-08-22 Windows development host. Controlled
-  native pixels/screen readers, a real SSH child, before/after manual ssh,
-  and native lifecycle/resource evidence remain not done.
+  request; inventory selection, route, runtime state, generation, catalog, and
+  metadata changes invalidate or rebuild inventory preparation. Transient
+  literal review is isolated from unrelated catalog refresh and clears on
+  cancel/close. Reconnect, notifications, receipts, and independent
+  process/session cleanup remain not done.
+- [ ] **Partially done:** hostile boundary, model, accessibility, controller
+  lifecycle, keyboard/pointer, inert-background, and tiny-to-8K geometry tests
+  pass locally. The selected-record Criterion run measured 6.3520–6.6011 µs on
+  the 2026-08-22 Windows development host. Controlled native pixels/screen
+  readers, a real SSH child, before/after manual `ssh`, and native
+  lifecycle/resource evidence remain not done.
 ### F5.2 explicit routes and host trust
 
 - [ ] Add typed host/user/port and config-defined jump chains.

@@ -2,7 +2,7 @@
 
 use automexia_ui_model::connection_hub::{
     hub_catalog_controls_visible, HubCatalogGrouping, HubCatalogSource, HubContentState,
-    HubLayout, HubRoute,
+    HubFocus, HubLayout, HubRoute,
 };
 use rio_backend::sugarloaf::{text::DrawOpts, Sugarloaf};
 
@@ -63,6 +63,10 @@ impl Rect {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConnectionHubHit {
     Search,
+    BeginLiteralDestination,
+    LiteralDestinationField,
+    ConfirmLiteralDestination,
+    CancelLiteralDestination,
     ReviewFiles,
     ConfirmReviewedScan { request: u64 },
     CancelReviewedScan,
@@ -85,12 +89,14 @@ pub enum ConnectionHubHit {
 struct Layout {
     card: Rect,
     search: Rect,
+    review_host: Rect,
     review_files: Rect,
     filters: [Rect; 5],
     confirm_scan: Option<(u64, Rect)>,
     cancel_scan: Option<Rect>,
     review_panel: Option<Rect>,
     overlay_panel: Option<Rect>,
+    literal_destination_field: Option<Rect>,
     overlay_confirm: Option<Rect>,
     overlay_cancel: Option<Rect>,
     close: Rect,
@@ -132,6 +138,31 @@ impl ConnectionHub {
             return Some(ConnectionHubHit::Close);
         }
         if layout.overlay_panel.is_some() {
+            if presentation.literal_destination.is_some() {
+                if layout
+                    .literal_destination_field
+                    .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
+                {
+                    return Some(ConnectionHubHit::LiteralDestinationField);
+                }
+                if layout
+                    .overlay_confirm
+                    .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
+                {
+                    return Some(if presentation.literal_destination_valid {
+                        ConnectionHubHit::ConfirmLiteralDestination
+                    } else {
+                        ConnectionHubHit::Inert
+                    });
+                }
+                if layout
+                    .overlay_cancel
+                    .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
+                {
+                    return Some(ConnectionHubHit::CancelLiteralDestination);
+                }
+                return Some(ConnectionHubHit::Inert);
+            }
             if layout
                 .overlay_confirm
                 .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
@@ -154,6 +185,11 @@ impl ConnectionHub {
         }
         if layout.connection_review_panel.is_some() {
             return Some(ConnectionHubHit::Inert);
+        }
+        if literal_entry_action_visible(presentation)
+            && layout.review_host.contains(mouse_x, mouse_y)
+        {
+            return Some(ConnectionHubHit::BeginLiteralDestination);
         }
         if layout.review_files.contains(mouse_x, mouse_y) {
             return Some(ConnectionHubHit::ReviewFiles);
@@ -273,6 +309,8 @@ impl ConnectionHub {
         if layout.card.width >= 340.0 {
             let subtitle = if presentation.view.route == HubRoute::Review {
                 "Connection review"
+            } else if presentation.literal_destination.is_some() {
+                "Direct SSH host"
             } else {
                 "SSH inventory"
             };
@@ -331,6 +369,19 @@ impl ConnectionHub {
                 layout.search.y + 10.0,
                 &query,
                 &body,
+            );
+            action_button(
+                sugarloaf,
+                layout.review_host,
+                if layout.compact {
+                    "Host (L)"
+                } else {
+                    "Enter host (L)"
+                },
+                HubIcon::Connections,
+                SURFACE_RAISED,
+                CYAN,
+                &label,
             );
             action_button(
                 sugarloaf,
@@ -397,6 +448,15 @@ impl ConnectionHub {
         } else if presentation.view.route == HubRoute::Results
             && layout.setup_panel.is_none()
         {
+            action_button(
+                sugarloaf,
+                layout.review_host,
+                "Enter host (L)",
+                HubIcon::Connections,
+                SURFACE_RAISED,
+                CYAN,
+                &label,
+            );
             action_button(
                 sugarloaf,
                 layout.review_files,
@@ -531,6 +591,7 @@ impl ConnectionHub {
             render_setup_state(
                 sugarloaf,
                 panel,
+                layout.review_host,
                 layout.review_files,
                 presentation,
                 &operation_status,
@@ -572,7 +633,20 @@ impl ConnectionHub {
         }
 
         if let Some(panel) = layout.overlay_panel {
-            if let Some(value) = presentation.tag_editor.as_deref() {
+            if let (Some(value), Some(field)) = (
+                presentation.literal_destination.as_deref(),
+                layout.literal_destination_field,
+            ) {
+                render_literal_destination_editor(
+                    sugarloaf,
+                    panel,
+                    field,
+                    value,
+                    presentation.ime_preedit.as_deref(),
+                    presentation.literal_destination_diagnostic,
+                    presentation.view.focus == HubFocus::LiteralDestination,
+                );
+            } else if let Some(value) = presentation.tag_editor.as_deref() {
                 render_tag_editor(
                     sugarloaf,
                     panel,
@@ -583,12 +657,14 @@ impl ConnectionHub {
                 render_metadata_review(sugarloaf, panel, review);
             }
             if let Some(confirm) = layout.overlay_confirm {
-                let caption = if presentation.tag_editor.is_some() {
-                    "Review change"
+                let (caption, disabled) = if presentation.literal_destination.is_some() {
+                    ("Review host", !presentation.literal_destination_valid)
+                } else if presentation.tag_editor.is_some() {
+                    ("Review change", false)
                 } else {
-                    "Save reviewed change"
+                    ("Save reviewed change", false)
                 };
-                button(sugarloaf, confirm, caption, false, &label);
+                button(sugarloaf, confirm, caption, disabled, &label);
             }
             if let Some(cancel) = layout.overlay_cancel {
                 button(sugarloaf, cancel, "Cancel", false, &label);
@@ -616,8 +692,9 @@ impl ConnectionHub {
             18.0
         };
         let catalog_chrome_visible = catalog_chrome_visible(presentation);
-        let overlay_active =
-            presentation.metadata_review.is_some() || presentation.tag_editor.is_some();
+        let overlay_active = presentation.metadata_review.is_some()
+            || presentation.tag_editor.is_some()
+            || presentation.literal_destination.is_some();
         let review_ready =
             matches!(presentation.grant_review, GrantReviewState::Ready { .. });
         let connection_review_active = presentation.view.route == HubRoute::Review
@@ -696,11 +773,47 @@ impl ConnectionHub {
                 card,
             )
         };
+        let review_host = if let Some(panel) = setup_panel {
+            let total_width = (panel.width - 24.0).clamp(1.0, 454.0);
+            let width = ((total_width - gap) * 0.5).max(1.0);
+            bounded_to(
+                Rect {
+                    x: panel.x + (panel.width - total_width) * 0.5,
+                    y: review_files.y,
+                    width,
+                    height: review_files.height,
+                },
+                panel,
+            )
+        } else {
+            bounded_to(
+                Rect {
+                    x: review_files.x - gap - action_width,
+                    y: review_files.y,
+                    width: action_width,
+                    height: review_files.height,
+                },
+                card,
+            )
+        };
+        let review_files = if setup_panel.is_some() {
+            bounded_to(
+                Rect {
+                    x: review_host.x + review_host.width + gap,
+                    y: review_host.y,
+                    width: review_host.width,
+                    height: review_host.height,
+                },
+                setup_panel.unwrap_or(card),
+            )
+        } else {
+            review_files
+        };
         let search = bounded_to(
             Rect {
                 x: card.x + inner,
                 y: card.y + 78.0,
-                width: (card.width - inner * 2.0 - action_width - gap).max(1.0),
+                width: (review_host.x - gap - (card.x + inner)).max(1.0),
                 height: 40.0,
             },
             card,
@@ -792,22 +905,51 @@ impl ConnectionHub {
             )
         });
         let overlay_panel = overlay_active.then(|| {
-            bounded_to(
-                Rect {
-                    x: card.x + inner,
-                    y: rows_top,
-                    width: (card.width - inner * 2.0).max(1.0),
-                    height: (rows_bottom - rows_top).max(1.0),
-                },
-                card,
-            )
+            if card.height < 180.0 {
+                inset(card, 1.0)
+            } else {
+                bounded_to(
+                    Rect {
+                        x: card.x + inner,
+                        y: rows_top,
+                        width: (card.width - inner * 2.0).max(1.0),
+                        height: (rows_bottom - rows_top).max(1.0),
+                    },
+                    card,
+                )
+            }
         });
+        let literal_destination_field = overlay_panel
+            .filter(|_| presentation.literal_destination.is_some())
+            .map(|panel| {
+                bounded_to(
+                    Rect {
+                        x: panel.x + 14.0,
+                        y: panel.y + if panel.height < 180.0 { 2.0 } else { 76.0 },
+                        width: (panel.width - 28.0).max(1.0),
+                        height: if panel.height < 180.0 {
+                            (panel.height - 50.0).max(1.0)
+                        } else {
+                            42.0
+                        },
+                    },
+                    panel,
+                )
+            });
         let overlay_confirm = overlay_panel.map(|panel| {
+            let desired_confirm = if compact { 122.0 } else { 156.0 };
+            let desired_cancel = if compact { 86.0 } else { 110.0 };
+            let available = (panel.width - 28.0 - gap).max(2.0);
+            let width = if available >= desired_confirm + desired_cancel {
+                desired_confirm
+            } else {
+                (available * 0.5).max(1.0)
+            };
             bounded_to(
                 Rect {
                     x: panel.x + 14.0,
                     y: panel.y + panel.height - 48.0,
-                    width: if compact { 122.0 } else { 156.0 },
+                    width,
                     height: 34.0,
                 },
                 panel,
@@ -815,11 +957,19 @@ impl ConnectionHub {
         });
         let overlay_cancel =
             overlay_confirm.zip(overlay_panel).map(|(confirm, panel)| {
+                let desired_confirm = if compact { 122.0 } else { 156.0 };
+                let desired_cancel = if compact { 86.0 } else { 110.0 };
+                let available = (panel.width - 28.0 - gap).max(2.0);
+                let width = if available >= desired_confirm + desired_cancel {
+                    desired_cancel
+                } else {
+                    (available - confirm.width).max(1.0)
+                };
                 bounded_to(
                     Rect {
                         x: confirm.x + confirm.width + gap,
                         y: confirm.y,
-                        width: if compact { 86.0 } else { 110.0 },
+                        width,
                         height: confirm.height,
                     },
                     panel,
@@ -942,12 +1092,14 @@ impl ConnectionHub {
         Layout {
             card,
             search,
+            review_host,
             review_files,
             filters,
             confirm_scan,
             cancel_scan,
             review_panel,
             overlay_panel,
+            literal_destination_field,
             overlay_confirm,
             overlay_cancel,
             close,
@@ -969,7 +1121,16 @@ fn catalog_chrome_visible(presentation: &HubControllerPresentation) -> bool {
         && matches!(presentation.grant_review, GrantReviewState::None)
         && presentation.metadata_review.is_none()
         && presentation.tag_editor.is_none()
+        && presentation.literal_destination.is_none()
         && hub_catalog_controls_visible(presentation.view.content_state)
+}
+
+fn literal_entry_action_visible(presentation: &HubControllerPresentation) -> bool {
+    presentation.view.route == HubRoute::Results
+        && matches!(presentation.grant_review, GrantReviewState::None)
+        && presentation.metadata_review.is_none()
+        && presentation.tag_editor.is_none()
+        && presentation.literal_destination.is_none()
 }
 
 fn filters_are_active(presentation: &HubControllerPresentation) -> bool {
@@ -1102,7 +1263,8 @@ fn render_connection_review(
 fn render_setup_state(
     sugarloaf: &mut Sugarloaf,
     panel: Rect,
-    action: Rect,
+    host_action: Rect,
+    file_action: Rect,
     presentation: &HubControllerPresentation,
     operation_status: &str,
     compact: bool,
@@ -1131,7 +1293,7 @@ fn render_setup_state(
             operation_status
         }
         (_, HubContentState::InitialSetup) => {
-            "Choose an OpenSSH config file to build a local connection list."
+            "Add SSH files or review one host. Nothing connects yet."
         }
         (_, HubContentState::Loading | HubContentState::Error) => operation_status,
         _ => "Choose another OpenSSH config file when you are ready.",
@@ -1199,7 +1361,20 @@ fn render_setup_state(
         };
     action_button(
         sugarloaf,
-        action,
+        host_action,
+        if compact {
+            "Host (L)"
+        } else {
+            "Enter host (L)"
+        },
+        HubIcon::Connections,
+        SURFACE_RAISED,
+        CYAN,
+        &label,
+    );
+    action_button(
+        sugarloaf,
+        file_action,
         action_label,
         HubIcon::FolderAdd,
         PRIMARY,
@@ -1212,7 +1387,7 @@ fn render_setup_state(
             draw_centered(
                 sugarloaf,
                 panel,
-                action.y + action.height + 12.0,
+                file_action.y + file_action.height + 12.0,
                 &format!("Typical location: {}", truncated(location, 58)),
                 &small,
                 7.0,
@@ -1278,6 +1453,11 @@ fn status_summary(
     presentation: &HubControllerPresentation,
     operation_status: &str,
 ) -> String {
+    if presentation.literal_destination.is_some() {
+        return presentation
+            .literal_destination_diagnostic
+            .map_or_else(|| "Enter one host · preparation only".into(), str::to_owned);
+    }
     if presentation.view.route == HubRoute::Review {
         return "Preparation only · launch unavailable".into();
     }
@@ -1561,6 +1741,65 @@ fn source_label(source: Option<HubCatalogSource>) -> &'static str {
         Some(HubCatalogSource::OpenSshSystem) => "SSH system",
         Some(HubCatalogSource::SavedProfile) => "Saved",
         Some(HubCatalogSource::ImportedProfile) => "Imported",
+    }
+}
+
+fn render_literal_destination_editor(
+    sugarloaf: &mut Sugarloaf,
+    panel: Rect,
+    field: Rect,
+    value: &str,
+    ime_preedit: Option<&str>,
+    diagnostic: Option<&str>,
+    focused: bool,
+) {
+    rounded(sugarloaf, panel, SURFACE, 8.0);
+    let tiny = panel.height < 180.0;
+    let heading = text(15.0, [238, 249, 255, 255], true);
+    let body = text(13.0, [177, 207, 224, 255], false);
+    let small = text(11.0, [125, 164, 187, 255], false);
+    let warning = text(11.0, [255, 166, 92, 255], false);
+    if !tiny {
+        sugarloaf.text_mut().draw(
+            panel.x + 14.0,
+            panel.y + 16.0,
+            "Review one SSH host",
+            &heading,
+        );
+        sugarloaf.text_mut().draw(
+            panel.x + 14.0,
+            panel.y + 47.0,
+            "Host or alias only · no user, port, URI, options, or jump route",
+            &small,
+        );
+    }
+    rounded(sugarloaf, field, if focused { SELECTED } else { CARD }, 7.0);
+    let composed = format!("{}{}", value, ime_preedit.unwrap_or_default());
+    let visible_characters = (((field.width - 20.0) / 7.0).floor() as usize).clamp(1, 72);
+    let visible = if composed.is_empty() {
+        truncated("host.example.com", visible_characters)
+    } else {
+        truncated(&composed, visible_characters)
+    };
+    sugarloaf.text_mut().draw(
+        field.x + if tiny { 4.0 } else { 10.0 },
+        field.y + if tiny { 2.0 } else { 11.0 },
+        &visible,
+        if tiny { &small } else { &body },
+    );
+    if !tiny {
+        sugarloaf.text_mut().draw(
+            panel.x + 14.0,
+            panel.y + 132.0,
+            diagnostic.unwrap_or(
+                "Preparation only · Enter reviews · Escape cancels · nothing is saved",
+            ),
+            if diagnostic.is_some() {
+                &warning
+            } else {
+                &small
+            },
+        );
     }
 }
 
@@ -1895,6 +2134,8 @@ mod tests {
             focus: HubFocus::Results,
             opener_id: "terminal-grid",
             live_announcement: None,
+            literal_destination_entry: false,
+            literal_destination_valid: false,
         });
         HubControllerPresentation {
             view,
@@ -1902,6 +2143,9 @@ mod tests {
             catalog_query: Default::default(),
             row_group_labels: Vec::new(),
             ime_preedit: None,
+            literal_destination: None,
+            literal_destination_diagnostic: None,
+            literal_destination_valid: false,
             grant_review_offset: 0,
             metadata_review: None,
             tag_editor: None,
@@ -1958,6 +2202,70 @@ mod tests {
                 accessibility_tree: Vec::new(),
             });
         presentation
+    }
+
+    #[test]
+    fn literal_destination_dialog_is_responsive_focusable_and_blocks_underlying_hits() {
+        for dimensions in [
+            (90.0, 70.0, 1.0),
+            (640.0, 360.0, 2.0),
+            (1280.0, 720.0, 1.0),
+            (7680.0, 4320.0, 2.0),
+        ] {
+            let mut presentation = presentation();
+            presentation.view.content_state = HubContentState::Ready;
+            presentation.view.focus = HubFocus::LiteralDestination;
+            presentation.literal_destination = Some("host.example.invalid".into());
+            presentation.literal_destination_valid = true;
+            let layout = ConnectionHub::layout(&presentation, dimensions);
+            let panel = layout.overlay_panel.unwrap();
+            let field = layout.literal_destination_field.unwrap();
+            let confirm = layout.overlay_confirm.unwrap();
+            let cancel = layout.overlay_cancel.unwrap();
+            assert!(!layout.catalog_chrome_visible);
+            assert!(layout.setup_panel.is_none());
+            for rect in [panel, field, confirm, cancel, layout.review_host] {
+                assert!(rect.x >= layout.card.x);
+                assert!(rect.y >= layout.card.y);
+                assert!(rect.x + rect.width <= layout.card.x + layout.card.width);
+                assert!(rect.y + rect.height <= layout.card.y + layout.card.height);
+            }
+
+            let underlying = layout.filters[0];
+            let mut hub = ConnectionHub::default();
+            hub.set_presentation(Some(presentation));
+            assert_eq!(
+                hub.hit_test(field.x + 1.0, field.y + 1.0, dimensions),
+                Some(ConnectionHubHit::LiteralDestinationField)
+            );
+            assert_eq!(
+                hub.hit_test(confirm.x + 1.0, confirm.y + 1.0, dimensions),
+                Some(ConnectionHubHit::ConfirmLiteralDestination)
+            );
+            assert_eq!(
+                hub.hit_test(cancel.x + 1.0, cancel.y + 1.0, dimensions),
+                Some(ConnectionHubHit::CancelLiteralDestination)
+            );
+            if !panel.contains(underlying.x + 1.0, underlying.y + 1.0) {
+                assert_eq!(
+                    hub.hit_test(underlying.x + 1.0, underlying.y + 1.0, dimensions),
+                    Some(ConnectionHubHit::Inert)
+                );
+            }
+        }
+
+        let mut invalid = presentation();
+        invalid.literal_destination = Some(String::new());
+        invalid.literal_destination_valid = false;
+        let dimensions = (1280.0, 720.0, 1.0);
+        let layout = ConnectionHub::layout(&invalid, dimensions);
+        let confirm = layout.overlay_confirm.unwrap();
+        let mut hub = ConnectionHub::default();
+        hub.set_presentation(Some(invalid));
+        assert_eq!(
+            hub.hit_test(confirm.x + 1.0, confirm.y + 1.0, dimensions),
+            Some(ConnectionHubHit::Inert)
+        );
     }
 
     #[test]
@@ -2135,7 +2443,7 @@ mod tests {
     }
 
     #[test]
-    fn initial_setup_prioritizes_one_centered_action_without_catalog_hit_targets() {
+    fn initial_setup_centers_two_clear_choices_without_catalog_hit_targets() {
         let presentation = presentation();
         let dimensions = (1280.0, 720.0, 1.0);
         let layout = ConnectionHub::layout(&presentation, dimensions);
@@ -2144,12 +2452,21 @@ mod tests {
 
         assert!(layout.card.width <= 780.0);
         assert!(layout.card.height <= 520.0);
-        assert!(layout.review_files.width >= 200.0);
+        assert!(layout.review_host.width >= 200.0);
+        assert_eq!(layout.review_host.width, layout.review_files.width);
+        let actions_center =
+            (layout.review_host.x + layout.review_files.x + layout.review_files.width)
+                * 0.5;
         assert!(
-            ((layout.review_files.x + layout.review_files.width * 0.5)
-                - (layout.card.x + layout.card.width * 0.5))
-                .abs()
-                <= 1.0
+            (actions_center - (layout.card.x + layout.card.width * 0.5)).abs() <= 1.0
+        );
+        assert_eq!(
+            hub.hit_test(
+                layout.review_host.x + layout.review_host.width * 0.5,
+                layout.review_host.y + layout.review_host.height * 0.5,
+                dimensions,
+            ),
+            Some(ConnectionHubHit::BeginLiteralDestination)
         );
         assert_eq!(
             hub.hit_test(

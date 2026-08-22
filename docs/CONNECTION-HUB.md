@@ -3,10 +3,12 @@
 Status: D5.1/F3 is **fully implemented at the source and local Windows
 boundary**. The product exposes a read-only modal with explicit reviewed native
 file selection, bounded inventory browsing, public favorite/tag CAS review,
-read-only recent/library state, and visibly disabled connection authority.
-Native macOS/Linux picker/permission and controlled Narrator/NVDA, VoiceOver,
-and Orca evidence remain partial external release gates. D5.2 managed launch
-and D6 provider execution are not implemented; v0.4 ships neither.
+read-only recent/library state, and visibly disabled connection authority. The
+non-activated D5.2 slice also provides one bounded transient literal-host editor
+and the shared disabled Connection Review. Native macOS/Linux picker/permission
+and controlled Narrator/NVDA, VoiceOver, and Orca evidence remain partial
+external release gates. D5.2 managed launch and D6 provider execution are not
+implemented; v0.4 ships neither.
 This document is the implementation authority for Automexia's Connection Hub.
 The [roadmap](ROADMAP.md) owns release order, the
 [stabilization roadmap](STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track)
@@ -966,10 +968,21 @@ Exit achieved locally: 10 runtime, 6 controller, 4 renderer, 33 D4, 32 UI-model,
 target. This exit does not activate D5.2.
 ### D5.2 - reviewed OpenSSH launch and lifecycle
 
-- Activate the application-owned exact launch broker after its native gate.
-- Add identity/agent/certificate public status, Connection Review, destination
-  choice, cancellation/reconnect, jumps, typed tunnels, host-key explanations,
-  capability approvals, revocation, and local audit.
+- [x] **Fully done at the non-activated boundary** — Compose one current direct
+  D4 record or one bounded transient literal host into the canonical pending F2
+  plan and shared disabled Connection Review.
+- [x] **Fully done at the non-activated product boundary** — Provide the
+  **Enter host** action, `L` mnemonic, 512-byte exact grammar, atomic
+  paste/IME rejection, field/Review/Cancel focus loop, pointer controls,
+  conservative production risk, cancel/close cleanup, no persistence/history,
+  and tiny-to-8K responsive geometry.
+- [ ] **Not done** — Activate the application-owned exact launch broker only
+  after protected approval, executable/identity observation, atomic
+  check-to-spawn, PTY/process ownership, cancellation, cleanup, and native
+  evidence pass.
+- [ ] **Not done** — Add typed user/port/routes, identity/agent/certificate
+  public status, cancellation/reconnect, jumps, typed tunnels, host-key
+  explanations, capability approvals, revocation, and local audit.
 
 Exit: D5 native/security/performance matrix passes on Windows/macOS/Linux;
 disabled extension and ordinary manual SSH remain unchanged.
