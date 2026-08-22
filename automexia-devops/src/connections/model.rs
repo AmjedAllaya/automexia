@@ -73,6 +73,14 @@ pub enum TransportKind {
 pub enum TransportDescriptor {
     OpenSshAlias {
         alias: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        host: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        port: Option<u16>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        user: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        proxy_jump: Vec<String>,
     },
     OpenSshExplicit {
         host: String,

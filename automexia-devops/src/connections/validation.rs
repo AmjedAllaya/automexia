@@ -99,7 +99,7 @@ fn validate_schema(
     Ok(())
 }
 
-fn contains_hostile_format(character: char) -> bool {
+pub(super) fn contains_hostile_format(character: char) -> bool {
     matches!(
         character,
         '\u{061c}'
@@ -362,7 +362,33 @@ fn validate_transport(
 ) -> Result<(), ConnectionModelError> {
     let text = |value: &String, field| validate_target(value, field);
     match transport {
-        TransportDescriptor::OpenSshAlias { alias } => text(alias, "transport.alias"),
+        TransportDescriptor::OpenSshAlias {
+            alias,
+            host,
+            port,
+            user,
+            proxy_jump,
+        } => {
+            text(alias, "transport.alias")?;
+            if let Some(host) = host {
+                text(host, "transport.host")?;
+            }
+            if port == &Some(0) {
+                return Err(error(
+                    ConnectionModelErrorCode::InvalidPolicy,
+                    "transport.port",
+                    "port zero is forbidden",
+                ));
+            }
+            if let Some(user) = user {
+                validate_target(user, "transport.user")?;
+            }
+            validate_unique_texts(proxy_jump, "transport.proxy_jump", MAX_JUMPS)?;
+            for jump in proxy_jump {
+                validate_target(jump, "transport.proxy_jump")?;
+            }
+            Ok(())
+        }
         TransportDescriptor::OpenSshExplicit {
             host,
             port,

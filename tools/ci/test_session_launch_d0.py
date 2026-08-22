@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mutation tests for the F1/D0-D3 session-launch review contract."""
+"""Mutation tests for the D0-D3/M3-M4 session-launch review contract."""
 
 from __future__ import annotations
 
@@ -31,10 +31,10 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
         self.assertEqual(
             policy.validate_repository(),
             {
-                "schema": 3,
+                "schema": 4,
                 "scenarios": 19,
                 "boundaries": 9,
-                "sources": 12,
+                "sources": 16,
                 "documents": 11,
                 "production_enabled": 0,
             },
@@ -76,6 +76,25 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
                         key, True
                     )
                 )
+
+    def test_m4_routes_trust_and_status_contract_cannot_weaken(self) -> None:
+        mutations = [
+            lambda d: d["ssh_routes_trust"]["route_grammar"].__setitem__("proxy_command", True),
+            lambda d: d["ssh_routes_trust"]["route_grammar"].__setitem__("freeform_options", True),
+            lambda d: d["ssh_routes_trust"]["route_grammar"].__setitem__("max_proxy_jumps", 0),
+            lambda d: d["ssh_routes_trust"]["routed_managed_options"].pop(),
+            lambda d: d["ssh_routes_trust"]["host_trust"].__setitem__("truncation", True),
+            lambda d: d["ssh_routes_trust"]["host_trust"].__setitem__("known_hosts_mutation", True),
+            lambda d: d["ssh_routes_trust"]["user_owned_trust_handoff"].__setitem__("executes", True),
+            lambda d: d["ssh_routes_trust"]["user_owned_trust_handoff"].__setitem__("implicit_enter", True),
+            lambda d: d["ssh_routes_trust"]["user_owned_trust_handoff"].__setitem__("newline", True),
+            lambda d: d["ssh_routes_trust"]["public_identity_status"].__setitem__("private_material", True),
+            lambda d: d["ssh_routes_trust"]["public_identity_status"].__setitem__("execution_enabled", True),
+            lambda d: d["ssh_routes_trust"].__setitem__("agent_forwarding", True),
+            lambda d: d["ssh_routes_trust"].__setitem__("production_activation", True),
+        ]
+        for mutate in mutations:
+            self.validate_mutation(mutate)
 
     def test_scenarios_evidence_and_external_blocker_cannot_drift(self) -> None:
         self.validate_mutation(lambda d: d["native_scenarios"].pop())
@@ -123,7 +142,7 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
             return source
 
         with mock.patch.object(policy, "bounded_text", side_effect=mutated):
-            with self.assertRaisesRegex(policy.SessionLaunchD0Error, "missing D0/D3 evidence"):
+            with self.assertRaisesRegex(policy.SessionLaunchD0Error, "missing D0/D3/M4 evidence"):
                 policy.validate_sources(self.contract)
 
     def test_production_guard_and_runtime_authority_cannot_widen(self) -> None:

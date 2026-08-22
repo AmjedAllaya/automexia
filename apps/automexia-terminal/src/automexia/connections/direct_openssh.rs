@@ -18,7 +18,6 @@ use automexia_devops_ssh::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum InventoryPreparationError {
     InvalidRecord,
-    UnsupportedRoute,
     InvalidModel,
 }
 
@@ -33,9 +32,6 @@ pub(super) fn prepare_inventory_direct_openssh(
         .map_err(|_| InventoryPreparationError::InvalidRecord)?;
     if generation == 0 {
         return Err(InventoryPreparationError::InvalidRecord);
-    }
-    if record.proxy_jump_configured {
-        return Err(InventoryPreparationError::UnsupportedRoute);
     }
 
     let tags = metadata.map_or_else(Vec::new, |item| item.tags.clone());
@@ -70,6 +66,10 @@ pub(super) fn prepare_inventory_direct_openssh(
         provider: ProviderKind::Ssh,
         transport: TransportDescriptor::OpenSshAlias {
             alias: record.alias.clone(),
+            host: record.hostname.clone(),
+            port: record.port,
+            user: record.username.clone(),
+            proxy_jump: record.proxy_jump.clone(),
         },
         public_target: public_target(record),
         jump_profile_references: Vec::new(),
@@ -105,6 +105,8 @@ pub(super) enum LiteralPreparationError {
     Required,
     LimitExceeded,
     UnsafeDestination,
+    UnsafeUser,
+    InvalidPort,
     InvalidModel,
 }
 
@@ -116,17 +118,15 @@ impl LiteralPreparationError {
             Self::UnsafeDestination => {
                 "Use one host or alias with letters, numbers, dots, underscores, or hyphens."
             }
-            Self::InvalidModel => "The SSH host could not be prepared safely.",
+            Self::UnsafeUser => {
+                "Use an optional user with letters, numbers, dots, underscores, or hyphens."
+            }
+            Self::InvalidPort => "Use an optional port from 1 through 65535.",
+            Self::InvalidModel => "The SSH route could not be prepared safely.",
         }
     }
 }
 
-/// Compose one transient user-entered literal host into the same pure,
-/// non-activated F2/M3 preparation used by reviewed inventory aliases.
-///
-/// The destination is intentionally not persisted, added to history, logged, or
-/// resolved here. Unknown literal destinations receive the highest environment
-/// risk until a later trusted profile classifies them explicitly.
 pub(super) fn validate_literal_direct_openssh_destination(
     destination: &str,
 ) -> Result<(), LiteralPreparationError> {
@@ -146,12 +146,53 @@ pub(super) fn validate_literal_direct_openssh_destination(
     Ok(())
 }
 
-pub(super) fn prepare_literal_direct_openssh(
+pub(super) fn validate_literal_direct_openssh_user(
+    user: &str,
+) -> Result<(), LiteralPreparationError> {
+    if user.len() > 128
+        || user.starts_with('-')
+        || user.chars().any(|character| {
+            !(character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-'))
+        })
+    {
+        return Err(LiteralPreparationError::UnsafeUser);
+    }
+    Ok(())
+}
+
+pub(super) fn parse_literal_direct_openssh_port(
+    port: &str,
+) -> Result<Option<u16>, LiteralPreparationError> {
+    if port.is_empty() {
+        return Ok(None);
+    }
+    port.parse::<u16>()
+        .ok()
+        .filter(|port| *port != 0)
+        .map(Some)
+        .ok_or(LiteralPreparationError::InvalidPort)
+}
+
+/// Compose transient typed fields into a pure non-activated preparation. The
+/// values are not persisted, added to history, logged, resolved, or executed.
+pub(super) fn prepare_literal_direct_openssh_typed(
     destination: &str,
+    user: &str,
+    port: &str,
 ) -> Result<DirectOpenSshPreparation, LiteralPreparationError> {
     validate_literal_direct_openssh_destination(destination)?;
+    validate_literal_direct_openssh_user(user)?;
+    let port = parse_literal_direct_openssh_port(port)?;
 
-    let id = stable_literal_profile_id(destination);
+    let id =
+        stable_literal_profile_id(&format!("{user}\u{1f}{destination}\u{1f}{port:?}"));
+    let with_user = if user.is_empty() {
+        destination.to_owned()
+    } else {
+        format!("{user}@{destination}")
+    };
+    let public_target =
+        port.map_or(with_user.clone(), |port| format!("{with_user}:{port}"));
     let profile = ConnectionProfileV1 {
         schema_version: CONNECTION_SCHEMA_VERSION,
         id: id.clone(),
@@ -168,11 +209,11 @@ pub(super) fn prepare_literal_direct_openssh(
         provider: ProviderKind::Ssh,
         transport: TransportDescriptor::OpenSshExplicit {
             host: destination.into(),
-            port: None,
-            user: None,
+            port,
+            user: (!user.is_empty()).then(|| user.to_owned()),
             proxy_jump: Vec::new(),
         },
-        public_target: destination.into(),
+        public_target,
         jump_profile_references: Vec::new(),
         identity: IdentityReference {
             kind: IdentityKind::Agent,
@@ -191,7 +232,7 @@ pub(super) fn prepare_literal_direct_openssh(
         source: ConnectionSource {
             kind: ModelSourceKind::User,
             reference: OpaqueReference::new(id),
-            revision: "literal-input-v1".into(),
+            revision: "literal-input-v2".into(),
         },
         approval_fingerprint: None,
         created_at_ms: 0,
@@ -207,6 +248,12 @@ pub(super) fn prepare_literal_direct_openssh(
     })
 }
 
+#[cfg(test)]
+pub(super) fn prepare_literal_direct_openssh(
+    destination: &str,
+) -> Result<DirectOpenSshPreparation, LiteralPreparationError> {
+    prepare_literal_direct_openssh_typed(destination, "", "")
+}
 fn stable_literal_profile_id(destination: &str) -> String {
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"automexia.direct-openssh.literal-profile.v1\0");
@@ -272,6 +319,7 @@ mod tests {
             hostname: Some("public.example.invalid".into()),
             username: Some("operator".into()),
             port: Some(2222),
+            proxy_jump: Vec::new(),
             proxy_jump_configured: false,
             identity_hint: IdentityHint::FileReferencePresent,
             source: SourceKind::OpenSshUser,
@@ -316,23 +364,45 @@ mod tests {
     }
 
     #[test]
-    fn invalid_generation_indirect_routes_and_hostile_aliases_fail_closed() {
+    fn config_route_is_preserved_while_invalid_generation_and_hostile_aliases_fail_closed(
+    ) {
         assert_eq!(
             prepare_inventory_direct_openssh(&record(), None, 0, 0),
             Err(InventoryPreparationError::InvalidRecord)
         );
-        let mut indirect = record();
-        indirect.proxy_jump_configured = true;
-        assert_eq!(
-            prepare_inventory_direct_openssh(&indirect, None, 1, 0),
-            Err(InventoryPreparationError::UnsupportedRoute)
-        );
+        let mut routed = record();
+        routed.proxy_jump = vec!["edge".into(), "operator@bastion.example:2200".into()];
+        routed.proxy_jump_configured = true;
+        let prepared = prepare_inventory_direct_openssh(&routed, None, 1, 0).unwrap();
+        assert_eq!(prepared.route().jump_count(), 2);
+        assert!(prepared.route().is_config_defined());
+        let debug = format!("{prepared:?}");
+        assert!(!debug.contains("bastion.example"));
+
         let mut hostile = record();
         hostile.alias = "-oProxyCommand=bad".into();
         assert_eq!(
             prepare_inventory_direct_openssh(&hostile, None, 1, 0),
             Err(InventoryPreparationError::InvalidRecord)
         );
+    }
+
+    #[test]
+    fn typed_literal_fields_compose_separate_exact_route_arguments() {
+        let prepared = prepare_literal_direct_openssh_typed(
+            "host.example.invalid",
+            "operator",
+            "2222",
+        )
+        .unwrap();
+        assert_eq!(
+            prepared.profile().public_target,
+            "operator@host.example.invalid:2222"
+        );
+        assert_eq!(prepared.route().jump_count(), 0);
+        assert!(parse_literal_direct_openssh_port("0").is_err());
+        assert!(parse_literal_direct_openssh_port("65536").is_err());
+        assert!(validate_literal_direct_openssh_user("bad user").is_err());
     }
 
     #[test]

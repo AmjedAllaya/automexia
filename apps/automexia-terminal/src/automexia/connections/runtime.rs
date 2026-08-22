@@ -709,9 +709,6 @@ impl ConnectionHubRuntime {
             metadata_revision,
         )
         .map_err(|error| match error {
-            InventoryPreparationError::UnsupportedRoute => {
-                HubRuntimeErrorCode::UnsupportedConnectionRoute
-            }
             InventoryPreparationError::InvalidRecord
             | InventoryPreparationError::InvalidModel => {
                 HubRuntimeErrorCode::InvalidConnection
@@ -1696,6 +1693,7 @@ mod tests {
             hostname: Some("prod.example.invalid".into()),
             username: None,
             port: None,
+            proxy_jump: Vec::new(),
             proxy_jump_configured: false,
             identity_hint: IdentityHint::AgentOrDefault,
             source: SourceKind::OpenSshUser,

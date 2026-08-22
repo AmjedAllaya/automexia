@@ -12,11 +12,20 @@ mod state;
 mod validation;
 
 pub use direct_openssh::{
-    prepare_direct_openssh, review_direct_openssh, DirectOpenSshDestinationKind,
+    parse_direct_openssh_agent_identities, prepare_direct_openssh,
+    prepare_direct_openssh_identity_status, review_direct_openssh,
+    review_direct_openssh_m4, validate_direct_openssh_arguments,
+    DirectOpenSshDestinationKind, DirectOpenSshHostKeyEvidence,
+    DirectOpenSshHostKeyProvenance, DirectOpenSshHostTrustEvidence,
     DirectOpenSshHostTrustPolicy, DirectOpenSshIdentityReadiness,
-    DirectOpenSshLaunchBinding, DirectOpenSshPreparation, DirectOpenSshRequest,
-    DirectOpenSshReview, DIRECT_OPENSSH_MANAGED_OPTIONS,
-    MAX_DIRECT_OPENSSH_DESTINATION_BYTES,
+    DirectOpenSshIdentityStatusRequest, DirectOpenSshLaunchBinding,
+    DirectOpenSshPreparation, DirectOpenSshPublicIdentity, DirectOpenSshRequest,
+    DirectOpenSshReview, DirectOpenSshReviewEvidence, DirectOpenSshRoute,
+    DIRECT_OPENSSH_IDENTITY_STATUS_TIMEOUT_MS, DIRECT_OPENSSH_MANAGED_OPTIONS,
+    DIRECT_OPENSSH_ROUTED_OPTIONS, MAX_DIRECT_OPENSSH_DESTINATION_BYTES,
+    MAX_DIRECT_OPENSSH_IDENTITIES, MAX_DIRECT_OPENSSH_IDENTITY_OUTPUT_BYTES,
+    MAX_DIRECT_OPENSSH_JUMPS, MAX_DIRECT_OPENSSH_ROUTE_BYTES,
+    MAX_DIRECT_OPENSSH_USER_BYTES,
 };
 pub use documents::{
     parse_profile_document_json, parse_recipe_document_json, validate_profile_document,

@@ -1,13 +1,14 @@
 # Connection Hub product, security, and delivery specification
 
 Status: D5.1/F3 is **fully implemented at the source and local Windows
-boundary**. D5.2 is **partially done and nonactivated**: the read-only Hub,
-literal-host editor, actionable three-decision review, one fail-closed
-application runner, guarded PTY seam, exact route publication, truthful child outcomes, redacted notifications, bounded durable receipts, and stale-source reconnect preparation are local.
+boundary**. D5.2 remains **partially done overall and nonactivated**, while F5.1
+and F5.2 are source-complete locally: the typed host/user/port editor, bounded
+config-jump routes, full host-key/public-identity review, safe command copy,
+fail-closed runner, guarded PTY seam, exact route publication, truthful child
+outcomes, redacted notifications, receipts, and reconnect preparation are local.
 Activation is false and the package unverified, so v0.4 starts no managed child.
-Protected approvals, attestation, current-executable review binding, native
-OpenSSH/cleanup/resources/accessibility, later connection features, and all D6
-provider execution remain.
+Protected approvals, attestation, actual status/SSH execution, native cleanup/
+resources/accessibility, F5.3 tunnels, and all D6 provider execution remain.
 This document is the implementation authority for Automexia's Connection Hub.
 The [roadmap](ROADMAP.md) owns release order, the
 [stabilization roadmap](STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track)
@@ -969,14 +970,19 @@ Exit achieved locally: 10 runtime, 6 controller, 4 renderer, 33 D4, 32 UI-model,
 target. This exit does not activate D5.2.
 ### D5.2 - reviewed OpenSSH launch and lifecycle
 
-- [x] **Fully done locally; nonactivated** - Compose one current direct D4
-  record or bounded transient literal host into the canonical plan and accessible
-  approval review; all existing literal-editor, focus, IME, pointer, keyboard,
-  redaction, and tiny-to-8K protections remain.
-- [x] **Fully done locally; nonactivated** - Freeze 17 defensive OpenSSH options
-  followed by one destination. Create launch authority only from a fresh complete
-  review and revalidate canonical executable file identity plus exact ordered
-  argv at the broker.
+- [x] **Fully done locally; nonactivated** - Compose one current D4 record or a
+  bounded transient typed host/user/port into the canonical plan and accessible
+  approval review; focus, IME, pointer, keyboard, redaction, and tiny-to-8K
+  protections cover all three fields.
+- [x] **Fully done locally; nonactivated** - Freeze exact route-specific argv:
+  direct uses 17 defensive options plus optional `-l`/`-p` and one host; a
+  config route uses the 15-option subset plus one canonical `-J` chain and one
+  alias. Fresh full review and broker validation reject all drift.
+- [x] **Fully done locally; nonactivated** - Show complete first-use/known/
+  changed key algorithm and SHA-256 evidence without truncation or `known_hosts`
+  writes; changed keys cannot bind. `C` copies the exact reviewed command with
+  no execution/newline/Enter. The bounded `ssh-add -l -E sha256` public status
+  request/parser is source-complete but not process-connected.
 - [x] **Fully done locally; nonactivated** - Keep ContextManager as the only PTY
   and route owner. Reconcile the actual child status before close and distinguish
   success, failure, missing status, cancel, revoke, route close, and shutdown
@@ -991,8 +997,8 @@ target. This exit does not activate D5.2.
   real package attestation/revocation, controller use of a current attested
   observation, native OpenSSH prompts, forced descendant cleanup, 1/10/50
   resources, controlled accessibility, and production activation remain.
-- [ ] **Not done** - M4 typed user/port/routes/full host-trust and identity UX,
-  and M5 jumps/tunnels remain separate work.
+- [ ] **Not done** - F5.3 typed tunnels and native release evidence remain
+  separate work; M4 route/trust/readiness source is complete but nonactivated.
 
 Exit remains unavailable as a shipped connection until the protected and native
 D5 matrix passes on Windows, macOS, Linux, and separately gated WSL; disabled

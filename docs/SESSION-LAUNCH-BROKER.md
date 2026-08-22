@@ -48,14 +48,18 @@ protocols, or configuration evaluation. This keeps OpenSSH authoritative and
 follows the allowlist-plus-parameterization guidance in the
 [OWASP OS-command injection guidance](https://cheatsheetseries.owasp.org/cheatsheets/OS_Command_Injection_Defense_Cheat_Sheet.html).
 
-## Upstream M3 reviewed request
+## Upstream M3/M4 reviewed request
 
-The nonactivated M3 model prepares the only direct request shape: canonical
-executable ID `ssh`, exact `session.launch`, 17 ordered application-owned safety
-options, and exactly one typed destination. A full current review binds profile/
-source/capsule revisions, F2 plan, destination, executable identity, observation
-content/generation/freshness, host trust, capability, and fingerprint into an
-opaque launch value. Debug and presentation redact all identity-bearing values.
+The nonactivated M3/M4 model prepares only exact route grammars for canonical
+executable ID `ssh` and exact `session.launch`. Direct uses 17 ordered safety
+options plus optional separate `-l`/`-p` values and one host. A config route uses
+the 15-option subset (omitting the ProxyCommand/ProxyJump resets), one exact
+`-J` canonical chain, and one alias; placing `-J` first preserves OpenSSH
+first-value semantics without enabling configured ProxyCommand. Full current
+review binds profile/source/capsule, F2 plan, route/argv, executable, observation,
+complete host-key/public-identity evidence, capability, and fingerprint into an
+opaque value. Debug/presentation redact identity-bearing values except the
+explicitly reviewed public fingerprint/algorithm/comment evidence.
 
 The runner accepts that opaque binding rather than rebuilding argv. It creates
 typed capability/decision/launch values, reserves one exact route/session/
@@ -89,7 +93,7 @@ resolved credential.
 
 ### Frozen trust-boundary ledger
 
-The active schema-3 contract retains nine boundaries: extension model,
+The active schema-4 contract retains nine boundaries: extension model,
 application capability broker, future PTY/process owner, renderer/VT parser,
 OpenSSH child, OpenSSH configuration, agent/keychain/hardware owner, remote
 host, and future provider helper. Every row fixes accepted and returned data,
@@ -125,10 +129,12 @@ A request is rejected unless all of these conditions hold:
 9. The executable and operation grammar are explicitly supported.
 
 Broad `process.spawn`, wildcard executable paths, WSL shell creation,
-third-party principals, and silent fallback are rejected. Recognizing the
-names `ssh-add` and `ssh-keygen` does not grant their use: both remain
-`UnsupportedOperation` until a shipped operation and argument grammar receive
-separate review.
+third-party principals, and silent fallback are rejected. M4 defines an exact,
+bounded, non-executing public identity-status request for
+`ssh-add -l -E sha256`, but the broker still grants neither `ssh-add` nor
+`ssh-keygen`: both remain `UnsupportedOperation` until a separately reviewed
+runner operation, current executable observation, protected activation, and
+native evidence ship.
 
 ## Executable resolution and identity
 
@@ -284,9 +290,9 @@ reconnect. It must match current D4 inventory and still returns to a fresh
 executable/host-trust review and explicit approval; no reconnect auto-runs.
 ## D0/D3 fixture contract
 
-`tests/fixtures/session-launch/d0-d3-contract-v3.json` is the canonical
-local decision and native-fixture baseline. The schema-1 fixture remains
-unchanged as historical evidence and its exact hash is checked. For Windows,
+`tests/fixtures/session-launch/d0-d3-contract-v4.json` is the canonical
+local decision and native-fixture baseline. Schemas 1, 2, and 3 remain
+unchanged historical evidence and their exact hashes are checked. For Windows,
 macOS, Linux, and WSL it
 defines direct/explicit/user-port connections, encrypted-key prompts, agents,
 certificates, new/known/changed host keys, ProxyJump, every forwarding type,
@@ -294,7 +300,7 @@ cancellation, exit classification, hostile output, offline behavior, shutdown
 cleanup, and 1/10/50-session resource proof. Each row freezes its expected
 safe outcome rather than only naming a case.
 
-Schema 3 retains schema 2's hermetic rules for how later native cases must run: an ephemeral
+Schema 4 retains schema 3's hermetic rules for how later native cases must run: an ephemeral
 loopback OpenSSH server, no Internet or cloud account, a private per-case
 workspace, disposable credentials, isolated `known_hosts` and agent state,
 fixed recorded randomness, bounded readiness probes with no arbitrary sleeps,
@@ -314,16 +320,18 @@ managed activation; WSL managed launch remains denied until its own native
 scenario outcomes pass.
 
 The same contract keeps process, PTY, network, provider, authentication,
-key-custody, and renderer authority false. Strict host-key checking is
-preserved; new trust is explicit, changed keys fail, agent/TCP/X11 forwarding
-and remote commands default off, listener scope is loopback unless separately
-confirmed, discovery runs no config command, and inherited environment,
-secrets, and shell evaluation remain unavailable.
+key-custody, and renderer authority false. Schema 4 additionally freezes typed
+host/user/port and bounded config jump grammar, full untruncated host-key
+algorithm/SHA-256 evidence, changed-key denial, zero `known_hosts` mutation, a
+non-executing/no-Enter clipboard handoff, and the bounded nonactivated public
+identity-status request/parser. Agent/TCP/X11 forwarding and remote commands
+remain off; discovery runs no config command; inherited environment, secrets,
+and shell evaluation remain unavailable.
 
 This matrix is a definition, not a claim that native sessions ran. F4/F5 own
 the process/PTY implementation and execution evidence. The contract status
 therefore remains
-`local-managed-session-source-complete-protected-activation-pending`.
+`local-managed-ssh-routes-trust-source-complete-protected-activation-pending`.
 
 
 Run the focused contract with:
@@ -337,7 +345,7 @@ cargo test -p automexia-terminal --bin automexia --locked context::launch_broker
 cargo xtask verify architecture
 ```
 
-The suite covers schema-1/schema-2 immutability, schema-3 contract mutation, hard
+The suite covers schema-1/schema-2/schema-3 immutability, schema-4 mutation, hard
 production denial, exact package digest source/size/version/contract/
 verification matching, manual-path preservation, nine trust boundaries,
 hermetic fixture and evidence rules, four-platform fixed roots,

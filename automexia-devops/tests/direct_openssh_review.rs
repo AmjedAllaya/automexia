@@ -1,16 +1,19 @@
 use std::collections::BTreeMap;
 
 use automexia_devops::connections::{
-    prepare_direct_openssh, resolve_connection_plan,
+    parse_direct_openssh_agent_identities, prepare_direct_openssh,
+    prepare_direct_openssh_identity_status, resolve_connection_plan,
     review_direct_openssh as review_direct_openssh_at, AuthState, ConnectionModelError,
     ConnectionObservation, ConnectionProfileV1, ConnectionSource, DestinationSurface,
-    DirectOpenSshDestinationKind, DirectOpenSshHostTrustPolicy,
-    DirectOpenSshIdentityReadiness, DirectOpenSshReview, EnvironmentCapsuleTemplate,
-    EnvironmentClassification, EnvironmentKind, EnvironmentRisk, HostTrustState,
-    IdentityKind, IdentityReference, OpaqueReference, PlanContext, ProviderKind,
-    ResolvedConnectionPlan, ResolvedExecutable, SourceKind, ToolState,
-    TransportDescriptor, TransportState, CONNECTION_SCHEMA_VERSION,
-    DIRECT_OPENSSH_MANAGED_OPTIONS,
+    DirectOpenSshDestinationKind, DirectOpenSshHostKeyEvidence,
+    DirectOpenSshHostKeyProvenance, DirectOpenSshHostTrustEvidence,
+    DirectOpenSshHostTrustPolicy, DirectOpenSshIdentityReadiness, DirectOpenSshReview,
+    DirectOpenSshReviewEvidence, EnvironmentCapsuleTemplate, EnvironmentClassification,
+    EnvironmentKind, EnvironmentRisk, HostTrustState, IdentityKind, IdentityReference,
+    OpaqueReference, PlanContext, ProviderKind, ResolvedConnectionPlan,
+    ResolvedExecutable, SourceKind, ToolState, TransportDescriptor, TransportState,
+    CONNECTION_SCHEMA_VERSION, DIRECT_OPENSSH_MANAGED_OPTIONS,
+    DIRECT_OPENSSH_ROUTED_OPTIONS,
 };
 
 const NOW_MS: u64 = 1_700_000_000_001;
@@ -115,6 +118,10 @@ fn alias_profile(alias: &str) -> ConnectionProfileV1 {
     profile(
         TransportDescriptor::OpenSshAlias {
             alias: alias.into(),
+            host: None,
+            port: None,
+            user: None,
+            proxy_jump: Vec::new(),
         },
         SourceKind::OpenSshInventory,
     )
@@ -184,21 +191,33 @@ fn inventory_typed_alias_binds_the_safe_exact_argv_to_the_f2_plan() {
         DirectOpenSshDestinationKind::InventoryAlias
     );
     let arguments = reviewed.request.arguments();
-    assert_eq!(arguments.last(), Some(&"prod-alias"));
-    assert_eq!(
-        &arguments[..arguments.len() - 1],
-        DIRECT_OPENSSH_MANAGED_OPTIONS
-    );
+    assert_eq!(arguments.last().map(String::as_str), Some("prod-alias"));
+    assert!(arguments[..arguments.len() - 1]
+        .iter()
+        .map(String::as_str)
+        .eq(DIRECT_OPENSSH_MANAGED_OPTIONS.iter().copied()));
     assert!(arguments
         .iter()
         .take(arguments.len() - 1)
         .all(|argument| argument.starts_with("-o")));
-    assert!(arguments.contains(&"-oClearAllForwardings=yes"));
-    assert!(arguments.contains(&"-oEnableEscapeCommandline=no"));
-    assert!(arguments.contains(&"-oForwardAgent=no"));
-    assert!(arguments.contains(&"-oProxyCommand=none"));
-    assert!(arguments.contains(&"-oProxyJump=none"));
-    assert!(arguments.contains(&"-oStrictHostKeyChecking=ask"));
+    assert!(arguments
+        .iter()
+        .any(|argument| argument == "-oClearAllForwardings=yes"));
+    assert!(arguments
+        .iter()
+        .any(|argument| argument == "-oEnableEscapeCommandline=no"));
+    assert!(arguments
+        .iter()
+        .any(|argument| argument == "-oForwardAgent=no"));
+    assert!(arguments
+        .iter()
+        .any(|argument| argument == "-oProxyCommand=none"));
+    assert!(arguments
+        .iter()
+        .any(|argument| argument == "-oProxyJump=none"));
+    assert!(arguments
+        .iter()
+        .any(|argument| argument == "-oStrictHostKeyChecking=ask"));
     assert_eq!(reviewed.executable_identity.executable_id, "ssh");
     assert_eq!(
         reviewed.identity_readiness,
@@ -241,7 +260,7 @@ fn managed_options_preserve_openssh_post_quantum_defaults_and_warnings() {
 }
 
 #[test]
-fn typed_literal_keeps_one_destination_and_defers_user_port_and_routes_to_m4() {
+fn typed_literal_keeps_one_destination_and_rejects_unreviewed_explicit_routes() {
     let profile = literal_profile("host.example.invalid");
     let reviewed = review_direct_openssh(
         &profile,
@@ -257,39 +276,18 @@ fn typed_literal_keeps_one_destination_and_defers_user_port_and_routes_to_m4() {
         DirectOpenSshDestinationKind::Literal
     );
     let arguments = reviewed.request.arguments();
-    assert_eq!(arguments.last(), Some(&"host.example.invalid"));
+    assert_eq!(
+        arguments.last().map(String::as_str),
+        Some("host.example.invalid")
+    );
     assert_eq!(
         arguments
             .iter()
             .filter(|argument| !argument.starts_with("-o"))
-            .copied()
+            .map(String::as_str)
             .collect::<Vec<_>>(),
         ["host.example.invalid"]
     );
-
-    let mut user = literal_profile("host.example.invalid");
-    if let TransportDescriptor::OpenSshExplicit { user, .. } = &mut user.transport {
-        *user = Some("operator".into());
-    }
-    assert!(review_direct_openssh(
-        &user,
-        &plan(&user),
-        &observation(&user),
-        HostTrustState::Unknown
-    )
-    .is_err());
-
-    let mut port = literal_profile("host.example.invalid");
-    if let TransportDescriptor::OpenSshExplicit { port, .. } = &mut port.transport {
-        *port = Some(22);
-    }
-    assert!(review_direct_openssh(
-        &port,
-        &plan(&port),
-        &observation(&port),
-        HostTrustState::Unknown
-    )
-    .is_err());
 
     let mut jump = literal_profile("host.example.invalid");
     if let TransportDescriptor::OpenSshExplicit { proxy_jump, .. } = &mut jump.transport {
@@ -350,6 +348,10 @@ fn review_rejects_wrong_source_executable_capability_and_active_authority() {
     let wrong_source = profile(
         TransportDescriptor::OpenSshAlias {
             alias: "prod".into(),
+            host: None,
+            port: None,
+            user: None,
+            proxy_jump: Vec::new(),
         },
         SourceKind::User,
     );
@@ -451,6 +453,10 @@ fn source_profile_capsule_plan_and_executable_changes_invalidate_the_review() {
     let mut changed_destination = profile.clone();
     changed_destination.transport = TransportDescriptor::OpenSshAlias {
         alias: "other".into(),
+        host: None,
+        port: None,
+        user: None,
+        proxy_jump: Vec::new(),
     };
     assert!(reviewed
         .request
@@ -739,7 +745,10 @@ fn only_a_current_review_can_create_a_redacted_launch_binding() {
     assert_eq!(binding.public_connection_id(), profile.id);
     assert_eq!(binding.source_revision(), profile.source.revision);
     assert_eq!(binding.capsule_revision(), profile.capsule.revision);
-    assert_eq!(binding.arguments().last(), Some(&"private-binding-canary"));
+    assert_eq!(
+        binding.arguments().last().map(String::as_str),
+        Some("private-binding-canary")
+    );
     assert_eq!(
         binding.review_fingerprint(),
         reviewed.request.review_fingerprint()
@@ -756,4 +765,287 @@ fn only_a_current_review_can_create_a_redacted_launch_binding() {
     assert!(reviewed
         .bind_launch(&profile, &plan, &observation, &trust, expired_at)
         .is_err());
+}
+
+fn openssh_sha256_zero() -> &'static str {
+    "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+}
+
+fn openssh_sha256_ff() -> &'static str {
+    "SHA256://////////////////////////////////////////8"
+}
+
+fn routed_alias_profile() -> ConnectionProfileV1 {
+    let mut routed = profile(
+        TransportDescriptor::OpenSshAlias {
+            alias: "prod".into(),
+            host: Some("production.example.invalid".into()),
+            port: Some(2222),
+            user: Some("operator".into()),
+            proxy_jump: vec!["edge".into(), "operator@bastion.example:2200".into()],
+        },
+        SourceKind::OpenSshInventory,
+    );
+    routed.public_target = "operator@production.example.invalid:2222".into();
+    routed
+}
+
+fn typed_explicit_profile() -> ConnectionProfileV1 {
+    let mut explicit = profile(
+        TransportDescriptor::OpenSshExplicit {
+            host: "host.example.invalid".into(),
+            port: Some(2222),
+            user: Some("operator".into()),
+            proxy_jump: Vec::new(),
+        },
+        SourceKind::User,
+    );
+    explicit.public_target = "operator@host.example.invalid:2222".into();
+    explicit
+}
+
+#[test]
+fn m4_typed_user_and_port_are_distinct_exact_arguments() {
+    let profile = typed_explicit_profile();
+    let reviewed = review_direct_openssh(
+        &profile,
+        &plan(&profile),
+        &observation(&profile),
+        HostTrustState::Unknown,
+    )
+    .unwrap();
+    let arguments = reviewed.request.arguments();
+    let expected = DIRECT_OPENSSH_MANAGED_OPTIONS
+        .iter()
+        .map(|argument| (*argument).to_owned())
+        .chain(
+            ["-l", "operator", "-p", "2222", "host.example.invalid"]
+                .into_iter()
+                .map(str::to_owned),
+        )
+        .collect::<Vec<_>>();
+    assert_eq!(arguments, expected);
+    assert_eq!(
+        reviewed.request.user_owned_command(),
+        format!("ssh {}", expected.join(" "))
+    );
+}
+
+#[test]
+fn m4_config_route_uses_one_canonical_jump_argument_without_proxycommand() {
+    let profile = routed_alias_profile();
+    let reviewed = review_direct_openssh(
+        &profile,
+        &plan(&profile),
+        &observation(&profile),
+        HostTrustState::Unknown,
+    )
+    .unwrap();
+    let arguments = reviewed.request.arguments();
+    let expected = DIRECT_OPENSSH_ROUTED_OPTIONS
+        .iter()
+        .map(|argument| (*argument).to_owned())
+        .chain(
+            ["-J", "edge,operator@bastion.example:2200", "prod"]
+                .into_iter()
+                .map(str::to_owned),
+        )
+        .collect::<Vec<_>>();
+    assert_eq!(arguments, expected);
+    assert!(!arguments
+        .iter()
+        .any(|argument| argument.contains("ProxyCommand")));
+    assert!(!arguments
+        .iter()
+        .any(|argument| argument.as_str() == "-oProxyJump=none"));
+    assert_eq!(reviewed.review.normalized_intent.jump_chain.len(), 2);
+    assert_eq!(reviewed.route.jump_count(), 2);
+    assert!(reviewed.route.is_config_defined());
+    assert!(!format!("{reviewed:?}").contains("bastion.example"));
+}
+
+#[test]
+fn m4_route_change_invalidates_review_and_copy_handoff_never_executes() {
+    let profile = routed_alias_profile();
+    let current_plan = plan(&profile);
+    let current_observation = observation(&profile);
+    let reviewed = review_direct_openssh(
+        &profile,
+        &current_plan,
+        &current_observation,
+        HostTrustState::Unknown,
+    )
+    .unwrap();
+    let command = reviewed.request.user_owned_command();
+    assert!(command.starts_with("ssh -oAddKeysToAgent=no "));
+    assert!(command.ends_with(" -J edge,operator@bastion.example:2200 prod"));
+    assert!(!command.contains('\n'));
+    assert!(!command.contains('\r'));
+    assert!(!reviewed.execution_enabled);
+    assert!(!format!("{reviewed:?}").contains("operator@bastion"));
+
+    let mut changed = profile.clone();
+    let TransportDescriptor::OpenSshAlias { proxy_jump, .. } = &mut changed.transport
+    else {
+        panic!("fixture must remain an alias route");
+    };
+    proxy_jump[1] = "operator@replacement.example:2200".into();
+    changed.source.revision = "source-9".into();
+    assert!(reviewed
+        .request
+        .validate_current(
+            &changed,
+            &plan(&changed),
+            &observation(&changed),
+            &HostTrustState::Unknown,
+            NOW_MS,
+        )
+        .is_err());
+}
+
+#[test]
+fn m4_full_host_trust_and_public_identity_evidence_are_bound_and_redacted() {
+    let profile = routed_alias_profile();
+    let plan = plan(&profile);
+    let observation = observation(&profile);
+    let identities = parse_direct_openssh_agent_identities(
+        format!("256 {} operator@example (ED25519)\n", openssh_sha256_zero()).as_bytes(),
+    )
+    .unwrap();
+    let evidence = DirectOpenSshReviewEvidence {
+        host_trust: DirectOpenSshHostTrustEvidence::Changed {
+            previous: DirectOpenSshHostKeyEvidence {
+                key_algorithm: "ssh-rsa".into(),
+                fingerprint_sha256: openssh_sha256_ff().into(),
+                provenance: DirectOpenSshHostKeyProvenance::UserKnownHosts,
+            },
+            presented: DirectOpenSshHostKeyEvidence {
+                key_algorithm: "ssh-ed25519".into(),
+                fingerprint_sha256: openssh_sha256_zero().into(),
+                provenance: DirectOpenSshHostKeyProvenance::OpenSshInteractive,
+            },
+        },
+        public_identities: identities,
+    };
+    let reviewed = automexia_devops::connections::review_direct_openssh_m4(
+        &profile,
+        &plan,
+        &observation,
+        evidence.clone(),
+        NOW_MS,
+    )
+    .unwrap();
+    let trust = reviewed.host_trust_explanation();
+    assert!(trust.contains("ssh-rsa"));
+    assert!(trust.contains(openssh_sha256_ff()));
+    assert!(trust.contains("ssh-ed25519"));
+    assert!(trust.contains(openssh_sha256_zero()));
+    assert!(trust.contains("BLOCKED"));
+    assert_eq!(reviewed.public_identities().len(), 1);
+    assert_eq!(
+        reviewed.public_identities()[0].comment(),
+        Some("operator@example")
+    );
+    let debug = format!("{reviewed:?}");
+    assert!(!debug.contains(openssh_sha256_zero()));
+    assert!(!debug.contains("operator@example"));
+    assert!(reviewed
+        .bind_launch_m4(&profile, &plan, &observation, &evidence, NOW_MS)
+        .is_err());
+
+    let mut changed_evidence = evidence;
+    let DirectOpenSshHostTrustEvidence::Changed { presented, .. } =
+        &mut changed_evidence.host_trust
+    else {
+        panic!("fixture must remain changed trust");
+    };
+    presented.key_algorithm = "ssh-ed25519-cert-v01@openssh.com".into();
+    assert!(reviewed
+        .bind_launch_m4(&profile, &plan, &observation, &changed_evidence, NOW_MS,)
+        .is_err());
+}
+
+#[test]
+fn m4_identity_status_is_public_bounded_exact_and_nonactivated() {
+    let profile = routed_alias_profile();
+    let request = prepare_direct_openssh_identity_status(&profile.identity).unwrap();
+    assert_eq!(request.executable_id(), "ssh-add");
+    assert_eq!(request.arguments(), ["-l", "-E", "sha256"]);
+    assert_eq!(request.timeout_ms(), 2_000);
+    assert_eq!(request.max_output_bytes(), 64 * 1024);
+    assert!(!request.execution_enabled());
+    assert!(!format!("{request:?}").contains("identity-canary-private"));
+
+    let hostile = vec![b'x'; request.max_output_bytes() + 1];
+    assert!(parse_direct_openssh_agent_identities(&hostile).is_err());
+    assert!(parse_direct_openssh_agent_identities(
+        format!("256 {} C:/private/key (ED25519)\n", openssh_sha256_zero()).as_bytes()
+    )
+    .unwrap()[0]
+        .comment()
+        .is_none());
+    assert!(parse_direct_openssh_agent_identities(
+        format!(
+            "256 {} trusted\u{202e}spoofed (ED25519)\n",
+            openssh_sha256_zero()
+        )
+        .as_bytes()
+    )
+    .unwrap()[0]
+        .comment()
+        .is_none());
+}
+
+#[test]
+fn m4_first_use_and_known_trust_show_complete_evidence_and_bind_fresh_reviews() {
+    let profile = routed_alias_profile();
+    let plan = plan(&profile);
+    let observation = observation(&profile);
+    let key = DirectOpenSshHostKeyEvidence {
+        key_algorithm: "ssh-ed25519".into(),
+        fingerprint_sha256: openssh_sha256_zero().into(),
+        provenance: DirectOpenSshHostKeyProvenance::UserKnownHosts,
+    };
+
+    let first_use_evidence = DirectOpenSshReviewEvidence {
+        host_trust: DirectOpenSshHostTrustEvidence::FirstUse {
+            presented: key.clone(),
+        },
+        public_identities: Vec::new(),
+    };
+    let first_use = automexia_devops::connections::review_direct_openssh_m4(
+        &profile,
+        &plan,
+        &observation,
+        first_use_evidence.clone(),
+        NOW_MS,
+    )
+    .unwrap();
+    let explanation = first_use.host_trust_explanation();
+    assert!(explanation.contains("FIRST USE"));
+    assert!(explanation.contains("ssh-ed25519"));
+    assert!(explanation.contains(openssh_sha256_zero()));
+    first_use
+        .bind_launch_m4(&profile, &plan, &observation, &first_use_evidence, NOW_MS)
+        .unwrap();
+
+    let known_evidence = DirectOpenSshReviewEvidence {
+        host_trust: DirectOpenSshHostTrustEvidence::Known { accepted: key },
+        public_identities: Vec::new(),
+    };
+    let known = automexia_devops::connections::review_direct_openssh_m4(
+        &profile,
+        &plan,
+        &observation,
+        known_evidence.clone(),
+        NOW_MS,
+    )
+    .unwrap();
+    let explanation = known.host_trust_explanation();
+    assert!(explanation.contains("KNOWN"));
+    assert!(explanation.contains("ssh-ed25519"));
+    assert!(explanation.contains(openssh_sha256_zero()));
+    known
+        .bind_launch_m4(&profile, &plan, &observation, &known_evidence, NOW_MS)
+        .unwrap();
 }

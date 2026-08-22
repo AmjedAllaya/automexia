@@ -164,6 +164,8 @@ pub enum HubFocus {
     Title,
     Search,
     LiteralDestination,
+    LiteralUser,
+    LiteralPort,
     Filters,
     Results,
     Result(String),
@@ -781,7 +783,7 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
     );
     dialog.modal = true;
     dialog.description = if request.literal_destination_entry {
-        "Review one direct SSH host without opening a connection".into()
+        "Review typed SSH host, optional user, and optional port without opening a connection".into()
     } else {
         request.content_state.status_text().to_owned()
     };
@@ -800,7 +802,7 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
         accessibility_tree.push(AccessibilityNode::new(
             "literal-ssh-instructions",
             AccessibilityRole::Group,
-            "Enter one host or SSH alias. User, port, URI, options, and jump routes are unavailable.",
+            "Enter one host or SSH alias, plus an optional user and port. URI, options, shell text, and manual jump routes are unavailable.",
         ));
         let mut destination = AccessibilityNode::new(
             "literal-ssh-destination",
@@ -813,6 +815,27 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
         destination.focusable = true;
         destination.actions = vec!["edit".into()];
         accessibility_tree.push(destination);
+        let mut user = AccessibilityNode::new(
+            "literal-ssh-user",
+            AccessibilityRole::TextBox,
+            "SSH user, optional",
+        );
+        user.description =
+            "ASCII letters, numbers, dots, underscores, and hyphens; 128 bytes maximum."
+                .into();
+        user.focusable = true;
+        user.actions = vec!["edit".into()];
+        accessibility_tree.push(user);
+        let mut port = AccessibilityNode::new(
+            "literal-ssh-port",
+            AccessibilityRole::TextBox,
+            "SSH port, optional",
+        );
+        port.description =
+            "Integer from 1 through 65535, or blank for the OpenSSH default.".into();
+        port.focusable = true;
+        port.actions = vec!["edit".into()];
+        accessibility_tree.push(port);
         let mut status = AccessibilityNode::new(
             "literal-ssh-status",
             AccessibilityRole::Status,
@@ -843,6 +866,8 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
             "connection-hub-title".into(),
             "literal-ssh-instructions".into(),
             "literal-ssh-destination".into(),
+            "literal-ssh-user".into(),
+            "literal-ssh-port".into(),
             "literal-ssh-status".into(),
             "literal-ssh-review".into(),
             "literal-ssh-cancel".into(),
@@ -1313,6 +1338,14 @@ fn append_direct_decision_accessibility(tree: &mut Vec<AccessibilityNode>) {
         action.focusable = true;
         tree.push(action);
     }
+    let mut copy = AccessibilityNode::new(
+        "direct-openssh-trust-copy",
+        AccessibilityRole::Button,
+        "Copy reviewed SSH command",
+    );
+    copy.description = "C. Copy the exact reviewed command for a user-owned OpenSSH trust or recovery workflow; Automexia does not run it or press Enter.".into();
+    copy.focusable = true;
+    tree.push(copy);
 }
 
 pub fn project_direct_openssh_preparation(
@@ -1337,7 +1370,14 @@ pub fn project_direct_openssh_preparation(
         ReviewSectionView {
             id: "transport".into(),
             heading: "Transport and route",
-            summary: "System OpenSSH · direct · new terminal route".into(),
+            summary: if prepared.route().jump_count() == 0 {
+                "System OpenSSH · direct · new terminal route".into()
+            } else {
+                format!(
+                    "System OpenSSH · {} config-defined jump(s) · new terminal route",
+                    prepared.route().jump_count()
+                )
+            },
             blocking: false,
         },
         ReviewSectionView {
@@ -1376,7 +1416,7 @@ pub fn project_direct_openssh_preparation(
         ReviewSectionView {
             id: "argv".into(),
             heading: "Operation",
-            summary: "ssh <destination> · one literal argument · PTY input/output".into(),
+            summary: "Exact typed ssh arguments · C copies for user-owned trust recovery · no implicit Enter".into(),
             blocking: false,
         },
     ];
@@ -1421,14 +1461,33 @@ pub fn project_direct_openssh_review(
     let readiness = direct_ssh_readiness_label(reviewed.identity_readiness);
     let trust_policy = match reviewed.host_trust_policy {
         DirectOpenSshHostTrustPolicy::AskOnFirstUseRejectChanged => {
-            "Strict: ask on first use; changed keys blocked"
+            reviewed.host_trust_explanation()
         }
+    };
+    let identity_summary = if reviewed.public_identities().is_empty() {
+        format!("{} · {readiness}", intent.identity.public_label)
+    } else {
+        reviewed
+            .public_identities()
+            .iter()
+            .map(|identity| {
+                format!(
+                    "{} {}{}",
+                    identity.key_algorithm(),
+                    identity.fingerprint_sha256(),
+                    identity
+                        .comment()
+                        .map_or(String::new(), |comment| format!(" · {comment}"))
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" | ")
     };
     let sections = vec![
         ReviewSectionView {
             id: "identity".into(),
             heading: "Identity readiness",
-            summary: format!("{} · {readiness}", intent.identity.public_label),
+            summary: identity_summary,
             blocking: matches!(
                 reviewed.identity_readiness,
                 DirectOpenSshIdentityReadiness::AttentionRequired
@@ -1444,7 +1503,14 @@ pub fn project_direct_openssh_review(
         ReviewSectionView {
             id: "transport".into(),
             heading: "Transport and route",
-            summary: "System OpenSSH · direct · new terminal route".into(),
+            summary: if reviewed.route.jump_count() == 0 {
+                "System OpenSSH · direct · new terminal route".into()
+            } else {
+                format!(
+                    "System OpenSSH · {} reviewed config-defined jump(s) · new terminal route",
+                    reviewed.route.jump_count()
+                )
+            },
             blocking: false,
         },
         ReviewSectionView {
@@ -1459,7 +1525,7 @@ pub fn project_direct_openssh_review(
         ReviewSectionView {
             id: "host-trust".into(),
             heading: "Host trust policy",
-            summary: trust_policy.into(),
+            summary: trust_policy,
             blocking: matches!(
                 reviewed.review.host_trust,
                 HostTrustState::Changed { .. }
@@ -1489,7 +1555,7 @@ pub fn project_direct_openssh_review(
         ReviewSectionView {
             id: "argv".into(),
             heading: "Reviewed operation",
-            summary: "ssh <destination> · one literal argument · PTY input/output".into(),
+            summary: "Exact typed ssh arguments · C copies for user-owned trust recovery · no implicit Enter".into(),
             blocking: false,
         },
     ];

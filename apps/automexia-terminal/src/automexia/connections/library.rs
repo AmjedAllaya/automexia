@@ -545,6 +545,10 @@ fn redacted_transport(transport: &TransportDescriptor) -> TransportDescriptor {
     match transport {
         TransportDescriptor::OpenSshAlias { .. } => TransportDescriptor::OpenSshAlias {
             alias: "configure-locally".into(),
+            host: None,
+            port: None,
+            user: None,
+            proxy_jump: Vec::new(),
         },
         TransportDescriptor::OpenSshExplicit { .. } => {
             TransportDescriptor::OpenSshExplicit {

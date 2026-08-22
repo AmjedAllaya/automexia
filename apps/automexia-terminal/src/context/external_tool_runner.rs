@@ -141,7 +141,8 @@ impl OpenSshLaunchIntent {
         decision: Decision,
         now_ms: u64,
     ) -> Result<Self, RunnerError> {
-        if binding.arguments().is_empty()
+        if binding.validate_argument_contract().is_err()
+            || binding.arguments().is_empty()
             || binding.review_fingerprint().is_empty()
             || binding.executable_identity_digest().is_empty()
         {
@@ -528,8 +529,10 @@ impl ExternalToolRunner {
             intent
                 .binding
                 .arguments()
-                .into_iter()
-                .map(|argument| BoundedText::new(argument).map_err(|_| invalid_request()))
+                .iter()
+                .map(|argument| {
+                    BoundedText::new(argument.as_str()).map_err(|_| invalid_request())
+                })
                 .collect::<Result<Vec<_>, _>>()?,
             None,
             None,

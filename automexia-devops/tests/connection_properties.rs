@@ -28,6 +28,10 @@ fn profile(display_name: String, target: String) -> ConnectionProfileV1 {
         provider: ProviderKind::Ssh,
         transport: TransportDescriptor::OpenSshAlias {
             alias: target.clone(),
+            host: None,
+            port: None,
+            user: None,
+            proxy_jump: Vec::new(),
         },
         public_target: target,
         jump_profile_references: Vec::new(),

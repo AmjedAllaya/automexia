@@ -15,7 +15,9 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-use automexia_devops::connections::{ResolvedExecutable, DIRECT_OPENSSH_MANAGED_OPTIONS};
+use automexia_devops::connections::{
+    validate_direct_openssh_arguments, ResolvedExecutable,
+};
 
 use automexia_extension_api::{
     Capability, CapabilityDecision, CapabilityRequest, Decision, ExecutableId,
@@ -1359,17 +1361,20 @@ fn validate_operation(request: &LaunchRequest) -> Result<(), LaunchDenialCode> {
     if executable != OpenSshExecutable::Ssh {
         return Err(LaunchDenialCode::UnsupportedOperation);
     }
-    let expected_argument_count = DIRECT_OPENSSH_MANAGED_OPTIONS.len() + 1;
-    if request.arguments.len() != expected_argument_count
-        || !request
-            .arguments
-            .iter()
-            .take(DIRECT_OPENSSH_MANAGED_OPTIONS.len())
-            .map(|argument| argument.as_str())
-            .eq(DIRECT_OPENSSH_MANAGED_OPTIONS.iter().copied())
+    if request
+        .arguments
+        .last()
+        .is_some_and(|argument| argument.as_str().starts_with('-'))
     {
-        return Err(LaunchDenialCode::InvalidArguments);
+        return Err(LaunchDenialCode::OptionConfusedDestination);
     }
+    let exact_arguments = request
+        .arguments
+        .iter()
+        .map(|argument| argument.as_str().to_owned())
+        .collect::<Vec<_>>();
+    validate_direct_openssh_arguments(&exact_arguments)
+        .map_err(|_| LaunchDenialCode::InvalidArguments)?;
     let total_bytes = request
         .arguments
         .iter()
@@ -1380,7 +1385,13 @@ fn validate_operation(request: &LaunchRequest) -> Result<(), LaunchDenialCode> {
     if total_bytes > MAX_TOTAL_ARGUMENT_BYTES {
         return Err(LaunchDenialCode::InvalidArguments);
     }
-    validate_destination(request.arguments[expected_argument_count - 1].as_str())
+    validate_destination(
+        request
+            .arguments
+            .last()
+            .ok_or(LaunchDenialCode::InvalidArguments)?
+            .as_str(),
+    )
 }
 
 fn validate_destination(destination: &str) -> Result<(), LaunchDenialCode> {
@@ -1508,6 +1519,10 @@ fn deny(
 
 #[cfg(test)]
 mod tests {
+    use automexia_devops::connections::{
+        DIRECT_OPENSSH_MANAGED_OPTIONS, DIRECT_OPENSSH_ROUTED_OPTIONS,
+    };
+
     use super::*;
     use crate::automexia::connections::{
         ManagedReceiptPersistenceState, ManagedReceiptRecord, ManagedReceiptSink,
@@ -1755,7 +1770,7 @@ mod tests {
     #[test]
     fn exact_arguments_are_never_joined_or_sent_through_a_shell() {
         let fixture = ExecutableFixture::new();
-        let request = TestRequest::new(fixture.safe_default.clone(), "user@example.test");
+        let request = TestRequest::new(fixture.safe_default.clone(), "example.test");
         let mut broker = review_broker(&fixture, &request);
         let prepared = broker.authorize(request.submission()).unwrap();
         let command = prepared.test_command();
@@ -1766,10 +1781,30 @@ mod tests {
         let expected_arguments = DIRECT_OPENSSH_MANAGED_OPTIONS
             .iter()
             .copied()
-            .chain(std::iter::once("user@example.test"))
+            .chain(std::iter::once("example.test"))
             .map(OsStr::new)
             .collect::<Vec<_>>();
         assert_eq!(command.get_args().collect::<Vec<_>>(), expected_arguments);
+    }
+
+    #[test]
+    fn reviewed_routed_arguments_reach_the_native_descriptor_as_exact_values() {
+        let fixture = ExecutableFixture::new();
+        let mut request = TestRequest::new(fixture.safe_default.clone(), "prod");
+        request.launch.arguments = DIRECT_OPENSSH_ROUTED_OPTIONS
+            .iter()
+            .copied()
+            .chain(["-J", "edge,operator@bastion.example:2200", "prod"])
+            .map(|argument| BoundedText::new(argument).unwrap())
+            .collect();
+        let mut broker = review_broker(&fixture, &request);
+        let prepared = broker.authorize(request.submission()).unwrap();
+        let descriptor = prepared.session_launch_descriptor().unwrap();
+        assert!(descriptor.args().iter().any(|argument| argument == "-J"));
+        assert!(descriptor
+            .args()
+            .iter()
+            .any(|argument| argument == "edge,operator@bastion.example:2200"));
     }
 
     #[test]
@@ -2173,14 +2208,14 @@ mod tests {
     fn trusted_environment_is_bounded_and_never_appears_in_debug_or_audit() {
         let fixture = ExecutableFixture::new();
         let mut request =
-            TestRequest::new(fixture.safe_default.clone(), "private-user@host");
+            TestRequest::new(fixture.safe_default.clone(), "private-host-canary");
         request.environment =
             vec![("SSH_AUTH_SOCK".into(), "CANARY-SECRET-SOCKET".into())];
         let mut broker = review_broker(&fixture, &request);
         let prepared = broker.authorize(request.submission()).unwrap();
         let combined = format!("{prepared:?} {:?}", prepared.audit());
         assert!(!combined.contains("CANARY-SECRET-SOCKET"));
-        assert!(!combined.contains("private-user@host"));
+        assert!(!combined.contains("private-host-canary"));
         assert!(!combined.contains(&fixture.safe_default.to_string_lossy().to_string()));
 
         let mut invalid = TestRequest::new(fixture.safe_default.clone(), "host");

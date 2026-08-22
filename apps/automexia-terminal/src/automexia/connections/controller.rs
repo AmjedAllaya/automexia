@@ -7,7 +7,8 @@ use automexia_devops_ssh::GrantKind;
 use automexia_extension_runtime::CompletionWake;
 
 use super::direct_openssh::{
-    prepare_literal_direct_openssh, validate_literal_direct_openssh_destination,
+    parse_literal_direct_openssh_port, prepare_literal_direct_openssh_typed,
+    validate_literal_direct_openssh_destination, validate_literal_direct_openssh_user,
 };
 use automexia_ui_model::connection_hub::{
     apply_hub_key, hub_catalog_controls_visible, project_connection_catalog,
@@ -81,6 +82,8 @@ pub struct HubControllerPresentation {
     pub row_group_labels: Vec<Option<String>>,
     pub ime_preedit: Option<String>,
     pub literal_destination: Option<String>,
+    pub literal_user: Option<String>,
+    pub literal_port: Option<String>,
     pub literal_destination_diagnostic: Option<&'static str>,
     pub literal_destination_valid: bool,
     pub grant_review_offset: usize,
@@ -103,6 +106,8 @@ pub struct ConnectionHubController {
     query: ConnectionCatalogQuery,
     ime_preedit: Option<String>,
     literal_destination: Option<String>,
+    literal_user: String,
+    literal_port: String,
     literal_destination_diagnostic: Option<&'static str>,
     grant_review_offset: usize,
     grant_review_request: Option<u64>,
@@ -141,6 +146,8 @@ impl ConnectionHubController {
             query,
             ime_preedit: None,
             literal_destination: None,
+            literal_user: String::new(),
+            literal_port: String::new(),
             literal_destination_diagnostic: None,
             grant_review_offset: 0,
             grant_review_request: None,
@@ -242,6 +249,8 @@ impl ConnectionHubController {
         }
         self.clear_direct_openssh_preparation();
         self.literal_destination = Some(String::new());
+        self.literal_user.clear();
+        self.literal_port.clear();
         self.literal_destination_diagnostic = None;
         self.ime_preedit = None;
         self.interaction.focus = HubFocus::LiteralDestination;
@@ -256,6 +265,18 @@ impl ConnectionHubController {
         self.literal_destination.as_deref()
     }
 
+    pub fn literal_user(&self) -> Option<&str> {
+        self.literal_destination
+            .as_ref()
+            .map(|_| self.literal_user.as_str())
+    }
+
+    pub fn literal_port(&self) -> Option<&str> {
+        self.literal_destination
+            .as_ref()
+            .map(|_| self.literal_port.as_str())
+    }
+
     pub const fn literal_destination_diagnostic(&self) -> Option<&'static str> {
         self.literal_destination_diagnostic
     }
@@ -267,6 +288,9 @@ impl ConnectionHubController {
                 .as_deref()
                 .is_some_and(|destination| {
                     validate_literal_direct_openssh_destination(destination).is_ok()
+                        && validate_literal_direct_openssh_user(&self.literal_user)
+                            .is_ok()
+                        && parse_literal_direct_openssh_port(&self.literal_port).is_ok()
                 })
     }
 
@@ -276,18 +300,45 @@ impl ConnectionHubController {
         }
     }
 
-    pub fn append_literal_destination(&mut self, value: &str) -> bool {
-        let Some(current) = self.literal_destination.as_ref() else {
-            return false;
-        };
-        if self.interaction.focus != HubFocus::LiteralDestination {
-            return false;
+    pub fn focus_literal_user(&mut self) {
+        if self.literal_destination.is_some() {
+            self.interaction.focus = HubFocus::LiteralUser;
         }
-        let mut candidate = current.clone();
-        candidate.push_str(value);
-        match validate_literal_direct_openssh_destination(&candidate) {
+    }
+
+    pub fn focus_literal_port(&mut self) {
+        if self.literal_destination.is_some() {
+            self.interaction.focus = HubFocus::LiteralPort;
+        }
+    }
+
+    pub fn append_literal_field(&mut self, value: &str) -> bool {
+        let result = match self.interaction.focus {
+            HubFocus::LiteralDestination => {
+                let Some(current) = self.literal_destination.as_ref() else {
+                    return false;
+                };
+                let mut candidate = current.clone();
+                candidate.push_str(value);
+                validate_literal_direct_openssh_destination(&candidate)
+                    .map(|()| self.literal_destination = Some(candidate))
+            }
+            HubFocus::LiteralUser => {
+                let mut candidate = self.literal_user.clone();
+                candidate.push_str(value);
+                validate_literal_direct_openssh_user(&candidate)
+                    .map(|()| self.literal_user = candidate)
+            }
+            HubFocus::LiteralPort => {
+                let mut candidate = self.literal_port.clone();
+                candidate.push_str(value);
+                parse_literal_direct_openssh_port(&candidate)
+                    .map(|_| self.literal_port = candidate)
+            }
+            _ => return false,
+        };
+        match result {
             Ok(()) => {
-                self.literal_destination = Some(candidate);
                 self.literal_destination_diagnostic = None;
                 true
             }
@@ -298,14 +349,35 @@ impl ConnectionHubController {
         }
     }
 
-    pub fn backspace_literal_destination(&mut self) {
+    pub fn append_literal_destination(&mut self, value: &str) -> bool {
         if self.interaction.focus != HubFocus::LiteralDestination {
-            return;
+            return false;
         }
-        if let Some(destination) = self.literal_destination.as_mut() {
-            destination.pop();
-            self.literal_destination_diagnostic = None;
-            self.ime_preedit = None;
+        self.append_literal_field(value)
+    }
+
+    pub fn backspace_literal_field(&mut self) {
+        match self.interaction.focus {
+            HubFocus::LiteralDestination => {
+                if let Some(destination) = self.literal_destination.as_mut() {
+                    destination.pop();
+                }
+            }
+            HubFocus::LiteralUser => {
+                self.literal_user.pop();
+            }
+            HubFocus::LiteralPort => {
+                self.literal_port.pop();
+            }
+            _ => return,
+        }
+        self.literal_destination_diagnostic = None;
+        self.ime_preedit = None;
+    }
+
+    pub fn backspace_literal_destination(&mut self) {
+        if self.interaction.focus == HubFocus::LiteralDestination {
+            self.backspace_literal_field();
         }
     }
 
@@ -314,7 +386,13 @@ impl ConnectionHubController {
             return;
         }
         self.interaction.focus = match (reverse, &self.interaction.focus) {
-            (false, HubFocus::LiteralDestination) | (true, HubFocus::Back) => {
+            (false, HubFocus::LiteralDestination) | (true, HubFocus::LiteralPort) => {
+                HubFocus::LiteralUser
+            }
+            (false, HubFocus::LiteralUser) | (true, HubFocus::PrimaryAction) => {
+                HubFocus::LiteralPort
+            }
+            (false, HubFocus::LiteralPort) | (true, HubFocus::Back) => {
                 HubFocus::PrimaryAction
             }
             (false, HubFocus::PrimaryAction) | (true, HubFocus::LiteralDestination) => {
@@ -328,9 +406,15 @@ impl ConnectionHubController {
         let Some(destination) = self.literal_destination.as_deref() else {
             return HubControllerEffect::None;
         };
-        match prepare_literal_direct_openssh(destination) {
+        match prepare_literal_direct_openssh_typed(
+            destination,
+            &self.literal_user,
+            &self.literal_port,
+        ) {
             Ok(prepared) => {
                 self.literal_destination = None;
+                self.literal_user.clear();
+                self.literal_port.clear();
                 self.literal_destination_diagnostic = None;
                 self.ime_preedit = None;
                 self.direct_openssh_preparation = Some(prepared);
@@ -351,9 +435,10 @@ impl ConnectionHubController {
 
     pub fn activate_literal_destination_focus(&mut self) -> HubControllerEffect {
         match self.interaction.focus {
-            HubFocus::LiteralDestination | HubFocus::PrimaryAction => {
-                self.confirm_literal_destination()
-            }
+            HubFocus::LiteralDestination
+            | HubFocus::LiteralUser
+            | HubFocus::LiteralPort
+            | HubFocus::PrimaryAction => self.confirm_literal_destination(),
             HubFocus::Back => {
                 self.cancel_literal_destination_entry();
                 HubControllerEffect::None
@@ -364,6 +449,8 @@ impl ConnectionHubController {
 
     pub fn cancel_literal_destination_entry(&mut self) {
         self.literal_destination = None;
+        self.literal_user.clear();
+        self.literal_port.clear();
         self.literal_destination_diagnostic = None;
         self.ime_preedit = None;
         if self.interaction.route == HubRoute::Results {
@@ -400,13 +487,28 @@ impl ConnectionHubController {
             return true;
         };
         if let Some(destination) = self.literal_destination.as_ref() {
-            if self.interaction.focus != HubFocus::LiteralDestination {
-                self.ime_preedit = None;
-                return false;
-            }
-            let mut candidate = destination.clone();
-            candidate.push_str(value);
-            return match validate_literal_direct_openssh_destination(&candidate) {
+            let result = match self.interaction.focus {
+                HubFocus::LiteralDestination => {
+                    let mut candidate = destination.clone();
+                    candidate.push_str(value);
+                    validate_literal_direct_openssh_destination(&candidate)
+                }
+                HubFocus::LiteralUser => {
+                    let mut candidate = self.literal_user.clone();
+                    candidate.push_str(value);
+                    validate_literal_direct_openssh_user(&candidate)
+                }
+                HubFocus::LiteralPort => {
+                    let mut candidate = self.literal_port.clone();
+                    candidate.push_str(value);
+                    parse_literal_direct_openssh_port(&candidate).map(|_| ())
+                }
+                _ => {
+                    self.ime_preedit = None;
+                    return false;
+                }
+            };
+            return match result {
                 Ok(()) => {
                     self.literal_destination_diagnostic = None;
                     self.ime_preedit = Some(value.to_owned());
@@ -444,7 +546,7 @@ impl ConnectionHubController {
 
     pub fn commit_ime(&mut self, value: &str) -> bool {
         let accepted = if self.literal_destination.is_some() {
-            self.append_literal_destination(value)
+            self.append_literal_field(value)
         } else if self.tag_editor.is_some() {
             self.append_tag_editor(value)
         } else if self.catalog_controls_visible()
@@ -644,6 +746,8 @@ impl ConnectionHubController {
             row_group_labels,
             ime_preedit: self.ime_preedit.clone(),
             literal_destination: self.literal_destination.clone(),
+            literal_user: self.literal_user().map(str::to_owned),
+            literal_port: self.literal_port().map(str::to_owned),
             literal_destination_diagnostic: self.literal_destination_diagnostic,
             literal_destination_valid: self.literal_destination_is_valid(),
             grant_review_offset: self.grant_review_offset,
@@ -1122,6 +1226,12 @@ mod tests {
         assert!(controller.literal_destination_is_valid());
 
         controller.cycle_literal_destination_focus(false);
+        assert_eq!(controller.focus(), HubFocus::LiteralUser);
+        assert!(controller.append_literal_field("operator"));
+        controller.cycle_literal_destination_focus(false);
+        assert_eq!(controller.focus(), HubFocus::LiteralPort);
+        assert!(controller.append_literal_field("2222"));
+        controller.cycle_literal_destination_focus(false);
         assert_eq!(controller.focus(), HubFocus::PrimaryAction);
         controller.cycle_literal_destination_focus(false);
         assert_eq!(controller.focus(), HubFocus::Back);
@@ -1136,6 +1246,8 @@ mod tests {
             before.literal_destination.as_deref(),
             Some("host.example.invalid-canary")
         );
+        assert_eq!(before.literal_user.as_deref(), Some("operator"));
+        assert_eq!(before.literal_port.as_deref(), Some("2222"));
         assert_eq!(before.library.profile_count, 0);
         assert!(before.direct_openssh_review.is_none());
 
@@ -1160,7 +1272,7 @@ mod tests {
         }));
         assert!(review.sections.iter().any(|section| {
             section.heading == "Public target"
-                && section.summary == "host.example.invalid-canary"
+                && section.summary == "operator@host.example.invalid-canary:2222"
         }));
 
         controller.sync();
@@ -1197,7 +1309,7 @@ mod tests {
         assert_eq!(
             controller.handle_key(HubKey::Tab, Box::new(|| {})),
             HubControllerEffect::Interaction(InteractionEffect::FocusChanged(
-                HubFocus::PrimaryAction
+                HubFocus::LiteralUser
             ))
         );
         assert_eq!(

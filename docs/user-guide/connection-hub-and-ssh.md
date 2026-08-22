@@ -4,8 +4,9 @@
 > Connection Hub plus an actionable managed-SSH approval review. Allow once,
 > Allow for session, and Deny exercise the fail-closed policy boundary; current
 > builds report that protected review is pending. The dormant lifecycle source
-> also owns exact managed options, child outcomes, notifications, bounded receipts,
-> and stale-source reconnect preparation. The activation gate is false
+> also owns exact direct/routed options, typed host/user/port, bounded config
+> jumps, full host-key/public-identity evidence, safe command copy, child outcomes,
+> notifications, receipts, and stale-source reconnect preparation. The activation gate is false
 > and the linked package is unverified, so the Hub cannot launch a process,
 > access the network, or create a managed PTY. Continue using system OpenSSH in
 > the shell.
@@ -14,9 +15,10 @@
 1. Press `Ctrl+Shift+H` on Windows/Linux/BSD or `Cmd+Shift+H` on macOS. You can
    also open the command palette and choose **Connection Hub (read-only)**.
 2. To review one host without adding inventory, choose **Enter host** or press
-   `L`. Enter a host or alias containing only ASCII letters, numbers, dots,
-   underscores, or hyphens (maximum 512 bytes). The value cannot start with a
-   hyphen. Press Enter to review or Escape to cancel.
+   `L`. Enter the required host plus an optional user and decimal port in their
+   separate fields. The host is limited to 512 bytes and cannot start with a
+   hyphen; user and port have their own bounded validation. Tab/Shift+Tab moves
+   Host → User → Port → Review → Cancel. Press Enter on Review or Escape to cancel.
 3. Alternatively, select **Choose SSH files**. The native file picker accepts
    one or more exact files, including an extensionless `config` file.
 4. Read the canonical-path review. Use Up/Down, Page Up/Page Down, Home/End, or
@@ -24,14 +26,16 @@
    scan; press Escape or choose Cancel to revoke the selection.
 5. Browse the resulting aliases. Select a row and press Enter to open Connection
    Review.
-6. Review the public launcher/package state, target, direct/new route, strict
-   host-key policy, `session.launch` capability, production risk, 60-second
-   approval, 17 fixed defensive options plus one literal destination, and PTY
-   input/output.
+6. Review the public launcher/package state, typed target, direct or config-jump
+   route, strict host-key state, full public algorithm/fingerprint when observed,
+   public identity evidence, `session.launch`, production risk, 60-second approval,
+   exact route-specific operation, and PTY input/output. Changed host keys show
+   **BLOCKED** and cannot create a launch binding.
 7. Choose **Allow once** (A or focused Enter), **Allow for session** (S), or
-   **Deny** (D). In the current nonactivated build, either Allow action shows
-   **Protected security review is still pending** and starts nothing. Use
-   Escape/Back to return.
+   **Deny** (D). Press `C` to copy the exact reviewed user-owned command without
+   executing it or adding Enter. In the current nonactivated build, either Allow
+   action shows **Protected security review is still pending** and starts nothing.
+   Use Escape/Back to return.
 
 Opening the Hub does not scan standard locations. The selected files remain an
 in-memory grant for the current application lifetime and must be selected again
@@ -63,6 +67,7 @@ results route while the search field is not receiving text:
 | `A` | Request Allow once from Connection Review |
 | `S` | Request Allow for session from Connection Review |
 | `D` | Deny and return from Connection Review |
+| `C` | Copy the exact reviewed SSH command; never execute it or append Enter |
 | `L` | Open the direct-host editor; Search still receives `l` as text while focused |
 | `/` or `Ctrl/Cmd+F` | Focus search |
 | Tab / Shift+Tab | Move modal focus |
@@ -126,10 +131,11 @@ verification are explicitly pending, host-key handling stays owned by system
 OpenSSH, and `session.launch` is the only requested capability. The three
 decision actions are available, but execution remains independently disabled.
 
-The literal editor accepts one exact host argument only. User, port, URI, IPv6,
-jump, tunnel, wildcard, Unicode, whitespace, control, bidirectional, option, and
-shell forms fail closed; rejected paste or IME text is not partially inserted.
-Tab and Shift+Tab stay inside the editor, Review, and Cancel controls. While
+The literal editor owns separate host, optional user, and optional decimal-port
+fields. URI, raw IPv6, jump, tunnel, wildcard, Unicode, whitespace, control,
+bidirectional, option, and shell forms fail closed; rejected paste or IME text is
+not partially inserted. Tab and Shift+Tab stay inside all three fields, Review,
+and Cancel. While
 the nested editor is open, Cancel replaces the redundant top-level close icon
 so scaled small viewports keep one clear, non-overlapping dismissal action;
 Escape performs the same cancellation. Cancel, owning-surface close, or
@@ -139,10 +145,12 @@ Exact inventory aliases, opaque identity/source references, executable digests,
 and plan fingerprints are not copied into presentation state. Inventory
 selection, route, catalog, metadata, runtime-state, or generation changes
 discard or rebuild inventory preparation; an unrelated catalog refresh cannot
-rewrite a transient literal review. Unsupported ProxyJump inventory entries
-fail closed with a path-free diagnostic. No OpenSSH process, network
-connection, PTY, login, reconnect, persistence, history, or recent-use write
-occurs.
+rewrite a transient literal review. A config route accepts only the first static
+canonical comma-separated `ProxyJump` value, at most 8 hops/2 KiB, and produces
+one exact `-J` argument. `none` remains direct; ProxyCommand, dynamic/ambiguous
+routes, shell text, and excessive chains fail closed with path-free diagnostics.
+No OpenSSH process, network connection, PTY, login, reconnect, persistence,
+history, or recent-use write occurs.
 
 This is an approval-check workflow, not an available Connect button. A fixed
 diagnostic explains the blocked prerequisite without exposing private values.
@@ -150,12 +158,14 @@ Continue using the system client below; the manual path remains the recovery
 path whenever managed SSH is disabled or unavailable.
 ## What the managed lifecycle will do after activation
 
-The source path can launch only an opaque fresh-review binding. Seventeen fixed
-options disable forwarding, multiplexing, proxy/jump commands, local/remote
-commands, backgrounding, X11, agent forwarding, and tunnels; exactly one typed
-destination follows. Automexia does not override OpenSSH key-exchange defaults
-or weak-crypto warnings. OpenSSH still owns host-key prompts, authentication,
-agent/certificate/hardware interaction, and all terminal content.
+The source path can launch only an opaque fresh-review binding. Direct routes use
+17 fixed options plus optional exact `-l user`/`-p port` fields and one host;
+config-defined routes use the 15-option subset plus one exact `-J` chain and one
+alias. Both disable forwarding, multiplexing, local/remote commands,
+backgrounding, X11, agent forwarding, and tunnels. Automexia does not override
+OpenSSH key-exchange defaults or weak-crypto warnings. OpenSSH still owns
+host-key prompts, authentication, agent/certificate/hardware interaction,
+`known_hosts`, and all terminal content.
 
 When a managed child ends, its actual status determines success, failure,
 unavailable status, or cancellation. Route close is not success. The UI receives
@@ -214,10 +224,13 @@ configuration, keys, agents, or `known_hosts` as a Hub recovery step.
 
 ## What remains planned
 
-D5.2 still owns reviewed system-OpenSSH launch, current executable/identity
-observation, independent PTYs, typed user/port/routes, jumps, tunnels, full
-host-trust explanation, cancellation, reconnect, receipts, and lifecycle
-evidence. D6 separately owns AWS, Azure, Google Cloud, Kubernetes,
+D5.2 still requires production activation, attested current executable/identity
+observations, actual bounded public status execution, independent native PTYs,
+tunnels, real OpenSSH/forced-cleanup/resource/accessibility evidence, and the
+protected release gate. Typed user/port/config jumps, full host-trust explanation,
+safe copy recovery, cancellation/reconnect/receipts source, and public identity
+status parsing are complete locally but nonactivated. D6 separately owns AWS,
+Azure, Google Cloud, Kubernetes,
 OpenShift, Teleport, and OpenBao adapters. There is no current Hub remote-file
 browser, credential vault, automatic provider login, or cloud refresh.
 

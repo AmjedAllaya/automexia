@@ -256,8 +256,8 @@ cargo test -p automexia-terminal --bin automexia --locked direct_openssh_review_
 cargo xtask verify architecture
 ```
 
-The checker locks schema-1/schema-2 immutability and schema-3's production-disabled
-activation, linked unverified principal, trusted digest source/size, exact
+The checker locks schema-1/schema-2/schema-3 immutability and schema-4's
+production-disabled activation, linked unverified principal, trusted digest source/size, exact
 version/contract/verification, manual-shell behavior, grants/audits/defaults,
 nine trust boundaries, four-platform resolution, authority ceiling, nineteen
 native scenarios, one production broker/runner owner, runner bounds, one
@@ -266,7 +266,7 @@ tests reject re-gating the production modules under `cfg(test)` or widening
 their authority.
 
 Rust tests cover fixed roots and native file identity, unverified/mismatched
-package denial before resolution, exact managed options plus one destination,
+package denial before resolution, exact direct/routed options and typed fields,
 hostile option/control/
 size cases, bounded environment and trusted cwd, expiry/scope/replay/revocation,
 1/10/50 pure lifecycles, runner capacity and FIFO audit bounds, publish-before-
@@ -1233,11 +1233,79 @@ a dedicated C: temporary target with 23.58 GiB free, passed all three isolated
 verification phases and the application-version smoke test, then removed its
 7.79-GiB verification tree and disposable outer target.
 
-Active schema 3 freezes those rules and hash-checks historical schema 1 and
-schema 2. No test in this slice enables `MANAGED_SESSION_LAUNCH_ENABLED` for the
-product or treats `Unverified` as attested. Real OpenSSH prompts, network traffic,
-descendant cleanup, manual-SSH regression, native pixels/screen readers, and
-Windows/macOS/Linux/WSL 1/10/50 resource campaigns remain external gates.
+Active schema 4 freezes those M3 rules plus M4 and hash-checks historical schemas
+1, 2, and 3. No test in this slice enables `MANAGED_SESSION_LAUNCH_ENABLED` for
+the product or treats `Unverified` as attested. Real OpenSSH prompts, network
+traffic, descendant cleanup, manual-SSH regression, native pixels/screen readers,
+and Windows/macOS/Linux/WSL 1/10/50 resource campaigns remain external gates.
+
+### M4 SSH routes and trust contract
+
+The M4 source slice is nonactivated and can be reproduced with:
+
+    cargo test -p automexia-devops --test direct_openssh_review --locked
+    cargo test -p automexia-devops-ssh --locked
+    cargo test -p automexia-ui-model --test direct_openssh_review --locked
+    cargo test -p automexia-ui-model --test connection_hub --locked
+    cargo test -p automexia-terminal direct_openssh --locked
+    cargo test -p automexia-terminal connection_hub --locked
+    python tools/ci/check_session_launch_d0.py
+    python tools/ci/test_session_launch_d0.py
+    python tools/ci/test_pr_policy.py
+
+On the Windows x86_64 development host, the focused suites passed 19 core
+review cases, 31 D4 unit plus 4 D4 integration cases, 3 review-projection cases,
+13 Hub-model cases, 5 application-adapter cases, 9 renderer/screen cases, 9
+schema mutation cases, and 12 protected-path policy cases. Strict all-feature
+Clippy passed for `automexia-devops`, `automexia-devops-ssh`,
+`automexia-ui-model`, and `automexia-terminal`.
+
+Final required gates passed: formatting, warning-denied workspace Clippy, 1,812
+CI-profile tests with 7 explicitly skipped, 64 workspace documentation tests
+with 3 ignored examples, and `python3 tools/ci/qa.py --full`. Full QA also
+passed repository and shell contracts, resize/session-clone stress, Loom, and
+dependency policy. Its report is
+`target/qa/20260822T141736Z-26152/report.html`.
+
+The first full nextest attempt had 1,811 passes, 1 architecture-contract failure,
+and 7 skips; its automatic retry reproduced the failure. The existing workspace
+`base64` dependency used for exact OpenSSH fingerprint decoding was missing from
+the private-crate dependency allowlist. Adding that one explicit reviewed entry
+to the architecture contract fixed the cause; the focused self-verification and
+complete 1,812-test rerun passed.
+
+The first `cargo ready` preflight truthfully stopped because D: had 7.94 GiB free
+versus its 12-GiB threshold. The complete rerun used a verified disposable C:
+target with 22.58 GiB free, passed all three cold isolated phases, dependency
+policy, persistent application build, and the `automexia 0.4.0` version smoke,
+then removed its 7.79-GiB verification tree and exact disposable outer target.
+
+The regression set covers distinct host/user/port input, exact direct and routed
+argv, first-value canonical ProxyJump (8 hops/2 KiB), option/ProxyCommand/shell/
+raw-IPv6/oversize denial, route/evidence staleness, first-use/known/changed full
+algorithm and 32-byte SHA-256 evidence, changed-key binding denial, debug
+redaction, no `known_hosts` mutation, copy-without-execution/newline/Enter, and
+bounded hostile `ssh-add -l -E sha256` public output (2 seconds, 64 KiB, 64
+identities). The existing workspace `base64` dependency is reused for exact
+32-byte OpenSSH fingerprint validation; no new third-party dependency was added.
+
+Primary sources reviewed on 2026-08-22 were the OpenBSD
+[`ssh_config(5)`](https://man.openbsd.org/ssh_config),
+[`ssh(1)`](https://man.openbsd.org/ssh), and
+[`ssh-add(1)`](https://man.openbsd.org/ssh-add.1) manuals plus upstream
+[`ssh.c`](https://github.com/openssh/openssh-portable/blob/master/ssh.c) and
+[`readconf.c`](https://github.com/openssh/openssh-portable/blob/master/readconf.c).
+They support wrapping system OpenSSH, command-line-first route precedence, exact
+argument arrays, public fingerprint listing, and leaving KEX/warning policy to
+OpenSSH. Automexia does not run `ssh -G`, parse effective config, implement SSH,
+or take key/agent/`known_hosts` custody.
+
+Renderer-neutral accessibility and tiny-to-8K geometry tests passed, including
+three typed fields, full nontruncated Safety evidence, and mnemonic `C`. No new
+native pixel or controlled screen-reader run was captured for M4; real
+`ssh-add`, host-key prompts, system OpenSSH routing, protected activation,
+forced descendant cleanup, and Windows/macOS/Linux/WSL resources remain exact
+external gates.
 
 ### Connection Hub F3 catalog contract
 

@@ -24,6 +24,10 @@ fn profile() -> ConnectionProfileV1 {
         provider: ProviderKind::Ssh,
         transport: TransportDescriptor::OpenSshAlias {
             alias: "benchmark-host".into(),
+            host: None,
+            port: None,
+            user: None,
+            proxy_jump: Vec::new(),
         },
         public_target: "benchmark-host".into(),
         jump_profile_references: Vec::new(),
