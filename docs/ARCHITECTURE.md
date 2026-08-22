@@ -309,6 +309,44 @@ Actions runtime, for stable Windows handle identity, native link/reparse
 rejection, no-follow reads, private
 permissions, identity snapshots, atomic replacement, and directory sync.
 
+### M5 reviewed OpenSSH tunnel and native evidence boundary
+
+`automexia-devops::connections::openssh_tunnels` extends the existing pure
+connection owner. It validates and canonicalizes local, remote, and dynamic TCP
+forwarding; caps each profile at the existing 32-tunnel limit; derives exact
+transport, endpoint, risk, confirmation, lifetime, and OpenSSH-listener
+descriptors; and keeps profile/plan/review fingerprints endpoint-sensitive. The
+existing no-tunnel M3/M4 argument grammars remain byte-for-byte unchanged.
+
+Tunnel-bearing requests use a distinct typed-direct grammar: `-F none`, fixed
+defensive `-o` values, one explicit `GatewayPorts` value, exact `-L`, `-R`,
+or `-D` pairs, and one literal destination. Configuration aliases and jump
+routes fail closed because their effective configuration is not an owned,
+reviewable input. Binds default to `127.0.0.1`; remote, non-loopback, or
+production forwarding requires a fresh Allow-once decision, so a session grant
+cannot silently expand listener authority. Automexia never opens a competing
+socket: the approved system OpenSSH child would own every listener.
+
+The bounded lifecycle is a pure session/generation/tunnel snapshot. Only
+monotonic owner events may move planned -> starting -> ready, collision, failed,
+cancelled, or closed. Stale scopes and terminal reversals are rejected; route
+close terminalizes every nonterminal entry. The UI model projects exact reviewed
+public endpoints, OpenSSH ownership, confirmation, and state into compact
+icon/color/text rows and accessibility nodes. None of this grants process,
+network, PTY, filesystem, credential, or listener authority while activation is
+false.
+
+Schema 5 preserves immutable schemas 1-4 and freezes the tunnel grammar,
+lifecycle, strong-confirmation, and native-evidence rules. The bounded Python
+validator accepts only exact ordered Windows/macOS/Linux manifests tied to the
+current contract and source commit, rejects WSL and synthetic release evidence,
+caps bytes/durations/resources, requires zero cleanup and redaction leaks, and
+binds before/after manual-SSH plus disable/uninstall baselines. Its prerequisite
+probe executes only fixed OpenSSH `-V` arrays with bounded output; it never
+installs a server, changes a service, reads SSH configuration, or contacts a
+network. Controlled real OpenSSH and resource runs remain external release
+evidence.
+
 ### Environment Capsule contract
 
 Every managed session has a non-secret, immutable `EnvironmentCapsule`:
@@ -375,13 +413,14 @@ for the exact OpenSSH tools they use. The extension itself has no direct-network
 capability: the approved OpenSSH child connects exactly as it would when typed
 in a shell. Arbitrary process/network access and third-party use remain denied.
 
-Current D0/D3/M4 source status remains fail-closed. Active schema 4 freezes the exact
-17-option-plus-destination M3 grammar, fresh full-review/executable binding,
-actual child-outcome mapping, bounded private receipt/recovery contract, and
-stale-source reconnect rule while retaining schema 1 and schema 2 as immutable
-hash-checked history. The manual-shell baseline, package policy, nine trust
-boundaries, platform resolution, and hermetic native protocol remain unchanged.
-ADR 0012 is accepted by the project owner.
+Current D0/D3/M5 source status remains fail-closed. Active schema 5 freezes the
+M3 direct, M4 routed, and M5 configuration-free typed-tunnel grammars; fresh
+full-review/executable/endpoint binding; actual child-outcome mapping; bounded
+tunnel and receipt lifecycle; stale-source reconnect; and exact native-manifest
+rules while retaining schemas 1-4 as immutable hash-checked history. The
+manual-shell baseline, package policy, nine trust boundaries, platform
+resolution, and hermetic native protocol remain unchanged. ADR 0012 is accepted
+by the project owner.
 
 The broker and one Router-owned `ExternalToolRunner` compile in production, but
 `MANAGED_SESSION_LAUNCH_ENABLED` is false and the linked package candidate is

@@ -96,11 +96,12 @@ are exposed.
 
 ## Non-activated implementation evidence
 
-As of 2026-08-22, the active local D0/D3/M4 contract is
-`tests/fixtures/session-launch/d0-d3-contract-v4.json`; schemas 1, 2, and 3
-remain byte-for-byte hash-checked history. Schema 4 retains their manual/fixture,
-package/grant/audit/trust-boundary, four-platform, nineteen-scenario, and M3
-lifecycle rules and adds the exact M4 routes/trust/status ratchet.
+As of 2026-08-22, the active local D0/D3/M5 contract is
+`tests/fixtures/session-launch/d0-d3-contract-v5.json`; schemas 1-4 remain
+byte-for-byte hash-checked history. Schema 5 retains their manual/fixture,
+package/grant/audit/trust-boundary, and four-platform rules and adds the exact
+M5 tunnel/lifecycle plus 23-scenario source/build/fixture/security/resource
+native-evidence ratchet.
 
 It also records nine trust boundaries with accepted/returned data, limits,
 cancellation, logging, and failure ownership plus a hermetic fixture protocol:
@@ -127,8 +128,8 @@ route before marking the lease published, and reconciles natural completion.
 The protected activation constant remains false, so this production code cannot
 resolve OpenSSH or create a managed child.
 
-As of 2026-08-22, schema 4 retains the nonactivated M3 source ratchet and adds
-M4. Direct argv uses 17 fixed defensive options plus optional exact `-l`/`-p`
+As of 2026-08-22, schema 5 retains immutable schemas 1-4 and adds M5 to
+the nonactivated M3/M4 source ratchet. Direct argv uses 17 fixed defensive options plus optional exact `-l`/`-p`
 values and one host; config-routed argv uses the 15-option subset plus one
 canonical bounded `-J` chain and one alias. Both are bound to a fresh full-review
 equality check and current native executable identity. The broker
@@ -145,6 +146,19 @@ fresh review and approval. M4 binds complete public host-key algorithm/SHA-256
 and public identity evidence; changed keys cannot bind, `known_hosts` is never
 mutated, the `C` copy handoff cannot execute or add Enter, and the exact bounded
 `ssh-add -l -E sha256` request/parser remains nonactivated with no secret custody.
+
+M5 retains those M3/M4 grammars and adds a distinct reviewed typed-tunnel
+grammar. Tunnel requests load no configuration (`-F none`), use exact
+`-L`/`-R`/`-D` arguments, default local/dynamic binds to
+`127.0.0.1`, and reject config aliases or jump routes. Remote, non-loopback, or
+production forwarding requires a fresh Allow-once decision; session grants are
+disabled. OpenSSH remains the only prospective listener owner. A bounded
+session/generation/tunnel lifecycle rejects stale owner events and terminal
+reversal and closes every nonterminal state with its route lease. Active schema
+5 preserves immutable schemas 1-4 and binds these rules plus the exact redacted
+native-manifest contract. Synthetic fixtures test the validator but cannot
+satisfy release evidence; controlled real Windows/macOS/Linux runs remain
+external.
 
 Automexia deliberately leaves OpenSSH key-exchange defaults and weak-crypto
 warnings untouched. User configuration may execute OpenSSH-owned helpers during

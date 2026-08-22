@@ -156,16 +156,33 @@ This is an approval-check workflow, not an available Connect button. A fixed
 diagnostic explains the blocked prerequisite without exposing private values.
 Continue using the system client below; the manual path remains the recovery
 path whenever managed SSH is disabled or unavailable.
+## Review typed tunnels after activation
+
+The nonactivated M5 review model adds one compact tunnel row to the Safety card.
+It shows direction, exact public endpoints, session lifetime, OpenSSH ownership,
+and planned/starting/ready/collision/failed/cancelled/closed state with an icon,
+color, and text. Local and dynamic binds default to `127.0.0.1`.
+
+A remote, non-loopback, or production tunnel always requires **Allow once**.
+**Allow for session** is visibly disabled, omitted from focus, inert to pointer
+input, and rejected if `S` is pressed. Any endpoint or route change invalidates
+the review. These controls are source-complete but unreachable in production:
+current builds start no managed SSH process or listener and change no SSH
+configuration. Manual system OpenSSH remains the recovery path.
+
 ## What the managed lifecycle will do after activation
 
-The source path can launch only an opaque fresh-review binding. Direct routes use
-17 fixed options plus optional exact `-l user`/`-p port` fields and one host;
-config-defined routes use the 15-option subset plus one exact `-J` chain and one
-alias. Both disable forwarding, multiplexing, local/remote commands,
-backgrounding, X11, agent forwarding, and tunnels. Automexia does not override
-OpenSSH key-exchange defaults or weak-crypto warnings. OpenSSH still owns
-host-key prompts, authentication, agent/certificate/hardware interaction,
-`known_hosts`, and all terminal content.
+The source path can launch only an opaque fresh-review binding. No-tunnel direct
+routes use 17 fixed options plus optional exact `-l user`/`-p port` fields and
+one host; config-defined routes use the 15-option subset plus one exact `-J`
+chain and one alias. Both keep all forwarding disabled. The separate tunnel
+grammar uses `-F none`, fixed defensive options, exact typed `-L`/`-R`/`-D`
+pairs, and one literal destination; it rejects configuration-dependent routes.
+All paths disable multiplexing, local/remote commands, backgrounding, X11, agent,
+and TUN forwarding. Automexia does not override OpenSSH key-exchange defaults or
+weak-crypto warnings. OpenSSH still owns host-key prompts, authentication,
+agent/certificate/hardware interaction, `known_hosts`, all terminal content,
+and any approved forwarding sockets.
 
 When a managed child ends, its actual status determines success, failure,
 unavailable status, or cancellation. Route close is not success. The UI receives

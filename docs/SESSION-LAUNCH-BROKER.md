@@ -70,6 +70,26 @@ future successful authorization, ContextManager alone consumes the guard and
 publishes a new independent PTY route. Real loader attestation and product
 controller consumption of a current observation remain activation prerequisites.
 
+## Upstream M5 reviewed tunnel request
+
+M5 retains the M3/M4 no-tunnel grammar and adds one separate configuration-free
+typed-direct tunnel grammar. A canonical request contains fixed defensive
+options, `-F none`, one exact `GatewayPorts=no` or `yes`, exact ordered
+`-L`/`-R`/`-D` pairs, optional typed user/port, and one literal
+destination. An independent parser revalidates option order, forwarding kind,
+canonical endpoints, and the reviewed tunnel plan. Config aliases, jump routes,
+free-form options, backgrounding, remote commands, agent/X11/TUN forwarding,
+multiplexing, and shell evaluation fail closed.
+
+The review binding includes the exact tunnel plan and endpoint-sensitive
+fingerprints. Remote, non-loopback, or production tunnels require a fresh
+Allow-once decision; Allow for session is disabled and rejected at the runner.
+OpenSSH is the only prospective socket owner. Session/generation-scoped owner
+events drive the pure lifecycle, and route shutdown closes all remaining
+nonterminal tunnel state. Production still denies before executable resolution
+because activation is false and package attestation/protected evidence is
+missing.
+
 ## Trust and data flow
 
 The guarded flow, currently stopped by the first two activation checks, is:
@@ -93,7 +113,7 @@ resolved credential.
 
 ### Frozen trust-boundary ledger
 
-The active schema-4 contract retains nine boundaries: extension model,
+The active schema-5 contract retains nine boundaries: extension model,
 application capability broker, future PTY/process owner, renderer/VT parser,
 OpenSSH child, OpenSSH configuration, agent/keychain/hardware owner, remote
 host, and future provider helper. Every row fixes accepted and returned data,
@@ -345,7 +365,7 @@ cargo test -p automexia-terminal --bin automexia --locked context::launch_broker
 cargo xtask verify architecture
 ```
 
-The suite covers schema-1/schema-2/schema-3 immutability, schema-4 mutation, hard
+The suite covers schema-1/schema-2/schema-3/schema-4 immutability, schema-5 mutation, hard
 production denial, exact package digest source/size/version/contract/
 verification matching, manual-path preservation, nine trust boundaries,
 hermetic fixture and evidence rules, four-platform fixed roots,

@@ -1,14 +1,14 @@
 # Connection Hub product, security, and delivery specification
 
 Status: D5.1/F3 is **fully implemented at the source and local Windows
-boundary**. D5.2 remains **partially done overall and nonactivated**, while F5.1
-and F5.2 are source-complete locally: the typed host/user/port editor, bounded
-config-jump routes, full host-key/public-identity review, safe command copy,
-fail-closed runner, guarded PTY seam, exact route publication, truthful child
-outcomes, redacted notifications, receipts, and reconnect preparation are local.
-Activation is false and the package unverified, so v0.4 starts no managed child.
-Protected approvals, attestation, actual status/SSH execution, native cleanup/
-resources/accessibility, F5.3 tunnels, and all D6 provider execution remain.
+boundary**. D5.2 remains **partially done overall and nonactivated**, while
+F5.1-F5.3 are source-complete locally: typed host/user/port/endpoints, bounded
+config-jump routes, exact configuration-free tunnels, loopback defaults, strong
+tunnel review, full trust evidence, safe copy, guarded lifecycle, receipts,
+reconnect, and compact tunnel states are local. Activation is false and the
+package unverified, so v0.4 starts no managed child or listener. Protected
+approvals, attestation, actual status/SSH execution, controlled real native
+cleanup/resources/accessibility, and all D6 provider execution remain.
 This document is the implementation authority for Automexia's Connection Hub.
 The [roadmap](ROADMAP.md) owns release order, the
 [stabilization roadmap](STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track)
@@ -492,6 +492,16 @@ shell command assembled through concatenation. Production uses a clearly named
 primary action; organization policy may require reason, ticket, step-up MFA, or
 additional confirmation. Host-key changes and public/non-loopback listeners
 cannot be waived by a generic `Always allow` control.
+
+M5 implements that tunnel review at the nonactivated source boundary. Local,
+remote, and dynamic descriptors expose exact public endpoints and OpenSSH socket
+ownership; local/dynamic binds default to `127.0.0.1`. Remote, non-loopback, or
+production forwarding disables Allow for session and requires a fresh Allow-once
+decision. Compact icon/color/text rows and accessibility nodes distinguish
+planned, starting, ready, collision, failed, cancelled, and closed without
+inferring readiness from terminal text. Config-dependent aliases/jumps with
+tunnels fail closed. Activation remains false, so this projection opens no
+listener.
 
 ## Provider setup journeys
 
@@ -997,8 +1007,13 @@ target. This exit does not activate D5.2.
   real package attestation/revocation, controller use of a current attested
   observation, native OpenSSH prompts, forced descendant cleanup, 1/10/50
   resources, controlled accessibility, and production activation remain.
-- [ ] **Not done** - F5.3 typed tunnels and native release evidence remain
-  separate work; M4 route/trust/readiness source is complete but nonactivated.
+- [x] **Fully done locally; nonactivated** - F5.3 exact typed local/remote/
+  dynamic tunnels, loopback defaults, strong Allow-once review, bounded owner
+  lifecycle, collision/cleanup behavior, compact state, and accessibility pass.
+- [ ] **Partially done / externally blocked** - F5.4's bounded 23-scenario
+  manifest validator and synthetic mutation fixture pass, but real
+  Windows/macOS/Linux OpenSSH, 1/10/50 resources, enable/disable/uninstall,
+  manual-SSH, and accessibility evidence remain external.
 
 Exit remains unavailable as a shipped connection until the protected and native
 D5 matrix passes on Windows, macOS, Linux, and separately gated WSL; disabled

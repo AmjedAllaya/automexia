@@ -1,13 +1,14 @@
 # SSH access, multi-cloud connections, and automation recipes
 
-Status: D5.1's read-only Hub and nonactivated F5.1/F5.2 SSH source are fully
-implemented locally. Exact defensive argv, fresh review/current-executable
-binding, guarded PTY/route ownership, truthful child outcomes, fixed redacted
+Status: D5.1's read-only Hub and nonactivated F5.1-F5.3 SSH source are fully
+implemented locally. Exact direct/routed/configuration-free tunnel argv,
+loopback defaults, strong per-use tunnel review, fresh review/current-executable
+binding, guarded PTY/route/tunnel lifecycle, truthful outcomes, fixed redacted
 notifications, bounded private receipts, and stale-source reconnect preparation
 are source-complete. Activation remains false and the linked package unverified.
 Protected approvals, real attestation/controller observation, native OpenSSH/
-forced-cleanup/resources/accessibility, actual public-status execution, F5.3 tunnels, and D6
-multi-cloud remain. Ordinary shell commands are unchanged.
+forced-cleanup/resources/accessibility, actual public-status execution, real
+F5.4 manifests, and D6 multi-cloud remain. Ordinary shell commands are unchanged.
 This document is the implementation authority for connection profiles and
 connection-scoped automation. The [Connection Hub](CONNECTION-HUB.md) owns the
 overall inventory, authentication, review, and responsive UI contract. The
@@ -794,7 +795,7 @@ persistence/migration, and native UI evidence remain before D5C is fully done.
 
 ### D5D - managed system OpenSSH
 
-Status: **Partially done overall; F5.1 and F5.2 source are fully done and
+Status: **Partially done overall; F5.1-F5.3 source are fully done and
 nonactivated.**
 
 - [x] **Fully done locally:** one inventory alias or bounded literal host maps
@@ -815,7 +816,14 @@ nonactivated.**
 - [ ] **Partially done / external:** protected activation, real attestation,
   current observation consumption by the controller, native OpenSSH prompts,
   forced descendant cleanup, resources, and controlled accessibility remain.
-- [ ] **Not done:** F5.3 typed tunnels plus protected/native SSH and public-status execution evidence.
+- [x] **Fully done locally; nonactivated:** exact local/remote/dynamic tunnel
+  descriptors use a configuration-free typed-direct grammar, loopback defaults,
+  endpoint-bound strong Allow-once review, and a bounded session/generation
+  lifecycle with compact accessible state.
+- [ ] **Partially done / external:** schema 5, synthetic mutations, and the
+  bounded redacted native-manifest validator pass; real Windows/macOS/Linux
+  OpenSSH, 1/10/50 resources, enable/disable/uninstall, manual-SSH, controlled
+  accessibility, and public-status execution evidence remain.
 
 Exit gate: deterministic source tests plus controlled native OpenSSH evidence
 pass on Windows, macOS, Linux, and separately gated WSL.

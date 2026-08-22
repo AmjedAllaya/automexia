@@ -26,12 +26,12 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | v0.4/S0 | Core identity, hostile-input bounds, atomic reload, and current source gates; stable-release evidence remains external. |
 | **Partially done** | v0.4/S1 | Deterministic and Windows-native assurance exists; controlled Linux/macOS, visual, GPU, accessibility, and baseline evidence remains. |
 | **Not done** | S2 | The 30-day baseline and enforceable latency/memory ratchet are not active. |
-| **Partially done** | D0 | ADR 0012 is accepted; schema 4 freezes M3/M4 direct/routed argv, trust/status, and lifecycle/receipt/reconnect rules while retaining immutable schemas 1/2/3. Protected approvals and native execution remain. |
+| **Partially done** | D0 | ADR 0012 is accepted; schema 5 freezes M3-M5 direct/routed/tunnel argv, trust/status, tunnel lifecycle, receipt/reconnect, and native-manifest rules while retaining immutable schemas 1/2/3/4. Protected approvals and real native execution remain. |
 | **Fully done** | D1 | Four private provider-neutral crates and bounded contracts satisfy the source boundary. |
 | **Fully done** | D2 | Generic status, immutable history, capsules, isolation, cancellation, and freshness are implemented. |
 | **Partially done** | D3 | The hard-disabled broker/runner binds exact managed argv and executable identity, publishes only through ContextManager, reconciles actual child outcomes, and queues bounded redacted receipts. Exact-head approvals/server enforcement, attestation/activation, forced descendant cleanup, and native OpenSSH/resource/accessibility proof remain. |
 | **Fully done** | D4 | The bounded OpenSSH inventory/persistence package is complete but deliberately disabled. |
-| **Partially done** | D5.0-D5.2 | D5.1 and nonactivated F5.1/F5.2 are source-complete locally: typed direct/config-jump argv, full host-key/public-identity review, safe copy, review/executable binding, lifecycle, receipts, and reconnect pass. Protected activation/attestation, actual status/SSH execution, F5.3 tunnels, forced cleanup, and controlled native evidence remain. |
+| **Partially done** | D5.0-D5.2 | D5.1 and nonactivated F5.1-F5.3 are source-complete locally: typed direct/config-jump/tunnel argv, loopback defaults, strong per-use tunnel review, full trust evidence, guarded lifecycle, receipts, reconnect, and compact tunnel state pass. Protected activation/attestation, actual status/SSH execution, forced cleanup, and controlled real native F5.4 evidence remain. |
 | **Not done** | D6.0-D6.5 | Provider authentication, capsules, transports, and multi-cloud slices are planned only. |
 | **Not done** | D7 | Public ecosystem, direct APIs, sandboxed extensions, and AI execution are deferred. |
 | **Fully done** | CP0 | Architecture, threat model, ceilings, fixtures, mutation tests, and nonactivation policy are complete. |
@@ -280,11 +280,12 @@ The following foundation work is intentionally not claimed by Phase 1:
 
 #### Phase 2 preparation status (2026-08-22)
 
-ADR 0012 is accepted by the project owner. The mutation-checked schema-3
-contract preserves immutable schema-1/schema-2 history, manual-shell/missing-client
-behavior, package digest/identity/version/contract/verification, grants/audits,
-nine trust boundaries, four-platform resolution, all-false runtime authority,
-and nineteen native scenarios.
+ADR 0012 is accepted by the project owner. Mutation-checked schema 5 preserves
+immutable schemas 1-4 and freezes manual-shell/missing-client behavior, package
+identity, exact M3-M5 route/tunnel/trust/lifecycle rules, grants/audits, nine
+trust boundaries, four-platform resolution, all-false runtime authority, and 23
+native scenarios including current OpenSSH PQ/warning/agent-binding and tunnel
+collision evidence.
 
 The production-compiled broker remains hard disabled and the linked package is
 unverified. One Router-owned runner now enforces exact typed scope, 50 active
