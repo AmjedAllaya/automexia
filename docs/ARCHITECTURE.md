@@ -347,6 +347,63 @@ installs a server, changes a service, reads SSH configuration, or contacts a
 network. Controlled real OpenSSH and resource runs remain external release
 evidence.
 
+### M6 typed automation and declarative workspace boundary
+
+M6 extends the existing provider-neutral connection model without creating a
+runtime authority. `automexia-devops::connections::automation` owns pure
+resolved-run review, narrow remote initialization, and lifecycle reducers;
+`workspace` owns declarative layout, connection binding, restore, and armed
+broadcast reducers. Both reject hostile/oversized input, bind immutable
+revisions and generations, and expose `execution_enabled = false`. They contain
+no filesystem, process, PTY, network, credential, provider, listener, renderer,
+or clock primitive and therefore remain off startup, input, PTY, resize, and
+render hot paths.
+
+The application Connection Library remains the one persistence authority. Its
+schema advances to 2 inside the established private `library.v1.json` and
+`library.previous.v1.json` names so schema-1 recovery topology is not split
+between competing files. A schema-1 document can only become an in-memory
+migration preview; reviewed compare-and-swap persists schema 2. Editor and
+import previews bind the base revision and full validated document fingerprint.
+Recipe changes atomically update exact recipe references, advance dependent
+profile and workspace revisions, update fingerprints, and clear every affected
+approval. Stale writers, dangling/mismatched bindings, revision overflow, links,
+malformed/oversized input, and exhausted bounded fresh-ID attempts fail closed.
+Workspace transfer preserves only redacted topology and assigns fresh local IDs;
+it never transfers live connection bindings.
+
+A reviewed recipe run retains the fixed ten-stage order but may omit empty
+stages. `NoHooks` removes recipe-origin steps and resequences only the trusted
+planner resolve/connect steps. The review boundary independently revalidates
+stage/action compatibility, risk, confirmation, deadline, and retry policy so a
+forged resolved plan cannot downgrade privilege. Runtime state is monotonic and
+per generation: every step has a bounded deadline, automatic retries require the
+existing idempotent/noninteractive/nonmutating/cancellation-safe declaration,
+and cancellation, shutdown, or connection replacement terminalizes obsolete
+work.
+
+Remote initialization does not expose a shell command string. It carries typed
+working-directory, public-environment, `sudo`/`doas` user-switch, and
+verification operations plus an explicit POSIX-sh or PowerShell dialect. A
+future activated adapter must encode those types and preserve review; arbitrary
+scripts/templates, terminal-cell readiness inference, hidden key injection, and
+implicit Enter remain outside this capability.
+
+A workspace stores windows, a bounded acyclic pane-split graph, and immutable
+profile/recipe bindings. Restore emits a fresh reviewed generation with both
+automatic reconnect and interrupted-action resume false. Broadcast stores its
+exact command only in a transient redacted-debug review, caps it at 8 KiB and 50
+targets, arms for at most 60 seconds, separately confirms production, and records
+only per-target digest/outcome diagnostics. It never requests Enter. Structured
+UI projections use redundant icon/color/text state, exact preview, alert/switch/
+textbox semantics, and deterministic focus restoration without owning pixels or
+execution.
+
+[Proposed ADR 0023](adr/0023-typed-automation-and-declarative-workspaces.md)
+records this durable boundary. Product controller/renderer/CLI integration and
+all managed execution remain gated by its acceptance plus ADR 0012/D3/M5
+activation and native evidence. CP3.3 trusted workspace tasks stay a distinct
+insert-only local authority.
 ### Environment Capsule contract
 
 Every managed session has a non-secret, immutable `EnvironmentCapsule`:

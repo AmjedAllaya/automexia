@@ -30,6 +30,7 @@ decision supersedes an old one instead of silently rewriting history.
 | [0020](adr/0020-hybrid-build-wrap-adopt-boundary.md) | Hybrid build, wrap, and adopt boundary | Core owns product policy and one process boundary; extensions own domain adapters; mature protocols, authentication, custody, and services remain external. |
 | [0021](adr/0021-trusted-workspace-task-bridges.md) | Trusted workspace task bridges | Import only explicitly supplied native aliases, and expose only explicit task names through exact, receipt-bound workspace trust with revocation-aware authorization. |
 | [0022](adr/0022-read-only-connection-hub-activation.md) | Read-only Connection Hub activation | One app-owned joined runtime, explicit memory-only file grants, native selection, D4 CAS, and a capability-free modal activate inventory without connection authority. |
+| [0023](adr/0023-typed-automation-and-declarative-workspaces.md) | Typed automation and declarative workspaces (proposed) | Bind recipes, profiles, layouts, restore, and armed broadcast to immutable review-only generations without adding process, PTY, network, credential, or arbitrary remote-code authority. |
 
 ## When an ADR is required
 

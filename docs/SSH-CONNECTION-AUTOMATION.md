@@ -1,15 +1,13 @@
 # SSH access, multi-cloud connections, and automation recipes
 
 Status: D5.1's read-only Hub and nonactivated F5.1-F5.3 SSH source are fully
-implemented locally. Exact direct/routed/configuration-free tunnel argv,
-loopback defaults, strong per-use tunnel review, fresh review/current-executable
-binding, guarded PTY/route/tunnel lifecycle, truthful outcomes, fixed redacted
-notifications, bounded private receipts, and stale-source reconnect preparation
-are source-complete. Activation remains false and the linked package unverified.
-Protected approvals, real attestation/controller observation, native OpenSSH/
-forced-cleanup/resources/accessibility, actual public-status execution, real
-F5.4 manifests, and D6 multi-cloud remain. Ordinary shell commands are unchanged.
-This document is the implementation authority for connection profiles and
+implemented locally. M6's review-only automation/workspace source contracts are
+also complete locally: schema-2 library previews, exact dependent fingerprints,
+typed lifecycle/no-hooks, narrow remote initialization, declarative restore,
+and armed broadcast all remain execution-disabled. Proposed ADR 0023 acceptance,
+product wiring, protected activation, native OpenSSH/process/resource/
+accessibility evidence, and D6 multi-cloud remain. Ordinary shell commands are
+unchanged.This document is the implementation authority for connection profiles and
 connection-scoped automation. The [Connection Hub](CONNECTION-HUB.md) owns the
 overall inventory, authentication, review, and responsive UI contract. The
 [session-launch broker](SESSION-LAUNCH-BROKER.md) owns exact process authority,
@@ -63,10 +61,12 @@ The current repository provides:
   revision invalidation, allow-once/session/deny UX, one hard-disabled runner,
   and ContextManager-owned guarded PTY/route publication.
 
-It now provides the D5.1 rendered read-only Connection Hub in v0.5 source
-builds, but does **not** provide a profile/recipe editor, automatic SSH launch,
-recipe executor, cloud transport adapters, or remote action handshake. D5.2/D6
-UI examples remain planned contracts, not instructions for v0.4.
+It now provides the D5.1 rendered read-only Connection Hub in v0.5 source builds.
+M6 adds reviewed schema-2 editor/import/migration APIs and renderer-neutral
+workspace/broadcast projections, but no product controller/renderer/CLI consumes
+them and no recipe or remote action can execute. Automatic SSH launch, cloud
+transport adapters, and remote action execution remain gated. These internal
+contracts are not instructions for v0.4.
 
 ### F2/D5.0 implementation ledger (2026-08-17)
 
@@ -234,6 +234,44 @@ after a visible capability decision. Provider versions determine supported
 flags. An unavailable or incompatible official tool produces a truthful
 `Missing` or `Unsupported` state; it never falls back to a different transport.
 
+## M6 review-only implementation
+
+M6 is implemented internally as a disabled review boundary:
+
+- Connection Library schema 2 stores profiles, recipes, workspaces, and
+  preferences under the existing private filenames. Schema 1 loads as an
+  explicit migration preview and changes persist only through reviewed CAS.
+- Editing a recipe advances every dependent profile/workspace revision,
+  recomputes exact fingerprints, and clears approvals. A mismatched, dangling,
+  overflowing, stale, malformed, linked, or oversized document fails closed.
+- Export is redacted and workspace-topology only; importing creates fresh local
+  IDs and requires review before CAS. Rebind imported topology locally.
+- A recipe review preserves the fixed lifecycle order, revalidates typed policy,
+  exposes no authority, and supports `NoHooks` as a reviewed recovery intent.
+  There is no public `--no-hooks` CLI until activation.
+- Remote initialization is a typed POSIX-sh or PowerShell envelope for directory,
+  public environment, user switch, and verification. It contains no arbitrary
+  command/script field; `sudo`/`doas` remains visible and confirms every
+  connection.
+- Workspace restore rebuilds only layout and connection intent into a fresh
+  reviewed generation. It does not restore PTYs, credentials, tunnels, automatic
+  reconnect, or interrupted work.
+- Broadcast requires exact transient command/target preview, explicit time-
+  bounded arming, separate production confirmation, and per-target results. It
+  requests no Enter and audit/debug state contains only a command digest/count.
+
+Current limits are 256 workspaces, 16 windows and 64 panes per workspace, 128
+connection bindings, 32 recipe bindings per connection, 50 broadcast targets,
+an 8 KiB broadcast command, a 60-second maximum arm, and the existing 16 MiB
+private library document. These operations are synchronous pure models or
+bounded private-store calls; they do not run on terminal input, PTY, resize,
+renderer, or startup hot paths.
+
+The current recovery path is to cancel/disarm the review, reload the latest
+library revision, resolve a new generation, or retain manual system OpenSSH in
+the terminal. Imported topology must be rebound. No partial migration or stale
+preview is committed. See [proposed ADR 0023](adr/0023-typed-automation-and-declarative-workspaces.md)
+and [M6 testing](TESTING.md#m6-typed-automation-and-multi-environment-workspaces).
 ## Automation recipe model
 
 ```text

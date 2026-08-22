@@ -110,6 +110,16 @@ linked candidate is unverified. Exact-head approvals/server enforcement,
 attestation/revocation, fresh current-executable review, real native OpenSSH and
 descendant cleanup, 1/10/50 resource runs, pixels, and controlled screen-reader
 evidence remain explicit activation gates.
+## M6 review-only evidence
+
+The M6 source boundary has focused Windows x86_64 planner, automation, workspace,
+semantic UI, and schema-2 library tests plus warning-denied lint, mutation,
+architecture, fuzz ownership, repeated 1,000-generation/50-target bounds, and
+maximum-cardinality benchmarks. Exact commands, measurements, the recorded
+same-host Criterion noise, and limitations are in
+[M6 testing](../TESTING.md#m6-typed-automation-and-multi-environment-workspaces).
+These results do not activate a product controller/CLI or prove native managed
+OpenSSH/PTY/process/resource/accessibility behavior.
 ## Current release blockers
 
 The source-level v0.4 S0 gates are complete locally, but stable release assurance remains partial. The important unresolved class is **evidence**, not a hidden claim that everything is done: controlled Linux/macOS visual/GPU/PTY runs, screen-reader evidence, longer security/performance baselines, signing/notarization/packaging proof on protected hosts, and other named release-environment requirements must be recorded before the corresponding release claim is made.

@@ -2020,6 +2020,75 @@ inventory, capability denial, exact preview UX, alias safety, lifecycle, source,
 tests, benchmark, fuzz, CI wiring, and eight CP3.2 documents. Hosted
 cross-platform and
 30-day comparable measurements remain release evidence.
+## M6 typed automation and multi-environment workspaces
+
+Run the focused review-only evidence with:
+
+```text
+cargo test -p automexia-devops --locked --test connection_planning
+cargo test -p automexia-devops --locked --test connection_automation_m6
+cargo test -p automexia-devops --locked --test workspace_automation_m6
+cargo test -p automexia-ui-model --locked --test connection_hub
+cargo test -p automexia-terminal --locked --test connection_library
+cargo clippy -p automexia-devops --all-targets --all-features --locked -- -D warnings
+cargo clippy -p automexia-ui-model --all-targets --all-features --locked -- -D warnings
+cargo clippy -p automexia-terminal --test connection_library --locked -- -D warnings
+python tools/ci/check_connection_hub_f2.py
+python tools/ci/test_connection_hub_f2.py
+cargo xtask verify architecture
+cargo bench -p automexia-devops --bench connection_planning --locked -- workspace_validate_16_windows_64_panes_128_connections --noplot --sample-size 30
+cargo bench -p automexia-devops --bench connection_planning --locked -- broadcast_review_50_targets --noplot --sample-size 30
+```
+
+Local Windows x86_64 evidence on 2026-08-22 passed 9 planner, 6 automation, 10
+workspace, 15 Hub-model, and 10 Connection Library integration tests plus all
+three focused warning-denied Clippy commands. Coverage includes a deliberately
+failing then fixed forged-privilege review regression, exact stage/risk policy,
+no-hooks, retry/deadline/cancel/generation/shutdown, hostile/cycle/stale binding,
+clone/rebind/restore, schema-1 migration preview, CAS/recovery/rollback, atomic
+dependent revisions/fingerprints, redacted topology transfer, semantic focus and
+armed state, and 1,000 repeated generations at the maximum 50 targets. The F2/M6
+mutation checker passed with 9 required source models and 51 named tests; the
+architecture verifier passed. The workspace parsers are registered in the
+connection-planning fuzz target.
+
+The required final gates also passed on Windows x86_64 on 2026-08-23:
+`cargo fmt --all -- --check`; warning-denied workspace Clippy; Nextest with
+1,847 passed and 7 skipped tests across 54 binaries; workspace documentation
+tests with 64 passed and 3 ignored examples; and `python3 tools/ci/qa.py --full`.
+Full QA additionally passed resize stress, session-clone lifecycle, Loom, and
+dependency policy; its ignored local report is
+`target/qa/20260822T220242Z-35148/report.html`. The first `cargo ready` preflight
+correctly refused to proceed with only 7.07 GiB free on D:. A later clean run
+exposed the existing completion-provider pipe-holder test's timing-only cleanup
+check while every M6 suite passed. Investigation replaced fire-and-forget group
+termination with synchronous descendant reaping and made the regression assert
+that no descendant survives to emit output. The focused regression, Nextest,
+full QA, and a final readiness run then passed. Final readiness used a fresh C:
+target with 24.71 GiB free and passed the isolated check, Clippy, workspace
+unit/integration/doc tests, dependency policy, fresh application build, and
+`automexia 0.4.0` smoke. Both exact temporary targets and the 7.83 GiB
+verification generation were removed. The original D: target could not be
+purged because Windows retained the running Automexia executable, so that
+reproducible cache remains a local storage warning, not an M6 correctness
+failure.
+
+Criterion measured maximum workspace validation (16 windows, 64 panes, 128
+connections) at 26.044–28.009 µs and 50-target broadcast review at
+15.524–16.032 µs. The workspace case reported an 8.65–23.57% delta against its
+fresh stored baseline while the broadcast case reported no change. An untouched
+direct-SSH control first reported a 12–20% delta and reran at 7.5818–7.8347 µs
+with a 1.64–7.72% stored-baseline delta. These microsecond results satisfy no
+established release ratchet and are recorded as uncontrolled same-host noise,
+not hidden or presented as a performance improvement. Named-hardware baselines
+remain external.
+
+The pure models own no threads, processes, PTYs, sockets, listeners, files,
+credentials, provider clients, or GPU state, so the repeated test proves bounded
+collection/generation behavior only. Proposed ADR 0023 acceptance, actual product
+controller/renderer/CLI flows, real OpenSSH execution and forced cleanup, native
+Windows/macOS/Linux resources, controlled screen readers/visuals, and hosted
+release evidence remain external and must not be inferred from these tests.
 ## CP3.3 native imports and trusted workspace task bridges
 
 CP3.3 is fully done at the local source boundary. Run the focused evidence with:

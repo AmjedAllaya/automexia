@@ -692,6 +692,22 @@ test demonstrate a material benefit.
 The complete ownership matrix and protected dependency order are in
 [Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md).
 
+## M6 review-only workspace and broadcast projections
+
+The internal M6 projection extends the semantic model, not the activated product
+controller. Workspace restore uses one compact summary and exact connection rows,
+returns focus to the invoking control, and states that reconnect/resume are off.
+Broadcast uses redundant icon, color, and text for disarmed/armed/completed/
+cancelled/expired states; exposes the exact transient command only in the
+review textbox; requires separate production confirmation; and never requests
+execution or Enter. Debug and audit representations retain only digest, byte
+count, target, outcome, and stable diagnostic code.
+
+The model caps 16 windows, 64 panes, 128 connections, 50 broadcast targets, 8 KiB
+of command text, and 60 seconds of arming. Tiny/large viewport integration,
+native pixels, screen readers, controller input, and managed execution remain
+external gates. [Proposed ADR 0023](adr/0023-typed-automation-and-declarative-workspaces.md)
+owns the boundary.
 ## Recovery, backup, migration, and export
 
 Automexia cannot recover externally owned credentials. This statement appears

@@ -511,30 +511,41 @@ Windows/macOS/Linux evidence without embedded SSH or secret custody.
 
 ## F6 - implement connection automation and remote workspaces
 
-Status: Not done.
+Status: Partially done; review-only source contracts are complete locally and
+execution/product activation remains gated.
 
-- [ ] Finish immutable profile and recipe persistence, revisioning, migration,
-  import/export, and approval fingerprints from F2/F3.
-- [ ] Compile recipes deterministically through Resolve, Preflight,
-  Authenticate, BeforeConnect, Connect, RemoteInitialize, Verify, Ready,
-  BeforeDisconnect, and Cleanup.
-- [ ] Implement typed local/session actions first; add remote directory, public
-  environment, user switch, and verification only through an explicit supported
-  remote-shell contract.
-- [ ] Enforce deadlines, cancellation, safe failure, eligible idempotent retry
-  with bounded backoff/jitter, reconnect generation rules, and --no-hooks
-  recovery.
-- [ ] Add declarative workspace layout/connection intent and safe restoration;
-  never resume interrupted destructive work automatically.
-- [ ] Add reviewed broadcast only after unmistakable armed/disarmed state,
-  exact command/target preview, production confirmation, and result isolation.
-- [ ] Keep custom scripts, hidden key injection, terminal-cell readiness
-  inference, and automatic persistent mutations disabled.
-- [ ] Test multi-pane/window clones, failures, reconnect, shutdown, focus,
-  accessibility, hostile values, privilege prompts, and resource cleanup.
+- [x] **Fully done locally:** schema-2 profile/recipe/workspace persistence,
+  entity revisioning, explicit migration/recovery/import/export previews, CAS,
+  fresh transfer IDs, exact cross-record fingerprints, and approval invalidation.
+- [x] **Fully done locally:** deterministic pure recipe review preserves Resolve,
+  Preflight, Authenticate, BeforeConnect, Connect, RemoteInitialize, Verify,
+  Ready, BeforeDisconnect, and Cleanup ordering.
+- [x] **Fully done locally:** typed local/session actions and a narrow POSIX-sh or
+  PowerShell remote directory/public environment/user-switch/verification
+  envelope; privileged switches are revalidated and confirmed every connection.
+- [x] **Fully done locally:** deadlines, cancellation, safe failure, bounded
+  eligibility-checked retry/backoff/jitter, generation invalidation, shutdown,
+  and reviewed no-hooks recovery.
+- [x] **Fully done locally:** bounded declarative multi-window/pane layout and
+  connection intent, isolated clone/rebind, and review-only restore with no live
+  PTY/tunnel/credential state, automatic reconnect, or interrupted-action resume.
+- [x] **Fully done locally:** bounded reviewed broadcast with exact transient
+  command/targets, unmistakable semantic armed/disarmed state, production
+  confirmation, no implicit Enter, per-target results, isolation, cancellation,
+  and digest-only audit.
+- [x] **Fully done locally:** custom scripts, hidden key injection, terminal-cell
+  readiness inference, and automatic persistent mutation remain absent.
+- [x] **Fully done locally:** hostile/limit/cycle/fingerprint, clone/rebind,
+  multi-pane/window, retry/reconnect/shutdown, focus/accessibility, recovery,
+  redaction, repeated-generation, fuzz, mutation, and benchmark evidence passes.
+- [ ] **Partially done / external prerequisite:** proposed ADR 0023 acceptance,
+  product controller/renderer/CLI integration, managed execution adapters, real
+  native OpenSSH/PTY/process/resource cleanup, controlled accessibility/visual,
+  and hosted Windows/macOS/Linux release evidence remain.
 
-Exit: reusable SSH profiles, recipes, and remote workspaces are safe and
-reviewable; advanced custom code remains disabled.
+Exit remains unavailable for the shipped product: reusable profiles, recipes,
+and remote workspace intent are safe and reviewable internally, while advanced
+custom code and every M6 execution path remain disabled.
 
 ## F7 - implement D6.0 provider-neutral auth and capsule orchestration
 

@@ -125,7 +125,7 @@ native/release claim.
 | F3/D5.1 read-only Connection Hub | Fully done locally; external evidence partially done | App-owned joined runtime, exact reviewed native selection, compact progressive setup, bounded browse/filter/group, redundant text/icon/color semantics, D4 favorite/tag CAS, read-only recent/library state, disabled authority, Windows tests/benchmark/build/native frame | Native macOS/Linux picker/permission and controlled screen-reader evidence remain external. |
 | F3 Connection Library | Fully done locally | `ConnectionLibraryStore` has 16 MiB private documents, CAS, recovery, transfer redaction, fresh import IDs, read-only/disk-full and link tests | Product editor/manager belongs to F6; macOS/Linux native permission and controlled screen-reader evidence remain. |
 | F5 managed OpenSSH | Partially done overall; F5.1-F5.3 source-complete nonactivated | Exact direct/routed/tunnel argv; typed host/user/port/endpoints; loopback defaults; strong per-use tunnel review; full trust evidence; guarded lifecycle; receipts; reconnect; and compact tunnel state pass locally | Protected activation/attestation, actual status execution, real OpenSSH/forced cleanup, native resources/accessibility, and validated F5.4 real manifests remain. |
-| F6 recipes and remote declarative workspaces | Not done | Typed pure profile/recipe models and F3 private persistence are reusable; CP3.3 local task bridges are separately complete | No compiler/runtime/editor/remote shell contract/layout restoration/broadcast. |
+| F6 recipes and remote declarative workspaces | Partially done; review-only source contracts complete locally | Library schema 2/editor/migration previews, exact dependent fingerprints, pure recipe review/lifecycle, typed remote initialization, declarative workspaces/restore, armed broadcast, semantic projections, fuzz, mutation, and benchmarks pass | Proposed ADR 0023 acceptance, product editor/controller/renderer wiring, managed execution adapters, and controlled native/resource/accessibility evidence remain. |
 | D6 provider-neutral authentication and capsule orchestration | Not done | Public provider/transport model variants and legacy display context exist | No visible official-CLI auth, isolated session pinning, cache/provenance/revocation, or provider adapter. |
 | AWS, Azure, Google Cloud, Kubernetes/OpenShift, Teleport, OpenBao | Not done | No corresponding extension directory or application adapter exists; there are only typed model variants and insert-only Quick Action packs | Implement and release each adapter independently after F4/F7 prerequisites. |
 | Provider-aware Quick Actions (CP4/F13) | Not done and blocked | CP2/CP3 typed/persistent/insert-only Quick Actions and static packs exist | Consume only F7+ cached public context; exact execution stays behind F4. |
@@ -647,37 +647,54 @@ private real-evidence manifest and leak-free repeated lifecycle run.
 
 ### M6 — F6 typed recipes, remote initialization, and declarative workspaces
 
-Status: Not done; the persistent library is complete locally but is not an
-automation engine.
+Status: Partially done; the bounded review-only source contracts are complete
+locally, while product activation and native execution evidence remain gated.
 
-- [ ] Use the existing immutable Profile/Recipe documents and Connection Library
-  as storage; add versioned product editor, migration/recovery/import/export
-  preview, CAS conflict handling, and approval-fingerprint invalidation.
-- [ ] Compile recipes deterministically through exactly: Resolve, Preflight,
-  Authenticate, BeforeConnect, Connect, RemoteInitialize, Verify, Ready,
-  BeforeDisconnect, Cleanup. Keep compilation pure; runtime executes only a
-  reviewed, resolved plan.
-- [ ] Implement typed local/session actions first. Permit remote directory,
-  public environment, user switch, and verification only for an explicit,
-  narrow remote-shell contract. No arbitrary script, command template, terminal
-  cell inference, hidden key injection, or implicit environment export.
-- [ ] Add per-step deadline, cancellation, safe failure, eligibility-checked
-  idempotent retry with capped backoff/jitter, reconnect generation invalidation,
-  and a `--no-hooks` recovery path.
-- [ ] Persist declarative layout and **connection intent**, not running PTYs,
-  credentials, live tunnel state, or interrupted destructive operations. Restore
-  as a reviewed plan; never reconnect or resume destructive work automatically.
-- [ ] Implement broadcast only after a prominent armed/disarmed state, exact
-  command/target preview, production confirmation, per-target results, failure
-  isolation, cancellation, and audit/redaction tests.
-- [ ] Keep CP3.3 trusted local workspace task bridges distinct: they remain
-  insert-only local actions and must never gain remote or provider authority.
-- [ ] Test clone/rebind, multi-window/pane isolation, recipe cycles and hostile
-  values, privilege prompts, disconnect/reconnect/shutdown, focus restoration,
-  accessibility, long-session resources, recovery, and rollback.
+- [x] **Fully done locally:** Connection Library schema 2 extends the existing
+  private store with declarative workspaces, strict recipe/profile/workspace
+  bindings, preview-first entity edits, atomic dependent revision/fingerprint
+  updates, approval invalidation, schema-1 migration preview, CAS conflict and
+  recovery handling, and redacted topology-only import/export with fresh IDs.
+- [x] **Fully done locally:** recipes resolve deterministically in the exact
+  ten-stage `ExecutionStage::ORDER`. A second review boundary revalidates every
+  resolved action, stage, risk, confirmation, retry, and timeout before emitting
+  a nonexecuting run fingerprint.
+- [x] **Fully done locally:** typed remote initialization contains only working
+  directory, public environment, `sudo`/`doas` user switch, and verification for
+  explicit POSIX-sh or PowerShell dialects. Privilege requires per-connection
+  confirmation. No arbitrary script/template, prompt inference, hidden key,
+  command string, or implicit Enter contract exists.
+- [x] **Fully done locally:** per-step deadline, cancellation, monotonic failure,
+  capped eligibility-checked retry with deterministic jitter input, shutdown,
+  reconnect-generation invalidation, and reviewed no-hooks recovery are pure
+  state contracts.
+- [x] **Fully done locally:** declarative layouts cap 256 workspaces, 16 windows,
+  64 panes, 128 connection bindings, and 32 recipe bindings. Clone/rebind creates
+  isolated IDs/revisions; restore is review-only with automatic reconnect and
+  interrupted-action resume false.
+- [x] **Fully done locally:** broadcast caps 50 targets, 8 KiB command text, and
+  60 seconds of arming. Exact transient preview, explicit arming, separate
+  production confirmation, per-target isolation/results, cancellation,
+  generation rejection, digest-only audit, redacted debug, and no implicit Enter
+  pass, including 1,000 repeated maximum-target generations.
+- [x] **Fully done locally:** CP3.3 trusted local workspace task bridges remain
+  insert-only and have no M6 remote/provider/broadcast authority.
+- [x] **Fully done locally:** clone/rebind, pane graph/cross-window isolation,
+  hostile/oversized input, stale profile and recipe fingerprints, privileged
+  review, retry/cancel/shutdown generations, migration/recovery/rollback, focus
+  restoration, semantic alert/switch/textbox accessibility, fuzz entry points,
+  mutation checks, and maximum-cardinality benchmarks have local evidence.
+- [ ] **Partially done / external prerequisite:** the library editor, workspace
+  restore, and broadcast have model/application APIs and renderer-neutral
+  projections but no activated product controller/renderer or public CLI.
+  Proposed ADR 0023 must be accepted, and ADR 0012/D3/M5 protected activation,
+  real OpenSSH/PTY/process/handle/socket cleanup, native Windows/macOS/Linux,
+  controlled screen-reader/visual, and hosted release evidence must pass before
+  execution is enabled.
 
-Exit: saved SSH workflows are reviewable and recoverable without enabling custom
-remote code or automatic persistent change.
+Exit remains unavailable for the shipped product: saved workflows are now
+reviewable and recoverable at the internal source boundary without custom remote
+code or automatic persistent change, but no M6 product action can execute.
 
 ### M7 — F7/D6.0 provider-neutral auth and capsule orchestration
 

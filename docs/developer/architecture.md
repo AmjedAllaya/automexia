@@ -32,6 +32,19 @@ Private contracts/runtime/domain/UI-model crates own bounded identifiers, enviro
 
 Reviewed extensions or domain crates own OpenSSH inventory interpretation, future cloud/orchestrator adapters, provider health, and domain-specific transformations. They publish bounded typed contributions to the core. They do not call GPU/window/PTy internals and do not create unmanaged child processes.
 
+## M6 automation and workspace boundary
+
+M6 is implemented as review-only provider-neutral state. Pure automation owns
+typed stages, deadline/retry/cancel/generation reducers, no-hooks intent, and a
+narrow non-command-string remote initialization envelope. Pure workspace state
+owns bounded pane graphs, immutable connection bindings, nonreconnecting restore,
+and time-bounded armed broadcast with digest-only audit. The application remains
+the one private persistence owner through schema-2 migration previews and CAS;
+the semantic UI model requests no execution. No process, PTY, network,
+credential, listener, filesystem, renderer, or clock authority enters the pure
+model, and CP3.3 local workspace tasks remain separate. See
+[proposed ADR 0023](../project/adr/0023-typed-automation-and-declarative-workspaces.md)
+and the [detailed architecture](../ARCHITECTURE.md#m6-typed-automation-and-declarative-workspace-boundary).
 ## Build, wrap, or adopt
 
 A useful technology decision is made by asking who should own the security-sensitive semantics:

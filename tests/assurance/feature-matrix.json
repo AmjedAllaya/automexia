@@ -639,7 +639,7 @@
     },
     {
       "id": "connection-hub-f3-library",
-      "title": "Private transactional Connection Hub profile, recipe, and preference library",
+      "title": "Private transactional Connection Hub profile, recipe, workspace, and preference library",
       "components": ["apps/automexia-terminal", "automexia-devops", "automexia-ui-model", "teletypewriter"],
       "documentation": {
         "guide": ["docs/guide/remote-connections.md#internal-connection-library-boundary"],
@@ -647,10 +647,10 @@
         "explanation": ["docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md#f3-implement-d51-read-only-connection-hub"]
       },
       "quality": {
-        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "This slice owns no UI; product controls, focus, and controlled screen-reader evidence remain separate F3 gates."},
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "This slice owns no UI; schema-2 edit/migration previews remain internal and product controls, focus, and controlled screen-reader evidence are separate M6 gates."},
         "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/src/automexia/connections/private_fs.rs", "apps/automexia-terminal/tests/connection_library.rs"]},
         "security": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/src/automexia/connections/private_fs.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Ingress is bounded and validated, no-follow opens protect supported file paths, logs/errors omit values and paths, and redacted transfer strips credential references and private state."},
-        "performance": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/src/automexia/connections/private_fs.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "The 16 MiB store is explicitly bounded and remains off startup, renderer, input, resize, PTY, and catalog-search hot paths; controlled long-session persistence measurements remain external evidence."},
+        "performance": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/src/automexia/connections/private_fs.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "The 16 MiB schema-2 store is explicitly bounded and remains off renderer, input, resize, PTY, and catalog-search hot paths; controlled long-session persistence measurements remain external evidence."},
         "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/src/automexia/connections/private_fs.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Operations are synchronous, bounded, close file handles by scope, clean staging files after failed commits, and own no workers, processes, sockets, listeners, PTYs, or GPU resources."},
         "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/src/automexia/connections/private_fs.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Expected-revision CAS, same-directory atomic replacement, one validated previous generation, explicit recovery, permission hardening, and failure-before-replacement tests protect the private store."},
         "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/src/automexia/connections/private_fs.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Tests cover stale and concurrent writers, interrupted staging, malformed primary/previous documents, reviewed recovery, canary preservation, read-only and disk-full injection, and Unix link substitution."},
@@ -663,6 +663,30 @@
       }
     },
     {
+      "id": "connection-automation-m6-workspaces",
+      "title": "Review-only typed connection automation and multi-environment workspaces",
+      "components": ["automexia-devops", "automexia-ui-model", "apps/automexia-terminal", "tools/ci", "fuzz"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#review-only-workspaces-and-broadcast"],
+        "reference": ["docs/SSH-CONNECTION-AUTOMATION.md#m6-review-only-implementation", "docs/TESTING.md#m6-typed-automation-and-multi-environment-workspaces"],
+        "explanation": ["docs/adr/0023-typed-automation-and-declarative-workspaces.md", "docs/ARCHITECTURE.md#m6-typed-automation-and-declarative-workspace-boundary"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_hub.rs"], "rationale": "Restore and broadcast projections preserve reading order, exact preview, focus restoration, and redundant icon/color/text alert, switch, and textbox semantics; controlled native screen readers remain external."},
+        "correctness": {"level": "pr", "evidence": ["automexia-devops/src/connections/automation.rs", "automexia-devops/src/connections/workspace.rs", "automexia-devops/tests/connection_automation_m6.rs", "automexia-devops/tests/workspace_automation_m6.rs", "apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/tests/connection_library.rs", "tools/ci/check_connection_hub_f2.py", "tools/ci/test_connection_hub_f2.py"]},
+        "security": {"level": "nightly", "evidence": ["automexia-devops/src/connections/automation.rs", "automexia-devops/src/connections/workspace.rs", "automexia-devops/tests/connection_automation_m6.rs", "automexia-devops/tests/workspace_automation_m6.rs", "apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/tests/connection_library.rs", "fuzz/fuzz_targets/connection_planning.rs", "tools/ci/check_connection_hub_f2.py", ".github/workflows/nightly.yml#fuzz"], "rationale": "Privileged steps are revalidated per connection; arbitrary code, implicit Enter, authority primitives, secret persistence, live PTY/tunnel restore, and automatic reconnect remain absent. Hostile input, stale fingerprints, redaction, and mutation checks fail closed."},
+        "performance": {"level": "controlled", "evidence": ["automexia-devops/benches/connection_planning.rs", "docs/TESTING.md#m6-typed-automation-and-multi-environment-workspaces", ".github/workflows/nightly.yml#benchmarks-controlled"], "rationale": "Maximum workspace and broadcast reviews are microsecond pure-model operations off interactive hot paths; same-host Criterion deltas are recorded without a release-regression claim and named-hardware baselines remain external."},
+        "resource_lifetime": {"level": "pr", "evidence": ["automexia-devops/src/connections/automation.rs", "automexia-devops/src/connections/workspace.rs", "automexia-devops/tests/workspace_automation_m6.rs"], "rationale": "Pure state owns no process, PTY, socket, listener, worker, filesystem, credential, provider, or GPU resource. A 1,000-generation maximum-50-target test proves per-generation collection bounds; real activated resources remain external."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/src/automexia/connections/private_fs.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Schema-1 migration is preview-only; schema-2 CAS atomically advances dependent revisions/fingerprints, clears approvals, preserves private recovery, bounds fresh IDs, and transfers only redacted topology."},
+        "resilience": {"level": "pr", "evidence": ["automexia-devops/tests/connection_automation_m6.rs", "automexia-devops/tests/workspace_automation_m6.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Deadline, retry eligibility, cancel, shutdown, generation replacement, stale CAS, recovery, rollback, clone/rebind, target failure isolation, and expired arming are deterministic."},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_hub.rs"], "rationale": "Compact semantic projections are renderer-neutral only; product pixels, tiny-to-8K controller integration, themes, scale, and native visual review remain external."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["automexia-devops/tests/connection_automation_m6.rs", "automexia-devops/tests/workspace_automation_m6.rs", "automexia-ui-model/tests/connection_hub.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Focused tests and benchmarks ran locally on Windows x86_64; managed execution remains disabled."},
+        "linux": {"level": "pr", "evidence": ["automexia-devops/tests/connection_automation_m6.rs", "automexia-devops/tests/workspace_automation_m6.rs", "apps/automexia-terminal/tests/connection_library.rs", ".github/workflows/ci.yml#native"], "rationale": "Pure contracts are platform-neutral and Unix link tests are owned, but this M6 run did not execute natively on Linux."},
+        "macos": {"level": "pr", "evidence": ["automexia-devops/tests/connection_automation_m6.rs", "automexia-devops/tests/workspace_automation_m6.rs", "apps/automexia-terminal/tests/connection_library.rs", ".github/workflows/ci.yml#native"], "rationale": "Pure contracts are platform-neutral and Unix link tests are owned, but this M6 run did not execute natively on macOS."}
+      }
+    },    {
       "id": "direct-openssh-m3-review",
       "title": "Nonactivated reviewed OpenSSH routes, typed tunnels, full trust evidence, lifecycle, receipts, and guarded PTY route",
       "components": ["apps/automexia-terminal", "automexia-devops", "extensions/devops-ssh", "automexia-ui-model", "teletypewriter"],

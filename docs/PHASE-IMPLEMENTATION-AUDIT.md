@@ -91,6 +91,7 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | DevOps | D3 | **Partial; nonactivated** | **Blocked** | The fail-closed broker/runner now binds exact managed argv and current executable identity, reconciles actual child status, emits redacted outcomes, and queues bounded receipts through the guarded PTY/route owner. Protected approvals, real attestation/activation, forced descendant proof, and native OpenSSH/resource/accessibility evidence remain. |
 | DevOps | D4 | **Fully implemented; read-only product adapter active** | **Partial** | Bounded OpenSSH inventory/persistence is connected only to D5.1 reviewed browsing; it retains no process/network/launch authority. |
 | SSH UX | D5.0-D5.2 | **Partial overall; D5.1 and nonactivated F5.1-F5.3 source complete locally** | **Partial/blocked** | Typed direct/config-jump/tunnel argv, loopback defaults, strong tunnel review, complete trust evidence, guarded lifecycle, receipts, reconnect, and compact tunnel states pass locally. Protected activation/attestation, actual status/SSH execution, forced cleanup, and controlled real native F5.4 evidence remain. |
+| Multi-environment | M6/F6 | **Partial overall; review-only source contracts complete locally** | **Blocked** | Schema-2 reviewed library editing/migration/transfer, exact dependent fingerprints, typed recipe lifecycle/no-hooks, narrow remote initialization, declarative restore, armed broadcast, semantic UI models, fuzz/mutation, and bounded benchmarks pass. Proposed ADR 0023 acceptance, product activation/execution, and controlled native/resource/accessibility evidence remain. |
 | Multi-cloud | D6.0-D6.5 | **Not implemented** | **Blocked** | Provider auth, capsules, transports, and provider slices are planned only. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
@@ -615,6 +616,52 @@ validated real Windows/macOS/Linux OpenSSH, forced cleanup, 1/10/50 resource,
 manual-SSH, enable/disable/uninstall, pixel, and accessibility manifests. WSL
 remains separately denied by the current release contract.
 
+### M6/F6 — typed automation and multi-environment workspaces
+
+**Partially implemented overall; review-only source contracts are complete
+locally.** `automexia-devops::connections::{automation,workspace}` owns no
+process, PTY, network, credential, provider, filesystem, listener, renderer, or
+clock capability. It provides immutable recipe reviews, exact stage ordering,
+no-hooks recovery, lifecycle deadlines/retry/cancel/generation rules, typed
+remote initialization, declarative layout/restore, and explicitly armed
+broadcast with per-target results and digest-only audit.
+
+The application Connection Library is schema 2 while retaining its private v1
+filenames for atomic migration continuity. Schema 1 loads only as an in-memory
+migration preview. Editor/import previews bind the full document and CAS base;
+recipe edits atomically advance dependent profile/workspace revisions and exact
+fingerprints, and every material edit clears approvals. Topology-only transfer
+uses fresh IDs and strips connection bindings/private labels. The UI model adds
+compact, focus-restoring, redundant icon/color/text semantics for restore and
+armed/disarmed broadcast without requesting execution.
+
+Focused Windows x86_64 evidence passed 9 planner, 6 automation, 10 workspace, 15
+Hub-model, and 10 Connection Library tests plus warning-denied focused Clippy,
+architecture/mutation policy, fuzz entry-point compilation ownership, and a
+1,000-generation × 50-target bounded-state test. Criterion measured the maximum
+16-window/64-pane/128-connection validation at 26.044–28.009 µs and 50-target
+broadcast review at 15.524–16.032 µs. The direct-SSH control rerun measured
+7.5818–7.8347 µs and still reported a 1.64–7.72% stored-baseline regression;
+the path is unchanged by M6, so this is recorded as unresolved controlled noise,
+not silently treated as a pass or attributed to M6.
+
+The final Windows x86_64 gate passed formatting, workspace warning-denied
+Clippy, Nextest (1,847 passed, 7 skipped across 54 binaries), documentation tests
+(64 passed, 3 ignored), full QA including resize/session-clone/Loom/dependency
+policy, and `cargo ready`. Readiness ran from a clean temporary target after the
+normal D: target correctly failed its 12 GiB free-space preflight; the isolated
+verification and temporary target were removed after the fresh build and
+version smoke passed. Its first post-change cold run exposed a timing-only
+completion pipe-holder regression outside M6; the process owner now synchronously
+reaps provider descendants, and focused, Nextest, full-QA, and final cold
+readiness reruns passed. Native OpenSSH, GPU, screen-reader, elevated Windows,
+and hosted cross-platform evidence remain explicitly external.
+
+Proposed ADR 0023 acceptance, public editor/controller/renderer/CLI integration,
+managed execution, real OpenSSH/PTY/process/handle/socket cleanup, native
+Windows/macOS/Linux, controlled screen-reader/visual, hosted policy, and release
+evidence remain. M6 activation stays false and CP3.3 local workspace tasks gain
+no remote/provider authority.
 ### D6.0-D6.5 — providers and multi-cloud
 
 **Not implemented.**
@@ -943,8 +990,8 @@ Planned work, with no shipped-command claim:
 | Canonical operation registry, `automexia` domains, generated palette/help/accessibility, optional collision-safe `ax` | CP2.2-CP3/D5 | Not implemented |
 | Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | D5.1 picker/browse/metadata and D5.2 typed direct/config-jump preparation, full trust review, safe copy, fail-closed runner, exact PTY seam, and route publication are complete locally but nonactivated; protected connect and native evidence remain |
 | Identity references, agent/certificate/hardware public state, known-host explanation, routes/jumps/proxies/tunnels | D5.2 | M4 references/status/trust and M5 exact local/remote/dynamic tunnels, loopback defaults, strong review, and lifecycle are fully implemented locally and nonactivated; actual status execution, broader proxies, protected activation, and real F5.4 native evidence remain |
-| Quick Actions, aliases, lifecycle hooks, reviewed multi-target execution | CP2.2-CP4/D5E | Model/store foundations only |
-| Declarative workspace persistence/restoration and visibly armed broadcast | D5/CP4 | Existing layout primitives only |
+| Quick Actions, aliases, lifecycle hooks, reviewed multi-target execution | CP2.2-CP4/D5E | CP2/CP3 actions are local/insert-only; M6 typed recipe lifecycle and armed broadcast review are source-complete, but multi-target execution remains disabled |
+| Declarative workspace persistence/restoration and visibly armed broadcast | M6/F6 | Review-only schema-2 persistence, restore, armed broadcast, semantic projection, and bounded tests are complete locally; product controller/renderer/execution and native evidence remain |
 | Per-pane multi-cloud/context commands and typed import/reconcile adapters | D6.0-D6.5/CP4 | Not implemented |
 | Structured files/SFTP, bounded logs/bookmarks, team state/policy, shared sessions | D7 protected slices | Not implemented |
 | Mosh, Telnet, serial, public ecosystem packs, optional editor popup, AI explain/suggest | D7/CP5-CP6 | Not implemented/deferred |

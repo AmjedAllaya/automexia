@@ -2976,11 +2976,13 @@ fn verify_architecture() -> TaskResult {
     )?;
 
     let connection_model = [
+        read(&root().join("automexia-devops/src/connections/automation.rs"))?,
         read(&root().join("automexia-devops/src/connections/documents.rs"))?,
         read(&root().join("automexia-devops/src/connections/model.rs"))?,
         read(&root().join("automexia-devops/src/connections/planner.rs"))?,
         read(&root().join("automexia-devops/src/connections/state.rs"))?,
         read(&root().join("automexia-devops/src/connections/validation.rs"))?,
+        read(&root().join("automexia-devops/src/connections/workspace.rs"))?,
     ]
     .join("\n");
     let connection_hub = read(&root().join("automexia-ui-model/src/connection_hub.rs"))?;

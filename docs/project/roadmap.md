@@ -17,6 +17,7 @@ A phase can be source-complete while release evidence is still partial. User-fac
 | DevOps | D3 | **Partial; nonactivated** | **Blocked** | The hard-disabled broker/runner binds exact managed argv/current executable identity, reconciles actual child outcomes, and queues bounded redacted receipts through ContextManager; attestation, protected activation, forced descendant cleanup, and native proof remain. |
 | DevOps | D4 | **Fully implemented; read-only product adapter active** | **Partial** | Bounded OpenSSH inventory/persistence is connected only to D5.1 reviewed browsing; it retains no process/network/launch authority. |
 | SSH UX | D5.0-D5.2 | **Partial overall; D5.1 and nonactivated F5.1-F5.3 source complete locally** | **Partial/blocked** | Typed direct/config-jump/tunnel argv, loopback defaults, strong tunnel review, full trust evidence, guarded lifecycle, receipts, reconnect, and compact tunnel states pass locally. Protected activation/attestation, actual status/SSH execution, forced cleanup, and controlled real native/accessibility proof remain. |
+| Multi-environment | M6/F6 | **Partial overall; review-only source contracts complete locally** | **Blocked** | Schema-2 reviewed persistence/migration/transfer, typed recipe lifecycle/no-hooks, narrow remote initialization, declarative restore, armed broadcast, and bounded tests pass. Proposed ADR 0023 acceptance, product activation/execution, and controlled native/resource/accessibility evidence remain. |
 | Multi-cloud | D6.0-D6.5 | **Not implemented** | **Blocked** | Provider auth, capsules, transports, and provider slices are planned only. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
@@ -73,6 +74,7 @@ The dependency order is more important than the UI wish list:
 4. Preserve the locally complete read-only D5.1 product surface and obtain its remaining native/accessibility release evidence.
 5. Enable reviewed system-OpenSSH launch/lifecycle in D5.2 with native security/resource evidence.
 6. Promote the already-local CP1-CP3.3 completion/Quick Action/alias/import/workspace work only after its native/accessibility/performance release evidence passes.
+7. Accept proposed ADR 0023, wire the review-only M6 editor/workspace/broadcast surface, and obtain managed-execution/native evidence before enabling any recipe or multi-target action.
 
 The first broad DevOps release should therefore be a secure terminal-first SSH product, not a provider SDK platform.
 
