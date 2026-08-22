@@ -96,8 +96,9 @@ fn recipe() -> AutomationRecipeV1 {
 }
 
 fn connection_plan_64_steps(criterion: &mut Criterion) {
-    let profile = profile();
     let recipe = recipe();
+    let mut profile = profile();
+    profile.recipe_references[0].fingerprint = fingerprint_recipe(&recipe).unwrap();
     let context = PlanContext {
         executable_identities: vec![ResolvedExecutable {
             executable_id: "openssh".into(),
@@ -131,9 +132,93 @@ fn direct_openssh_preparation(criterion: &mut Criterion) {
     });
 }
 
+fn workspace() -> WorkspaceIntentV1 {
+    let windows = (0..16)
+        .map(|window_index| WorkspaceWindowIntentV1 {
+            id: format!("window-{window_index}"),
+            panes: (0..4)
+                .map(|pane_index| WorkspacePaneIntentV1 {
+                    id: format!("window-{window_index}-pane-{pane_index}"),
+                    parent_pane_id: (pane_index > 0)
+                        .then(|| format!("window-{window_index}-pane-0")),
+                    split: (pane_index > 0).then_some(WorkspaceSplitIntent {
+                        axis: if pane_index % 2 == 0 {
+                            WorkspaceSplitAxis::Horizontal
+                        } else {
+                            WorkspaceSplitAxis::Vertical
+                        },
+                        ratio_basis_points: 5_000,
+                    }),
+                })
+                .collect(),
+        })
+        .collect();
+    let connections = (0..128)
+        .map(|index| {
+            let window_index = index % 16;
+            let pane_index = index % 4;
+            WorkspaceConnectionIntentV1 {
+                id: format!("connection-{index}"),
+                window_id: format!("window-{window_index}"),
+                pane_id: format!("window-{window_index}-pane-{pane_index}"),
+                profile_id: format!("profile-{index}"),
+                profile_revision: 1,
+                profile_fingerprint: digest('b'),
+                recipe_fingerprints: Vec::new(),
+                destination_surface: DestinationSurface::PaneTab,
+            }
+        })
+        .collect();
+    WorkspaceIntentV1 {
+        schema_version: 1,
+        id: "benchmark-workspace".into(),
+        revision: 1,
+        display_name: "Benchmark workspace".into(),
+        description: String::new(),
+        environment: EnvironmentClassification {
+            kind: EnvironmentKind::Development,
+            label: "Development".into(),
+            risk: EnvironmentRisk::Development,
+        },
+        windows,
+        connections,
+        approval_fingerprint: None,
+        created_at_ms: 1,
+        updated_at_ms: 1,
+    }
+}
+
+fn m6_workspace_and_broadcast_planning(criterion: &mut Criterion) {
+    let workspace = workspace();
+    let targets = (0..MAX_BROADCAST_TARGETS)
+        .map(|index| BroadcastTargetV1 {
+            id: format!("target-{index}"),
+            public_label: format!("Target {index}"),
+            profile_id: format!("profile-{index}"),
+            profile_revision: 1,
+            environment_risk: EnvironmentRisk::Development,
+        })
+        .collect::<Vec<_>>();
+    criterion.bench_function(
+        "workspace_validate_16_windows_64_panes_128_connections",
+        |bencher| bencher.iter(|| validate_workspace(black_box(&workspace)).unwrap()),
+    );
+    criterion.bench_function("broadcast_review_50_targets", |bencher| {
+        bencher.iter(|| {
+            black_box(review_broadcast(
+                black_box("uptime"),
+                black_box(&targets),
+                1,
+                5_000,
+            ))
+            .unwrap()
+        })
+    });
+}
 criterion_group!(
     benches,
     connection_plan_64_steps,
-    direct_openssh_preparation
+    direct_openssh_preparation,
+    m6_workspace_and_broadcast_planning
 );
 criterion_main!(benches);

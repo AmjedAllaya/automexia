@@ -4,6 +4,7 @@
 //! credential, PTY, listener, renderer, or GPU authority. They validate public
 //! intent and produce immutable dry-run plans for later application-owned review.
 
+mod automation;
 mod direct_openssh;
 mod documents;
 mod model;
@@ -11,7 +12,9 @@ mod openssh_tunnels;
 mod planner;
 mod state;
 mod validation;
+mod workspace;
 
+pub use automation::*;
 pub use direct_openssh::{
     parse_direct_openssh_agent_identities, prepare_direct_openssh,
     prepare_direct_openssh_identity_status, review_direct_openssh,
@@ -50,3 +53,4 @@ pub use validation::{
     validate_connection_observation, validate_connection_receipt,
     validate_connection_review, validate_profile, validate_recipe,
 };
+pub use workspace::*;

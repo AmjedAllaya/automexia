@@ -201,6 +201,7 @@ fn planner_step(
     stage: ExecutionStage,
     action: AutomationAction,
 ) -> ResolvedPlanStep {
+    let risk = action.minimum_risk();
     ResolvedPlanStep {
         sequence,
         id: id.to_owned(),
@@ -211,7 +212,7 @@ fn planner_step(
         timeout_ms: MAX_STEP_TIMEOUT_MS,
         failure_policy: FailurePolicy::StopAndKeepDiagnostic,
         retry_policy: RetryPolicy::Never,
-        risk: ActionRisk::Observe,
+        risk,
         confirmation_policy: ConfirmationPolicy::ReviewWithProfile,
         reconnect_policy: ReconnectPolicy::OncePerConnection,
     }
