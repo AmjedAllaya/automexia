@@ -54,6 +54,18 @@ impl DirectOpenSshPreparation {
     pub fn plan(&self) -> &ResolvedConnectionPlan {
         &self.plan
     }
+    pub fn reviewed_destination(&self) -> Result<&str, ConnectionModelError> {
+        let _ = validate_m3_profile(&self.profile)?;
+        match &self.profile.transport {
+            TransportDescriptor::OpenSshAlias { alias } => Ok(alias),
+            TransportDescriptor::OpenSshExplicit { host, .. } => Ok(host),
+            _ => Err(error(
+                ConnectionModelErrorCode::InvalidTransition,
+                "direct_openssh.preparation",
+                "the prepared OpenSSH destination is stale",
+            )),
+        }
+    }
 
     /// Reject a cached preparation after any source-owned profile input changes.
     pub fn validate_current(

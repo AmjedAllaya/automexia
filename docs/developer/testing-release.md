@@ -88,10 +88,32 @@ The repository can generate platform PNG/ICO/ICNS derivatives from its canonical
 
 Security debt is tracked separately from product claims. Runtime hardening work includes keeping dependencies current, minimizing duplicate dependency families where they materially expand attack/patch surface, and ensuring new crates do not bypass existing trust/capability boundaries. A dependency duplication is not automatically a vulnerability, but it should have an explicit owner/upgrade rationale when versions diverge significantly or one branch is unmaintained.
 
+## Managed SSH activation evidence
+
+The M2/F4/D3 boundary is production-compiled but deliberately unavailable. Run
+the source-local contract before handoff:
+
+```text
+python tools/ci/check_session_launch_d0.py
+python tools/ci/test_session_launch_d0.py
+cargo test -p automexia-ui-model --locked --test direct_openssh_review
+cargo test -p automexia-terminal --bin automexia --locked application_runner_
+cargo test -p automexia-terminal --bin automexia --locked context::launch_broker::tests
+cargo xtask verify architecture
+```
+
+These checks prove exact ownership, denial-before-resolution, scope, bounds,
+redaction, executable-guard handoff, route publication ordering, cancellation,
+shutdown, keyboard/pointer/accessibility semantics, and mutation resistance.
+They do not prove production SSH: the activation constant is false and the
+linked candidate is unverified. Exact-head approvals/server enforcement,
+attestation/revocation, fresh current-executable review, real native OpenSSH and
+descendant cleanup, 1/10/50 resource runs, pixels, and controlled screen-reader
+evidence remain explicit activation gates.
 ## Current release blockers
 
 The source-level v0.4 S0 gates are complete locally, but stable release assurance remains partial. The important unresolved class is **evidence**, not a hidden claim that everything is done: controlled Linux/macOS visual/GPU/PTY runs, screen-reader evidence, longer security/performance baselines, signing/notarization/packaging proof on protected hosts, and other named release-environment requirements must be recorded before the corresponding release claim is made.
 
-Likewise, locally implemented CP2/CP3 command-productivity work is not promoted to a stable broad release claim until its native/accessibility/performance gates pass. Managed SSH now has a non-activated application preparation and disabled Connection Review, but launch remains blocked on protected architecture/activation review, real executable identity and atomic native check-to-spawn ownership, and native lifecycle evidence.
+Likewise, locally implemented CP2/CP3 command-productivity work is not promoted to a stable broad release claim until its native/accessibility/performance gates pass. Managed SSH has a nonactivated runner, approval surface, executable guard, and PTY/route publication seam, but launch remains blocked on protected exact-head review, real package attestation/revocation, a fresh current-executable review, and native lifecycle/resource/accessibility evidence.
 
 See [Roadmap](../project/roadmap.md) for phase status. This page owns the meaning of the evidence levels and the testing/release contract; the roadmap should not copy detailed test ledgers.

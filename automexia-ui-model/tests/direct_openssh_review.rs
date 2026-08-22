@@ -100,7 +100,7 @@ fn fixture() -> automexia_devops::connections::DirectOpenSshReview {
 }
 
 #[test]
-fn pending_preparation_is_complete_redacted_disabled_and_responsive() {
+fn pending_preparation_is_redacted_gated_actionable_and_responsive() {
     let prepared = prepare_direct_openssh(&fixture_profile()).unwrap();
     for (viewport, expected_layout) in [
         (Viewport::new(1_600.0, 900.0, 1.0), HubLayout::Wide),
@@ -117,12 +117,29 @@ fn pending_preparation_is_complete_redacted_disabled_and_responsive() {
             section.id == "host-trust" && section.summary.contains("changed keys blocked")
         }));
         assert!(view.sections.iter().any(|section| {
-            section.id == "argv" && section.summary == "ssh <destination>"
+            section.id == "argv"
+                && section.summary
+                    == "ssh <destination> · one literal argument · PTY input/output"
         }));
         assert!(!view.execution_enabled);
+        assert!(view.approval_action_enabled);
+        assert_eq!(view.primary_label, "Check & allow once  [A / Enter]");
+        for id in [
+            "direct-openssh-decision-allow-once",
+            "direct-openssh-decision-allow-session",
+            "direct-openssh-decision-deny",
+        ] {
+            assert!(view
+                .accessibility_tree
+                .iter()
+                .any(|node| node.id == id && node.focusable && !node.disabled));
+        }
         assert_eq!(
-            view.primary_label,
-            "Connection unavailable—verification pending"
+            view.accessibility_tree
+                .iter()
+                .filter(|node| node.id.starts_with("direct-openssh-decision-"))
+                .count(),
+            3,
         );
         let rendered = format!("{view:?}");
         assert!(!rendered.contains("private-destination-canary"));
@@ -131,7 +148,7 @@ fn pending_preparation_is_complete_redacted_disabled_and_responsive() {
 }
 
 #[test]
-fn m3_projection_is_complete_redacted_disabled_and_accessible() {
+fn m3_projection_is_redacted_gated_actionable_and_accessible() {
     let reviewed = fixture();
     for (viewport, expected_layout) in [
         (Viewport::new(1_600.0, 900.0, 1.0), HubLayout::Wide),
@@ -158,10 +175,18 @@ fn m3_projection_is_complete_redacted_disabled_and_accessible() {
             ]
         );
         assert!(!view.execution_enabled);
-        assert_eq!(
-            view.primary_label,
-            "Connection unavailable—M2 approval pending"
-        );
+        assert!(view.approval_action_enabled);
+        assert_eq!(view.primary_label, "Allow once & connect  [A / Enter]");
+        for id in [
+            "direct-openssh-decision-allow-once",
+            "direct-openssh-decision-allow-session",
+            "direct-openssh-decision-deny",
+        ] {
+            assert!(view
+                .accessibility_tree
+                .iter()
+                .any(|node| node.id == id && node.focusable && !node.disabled));
+        }
         assert!(view.sections.iter().any(|section| {
             section.id == "identity" && section.summary.contains("Ready")
         }));
@@ -172,15 +197,27 @@ fn m3_projection_is_complete_redacted_disabled_and_accessible() {
             section.id == "host-trust" && section.summary.contains("changed keys blocked")
         }));
         assert!(view.sections.iter().any(|section| {
-            section.id == "capabilities" && section.summary == "session.launch"
+            section.id == "capabilities"
+                && section
+                    .summary
+                    .starts_with("session.launch · exact session")
         }));
         assert!(view
             .sections
             .iter()
             .any(|section| { section.id == "risk" && section.summary == "Production" }));
         assert!(view.sections.iter().any(|section| {
-            section.id == "argv" && section.summary == "ssh <destination>"
+            section.id == "argv"
+                && section.summary
+                    == "ssh <destination> · one literal argument · PTY input/output"
         }));
+        assert_eq!(
+            view.accessibility_tree
+                .iter()
+                .filter(|node| node.id.starts_with("direct-openssh-decision-"))
+                .count(),
+            3,
+        );
         let rendered = format!("{view:?}");
         assert!(!rendered.contains("private-destination-canary"));
         assert!(!rendered.contains("identity-private-canary"));

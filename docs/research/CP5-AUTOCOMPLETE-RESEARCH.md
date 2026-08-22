@@ -35,7 +35,8 @@ a reviewable P2 decision. The following conditions are now true:
 Out of scope are an editor transport, shell adapter activation, product ranking
 changes, history ingestion, provider refresh, a renderer popup, new shortcuts,
 profile installation, and process or PTY work. F4/D3 also remains externally
-blocked by protected ADR 0012 acceptance or supersession.
+blocked by ADR 0003 exact-head approvals/server enforcement, attestation, and
+native evidence after ADR 0012 owner acceptance.
 
 ## Evidence ledger
 
@@ -47,7 +48,7 @@ blocked by protected ADR 0012 acceptance or supersession.
 | Matcher comparison | Not implemented | Fully done for the 32/128/512 corpus | Standalone locked benchmark, Unicode tests, three repeated release runs, stale-generation guard, compile time, and binary size are recorded |
 | Reedline/Carapace evaluation | Planned prose only | Fully done for CP5.0 | Reedline remains a UX reference; Carapace remains a separately installed external adapter candidate |
 | P2 suggestion bridge | Not implemented | Not done by decision | No uniform safe bridge exists across the supported matrix; a future proposal needs new authority and protected review |
-| F4 process/PTY activation | External prerequisite | Still blocked | ADR 0012 is Proposed and requires protected acceptance or supersession |
+| F4 process/PTY activation | External prerequisite | Still blocked | ADR 0012 is accepted; protected exact-head approvals, attestation, native evidence, and activation remain |
 
 ## Shell and version decision matrix
 

@@ -487,6 +487,13 @@ impl ConsumedWin32KeyReleases {
     }
 }
 
+pub(crate) struct ScreenServices {
+    pub(crate) action_surface: action_surface::Controller,
+    pub(crate) connection_hub: crate::automexia::connections::ConnectionHubController,
+    pub(crate) external_tool_runner:
+        crate::context::external_tool_runner::ExternalToolRunner,
+}
+
 pub struct Screen<'screen> {
     bindings: crate::bindings::KeyBindings,
     mouse_bindings: Vec<MouseBinding>,
@@ -500,6 +507,7 @@ pub struct Screen<'screen> {
     image_preview: crate::image_preview::ImagePreview,
     action_surface: action_surface::Controller,
     connection_hub: crate::automexia::connections::ConnectionHubController,
+    external_tool_runner: crate::context::external_tool_runner::ExternalToolRunner,
     pub renderer: Renderer,
     pub sugarloaf: Sugarloaf<'screen>,
     pub context_manager: context::ContextManager<EventProxy>,
@@ -554,13 +562,17 @@ impl Screen<'_> {
         event_proxy: EventProxy,
         font_library: &rio_backend::sugarloaf::font::FontLibrary,
         open_url: Option<String>,
-        action_surface: action_surface::Controller,
-        connection_hub: crate::automexia::connections::ConnectionHubController,
+        services: ScreenServices,
     ) -> Result<Screen<'screen>, Box<dyn Error>> {
         let size = window_properties.size;
         let scale = window_properties.scale;
         let raw_window_handle = window_properties.raw_window_handle;
         let raw_display_handle = window_properties.raw_display_handle;
+        let ScreenServices {
+            action_surface,
+            connection_hub,
+            external_tool_runner,
+        } = services;
         let window_id = window_properties.window_id;
 
         let padding_y_top = padding_top_from_config(
@@ -736,6 +748,7 @@ impl Screen<'_> {
             image_preview: crate::image_preview::ImagePreview::default(),
             action_surface,
             connection_hub,
+            external_tool_runner,
             hints_config: config
                 .hints
                 .rules

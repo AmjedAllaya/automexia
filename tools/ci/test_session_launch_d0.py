@@ -34,7 +34,7 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
                 "schema": 2,
                 "scenarios": 19,
                 "boundaries": 9,
-                "sources": 3,
+                "sources": 7,
                 "documents": 11,
                 "production_enabled": 0,
             },
@@ -138,8 +138,16 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
 
         validate(
             lambda path, source: source.replace(
+                "pub mod launch_broker;",
                 "#[cfg(test)]\npub mod launch_broker;",
-                "#[cfg(test)]\npub mod renderable;\npub mod launch_broker;",
+            )
+            if path.name == "mod.rs"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "pub mod external_tool_runner;",
+                "#[cfg(test)]\npub mod external_tool_runner;",
             )
             if path.name == "mod.rs"
             else source
@@ -148,6 +156,12 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
             lambda path, source: source
             + '\nfn widened() { let _ = std::process::Command::new("ssh").spawn(); }\n'
             if path.name == "launch_broker.rs"
+            else source
+        )
+        validate(
+            lambda path, source: source
+            + "\nfn bypass() { create_exact_pty(); }\n"
+            if path.name == "external_tool_runner.rs"
             else source
         )
 

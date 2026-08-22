@@ -2,7 +2,7 @@
   "schema": 2,
   "phase": "F1/D0-D3",
   "status": "local-contract-complete-protected-approval-pending",
-  "activation": {"production_enabled": false, "required_adr": "0012", "adr_status": "Proposed", "required_protected_approvals": 2},
+  "activation": {"production_enabled": false, "required_adr": "0012", "adr_status": "Accepted", "required_protected_approvals": 2},
   "package_identity": {
     "extension_id": "automexia.devops-ssh",
     "publisher": "io.github.AmjedAllaya",
@@ -126,7 +126,7 @@
     {"id": "one-ten-fifty-sessions", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "zero-leak-and-recorded-same-host-performance-budget"}
   ],
   "evidence": {
-    "source": ["apps/automexia-terminal/src/context/launch_broker.rs", "apps/automexia-terminal/src/context/mod.rs", "automexia-extension-api/src/lib.rs"],
+    "source": ["apps/automexia-terminal/src/context/launch_broker.rs", "apps/automexia-terminal/src/context/external_tool_runner.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/router/mod.rs", "apps/automexia-terminal/src/screen/connection_hub.rs", "automexia-ui-model/src/connection_hub.rs", "automexia-extension-api/src/lib.rs"],
     "checks": ["tools/ci/check_session_launch_d0.py", "tools/ci/test_session_launch_d0.py"],
     "documents": [
       "docs/adr/0012-first-party-ssh-and-session-launch-boundary.md",

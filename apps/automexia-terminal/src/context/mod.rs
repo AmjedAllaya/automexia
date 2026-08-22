@@ -1,5 +1,5 @@
+pub mod external_tool_runner;
 pub mod launch;
-#[cfg(test)]
 pub mod launch_broker;
 pub mod renderable;
 pub mod title;
@@ -52,6 +52,92 @@ use teletypewriter::create_pty;
 #[cfg(not(target_os = "windows"))]
 use teletypewriter::{create_pty_with_fork, create_pty_with_spawn};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ManagedRouteReservation {
+    route_id: usize,
+    operation_id: OperationId,
+    session_id: SessionId,
+    capsule_revision: u64,
+}
+
+impl ManagedRouteReservation {
+    pub const fn operation_id(&self) -> OperationId {
+        self.operation_id
+    }
+
+    pub const fn session_id(&self) -> SessionId {
+        self.session_id
+    }
+
+    pub const fn capsule_revision(&self) -> u64 {
+        self.capsule_revision
+    }
+    #[cfg(test)]
+    pub(crate) fn test(route_id: usize) -> Self {
+        let numeric_id = u64::try_from(route_id).expect("test route fits in u64");
+        Self {
+            route_id,
+            operation_id: OperationId::new(numeric_id),
+            session_id: SessionId::new(numeric_id),
+            capsule_revision: 1,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ManagedPublishError {
+    CapacityExceeded,
+    InvalidScope,
+    PtyUnavailable,
+    PublicationFailed,
+}
+
+impl std::fmt::Display for ManagedPublishError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::CapacityExceeded => "the terminal tab limit was reached",
+            Self::InvalidScope => "the reviewed session scope is stale",
+            Self::PtyUnavailable => "the reviewed external tool could not start",
+            Self::PublicationFailed => "the new terminal route could not be published",
+        })
+    }
+}
+
+impl std::error::Error for ManagedPublishError {}
+
+struct ManagedSessionGuard {
+    runner: external_tool_runner::ExternalToolRunner,
+    lease: launch_broker::OperationLease,
+    reconciled: bool,
+}
+
+impl ManagedSessionGuard {
+    fn complete(&mut self) {
+        if !self.reconciled
+            && self
+                .runner
+                .complete(self.lease, external_tool_runner::current_time_ms())
+                .is_ok()
+        {
+            self.reconciled = true;
+        }
+    }
+}
+
+impl Drop for ManagedSessionGuard {
+    fn drop(&mut self) {
+        if !self.reconciled {
+            let _ = self
+                .runner
+                .cancel(self.lease, external_tool_runner::current_time_ms());
+        }
+        self.runner.revoke_session(
+            self.lease.session_id(),
+            external_tool_runner::current_time_ms(),
+        );
+    }
+}
+
 pub struct Context<T: EventListener> {
     pub route_id: usize,
     pub terminal: Arc<FairMutex<Crosswords<T>>>,
@@ -69,6 +155,7 @@ pub struct Context<T: EventListener> {
     pub dimension: ContextDimension,
     pub title: ContextTitle,
     pub ime: Ime,
+    managed_session: Option<ManagedSessionGuard>,
     _io_thread: Option<JoinHandle<(Machine<teletypewriter::Pty, T>, performer::State)>>,
 }
 
@@ -214,6 +301,7 @@ pub fn create_dead_context<T: rio_backend::event::EventListener>(
         dimension,
         title: ContextTitle::default(),
         ime: Ime::new(),
+        managed_session: None,
         _io_thread: None,
     }
 }
@@ -249,6 +337,230 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    pub fn reserve_managed_route(
+        &self,
+    ) -> Result<ManagedRouteReservation, ManagedPublishError> {
+        if self.contexts.len() >= self.capacity {
+            return Err(ManagedPublishError::CapacityExceeded);
+        }
+        let route_id = ROUTE_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let numeric_id =
+            u64::try_from(route_id).map_err(|_| ManagedPublishError::InvalidScope)?;
+        if numeric_id == 0 {
+            return Err(ManagedPublishError::InvalidScope);
+        }
+        Ok(ManagedRouteReservation {
+            route_id,
+            operation_id: OperationId::new(numeric_id),
+            session_id: SessionId::new(numeric_id),
+            capsule_revision: 1,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn create_managed_context(
+        cursor_state: (&Cursor, bool),
+        event_proxy: T,
+        window_id: WindowId,
+        rich_text_id: usize,
+        dimension: ContextDimension,
+        config: &ContextManagerConfig,
+        reservation: ManagedRouteReservation,
+        guarded: external_tool_runner::GuardedLaunch,
+        runner: external_tool_runner::ExternalToolRunner,
+    ) -> Result<Context<T>, ManagedPublishError> {
+        let (launch_descriptor, executable, lease) = guarded.into_parts();
+        if lease.operation_id() != reservation.operation_id
+            || lease.session_id() != reservation.session_id
+            || lease.capsule_revision() != reservation.capsule_revision
+        {
+            return Err(ManagedPublishError::InvalidScope);
+        }
+        let environment_capsule = launch_descriptor
+            .environment_capsule(reservation.session_id, reservation.capsule_revision)
+            .map_err(|_| ManagedPublishError::InvalidScope)?;
+
+        let cols: u16 = dimension.columns.try_into().unwrap_or(MIN_COLUMNS as u16);
+        let rows: u16 = dimension.lines.try_into().unwrap_or(MIN_LINES as u16);
+        #[cfg(not(target_os = "windows"))]
+        let initial_winsize = crate::renderer::utils::terminal_dimensions(&dimension);
+
+        let mut terminal = Crosswords::new(
+            dimension,
+            cursor_state.0.state.content,
+            event_proxy.clone(),
+            window_id,
+            reservation.route_id,
+            config.scrollback_history_limit,
+        );
+        terminal.blinking_cursor = cursor_state.1;
+        let terminal: Arc<FairMutex<Crosswords<T>>> = Arc::new(FairMutex::new(terminal));
+
+        #[cfg(not(target_os = "windows"))]
+        let pty = teletypewriter::create_exact_pty(
+            executable,
+            launch_descriptor.args().to_vec(),
+            &launch_descriptor
+                .starting_directory()
+                .map(ToOwned::to_owned),
+            launch_descriptor.environment().to_vec(),
+            cols,
+            rows,
+            initial_winsize.width,
+            initial_winsize.height,
+        )
+        .map_err(|_| ManagedPublishError::PtyUnavailable)?;
+
+        #[cfg(target_os = "windows")]
+        let pty = teletypewriter::create_exact_pty(
+            executable,
+            launch_descriptor.args().to_vec(),
+            &launch_descriptor
+                .starting_directory()
+                .map(ToOwned::to_owned),
+            launch_descriptor.environment().to_vec(),
+            cols,
+            rows,
+        )
+        .map_err(|_| ManagedPublishError::PtyUnavailable)?;
+
+        #[cfg(not(target_os = "windows"))]
+        let main_fd = pty.child.id.clone();
+        #[cfg(not(target_os = "windows"))]
+        let shell_pid = *pty.child.pid.clone() as u32;
+        #[cfg(target_os = "windows")]
+        let shell_pid = pty
+            .child_watcher()
+            .pid()
+            .map(std::num::NonZeroU32::get)
+            .unwrap_or(0);
+
+        let machine = Machine::new(
+            Arc::clone(&terminal),
+            pty,
+            event_proxy,
+            window_id,
+            reservation.route_id,
+        )
+        .map_err(|_| ManagedPublishError::PtyUnavailable)?;
+        let messenger = Messenger::new(machine.channel());
+        let io_thread = Some(machine.spawn());
+
+        Ok(Context {
+            route_id: reservation.route_id,
+            #[cfg(not(target_os = "windows"))]
+            main_fd,
+            shell_pid,
+            launch_descriptor,
+            environment_capsule,
+            messenger,
+            terminal,
+            rich_text_id,
+            renderable_content: RenderableContent::new(cursor_state.0.clone()),
+            dimension,
+            title: ContextTitle::default(),
+            ime: Ime::new(),
+            managed_session: Some(ManagedSessionGuard {
+                runner,
+                lease,
+                reconciled: false,
+            }),
+            _io_thread: io_thread,
+        })
+    }
+
+    pub fn publish_managed_context(
+        &mut self,
+        reservation: ManagedRouteReservation,
+        guarded: external_tool_runner::GuardedLaunch,
+        runner: external_tool_runner::ExternalToolRunner,
+        rich_text_id: usize,
+    ) -> Result<usize, ManagedPublishError> {
+        if self.contexts.len() >= self.capacity {
+            let lease = guarded.lease();
+            let _ = runner.cancel(lease, external_tool_runner::current_time_ms());
+            runner.revoke_session(
+                lease.session_id(),
+                external_tool_runner::current_time_ms(),
+            );
+            return Err(ManagedPublishError::CapacityExceeded);
+        }
+
+        let lease = guarded.lease();
+        if lease.operation_id() != reservation.operation_id
+            || lease.session_id() != reservation.session_id
+            || lease.capsule_revision() != reservation.capsule_revision
+        {
+            let _ = runner.cancel(lease, external_tool_runner::current_time_ms());
+            runner.revoke_session(
+                lease.session_id(),
+                external_tool_runner::current_time_ms(),
+            );
+            return Err(ManagedPublishError::InvalidScope);
+        }
+
+        let (cursor, blinking, dimension, viewport, scaled_margin) = {
+            let current = self.current();
+            let dimension = if self.current_grid().len() > 1 {
+                self.current_grid().grid_dimension()
+            } else {
+                current.dimension
+            };
+            (
+                current.cursor_from_ref(),
+                current.renderable_content.has_blinking_enabled,
+                dimension,
+                (
+                    self.contexts[self.current_index].width,
+                    self.contexts[self.current_index].height,
+                ),
+                self.contexts[self.current_index].scaled_margin,
+            )
+        };
+
+        let new_context = match Self::create_managed_context(
+            (&cursor, blinking),
+            self.event_proxy.clone(),
+            self.window_id,
+            rich_text_id,
+            dimension,
+            &self.config,
+            reservation,
+            guarded,
+            runner.clone(),
+        ) {
+            Ok(context) => context,
+            Err(error) => {
+                let _ = runner.cancel(lease, external_tool_runner::current_time_ms());
+                runner.revoke_session(
+                    lease.session_id(),
+                    external_tool_runner::current_time_ms(),
+                );
+                return Err(error);
+            }
+        };
+
+        let route_id = new_context.route_id;
+        self.contexts.push(ContextGrid::new_with_viewport(
+            new_context,
+            scaled_margin,
+            self.config.split_color,
+            self.config.split_active_color,
+            self.config.panel,
+            viewport.0,
+            viewport.1,
+        ));
+
+        if runner.mark_published(lease, route_id).is_err() {
+            self.contexts.pop();
+            return Err(ManagedPublishError::PublicationFailed);
+        }
+
+        self.current_index = self.contexts.len() - 1;
+        self.current_route = route_id;
+        Ok(route_id)
+    }
+
     fn create_context(
         cursor_state: (&Cursor, bool),
         event_proxy: T,
@@ -425,6 +737,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             dimension,
             title: ContextTitle::default(),
             ime: Ime::new(),
+            managed_session: None,
             _io_thread: io_thread,
         })
     }
@@ -553,6 +866,15 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         route_id: usize,
         sugarloaf: &mut Sugarloaf,
     ) -> bool {
+        if let Some(managed) = self
+            .contexts
+            .iter_mut()
+            .find_map(|grid| grid.get_by_route_id(route_id))
+            .and_then(|context| context.managed_session.as_mut())
+        {
+            managed.complete();
+        }
+
         // Dropping an explicitly closed Context causes its IO worker to emit a
         // delayed CloseTerminal. Consume that exact route once; never infer a
         // close for whichever tab happens to be active by then.

@@ -1,6 +1,6 @@
 # ADR 0012: First-party SSH and scoped session-launch boundary
 
-- Status: Proposed; acceptance is required before process-capable code is enabled
+- Status: Accepted by the project owner on 2026-08-22; production activation remains blocked by ADR 0003's two independent exact-head approvals and the evidence below
 - Date: 2026-08-13
 - Replaces: ADR 0003 only for the narrowly scoped first-party capability below
 
@@ -111,12 +111,23 @@ and lifecycle timeouts, DNS/connect/auth cancellation, hostile argument corpus,
 platform activation semantics, cleanup invariants, evidence metadata, private
 artifact policy, and nine redaction surfaces. Dedicated checks reject drift.
 
-The test-only broker now binds the verified principal to an exact reviewed
-package policy including digest, version, contract version, and repository-
-reviewed or first-party-signed proof. It also separates Windows, macOS, Linux,
-and disabled WSL resolution, retains native file-identity revalidation, and
-keeps the exact argv, bounded environment/cwd, expiring decision, session/
-capsule, replay, revocation, lifecycle, and redacted-audit controls.
+The production-compiled broker remains a compile-time hard denial. Its review
+harness binds a verified principal to an exact reviewed package policy including
+digest, version, contract version, and repository-reviewed or first-party-signed
+proof. It separates Windows, macOS, Linux, and disabled WSL resolution, retains
+native file-identity revalidation, and keeps exact argv, bounded environment/cwd,
+expiring decision, session/capsule, replay, revocation, lifecycle, and
+redacted-audit controls. The linked first-party candidate is deliberately
+unverified until a real loader supplies attestation and revocation evidence.
+
+As of 2026-08-22, one application-owned ExternalToolRunner is shared by every
+window. It caps active operations at 50, retains 256 redacted audit records,
+binds route ID to session ID, rejects completion before publication, and
+reconciles cancellation on route/application shutdown. ContextManager alone
+consumes the guarded executable, creates the exact platform PTY, inserts the new
+route before marking the lease published, and reconciles natural completion.
+The protected activation constant remains false, so this production code cannot
+resolve OpenSSH or create a managed child.
 
 The F2/D5.0 capability-free baseline is also implemented as of 2026-08-17.
 `automexia-devops::connections` contains bounded public-only records, strict
@@ -130,23 +141,26 @@ As of 2026-08-22, M3 also has a production-reachable but nonactivated
 preparation route. The application maps one current direct D4 record into a
 stable public profile and canonical pending F2 plan. Inventory generation and
 metadata revision bind the preparation; session.launch is the only requested
-capability; no executable identity exists yet; every runtime authority remains
-false. The Connection Hub projects nine public decisions into responsive
-Connection/Safety/Launch groups and keeps the primary action disabled. Exact
-aliases, opaque references, executable digests, and fingerprints do not enter
-presentation state. Selection, route, runtime-state, generation, catalog, and
+capability; no current executable identity exists yet; every resolved-plan
+authority remains false. The Connection Hub projects nine public decisions into
+responsive Connection/Safety/Launch groups. Its deny, allow-once, and
+allow-session approval actions are pointer- and mnemonic-accessible, but
+execution remains false and every attempt stops at the protected broker denial.
+Exact aliases, opaque references, executable digests, and fingerprints do not
+enter presentation state. Selection, route, runtime-state, generation, catalog, and
 metadata changes discard or rebuild the preparation. The existing
 identity-bound pure review remains the later consumer of M2-provided current
-executable, identity-observation, and host-trust evidence. No process, PTY,
-filesystem, network, credential, listener, host-trust mutation, or secret
-authority is enabled by this evidence.
-This evidence does not accept this ADR and does not enable the capability. The
-remaining acceptance evidence includes protected approval; binding a real
-package-loader attestation/revocation result to the frozen policy; visible
-decision/grant policy; atomic native check-to-spawn; application-owned process/
-PTY/route binding; execution of the native matrix on Windows/Linux/macOS/WSL;
-redaction across every listed surface; and controlled 1/10/50-session process,
-PTY, renderer, performance, and leak results. Exact limits and commands are in
+executable, identity-observation, and host-trust evidence. No process, PTY, network, credential, listener, host-trust mutation, or secret
+authority is reachable while the activation gate is false.
+
+The project owner's acceptance of this ADR records the architectural decision;
+it does not enable the capability or satisfy ADR 0003's protected-path rule.
+Remaining activation evidence includes two independent exact-head approvals;
+green hosted S0/release/CodeQL gates; real package-loader
+attestation/revocation; current executable and identity observation; execution
+of the native matrix on Windows/Linux/macOS/WSL; redaction across every listed
+surface; and controlled 1/10/50-session process, PTY, renderer, performance, and
+leak results. Exact limits and commands are in
 the [broker contract](../../developer/architecture.md).
 
 ## Consequences
@@ -166,5 +180,5 @@ through explicit later ADRs and the gates in the
 The application-owned approval and user-journey consequences of this boundary
 are specified in [Connection Hub](../../guide/remote-connections.md). Its renderer-neutral
 review/state model, externally owned credential recovery warning, and native
-evidence are required acceptance work; the document does not activate this
-proposed ADR or broaden its authority.
+evidence are required activation work; this document does not by itself enable managed
+launch or broaden its authority.

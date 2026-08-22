@@ -1,6 +1,6 @@
 # Remote connections
 
-Automexia separates **normal shell connections**, the **read-only D5.1 Connection Hub plus nonactivated D5.2 preparation review implemented for v0.5 source builds**, and the still-planned managed SSH/provider authority. The product review deliberately has no process or network authority.
+Automexia separates **normal shell connections**, the **read-only D5.1 Connection Hub plus nonactivated D5.2 guarded approval path implemented for v0.5 source builds**, and the still-gated managed SSH/provider authority. The approval surface deliberately has no reachable process or network authority.
 
 ## Current product boundary
 
@@ -8,9 +8,11 @@ Automexia separates **normal shell connections**, the **read-only D5.1 Connectio
 
 **Implemented locally / release-gated:** the read-only product Hub composes the
 bounded static OpenSSH inventory after exact file review, exposes public
-favorites/tags and the private library snapshot, and turns one selected direct
-record into a canonical pending F2 plan and disabled Connection Review. Launch
-and provider authority remain disabled.
+favorites/tags and the private library snapshot, and turns one selected or
+literal target into a canonical plan and actionable Connection Review. Allow
+once, allow for session, and deny exercise the fail-closed policy boundary. The
+activation gate is false and the linked package is unverified, so no managed
+process, PTY, network connection, or provider authority is reachable.
 
 **Planned:** reviewed system-OpenSSH launch, tunnels/routes, provider authentication and multi-cloud adapters, remote-file/session-memory/collaboration features, and later ecosystem/AI features.
 
@@ -156,9 +158,11 @@ which remains the execution and precedence authority. This also preserves
 existing agents, keychains, hardware tokens, certificates, host-key behavior,
 and user configuration without creating an Automexia secret vault.
 
-The future launch path remains blocked by proposed ADR 0012, package identity,
-visible grants, atomic check-to-spawn, native lifecycle evidence, and the D5
-release gates. D4 does not bypass any of those decisions.
+ADR 0012 is accepted, and the application runner, executable guard, approval
+surface, and PTY/route seam exist locally. Launch remains blocked by ADR 0003's
+exact-head approvals/server enforcement, package attestation and live
+revocation, a fresh current-executable review, native lifecycle/resource/
+accessibility evidence, and the D5 release gates. D4 bypasses none of them.
 
 
 ## Connection Hub workflow
@@ -179,18 +183,22 @@ PTY-inert surface. Its implemented journey is:
    a later scan fails.
 4. **Browse** with search, grouping, source/favorite/recent/tag filters,
    virtualization, and a public inspector.
-5. **Prepare a supported direct alias** with Enter. The route-owned review shows
-   nine public decisions in compact Connection/Safety/Launch groups, keeps the
-   action disabled, and supports pointer Back, Escape, and Enter on focused
-   Back.
-6. **Review and save** favorite/tag diffs using D4 revision CAS; reload on
+5. **Prepare a supported direct alias** with Enter, or press `L` to enter one
+   bounded literal host. The route-owned review groups public Connection,
+   Safety, and Launch facts without exposing aliases, paths, digests, or argv.
+6. **Decide explicitly:** choose Allow once (`A` or focused Enter), Allow for
+   session (`S`), or Deny (`D`). Pointer targets and accessibility buttons expose
+   the same three choices. In current builds, Allow reports that protected
+   review is pending and starts nothing.
+7. **Review and save** favorite/tag diffs using D4 revision CAS; reload on
    conflict and never write recent-use.
-7. **Stop at the authority boundary:** preparation and every disabled action
-   create no command, PTY, login, network request, or executable identity.
+8. **Stop at the authority boundary:** the false activation gate and unverified
+   package deny before executable resolution, so no command, PTY, login, or
+   network request occurs.
 
-D5.2 launch remains blocked until ADR 0012, the M2 broker, current executable
-and identity observations, and native lifecycle gates pass. The preparation
-review does not pre-authorize that later action.
+D5.2 launch remains blocked until the M2 protected, attestation, fresh executable
+review, native lifecycle/resource, and accessibility gates pass. An approval
+attempt does not pre-authorize a later launch.
 ## Exact launch boundary
 
 Managed process launch is intentionally narrower than general process-spawn authority. A launch request identifies an approved first-party publisher/capability, an expected executable kind, exact argv, a bounded environment, a validated working directory, and audit/session identifiers. The broker resolves and verifies the executable according to platform policy, checks grants and current file identity, launches without shell interpretation, associates the PTY with one route/session, and records a redacted result.

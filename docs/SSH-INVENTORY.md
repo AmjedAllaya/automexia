@@ -141,6 +141,8 @@ which remains the execution and precedence authority. This also preserves
 existing agents, keychains, hardware tokens, certificates, host-key behavior,
 and user configuration without creating an Automexia secret vault.
 
-The future launch path remains blocked by proposed ADR 0012, package identity,
-visible grants, atomic check-to-spawn, native lifecycle evidence, and the D5
-release gates. D4 does not bypass any of those decisions.
+ADR 0012 is accepted, and the guarded application launch seam exists locally.
+Production remains blocked by ADR 0003 exact-head approvals/server enforcement,
+loader/build attestation and live revocation, fresh current-executable review,
+native lifecycle/resource/accessibility evidence, and the D5 release gates. D4
+does not bypass any of those decisions.

@@ -2445,11 +2445,19 @@ fn verify_architecture() -> TaskResult {
     )?;
 
     let launch_broker = read(&app.join("src/context/launch_broker.rs"))?;
+    let external_tool_runner = read(&app.join("src/context/external_tool_runner.rs"))?;
     require(
-        context.contains("#[cfg(test)]")
-            && context.contains("pub mod launch_broker;")
-            && launch_broker.contains("pub const MANAGED_SESSION_LAUNCH_ENABLED: bool = false")
-            && launch_broker.contains("const _: () = assert!(!MANAGED_SESSION_LAUNCH_ENABLED)")
+        context.matches("pub mod launch_broker;").count() == 1
+            && context
+                .matches("pub mod external_tool_runner;")
+                .count()
+                == 1
+            && !context.contains("#[cfg(test)]\npub mod launch_broker;")
+            && !context.contains("#[cfg(test)]\npub mod external_tool_runner;")
+            && launch_broker
+                .contains("pub const MANAGED_SESSION_LAUNCH_ENABLED: bool = false")
+            && launch_broker
+                .contains("const _: () = assert!(!MANAGED_SESSION_LAUNCH_ENABLED)")
             && launch_broker.contains("Capability::SessionLaunch")
             && launch_broker.contains("Capability::ProcessSpawn")
             && launch_broker.contains("SessionLaunchDescriptor::new")
@@ -2466,14 +2474,37 @@ fn verify_architecture() -> TaskResult {
             && launch_broker.contains("pub fn rebind_session")
             && launch_broker.contains("safe_default_working_directory")
             && !launch_broker.contains("revoked_sessions")
-            && launch_broker.contains("production_broker_is_a_hard_denial_before_resolution")
-            && launch_broker.contains("executable_replacement_is_detected_even_when_size_is_unchanged")
-            && launch_broker.contains("accepted_destination_remains_one_literal_native_argument")
+            && launch_broker
+                .contains("production_broker_is_a_hard_denial_before_resolution")
+            && launch_broker.contains(
+                "executable_replacement_is_detected_even_when_size_is_unchanged",
+            )
+            && launch_broker
+                .contains("accepted_destination_remains_one_literal_native_argument")
             && launch_broker.contains("configured_executable_override_is_fail_closed")
-            && launch_broker.contains("decisions_are_expiring_and_bound_to_registered_capsule_scope")
-            && launch_broker.contains("one_ten_and_fifty_session_cycles_release_all_bounded_state")
+            && launch_broker
+                .contains("decisions_are_expiring_and_bound_to_registered_capsule_scope")
+            && launch_broker
+                .contains("one_ten_and_fifty_session_cycles_release_all_bounded_state")
+            && launch_broker.contains(
+                "linked_candidate_path_stays_fail_closed_and_redacted_without_attestation",
+            )
             && !launch_broker.contains(".spawn()")
             && !launch_broker.contains("create_pty")
+            && external_tool_runner
+                .contains("pub const MAX_CONCURRENT_EXTERNAL_TOOLS: usize = 50")
+            && external_tool_runner
+                .contains("pub const MAX_RUNNER_AUDIT_RECORDS: usize = 256")
+            && external_tool_runner
+                .contains("VerifiedExtension::linked_unverified_candidate()")
+            && external_tool_runner.contains("RunnerErrorCode::SafeDefaultUnavailable")
+            && external_tool_runner.contains("pub fn mark_published")
+            && external_tool_runner.contains("pub fn shutdown_now")
+            && !external_tool_runner.contains("create_exact_pty")
+            && !external_tool_runner.contains("std::process::Command")
+            && context.matches("teletypewriter::create_exact_pty(").count() == 2
+            && context.contains("pub fn publish_managed_context")
+            && context.contains("runner.mark_published(lease, route_id)")
             && api_model.contains("SessionLaunch")
             && api_model.contains("session.launch")
             && api_model.contains("impl CapabilityRequest")
@@ -2482,7 +2513,7 @@ fn verify_architecture() -> TaskResult {
             && api_model.contains(r#"try_from = "CapabilityDecisionWire""#)
             && api_model.contains("expires_at_ms")
             && api_model.contains("capsule_revision"),
-        "non-activated D3 broker lost its test-only gate, exact capsule/decision/replay scope, bounded lifecycle, fail-closed resolver, native identity/argv validation, single launch seam, or typed contracts",
+        "non-activated D3 launch path lost its production hard-deny gate, app-owned bounded runner, exact ContextManager PTY seam, route/session publication order, native identity/argv validation, or typed contracts",
     )?;
 
     let island_renderer = read(&app.join("src/renderer/island.rs"))?;

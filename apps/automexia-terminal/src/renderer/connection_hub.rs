@@ -80,6 +80,9 @@ pub enum ConnectionHubHit {
     CancelOverlay,
     SelectRow { visible_index: usize },
     ToggleFavorite { visible_index: usize },
+    ApproveOnce,
+    ApproveSession,
+    DenyManagedLaunch,
     BackToResults,
     Close,
     Inert,
@@ -108,6 +111,8 @@ struct Layout {
     connection_review_cards: Vec<Rect>,
     connection_review_back: Option<Rect>,
     connection_review_primary: Option<Rect>,
+    connection_review_session: Option<Rect>,
+    connection_review_deny: Option<Rect>,
     catalog_chrome_visible: bool,
     compact: bool,
 }
@@ -184,6 +189,31 @@ impl ConnectionHub {
             .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
         {
             return Some(ConnectionHubHit::BackToResults);
+        }
+        let approval_enabled = presentation
+            .direct_openssh_review
+            .as_ref()
+            .is_some_and(|review| review.approval_action_enabled);
+        if approval_enabled
+            && layout
+                .connection_review_primary
+                .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
+        {
+            return Some(ConnectionHubHit::ApproveOnce);
+        }
+        if approval_enabled
+            && layout
+                .connection_review_session
+                .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
+        {
+            return Some(ConnectionHubHit::ApproveSession);
+        }
+        if approval_enabled
+            && layout
+                .connection_review_deny
+                .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
+        {
+            return Some(ConnectionHubHit::DenyManagedLaunch);
         }
         if layout.connection_review_panel.is_some() {
             return Some(ConnectionHubHit::Inert);
@@ -1046,16 +1076,41 @@ impl ConnectionHub {
         });
         let connection_review_primary = connection_review_panel.map(|panel| {
             let tiny = panel.height < 180.0;
+            let action_gap = if tiny { 4.0 } else { 8.0 };
             bounded_to(
                 Rect {
                     x: panel.x + 14.0,
                     y: panel.y + panel.height - if tiny { 34.0 } else { 48.0 },
-                    width: (panel.width - 28.0).clamp(1.0, 360.0),
+                    width: ((panel.width - 28.0 - action_gap * 2.0) / 3.0).max(1.0),
                     height: if tiny { 28.0 } else { 34.0 },
                 },
                 panel,
             )
         });
+        let connection_review_session = connection_review_panel
+            .zip(connection_review_primary)
+            .map(|(panel, primary)| {
+                let action_gap = if panel.height < 180.0 { 4.0 } else { 8.0 };
+                bounded_to(
+                    Rect {
+                        x: primary.x + primary.width + action_gap,
+                        ..primary
+                    },
+                    panel,
+                )
+            });
+        let connection_review_deny = connection_review_panel
+            .zip(connection_review_session)
+            .map(|(panel, session)| {
+                let action_gap = if panel.height < 180.0 { 4.0 } else { 8.0 };
+                bounded_to(
+                    Rect {
+                        x: session.x + session.width + action_gap,
+                        ..session
+                    },
+                    panel,
+                )
+            });
         let mut connection_review_cards = Vec::new();
         if let (Some(panel), Some(primary)) =
             (connection_review_panel, connection_review_primary)
@@ -1115,6 +1170,8 @@ impl ConnectionHub {
             connection_review_cards,
             connection_review_back,
             connection_review_primary,
+            connection_review_session,
+            connection_review_deny,
             catalog_chrome_visible,
             compact,
         }
@@ -1168,7 +1225,7 @@ fn render_connection_review(
         sugarloaf.text_mut().draw(
             panel.x + 148.0,
             panel.y + 14.0,
-            "Preparation only · no process, PTY, or network",
+            "Protected checks run before any process starts",
             &small,
         );
     }
@@ -1222,7 +1279,7 @@ fn render_connection_review(
                         .sections
                         .get(1)
                         .map(|section| section.summary.as_str()),
-                    "Safety" => Some("Launch blocked · strict host keys"),
+                    "Safety" => Some("Protected checks required · strict host keys"),
                     _ => review
                         .sections
                         .get(8)
@@ -1244,23 +1301,80 @@ fn render_connection_review(
             "This connection cannot be prepared yet",
             &body,
         );
-        let diagnostic = presentation
-            .direct_openssh_diagnostic
-            .unwrap_or("connection-review-unavailable");
+        let diagnostic = managed_launch_recovery(
+            presentation
+                .direct_openssh_diagnostic
+                .unwrap_or("connection-review-unavailable"),
+        );
         sugarloaf
             .text_mut()
             .draw(panel.x + 14.0, panel.y + 82.0, diagnostic, &small);
     }
+    let approval_enabled = presentation
+        .direct_openssh_review
+        .as_ref()
+        .is_some_and(|review| review.approval_action_enabled);
+    if panel.height >= 200.0 {
+        if let Some(diagnostic) = presentation.direct_openssh_diagnostic {
+            let status = format!("⚠ {}", managed_launch_recovery(diagnostic));
+            if let Some(primary) = layout.connection_review_primary {
+                sugarloaf.text_mut().draw(
+                    primary.x,
+                    primary.y - 19.0,
+                    &truncated(&status, 72),
+                    &text(10.0, [255, 163, 72, 255], true),
+                );
+            }
+        }
+    }
     if let Some(primary) = layout.connection_review_primary {
-        let caption = if primary.width < 300.0 {
-            "Unavailable · verification pending"
+        let caption = if primary.width < 220.0 {
+            "Allow once  A"
         } else {
             presentation
                 .direct_openssh_review
                 .as_ref()
-                .map_or("Connection unavailable", |review| review.primary_label)
+                .map_or("Allow once", |review| review.primary_label)
         };
-        button(sugarloaf, primary, caption, true, &label);
+        button(sugarloaf, primary, caption, !approval_enabled, &label);
+    }
+    if let Some(session) = layout.connection_review_session {
+        button(
+            sugarloaf,
+            session,
+            if session.width < 130.0 {
+                "Session  S"
+            } else {
+                "Allow for session  S"
+            },
+            !approval_enabled,
+            &label,
+        );
+    }
+    if let Some(deny) = layout.connection_review_deny {
+        button(sugarloaf, deny, "Deny  D", !approval_enabled, &label);
+    }
+}
+
+fn managed_launch_recovery(diagnostic: &str) -> &'static str {
+    match diagnostic {
+        "connection-launch-protected-review-pending" => {
+            "Protected security review is still pending"
+        }
+        "connection-launch-package-attestation-unavailable" => {
+            "Package verification is unavailable"
+        }
+        "connection-launch-openssh-unavailable" => "System OpenSSH was not found",
+        "connection-launch-executable-changed" => "OpenSSH changed; review again",
+        "connection-launch-capacity-reached" => "50 managed sessions are already active",
+        "connection-launch-review-stale" => "This review changed; reopen it",
+        "connection-launch-working-directory-unavailable" => {
+            "A safe working folder is unavailable"
+        }
+        "connection-launch-route-unavailable" => "A new terminal route is unavailable",
+        "connection-launch-publication-failed" => "The new terminal could not be opened",
+        "connection-launch-denied" => "The connection request was denied",
+        _ => "Managed SSH is unavailable",
     }
 }
 
@@ -1463,7 +1577,10 @@ fn status_summary(
             .map_or_else(|| "Enter one host · preparation only".into(), str::to_owned);
     }
     if presentation.view.route == HubRoute::Review {
-        return "Preparation only · launch unavailable".into();
+        return presentation.direct_openssh_diagnostic.map_or_else(
+            || "Choose an approval · protected checks run before launch".into(),
+            |diagnostic| managed_launch_recovery(diagnostic).into(),
+        );
     }
     match &presentation.grant_review {
         GrantReviewState::Reviewing { .. } => "Reviewing selected files".into(),
@@ -2201,8 +2318,9 @@ mod tests {
                 .collect(),
                 changed_fields: Vec::new(),
                 warnings: Vec::new(),
-                primary_label: "Connection unavailable—verification pending",
+                primary_label: "Check & allow once  [A / Enter]",
                 execution_enabled: false,
+                approval_action_enabled: true,
                 accessibility_tree: Vec::new(),
             });
         presentation
@@ -2282,7 +2400,7 @@ mod tests {
     }
 
     #[test]
-    fn connection_review_is_responsive_inert_and_has_a_pointer_back_action() {
+    fn connection_review_is_responsive_and_exposes_all_pointer_decisions() {
         for dimensions in [
             (360.0, 280.0, 1.0),
             (1280.0, 720.0, 1.0),
@@ -2293,13 +2411,15 @@ mod tests {
             let panel = layout.connection_review_panel.unwrap();
             let back = layout.connection_review_back.unwrap();
             let primary = layout.connection_review_primary.unwrap();
+            let session = layout.connection_review_session.unwrap();
+            let deny = layout.connection_review_deny.unwrap();
             assert_eq!(layout.connection_review_cards.len(), 3);
             assert!(!layout.catalog_chrome_visible);
             assert!(layout.setup_panel.is_none());
             assert!(layout.rows.is_empty());
             assert_eq!(
                 status_summary(&presentation, "ignored"),
-                "Preparation only · launch unavailable"
+                "Choose an approval · protected checks run before launch"
             );
             if dimensions == (360.0, 280.0, 1.0) {
                 assert!(layout
@@ -2311,7 +2431,7 @@ mod tests {
                 .connection_review_cards
                 .iter()
                 .copied()
-                .chain([panel, back, primary])
+                .chain([panel, back, primary, session, deny])
             {
                 assert!(rect.x >= layout.card.x);
                 assert!(rect.y >= layout.card.y);
@@ -2326,7 +2446,15 @@ mod tests {
             );
             assert_eq!(
                 hub.hit_test(primary.x + 1.0, primary.y + 1.0, dimensions),
-                Some(ConnectionHubHit::Inert)
+                Some(ConnectionHubHit::ApproveOnce)
+            );
+            assert_eq!(
+                hub.hit_test(session.x + 1.0, session.y + 1.0, dimensions),
+                Some(ConnectionHubHit::ApproveSession)
+            );
+            assert_eq!(
+                hub.hit_test(deny.x + 1.0, deny.y + 1.0, dimensions),
+                Some(ConnectionHubHit::DenyManagedLaunch)
             );
         }
     }

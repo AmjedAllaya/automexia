@@ -1,14 +1,13 @@
 # Connection Hub product, security, and delivery specification
 
 Status: D5.1/F3 is **fully implemented at the source and local Windows
-boundary**. The product exposes a read-only modal with explicit reviewed native
-file selection, bounded inventory browsing, public favorite/tag CAS review,
-read-only recent/library state, and visibly disabled connection authority. The
-non-activated D5.2 slice also provides one bounded transient literal-host editor
-and the shared disabled Connection Review. Native macOS/Linux picker/permission
-and controlled Narrator/NVDA, VoiceOver, and Orca evidence remain partial
-external release gates. D5.2 managed launch and D6 provider execution are not
-implemented; v0.4 ships neither.
+boundary**. D5.2 is **partially done and nonactivated**: the read-only Hub,
+literal-host editor, actionable three-decision review, one fail-closed
+application runner, guarded PTY seam, and exact route publication are local.
+Activation is false and the package unverified, so v0.4 starts no managed child.
+Protected approvals, attestation, current-executable review binding, native
+OpenSSH/cleanup/resources/accessibility, later connection features, and all D6
+provider execution remain.
 This document is the implementation authority for Automexia's Connection Hub.
 The [roadmap](ROADMAP.md) owns release order, the
 [stabilization roadmap](STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track)
@@ -908,7 +907,7 @@ never substitutes for deterministic PR tests.
 ### D5.0 - contract, threat model, and UX baseline
 
 Status: **Partially done** overall; all local implementation rows are fully done
-and ADR 0012's protected decision remains external/not done.
+and ADR 0003 protected activation evidence remains external.
 
 The 2026-08-17 second-pass audit initially reclassified the schema/validation,
 auth reducer, and renderer-neutral UX rows as **Partially done**. It then sealed
@@ -918,8 +917,9 @@ hardened roving focus, loading progress, modal focus cycles, and value-redacted
 action labels. Those rows are **Fully done locally** again with 30 required
 regressions; authority and protected-ADR status did not change.
 
-- [ ] **Not done externally:** accept or supersede ADR 0012 through protected
-  review before the phase closes or any authority activates.
+- [ ] **Partially done externally:** ADR 0012 is owner-accepted; obtain ADR
+  0003's exact-head approvals/server enforcement, attestation, and native proof
+  before the phase closes or any authority activates.
 - [x] **Fully done locally:** freeze bounded versioned records, state machines,
   typed action/policy models, deterministic approval fingerprints, resource
   ceilings, privacy rules, keyboard/focus/reading order, responsive layouts,
@@ -936,13 +936,14 @@ regressions; authority and protected-ADR status did not change.
 Implementation owners are `automexia-devops/src/connections`,
 `automexia-ui-model/src/connection_hub.rs`, and
 `tests/fixtures/connection-hub`. The pure Hub projection remains the semantic source of truth. D5.1 adapts it
-into the read-only product dialog; its primary connection action is disabled and
-Enter opens review only. D5.2 owns all connection execution and lifecycle.
+into the read-only product dialog. D5.2 now owns actionable approval, the
+fail-closed runner, and guarded PTY/route publication; Enter never launches from
+the result list.
 
 Exit status: architecture, mutation, hostile-fixture, model, layout,
 accessibility, fuzz-build, and benchmark-build gates pass locally with no
-managed process. Overall D5.0 stays **Partially done** until ADR 0012 receives
-its protected decision.
+production managed process. Overall D5.0 stays **Partially done** until ADR
+0003 protected activation, attestation, and native evidence pass.
 ### D5.1 - read-only Hub and first-run detection
 
 - [x] **Fully done** — Connect D4 snapshots through one Router-owned, joined,
@@ -968,22 +969,22 @@ Exit achieved locally: 10 runtime, 6 controller, 4 renderer, 33 D4, 32 UI-model,
 target. This exit does not activate D5.2.
 ### D5.2 - reviewed OpenSSH launch and lifecycle
 
-- [x] **Fully done at the non-activated boundary** — Compose one current direct
-  D4 record or one bounded transient literal host into the canonical pending F2
-  plan and shared disabled Connection Review.
-- [x] **Fully done at the non-activated product boundary** — Provide the
-  **Enter host** action, screen-tested `L` mnemonic, 512-byte exact grammar,
-  atomic paste/IME rejection, field/Review/Cancel focus loop, one visible
-  Cancel path plus Escape/owning-surface cleanup, non-overlapping pointer
-  controls, conservative production risk, no persistence/history, and
-  tiny-to-8K responsive geometry.
-- [ ] **Not done** — Activate the application-owned exact launch broker only
-  after protected approval, executable/identity observation, atomic
-  check-to-spawn, PTY/process ownership, cancellation, cleanup, and native
-  evidence pass.
+- [x] **Fully done locally; nonactivated** — Compose one current direct D4
+  record or bounded transient literal host into the canonical F2 plan and
+  actionable Connection Review.
+- [x] **Fully done locally; nonactivated** — Provide the `L` editor, 512-byte
+  grammar, atomic paste/IME rejection, one Cancel/Escape path, focus-safe
+  Allow once/session/deny actions, A/Enter/S/D keys, accessibility semantics,
+  fixed recovery, and tiny-to-8K pointer geometry.
+- [x] **Fully done locally; nonactivated** — Own one application runner with
+  exact package/scope/argv/environment/cwd, 50 active operations, 256 audits,
+  executable-guard revalidation, ContextManager-only PTY creation, publication
+  after route insertion, cancellation/revocation, route close, and shutdown.
+- [ ] **Partially done** — ADR 0012 is accepted; ADR 0003 approvals/enforcement,
+  real attestation, current resolved executable in a fresh review, native
+  forced cleanup/OpenSSH/resources/accessibility, and activation remain.
 - [ ] **Not done** — Add typed user/port/routes, identity/agent/certificate
-  public status, cancellation/reconnect, jumps, typed tunnels, host-key
-  explanations, capability approvals, revocation, and local audit.
+  public status, reconnect/receipts, jumps, tunnels, and host-key explanation.
 
 Exit: D5 native/security/performance matrix passes on Windows/macOS/Linux;
 disabled extension and ordinary manual SSH remain unchanged.
