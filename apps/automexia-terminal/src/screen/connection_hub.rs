@@ -8,12 +8,22 @@ use automexia_ui_model::connection_hub::{
 };
 use rio_window::{
     event::{ElementState, KeyEvent},
-    keyboard::{Key, NamedKey},
+    keyboard::{Key, ModifiersState, NamedKey},
 };
 
 use crate::renderer::connection_hub::ConnectionHubHit;
 
 use super::Screen;
+
+fn is_literal_destination_shortcut(logical_key: &Key, modifiers: ModifiersState) -> bool {
+    !modifiers.control_key()
+        && !modifiers.super_key()
+        && !modifiers.alt_key()
+        && matches!(
+            logical_key,
+            Key::Character(value) if value.eq_ignore_ascii_case("l")
+        )
+}
 
 impl Screen<'_> {
     pub fn open_connection_hub(&mut self) {
@@ -198,13 +208,7 @@ impl Screen<'_> {
             }
         }
         if self.connection_hub.can_begin_literal_destination_entry()
-            && !modifiers.control_key()
-            && !modifiers.super_key()
-            && !modifiers.alt_key()
-            && matches!(
-                &key_event.logical_key,
-                Key::Character(value) if value.eq_ignore_ascii_case("l")
-            )
+            && is_literal_destination_shortcut(&key_event.logical_key, modifiers)
         {
             let _ = self.connection_hub.begin_literal_destination_entry();
             self.sync_connection_hub();
@@ -407,5 +411,43 @@ impl Screen<'_> {
 
     pub fn shutdown_connection_hub(&self) {
         self.connection_hub.shutdown();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn literal_destination_shortcut_is_mnemonic_and_never_steals_modified_keys() {
+        for value in ["l", "L"] {
+            assert!(is_literal_destination_shortcut(
+                &Key::Character(value.into()),
+                ModifiersState::empty(),
+            ));
+        }
+        assert!(is_literal_destination_shortcut(
+            &Key::Character("L".into()),
+            ModifiersState::SHIFT,
+        ));
+        for modifiers in [
+            ModifiersState::CONTROL,
+            ModifiersState::ALT,
+            ModifiersState::SUPER,
+            ModifiersState::CONTROL | ModifiersState::ALT,
+        ] {
+            assert!(!is_literal_destination_shortcut(
+                &Key::Character("l".into()),
+                modifiers,
+            ));
+        }
+        assert!(!is_literal_destination_shortcut(
+            &Key::Character("ll".into()),
+            ModifiersState::empty(),
+        ));
+        assert!(!is_literal_destination_shortcut(
+            &Key::Named(NamedKey::Enter),
+            ModifiersState::empty(),
+        ));
     }
 }

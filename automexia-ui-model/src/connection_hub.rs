@@ -839,13 +839,6 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
         cancel.focusable = true;
         cancel.actions = vec!["cancel".into()];
         accessibility_tree.push(cancel);
-        let mut close = AccessibilityNode::new(
-            "connection-close",
-            AccessibilityRole::Button,
-            "Close Connection Hub",
-        );
-        close.focusable = true;
-        accessibility_tree.push(close);
         vec![
             "connection-hub-title".into(),
             "literal-ssh-instructions".into(),
@@ -853,7 +846,6 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
             "literal-ssh-status".into(),
             "literal-ssh-review".into(),
             "literal-ssh-cancel".into(),
-            "connection-close".into(),
         ]
     } else {
         if catalog_controls_visible {

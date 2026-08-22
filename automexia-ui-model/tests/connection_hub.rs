@@ -314,9 +314,12 @@ fn literal_destination_entry_replaces_catalog_semantics_and_exposes_a_focusable_
             "literal-ssh-status",
             "literal-ssh-review",
             "literal-ssh-cancel",
-            "connection-close",
         ]
     );
+    assert!(!view
+        .accessibility_tree
+        .iter()
+        .any(|node| node.id == "connection-close"));
 
     let mut valid = request(&connections, Viewport::new(1_280.0, 720.0, 1.0));
     valid.literal_destination_entry = true;

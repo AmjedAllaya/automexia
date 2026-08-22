@@ -117,6 +117,10 @@ key or command to the PTY.
 | `Enter` | Review a valid host or activate the focused Review/Cancel control. |
 | `Escape` | Cancel and clear the transient host editor; from review, return to results. |
 
+While the host editor owns the modal, its visible Cancel control replaces the
+redundant top-level close icon. This keeps the focus order and pointer targets
+unambiguous at small scaled viewports.
+
 ## Search mode
 
 | Shortcut | Result |

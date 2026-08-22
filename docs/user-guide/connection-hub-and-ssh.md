@@ -121,8 +121,11 @@ disabled.
 The literal editor accepts one exact host argument only. User, port, URI, IPv6,
 jump, tunnel, wildcard, Unicode, whitespace, control, bidirectional, option, and
 shell forms fail closed; rejected paste or IME text is not partially inserted.
-Tab and Shift+Tab stay inside the editor, Review, and Cancel controls. Cancel,
-close, or successful preparation clears the editor.
+Tab and Shift+Tab stay inside the editor, Review, and Cancel controls. While
+the nested editor is open, Cancel replaces the redundant top-level close icon
+so scaled small viewports keep one clear, non-overlapping dismissal action;
+Escape performs the same cancellation. Cancel, owning-surface close, or
+successful preparation clears the editor.
 
 Exact inventory aliases, opaque identity/source references, executable digests,
 and plan fingerprints are not copied into presentation state. Inventory
