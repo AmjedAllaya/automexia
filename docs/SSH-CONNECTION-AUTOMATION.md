@@ -1,12 +1,12 @@
 # SSH access, multi-cloud connections, and automation recipes
 
 Status: D5.1's read-only product Hub is fully implemented locally. D5.2 is
-**partially done** only at a pure, non-activated M3 review boundary: exact direct
-destination grammar, stale plan/revision binding, and a complete disabled
-renderer-neutral review exist. Product connection wiring, OpenSSH/PTY launch,
-reconnect/receipts/cleanup, native evidence, and D6 multi-cloud delivery are not
-implemented. Automexia v0.4 does not ship managed connections or automatic
-remote actions; ordinary user-entered system-tool commands remain unchanged.
+**partially done and nonactivated**: exact direct preparation, an actionable
+three-decision review, one fail-closed application runner, guarded PTY creation,
+and route publication are implemented locally. Activation remains false and the
+linked package unverified. Protected approvals, attestation, current-executable
+review binding, native OpenSSH/cleanup/resources, reconnect/receipts, later
+routes/tunnels, and D6 multi-cloud remain. Ordinary shell commands are unchanged.
 This document is the implementation authority for connection profiles and
 connection-scoped automation. The [Connection Hub](CONNECTION-HUB.md) owns the
 overall inventory, authentication, review, and responsive UI contract. The
@@ -56,10 +56,10 @@ The current repository provides:
 - the F3 private transactional Connection Library for validated profiles,
   recipes, and Hub preferences, with CAS/recovery and redacted fresh-ID
   transfer; and
-- the M3 pure direct-OpenSSH review binding: one inventory-typed concrete alias or
-  one bounded literal host, exact `ssh`/`session.launch` identity, profile/
-  source/capsule/observation/trust invalidation, redacted argv shape, and a
-  renderer-neutral disabled review with no added authority.
+- the M2/M3 direct-OpenSSH boundary: one inventory alias or bounded literal
+  host, exact `ssh`/`session.launch` intent, revision invalidation, redacted
+  review, allow-once/session/deny UX, one hard-disabled application runner, and
+  ContextManager-owned guarded PTY/route publication.
 
 It now provides the D5.1 rendered read-only Connection Hub in v0.5 source
 builds, but does **not** provide a profile/recipe editor, automatic SSH launch,
@@ -84,7 +84,8 @@ UI examples remain planned contracts, not instructions for v0.4.
   modal cycles, and value-redacted human labels. Thirty required regressions and
   structured provider/auth/layout/accessibility fixtures have property,
   mutation, architecture, fuzz, and benchmark ownership.
-- **Not done externally:** ADR 0012 protected acceptance.
+- **Partially done externally:** ADR 0012 is owner-accepted; ADR 0003 protected
+  exact-head approvals/server enforcement and native evidence remain.
 - **Fully done separately in D5.1:** private transactional profile/recipe/
   preference persistence, explicit recovery, fault-preserving writes, and
   redacted fresh-ID transfer.
@@ -730,8 +731,8 @@ The application remains the only owner allowed to attach a process to a route.
 
 Status: **Partially done** overall.
 
-- [ ] **Not done externally:** accept or supersede ADR 0012 through protected
-  review.
+- [ ] **Partially done externally:** ADR 0012 is owner-accepted; obtain ADR
+  0003's two independent exact-head approvals and server enforcement.
 - [x] **Fully done locally:** freeze bounded profile, recipe, step, connection,
   state, result, review, plan, and capability schemas.
 - [x] **Fully done locally:** implement strict validation, revision fields,
@@ -792,18 +793,22 @@ persistence/migration, and native UI evidence remain before D5C is fully done.
 
 ### D5D - managed system OpenSSH
 
-Status: **Partially done** at the non-activated M3 review-model boundary.
+Status: **Partially done at the nonactivated review-to-route boundary.**
 
-- [ ] **Partially done:** the reviewed one-argument inventory-typed alias and
-  literal-host grammar, exact F2/revision/executable/capability binding, hostile
-  rejection, stale invalidation, redacted debug/argv shape, and complete
-  renderer-neutral review exist; D4-record-to-F2 product composition remains.
-- [ ] **Not done:** product controller/renderer connection action, accepted M2
-  activation, independent PTY attachment, system OpenSSH launch, prompt and
-  diagnostic passthrough, and native/manual compatibility evidence.
-- [ ] **Partially done:** pure cancel/rebind/revocation already belongs to the
-  test-only broker; reconnect, notifications, receipts, process cleanup, and
-  route cleanup remain not done.
+- [x] **Fully done locally:** one inventory alias or bounded literal host maps
+  to the canonical F2 plan with exact capability/destination/revision binding,
+  hostile rejection, stale invalidation, redaction, and product composition.
+- [x] **Fully done locally; nonactivated:** the product review exposes
+  allow-once/session/deny with pointer, focus-aware A/Enter/S/D keys,
+  accessibility semantics, and fixed redacted recovery.
+- [ ] **Partially done:** one app runner owns exact package/scope/argv,
+  environment/cwd bounds, cancellation/revocation, 50 active operations, 256
+  audits, guarded executable handoff, independent PTY/route publication, and
+  shutdown. Protected activation, attestation, current-executable review
+  binding, native prompt/diagnostic and forced-cleanup evidence remain.
+- [ ] **Partially done:** route close and app shutdown reconcile locally;
+  reconnect, notifications, durable receipts, native process cleanup, and
+  route-resource proof remain.
 - [ ] **Not done:** explicit user/port/IPv6 destinations, config-defined jump
   chains, typed jumps, host-key detail, public identity readiness probes, and
   tunnels remain separately reviewed M4/M5 slices.

@@ -64,15 +64,22 @@ The shell editor owns the command buffer. Automexia's completion refresh may run
 
 ### Managed SSH and process launch
 
-Static OpenSSH inventory has no network/process authority. The current
-nonactivated application adapter may clone one selected direct record and build
-a canonical pending F2 plan plus disabled Connection Review; it resolves no
-executable and creates no process, PTY, credential, or network state. A future
-launch request must still pass the one application-owned broker that verifies
-publisher/grant, current executable and file identity, exact argv,
-environment/cwd limits, session ownership, and redacted audit state. System
-OpenSSH then retains full SSH protocol, configuration, agent/key, prompt, and
-host-key authority.
+Static OpenSSH inventory has no network/process authority. The nonactivated
+application path can prepare a selected or literal target and expose public
+allow-once, allow-for-session, and deny decisions. One Router-owned
+`ExternalToolRunner` then enforces exact package/capability/session/capsule/argv,
+a 50-operation ceiling, a 256-record redacted audit FIFO, bounded trusted
+environment/cwd, executable identity revalidation, cancellation, and shutdown.
+`ContextManager` alone consumes the exact executable guard, creates the PTY,
+inserts the matching route, and marks publication afterward.
+
+ADR 0012 is accepted, but the production activation constant remains false and
+the linked candidate remains unverified. Authorization therefore denies before
+filesystem resolution and no managed child can start. Activation still requires
+ADR 0003 exact-head approvals and server enforcement, loader/build attestation
+and live revocation, a fresh current-executable review, and native lifecycle,
+resource, pixel, and accessibility evidence. System OpenSSH retains complete SSH
+protocol, configuration, agent/key, prompt, and host-key authority.
 
 ## Session and extension model
 

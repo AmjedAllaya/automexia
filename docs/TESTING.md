@@ -220,7 +220,7 @@ pre-existing verifier state and always removes settings it created. WPR cancels
 a recording it started on failure and can delete the private ETL after hashing
 and recording its size/host manifest.
 
-### Non-activated session-launch review boundary
+### D0/D3 non-activated session-launch review boundary
 
 The pull-request policy is part of this fail-closed boundary. It classifies the
 terminal context/process owner, extension API/runtime, SSH extension,
@@ -239,8 +239,9 @@ This local check is defense in depth. Production activation still requires two
 actual independent human approvals and server-side rules that prevent the
 workflow/checker from weakening itself.
 
-The proposed D3 broker is compiled only by frontend tests. Run its versioned
-D0/D3 contract, mutation checks, and capability/package constructors with:
+The D3 broker, one application runner, approval UI, and guarded route seam
+compile in production but remain fail-closed. Run their versioned contract,
+mutation, ownership, model, and native-seam checks with:
 
 ```text
 cargo test -p automexia-extension-api --lib --locked
@@ -249,38 +250,38 @@ cargo check -p teletypewriter --target x86_64-apple-darwin --locked
 python tools/ci/check_session_launch_d0.py
 python tools/ci/test_session_launch_d0.py
 cargo test -p automexia-terminal --bin automexia --locked context::launch_broker::tests
+cargo test -p automexia-ui-model --locked --test direct_openssh_review
+cargo test -p automexia-terminal --bin automexia --locked connection_review_is_responsive_and_exposes_all_pointer_decisions
+cargo test -p automexia-terminal --bin automexia --locked direct_openssh_review_mnemonics_are_focus_aware_and_never_reach_the_pty
 cargo xtask verify architecture
 ```
 
-The checker locks schema-1 immutability and the active schema-2 contract:
-production-disabled activation, trusted-loader digest source/size, exact package
-version/contract/verification, manual-shell and missing-client behavior, grant
-and audit fields, strict defaults, nine trust boundaries, four-platform
-resolution, the authority ceiling, and nineteen required native scenarios.
+The checker locks schema-1 immutability and schema-2's production-disabled
+activation, linked unverified principal, trusted digest source/size, exact
+version/contract/verification, manual-shell behavior, grants/audits/defaults,
+nine trust boundaries, four-platform resolution, authority ceiling, nineteen
+native scenarios, one production broker/runner owner, runner bounds, one
+ContextManager guarded-PTY owner, and actionable review semantics. Mutation
+tests reject re-gating the production modules under `cfg(test)` or widening
+their authority.
 
-The mutation suite also locks the hermetic loopback protocol, isolated
-disposable credential/`known_hosts`/agent state, bounded probes and exact
-timeouts, DNS/connect/auth cancellation, platform activation rules, cleanup
-invariants, evidence metadata, artifact policy, and nine redaction surfaces.
-Rust tests cover Windows volume/file-index and Unix device/inode identity,
-fixed platform roots, unverified/mismatched package denial, one literal
-destination argument, option/environment/secret isolation, fail-closed
-override resolution, authorization-owned cwd fallback, decision expiry/scope,
-capsule rebind, replay, nonce exhaustion, redaction, revocation, stale/sibling
-leases, and zero-retained-state 1/10/50 pure cycles.
+Rust tests cover fixed roots and native file identity, unverified/mismatched
+package denial before resolution, one literal argument, hostile option/control/
+size cases, bounded environment and trusted cwd, expiry/scope/replay/revocation,
+1/10/50 pure lifecycles, runner capacity and FIFO audit bounds, publish-before-
+complete, cancellation/shutdown, redaction, exact route mapping, focus-aware
+A/Enter/S/D keys, three accessibility decisions, and tiny-to-8K pointer
+geometry. The Windows PTY suite verifies the held executable, exact application
+path, non-inherited PATH, child exit, Job Object ownership, and repeated ConPTY
+cleanup; the macOS target check is compile evidence only.
 
-The PTY tests now exercise the guarded native seam on Windows: replacement is
-denied while the executable handle is held, CreateProcessW receives an exact
-application path, the managed environment does not inherit PATH, the child
-exit is observed, and repeated ConPTY cycles close. The installed macOS target
-cross-checks the descriptor implementation but is not a native runtime test.
-
-These tests do not spawn OpenSSH and are not evidence that managed SSH is
-available. Protected approvals, real package-loader attestation/revocation
-binding, application runner/PTY/route ownership, cancellation/teardown, PID
-reuse, application close, native Linux/macOS execution of host-key/auth/tunnel/
-hostile-output scenarios, and 1/10/50-session process/PTY/renderer results remain
-activation gates listed in
+These checks deliberately do not start production OpenSSH:
+`MANAGED_SESSION_LAUNCH_ENABLED` remains false and the linked candidate remains
+`Unverified`. ADR 0003 protected exact-head approvals/server enforcement, real
+loader attestation/revocation, native Linux/macOS plus controlled Windows
+OpenSSH host-key/auth/tunnel/hostile-output scenarios, graceful/forced child-tree
+proof, controlled pixels/screen readers, and 1/10/50 process/PTY/renderer
+resource results remain activation gates in
 [ADR 0012](adr/0012-first-party-ssh-and-session-launch-boundary.md) and the
 [broker contract](SESSION-LAUNCH-BROKER.md).
 

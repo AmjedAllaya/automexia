@@ -8,8 +8,9 @@ PTY processing never perform extension I/O or wait for worker completion. New
 process or network capabilities require a security review, two protected-path
 approvals, and a replacement ADR.
 
-[ADR 0012](0012-first-party-ssh-and-session-launch-boundary.md) is the proposed
+[ADR 0012](0012-first-party-ssh-and-session-launch-boundary.md) is the accepted
 replacement only for a narrowly scoped, application-owned first-party
-`session.launch` capability after v0.4 hostile-output and release gates pass.
-Until ADR 0012 is accepted and its prerequisites are implemented, this ADR's
+`session.launch` capability. This ADR still requires two independent protected-
+path approvals bound to the exact head plus non-bypassable server enforcement,
+attestation, and native evidence before activation. Until those gates pass, the
 local-read-only runtime boundary remains authoritative.

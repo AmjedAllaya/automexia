@@ -215,6 +215,13 @@ impl ConnectionHubController {
     pub const fn execution_requested(&self) -> bool {
         self.interaction.execution_requested
     }
+    pub fn direct_openssh_preparation(&self) -> Option<&DirectOpenSshPreparation> {
+        self.direct_openssh_preparation.as_ref()
+    }
+
+    pub fn report_direct_openssh_diagnostic(&mut self, diagnostic: &'static str) {
+        self.direct_openssh_diagnostic = Some(diagnostic);
+    }
 
     pub fn focus_search(&mut self) {
         self.interaction.focus = HubFocus::Search;

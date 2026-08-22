@@ -1,28 +1,36 @@
 # Exact-argument session-launch broker
 
-Automexia contains a reviewable, test-only candidate for the v0.5
-`session.launch` boundary. It is not a user-facing feature, is not present in
-the production module graph, and cannot create a process or PTY. This page is
-the exact contract and evidence reference for that candidate.
+Automexia contains a production-compiled but hard-disabled candidate for the
+v0.5 `session.launch` boundary. The application-owned runner, guarded native
+executable seam, ContextManager PTY/route adapter, and approval surface are
+locally implemented. The compile-time activation gate is false and the linked
+extension principal is unverified, so no managed OpenSSH process or PTY is
+reachable. This page is the exact contract and evidence reference.
 
 The governing decisions are [ADR 0003](adr/0003-extension-capability-and-threading.md)
-and proposed [ADR 0012](adr/0012-first-party-ssh-and-session-launch-boundary.md).
-ADR 0003 remains authoritative until ADR 0012 receives the required security
-review and two protected-path approvals.
+and accepted [ADR 0012](adr/0012-first-party-ssh-and-session-launch-boundary.md).
+The project owner accepted ADR 0012 on 2026-08-22. ADR 0003's requirement for
+two independent exact-head protected-path approvals remains unsatisfied and
+continues to block production activation.
 
 ## Current activation state
 
-- `apps/automexia-terminal/src/context/mod.rs` includes the broker only under
-  `#[cfg(test)]`.
+- The broker and `ExternalToolRunner` are each declared once in the production
+  module graph.
 - `MANAGED_SESSION_LAUNCH_ENABLED` is a compile-time `false` constant guarded
   by a constant assertion.
-- The production frontend has no broker construction, successful authorization,
-  process spawn, PTY attachment, quick-connect UI, persistence, or SSH network
-  path.
+- Router owns one runner and shares it with every window; shutdown reconciles
+  active leases and the bounded redacted audit buffer.
+- The linked `devops-ssh` candidate is `PackageVerification::Unverified`.
+- ContextManager is the only owner that consumes a guarded executable and calls
+  `create_exact_pty`; it inserts the Context before marking the lease published.
+- The Connection Hub exposes deny, allow-once, and allow-session approval
+  actions, but `execution_enabled` remains false and every attempt returns a
+  fixed recovery state before executable or PTY work.
 - Manual `ssh host` remains normal shell input and is unchanged.
 
-This distinction is intentional: implementing and reviewing validation code is
-allowed before the security decision; exposing process authority is not.
+This distinction is intentional: application ownership and UX can be reviewed
+without weakening the protected gate or claiming a shipped connection path.
 
 ## Why exact argv and system OpenSSH
 
@@ -49,27 +57,30 @@ to profile/source/capsule revisions, the F2 plan fingerprint, executable
 identity digest, validated identity-observation content/generation/freshness, host-trust state, and a fresh
 review fingerprint. Debug and UI views redact the destination argument.
 
-This is not broker activation. There is no production conversion from the M3
-request to `LaunchRequest`, no controller action, and no process or PTY. A
-future app-owned adapter must revalidate the M3 binding and the broker's
-session/capsule/decision/file-identity scopes immediately before the reviewed
-atomic spawn path.
+The application adapter now revalidates the current preparation, constructs a
+typed `CapabilityRequest`, expiring `CapabilityDecision`, and one-argument
+`LaunchRequest`, reserves an exact route/session/operation tuple, and submits it
+to the single app-owned runner. The candidate principal remains unverified and
+the protected gate denies before filesystem resolution. On a future successful
+authorization, ContextManager alone consumes the guard and publishes a new
+independent PTY route. Current executable/identity observation and real loader
+attestation remain activation prerequisites.
 
 ## Trust and data flow
 
-The proposed flow is:
+The guarded flow, currently stopped by the first two activation checks, is:
 
 ```text
-verified first-party principal
-  + typed CapabilityRequest
-  + typed LaunchRequest
-  + matching CapabilityDecision
-  + exact session/capsule revision
+activation enabled + attested first-party principal
+  + typed capability/launch/decision
+  + exact operation/session/capsule/route
   + core-owned cwd/environment
-    -> application broker validates all scopes and limits
-    -> resolver returns canonical executable + file identity
-    -> operation lease binds extension/session/capsule/generation
-    -> existing SessionLaunchDescriptor seam receives exact argv
+    -> application broker validates scopes, policy, and limits
+    -> resolver records canonical executable identity
+    -> runner opens and re-compares the exact executable guard
+    -> operation lease binds package/session/capsule/generation
+    -> ContextManager consumes guard and creates the PTY
+    -> Context insertion precedes lease publication and renderer wake
 ```
 
 The extension never receives or controls a PTY handle, process handle, route,
@@ -83,16 +94,17 @@ application capability broker, future PTY/process owner, renderer/VT parser,
 OpenSSH child, OpenSSH configuration, agent/keychain/hardware owner, remote
 host, and future provider helper. Every row fixes accepted and returned data,
 the applicable size/time ceiling, cancellation owner, log policy, and
-fail-safe behavior. The future PTY/process and provider rows are specifications,
-not enabled code; their failure rule is to remain disabled until their later
-review and native evidence pass.
+fail-safe behavior. The application PTY/process owner now exists behind the
+hard activation gate; the provider row remains specification-only. Neither may
+gain production authority before its separate review and native evidence pass.
 
 ## Authorization contract
 
 A request is rejected unless all of these conditions hold:
 
-1. The broker is in the test-only review harness. The production/pending
-   constructor always returns `PendingSecurityReview` before path resolution.
+1. `MANAGED_SESSION_LAUNCH_ENABLED` is true. It is currently a const-asserted
+   false value, so production returns `PendingSecurityReview` before path
+   resolution. Tests use a narrowly scoped review harness.
 2. The verified principal exactly matches the broker's reviewed
    `automexia.devops-ssh` package policy: ID, publisher, workspace version,
    non-zero 32-byte digest, contract version, and either repository-reviewed
@@ -163,16 +175,16 @@ POSIX defines fexecve so a verified file cannot be exchanged between inspection
 and execution, and Microsoft warns that leaving the CreateProcessW application
 name null can execute an unintended binary when paths contain spaces.
 
-This closes the primitive-level check-to-spawn gap, not the product gate. The
-application broker still must open and compare this guard with its reviewed
-identity, atomically bind the lease/session/capsule/route, and publish the
-Context only after successful PTY construction. Native Linux/macOS/OpenSSH
-adversarial execution remains external evidence.
+The application runner now opens and compares this guard with the broker's
+reviewed identity. ContextManager atomically binds lease/session/capsule/route,
+creates the PTY, inserts the Context, and publishes the lease afterward. This
+closes the source-local check-to-spawn and publication handoff, not the product
+gate; native Linux/macOS/OpenSSH adversarial execution remains external.
 
 ## Argument, environment, and cwd limits
 
-The only successful review-harness grammar is currently one literal SSH
-destination alias:
+The only authorized grammar is one literal SSH destination alias. Tests exercise
+the successful grammar; production denies at the activation/principal gates:
 
 ```text
 ssh <destination-alias>
@@ -215,10 +227,15 @@ or session cannot remove a sibling binding. Session-close state is removed from
 the active registry while one scalar high-water mark prevents ID reuse, avoiding
 an unbounded revoked-session tombstone set.
 
-The current lifecycle is a pure model: it owns no child, listener, PID, route,
-or PTY. Actual graceful termination, bounded force termination, listener
-closure, application-close cleanup, and PID-reuse evidence remain blocked
-until process activation is approved.
+The application runner owns active leases, a 50-operation ceiling, a
+256-record FIFO audit ceiling, exact publish-before-complete state, session
+revocation, and application shutdown reconciliation. Managed Context drop
+cancels unreconciled leases; natural close records completion before route
+removal. ContextManager owns the new PTY/route and never publishes a route whose
+numeric ID differs from its session ID. The compile-time gate means this
+lifecycle has no production child today. Graceful-then-forced cross-platform
+child-tree teardown, listener/tunnel cleanup, PID-reuse evidence, durable audit
+persistence, and controlled leak/resource proof remain activation gates.
 
 Audit records contain only extension ID/version/publisher, decision,
 operation kind, optional future public connection ID, operation/session ID,
@@ -295,26 +312,28 @@ after 1/10/50 pure lifecycle cycles.
 
 ## Remaining activation gates
 
-This phase is not complete as a shipped feature. Before removing the test-only
-module gate, maintainers must:
+This phase is not complete as a shipped feature. Before changing the activation
+constant or verified-principal construction, maintainers must:
 
-1. accept ADR 0012 with the two protected-path approvals required by ADR 0003;
-2. bind the real package loader's digest/signature, publisher, exact compatible
-   version/contract, and live revocation result to the frozen reviewed-package
-   policy before constructing a principal;
-3. implement a visible, accessible capability decision UI and deterministic
-   persisted/session grant policy if persistence is supported;
-4. bind process, PTY, route, capsule, operation, and tunnels before publication
-   through the existing application launch path;
-5. add native Windows, macOS, Linux, and WSL spawn/cancel/teardown and hostile-argv
-   evidence, including PID reuse and application close;
-6. bind the implemented guarded native exact-spawn mechanism to the broker's
-   reviewed executable identity and application-owned runner;
-7. connect the completed disabled D4 inventory only through reviewed D5
-   surfaces and complete the cross-surface redaction matrix;
-8. pass the controlled 1/10/50-session process, PTY, renderer, performance,
-   and leak gates. The pure broker lifecycle test is necessary but not a
-   substitute for those native measurements.
+1. obtain the two independent exact-head protected-path approvals required by
+   ADR 0003 and non-bypassable server-side enforcement;
+2. pass inherited S0/v0.4, hosted CI, CodeQL, and required native jobs on that
+   exact revision;
+3. bind the real package loader's digest/signature, publisher, exact compatible
+   version/contract, and live revocation result before constructing a verified
+   principal;
+4. add current executable and identity observation to the Connection Review and
+   invalidate stale approval when either changes;
+5. add native Windows, macOS, Linux, and separately gated WSL OpenSSH
+   spawn/cancel/teardown/hostile-output evidence, including PID reuse and
+   application close;
+6. complete graceful-then-forced descendant cleanup, durable redacted completion
+   audit, and listener/tunnel reconciliation;
+7. finish controlled native pixels, keyboard/focus, screen-reader, redaction,
+   and manual before/after `ssh` validation;
+8. pass controlled 1/10/50-session process, PTY, renderer, latency, resource,
+   and leak gates. Model and guarded-seam tests do not replace those native
+   measurements.
 
 No roadmap or test result may describe managed SSH/session launch as available
 until every activation gate passes.

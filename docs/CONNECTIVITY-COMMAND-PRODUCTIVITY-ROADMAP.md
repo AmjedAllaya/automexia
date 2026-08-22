@@ -67,12 +67,12 @@ documentation, feature assurance, and a change fragment.
 |---|---|---|---|---|
 | Provider-neutral contracts | D1 | Fully done | automexia-extension-api, automexia-extension-runtime, automexia-devops, automexia-ui-model; architecture gates | Hosted release evidence only |
 | Generic context and immutable capsules | D2 | Fully done | extension API/runtime plus application session/context tests | Production login/relaunch belongs to D3/D6 |
-| SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 proposal, exact schema-2 manual/trust/default/fixture protocol, four-platform matrix, mutation gate | Accept or supersede ADR 0012 through protected review; execute native fixtures in F4/F5 |
-| Exact-argument launch broker | D3 | Partially done | test-only exact package identity, capability scope, platform resolver, file revalidation, lifecycle/audit model, and local independent-human protected-path policy | External reviewers/server-side enforcement, production capability UI, atomic spawn, PTY/route lifecycle, real package-loader binding, native evidence |
+| SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 is accepted by the project owner; exact schema-2 manual/trust/default/fixture protocol, four-platform matrix, and mutation gate pass locally | Obtain ADR 0003's two independent exact-head protected approvals and server enforcement; execute native fixtures in F4/F5 |
+| Exact-argument launch broker | D3 | Partially done; nonactivated | Production-compiled fail-closed broker, one application runner, exact guarded PTY seam, route publication, bounded lifecycle/audit state, approval UX, and local protected-path policy | Protected approvals/server enforcement, real loader attestation, forced descendant teardown proof, native process/resource/accessibility evidence |
 | Static OpenSSH inventory | D4 | Fully done | automexia-devops-ssh, hostile/property tests, fuzz, benchmark, assurance | Remains deliberately disabled until D5 |
-| Connection Hub model | D5.0 | Partially done | All local F2 schemas, reducers, dry-run planner, Hub/review/planner projections, fixtures, goldens, fuzz, mutations, and benchmark are implemented | Protected ADR 0012 acceptance remains for D5.0 closure/D5.2; capability-free D5.1 is complete under ADR 0022 |
+| Connection Hub model | D5.0 | Partially done | All local F2 schemas, reducers, dry-run planner, Hub/review/planner projections, fixtures, goldens, fuzz, mutations, and benchmark are implemented | ADR 0003 protected approvals and native evidence remain for D5.2; capability-free D5.1 is complete under ADR 0022 |
 | Read-only Connection Hub | D5.1 | Fully done locally; external evidence partial | App-scoped joined runtime, exact reviewed native selection, bounded modal/search/filter/grouping, CAS favorite/tag diffs, read-only recent/library data, disabled authority, tests, benchmark, and release-build evidence | Native macOS/Linux picker/permission plus controlled Narrator/NVDA, VoiceOver, and Orca evidence |
-| Managed OpenSSH | D5.2 | Partially done; nonactivated | Selected D4 records compose into canonical pending F2 plans and a responsive accessible review route; exact identity-bound pure review is tested | M2 activation, reviewed launch, PTY lifecycle, reconnect/receipts, jumps, tunnels, full trust/identity UX, and native proof |
+| Managed OpenSSH | D5.2 | Partially done; nonactivated | Selected D4 records compose into canonical plans; an actionable review routes exact typed intent through the fail-closed application runner and guarded PTY publication seam | Protected activation, real attestation, reconnect/receipts, jumps, tunnels, full trust/identity UX, and native proof |
 | Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, approval fingerprints, and private transactional Connection Library persistence/redacted transfer are implemented | Product editor, remote workspace lifecycle, and separately gated execution remain |
 | Multi-cloud framework and providers | D6.0-D6.5 | Not done | Provider-neutral D1/D2 types only | Auth state machine, exact official CLI adapters, isolation, provider-by-provider gates |
 | Native completion | CP1 | Fully done | shell integration, xtask completion manager, CP1 contract/tests | Hosted three-OS and longitudinal release evidence |
@@ -169,12 +169,13 @@ Exit: no later phase weakens these contracts or duplicates their owners.
 ## F1 - close D0 SSH decision and native fixture baseline
 
 Status: **Partially done.** The complete local D0/D3 contract is implemented;
-protected acceptance of ADR 0012 and later native runtime evidence remain
-external gates. Production launch is still disabled.
+ADR 0012 is accepted by the project owner. ADR 0003's protected exact-head
+approvals/server enforcement and later native runtime evidence remain external
+gates. Production launch is still disabled.
 
-- [ ] **Not done - protected external gate:** accept or supersede ADR 0012
-  through the security review and two protected-path approvals required by
-  ADR 0003.
+- [ ] **Partially done - protected external gate:** preserve the accepted
+  ADR 0012 decision and obtain the two current independent exact-head approvals
+  plus non-bypassable server-side protection required by ADR 0003.
 - [x] **Fully done locally:** preserve manual `ssh host` ownership in
   PowerShell, CMD, Bash, Zsh, and WSL; managed launch is additive, never
   downloads or installs OpenSSH at startup/launch, and missing clients produce
@@ -209,14 +210,14 @@ external gates. Production launch is still disabled.
   phase audit, roadmaps, feature assurance, decision index, and change fragment.
 
 Exit status: the local fixture/contract gate passes and production launch
-remains disabled. F1 cannot become **Fully done** until protected reviewers
-accept or supersede ADR 0012; native fixture execution remains owned by F4/F5.
+remains disabled. F1 cannot become **Fully done** until ADR 0003's protected
+review evidence exists; native fixture execution remains owned by F4/F5.
 
 ## F2 - implement D5.0 Connection Hub and planning models
 
 Status: Partially done. Every local, non-executing F2 deliverable is fully done;
-protected acceptance or supersession of ADR 0012 is not done and prevents phase
-closure or activation.
+ADR 0012 is accepted by the project owner, while ADR 0003 protected approvals
+and native activation evidence still prevent phase closure or activation.
 
 Second-pass implementation audit (2026-08-17):
 
@@ -277,8 +278,9 @@ Implementation evidence (2026-08-17):
 
 Exit status: the entire local product slice is testable without an account,
 network, process, PTY, window system, or GPU. The technical F2 exit passes;
-overall phase status remains **Partially done** only because ADR 0012 is still
-proposed. F2 alone implied neither D5.1 nor D5.2; F3/ADR 0022 now activate
+overall phase status remains **Partially done** because ADR 0003 protected
+activation evidence is still external. F2 alone implied neither D5.1 nor D5.2;
+F3/ADR 0022 now activates
 only the capability-free D5.1 product.
 
 ## F3 - implement D5.1 read-only Connection Hub
@@ -351,38 +353,60 @@ and controlled assistive-technology evidence remain external release gates.
 
 ## F4 - activate D3 exact-argument process and PTY lifecycle
 
-Status: **Partially done**; local review-policy and pure broker foundations exist,
-but production activation is blocked.
+Status: **Partially done; nonactivated.** ADR 0012 is accepted by the project
+owner. All source-local runner, exact-spawn, publication, and approval-UX
+obligations below are implemented, but the linked package remains deliberately
+unverified and the production activation constant remains false.
 
-- [ ] **Partially done (external prerequisite)** — Accept or supersede ADR 0012
-  with two current independent human approvals and non-bypassable server-side
-  protection. Local CI now protects the M2 authority paths and excludes the
-  author, bots, duplicate logins, and stale/malformed reviews not bound to the
-  exact pull-request head; the repository currently lacks the needed reviewers/
-  ruleset enforcement.
-- [ ] **Not done** — Bind a real trusted package attestation and implement one
-  application-owned ExternalToolRunner with exact executable/argv, bounded
-  allowlisted environment, validated cwd, null/PTY stdin policy, output policy,
-  deadline, cancellation, and descendant cleanup.
-- [ ] **Not done** — Add visible exact capability review, deny, expiry,
-  revocation, audit, recovery, keyboard/focus, and accessibility UI.
-- [ ] **Partially done** — The pure broker binds package, executable file
-  identity, session, capsule, decision, operation lease, and arguments. Atomic
-  native check-to-spawn, target and destination binding remain missing.
-- [ ] **Not done** — Attach the child to exactly one new PTY/route/pane
-  destination and publish lifecycle before wake.
-- [ ] **Partially done** — Pure cancellation/rebind/revocation and bounded
-  lifecycle cycles pass. Graceful then forced process-tree teardown and
-  listener/PTY/route reconciliation are not implemented.
+- [ ] **Partially done (external prerequisite)** — ADR 0012 records the accepted
+  decision. Obtain ADR 0003's two current independent human exact-head approvals
+  and non-bypassable server-side protection. Local CI rejects author, bot,
+  duplicate-login, stale-head, malformed, or authority-path-bypassing evidence.
+- [ ] **Not done (external trust prerequisite)** — Bind the real loader/build
+  provenance, signed or repository-reviewed package verification, and live
+  revocation state. The linked in-process candidate intentionally reports
+  Unverified, so the broker denies before executable or filesystem resolution.
+- [x] **Fully done locally; nonactivated** — Router owns one shared
+  ExternalToolRunner. It constructs exact typed capability/launch requests,
+  admits at most 50 active operations, retains at most 256 redacted FIFO audit
+  records, captures one trusted process-start cwd, copies only a bounded
+  allowlist of public environment values, and reconciles on route/application
+  teardown.
+- [x] **Fully done locally; nonactivated** — The Connection Review exposes
+  allow once, allow for session, and deny with A/Enter, S, and D shortcuts,
+  pointer targets, focus ownership, icons plus text/color, a 60-second decision,
+  exact session.launch scope, route, launcher/package, target, risk, one
+  literal argument, and PTY I/O. Diagnostics are fixed, actionable, and
+  renderer-safe; private aliases, paths, digests, environment, and terminal data
+  remain outside the rendered/audit surfaces.
+- [x] **Fully done locally; nonactivated** — The broker binds package policy,
+  executable identity, operation/session/capsule, decision, destination, and
+  exact argv. It opens and re-compares the executable guard consumed by the
+  platform PTY seam, closing the local check-to-spawn handoff without shell
+  evaluation, PATH search, current-directory search, or implicit Enter.
+- [x] **Fully done locally; nonactivated** — ContextManager alone creates the
+  guarded PTY, inserts exactly one new route whose numeric route equals the
+  reviewed session, and marks publication only after insertion. Any create,
+  scope, capacity, or publication failure cancels and revokes the exact lease.
+- [ ] **Partially done** — Completion, explicit cancellation, session
+  revocation, stale-lease rejection, failed-publication rollback, route-close
+  reconciliation, and application shutdown are implemented and deterministic.
+  Graceful-then-forced descendant-tree behavior and listener/handle leak freedom
+  still require native process evidence on each supported platform.
 - [ ] **Partially done** — Hostile argv, Unicode/spaces/leading dashes,
-  executable replacement, replay, stale grants, session isolation, and 1/10/50
-  pure cycles pass. Fake-runner, pane/window, native process, and publish-order
-  tests remain.
+  executable replacement, replay, stale grants, session isolation, 1/10/50
+  pure cycles, runner capacity/audit bounds, publish-before-complete, shutdown,
+  route mapping, keyboard focus/mnemonics, accessibility semantics, and
+  tiny-to-8K pointer geometry pass locally. Native process, pane/window,
+  OpenSSH-server, screen-reader, and sustained resource runs remain external.
 - [ ] **Not done (external native evidence)** — Pass Windows ConPTY, macOS PTY,
   Linux PTY, and separately gated WSL process-tree evidence plus controlled
-  latency/handle/resource checks on the exact approved build.
+  latency, CPU, memory, handle, listener, audit-storage, and cleanup checks on
+  the exact protected build.
 
-Exit: the generic broker is production-capable but no provider inherits a grant.
+Exit remains unavailable: the generic boundary is source-complete locally but
+no package can inherit a production grant until every protected, attestation,
+native, resource, and accessibility gate above is evidenced.
 
 ## F5 - implement D5.2 managed OpenSSH
 
@@ -401,15 +425,18 @@ fixed order.
 - [x] **Fully done for the non-activated product surface:** a selected supported
   result or the dedicated **Enter host** workflow opens the route-owned
   responsive Connection Review with all nine semantic decisions, compact
-  Connection/Safety/Launch groups, icons plus text/color, a disabled action,
-  pointer/keyboard controls, and no opaque reference or digest exposure. The
-  literal editor has a 512-byte exact grammar, atomic paste/IME rejection,
-  a screen-tested `L` mnemonic, trapped focus, disabled invalid review, one
-  visible Cancel path plus Escape/owning-surface cleanup, conservative
-  production risk, and non-overlapping tiny-to-8K hit geometry.
-- [ ] **Not done:** M2 current executable/identity observation and protected
-  activation remain required before any review can become executable.
-- [ ] **Not done:** preserve OpenSSH-owned prompts and diagnostics in a real PTY.
+  Connection/Safety/Launch groups, icons plus text/color, three explicit
+  decision actions, pointer/keyboard controls, and no opaque reference or digest
+  exposure. The literal editor has a 512-byte exact grammar, atomic paste/IME
+  rejection, a screen-tested `L` mnemonic, trapped focus, disabled invalid
+  review, one visible Cancel path plus Escape/owning-surface cleanup,
+  conservative production risk, and non-overlapping tiny-to-8K hit geometry.
+- [ ] **Partially done:** M2 broker-side executable identity revalidation and exact
+  guarded publication are implemented locally. A current resolved observation must still be fingerprint-bound in a fresh pre-launch review after real attestation; protected activation and native proof
+  remain before a child can start.
+- [ ] **Partially done:** the approved descriptor is wired to the ordinary
+  terminal PTY/VT path, preserving OpenSSH-owned input/output by construction;
+  real native OpenSSH prompt/diagnostic evidence remains external.
 - [ ] **Partially done:** identity-bound review changes invalidate the pure
   request; inventory selection, route, runtime state, generation, catalog, and
   metadata changes invalidate or rebuild inventory preparation. Transient
@@ -770,11 +797,13 @@ These do not become silently complete from local Windows development:
 
 ## Current next action
 
-The current blocking action is protected acceptance or supersession of
-ADR 0012, which keeps F1 and F2 **Partially done** despite both local contract
-slices passing. F3/D5.1 is fully implemented locally. After the protected
-decision, the next primary implementation phase is **F4 - activate D3
-exact-argument process and PTY lifecycle**, followed by F5 managed OpenSSH.
+ADR 0012 is accepted by the project owner. The current blocking actions are
+ADR 0003's two independent exact-head protected approvals/server enforcement,
+real package-loader attestation, and the native F4 evidence matrix. F3/D5.1 is
+fully implemented locally; F4's source-local runner, approval UI, guarded PTY,
+and route publication are implemented but nonactivated. The next implementation
+slice is F5.2 explicit routes and host trust while the external F4 gates are
+collected.
 P1 autocomplete research is now **Fully done** with CP1 retained and P2
 deferred. P2-P4 remain **Not done**; no later phase may be marked started until
 its separate ADR, dependencies, and evidence pass.

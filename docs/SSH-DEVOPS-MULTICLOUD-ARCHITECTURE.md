@@ -781,7 +781,8 @@ bounded probes/timeouts, DNS/connect/auth cancellation, cleanup invariants,
 evidence fields, redaction surfaces, and WSL's deny-until-native-gate behavior.
 Strict host trust is preserved; forwarding and remote commands default off.
 Production process, PTY, network, provider, authentication, key-custody, and
-renderer authority remain false until ADR 0012 is accepted and F4/F5 pass.
+renderer authority remain false until ADR 0003 protected approvals, attestation,
+and the remaining F4/F5 native gates pass.
 
 ### Local and server-side policy
 
@@ -1103,8 +1104,10 @@ and result reducers, deterministic dry-run fingerprints, pure responsive Hub/
 review/planner projections, all-provider/state/layout/accessibility fixtures,
 and fuzz/mutation/benchmark ownership. They expose no filesystem, process,
 network, provider, credential, PTY, listener, window, renderer, or GPU authority.
-ADR 0012 acceptance, capability UI, D5.1 product integration/persistence, and
-D5.2 OpenSSH launch/lifecycle/native evidence are not implemented.
+ADR 0012 is owner-accepted. Capability UX, D5.1 product integration, and the
+nonactivated runner/executable-guard/PTY-route seam are implemented locally.
+Protected exact-head approval, attestation/revocation, fresh current-executable
+review, and D5.2 real OpenSSH lifecycle/native evidence remain.
 Exit criterion for the first recommended DevOps-ready release: security review,
 protected-path approvals, injection tests, cross-platform native SSH tests,
 cancellation, cleanup, secret redaction, and resource limits pass while the
@@ -1206,7 +1209,7 @@ capability rather than added directly to the terminal core.
 - [ADR 0003: extension capability and threading boundary](adr/0003-extension-capability-and-threading.md)
 - [ADR 0006: prompt-owned context](adr/0006-prompt-context-and-workspace-actions.md)
 - [ADR 0007: pane-local independent sessions](adr/0007-pane-local-session-tabs.md)
-- [ADR 0012: proposed first-party SSH and scoped session launch](adr/0012-first-party-ssh-and-session-launch-boundary.md)
+- [ADR 0012: accepted first-party SSH and gated scoped session launch](adr/0012-first-party-ssh-and-session-launch-boundary.md)
 - [ADR 0015: shell-native completion and typed Quick Actions](adr/0015-shell-native-completion-and-typed-quick-actions.md)
 
 ### SSH and external access

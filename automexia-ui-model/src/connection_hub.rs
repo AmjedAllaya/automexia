@@ -1108,7 +1108,8 @@ pub fn apply_hub_key(state: &mut InteractionState, key: HubKey) -> InteractionEf
                 }
                 (HubRoute::Results, _) => HubFocus::Search,
                 (HubRoute::Review, HubFocus::Back) => HubFocus::Review,
-                (HubRoute::Review, HubFocus::Review) => HubFocus::Close,
+                (HubRoute::Review, HubFocus::Review) => HubFocus::PrimaryAction,
+                (HubRoute::Review, HubFocus::PrimaryAction) => HubFocus::Close,
                 (HubRoute::Review, _) => HubFocus::Back,
                 (HubRoute::RecipePlanner, HubFocus::Back) => HubFocus::Planner,
                 (HubRoute::RecipePlanner, HubFocus::Planner) => HubFocus::Close,
@@ -1122,8 +1123,9 @@ pub fn apply_hub_key(state: &mut InteractionState, key: HubKey) -> InteractionEf
                 (HubRoute::Results, HubFocus::Close) => HubFocus::Results,
                 (HubRoute::Results, _) => HubFocus::Search,
                 (HubRoute::Review, HubFocus::Review) => HubFocus::Back,
+                (HubRoute::Review, HubFocus::PrimaryAction) => HubFocus::Review,
                 (HubRoute::Review, HubFocus::Back) => HubFocus::Close,
-                (HubRoute::Review, _) => HubFocus::Review,
+                (HubRoute::Review, _) => HubFocus::PrimaryAction,
                 (HubRoute::RecipePlanner, HubFocus::Planner) => HubFocus::Back,
                 (HubRoute::RecipePlanner, HubFocus::Back) => HubFocus::Close,
                 (HubRoute::RecipePlanner, _) => HubFocus::Planner,
@@ -1152,6 +1154,7 @@ pub struct ConnectionReviewView {
     pub warnings: Vec<String>,
     pub primary_label: &'static str,
     pub execution_enabled: bool,
+    pub approval_action_enabled: bool,
     pub accessibility_tree: Vec<AccessibilityNode>,
 }
 
@@ -1256,6 +1259,7 @@ pub fn project_connection_review(
         warnings: review.warnings.clone(),
         primary_label: "Connection unavailable—planning only",
         execution_enabled: false,
+        approval_action_enabled: false,
         accessibility_tree,
     }
 }
@@ -1282,6 +1286,35 @@ fn destination_surface_label(surface: DestinationSurface) -> &'static str {
 /// Project a selected D4 host while executable, identity, and host-trust
 /// observations are still pending. Exact aliases and opaque references remain
 /// outside the renderer-facing model.
+fn append_direct_decision_accessibility(tree: &mut Vec<AccessibilityNode>) {
+    for (id, name, description) in [
+        (
+            "allow-once",
+            "Allow once",
+            "A or Enter. Request this exact connection once; all policy checks still apply.",
+        ),
+        (
+            "allow-session",
+            "Allow for this session",
+            "S. Request this exact capability only for the new session.",
+        ),
+        (
+            "deny",
+            "Deny",
+            "D. Return to connection results without starting a process.",
+        ),
+    ] {
+        let mut action = AccessibilityNode::new(
+            format!("direct-openssh-decision-{id}"),
+            AccessibilityRole::Button,
+            name,
+        );
+        action.description = description.into();
+        action.focusable = true;
+        tree.push(action);
+    }
+}
+
 pub fn project_direct_openssh_preparation(
     prepared: &DirectOpenSshPreparation,
     viewport: Viewport,
@@ -1304,13 +1337,13 @@ pub fn project_direct_openssh_preparation(
         ReviewSectionView {
             id: "transport".into(),
             heading: "Transport and route",
-            summary: "System OpenSSH · direct".into(),
+            summary: "System OpenSSH · direct · new terminal route".into(),
             blocking: false,
         },
         ReviewSectionView {
             id: "executable".into(),
-            heading: "Executable",
-            summary: "ssh · verification pending".into(),
+            heading: "Launcher and package",
+            summary: "Automexia SSH · ssh · package verification required".into(),
             blocking: true,
         },
         ReviewSectionView {
@@ -1322,7 +1355,10 @@ pub fn project_direct_openssh_preparation(
         ReviewSectionView {
             id: "capabilities".into(),
             heading: "Exact capability",
-            summary: plan.requested_capabilities.join(", "),
+            summary: format!(
+                "{} · exact session · approval expires in 60 seconds",
+                plan.requested_capabilities.join(", ")
+            ),
             blocking: true,
         },
         ReviewSectionView {
@@ -1339,8 +1375,8 @@ pub fn project_direct_openssh_preparation(
         },
         ReviewSectionView {
             id: "argv".into(),
-            heading: "Argument shape",
-            summary: "ssh <destination>".into(),
+            heading: "Operation",
+            summary: "ssh <destination> · one literal argument · PTY input/output".into(),
             blocking: false,
         },
     ];
@@ -1362,21 +1398,15 @@ pub fn project_direct_openssh_preparation(
         node.description = section.summary.clone();
         accessibility_tree.push(node);
     }
-    let mut primary = AccessibilityNode::new(
-        "direct-openssh-preparation-primary",
-        AccessibilityRole::Button,
-        "Connection unavailable; executable and identity verification are pending",
-    );
-    primary.disabled = true;
-    primary.focusable = true;
-    accessibility_tree.push(primary);
+    append_direct_decision_accessibility(&mut accessibility_tree);
     ConnectionReviewView {
         layout: hub_layout(viewport),
         sections,
         changed_fields: Vec::new(),
-        warnings: vec!["Preparation only; no process, PTY, or network activity".into()],
-        primary_label: "Connection unavailable—verification pending",
+        warnings: vec!["No process starts unless every protected check succeeds".into()],
+        primary_label: "Check & allow once  [A / Enter]",
         execution_enabled: false,
+        approval_action_enabled: true,
         accessibility_tree,
     }
 }
@@ -1414,14 +1444,14 @@ pub fn project_direct_openssh_review(
         ReviewSectionView {
             id: "transport".into(),
             heading: "Transport and route",
-            summary: "System OpenSSH · direct".into(),
+            summary: "System OpenSSH · direct · new terminal route".into(),
             blocking: false,
         },
         ReviewSectionView {
             id: "executable".into(),
-            heading: "Reviewed executable",
+            heading: "Launcher and package",
             summary: format!(
-                "{} · canonical identity bound",
+                "Automexia SSH · {} · canonical identity bound",
                 reviewed.executable_identity.executable_id
             ),
             blocking: false,
@@ -1438,7 +1468,10 @@ pub fn project_direct_openssh_review(
         ReviewSectionView {
             id: "capabilities".into(),
             heading: "Exact capability",
-            summary: intent.requested_capabilities.join(", "),
+            summary: format!(
+                "{} · exact session · approval expires in 60 seconds",
+                intent.requested_capabilities.join(", ")
+            ),
             blocking: true,
         },
         ReviewSectionView {
@@ -1455,8 +1488,8 @@ pub fn project_direct_openssh_review(
         },
         ReviewSectionView {
             id: "argv".into(),
-            heading: "Reviewed argument shape",
-            summary: "ssh <destination>".into(),
+            heading: "Reviewed operation",
+            summary: "ssh <destination> · one literal argument · PTY input/output".into(),
             blocking: false,
         },
     ];
@@ -1483,22 +1516,16 @@ pub fn project_direct_openssh_review(
         node.description = section.summary.clone();
         accessibility_tree.push(node);
     }
-    let mut primary = AccessibilityNode::new(
-        "direct-openssh-review-primary",
-        AccessibilityRole::Button,
-        "Connection unavailable; M2 approval is pending",
-    );
-    primary.disabled = true;
-    primary.focusable = true;
-    accessibility_tree.push(primary);
+    append_direct_decision_accessibility(&mut accessibility_tree);
 
     ConnectionReviewView {
         layout: hub_layout(viewport),
         sections,
         changed_fields: reviewed.review.changed_fields.clone(),
         warnings: reviewed.review.warnings.clone(),
-        primary_label: "Connection unavailable—M2 approval pending",
+        primary_label: "Allow once & connect  [A / Enter]",
         execution_enabled: false,
+        approval_action_enabled: true,
         accessibility_tree,
     }
 }

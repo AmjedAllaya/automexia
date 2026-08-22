@@ -26,12 +26,12 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | v0.4/S0 | Core identity, hostile-input bounds, atomic reload, and current source gates; stable-release evidence remains external. |
 | **Partially done** | v0.4/S1 | Deterministic and Windows-native assurance exists; controlled Linux/macOS, visual, GPU, accessibility, and baseline evidence remains. |
 | **Not done** | S2 | The 30-day baseline and enforceable latency/memory ratchet are not active. |
-| **Partially done** | D0 | Schema-2 manual/trust/default/hermetic-fixture contract, four-platform matrix, and mutation gate are complete locally; protected ADR acceptance and native execution remain. |
+| **Partially done** | D0 | ADR 0012 is accepted by the project owner; schema-2 manual/trust/default/hermetic-fixture contract, four-platform matrix, and mutation gate are complete locally. ADR 0003 protected approvals and native execution remain. |
 | **Fully done** | D1 | Four private provider-neutral crates and bounded contracts satisfy the source boundary. |
 | **Fully done** | D2 | Generic status, immutable history, capsules, isolation, cancellation, and freshness are implemented. |
-| **Partially done** | D3 | The nonactivated broker binds exact package identity, grants, platform resolution, file identity, lifecycle, and redacted audit. Local CI now protects launch/capability authorities and counts only independent human approvals bound to the exact pull-request head; real reviews, server-side enforcement, attestation, production UX/spawn, and native proof remain. |
+| **Partially done** | D3 | The production-compiled broker remains hard disabled. One application runner, exact typed grant/argv/environment/cwd, executable guard, approval UX, PTY/route publication, bounded lifecycle/audit, and shutdown are complete locally. Exact-head approvals/server enforcement, attestation, native descendant cleanup, OpenSSH/resource/accessibility proof, and activation remain. |
 | **Fully done** | D4 | The bounded OpenSSH inventory/persistence package is complete but deliberately disabled. |
-| **Partially done** | D5.0-D5.2 | D5.1 is fully implemented locally. D5.2 now composes either a selected direct D4 record or one bounded transient literal host into a canonical pending F2 plan and responsive disabled review. The literal editor, screen-tested `L` mnemonic, single non-overlapping Cancel path, focus/IME/pointer lifecycle, conservative risk, redaction, and tiny-to-8K geometry are complete at the non-activated boundary; M2 approval, executable/identity observation, process/PTY lifecycle, reconnect/receipts, routes/tunnels, and controlled native evidence remain. |
+| **Partially done** | D5.0-D5.2 | D5.1 is fully implemented locally. D5.2 composes selected or literal hosts into canonical plans and an actionable review; typed decisions now reach the fail-closed runner and exact PTY/route seam. Literal input, shortcuts, focus/IME/pointer/accessibility, redaction, and tiny-to-8K geometry are complete locally. Protected activation, attestation, reconnect/receipts, host trust/routes/tunnels, and controlled native evidence remain. |
 | **Not done** | D6.0-D6.5 | Provider authentication, capsules, transports, and multi-cloud slices are planned only. |
 | **Not done** | D7 | Public ecosystem, direct APIs, sandboxed extensions, and AI execution are deferred. |
 | **Fully done** | CP0 | Architecture, threat model, ceilings, fixtures, mutation tests, and nonactivation policy are complete. |
@@ -189,7 +189,7 @@ until its protected slice passes review and evidence.
 
 | Release/phase | Terminal-core work | First-party extension work | Adopted/wrapped authority | Explicit hold |
 |---|---|---|---|---|
-| v0.5.0 D3-D5 and CP2-CP3 | Finish one `ExternalToolRunner`; generate CLI/help/completion/schema artifacts from typed registries; add bounded search and application-chrome accessibility adapters only after review; preserve exact launch, session, capsule, risk, redaction, and resource policy | Safe OpenSSH inventory; exact SSH/jump/tunnel requests; Connection Review; typed actions, aliases, and first-party packs | System OpenSSH; shell-native editors/completion; planned `clap_complete`, `clap_mangen`, `schemars`, and AccessKit. CP5.0 retained the in-tree matcher after measuring Nucleo. | Native SSH stack, provider SDK bundle, secret vault, structured SFTP, untrusted extensions |
+| v0.5.0 D3-D5 and CP2-CP3 | Preserve the one nonactivated `ExternalToolRunner`; complete protected activation/native proof; generate CLI/help/completion/schema artifacts from typed registries; preserve exact launch, session, capsule, risk, redaction, and resource policy | Safe OpenSSH inventory; exact SSH/jump/tunnel requests; Connection Review; typed actions, aliases, and first-party packs | System OpenSSH; shell-native editors/completion; planned `clap_complete`, `clap_mangen`, `schemars`, and AccessKit. CP5.0 retained the in-tree matcher after measuring Nucleo. | Native SSH stack, provider SDK bundle, secret vault, structured SFTP, untrusted extensions |
 | Protected credential slice | Opaque identity references, public auth state, protected input, approval/revocation, and canary/redaction rules | Version-aware Teleport/OpenBao/agent integration returning public state only | Agents, FIDO, external vaults, `tsh`, OpenBao/Smallstep; exact `keyring-core` stores plus `secrecy`/`zeroize` only after a custody ADR | Private-key formats, CA, password manager, credential sync, recovery claims |
 | v0.5.1 D6 and CP4 | Immutable per-pane Capsules, explicit refresh, last-known-good state, provider-neutral inventory, provenance/freshness/risk, and cross-pane isolation | Separately enabled AWS, Azure, GCP, Kubernetes, OpenShift, infrastructure, and enterprise-policy adapters | Official provider CLIs/config first; OPA only for an existing organization policy service | Direct provider SDK until CLI/config cannot meet a measured pagination/watch/cancellation/performance need |
 | v0.6+ D7 and CP5-CP6 protected features | Storage/redaction contracts, file-operation states, WIT capabilities, quotas, signed-bundle policy, AI risk/approval boundary | Transfer, Mosh, serial, logs/search, team Git, collaboration, local policy, sandboxed ecosystem, and AI adapters as separate slices | System `sftp`/`scp`, Mosh, Git, SOPS/age, Upterm, optional `rusqlite`, `openssh-sftp-client`, `serialport`, Cedar, Wasmtime/WASI | Telnet disabled by default; custom relay, embedded inference, SQLCipher, and direct SDKs require independent justification |
@@ -274,34 +274,32 @@ The following foundation work is intentionally not claimed by Phase 1:
 - deprecated Rio environment fallbacks remain until the v0.5 version transition;
 - `automexia-app` extraction and inherited engine directory grouping remain
   deferred because neither is required for the release-critical boundary;
-- the capability decision UI, executable resolver, exact-argv broker, managed
-  environment-changing rebind/relaunch action, and `devops-ssh` activation begin
-  with Phase 2/D3 after the replacement ADR is accepted.
+- the production-compiled capability broker, application runner, approval UX,
+  guarded PTY seam, and route publication belong to Phase 2/D3 and remain
+  nonactivated until every protected and native gate passes.
 
-#### Phase 2 preparation status (2026-08-17)
+#### Phase 2 preparation status (2026-08-22)
 
-The local D0/D3 review contract is implemented and mutation-checked. Its active
-schema-2 fixture preserves the immutable schema-1 history and freezes the
-manual-shell/missing-client baseline, exact package digest source/size and
-identity/version/contract/verification policy, grants/audits/defaults, nine
-trust boundaries, four-platform resolution, all-false runtime authority, and
-nineteen scenario definitions.
+ADR 0012 is accepted by the project owner. The mutation-checked schema-2
+contract preserves immutable schema-1 history, manual-shell/missing-client
+behavior, package digest/identity/version/contract/verification, grants/audits,
+nine trust boundaries, four-platform resolution, all-false runtime authority,
+and nineteen native scenarios.
 
-The fixture protocol requires hermetic loopback infrastructure, isolated
-disposable credentials/`known_hosts`/agent state, bounded readiness and
-lifecycle timeouts, DNS/connect/auth cancellation, six zero-resource cleanup
-invariants, nine redaction surfaces, and reproducible native evidence metadata.
-The test-only broker enforces matching package identity, expiring exact-scope
-decisions, fixed resolution/revalidation, literal bounded argv, core-owned
-environment/cwd, replay-resistant leases, revocation, lifecycle, and redacted
-audit. Production still contains no managed process capability.
+The production-compiled broker remains hard disabled and the linked package is
+unverified. One Router-owned runner now enforces exact typed scope, 50 active
+operations, 256 redacted audits, bounded public environment, a trusted cwd,
+replay-safe leases, cancellation, route close, and application shutdown. It
+opens and re-compares the executable guard consumed by ContextManager's exact
+PTY seam; the route is published only after insertion. The review exposes
+allow-once/session/deny pointer, keyboard, focus, accessibility, and fixed
+recovery behavior without rendering private launch data.
 
-D0 and D3 are therefore **partial, not shipped**. ADR 0012 protected acceptance,
-real package-loader attestation/revocation binding, capability UI, atomic native
-check-to-spawn, process/PTY/route ownership, execution of the Windows/macOS/
-Linux/WSL fixture matrix, D4-to-D5 activation, and controlled process/PTY/
-renderer performance/leak evidence remain required. The exact current contract
-is documented in
+D0 and D3 are therefore **partial, not shipped**. ADR 0003's two independent
+exact-head approvals/server enforcement, real loader attestation/revocation,
+native graceful/forced cleanup, Windows/macOS/Linux/WSL OpenSSH fixtures,
+D4-to-D5 activation, and controlled process/PTY/renderer/accessibility/resource
+evidence remain required. The exact current contract is documented in
 [Exact-argument session-launch broker](SESSION-LAUNCH-BROKER.md).
 
 #### D4 inventory status (2026-08-15)
@@ -316,10 +314,11 @@ native Windows DACL tests, Unix permission tests, a 10,000-alias benchmark,
 nightly fuzzing, architecture ratchets, and the feature-assurance ledger own
 the boundary. See [OpenSSH inventory](SSH-INVENTORY.md).
 
-This completes D4 only. D3 production activation and D5 connection UX remain
-blocked by ADR 0012 acceptance, protected approval, first-party package
-identity, visible exact grants, atomic native launch, and controlled native
-lifecycle/performance evidence.
+This completes D4 only. D3 production activation and later D5 connection
+features remain blocked by ADR 0003 protected approvals/server enforcement,
+real first-party package attestation, and controlled native lifecycle,
+accessibility, and performance evidence. The exact grant UX and guarded
+review-to-route seam now exist locally without production authority.
 
 #### D5.0 Connection Hub model status (2026-08-17)
 
@@ -336,7 +335,7 @@ close or activate.
 | Hub, Connection Review, and recipe-planner projection contract | **Fully done locally** | Wide/medium/narrow/text-scale, stale-selection focus recovery, live progress, route-aware modal focus, value-redacted labels, reading order, all-state accessibility, and structured goldens pass without a renderer. |
 | Synthetic/deep assurance | **Fully done locally** | Ten-provider/all-auth fixtures, 64-step benchmark, fuzz target, 30 required regressions, and bypass/panic mutation ratchets are owned. |
 | Process/network/provider/credential/PTY/listener authority | **Fully disabled** | F2 has no filesystem, process, socket, provider, credential, PTY, window, or GPU owner. |
-| ADR 0012 protected acceptance | **Not done externally** | Required before D5.0 closure and any D5.2 execution; capability-free D5.1 is governed by accepted ADR 0022. |
+| Protected activation evidence | **Partially done; external gates open** | ADR 0012 is owner-accepted; ADR 0003 exact-head approvals/server enforcement, attestation, and native proof remain before D5.2 production execution. Capability-free D5.1 stays governed by accepted ADR 0022. |
 
 This status does not activate connection authority. D5.1 now owns one app-scoped
 joined runtime, exact reviewed native file selection, virtualized product modal,

@@ -85,12 +85,12 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Core | v0.4/S0 | **Fully implemented locally** | **Partial** | Identity, hostile-input bounds, atomic reload, and current terminal source gates are complete; stable release gates remain. |
 | Assurance | v0.4/S1 | **Partial** | **Partial** | Strong deterministic, Windows-native, QA, fuzz, resource, and workflow machinery exists; controlled Linux/macOS visual/GPU/accessibility evidence and the full baseline remain. |
 | Performance | S2 | **Not implemented** | **Not started** | The 30-day comparable baseline is incomplete, so the 5% latency/10% memory ratchet is inactive. |
-| DevOps | D0 | **Partial** | **Partial** | Schema-2 threat/manual/fixture definitions are complete locally; ADR 0012 remains proposed and native execution is pending in F4/F5. |
+| DevOps | D0 | **Partial** | **Partial** | ADR 0012 is accepted by the project owner and schema-2 threat/manual/fixture definitions pass locally; ADR 0003 protected approvals and native execution remain pending in F4/F5. |
 | DevOps | D1 | **Fully implemented** | **Partial** | Four private provider-neutral crates and bounded contracts satisfy their source boundary. |
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
-| DevOps | D3 | **Partial; nonactivated** | **Blocked** | The exact-argv model and protected-review policy remain fail-closed. A guarded native seam now provides replacement-resistant Windows explicit-path/Job Object launch, exact environment isolation, Unix descriptor execution, deterministic Windows handle cleanup, native Windows PTY tests, and a macOS cross-check. Independent exact-head approvals, server-side enforcement, real attestation, one application runner, capability UX, broker/PTY/route publication, and the native OpenSSH/resource matrix remain. |
+| DevOps | D3 | **Partial; nonactivated** | **Blocked** | The production-compiled broker remains fail-closed. One application runner, exact package/scope/argv policy, bounded environment/cwd/audit/lifecycle, guarded Windows/Unix PTY seam, approval UX, and route publication are implemented locally. Independent exact-head approvals, server enforcement, real attestation, forced descendant-cleanup proof, and the native OpenSSH/resource/accessibility matrix remain. |
 | DevOps | D4 | **Fully implemented; read-only product adapter active** | **Partial** | Bounded OpenSSH inventory/persistence is connected only to D5.1 reviewed browsing; it retains no process/network/launch authority. |
-| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 fully implemented locally and D5.2 nonactivated preparation/review partial** | **Partial/blocked** | The Hub remains non-executing, but a selected direct D4 record or one bounded transient literal host now opens a disabled Connection Review backed by a canonical pending F2 plan. Exact grammar, literal editor/shortcut/lifecycle, conservative risk, identity-bound pure review, generation isolation, and responsive geometry are implemented. Protected M2 activation, executable/identity observation, process/PTY lifecycle, reconnect/receipts, routes/trust, and controlled native evidence remain. |
+| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 fully implemented locally and D5.2 nonactivated runner/route path partial** | **Partial/blocked** | A selected D4 record or bounded literal host opens an actionable, accessible Connection Review. Exact typed intent now reaches the fail-closed runner and guarded PTY/route publication seam, but no child can start while activation is false and package verification is untrusted. Protected activation, attestation, reconnect/receipts, routes/trust/tunnels, and controlled native evidence remain. |
 | Multi-cloud | D6.0-D6.5 | **Not implemented** | **Blocked** | Provider auth, capsules, transports, and provider slices are planned only. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
@@ -365,9 +365,10 @@ protocol freezes isolated loopback setup/authentication state, bounded
 readiness/lifecycle, platform gates, cleanup/resource invariants, redaction,
 evidence, and artifacts. Mutation tests reject weakened or drifting claims.
 
-**Not done externally:** proposed ADR 0012 still needs security review and two
-protected-path approvals. F4/F5 must execute the native fixture matrix; D0 only
-defines it and keeps production launch disabled.
+**Partially done externally:** ADR 0012 is accepted by the project owner.
+ADR 0003's two independent exact-head approvals/server enforcement and the F4/F5
+native fixture matrix remain. D0 defines the contract and keeps production
+launch disabled.
 
 ### D1 — private contracts and bounded stable types
 
@@ -404,22 +405,27 @@ Production relaunch/login is a D3/D5/D6 dependency, not missing D2 work.
 
 **Partially implemented and intentionally nonactivated.**
 
-**Fully implemented locally in the test-only model:** exact reviewed package
-policy binding (ID, publisher, non-zero digest, version, contract, verification
-class), typed scopes, expiring decisions, monotonic leases, replay/session-
-reuse rejection, revocation/cancellation, redacted audit, platform-specific
-fixed/explicit resolution without PATH/cwd search or override fallback, file
-identity/revalidation, one bounded literal destination, no shell/inherited
-environment/secret authority, and core-owned cwd fallback.
+**Fully implemented locally; nonactivated:** the production-compiled broker and
+one Router-owned ExternalToolRunner bind package policy, exact executable and
+destination, operation/session/capsule scope, 60-second decision, monotonic
+lease, bounded public environment, one captured trusted cwd, redacted audit, and
+fixed platform resolution without PATH/cwd search. The broker opens and
+re-compares an exact executable guard; ContextManager alone consumes it, creates
+one PTY, publishes one route matching the reviewed session, and then records
+publication. Completion, cancellation, revocation, stale leases, failed
+publication, route close, capacity 50, audit FIFO 256, and application shutdown
+are locally tested. The Connection Review exposes allow once, allow for session,
+and deny through pointer, A/Enter, S, D, focus, and accessibility semantics.
 
-**Not done for activation:** accepted ADR, real package-loader attestation and
-revocation binding, visible exact-grant UI, race-free native check-to-spawn,
-production process/PTY/route/listener ownership, graceful/forced teardown,
-completion audit, execution of hostile native argv/output and host-trust/auth/
-tunnel fixtures, 1/10/50-session leak/performance evidence, and D4-to-D5
-activation.
+**Partially or not done for activation:** ADR 0012 is accepted by the project
+owner, but ADR 0003's two independent exact-head approvals and server
+enforcement are external. Real package-loader/build attestation and revocation,
+native graceful-then-forced descendant cleanup, hostile real OpenSSH/PTY/server
+fixtures, controlled screen-reader/pixels, and 1/10/50-session resource evidence
+remain. The linked package remains unverified and the activation constant
+remains false, so no production child can start.
 
-The production fail-closed state is correct and must not be called shipped.
+The fail-closed production state is correct and must not be called shipped.
 
 ### D4 — OpenSSH inventory and persistence
 
@@ -476,12 +482,14 @@ Implemented evidence:
 - architecture checks forbid filesystem, process, network, provider,
   credential, PTY, listener, renderer, GPU, or unsafe authority in this slice.
 
-Not implemented externally: ADR 0012 remains proposed and requires protected
-acceptance or supersession. That single external decision keeps D5.0
-**Partially done** and prevents activation; it does not invalidate the complete
-local F2 exit. D5.1 is now fully implemented locally as a capability-free
-read-only product; its native macOS/Linux and controlled accessibility evidence
-remains partial. All D5.2 process/PTY/network lifecycle work remains open.
+Not implemented externally: ADR 0012 is accepted by the project owner, while
+ADR 0003 protected approvals/server enforcement, package attestation, and native
+activation evidence remain. Those gates keep D5.0 **Partially done** without
+invalidating the complete local F2 exit. D5.1 is fully implemented locally as a
+capability-free read-only product; native macOS/Linux and controlled
+accessibility evidence remains partial. D5.2's fail-closed runner, exact PTY,
+and route-publication path is now local; production activation and later
+connection lifecycle features remain open.
 
 ### D5.1 — read-only Connection Hub
 
@@ -542,46 +550,44 @@ actions remain disabled until D5.2.
 
 ### D5.2 — managed OpenSSH launch and lifecycle
 
-**Partially implemented at a non-activated application-review boundary.**
+**Partially implemented at a nonactivated review-to-route boundary.**
 
-Implemented locally: the pure owner validates one inventory concrete alias or
-one bounded literal host as an exact destination argument and produces an
-immutable identity-bound review when supplied a canonical current `ssh`
-executable identity, observation, and host-trust state. The application maps
-either one current direct D4 record or one transient typed host into a stable
-opaque public profile and canonical pending F2 plan. The inventory path is
-bound to catalog generation and metadata revision; the literal path is
-memory-only, has no history, and is conservatively classified as production
-risk. Both request only `session.launch`, have no executable identity, keep
-every authority false, and cannot execute.
+Implemented locally: the pure owner validates one concrete inventory alias or
+one bounded literal host as an exact destination and produces an immutable
+identity-bound review when supplied a current canonical `ssh` observation. The
+application maps the selection to a stable opaque profile and canonical F2 plan;
+inventory review is generation/revision-bound, literal review is memory-only,
+and both request only `session.launch` with conservative production risk.
 
-A selected Hub row or the dedicated **Enter host** action opens the shared
-disabled Connection Review. The literal editor has a 512-byte ASCII grammar,
-atomic paste/IME rejection, a screen-tested `L` mnemonic, trapped field/Review/
-Cancel focus, disabled invalid submission, pointer/keyboard controls, one
-visible Cancel path plus Escape/owning-surface cleanup, and an inert background.
-The redundant top-level close action is absent while the nested editor owns the
-modal, so it cannot overlap the field at small scaled viewports. The semantic
-model exposes nine public
-decisions; the renderer groups them into compact Connection, Safety, and Launch
-cards with redundant icons/text/color and responsive stacked/horizontal
-geometry. Exact inventory aliases, opaque references, executable digests,
-fingerprints, processes, PTYs, credentials, and terminal data remain outside
-renderer-facing state. Inventory runtime/catalog/metadata/generation/selection/
-route changes invalidate or rebuild inventory preparation, while unrelated
-catalog refresh cannot rewrite literal review. Focused hostile, model,
-controller lifecycle, accessibility, keyboard/pointer, inert-hit, and
-tiny-to-8K geometry tests pass. A 20-sample optimized Windows Criterion run
-measured selected-record preparation at 6.3520–6.6011 µs.
+The shared Connection Review presents compact Connection, Safety, and Launch
+cards with icon/text/color redundancy and exact public launcher/package, target,
+route, risk, capability, 60-second approval, one-argument, and PTY I/O
+explanations. Allow once, allow for session, and deny are available through
+pointer targets, A/Enter, S, D, modal focus, and accessibility nodes. The
+512-byte literal editor preserves atomic paste/IME rejection, the `L` mnemonic,
+trapped focus, invalid-state denial, one Cancel/Escape path, inert background,
+and non-overlapping tiny-to-8K geometry. Exact aliases, opaque references,
+digests, paths, environment, credentials, and terminal data remain outside
+renderer and audit state.
 
-Not implemented: accepted D3/M2 activation, current system-executable and
-identity observations in the app, independent PTYs, real OpenSSH
-prompt/diagnostic passthrough, reconnect, notifications, completion receipts,
-process-tree cleanup, jumps, typed user/port/routes/tunnels, full host-key and
-agent/certificate UX, mocked/native server-client tests, hostile remote output,
-controlled native pixels/screen readers, and 1/10/50 parallel-session
-performance/resources. The before/after native manual-`ssh` regression remains
-external because no managed process exists.
+The selected typed intent now reaches one Router-owned fail-closed runner. It
+binds exact package/executable/destination/scope, re-compares the guarded
+executable, applies bounded environment/cwd/audit/concurrency policy, and hands
+the lease to ContextManager. ContextManager creates the ordinary terminal PTY,
+inserts one exact route, publishes only after insertion, and reconciles
+failure/close/shutdown. The linked candidate remains `Unverified` and
+`MANAGED_SESSION_LAUNCH_ENABLED` remains false, so this path returns an
+actionable protected-review diagnostic before executable resolution and no
+production child starts.
+
+Still missing or external: ADR 0003 protected approvals/server enforcement, real
+loader/build attestation and revocation, a current resolved executable observation bound into a fresh pre-launch review, native graceful-then-forced child-tree
+proof, real OpenSSH prompt/diagnostic and before/after manual-`ssh` regression,
+reconnect, notifications, receipts, jumps, typed user/port/routes/tunnels, full
+host-key and agent/certificate UX, mock/native server cases, hostile remote
+output, controlled pixels/screen readers, and 1/10/50 session resources.
+The existing selected-record Criterion result remains 6.3520–6.6011 µs on the
+recorded Windows development host.
 ### D6.0-D6.5 — providers and multi-cloud
 
 **Not implemented.**
@@ -908,7 +914,7 @@ Planned work, with no shipped-command claim:
 | Product surface | Owning gate | Audit status |
 |---|---|---|
 | Canonical operation registry, `automexia` domains, generated palette/help/accessibility, optional collision-safe `ax` | CP2.2-CP3/D5 | Not implemented |
-| Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | D5.1 picker/browse/metadata is fully implemented locally; D5.2 selected-record plus transient literal-host preparation and the disabled product Connection Review are complete at the non-activated boundary; executable observation and active connect/reconnect/destination launch remain not done |
+| Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | D5.1 picker/browse/metadata is fully implemented locally; D5.2 selected-record plus literal-host preparation, actionable approval review, fail-closed application runner, exact PTY seam, and route publication are complete locally but nonactivated; protected connect, reconnect, and route/trust features remain |
 | Identity references, agent/certificate state, known-host explanation, routes/jumps/proxies/tunnels | D5.2 | Not implemented |
 | Quick Actions, aliases, lifecycle hooks, reviewed multi-target execution | CP2.2-CP4/D5E | Model/store foundations only |
 | Declarative workspace persistence/restoration and visibly armed broadcast | D5/CP4 | Existing layout primitives only |
@@ -1035,7 +1041,7 @@ signing/revocation/quotas/policy/AI remain future work.
 | Dimension | Status | Strong current evidence | Remaining |
 |---|---|---|---|
 | Correctness | **Strong, incomplete globally** | Locked metadata, fmt, warning-denied Clippy, Nextest/doctests, conformance, migration, shell, PTY, UI, property, Windows native, architecture. | Hosted three-OS protected commit and tests for future phases. |
-| Security | **Strong boundary; release partial** | Default deny, exact argv/capabilities, no shell evaluation, bounded state, no-follow, private permissions, last-known-good, redaction, cargo-deny, hosted scanners/SBOM policy. | Hosted results, signing, accepted D3, atomic spawn, capability UI, native campaigns, vet governance, sandbox. |
+| Security | **Strong boundary; release partial** | Default deny, exact argv/capabilities, no shell evaluation, one bounded app runner, guarded spawn/publication seam, approval UI, no-follow, private permissions, redaction, cargo-deny, and hosted scanners/SBOM policy. | Protected exact-head approvals/server enforcement, real attestation, native cleanup/OpenSSH campaigns, signing, vet governance, and future sandbox. |
 | Performance | **Local measurement; enforcement incomplete** | Fast paths, bounded queues/caches, cancellation, Criterion, deadlines, Windows budgets. | Named hardware for 30 days, full matrix, approved baseline, S2. |
 | Resource/storage | **Good focused; controlled partial** | PTY/worker/image/store cycles, descendant cleanup, cache/artifact limits, isolated targets. | Long soak, AppVerifier/WPR, Linux/macOS GPU/process, crash/power loss, future lifecycle tests. |
 | Resilience/retry | **Good fail-closed design** | Last-known-good, CAS, reconciliation, stale rejection, coalescing, cancellation, rollback, no silent flaky retries. | SSH/provider reconnect states, UI recovery, cross-platform faults, power loss, future profile/sequence recovery. |
@@ -1111,16 +1117,15 @@ The maintained checklist and dependencies are in the
 [connectivity and command-productivity focus roadmap](CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md).
 At this audited baseline, the focused order is:
 
-1. Obtain protected acceptance or supersession of ADR 0012. Package identity,
-   grants, executable resolution, strict defaults, and the native fixture
-   definitions are already frozen locally with production launch disabled.
-2. Preserve the locally complete D5.1 read-only product Hub and obtain its
-   external native/accessibility evidence. Preserve the nonactivated D5.2
-   selected-record and transient literal-host preparation plus product
-   Connection Review while production launch waits for the protected decision.
-3. Activate D3 only with its capability, atomic spawn, PTY lifecycle, cleanup,
-   and three-OS native gates; then deliver D5.2 managed OpenSSH in bounded
-   direct, route/host-trust, tunnel, and native-evidence slices.
+1. Preserve accepted ADR 0012 and obtain ADR 0003's two independent exact-head
+   approvals plus non-bypassable server enforcement. Bind real package
+   attestation/revocation while production launch remains disabled.
+2. Preserve the locally complete D5.1 read-only Hub and obtain its external
+   native/accessibility evidence. Preserve D5.2's nonactivated approval UI,
+   application runner, guarded PTY, and exact route-publication path.
+3. Activate D3 only after its protected, attestation, cleanup, and three-OS
+   native gates pass; then deliver D5.2 routes/host trust, reconnect/receipts,
+   tunnels, and native evidence as bounded slices.
 4. Complete connection profiles, typed recipes, and declarative remote
    workspaces before adding provider execution.
 5. Implement D6.0 and each D6.1-D6.5 provider independently through official

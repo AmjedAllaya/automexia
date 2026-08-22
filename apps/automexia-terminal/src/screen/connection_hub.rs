@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use automexia_devops_ssh::GrantKind;
+use automexia_extension_api::Decision;
 use automexia_ui_model::connection_hub::{
     HubFocus, HubKey, HubVisualPreferences, Viewport,
 };
@@ -25,6 +26,72 @@ fn is_literal_destination_shortcut(logical_key: &Key, modifiers: ModifiersState)
         )
 }
 
+enum ManagedApprovalAction {
+    Allow(Decision),
+    Deny,
+}
+
+fn managed_approval_action(
+    logical_key: &Key,
+    modifiers: ModifiersState,
+    focus: &HubFocus,
+) -> Option<ManagedApprovalAction> {
+    if modifiers.control_key() || modifiers.super_key() || modifiers.alt_key() {
+        return None;
+    }
+    match logical_key {
+        Key::Named(NamedKey::Enter)
+            if matches!(focus, HubFocus::Review | HubFocus::PrimaryAction) =>
+        {
+            Some(ManagedApprovalAction::Allow(Decision::AllowOnce))
+        }
+        Key::Character(value) if value.eq_ignore_ascii_case("a") => {
+            Some(ManagedApprovalAction::Allow(Decision::AllowOnce))
+        }
+        Key::Character(value) if value.eq_ignore_ascii_case("s") => {
+            Some(ManagedApprovalAction::Allow(Decision::AllowSession))
+        }
+        Key::Character(value) if value.eq_ignore_ascii_case("d") => {
+            Some(ManagedApprovalAction::Deny)
+        }
+        _ => None,
+    }
+}
+
+fn managed_launch_diagnostic(
+    error: &crate::context::external_tool_runner::RunnerError,
+) -> &'static str {
+    use crate::context::external_tool_runner::RunnerErrorCode;
+    use crate::context::launch_broker::LaunchDenialCode;
+
+    match error.code {
+        RunnerErrorCode::LaunchDenied(LaunchDenialCode::PendingSecurityReview) => {
+            "connection-launch-protected-review-pending"
+        }
+        RunnerErrorCode::LaunchDenied(LaunchDenialCode::InvalidPrincipal) => {
+            "connection-launch-package-attestation-unavailable"
+        }
+        RunnerErrorCode::LaunchDenied(LaunchDenialCode::ExecutableUnavailable) => {
+            "connection-launch-openssh-unavailable"
+        }
+        RunnerErrorCode::LaunchDenied(LaunchDenialCode::ExecutableIdentityChanged)
+        | RunnerErrorCode::ExecutableIdentityChanged => {
+            "connection-launch-executable-changed"
+        }
+        RunnerErrorCode::CapacityExceeded => "connection-launch-capacity-reached",
+        RunnerErrorCode::SafeDefaultUnavailable => {
+            "connection-launch-working-directory-unavailable"
+        }
+        RunnerErrorCode::InvalidRequest | RunnerErrorCode::InvalidRoute => {
+            "connection-launch-review-stale"
+        }
+        RunnerErrorCode::NotPublished | RunnerErrorCode::StaleLease => {
+            "connection-launch-publication-failed"
+        }
+        RunnerErrorCode::LaunchDenied(_) => "connection-launch-denied",
+    }
+}
+
 impl Screen<'_> {
     pub fn open_connection_hub(&mut self) {
         self.renderer.command_palette.set_enabled(false);
@@ -33,6 +100,70 @@ impl Screen<'_> {
         self.connection_hub.open(opener);
         self.sync_connection_hub();
         self.mark_dirty();
+    }
+    fn attempt_managed_openssh(&mut self, decision: Decision) {
+        let Some(preparation) = self.connection_hub.direct_openssh_preparation().cloned()
+        else {
+            self.connection_hub
+                .report_direct_openssh_diagnostic("connection-launch-review-stale");
+            return;
+        };
+        let destination = match preparation.reviewed_destination() {
+            Ok(destination) => destination.to_owned(),
+            Err(_) => {
+                self.connection_hub
+                    .report_direct_openssh_diagnostic("connection-launch-review-stale");
+                return;
+            }
+        };
+        let reservation = match self.context_manager.reserve_managed_route() {
+            Ok(reservation) => reservation,
+            Err(_) => {
+                self.connection_hub.report_direct_openssh_diagnostic(
+                    "connection-launch-route-unavailable",
+                );
+                return;
+            }
+        };
+        let intent = match crate::context::external_tool_runner::OpenSshLaunchIntent::new(
+            reservation,
+            &destination,
+            decision,
+            crate::context::external_tool_runner::current_time_ms(),
+        ) {
+            Ok(intent) => intent,
+            Err(error) => {
+                self.connection_hub
+                    .report_direct_openssh_diagnostic(managed_launch_diagnostic(&error));
+                return;
+            }
+        };
+        let guarded = match self
+            .external_tool_runner
+            .authorize_openssh_candidate(intent)
+        {
+            Ok(guarded) => guarded,
+            Err(error) => {
+                self.connection_hub
+                    .report_direct_openssh_diagnostic(managed_launch_diagnostic(&error));
+                return;
+            }
+        };
+        if self
+            .context_manager
+            .publish_managed_context(
+                reservation,
+                guarded,
+                self.external_tool_runner.clone(),
+                crate::context::next_rich_text_id(),
+            )
+            .is_err()
+        {
+            self.connection_hub
+                .report_direct_openssh_diagnostic("connection-launch-publication-failed");
+            return;
+        }
+        self.connection_hub.close();
     }
 
     pub fn connection_hub_is_active(&self) -> bool {
@@ -186,6 +317,30 @@ impl Screen<'_> {
         }
 
         let catalog_controls_visible = self.connection_hub.catalog_controls_visible();
+        if self.connection_hub.direct_openssh_preparation().is_some() {
+            match managed_approval_action(
+                &key_event.logical_key,
+                modifiers,
+                &self.connection_hub.focus(),
+            ) {
+                Some(ManagedApprovalAction::Allow(decision)) => {
+                    self.attempt_managed_openssh(decision);
+                    self.sync_connection_hub();
+                    self.mark_dirty();
+                    return true;
+                }
+                Some(ManagedApprovalAction::Deny) => {
+                    let route_id = self.context_manager.current().route_id;
+                    let wake = self.context_manager.devops_refresh_completion(route_id);
+                    let _ = self.connection_hub.handle_key(HubKey::Escape, wake);
+                    self.sync_connection_hub();
+                    self.mark_dirty();
+                    return true;
+                }
+                None => {}
+            }
+        }
+
         let focus = self.connection_hub.focus();
         if catalog_controls_visible && matches!(focus, HubFocus::Search) {
             match &key_event.logical_key {
@@ -367,7 +522,13 @@ impl Screen<'_> {
             ConnectionHubHit::CancelReviewedScan => {
                 self.connection_hub.cancel_grant_review();
             }
-            ConnectionHubHit::BackToResults => {
+            ConnectionHubHit::ApproveOnce => {
+                self.attempt_managed_openssh(Decision::AllowOnce);
+            }
+            ConnectionHubHit::ApproveSession => {
+                self.attempt_managed_openssh(Decision::AllowSession);
+            }
+            ConnectionHubHit::DenyManagedLaunch | ConnectionHubHit::BackToResults => {
                 let wake = self.context_manager.devops_refresh_completion(route_id);
                 let _ = self.connection_hub.handle_key(HubKey::Escape, wake);
             }
@@ -417,6 +578,51 @@ impl Screen<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn managed_approval_mnemonics_respect_focus_and_modified_keys() {
+        let none = ModifiersState::empty();
+        assert!(matches!(
+            managed_approval_action(
+                &Key::Named(NamedKey::Enter),
+                none,
+                &HubFocus::Review,
+            ),
+            Some(ManagedApprovalAction::Allow(Decision::AllowOnce))
+        ));
+        assert!(matches!(
+            managed_approval_action(
+                &Key::Named(NamedKey::Enter),
+                none,
+                &HubFocus::PrimaryAction,
+            ),
+            Some(ManagedApprovalAction::Allow(Decision::AllowOnce))
+        ));
+        assert!(managed_approval_action(
+            &Key::Named(NamedKey::Enter),
+            none,
+            &HubFocus::Back,
+        )
+        .is_none());
+        assert!(matches!(
+            managed_approval_action(&Key::Character("a".into()), none, &HubFocus::Back,),
+            Some(ManagedApprovalAction::Allow(Decision::AllowOnce))
+        ));
+        assert!(matches!(
+            managed_approval_action(&Key::Character("S".into()), none, &HubFocus::Review,),
+            Some(ManagedApprovalAction::Allow(Decision::AllowSession))
+        ));
+        assert!(matches!(
+            managed_approval_action(&Key::Character("d".into()), none, &HubFocus::Review,),
+            Some(ManagedApprovalAction::Deny)
+        ));
+        assert!(managed_approval_action(
+            &Key::Character("a".into()),
+            ModifiersState::CONTROL,
+            &HubFocus::Review,
+        )
+        .is_none());
+    }
 
     #[test]
     fn literal_destination_shortcut_is_mnemonic_and_never_steals_modified_keys() {

@@ -11,12 +11,12 @@ A phase can be source-complete while release evidence is still partial. User-fac
 | Core | v0.4/S0 | **Fully implemented locally** | **Partial** | Identity, hostile-input bounds, atomic reload, and current terminal source gates are complete; stable release gates remain. |
 | Assurance | v0.4/S1 | **Partial** | **Partial** | Strong deterministic, Windows-native, QA, fuzz, resource, and workflow machinery exists; controlled Linux/macOS visual/GPU/accessibility evidence and the full baseline remain. |
 | Performance | S2 | **Not implemented** | **Not started** | The 30-day comparable baseline is incomplete, so the 5% latency/10% memory ratchet is inactive. |
-| DevOps | D0 | **Partial** | **Partial** | Schema-2 threat/manual/fixture definitions are complete locally; ADR 0012 remains proposed and native execution is pending in F4/F5. |
+| DevOps | D0 | **Partial** | **Partial** | ADR 0012 is owner-accepted and the schema-2 threat/manual/fixture contract is complete locally; exact-head protected approvals, hosted gates, and native execution remain. |
 | DevOps | D1 | **Fully implemented** | **Partial** | Four private provider-neutral crates and bounded contracts satisfy their source boundary. |
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
-| DevOps | D3 | **Partial; nonactivated** | **Blocked** | A test-only exact-argv review model exists; production launch, capability UX, atomic spawn, and native lifecycle proof do not. |
+| DevOps | D3 | **Partial; nonactivated** | **Blocked** | The production broker, one application runner, exact executable guard, approval UX, and ContextManager PTY/route seam are complete locally and hard disabled; attestation, protected activation, and native lifecycle proof remain. |
 | DevOps | D4 | **Fully implemented; read-only product adapter active** | **Partial** | Bounded OpenSSH inventory/persistence is connected only to D5.1 reviewed browsing; it retains no process/network/launch authority. |
-| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 complete locally; D5.2 review preparation complete locally** | **Partial/blocked** | Selected direct D4 records now produce canonical pending F2 plans and a responsive, accessible, disabled Connection Review. Protected D3/M2 activation, current executable/identity evidence, actual OpenSSH/PTY lifecycle, routes/tunnels/reconnect/receipts, and external native/accessibility evidence remain. |
+| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 complete locally; D5.2 guarded review path complete locally** | **Partial/blocked** | Selected and literal targets reach an actionable, accessible allow-once/session/deny review and fail-closed runner/PTY-route seam. Attested current-executable review, protected activation, real OpenSSH lifecycle, routes/tunnels/reconnect/receipts, and external native/accessibility evidence remain. |
 | Multi-cloud | D6.0-D6.5 | **Not implemented** | **Blocked** | Provider auth, capsules, transports, and provider slices are planned only. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
@@ -40,6 +40,16 @@ A phase can be source-complete while release evidence is still partial. User-fac
 | Compatibility | G5 | **Not implemented** | **Not started** | Generated profiles, CLI/migration, xtask generation, compatibility fuzz, and registry benchmarks are absent. |
 | Compatibility | G6 | **Not implemented; deferred** | **Blocked by design** | Inspector and parked-PTY undo/redo need separate ADR/security/resource design. |
 
+## SSH activation M2/F4/D3 status
+
+| Requirement | Implementation status | Release evidence | Remaining exit work |
+|---|---|---|---|
+| M2 protected activation | **Partially done** | ADR 0012 is accepted; exact-scope policy, mutation gates, and the fail-closed application boundary pass locally. | Two independent exact-head approvals and server enforcement, green hosted S0/CodeQL gates, real loader/build attestation and live revocation, then enablement. |
+| F4 process/PTY lifecycle | **Partially done; nonactivated** | One Router-owned runner, 50-operation cap, 256-record redacted audit FIFO, exact executable guard, ContextManager PTY/route publication, rollback, cancellation, close, and shutdown pass locally. | Fresh current-executable review after attestation; native graceful/forced descendant cleanup; Windows/macOS/Linux and gated-WSL OpenSSH, resource, pixels, and accessibility evidence. |
+| D3 exact-argument broker | **Partially done; nonactivated** | Exact typed package/capability/session/capsule/argv/environment/cwd policy is production-compiled; the activation constant is false and the linked candidate is unverified. | Attested first-party grant, protected activation, real native replacement-race and 1/10/50 lifecycle proof. |
+
+The safe current outcome is an implemented but unavailable boundary: no managed
+SSH child can start, and normal shell-owned `ssh` remains the recovery path.
 
 ## Release sequence
 

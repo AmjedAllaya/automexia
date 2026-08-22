@@ -117,14 +117,14 @@ native/release claim.
 
 | Area | Status | Current evidence | Remaining exit work |
 |---|---|---|---|
-| D0 SSH trust/fixture contract | Partially done | Proposed ADR 0012; schema-2 D0/D3 fixture; mutation checks; four-platform native matrix definition | Protected security review and two protected-path approvals; execute later native fixture matrix. |
+| D0 SSH trust/fixture contract | Partially done | ADR 0012 is accepted by the project owner; schema-2 D0/D3 fixture, mutation checks, and four-platform native matrix definition pass locally | ADR 0003 two exact-head approvals/server enforcement and later native fixture execution. |
 | D1 contracts and D2 immutable capsules | Fully done locally | `automexia-extension-api`, runtime, DevOps model and architecture checks | Preserve while adding real login/launch; hosted release assurance remains separate. |
-| D3 launch broker | Partially done | `context/launch_broker.rs` has package, capability, resolver, lease, audit and pure lifecycle tests | It is exclusively `#[cfg(test)]`, has a constant production denial, and cannot spawn/attach a PTY. Implement F4 only after ADR gate. |
+| D3 launch broker | Partially done; nonactivated | The production broker, one application runner, exact executable guard, ContextManager PTY/route seam, bounded lifecycle/audit, approval UX, and mutation checks pass locally | Production constant stays false and linked package unverified until protected approvals, attestation, descendant cleanup, and native evidence pass. |
 | D4 static OpenSSH inventory | Fully done locally | `extensions/devops-ssh`: bounded parser, grants, hostile/property/fuzz tests, 10,000-alias benchmark, private revisioned metadata | Deliberately remains non-executing; hosted macOS/longitudinal release proof remains external. |
-| F2/D5.0 Hub and planning model | Partially done overall; fully done locally | Pure records, validation, reducers, fingerprints, review/planner projection, accessibility goldens, fuzz and benchmark | ADR 0012 acceptance blocks phase closure; no product authority is granted. |
+| F2/D5.0 Hub and planning model | Partially done overall; fully done locally | Pure records, validation, reducers, fingerprints, review/planner projection, accessibility goldens, fuzz and benchmark | ADR 0003 protected activation/native evidence blocks phase closure; no production authority is granted. |
 | F3/D5.1 read-only Connection Hub | Fully done locally; external evidence partially done | App-owned joined runtime, exact reviewed native selection, compact progressive setup, bounded browse/filter/group, redundant text/icon/color semantics, D4 favorite/tag CAS, read-only recent/library state, disabled authority, Windows tests/benchmark/build/native frame | Native macOS/Linux picker/permission and controlled screen-reader evidence remain external. |
 | F3 Connection Library | Fully done locally | `ConnectionLibraryStore` has 16 MiB private documents, CAS, recovery, transfer redaction, fresh import IDs, read-only/disk-full and link tests | Product editor/manager belongs to F6; macOS/Linux native permission and controlled screen-reader evidence remain. |
-| F5 managed OpenSSH | Partially done; nonactivated | D4 selection now composes into a canonical pending F2 plan and a responsive, accessible Connection Review; the identity-bound pure review remains tested | M2 activation, executable/identity observation, OpenSSH child/PTy, reconnect/receipts/cleanup, routes/tunnels, and native sessions remain. |
+| F5 managed OpenSSH | Partially done; nonactivated | D4/literal selection composes into a canonical plan and actionable review; exact typed approval now reaches the fail-closed runner and guarded PTY/route publication seam | Protected activation/attestation, real OpenSSH sessions, reconnect/receipts, forced cleanup, routes/trust/tunnels, and native evidence remain. |
 | F6 recipes and remote declarative workspaces | Not done | Typed pure profile/recipe models and F3 private persistence are reusable; CP3.3 local task bridges are separately complete | No compiler/runtime/editor/remote shell contract/layout restoration/broadcast. |
 | D6 provider-neutral authentication and capsule orchestration | Not done | Public provider/transport model variants and legacy display context exist | No visible official-CLI auth, isolated session pinning, cache/provenance/revocation, or provider adapter. |
 | AWS, Azure, Google Cloud, Kubernetes/OpenShift, Teleport, OpenBao | Not done | No corresponding extension directory or application adapter exists; there are only typed model variants and insert-only Quick Action packs | Implement and release each adapter independently after F4/F7 prerequisites. |
@@ -168,8 +168,9 @@ Status: **Fully done** on the 2026-08-21 local evidence boundary.
   pages, and user documentation. Earlier audit prose still lists persistence
   and read-only/disk-full evidence as missing even though the committed store
   and tests now cover them.
-- [x] **Fully done (preserved)** — Keep the D0/D3 statement exact: the broker remains test-only and managed
-  launch is unavailable until ADR 0012 is accepted or superseded.
+- [x] **Fully done (updated)** — Keep the D0/D3 statement exact: ADR 0012 is
+  owner-accepted; the production broker/runner/PTY-route boundary remains hard
+  disabled and the package unverified until all protected and native gates pass.
 - [x] **Fully done (was Not done)** — Add this plan to the documentation navigation without editing unrelated
   current work; update `docs/index.md` only in a coherent documentation commit.
 - [x] **Fully done (was Partially done)** — Record the current local evidence commands, platform, revision, test
@@ -358,116 +359,112 @@ authority is introduced.
 
 ### M2 — complete the D0 external decision and activate F4/D3 safely
 
-Status: **Partially done.** The nonactivated contract and local protected-review
-policy are strengthened; production activation remains blocked and no
-process/PTY/network authority was added.
+Status: **Partially done.** ADR 0012 is accepted by the project owner and the
+local runner, guarded executable consumption, ContextManager PTY/route seam, and
+approval UX are implemented. Production remains fail-closed: the compile-time
+gate is false and the linked extension candidate is unverified.
 
-#### M2 implementation audit and protected gate (2026-08-21)
+#### M2 implementation audit (2026-08-22)
 
 | M2 area | Classification | Current evidence | Missing exit proof |
 |---|---|---|---|
-| Protected review policy | Partially done | CI now treats terminal context/process ownership, extension API/runtime, the SSH extension, session-launch fixtures/checkers, security ADRs, and the policy itself as protected. Its bounded review adapter validates login/commit forms; counting is case-normalized, excludes the PR author and bots, and rejects stale or malformed records unless the reviewed commit matches the exact PR head. | Two current independent human approvals and non-bypassable server-side enforcement are unavailable. |
-| Inherited S0/v0.4 gates | Not done externally | Local earlier-phase gates exist, but there is no current-revision hosted CI evidence. | Green required CI/CodeQL/native jobs on the protected M2 revision. |
-| Trusted package attestation | Not done | The test-only broker validates a supplied reviewed identity fixture. | A real loader/build provenance receipt with exact digest, version, contract, verification, and revocation state. |
-| Exact runner and lifecycle | Partially done; guarded native seam implemented, application runner not implemented | The pure broker owns exact scope, literal argv, cwd/environment bounds, replay-safe leases, revocation, redacted authorization audit, and 1/10/50 model cycles. Teletypewriter now owns absolute guarded executable identity, Windows explicit-path/suspended Job Object creation, exact environment isolation, Unix descriptor execution, and handle cleanup. | One app-owned runner must compare and consume the guard, bind PTY/route/session/lease state, persist completion, and pass native OpenSSH/resource proof. |
-| Capability/recovery UX | Not done | The Hub truthfully reports launch unavailable. | Accessible review, approval, distinct recovery states, focus behavior, and visual/native evidence. |
+| ADR/protected review | Partially done | ADR 0012 is accepted; local policy counts distinct non-author, non-bot approvals bound to the exact PR head. | Two independent exact-head approvals and non-bypassable server enforcement required by ADR 0003. |
+| Inherited S0/v0.4 gates | Not done externally | Local earlier-phase gates exist. | Green hosted CI, CodeQL, hostile-output, native, and release jobs on the protected M2 revision. |
+| Trusted package attestation | Not done | Exact identity/version/contract/digest/verification/revocation policy and fail-closed tests exist; the linked candidate is unverified. | Real loader/build-provenance attestation and live revocation binding. |
+| Application runner | Fully done locally; nonactivated | Router owns one shared runner; active operations stop at 50, audits at 256, route/session/lease scope is exact, completion requires publication, and shutdown reconciles. | Protected activation and native process/resource proof. |
+| PTY/route lifecycle | Partially done | ContextManager alone consumes the guard, creates the exact PTY, inserts one independent Context, then marks the matching route/session published; natural completion and cancellation reconcile. | Cross-platform forced descendant cleanup, PID reuse, durable audit, listener/tunnel cleanup, and leak proof. |
+| Capability/recovery UX | Partially done | Review shows public package/launcher, target, route, risk, exact operation, 60-second approval scope, destination, and deny/allow-once/allow-session with pointer, focus, mnemonics, accessibility, and redacted recovery. | Bind the current resolved executable observation into a fresh pre-launch review after attestation; then obtain controlled pixels, screen-reader, localization, and high-scale evidence. |
+| Native OpenSSH evidence | Partially done | Windows guarded-spawn/ConPTY tests pass and macOS cross-check compiles. | Real loopback OpenSSH on native Windows/macOS/Linux and gated WSL plus controlled 1/10/50 resources. |
 
-Remote prerequisite snapshot on 2026-08-21: the repository returned one
-collaborator, no pull request or hosted CI run for the current revision, and a
-403 response for ruleset inspection/enforcement on the current private hosting
-plan. The two-reviewer gate therefore cannot be satisfied by the current
-repository configuration. This snapshot is evidence for the blocker, not a
-permanent repository claim; re-check it before resuming M2.
+The 2026-08-21 remote snapshot found insufficient collaborators, no exact-head
+PR/hosted run, and unavailable ruleset enforcement on the current plan. Recheck
+that external state against the exact activation revision.
 
 #### M2.1 Protected prerequisites
 
-- [ ] **Partially done (external prerequisite)** — Obtain the ADR 0012 security
-  review and two protected-path approvals required by ADR 0003, or replace it
-  through an equally specific accepted ADR. Local CI now identifies the M2
-  authorities and accepts only distinct non-author, non-bot approvals; the
-  actual independent exact-head reviewers and server-side enforcement are
-  missing.
-- [ ] **Not done (external prerequisite)** — Confirm all inherited S0/v0.4
-  hostile-output and release gates are green on the exact protected M2 revision.
-- [ ] **Not done** — Bind a real trusted package-loader/attestation result to the
-  reviewed package policy: extension ID, publisher, exact version, contract
-  version, non-zero digest, first-party/repository verification, and revocation
-  state. A test fixture, crate name, install marker, or unverified local build is
-  not production proof.
+- [ ] **Partially done** — ADR 0012 is accepted by the project owner. Obtain the
+  two independent exact-head approvals and non-bypassable server enforcement
+  still required by ADR 0003.
+- [ ] **Not done externally** — Pass inherited S0/v0.4 hostile-output, hosted
+  CI, CodeQL, native, and release gates on the exact M2 revision.
+- [ ] **Not done** — Bind the real loader's non-zero digest, publisher, exact
+  version/contract, reviewed/signed status, and live revocation result. Never
+  promote the current unverified linked candidate.
 
 #### M2.2 One application-owned `ExternalToolRunner`
 
-- [ ] **Not done** — Design tests first for the actual application launch/PTY
-  seam, then add a single runner in `apps/automexia-terminal`. It accepts only a
-  prepared canonical executable, exact argument vector, validated cwd, bounded
-  allowlisted application environment, explicit stdin/output policy, deadline,
-  cancellation token, route destination, and lease.
-- [x] **Fully done at the nonactivated boundary; preserve during M2** — Broad
-  `ProcessSpawn`, arbitrary executables, shell profiles, inherited environment
-  selection, raw command text, secret references, and production launch remain
-  denied by the contract, source checker, and mutation tests.
-- [ ] **Partially done** — The pure broker resolves fixed platform roots and
-  revalidates file identity. The low-level PTY seam now adds an absolute guarded
-  executable identity; Windows holds a replacement-resistant handle, passes an
-  explicit application path, creates a suspended kill-on-close Job Object, and
-  uses an exact environment; Unix uses descriptor execution and macOS compiles
-  through its guarded /dev/fd path. Native Windows unit/lifecycle tests and
-  the installed macOS cross-check pass. Broker comparison/consumption, native
-  Linux/macOS/OpenSSH adversarial runs, and product publication remain missing.
-- [ ] **Partially done** — The broker binds reviewed package identity,
-  executable identity, capability decision, operation lease, session, capsule
-  revision, and argv. Target/connection, new PTY, route/pane destination,
-  tunnels, publish-before-wake ordering, and atomic creation are not implemented.
-- [ ] **Partially done** — Pure cancellation, completion, rebind, revocation,
-  stale-lease isolation, sibling preservation, and bounded 1/10/50 cycles pass.
-  Graceful/forced child-tree termination, PTY/listener/tunnel closure, shutdown
-  reconciliation, PID-reuse-safe native completion, and resource proof remain.
-- [ ] **Partially done** — Authorization audit fields are structured and
-  redacted. Native completion/failure persistence must retain the same rule and
-  never record argv, cwd, executable path, environment values, username, PID,
-  secrets, terminal bytes, or raw provider/OpenSSH diagnostics.
+- [x] **Fully done locally; nonactivated** — Router owns exactly one runner for
+  all windows. Typed intent contains one destination, allow-once/session
+  decision, route/session/operation scope, and 60-second authorization expiry.
+  The runner owns the trusted startup cwd and a bounded 14-name environment
+  allowlist; PTY I/O is route-bound and no implicit Enter/background launch
+  exists.
+- [x] **Fully done locally** — Active operations stop at 50; redacted FIFO
+  records stop at 256. Overflow, duplicate publication, pre-publication
+  completion, stale lease, replay, capsule mismatch, and shutdown fail closed.
+- [x] **Fully done locally** — Broad ProcessSpawn, arbitrary executables,
+  shell evaluation/profiles, PATH/cwd executable lookup, extension-selected
+  environment, secrets, raw command text, and WSL production remain denied by
+  source and mutation checks.
+- [x] **Fully done locally; nonactivated** — The runner reopens and compares the
+  broker-reviewed file identity. Teletypewriter owns the Windows guarded
+  explicit-path/suspended kill-on-close Job Object and Unix descriptor
+  execution. ContextManager is the only exact PTY caller.
+- [x] **Fully done locally; nonactivated** — Route, session, operation, capsule,
+  decision, executable guard, argv, PTY, and Context are bound. Context
+  insertion precedes lease publication and renderer wake.
+- [ ] **Partially done** — Natural completion, cancellation, revocation,
+  stale-lease/sibling isolation, capacity, and app shutdown reconcile locally.
+  Cross-platform forced child trees, listener/tunnel cleanup, PID reuse, thread
+  joining, and controlled resources remain.
+- [ ] **Partially done** — Authorization/completion/cancellation audits are
+  bounded and redacted in memory. Durable retention/rotation/recovery awaits a
+  reviewed storage/privacy policy.
 
 #### M2.3 Capability/recovery UX
 
-- [ ] **Not done** — Render an accessible review/approval surface before any
-  launch. It shows extension/package identity, capability, public target, route,
-  risk, exact operation summary, expiration, scope, destination, and deny/
-  allow-once/allow-session behavior where supported.
-- [ ] **Partially done as a pure denial model** — Expiry, revocation, loader or
-  executable change, stale scope, missing executable, cancellation, and failure
-  have distinct typed results in the broker. Product recovery UI and
-  accessibility/visual/native evidence are not implemented.
-- [x] **Fully done in the initial contract; preserve during M2** — Grants are
-  session-scoped or allow-once and no persistent grant schema exists. Persisted
-  grants remain outside initial F4 and require a separate threat model,
-  migration, revocation UX, and ADR review.
+- [ ] **Partially done; nonactivated** — The three-card review exposes public
+  package/launcher state, target, direct transport/new route, host trust,
+  `session.launch`, one-argument operation, PTY I/O, 60-second scope, risk, and
+  destination without aliases, opaque references, digests, paths, argument
+  values, environment values, or terminal data. A current resolved executable
+  observation must still be bound into a fresh review after real attestation.
+- [x] **Fully done locally; nonactivated** — Deny, allow once, and allow session
+  have pointer targets and A/Enter/S/D mnemonics. Enter cannot bypass Back; Tab
+  includes PrimaryAction; accessibility buttons mirror the choices. Execution
+  remains independently disabled.
+- [x] **Fully done locally; nonactivated** — Protected review, attestation,
+  missing OpenSSH, executable change, capacity, stale review, cwd/route,
+  publication, and denial map to fixed recovery copy; raw codes are not drawn.
+- [x] **Fully done** — Grants are allow-once or session-scoped. Persistent
+  grants require a separate ADR, migration, revocation UX, and review.
 
-#### M2.4 M2 tests and native evidence
+#### M2.4 Tests and evidence
 
-- [ ] **Partially done** — Deterministic pure-broker tests cover hostile,
-  Unicode, whitespace, leading-dash, metacharacter, maximum/oversized argv,
-  environment/secret denial, duplicate/replay/stale/expired decisions,
-  executable replacement, session isolation, cancellation, shutdown-equivalent
-  revocation, and 1/10/50 model cycles. Native Windows tests now prove the guard
-  blocks replacement, exact spawn omits ambient PATH, child exit is observed,
-  and repeated ConPTY cycles close. Actual app-runner stdin/output/deadline,
-  window isolation, publish order, Unix/macOS execution, and controlled forced
-  cleanup/resource tests remain missing.
-- [ ] **Not done (external native evidence)** — Execute the frozen loopback
-  fixture with real system OpenSSH and native Windows ConPTY, macOS PTY, Linux
-  PTY, and separately gated WSL. Capture the private/redacted manifest, resource
-  peaks, and all six zero-resource cleanup invariants.
-- [ ] **Not done (external controlled evidence)** — Measure launch-to-prompt,
-  cancellation, input/render latency, CPU, memory, process/handle/descriptor/
-  task/route counts, and repeated-close baseline on the exact approved build.
+- [x] **Fully done locally for pure/application contracts** — Tests cover
+  hostile/oversized destinations, environment/secret denial, expiry/replay,
+  executable replacement, 50-operation saturation, 256-record retention,
+  route/session publication, completion-before-publication, shutdown,
+  pointer/focus/mnemonics, and redaction. Mutations reject test-gating production
+  modules or PTY/process authority outside ContextManager.
+- [ ] **Partially done for native primitives** — Windows exact-spawn/ConPTY
+  lifecycle and macOS compile evidence pass. Native Linux/macOS runtime, real
+  OpenSSH, pane/window publication, forced cleanup, and durable audit remain.
+- [ ] **Not done externally** — Run the frozen loopback matrix on native
+  Windows/macOS/Linux and gated WSL; capture private redacted manifests and all
+  six zero-resource cleanup invariants.
+- [ ] **Not done externally** — Measure prompt/cancel/input/render latency, CPU,
+  memory, process/handle/descriptor/task/route counts, and repeated close on the
+  exact approved build.
 
-Exit: the generic broker is production-capable and independently testable, but
-no provider receives a grant merely because the runner exists.
+Exit: the boundary is locally implemented but unavailable. No provider or SSH
+request receives a grant until protected, attestation, hosted, native, resource,
+and controlled-accessibility gates pass.
 
 ### M3 — F5.1 direct reviewed OpenSSH
 
-Status: **Partially done** at the non-activated application-review boundary;
-production connection behavior remains blocked by M2.
+Status: **Partially done** at the nonactivated review-to-route boundary;
+production authorization remains blocked by M2's external gates.
 
 - [x] **Fully done for non-activated destination preparation:** the exact
   grammar accepts one inventory-typed concrete alias or one typed literal host
@@ -477,44 +474,44 @@ production connection behavior remains blocked by M2.
   to a stable opaque public profile and canonical pending F2 plan with exact
   `session.launch`, no executable identity, an all-false authority ceiling,
   and no process, network, PTY, persistence, or history owner.
-- [x] **Fully done for the non-activated application surface:** Enter on a
+- [x] **Fully done for the nonactivated application surface:** Enter on a
   selected result or the dedicated **Enter host** workflow opens Connection
-  Review with public target, identity verification state, system
-  OpenSSH/direct route, pending executable, strict host-trust policy, exact
-  `session.launch`, environment risk, pane-tab destination, and
-  `ssh <destination>`. The literal editor provides a screen-tested `L`
-  mnemonic, 512-byte exact validation, atomic paste/IME rejection, trapped
-  focus, disabled invalid review, one visible Cancel path plus Escape/owning-
-  surface cleanup, conservative production risk, inert background controls,
-  and non-overlapping tiny-to-8K hit geometry. Exact inventory
-  aliases, opaque references, and fingerprints do not enter presentation state.
-  Controlled native pixel and screen-reader evidence remains external.
-- [ ] **Not done:** the M2-provided current executable/identity observation and
-  protected activation remain required before any review can execute. Typed
-  user, port, URI, IPv6, jump, tunnel, and free-form option forms remain M4/M5
-  work.
-- [ ] **Not done:** launch system OpenSSH only through M2 into a new independent
-  PTY. Preserve all prompts and diagnostics in that PTY; Automexia must not
-  parse passwords, passphrases, MFA, or terminal content to decide
-  authentication.
+  Review with public target, Automexia SSH/system OpenSSH launcher, direct/new
+  route, strict host-trust policy, exact `session.launch`, production risk,
+  60-second scope, one literal argument, and PTY I/O. Allow once, allow for
+  session, and deny use pointer targets plus A/Enter, S, and D. The literal
+  editor preserves its `L` mnemonic, 512-byte exact validation, atomic
+  paste/IME rejection, trapped focus, invalid-state denial, one Cancel/Escape
+  path, inert background, and tiny-to-8K geometry. Aliases, opaque references,
+  digests, paths, environment, and terminal data do not enter presentation.
+- [ ] **Partially done:** M2 broker-side executable identity revalidation, exact guard
+  consumption, and route publication are implemented locally. A current resolved observation must still be fingerprint-bound in a fresh pre-launch review after attestation. Protected
+  approvals, attested package verification, and native proof remain before a
+  child can start. User, port, URI, IPv6, jump, tunnel, and free-form options
+  remain M4/M5 work.
+- [ ] **Partially done:** the approved descriptor is wired through M2 to one new
+  independent ordinary terminal PTY, preserving OpenSSH-owned input/output by
+  construction. Real native prompt/diagnostic/password/passphrase/MFA behavior
+  and cleanup evidence remain external; Automexia never parses that content to
+  decide authentication.
 - [ ] **Partially done:** immutable identity-bound reviews invalidate on profile,
   source, capsule, F2 plan, canonical executable identity, capability,
   destination, observation content/generation/freshness, or host-trust change.
   Inventory preparation is discarded or rebuilt on selection, route, metadata,
   catalog, runtime-state, and generation changes. Transient literal review is
   isolated from unrelated catalog refresh and its editor clears on cancel or
-  close. The test-only M2 broker covers pure cancel/rebind/revocation. Reconnect
-  orchestration, nonintrusive notifications, redacted completion receipts, and
-  independent process/session cleanup remain not done.
-- [ ] **Partially done:** the production module graph now contains only
-  non-executing D4-record and transient-literal adapters plus the shared
-  controller/renderer review route; process/network/PTY activation remains
-  absent and the D0 manual-shell baseline is mutation-checked. Hostile boundary,
-  accessibility, controller lifecycle, keyboard/pointer, inert-background, and
-  tiny-to-8K geometry tests pass locally. The selected-record preparation
-  benchmark measured 6.3520–6.6011 µs on the 2026-08-22 Windows development
-  host. No managed process exists, so the required before/after native
-  `ssh host` test remains not done.
+  close. The production fail-closed runner covers cancellation, revocation,
+  scope, publication ordering, capacity, and shutdown. Reconnect orchestration,
+  notifications, durable completion receipts, and native forced process-tree
+  cleanup remain not done.
+- [ ] **Partially done:** the production module graph contains D4/literal
+  adapters, review UI, one application runner, and the ContextManager exact
+  PTY/route seam. Activation remains false and the linked package unverified, so
+  no production child exists. Hostile boundaries, accessibility, controller
+  lifecycle, keyboard/pointer, inert background, tiny-to-8K geometry, runner
+  bounds, route publication, and mutation ownership pass locally. The recorded
+  preparation benchmark is 6.3520–6.6011 µs on the 2026-08-22 Windows host.
+  The before/after native `ssh host` regression remains external.
 
 Exit: a reviewed direct SSH session is additive and isolated, with no secret
 custody or alternate SSH implementation.

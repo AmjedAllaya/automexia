@@ -850,31 +850,32 @@ cannot affect another route or leave a child/listener behind.
 
 #### Phase 2 execution ledger (D0/D3 review boundary, 2026-08-17)
 
-ADR 0012 remains proposed, so this ledger separates reviewed source preparation
-from activation. The broker module is reachable only through `#[cfg(test)]`;
-the release binary contains no managed-launch success path.
+ADR 0012 is accepted by the project owner. The broker, one application-owned
+runner, approval surface, guarded PTY seam, and route-publication path now
+compile in production, while `MANAGED_SESSION_LAUNCH_ENABLED` remains false and
+the linked package candidate remains `Unverified`. The release binary therefore
+contains the boundary but no successful managed-launch authorization.
 
 | Obligation | Status | Implemented evidence |
 |---|---|---|
-| D0.1 manual compatibility | Complete locally; native regression remains activation evidence | Schema 2 preserves PowerShell/CMD/Bash/Zsh/WSL ownership of typed `ssh host`, makes managed launch additive, forbids download/install/substitution during startup or launch, and requires redacted platform guidance for a missing client. |
-| D0.2 trust-boundary ledger | Complete locally | Nine exact rows cover extension model, broker, PTY/process owner, renderer/VT, OpenSSH child/configuration, external credential owner, remote host, and future provider helper. Each freezes accepted/returned data, limits, cancellation owner, log policy, and fail-safe behavior. |
-| D0.3 native fixture protocol | Complete as a definition; execution remains F4/F5-owned | Schema 2 fixes loopback-only hermetic setup, isolated disposable authentication state, bounded probes/timeouts, DNS/connect/auth cancellation, hostile argv corpus, conditional hardware-key coverage, per-platform activation semantics, cleanup/resource invariants, evidence metadata, artifact policy, and nine redaction surfaces. |
-| D3.1 application capability broker | Complete as a non-activated review model | `LaunchRequest`, `CapabilityRequest`, and expiring `CapabilityDecision` carry matching operation, session, and capsule scope. The application registers exact active capsules, rebind is monotonic, session IDs cannot be reused, and production/pending mode denies before resolution. |
-| D3.2 canonical executable resolver | Complete for local path/identity review; native atomic execution pending | Windows uses the system-directory OpenSSH root; macOS and Linux have separate fixed root lists; WSL yields no production candidate. `PATH` and cwd are never searched, a configured override replaces defaults and fails closed, and file identity is revalidated. Activation must still close the check-to-spawn race with a reviewed native primitive. |
-| D3.3 exact first-party grant | Complete in the nonactivated local model | The broker binds repository ID, publisher, non-zero digest, exact workspace version, contract version, and reviewed-or-signed verification before resolution. Unverified/mismatched principals fail closed; only the one-argument `ssh` operation is reviewed while `ssh-add` and `ssh-keygen` remain denied. The real loader must still bind live attestation and revocation evidence before activation. |
-| D3.4 exact argv | Complete for the pure/native command boundary; real spawn evidence pending | One bounded ordered destination argument is preserved as one native `Command::arg`; leading-dash, whitespace/control, extra arguments, shell executables, unsupported IDs, and oversized input are denied. The code contains no spawn or shell-evaluation call. Native process-level adversarial evidence remains an activation gate. |
-| D3.5 trusted environment | Complete at the restrictive boundary | Extension-selected inherited environment and secret references are denied. Only bounded, duplicate-free, core-owned public overrides enter the prepared descriptor; audit/debug redaction canaries exclude values and destinations. Public extension deltas remain an empty allowlist until separately reviewed. |
-| D3.6 working directory | Complete in the review model | Requested cwd must be absolute and canonical. The canonical core-owned safe default is captured during authorization and cannot be replaced by a conversion caller; relative/invalid input is denied and no shell, remote target, or session fallback occurs. Native directory-identity/handle evidence remains coupled to activation. |
-| D3.7 process/PTY/route/tunnel lifecycle | Partial by design | Registered session/capsule state, monotonic per-session operation IDs, non-wrapping leases, duplicate/replay rejection, exact completion/cancellation, rebind, revocation, stale-lease isolation, sibling preservation, and zero retained state after 1/10/50 pure cycles are tested. No process, PID, PTY, route, or listener exists yet; graceful/forced teardown and native leak evidence require approved activation. |
-| D3.8 redacted audit model | Complete for authorization | Records contain only the approved identity, decision, operation class, optional future public connection ID, operation/session IDs, time/duration, and result class. They contain no argv, cwd/path, environment value, terminal content, username, PID, secret, or agent data. Process completion audit persistence remains coupled to D3.7 activation. |
+| D0.1 manual compatibility | Fully done locally; native regression remains external | Schema 2 preserves PowerShell/CMD/Bash/Zsh/WSL ownership of typed `ssh host`, makes managed launch additive, forbids download/install/substitution during startup or launch, and requires redacted platform guidance for a missing client. |
+| D0.2 trust-boundary ledger | Fully done locally | Nine exact rows cover extension model, broker, PTY/process owner, renderer/VT, OpenSSH child/configuration, external credential owner, remote host, and future provider helper. Each freezes accepted/returned data, limits, cancellation owner, log policy, and fail-safe behavior. |
+| D0.3 native fixture protocol | Fully done as a definition; execution not done externally | Schema 2 fixes loopback-only hermetic setup, isolated disposable authentication state, bounded probes/timeouts, DNS/connect/auth cancellation, hostile argv corpus, conditional hardware-key coverage, per-platform activation semantics, cleanup/resource invariants, evidence metadata, artifact policy, and nine redaction surfaces. |
+| D3.1 application capability broker | Fully done locally; nonactivated | One Router-owned `ExternalToolRunner` constructs `LaunchRequest`, `CapabilityRequest`, and 60-second `CapabilityDecision` values with exact operation/session/capsule scope. The broker denies before resolution while activation is false and the candidate is unverified. |
+| D3.2 canonical executable resolver | Fully done locally; native proof external | Fixed Windows/macOS/Linux roots exclude `PATH` and cwd; WSL has no production candidate. The broker records native identity, opens an exact executable guard, compares it immediately before handoff, and the PTY seam consumes that guard. Real replacement-race execution remains a native gate. |
+| D3.3 exact first-party grant | Partially done | Repository ID, publisher, manifest-derived non-zero digest, workspace version, contract, verification class, exact executable, decision, and revocation rules are bound. The linked candidate intentionally remains `Unverified` until the real loader/build-provenance and protected-review evidence are available. |
+| D3.4 exact argv and publication | Fully done locally; nonactivated | One validated destination becomes one native argument with no shell evaluation or implicit Enter. `ContextManager` alone consumes the guarded executable, creates the PTY, inserts one exact route, then marks it published; every scope/create/publish failure cancels and revokes. |
+| D3.5 trusted environment | Fully done locally | Extension inheritance and secret references are denied. The runner copies only a fixed bounded core allowlist, rejects control/oversized values, excludes `PATH`, and never exposes values through diagnostics, debug, or audit. |
+| D3.6 working directory | Fully done locally; native proof external | The runner captures one trusted process-start cwd, requires it to be absolute, and the broker canonicalizes/revalidates it immediately before descriptor conversion. No shell, remote target, session, or caller fallback exists. |
+| D3.7 process/PTY/route/tunnel lifecycle | Partially done | Exact completion/cancellation/revocation, stale-lease isolation, route=session publication, failed-publication rollback, route close, and application shutdown are owned. The active ceiling is 50. Graceful-then-forced descendant-tree behavior, tunnel listeners, and native leak/resource proof remain external or later-phase work. |
+| D3.8 redacted audit model | Fully done locally; durable/native evidence external | The runner keeps a 256-record FIFO with public identity/decision/operation/session/time/duration/result data only. Destinations, argv, cwd/path, environment, terminal content, usernames, PIDs, secrets, and agent data are absent. Durable receipt ownership belongs to F5. |
 
-Phase 2 result: the safe review boundary and its deterministic tests are
-implemented, but D3 is not complete as a product capability. The exit gate
-remains blocked on protected ADR acceptance, real package-loader attestation/
-revocation binding, capability UI/grant policy, atomic native executable
-launch, execution of the Windows/macOS/Linux/WSL fixture matrix, D4-to-D5
-activation integration, and controlled 1/10/50-session process/PTY/renderer
-performance/leak results. See the
+Phase 2 result: D3's source-local application boundary is implemented but
+nonactivated. The exit gate remains blocked on ADR 0003's two independent
+exact-head approvals and server enforcement, real package-loader attestation
+and revocation binding, execution of the Windows/macOS/Linux/WSL fixture matrix,
+graceful/forced descendant cleanup proof, D4-to-D5 production activation, and
+controlled process/PTY/renderer/accessibility/resource results. See the
 [exact broker contract](SESSION-LAUNCH-BROKER.md).
 
 ### D4 — safe OpenSSH inventory and persistence
@@ -930,18 +931,19 @@ and state without touching OpenSSH files or user keys.
 | D4.7 credential custody | Complete as a boundary | Records retain only an opaque identity kind. OpenSSH, agents, keychains, hardware providers, certificates, and encrypted files remain external owners; no vault or secret dependency was added. |
 
 D4 is complete as a nonactivated package boundary. It does not make D3 or D5
-shipped: ADR 0012 is still proposed, no capability UI or managed OpenSSH launch
-exists, and controlled native lifecycle/parallel-session evidence remains
-required before connection activation.
+shipped: ADR 0012 is accepted, but ADR 0003 protected approvals, real package
+attestation, production enablement, and controlled native lifecycle/
+parallel-session evidence remain required. The approval UI and fail-closed
+managed-launch boundary now exist without granting any process authority.
 The re-audit also makes nightly compilation and controlled execution of the
 10,000-alias benchmark mandatory; UI/accessibility remain not applicable until
 D5 connects this package to a product surface.
 
 ### D5.0 — Connection Hub and planning-model baseline
 
-Status: **Partially done** overall because ADR 0012 protected acceptance is
-not done. Every local F2 implementation row below is **Fully done locally** and
-remains non-executing.
+Status: **Partially done** overall. ADR 0012 is accepted, while ADR 0003
+protected approvals, attestation, activation, and native evidence remain open.
+Every local F2 implementation row below is **Fully done locally**.
 
 | D5.0 feature | Status | Implemented evidence / remaining gate |
 |---|---|---|
@@ -952,7 +954,7 @@ remains non-executing.
 | Hub, review, and planner model UX | **Fully done locally** | Pure responsive projections cover modal inertness, stale-selection focus recovery, route-aware tab cycles, live progress, value-redacted human labels, reading order, visual preferences, 100-400% scaling, all content/auth states, and 64-step plan narration. |
 | Fixtures and assurance | **Fully done locally** | Ten-provider/all-auth structured fixtures and responsive/accessibility goldens have 30 required regressions plus validation-bypass, panic, property, hostile, mutation, architecture, fuzz, benchmark, and cross-platform CI owners. |
 | Authority ceiling | **Fully disabled** | No filesystem, process, network, provider, credential, PTY, listener, renderer, GPU, or unsafe path exists in F2. |
-| Protected ADR decision | **Not done externally** | Accept or supersede ADR 0012 before overall phase closure or any product activation. |
+| Protected ADR decision | **Partially done externally** | ADR 0012 is owner-accepted; ADR 0003 exact-head approvals and non-bypassable server enforcement remain before phase closure or activation. |
 
 The local exit is independently testable without an account, network, process,
 PTY, window system, or GPU. This baseline does not connect D4 inventory, persist

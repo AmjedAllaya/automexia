@@ -77,7 +77,11 @@ EXPECTED_NATIVE_FIXTURE_PROTOCOL = {
 }
 EXPECTED_SOURCES = [
     "apps/automexia-terminal/src/context/launch_broker.rs",
+    "apps/automexia-terminal/src/context/external_tool_runner.rs",
     "apps/automexia-terminal/src/context/mod.rs",
+    "apps/automexia-terminal/src/router/mod.rs",
+    "apps/automexia-terminal/src/screen/connection_hub.rs",
+    "automexia-ui-model/src/connection_hub.rs",
     "automexia-extension-api/src/lib.rs",
 ]
 EXPECTED_CHECKS = [
@@ -132,7 +136,7 @@ def load_contract(path: Path = CONTRACT) -> dict[str, Any]:
     ):
         raise SessionLaunchD0Error("D0/D3 contract identity changed")
     expected_sections = {
-        "activation": {"production_enabled": False, "required_adr": "0012", "adr_status": "Proposed", "required_protected_approvals": 2},
+        "activation": {"production_enabled": False, "required_adr": "0012", "adr_status": "Accepted", "required_protected_approvals": 2},
         "package_identity": {"extension_id": "automexia.devops-ssh", "publisher": "io.github.AmjedAllaya", "version_source": "workspace-package-version", "digest_algorithm": "sha256", "digest_size_bytes": 32, "digest_zero_denied": True, "digest_source": "trusted-package-loader", "contract_version": 1, "compatibility": "exact", "allowed_verification": ["repository-reviewed", "first-party-signed"], "unverified_denied": True, "revocation_fail_closed": True},
         "manual_baseline": {"preserved": True, "managed_launch_additive": True, "shells": ["powershell", "cmd", "bash", "zsh", "wsl"], "lookup_owner": "interactive-shell", "openssh_behavior_owner": "system-openssh", "download_or_install_during_startup_or_launch": False, "missing_client": "redacted-platform-installation-guidance-no-substitution"},
         "grant": {"capability": "session.launch", "required_bindings": ["extension_id", "operation_id", "session_id", "capsule_revision", "resource", "decision", "decided_at_ms", "expires_at_ms"], "decisions": ["allow-once", "allow-session", "deny"], "persistent_grants": False, "replay_denied": True, "scope_rebind_denied": True, "future_decisions_denied": True, "expired_decisions_denied": True},
@@ -177,33 +181,104 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "one_ten_and_fifty_session_cycles_release_all_bounded_state",
         "package_identity_digest_compatibility_and_verification_fail_closed",
         "platform_resolution_contract_is_fixed_and_wsl_remains_disabled",
+        "linked_candidate_path_stays_fail_closed_and_redacted_without_attestation",
     }, root)
     broker_lower = broker.lower()
-    authority_markers = {
+    broker_authority_markers = {
         ".spawn(", ".output(", ".status(", ".kill(", ".wait(",
         ".wait_with_output(", "std::net::", "tcplistener", "create_pty",
-        "forkpty", "conpty", "commandext::exec", "createprocess", "execve",
-        "posix_spawn",
+        "create_exact_pty", "forkpty", "conpty", "commandext::exec",
+        "createprocess", "execve", "posix_spawn",
     }
-    widened = sorted(marker for marker in authority_markers if marker in broker_lower)
+    widened = sorted(
+        marker for marker in broker_authority_markers if marker in broker_lower
+    )
     if widened:
         raise SessionLaunchD0Error(
-            f"review-only broker gained runtime process/network/PTY authority: {widened}"
+            f"capability broker gained runtime process/network/PTY authority: {widened}"
         )
-    module_source = require_tokens(
-        document["evidence"]["source"][1],
-        {"#[cfg(test)]", "pub mod launch_broker;"},
-        root,
-    ).replace("\r\n", "\n")
-    if module_source.count("pub mod launch_broker;") != 1 or (
-        "#[cfg(test)]\npub mod launch_broker;" not in module_source
+
+    runner = require_tokens(document["evidence"]["source"][1], {
+        "pub const MAX_CONCURRENT_EXTERNAL_TOOLS: usize = 50",
+        "pub const MAX_RUNNER_AUDIT_RECORDS: usize = 256",
+        "pub struct OpenSshLaunchIntent",
+        "pub struct ExternalToolRunner",
+        "pub fn pending_security_review",
+        "VerifiedExtension::linked_unverified_candidate()",
+        "RunnerErrorCode::SafeDefaultUnavailable",
+        "u64::try_from(route_id).ok() != Some(lease.session_id().get())",
+        "pub fn mark_published",
+        "pub fn complete",
+        "pub fn cancel",
+        "pub fn shutdown_now",
+        "VecDeque::with_capacity(MAX_RUNNER_AUDIT_RECORDS)",
+    }, root)
+    runner_lower = runner.lower()
+    runner_authority_markers = {
+        "std::process::command", ".spawn(", "create_pty", "create_exact_pty",
+        "cmd /c", "powershell -command", "sh -c", "std::net::", "tcplistener",
+    }
+    widened = sorted(
+        marker for marker in runner_authority_markers if marker in runner_lower
+    )
+    if widened:
+        raise SessionLaunchD0Error(
+            f"application runner bypasses the exact ContextManager launch seam: {widened}"
+        )
+
+    context = require_tokens(document["evidence"]["source"][2], {
+        "pub mod external_tool_runner;",
+        "pub mod launch_broker;",
+        "pub struct ManagedRouteReservation",
+        "pub fn reserve_managed_route",
+        "pub fn publish_managed_context",
+        "teletypewriter::create_exact_pty(",
+        "runner.mark_published(lease, route_id)",
+        "managed_session: Option<ManagedSessionGuard>",
+    }, root).replace("\r\n", "\n")
+    for declaration in (
+        "pub mod external_tool_runner;",
+        "pub mod launch_broker;",
     ):
-        raise SessionLaunchD0Error("launch broker is not exclusively test-gated")
-    require_tokens(document["evidence"]["source"][2], {
+        if context.count(declaration) != 1 or f"#[cfg(test)]\n{declaration}" in context:
+            raise SessionLaunchD0Error(
+                f"{declaration} is not a single production-compiled module declaration"
+            )
+    if context.count("teletypewriter::create_exact_pty(") != 2:
+        raise SessionLaunchD0Error(
+            "ContextManager lost its exact platform PTY adapters or gained a duplicate seam"
+        )
+
+    require_tokens(document["evidence"]["source"][3], {
+        "external_tool_runner: crate::context::external_tool_runner::ExternalToolRunner",
+        "ExternalToolRunner::pending_security_review()",
+        "self.external_tool_runner.shutdown_now()",
+        "self.external_tool_runner.clone()",
+    }, root)
+    require_tokens(document["evidence"]["source"][4], {
+        "fn attempt_managed_openssh",
+        "Decision::AllowOnce",
+        "Decision::AllowSession",
+        "ConnectionHubHit::DenyManagedLaunch",
+        "authorize_openssh_candidate(intent)",
+        "publish_managed_context(",
+        "connection-launch-protected-review-pending",
+    }, root)
+    require_tokens(document["evidence"]["source"][5], {
+        "pub approval_action_enabled: bool",
+        "append_direct_decision_accessibility",
+        'format!("direct-openssh-decision-{id}")',
+        '"allow-once"',
+        '"allow-session"',
+        '"deny"',
+        "execution_enabled: false",
+    }, root)
+    require_tokens(document["evidence"]["source"][6], {
         "pub struct CapabilityDecision", "pub operation_id: OperationId",
         "pub session_id: SessionId", "pub capsule_revision: u64",
         "pub expires_at_ms: u64",
     }, root)
+
     audit_start = broker.index("pub struct LaunchAuditRecord")
     audit_end = broker.index("pub struct DeniedLaunch", audit_start)
     audit_block = broker[audit_start:audit_end]
@@ -212,8 +287,14 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         raise SessionLaunchD0Error(f"audit record exposes forbidden fields: {leaked}")
     for relative in document["evidence"]["documents"]:
         require_tokens(relative, {"D0", "ADR 0012"}, root)
-    return {"schema": document["schema"], "scenarios": len(document["native_scenarios"]), "boundaries": len(document["trust_boundaries"]), "sources": len(document["evidence"]["source"]), "documents": len(document["evidence"]["documents"]), "production_enabled": int(document["activation"]["production_enabled"])}
-
+    return {
+        "schema": document["schema"],
+        "scenarios": len(document["native_scenarios"]),
+        "boundaries": len(document["trust_boundaries"]),
+        "sources": len(document["evidence"]["source"]),
+        "documents": len(document["evidence"]["documents"]),
+        "production_enabled": int(document["activation"]["production_enabled"]),
+    }
 
 def validate_repository(root: Path = ROOT) -> dict[str, int]:
     previous = bounded_text(root / PREVIOUS_CONTRACT.relative_to(ROOT)).encode("utf-8")

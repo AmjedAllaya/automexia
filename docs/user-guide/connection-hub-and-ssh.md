@@ -1,12 +1,12 @@
 # Connection Hub and SSH
 
 > **Implemented locally / release-gated:** v0.5 source builds expose a read-only
-> Connection Hub. It can review one bounded host typed by the user or, after
-> exact OpenSSH file review, browse public inventory and edit public
-> favorites/tags. Both paths end at a disabled preparation review. The Hub
-> cannot connect, login, refresh a cloud provider, run a recipe, launch a
-> process, access the network, or create a PTY. Automexia v0.4 users should
-> continue using normal system OpenSSH in the shell.
+> Connection Hub plus an actionable managed-SSH approval review. Allow once,
+> Allow for session, and Deny exercise the fail-closed policy boundary; current
+> builds report that protected review is pending. The activation gate is false
+> and the linked package is unverified, so the Hub cannot launch a process,
+> access the network, or create a managed PTY. Continue using system OpenSSH in
+> the shell.
 ## Use the read-only Connection Hub
 
 1. Press `Ctrl+Shift+H` on Windows/Linux/BSD or `Cmd+Shift+H` on macOS. You can
@@ -20,13 +20,15 @@
 4. Read the canonical-path review. Use Up/Down, Page Up/Page Down, Home/End, or
    the pointer to inspect it. Press Enter or choose the confirmation action to
    scan; press Escape or choose Cancel to revoke the selection.
-5. Browse the resulting aliases. Select a row and press Enter to open its
-   disabled Connection Review.
-6. Review the public target, identity verification, direct system-OpenSSH route,
-   strict host-key policy, requested capability, environment risk, destination,
-   and `ssh <destination>` shape. Press Escape, activate the focused Back
-   control with Enter, or choose Back with the pointer to return. The review
-   never launches a connection.
+5. Browse the resulting aliases. Select a row and press Enter to open Connection
+   Review.
+6. Review the public launcher/package state, target, direct/new route, strict
+   host-key policy, `session.launch` capability, production risk, 60-second
+   approval, one literal argument, and PTY input/output.
+7. Choose **Allow once** (A or focused Enter), **Allow for session** (S), or
+   **Deny** (D). In the current nonactivated build, either Allow action shows
+   **Protected security review is still pending** and starts nothing. Use
+   Escape/Back to return.
 
 Opening the Hub does not scan standard locations. The selected files remain an
 in-memory grant for the current application lifetime and must be selected again
@@ -54,7 +56,10 @@ results route while the search field is not receiving text:
 | Key | Result |
 |---|---|
 | Up/Down, Page Up/Page Down, Home/End | Move the managed selection |
-| Enter | Open the disabled preparation review; activate Back when it is focused |
+| Enter | Open review from results; allow once only when Review/Allow once owns focus |
+| `A` | Request Allow once from Connection Review |
+| `S` | Request Allow for session from Connection Review |
+| `D` | Deny and return from Connection Review |
 | `L` | Open the direct-host editor; Search still receives `l` as text while focused |
 | `/` or `Ctrl/Cmd+F` | Focus search |
 | Tab / Shift+Tab | Move modal focus |
@@ -113,10 +118,10 @@ For a selected direct inventory alias, the Hub builds a current,
 generation-bound public profile and canonical pending F2 plan. A typed literal
 host uses the same pure preparation, but remains transient and is classified as
 production risk until a trusted profile can classify it. Both paths end in the
-compact Connection/Safety/Launch review. Identity and executable verification
-are explicitly pending, host-key handling stays owned by system OpenSSH, the
-only requested capability is `session.launch`, and the primary action remains
-disabled.
+compact Connection/Safety/Launch review. Package and current executable
+verification are explicitly pending, host-key handling stays owned by system
+OpenSSH, and `session.launch` is the only requested capability. The three
+decision actions are available, but execution remains independently disabled.
 
 The literal editor accepts one exact host argument only. User, port, URI, IPv6,
 jump, tunnel, wildcard, Unicode, whitespace, control, bidirectional, option, and
@@ -136,9 +141,10 @@ fail closed with a path-free diagnostic. No OpenSSH process, network
 connection, PTY, login, reconnect, persistence, history, or recent-use write
 occurs.
 
-This is a review-preparation workflow, not a Connect button. Continue using the
-system client below; if future managed SSH is disabled or unavailable, that
-manual path remains the recovery path.
+This is an approval-check workflow, not an available Connect button. A fixed
+diagnostic explains the blocked prerequisite without exposing private values.
+Continue using the system client below; the manual path remains the recovery
+path whenever managed SSH is disabled or unavailable.
 ## Connect with system OpenSSH today
 
 The read-only Hub does not replace the shell. Use the system client normally:

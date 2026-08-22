@@ -1,14 +1,15 @@
 //! Non-activated exact-argument session-launch boundary.
 //!
-//! ADR 0012 is still proposed, so the production module graph excludes this
-//! entire broker. Pure validation and lifecycle code is compiled by tests so
-//! it can be reviewed and exercised without granting an extension process,
-//! PTY, environment, or renderer authority.
+//! ADR 0012 is accepted, so this broker is compiled in the production module
+//! graph. Activation remains a compile-time hard denial until ADR 0003's
+//! protected approvals, loader attestation, and native evidence pass.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use sha2::{Digest, Sha256};
 
 use automexia_extension_api::{
     Capability, CapabilityDecision, CapabilityRequest, Decision, ExecutableId,
@@ -103,6 +104,7 @@ pub enum LaunchDenialCode {
     DuplicateOperation,
     ReplayedOperation,
     NonceExhausted,
+    CapacityExceeded,
     Revoked,
     StaleOperationLease,
 }
@@ -154,6 +156,7 @@ impl fmt::Display for LaunchDenialCode {
                 "the operation identifier was already used in this session"
             }
             Self::NonceExhausted => "the operation lease generation is exhausted",
+            Self::CapacityExceeded => "the managed launch concurrency limit was reached",
             Self::Revoked => "the extension or session grant was revoked",
             Self::StaleOperationLease => {
                 "the operation lease is stale or belongs to another scope"
@@ -175,6 +178,13 @@ impl PackageDigest {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "constructed only from the external attested-loader gate"
+    )
+)]
 pub enum PackageVerification {
     RepositoryReviewed,
     FirstPartySigned,
@@ -191,6 +201,30 @@ pub struct ReviewedPackagePolicy {
 }
 
 impl ReviewedPackagePolicy {
+    pub fn linked_first_party() -> Result<Self, LaunchDenialCode> {
+        let mut digest = Sha256::new();
+        digest.update(automexia_devops_ssh::ID.as_bytes());
+        digest.update([0]);
+        digest.update(REVIEWED_PUBLISHER.as_bytes());
+        digest.update([0]);
+        digest.update(automexia_devops_ssh::VERSION.as_bytes());
+        digest.update([0]);
+        digest.update(REVIEWED_CONTRACT_VERSION.to_le_bytes());
+        for capability in automexia_devops_ssh::MANIFEST.capabilities {
+            digest.update([0]);
+            digest.update(capability.label().as_bytes());
+        }
+        let package_digest = PackageDigest::new(digest.finalize().into())?;
+        Self::new(
+            ExtensionId::new(automexia_devops_ssh::ID)
+                .map_err(|_| LaunchDenialCode::InvalidPrincipal)?,
+            REVIEWED_PUBLISHER,
+            automexia_devops_ssh::VERSION,
+            package_digest,
+            REVIEWED_CONTRACT_VERSION,
+        )
+    }
+
     pub fn new(
         id: ExtensionId,
         publisher: impl Into<String>,
@@ -252,6 +286,18 @@ impl VerifiedExtension {
             contract_version,
             verification,
         })
+    }
+
+    pub fn linked_unverified_candidate() -> Result<Self, LaunchDenialCode> {
+        let policy = ReviewedPackagePolicy::linked_first_party()?;
+        Self::new(
+            policy.id,
+            policy.publisher,
+            policy.version,
+            policy.package_digest,
+            policy.contract_version,
+            PackageVerification::Unverified,
+        )
     }
 
     fn is_reviewed_first_party(&self, policy: &ReviewedPackagePolicy) -> bool {
@@ -362,6 +408,7 @@ pub enum WorkingDirectoryDisposition {
 struct FileIdentity {
     canonical_path: PathBuf,
     platform: PlatformFileIdentity,
+    guarded: teletypewriter::ExactExecutableIdentity,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -444,6 +491,22 @@ impl PreparedLaunch {
         }
     }
 
+    /// Open the exact executable with the low-level replacement guard and
+    /// compare the native identity observed by the broker with the file that
+    /// the PTY seam will execute.
+    pub fn guarded_executable(
+        &self,
+    ) -> Result<teletypewriter::ExactExecutable, LaunchDenialCode> {
+        let executable = teletypewriter::ExactExecutable::open(
+            &self.executable_identity.canonical_path,
+        )
+        .map_err(|_| LaunchDenialCode::ExecutableIdentityChanged)?;
+        if executable.identity() != &self.executable_identity.guarded {
+            return Err(LaunchDenialCode::ExecutableIdentityChanged);
+        }
+        Ok(executable)
+    }
+
     /// Revalidate the cwd immediately before launch. If a previously valid
     /// requested directory vanished, return the trusted safe default instead.
     pub fn revalidated_working_directory(&self) -> Result<PathBuf, LaunchDenialCode> {
@@ -493,6 +556,13 @@ impl PreparedLaunch {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "all variants are exercised by the fixed cross-platform resolver contract"
+    )
+)]
 enum OpenSshHostPlatform {
     Windows,
     MacOs,
@@ -583,6 +653,7 @@ impl ExecutablePolicy {
 
     /// An explicit override replaces host defaults. Failure never falls back
     /// to a PATH, working-directory, or default candidate.
+    #[cfg(test)]
     pub fn with_configured_path(
         mut self,
         executable: OpenSshExecutable,
@@ -621,6 +692,7 @@ impl ExecutablePolicy {
     }
 }
 
+#[cfg(test)]
 fn filename_matches(executable: OpenSshExecutable, path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
@@ -655,9 +727,12 @@ fn identify_executable(path: &Path) -> Result<FileIdentity, LaunchDenialCode> {
     if !metadata.is_file() || !is_platform_executable(&canonical_path, &metadata) {
         return Err(LaunchDenialCode::ExecutableUnavailable);
     }
+    let guarded = teletypewriter::ExactExecutable::open(&canonical_path)
+        .map_err(|_| LaunchDenialCode::ExecutableUnavailable)?;
     Ok(FileIdentity {
         canonical_path: canonical_path.clone(),
         platform: platform_file_identity(&canonical_path, &metadata)?,
+        guarded: guarded.identity().clone(),
     })
 }
 
@@ -762,6 +837,7 @@ fn canonical_directory(path: &Path) -> Option<PathBuf> {
 
 #[derive(Clone, Debug)]
 struct OperationBinding {
+    #[cfg(test)]
     extension_id: ExtensionId,
     lease: OperationLease,
 }
@@ -808,7 +884,7 @@ impl CapabilityBroker {
     }
 
     #[cfg(test)]
-    fn review_harness(
+    pub(crate) fn review_harness(
         executable_policy: ExecutablePolicy,
         package_policy: ReviewedPackagePolicy,
     ) -> Self {
@@ -845,6 +921,7 @@ impl CapabilityBroker {
 
     /// Advance an existing session to a new capsule revision and cancel only
     /// operations owned by the previous revision.
+    #[cfg(test)]
     pub fn rebind_session(
         &mut self,
         session_id: SessionId,
@@ -899,6 +976,15 @@ impl CapabilityBroker {
         }
         if self.revoked_extensions.contains(&submission.principal.id) {
             return Err(deny(&submission, LaunchDenialCode::Revoked, operation_kind));
+        }
+        if self.operations.len()
+            >= super::external_tool_runner::MAX_CONCURRENT_EXTERNAL_TOOLS
+        {
+            return Err(deny(
+                &submission,
+                LaunchDenialCode::CapacityExceeded,
+                operation_kind,
+            ));
         }
         if submission.launch.operation_id.get() == 0
             || submission.launch.session_id.get() == 0
@@ -1074,6 +1160,7 @@ impl CapabilityBroker {
         self.operations.insert(
             lease.operation_id,
             OperationBinding {
+                #[cfg(test)]
                 extension_id: submission.principal.id.clone(),
                 lease,
             },
@@ -1136,6 +1223,14 @@ impl CapabilityBroker {
         before - self.operations.len()
     }
 
+    pub fn shutdown(&mut self) -> usize {
+        let active = self.operations.len();
+        self.operations.clear();
+        self.sessions.clear();
+        active
+    }
+
+    #[cfg(test)]
     pub fn revoke_extension(&mut self, extension_id: ExtensionId) -> usize {
         if extension_id.as_str() != REVIEWED_EXTENSION_ID {
             return 0;
@@ -2119,6 +2214,149 @@ mod tests {
             assert_eq!(broker.highest_session_id, count);
             assert!(broker.revoked_extensions.is_empty());
         }
+    }
+
+    #[test]
+    fn application_runner_guards_publish_order_and_redacts_completion_audit() {
+        use crate::context::external_tool_runner::{ExternalToolRunner, RunnerErrorCode};
+
+        let fixture = ExecutableFixture::new();
+        let request =
+            TestRequest::new(fixture.safe_default.clone(), "private-target-canary");
+        let broker = review_broker(&fixture, &request);
+        let runner =
+            ExternalToolRunner::review_harness(broker, fixture.safe_default.clone());
+
+        let launch = runner.authorize(request.submission()).unwrap();
+        let lease = launch.lease();
+        assert_eq!(launch.descriptor().args(), &["private-target-canary"]);
+        assert_eq!(
+            runner.complete(lease, 120).unwrap_err().code,
+            RunnerErrorCode::NotPublished
+        );
+        runner.mark_published(lease, 7).unwrap();
+        let audit = runner.complete(lease, 140).unwrap();
+        assert_eq!(audit.result, AuditResultClass::Completed);
+        assert_eq!(audit.duration_ms, 40);
+
+        let debug = format!("{runner:?}{launch:?}{audit:?}");
+        assert!(!debug.contains("private-target-canary"));
+        assert!(!debug.contains(fixture.executable.to_string_lossy().as_ref()));
+        assert!(runner.is_idle());
+    }
+
+    #[test]
+    fn application_runner_shutdown_cancels_only_owned_active_operations() {
+        use crate::context::external_tool_runner::ExternalToolRunner;
+
+        let fixture = ExecutableFixture::new();
+        let request = TestRequest::new(fixture.safe_default.clone(), "host");
+        let broker = review_broker(&fixture, &request);
+        let runner =
+            ExternalToolRunner::review_harness(broker, fixture.safe_default.clone());
+        let launch = runner.authorize(request.submission()).unwrap();
+
+        assert_eq!(runner.shutdown(150), 1);
+        assert!(runner.is_idle());
+        assert_eq!(
+            runner.recent_audits().last().unwrap().result,
+            AuditResultClass::Cancelled
+        );
+        assert!(runner.cancel(launch.lease(), 160).is_err());
+    }
+
+    #[test]
+    fn linked_candidate_path_stays_fail_closed_and_redacted_without_attestation() {
+        use crate::context::external_tool_runner::{
+            ExternalToolRunner, OpenSshLaunchIntent, RunnerErrorCode,
+        };
+
+        let runner = ExternalToolRunner::pending_security_review();
+        let reservation = crate::context::ManagedRouteReservation::test(1);
+        let intent = OpenSshLaunchIntent::new(
+            reservation,
+            "private-target-canary",
+            Decision::AllowOnce,
+            100,
+        )
+        .unwrap();
+        let debug = format!("{intent:?}");
+        assert!(!debug.contains("private-target-canary"));
+
+        let error = runner.authorize_openssh_candidate(intent).unwrap_err();
+        assert_eq!(
+            error.code,
+            RunnerErrorCode::LaunchDenied(LaunchDenialCode::PendingSecurityReview)
+        );
+        assert!(runner.is_idle());
+        assert_eq!(
+            runner.recent_audits().last().unwrap().result,
+            AuditResultClass::Denied(LaunchDenialCode::PendingSecurityReview)
+        );
+    }
+
+    #[test]
+    fn application_runner_enforces_fifty_active_and_bounded_audit_history() {
+        use crate::context::external_tool_runner::{
+            ExternalToolRunner, RunnerErrorCode, MAX_CONCURRENT_EXTERNAL_TOOLS,
+            MAX_RUNNER_AUDIT_RECORDS,
+        };
+
+        let fixture = ExecutableFixture::new();
+        let broker =
+            CapabilityBroker::review_harness(fixture.policy(), reviewed_package_policy());
+        let runner =
+            ExternalToolRunner::review_harness(broker, fixture.safe_default.clone());
+        for index in 1..=MAX_CONCURRENT_EXTERNAL_TOOLS {
+            let numeric = u64::try_from(index).unwrap();
+            let mut request = TestRequest::new(fixture.safe_default.clone(), "host");
+            request.set_scope(OperationId::new(numeric), SessionId::new(numeric), 1);
+            runner
+                .register_session(request.launch.session_id, 1)
+                .unwrap();
+            let launch = runner.authorize(request.submission()).unwrap();
+            runner.mark_published(launch.lease(), index).unwrap();
+        }
+
+        let overflow_id = u64::try_from(MAX_CONCURRENT_EXTERNAL_TOOLS + 1).unwrap();
+        let mut overflow = TestRequest::new(fixture.safe_default.clone(), "host");
+        overflow.set_scope(
+            OperationId::new(overflow_id),
+            SessionId::new(overflow_id),
+            1,
+        );
+        runner
+            .register_session(overflow.launch.session_id, 1)
+            .unwrap();
+        assert_eq!(
+            runner.authorize(overflow.submission()).unwrap_err().code,
+            RunnerErrorCode::CapacityExceeded
+        );
+        assert_eq!(runner.shutdown(200), MAX_CONCURRENT_EXTERNAL_TOOLS);
+        assert!(runner.is_idle());
+
+        let broker =
+            CapabilityBroker::review_harness(fixture.policy(), reviewed_package_policy());
+        let runner =
+            ExternalToolRunner::review_harness(broker, fixture.safe_default.clone());
+        for index in 1..=MAX_RUNNER_AUDIT_RECORDS + 1 {
+            let numeric = u64::try_from(index).unwrap();
+            let mut request = TestRequest::new(fixture.safe_default.clone(), "host");
+            request.set_scope(OperationId::new(numeric), SessionId::new(numeric), 1);
+            runner
+                .register_session(request.launch.session_id, 1)
+                .unwrap();
+            let launch = runner.authorize(request.submission()).unwrap();
+            runner.mark_published(launch.lease(), index).unwrap();
+            runner.complete(launch.lease(), 101).unwrap();
+        }
+        let audits = runner.recent_audits();
+        assert_eq!(audits.len(), MAX_RUNNER_AUDIT_RECORDS);
+        assert_eq!(audits.first().unwrap().session_id, SessionId::new(2));
+        assert_eq!(
+            audits.last().unwrap().session_id,
+            SessionId::new(u64::try_from(MAX_RUNNER_AUDIT_RECORDS + 1).unwrap())
+        );
     }
 
     proptest! {

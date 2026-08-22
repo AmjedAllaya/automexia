@@ -234,9 +234,10 @@ The boundary is deliberately capability-free:
   credentials, agents, PTYs, listeners, windows, renderer objects, or GPU state;
 - every resolved plan carries `execution_enabled = false` and explicit false
   process/network/provider/credential/PTY/listener authority entries;
-- Enter/select opens review only, review/planner primary actions are disabled,
-  the background is inert while the modal is open, and no projection requests a
-  PTY resize;
+- Enter/select opens review only; generic review/planner primary actions remain
+  disabled, while direct-OpenSSH allow-once/session/deny decisions reach only
+  the separately hard-disabled broker; the modal background stays inert and no
+  projection requests a PTY resize;
 - opaque identity/source/context references redact their debug representation,
   planner accessibility summaries expose action kinds rather than value
   contents, and serialized records accept public metadata/references only;
@@ -285,9 +286,10 @@ cleared on cancel, close, or successful preparation. The native renderer
 consumes only presentation state, keeps the modal background inert, and groups
 review into Connection, Safety, and Launch cards. Exact inventory aliases,
 opaque references, executable digests, and fingerprints do not enter that view.
-Because M2 is not accepted, the action is disabled and no process, PTY,
-filesystem, network, credential, listener, host-trust mutation, persistence, or
-secret authority is added.
+Because production M2 activation remains gated, the three approval actions are
+available but currently end at a protected-review diagnostic before executable
+or filesystem resolution. No process, PTY, network, credential, listener,
+host-trust mutation, persistence, or secret authority is granted.
 
 ### Environment Capsule contract
 
@@ -355,20 +357,24 @@ for the exact OpenSSH tools they use. The extension itself has no direct-network
 capability: the approved OpenSSH child connects exactly as it would when typed
 in a shell. Arbitrary process/network access and third-party use remain denied.
 
-Current source status is deliberately narrower. The active D0/D3 schema-2
-fixture freezes the manual-shell/missing-client baseline, exact package
-ID/publisher/digest source and size/version/contract compatibility, verification
-classes, grants, audits, strict defaults, authority ceilings, nine explicit
-trust boundaries, Windows/macOS/Linux/disabled-WSL resolver policy, and the
-hermetic native-scenario execution/evidence protocol. Schema 1 remains immutable
-historical evidence. The test-only broker enforces the same package policy before
-executable resolution and revalidates file identity before descriptor conversion.
+Current source status remains fail-closed. The active D0/D3 schema-2 fixture
+freezes manual-shell/missing-client behavior, exact package identity and
+verification, grants/audits/defaults, nine trust boundaries, fixed platform
+resolution, and the hermetic native evidence protocol. Schema 1 remains
+immutable history. ADR 0012 is accepted by the project owner.
 
-While ADR 0012 is proposed, this candidate remains under `#[cfg(test)]`;
-production builds contain no broker module or successful managed-launch path.
-The review harness reaches the existing `SessionLaunchDescriptor` seam but
-never spawns or attaches a process. Exact limits, checker commands, fixture
-expectations, and remaining activation gates are documented in the
+The broker and one Router-owned `ExternalToolRunner` compile in production, but
+`MANAGED_SESSION_LAUNCH_ENABLED` is false and the linked package candidate is
+`Unverified`. Authorization therefore denies before executable/filesystem
+resolution. Behind that denial, the runner owns exact typed scope, a 50-operation
+ceiling, 256-record redacted audit FIFO, bounded allowlisted environment,
+trusted cwd, cancellation, and shutdown. It opens and re-compares the exact
+executable guard consumed only by `ContextManager`, which creates the PTY,
+inserts one route, and marks publication afterward. The Connection Review
+provides allow-once/session/deny actions and fixed recovery states without
+exposing private launch data. No production child can start until ADR 0003
+protected approvals, real loader attestation, and native gates pass. Exact
+limits and remaining gates are documented in the
 [session-launch broker contract](SESSION-LAUNCH-BROKER.md).
 
 ### OpenSSH inventory and persistence boundary
