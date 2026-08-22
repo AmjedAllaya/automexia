@@ -31,8 +31,8 @@ class F2ContractTests(unittest.TestCase):
         self.assertEqual(
             policy.validate_repository(),
             {
-                "models": 6,
-                "tests": 30,
+                "models": 9,
+                "tests": 51,
                 "providers": 10,
                 "auth_states": 14,
                 "layouts": 4,

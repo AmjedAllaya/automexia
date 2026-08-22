@@ -196,6 +196,25 @@ review and explicit approval—there is no automatic connection or command repla
 This contract is present for review and tests but unreachable in production until
 package attestation, protected approvals, real native OpenSSH and forced child-
 tree cleanup, resource, and accessibility gates pass.
+## Review-only workspaces and broadcast
+
+M6 workspace and recipe support is implemented internally but is not yet an
+interactive product feature. Current builds may project a compact restore or
+broadcast review in tests, but the Connection Hub has no activated control that
+runs it.
+
+A restore review shows the workspace, window/connection counts, exact target
+rows, and a warning that automatic reconnect and interrupted-action resume are
+off. A broadcast review shows `○ DISARMED` or `● ARMED` with matching text, icon,
+and color; it requires the exact command and target list, an explicit arm action,
+and a second production confirmation. It never presses Enter for you.
+
+Until proposed ADR 0023 and the managed-SSH activation/native gates are accepted,
+continue to arrange panes manually and type or paste commands into each intended
+session. Do not assume a saved workspace reconnects, resumes a recipe, restores a
+tunnel, or carries credentials. Schema-1 Connection Libraries are previewed in
+memory and only advance after a reviewed CAS; imported workspace topology loses
+its connection bindings and must be rebound locally.
 ## Connect with system OpenSSH today
 
 The read-only Hub does not replace the shell. Use the system client normally:

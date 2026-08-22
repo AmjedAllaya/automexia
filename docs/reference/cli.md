@@ -83,6 +83,14 @@ The executable has no network-management subcommands in v0.4. SSH and cloud
 sessions use the selected shell and system tools; first-party managed SSH is a
 v0.5 roadmap item.
 
+## Managed connection and workspace commands (M6)
+
+There is currently **no public** `automexia connect`, `run`, `workspace`,
+`tunnel`, `broadcast`, or `--no-hooks` command. M6 implements internal,
+nonexecuting review contracts only; the command grammar in roadmap/specification
+pages is planned and must not be used as shipped syntax. Continue using system
+OpenSSH in the shell and normal pane/window controls. A future CLI must consume
+the same reviewed fingerprints and activation gates rather than bypass them.
 ## Daily Cargo aliases
 
 | Command | Mutates profiles? | Result |

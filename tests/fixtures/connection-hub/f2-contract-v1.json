@@ -91,13 +91,19 @@
   },
   "model_files": [
     "automexia-devops/src/connections/documents.rs",
+    "automexia-devops/src/connections/automation.rs",
     "automexia-devops/src/connections/model.rs",
     "automexia-devops/src/connections/planner.rs",
     "automexia-devops/src/connections/state.rs",
     "automexia-devops/src/connections/validation.rs",
+    "automexia-devops/src/connections/workspace.rs",
+    "apps/automexia-terminal/src/automexia/connections/library.rs",
     "automexia-ui-model/src/connection_hub.rs"
   ],
   "test_files": [
+    "automexia-devops/tests/connection_automation_m6.rs",
+    "automexia-devops/tests/workspace_automation_m6.rs",
+    "apps/automexia-terminal/tests/connection_library.rs",
     "automexia-devops/tests/connection_planning.rs",
     "automexia-devops/tests/connection_properties.rs",
     "automexia-devops/tests/connection_records.rs",

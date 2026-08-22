@@ -88,6 +88,20 @@ REQUIRED_SOURCE_TOKENS = {
         "MAX_STEPS_PER_RECIPE: usize = 64", "deny_unknown_fields",
         "from_validated", "operation_id: String",
     },
+    "automexia-devops/src/connections/automation.rs": {
+        "RecipeRunMode", "NoHooks", "review_recipe_run",
+        "review_remote_initialization", "RemoteOperation",
+        "RecipeRunLifecycle", "apply_recipe_run_event",
+        "execution_enabled: false", "stale recipe-run generation was rejected",
+    },
+    "automexia-devops/src/connections/workspace.rs": {
+        "WorkspaceIntentV1", "WorkspaceRestorePlan", "validate_workspace",
+        "resolve_workspace_restore", "automatic_reconnect: false",
+        "resume_interrupted_actions: false", "BroadcastReview",
+        "review_broadcast", "BroadcastLifecycle", "apply_broadcast_event",
+        "MAX_BROADCAST_TARGETS: usize = 50", "execution_enabled: false",
+        "lifecycle.approval_fingerprint != review.approval_fingerprint",
+    },
     "automexia-devops/src/connections/documents.rs": {
         "validate_profile_document", "validate_recipe_document",
         "DependencyCycle", "MAX_PROFILES", "MAX_RECIPES",
@@ -96,6 +110,7 @@ REQUIRED_SOURCE_TOKENS = {
         "contains_hostile_format", "looks_secret_bearing_name",
         "validate_retry", "dependency_cycle", "MAX_AUTOMATIC_ATTEMPTS",
         "option-like targets are forbidden", "decision_codes", "executable_ids",
+        "validate_resolved_step_policy",
     },
     "automexia-devops/src/connections/planner.rs": {
         "fingerprint_profile", "fingerprint_recipe", "resolve_connection_plan",
@@ -115,7 +130,43 @@ REQUIRED_SOURCE_TOKENS = {
         "AccessibilityRole::Progress", "action_label", "is_selected",
     },
 }
+REQUIRED_APPLICATION_TOKENS = {
+    "apps/automexia-terminal/src/automexia/connections/library.rs": {
+        "CONNECTION_LIBRARY_SCHEMA: u16 = 2", "PrimaryMigrationPreview",
+        "LibraryEditPreview", "preview_library_edit", "commit_edit",
+        "preview_export_redacted", "preview_import_redacted", "commit_import",
+        "PreviewMismatch", "validate_workspace_document",
+        "MAX_FRESH_ID_ATTEMPTS", "next_entity_revision",
+    },
+}
 REQUIRED_TESTS = {
+    "automexia-devops/tests/connection_automation_m6.rs": {
+        "reviewed_runs_preserve_exact_stage_order_and_no_hooks_keeps_only_planner_steps",
+        "remote_initialization_is_typed_reviewed_and_never_contains_a_command_string",
+        "lifecycle_enforces_deadlines_bounded_retry_cancellation_and_generation_isolation",
+        "arbitrary_remote_code_and_implicit_enter_have_no_m6_contract",
+        "remote_initialization_revalidates_privileged_steps_at_the_review_boundary",
+        "lifecycle_rejects_cross_review_substitution_and_unbounded_diagnostics",
+    },
+    "automexia-devops/tests/workspace_automation_m6.rs": {
+        "declarative_workspace_restore_is_review_only_and_never_resumes_live_state",
+        "clone_and_rebind_create_isolated_ids_and_invalidate_prior_approval",
+        "clone_scopes_reused_pane_ids_to_their_own_windows",
+        "pane_cycles_cross_window_references_hostile_text_and_stale_profiles_fail_closed",
+        "broadcast_requires_exact_preview_production_confirmation_and_explicit_arming",
+        "broadcast_results_are_isolated_cancellable_generation_bound_and_redacted",
+        "broadcast_rejects_newlines_controls_bidi_duplicates_and_unbounded_targets",
+        "strict_workspace_parsers_reject_unknown_fields_and_oversized_documents",
+        "repeated_maximum_broadcast_generations_remain_bounded_and_isolated",
+        "broadcast_rejects_cross_review_substitution_and_unsafe_diagnostics",
+    },
+    "apps/automexia-terminal/tests/connection_library.rs": {
+        "redacted_workspace_export_scopes_reused_pane_ids_per_window",
+        "schema_one_library_loads_as_an_explicit_migration_preview_before_cas",
+        "editor_preview_invalidates_recipe_profile_and_workspace_approvals_and_cas_conflicts",
+        "import_and_export_previews_are_redacted_nonexecuting_and_commit_with_cas",
+        "mismatched_recipe_reference_fingerprint_is_rejected_by_the_library",
+    },
     "automexia-devops/tests/connection_planning.rs": {
         "strict_profiles_and_recipes_compile_to_a_non_executing_plan",
         "hostile_unknown_secret_command_and_bidi_fields_fail_closed",
@@ -247,6 +298,20 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         bypass = next((token for token in sorted(bypasses) if token in sources[relative]), None)
         if bypass:
             raise F2ContractError(f"F2 validated wrapper can be forged: {bypass}")
+    for relative, tokens in REQUIRED_APPLICATION_TOKENS.items():
+        production = require_tokens(relative, tokens, root).split("#[cfg(test)]", 1)[0]
+        forbidden_application = next(
+            (
+                token
+                for token in ("std::process", "std::net", "unsafe {", ".unwrap(", ".expect(")
+                if token in production.casefold()
+            ),
+            None,
+        )
+        if forbidden_application:
+            raise F2ContractError(
+                f"M6 library crossed its reviewed storage boundary: {forbidden_application}"
+            )
     for relative, tests in REQUIRED_TESTS.items():
         source = bounded_text(root / relative)
         missing = sorted(name for name in tests if f"fn {name}(" not in source)
@@ -256,12 +321,12 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         bounded_text(root / relative)
     require_tokens(
         document["fuzz_target"],
-        {"fuzz_target!", "parse_profile_json", "parse_recipe_document_json"},
+        {"fuzz_target!", "parse_profile_json", "parse_recipe_document_json", "parse_workspace_json"},
         root,
     )
     require_tokens(
         document["benchmark"],
-        {"connection_plan_validate_64_steps", "connection_plan_resolve_64_steps"},
+        {"connection_plan_validate_64_steps", "connection_plan_resolve_64_steps", "m6_workspace_and_broadcast_planning"},
         root,
     )
     for relative in document["documents"]:

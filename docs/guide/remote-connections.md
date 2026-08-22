@@ -25,23 +25,28 @@ ecosystem/AI features.
 
 ## Internal Connection Library boundary
 
-The source tree contains an internal, versioned Connection Library store for
-profiles, recipes, and preferences. It is bounded, compare-and-swap protected,
-atomically replaced, recoverable only through an explicit reviewed operation,
-and designed to persist public metadata plus opaque credential references—not
-passwords, private keys, tokens, or provider credentials.
+The source tree contains an internal schema-2 Connection Library store for
+profiles, recipes, declarative workspaces, and preferences. It remains bounded,
+private, compare-and-swap protected, atomically replaced, and recoverable only
+through an explicit reviewed operation. It stores public metadata and opaque
+references—not passwords, private keys, tokens, live PTYs/tunnels, or provider
+credentials.
 
-The current v0.5 application root initializes this store once and exposes only
-its read-only profile/recipe/preference counts and recovery state. No supported
-editor, CLI, or configuration key exposes its internal schema. Its file name is
-not a user-editing contract: do not create or edit library.v1.json to try to
-enable connection execution. Redacted export deliberately removes credential
-references, private local state, and last-used timestamps; import validates all
-values and assigns fresh identifiers.
+The application initializes this store once and exposes read-only profile,
+recipe, workspace, and recovery/migration-preview state. Internal editor and
+import/export APIs are review-first: a preview binds the complete document and
+base revision; material recipe/profile/workspace changes advance dependent
+revisions/fingerprints and clear approvals; stale or mismatched data fails
+closed. Schema 1 is upgraded only in memory until a reviewed CAS writes schema
+2. The established private `library.v1.json` filename is retained for atomic
+recovery continuity and is not the schema authority or a user-editing contract.
 
-This persistence does not add launch authority: system OpenSSH in the shell
-remains the only supported connection path.
-
+Redacted export removes credential references, private state, last-used values,
+workspace labels, and all connection bindings. Import validates bounds and
+assigns fresh local IDs; imported topology must be rebound locally. No supported
+product editor, CLI, or configuration key exposes this internal schema, and no
+migration or import enables execution. System OpenSSH in the shell remains the
+supported connection path.
 ## Product model
 
 The managed experience is built around a small set of explicit records rather than hidden shell commands:
