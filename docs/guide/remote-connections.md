@@ -14,7 +14,7 @@ once, allow for session, and deny exercise the fail-closed policy boundary. The
 activation gate is false and the linked package is unverified, so no managed
 process, PTY, network connection, or provider authority is reachable.
 
-**Implemented but activation-gated:** exact direct managed argv, full-review/executable binding, guarded PTY/route lifecycle, actual child outcomes, fixed notifications, bounded private receipts, and stale-source reconnect preparation. **Planned:** M4/M5 routes/trust/tunnels, provider authentication and multi-cloud adapters, remote-file/session-memory/collaboration features, and later ecosystem/AI features.
+**Implemented but activation-gated:** exact direct/config-jump argv, typed host/user/port, full host-key/public-identity review, safe copy, full-review/executable binding, guarded lifecycle, child outcomes, receipts, and reconnect preparation. **Planned/protected:** actual status/SSH execution, F5.3 tunnels, native cleanup/resource/accessibility proof, provider authentication and multi-cloud adapters, remote-file/session-memory/collaboration, and later ecosystem/AI features.
 
 ## Internal Connection Library boundary
 

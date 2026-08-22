@@ -29,6 +29,7 @@ class PullRequestDocumentationPolicyTests(unittest.TestCase):
             "extensions/devops-ssh/src/lib.rs",
             "tests/fixtures/session-launch/d0-d3-contract-v2.json",
             "tests/fixtures/session-launch/d0-d3-contract-v3.json",
+            "tests/fixtures/session-launch/d0-d3-contract-v4.json",
             "tools/ci/check_pr_policy.py",
             "tools/ci/check_session_launch_d0.py",
         }

@@ -46,10 +46,15 @@ attestation/revocation, and native evidence in
 `docs/SESSION-LAUNCH-BROKER.md`; ordinary shell-owned OpenSSH remains the safe
 fallback.
 
-The M3 request accepts no caller-supplied option text. It freezes defensive
-OpenSSH options plus one typed destination, revalidates current executable file
-identity, never evaluates a shell, and does not override OpenSSH post-quantum
-algorithm defaults or downgrade warnings. Completion receipts are private,
+The M4 request accepts no caller-supplied option text. Direct routes freeze 17
+defensive options plus optional separate `-l`/`-p` values and one host; config
+routes freeze the 15-option subset plus one canonical bounded `-J` chain and one
+alias. It revalidates current executable identity, never evaluates a shell, and
+does not override OpenSSH post-quantum defaults or downgrade warnings. Complete
+host-key algorithm/SHA-256 evidence is review-bound without `known_hosts` writes;
+changed keys cannot bind. The `C` handoff never executes or adds Enter, and the
+bounded public `ssh-add -l -E sha256` parser has no process or secret authority.
+Completion receipts are private,
 atomic, bounded, use no-follow and stable Windows handle identity checks, and
 exclude destination, terminal content, credentials, paths,
 environment, process IDs, and executable identity. Reconnect is never automatic

@@ -2188,6 +2188,7 @@ fn verify_architecture() -> TaskResult {
             "automexia-devops",
             &[
                 "automexia-extension-api",
+                "base64",
                 "blake3",
                 "criterion",
                 "dirs",

@@ -114,18 +114,20 @@ process.
 
 | Shortcut | Result |
 |---|---|
-| `L` | From Hub results or first-run setup, open the direct-host editor. If Search owns focus, `l` remains search text. |
+| `L` | From Hub results or first-run setup, open the typed host/user/port editor. If Search owns focus, `l` remains search text. |
 | `Tab` / `Shift+Tab` | Move through the active modal focus order; Connection Review includes its Allow once action. |
 | `Enter` | Review a valid host or activate the focused editor control; in Connection Review, Allow once only when Review or Allow once owns focus. |
 | `A` | Request Allow once from Connection Review. |
 | `S` | Request Allow for session from Connection Review. |
 | `D` | Deny the managed launch and return to results. |
+| `C` | Copy the exact reviewed SSH command; no execution, newline, or implicit Enter. |
 | `Escape` | Cancel and clear the transient host editor; from review, return to results. |
 
-While the host editor owns the modal, its visible Cancel control replaces the
-redundant top-level close icon. This keeps the focus order and pointer targets
-unambiguous at small scaled viewports. Modified approval letters remain
-available to their existing owners.
+While the host editor owns the modal, Tab/Shift+Tab cycles Host, User, Port,
+Review, and Cancel. Its visible Cancel control replaces the redundant top-level
+close icon, keeping focus and pointer targets unambiguous at small scaled
+viewports. Modified approval/copy letters remain available to their existing
+owners.
 
 ## Search mode
 

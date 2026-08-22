@@ -26,12 +26,12 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | v0.4/S0 | Core identity, hostile-input bounds, atomic reload, and current source gates; stable-release evidence remains external. |
 | **Partially done** | v0.4/S1 | Deterministic and Windows-native assurance exists; controlled Linux/macOS, visual, GPU, accessibility, and baseline evidence remains. |
 | **Not done** | S2 | The 30-day baseline and enforceable latency/memory ratchet are not active. |
-| **Partially done** | D0 | ADR 0012 is accepted; schema 3 freezes exact managed options and lifecycle/receipt/reconnect rules while retaining immutable schema 1/2. Protected approvals and native execution remain. |
+| **Partially done** | D0 | ADR 0012 is accepted; schema 4 freezes M3/M4 direct/routed argv, trust/status, and lifecycle/receipt/reconnect rules while retaining immutable schemas 1/2/3. Protected approvals and native execution remain. |
 | **Fully done** | D1 | Four private provider-neutral crates and bounded contracts satisfy the source boundary. |
 | **Fully done** | D2 | Generic status, immutable history, capsules, isolation, cancellation, and freshness are implemented. |
 | **Partially done** | D3 | The hard-disabled broker/runner binds exact managed argv and executable identity, publishes only through ContextManager, reconciles actual child outcomes, and queues bounded redacted receipts. Exact-head approvals/server enforcement, attestation/activation, forced descendant cleanup, and native OpenSSH/resource/accessibility proof remain. |
 | **Fully done** | D4 | The bounded OpenSSH inventory/persistence package is complete but deliberately disabled. |
-| **Partially done** | D5.0-D5.2 | D5.1 and nonactivated F5.1 are source-complete locally: exact defensive argv, full-review/executable binding, child-exit truth, redacted notifications, bounded durable receipts, and stale-source reconnect preparation pass. Protected activation/attestation, real SSH/forced cleanup, M4/M5 trust/routes/tunnels, and controlled native evidence remain. |
+| **Partially done** | D5.0-D5.2 | D5.1 and nonactivated F5.1/F5.2 are source-complete locally: typed direct/config-jump argv, full host-key/public-identity review, safe copy, review/executable binding, lifecycle, receipts, and reconnect pass. Protected activation/attestation, actual status/SSH execution, F5.3 tunnels, forced cleanup, and controlled native evidence remain. |
 | **Not done** | D6.0-D6.5 | Provider authentication, capsules, transports, and multi-cloud slices are planned only. |
 | **Not done** | D7 | Public ecosystem, direct APIs, sandboxed extensions, and AI execution are deferred. |
 | **Fully done** | CP0 | Architecture, threat model, ceilings, fixtures, mutation tests, and nonactivation policy are complete. |

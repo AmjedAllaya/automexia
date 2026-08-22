@@ -96,11 +96,11 @@ are exposed.
 
 ## Non-activated implementation evidence
 
-As of 2026-08-22, the active local D0/D3 contract is
-`tests/fixtures/session-launch/d0-d3-contract-v3.json`; schema 1 and schema 2
-remain byte-for-byte hash-checked history. Schema 3 retains their manual/fixture,
-package/grant/audit/trust-boundary, four-platform, and nineteen-scenario rules
-and adds the exact M3 managed-session lifecycle ratchet.
+As of 2026-08-22, the active local D0/D3/M4 contract is
+`tests/fixtures/session-launch/d0-d3-contract-v4.json`; schemas 1, 2, and 3
+remain byte-for-byte hash-checked history. Schema 4 retains their manual/fixture,
+package/grant/audit/trust-boundary, four-platform, nineteen-scenario, and M3
+lifecycle rules and adds the exact M4 routes/trust/status ratchet.
 
 It also records nine trust boundaries with accepted/returned data, limits,
 cancellation, logging, and failure ownership plus a hermetic fixture protocol:
@@ -127,9 +127,11 @@ route before marking the lease published, and reconciles natural completion.
 The protected activation constant remains false, so this production code cannot
 resolve OpenSSH or create a managed child.
 
-As of 2026-08-22, schema 3 adds the nonactivated M3 source ratchet. Seventeen
-fixed defensive OpenSSH options followed by one destination are bound to a fresh
-full-review equality check and current native executable identity. The broker
+As of 2026-08-22, schema 4 retains the nonactivated M3 source ratchet and adds
+M4. Direct argv uses 17 fixed defensive options plus optional exact `-l`/`-p`
+values and one host; config-routed argv uses the 15-option subset plus one
+canonical bounded `-J` chain and one alias. Both are bound to a fresh full-review
+equality check and current native executable identity. The broker
 rejects option/order/count or file-identity drift. ContextManager remains the
 only PTY/route owner, application child exit supplies the real result, and
 route close no longer implies success. Fixed redacted notifications and a
@@ -138,8 +140,11 @@ status, cancel, revoke, close, and shutdown. The connection-owned private-filesy
 adapter keeps D5.2 independent from Quick Actions while enforcing no-follow opens,
 stable Windows handle identity, link/reparse rejection, private Windows DACL or
 Unix mode checks, bounded snapshots, atomic replacement, and directory
-synchronization. Opaque reconnect identity must
-match current D4 source and always returns to fresh review and approval.
+synchronization. Opaque reconnect identity must match current D4 source and always returns to
+fresh review and approval. M4 binds complete public host-key algorithm/SHA-256
+and public identity evidence; changed keys cannot bind, `known_hosts` is never
+mutated, the `C` copy handoff cannot execute or add Enter, and the exact bounded
+`ssh-add -l -E sha256` request/parser remains nonactivated with no secret custody.
 
 Automexia deliberately leaves OpenSSH key-exchange defaults and weak-crypto
 warnings untouched. User configuration may execute OpenSSH-owned helpers during
@@ -154,12 +159,13 @@ pure responsive Hub/review/planner and accessibility projections. Frozen
 all-provider/all-auth fixtures, hostile/property/mutation tests, fuzz ownership,
 and a 64-step benchmark are registered. Every process, network, provider,
 credential, PTY, listener, renderer, and GPU authority remains absent or false.
-As of 2026-08-22, M3 also has a production-reachable but nonactivated
-preparation route. The application maps one current direct D4 record into a
-stable public profile and canonical pending F2 plan. Inventory generation and
+As of 2026-08-22, M3/M4 also have a production-reachable but nonactivated
+preparation route. The application maps a current D4 direct/config-jump record
+or transient typed host/user/port into a stable public profile and canonical
+pending F2 plan. Inventory generation and
 metadata revision bind the preparation; session.launch is the only requested
 capability; no current executable identity exists yet; every resolved-plan
-authority remains false. The Connection Hub projects nine public decisions into
+authority remains false. The Connection Hub projects bounded public decisions into
 responsive Connection/Safety/Launch groups. Its deny, allow-once, and
 allow-session approval actions are pointer- and mnemonic-accessible, but
 execution remains false and every attempt stops at the protected broker denial.

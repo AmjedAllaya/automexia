@@ -85,12 +85,12 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Core | v0.4/S0 | **Fully implemented locally** | **Partial** | Identity, hostile-input bounds, atomic reload, and current terminal source gates are complete; stable release gates remain. |
 | Assurance | v0.4/S1 | **Partial** | **Partial** | Strong deterministic, Windows-native, QA, fuzz, resource, and workflow machinery exists; controlled Linux/macOS visual/GPU/accessibility evidence and the full baseline remain. |
 | Performance | S2 | **Not implemented** | **Not started** | The 30-day comparable baseline is incomplete, so the 5% latency/10% memory ratchet is inactive. |
-| DevOps | D0 | **Partial** | **Partial** | ADR 0012 is accepted and active schema 3 ratchets immutable schema 1/2 with exact managed options, lifecycle/receipt/reconnect rules, and the native matrix; protected approvals and native execution remain. |
+| DevOps | D0 | **Partial** | **Partial** | ADR 0012 is accepted and active schema 4 ratchets immutable schemas 1/2/3 with exact M3/M4 routes, trust/status, lifecycle/receipt/reconnect rules, and the native matrix; protected approvals and native execution remain. |
 | DevOps | D1 | **Fully implemented** | **Partial** | Four private provider-neutral crates and bounded contracts satisfy their source boundary. |
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
 | DevOps | D3 | **Partial; nonactivated** | **Blocked** | The fail-closed broker/runner now binds exact managed argv and current executable identity, reconciles actual child status, emits redacted outcomes, and queues bounded receipts through the guarded PTY/route owner. Protected approvals, real attestation/activation, forced descendant proof, and native OpenSSH/resource/accessibility evidence remain. |
 | DevOps | D4 | **Fully implemented; read-only product adapter active** | **Partial** | Bounded OpenSSH inventory/persistence is connected only to D5.1 reviewed browsing; it retains no process/network/launch authority. |
-| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 and nonactivated F5.1 source complete locally** | **Partial/blocked** | Exact managed argv, review/executable binding, guarded PTY publication, truthful child outcomes, redacted notifications, bounded durable receipts, and stale-source reconnect preparation pass locally. Protected activation/attestation, real SSH/forced cleanup, M4/M5 routes/trust/tunnels, and controlled native evidence remain. |
+| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 and nonactivated F5.1/F5.2 source complete locally** | **Partial/blocked** | Typed direct/config-jump argv, complete host-key/public-identity review, safe copy, guarded lifecycle, receipts, and reconnect pass locally. Protected activation/attestation, actual status/SSH execution, F5.3 tunnels, forced cleanup, and controlled native evidence remain. |
 | Multi-cloud | D6.0-D6.5 | **Not implemented** | **Blocked** | Provider auth, capsules, transports, and provider slices are planned only. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
@@ -550,17 +550,18 @@ actions remain disabled until D5.2.
 
 ### D5.2 — managed OpenSSH launch and lifecycle
 
-**Partially implemented overall; F5.1 is fully implemented at the nonactivated source boundary.**
+**Partially implemented overall; F5.1 and F5.2 are fully implemented at the nonactivated source boundary.**
 
-The pure owner accepts one concrete inventory alias or bounded literal host,
-freezes 17 defensive OpenSSH options followed by one destination, and can create
-an opaque launch binding only when a freshly rebuilt review is exactly equal.
-Profile/source/capsule/plan, destination, capability, host trust, observation
-freshness/generation, and canonical executable identity all invalidate stale
-work. The broker re-hashes current native file identity before authorization and
-rejects reordered, omitted, changed, or additional arguments. It deliberately
-does not set `KexAlgorithms` or `WarnWeakCrypto`, preserving current OpenSSH
-post-quantum defaults and downgrade warnings.
+The pure owner accepts one current inventory route or bounded typed host/user/
+port. Direct argv freezes 17 defensive options plus optional exact `-l`/`-p`;
+config-routed argv freezes the 15-option subset plus one canonical bounded `-J`
+chain and one alias. A launch binding exists only when a freshly rebuilt review
+is exactly equal. Profile/source/capsule/plan, route/argv, capability, complete
+host-key/public-identity evidence, observation freshness/generation, and
+canonical executable identity invalidate stale work. Changed keys cannot bind;
+full fingerprints are not truncated; `known_hosts` is never mutated; `C` copies
+without execution/newline/Enter. The broker rejects all argv drift and leaves
+OpenSSH `KexAlgorithms`/`WarnWeakCrypto` policy untouched.
 
 The Router owns one fail-closed runner and attaches the existing bounded
 Connection Hub worker as a nonblocking receipt sink. ContextManager remains the
@@ -578,10 +579,11 @@ profiles. Reconnect rebuilds from current D4 inventory, rejects a missing or
 changed source revision, and still requires a fresh executable/host-trust review
 and explicit approval; it never automatically resumes a session or action.
 
-Schema 3 freezes this source contract while retaining exact hashes for historical
-schema 1 and schema 2. Focused tests cover exact/PQ-preserving argv, full-review
-binding, executable replacement, every terminal outcome, receipt redaction and
-recovery, 256-record bounds, worker saturation, restart, and stale reconnect.
+Schema 4 freezes this source contract while retaining exact hashes for historical
+schemas 1, 2, and 3. Focused tests cover exact/PQ-preserving direct/routed argv,
+ProxyJump bounds/hostility, typed fields, full trust/identity evidence, changed-
+key denial, safe copy, bounded nonactivated `ssh-add` parsing, binding/executable
+replacement, terminal outcomes, receipt recovery, worker bounds, and reconnect.
 
 Still external or protected: ADR 0003's two independent exact-head approvals and
 server enforcement, real loader/build attestation and revocation, product
@@ -589,8 +591,8 @@ controller consumption of a current attested executable observation, a real
 managed OpenSSH child, graceful-then-forced descendant cleanup, prompt/
 diagnostic and manual-SSH regression, controlled pixels/screen readers, and
 native Windows/macOS/Linux plus separately gated WSL 1/10/50 resource evidence.
-M4 user/port/routes/host-trust/identity readiness and M5 jumps/tunnels remain
-separate, **Not done** slices.
+Actual public status execution, production activation/native proof, and F5.3
+jumps/tunnels remain external or **Not done** slices; M4 is locally complete.
 
 ### D6.0-D6.5 — providers and multi-cloud
 
@@ -918,8 +920,8 @@ Planned work, with no shipped-command claim:
 | Product surface | Owning gate | Audit status |
 |---|---|---|
 | Canonical operation registry, `automexia` domains, generated palette/help/accessibility, optional collision-safe `ax` | CP2.2-CP3/D5 | Not implemented |
-| Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | D5.1 picker/browse/metadata is fully implemented locally; D5.2 selected-record plus literal-host preparation, actionable approval review, fail-closed application runner, exact PTY seam, and route publication are complete locally but nonactivated; protected connect, reconnect, and route/trust features remain |
-| Identity references, agent/certificate state, known-host explanation, routes/jumps/proxies/tunnels | D5.2 | Not implemented |
+| Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | D5.1 picker/browse/metadata and D5.2 typed direct/config-jump preparation, full trust review, safe copy, fail-closed runner, exact PTY seam, and route publication are complete locally but nonactivated; protected connect and native evidence remain |
+| Identity references, agent/certificate/hardware public state, known-host explanation, routes/jumps/proxies/tunnels | D5.2 | M4 references, bounded nonexecuting status request/parser, full host-key explanation, and config ProxyJump are fully implemented locally; actual status execution and F5.3 tunnels/proxies remain not done or protected |
 | Quick Actions, aliases, lifecycle hooks, reviewed multi-target execution | CP2.2-CP4/D5E | Model/store foundations only |
 | Declarative workspace persistence/restoration and visibly armed broadcast | D5/CP4 | Existing layout primitives only |
 | Per-pane multi-cloud/context commands and typed import/reconcile adapters | D6.0-D6.5/CP4 | Not implemented |
@@ -1128,8 +1130,8 @@ At this audited baseline, the focused order is:
    native/accessibility evidence. Preserve D5.2's nonactivated approval UI,
    application runner, guarded PTY, and exact route-publication path.
 3. Activate D3 only after its protected, attestation, cleanup, and three-OS
-   native gates pass; preserve F5.1 receipts/reconnect and then deliver M4/M5
-routes/host trust/tunnels plus native evidence as bounded slices.
+   native gates pass; preserve F5.1/F5.2 routes/trust/receipts/reconnect and
+   then deliver F5.3 tunnels/native evidence as a bounded slice.
 
 4. Complete connection profiles, typed recipes, and declarative remote
    workspaces before adding provider execution.

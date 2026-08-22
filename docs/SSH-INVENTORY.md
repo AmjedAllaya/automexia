@@ -80,8 +80,11 @@ DACL containing only the current user.
 
 The parser indexes Host, HostName, User, Port, ProxyJump, IdentityFile,
 CertificateFile, PKCS11Provider, and SecurityKeyProvider only as static public
-hints. It never reads key bytes. Wildcard, negated, token-expanded, or
-command-expanded aliases are not connectable records.
+hints. ProxyJump uses OpenSSH first-value behavior and accepts only `none` or a
+canonical comma chain of at most 8 `[user@]host[:port]` hops/2 KiB; bracketed
+IPv6 is allowed, while raw IPv6, URI, option, whitespace/control/bidi, shell,
+and ambiguous/excessive forms fail closed. It never reads key bytes. Wildcard,
+negated, token-expanded, or command-expanded aliases are not connectable records.
 
 Match blocks are excluded. ProxyCommand, LocalCommand, and RemoteCommand are
 reported but never evaluated. Dynamic Include tokens, shell expansion,

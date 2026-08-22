@@ -254,29 +254,31 @@ parsing and storage do not move into the UI model. D5.2 must pass the
 application-owned capability/process/PTY/route gate before translating a
 reviewed plan into an execution request. No lower crate may bypass those owners.
 
-### M3 direct OpenSSH review boundary
+### M3-M4 reviewed OpenSSH route and trust boundary
 
-automexia-devops::connections::direct_openssh extends the F2 owner without a new
-crate edge or authority. It now owns two immutable stages: a pending preparation
-with no executable identity and an identity-bound review requiring a canonical
-current ssh executable, identity observation, and host-trust state. Both accept
-only the exact M3 direct alias/literal grammar, canonical F2 planning, exact
-session.launch, and an all-false authority ceiling.
+`automexia-devops::connections::direct_openssh` extends the F2 owner without a
+new crate edge or authority. It owns a pending preparation with no executable
+identity and an identity-bound review requiring a canonical current `ssh`
+executable, identity observation, route, and host-trust evidence. M3 direct and
+M4 config-routed grammars share canonical F2 planning, exact `session.launch`,
+an all-false authority ceiling, immutable argument vectors, and full-review
+equality before any launch binding.
 
 The desktop composition root maps either one current direct D4 record or one
 transient user-entered literal host into a stable opaque public profile.
 Inventory generation binds profile/capsule revision; metadata revision joins
 the source revision; a domain-separated hash creates the public model ID without
-copying the raw record ID or literal host. Unsupported ProxyJump and invalid
-records fail closed. The runtime clones one bounded inventory record under its
-existing lock, then performs pure composition without I/O, worker creation, or
-renderer-path discovery. Literal input is capped at 512 bytes, accepts only one
-ASCII host/alias argument, is never persisted or added to history, and is
-conservatively classified as production risk.
+copying raw record or literal values. D4 supplies only canonical first-value
+comma-separated ProxyJump chains, capped at 8 hops and 2 KiB; dynamic,
+ProxyCommand, ambiguous, executable, and excessive routes fail closed. The
+runtime clones one bounded record under its existing lock, then performs pure
+composition without I/O or new work. Literal host input is capped at 512 bytes;
+optional user and decimal port are distinct validated fields. They are transient,
+never persisted/history-written, and conservatively production-risk classified.
 
-automexia-ui-model owns the nine-section pending and identity-bound projections
-plus the literal editor's textbox/instructions/status/Review/Cancel reading
-order. While that nested editor owns the modal, the renderer omits the redundant
+`automexia-ui-model` owns the pending and identity-bound projections plus the
+literal editor's Host/User/Port/Review/Cancel reading order. While that nested
+editor owns the modal, the renderer omits the redundant
 top-level close action so its hit area cannot compete with the field; visible
 Cancel and Escape retain deterministic dismissal. The application controller
 discards or rebuilds inventory preparation
@@ -286,10 +288,16 @@ cleared on cancel, close, or successful preparation. The native renderer
 consumes only presentation state, keeps the modal background inert, and groups
 review into Connection, Safety, and Launch cards. Exact inventory aliases,
 opaque references, executable digests, and fingerprints do not enter that view.
-Because production M2 activation remains gated, the three approval actions are
-available but currently end at a protected-review diagnostic before executable
-or filesystem resolution. No process, PTY, network, credential, listener,
-host-trust mutation, persistence, or secret authority is granted.
+Unknown/first-use/known/changed evidence carries the complete public algorithm
+and full 32-byte OpenSSH SHA-256 fingerprint. The Safety projection wraps it
+without truncation; changed keys cannot bind, and no owner writes `known_hosts`.
+Public agent/certificate/hardware status is an exact non-executing
+`ssh-add -l -E sha256` request/parser capped at 2 seconds, 64 KiB, and 64 rows.
+The `C` handoff copies the reviewed command without newline, Enter, or execution.
+Because production M2 activation remains gated, approval actions end at the
+protected diagnostic before executable/filesystem resolution. No process, PTY,
+network, credential, listener, trust mutation, persistence, or secret authority
+is granted.
 
 The dormant post-activation M3 lifecycle keeps ContextManager as the only PTY,
 process, and route owner. Actual child exit, cancel, revoke, route close, and
@@ -367,7 +375,7 @@ for the exact OpenSSH tools they use. The extension itself has no direct-network
 capability: the approved OpenSSH child connects exactly as it would when typed
 in a shell. Arbitrary process/network access and third-party use remain denied.
 
-Current D0/D3 source status remains fail-closed. Active schema 3 freezes the exact
+Current D0/D3/M4 source status remains fail-closed. Active schema 4 freezes the exact
 17-option-plus-destination M3 grammar, fresh full-review/executable binding,
 actual child-outcome mapping, bounded private receipt/recovery contract, and
 stale-source reconnect rule while retaining schema 1 and schema 2 as immutable

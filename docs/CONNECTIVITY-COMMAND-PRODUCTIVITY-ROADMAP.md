@@ -67,12 +67,12 @@ documentation, feature assurance, and a change fragment.
 |---|---|---|---|---|
 | Provider-neutral contracts | D1 | Fully done | automexia-extension-api, automexia-extension-runtime, automexia-devops, automexia-ui-model; architecture gates | Hosted release evidence only |
 | Generic context and immutable capsules | D2 | Fully done | extension API/runtime plus application session/context tests | Production login/relaunch belongs to D3/D6 |
-| SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 is accepted; schema 3 ratchets immutable schema 1/2 with exact managed options, lifecycle/receipt/reconnect rules, four-platform matrix, and mutations | Obtain ADR 0003's two independent exact-head protected approvals and server enforcement; execute native fixtures in F4/F5 |
+| SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 is accepted; schema 4 ratchets immutable schemas 1/2/3 with exact M3/M4 routes, trust/status, lifecycle/receipt/reconnect rules, four-platform matrix, and mutations | Obtain ADR 0003's two independent exact-head protected approvals and server enforcement; execute native fixtures in F4/F5 |
 | Exact-argument launch broker | D3 | Partially done; nonactivated | Production-compiled fail-closed broker, one application runner, exact guarded PTY seam, route publication, bounded lifecycle/audit state, approval UX, and local protected-path policy | Protected approvals/server enforcement, real loader attestation, forced descendant teardown proof, native process/resource/accessibility evidence |
 | Static OpenSSH inventory | D4 | Fully done | automexia-devops-ssh, hostile/property tests, fuzz, benchmark, assurance | Remains deliberately disabled until D5 |
 | Connection Hub model | D5.0 | Partially done | All local F2 schemas, reducers, dry-run planner, Hub/review/planner projections, fixtures, goldens, fuzz, mutations, and benchmark are implemented | ADR 0003 protected approvals and native evidence remain for D5.2; capability-free D5.1 is complete under ADR 0022 |
 | Read-only Connection Hub | D5.1 | Fully done locally; external evidence partial | App-scoped joined runtime, exact reviewed native selection, bounded modal/search/filter/grouping, CAS favorite/tag diffs, read-only recent/library data, disabled authority, tests, benchmark, and release-build evidence | Native macOS/Linux picker/permission plus controlled Narrator/NVDA, VoiceOver, and Orca evidence |
-| Managed OpenSSH | D5.2 | Partially done overall; F5.1 source-complete nonactivated | Exact managed argv, full-review/executable binding, guarded PTY publication, actual child outcomes, redacted notifications, bounded durable receipts, and stale-source reconnect preparation pass locally | Protected activation/attestation, real OpenSSH/forced cleanup, jumps, tunnels, full trust/identity UX, and native proof |
+| Managed OpenSSH | D5.2 | Partially done overall; F5.1/F5.2 source-complete nonactivated | Exact direct/routed argv, typed host/user/port, bounded config jumps, full host-key/public-identity review, safe copy handoff, lifecycle, receipts, and reconnect pass locally | Protected activation/attestation, actual status execution, real OpenSSH/forced cleanup, F5.3 tunnels, and native proof |
 | Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, approval fingerprints, and private transactional Connection Library persistence/redacted transfer are implemented | Product editor, remote workspace lifecycle, and separately gated execution remain |
 | Multi-cloud framework and providers | D6.0-D6.5 | Not done | Provider-neutral D1/D2 types only | Auth state machine, exact official CLI adapters, isolation, provider-by-provider gates |
 | Native completion | CP1 | Fully done | shell integration, xtask completion manager, CP1 contract/tests | Hosted three-OS and longitudinal release evidence |
@@ -410,8 +410,9 @@ native, resource, and accessibility gate above is evidenced.
 
 ## F5 - implement D5.2 managed OpenSSH
 
-Status: **Partially done overall; F5.1 is fully done at the nonactivated source
-boundary.** Production SSH remains blocked by F4/M2 protected and native gates.
+Status: **Partially done overall; F5.1 and F5.2 are fully done at the
+nonactivated source boundary.** Production SSH remains blocked by F4/M2
+protected and native gates; F5.3 tunnels are not done.
 
 ### F5.1 direct reviewed SSH
 
@@ -420,7 +421,8 @@ boundary.** Production SSH remains blocked by F4/M2 protected and native gates.
   value-redacted Connection Review with explicit pointer/keyboard/accessibility
   decisions and the existing focus/IME/tiny-to-8K protections.
 - [x] **Fully done — exact managed request:** 17 fixed defensive `-o` options
-  precede exactly one typed destination. Arbitrary options, user/port/routes,
+  precede exactly one typed destination in the F5.1 grammar. M4 adds separate
+  typed user/port/config routes; arbitrary options,
   proxy/jump, forwarding/tunnel, local/remote command, shell evaluation, and
   multiplex/background behavior cannot enter the M3 grammar. OpenSSH retains
   authentication, host-key prompt, PTY I/O, post-quantum negotiation defaults,
@@ -437,9 +439,10 @@ boundary.** Production SSH remains blocked by F4/M2 protected and native gates.
   primary/previous receipt store, nonblocking bounded worker dispatch, restart
   recovery, and current-D4/source-revision reconnect preparation pass locally.
   Reconnect never auto-runs and always returns to fresh review and approval.
-- [x] **Fully done — source evidence:** schema 3 plus immutable schema-1/schema-2
-  hashes, hostile/exact-argv/executable-replacement/outcome/redaction/store
-  recovery/saturation/restart/stale-source tests and assurance mutations pass.
+- [x] **Fully done — source evidence:** active schema 4 plus immutable
+  schema-1/schema-2/schema-3 hashes, hostile/exact-argv/executable-replacement/
+  outcome/redaction/store recovery/saturation/restart/stale-source tests and
+  assurance mutations pass.
 - [ ] **Not done externally / production blocked:** protected exact-head
   approvals/server enforcement, real loader attestation/revocation, controller
   consumption of a current attested observation, real OpenSSH prompts and
@@ -447,11 +450,23 @@ boundary.** Production SSH remains blocked by F4/M2 protected and native gates.
   controlled accessibility, and native Windows/macOS/Linux/WSL resource evidence.
 ### F5.2 explicit routes and host trust
 
-- [ ] Add typed host/user/port and config-defined jump chains.
-- [ ] Add first/known/changed host-key explanation without silent known_hosts
-  edits or fingerprint truncation.
-- [ ] Show public agent/certificate readiness without reading key or token data.
-- [ ] Keep agent forwarding off by default and production routes review-only.
+Status: **Fully done locally; nonactivated.**
+
+- [x] **Fully done locally:** separate typed host/user/port fields and bounded
+  canonical config-defined jump chains produce exact direct or one-`-J` routed
+  argv; free-form options, ProxyCommand, remote commands, shell text, and
+  tunnels fail closed.
+- [x] **Fully done locally:** first-use/known/changed review shows the algorithm
+  and full OpenSSH SHA-256 fingerprint without truncation or `known_hosts`
+  mutation; changed keys cannot bind.
+- [x] **Fully done locally:** `C` copies the exact reviewed user-owned command
+  with no newline, Enter, or execution.
+- [x] **Fully done locally as a non-executing contract:** exact bounded
+  `ssh-add -l -E sha256` public agent/certificate/hardware status parsing reads
+  no private key, token, or agent protocol data. Actual status execution remains
+  protected/nonactivated.
+- [x] **Fully done locally:** agent forwarding stays off, route/evidence changes
+  invalidate review, and production routes remain review-only.
 
 ### F5.3 typed tunnels
 
@@ -797,9 +812,9 @@ ADR 0012 is accepted by the project owner. The current blocking actions are
 ADR 0003's two independent exact-head protected approvals/server enforcement,
 real package-loader attestation, and the native F4 evidence matrix. F3/D5.1 is
 fully implemented locally; F4's source-local runner, approval UI, guarded PTY,
-and route publication are implemented but nonactivated. The next implementation
-slice is F5.2 explicit routes and host trust while the external F4 gates are
-collected.
+and route publication are implemented but nonactivated. F5.2 explicit routes and host trust are now complete locally and nonactivated.
+The next implementation slice is F5.3 typed tunnels while the external F4 gates
+are collected.
 P1 autocomplete research is now **Fully done** with CP1 retained and P2
 deferred. P2-P4 remain **Not done**; no later phase may be marked started until
 its separate ADR, dependencies, and evidence pass.

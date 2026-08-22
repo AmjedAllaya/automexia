@@ -311,6 +311,8 @@ fn literal_destination_entry_replaces_catalog_semantics_and_exposes_a_focusable_
             "connection-hub-title",
             "literal-ssh-instructions",
             "literal-ssh-destination",
+            "literal-ssh-user",
+            "literal-ssh-port",
             "literal-ssh-status",
             "literal-ssh-review",
             "literal-ssh-cancel",

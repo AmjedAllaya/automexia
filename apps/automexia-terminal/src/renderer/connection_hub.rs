@@ -65,6 +65,8 @@ pub enum ConnectionHubHit {
     Search,
     BeginLiteralDestination,
     LiteralDestinationField,
+    LiteralUserField,
+    LiteralPortField,
     ConfirmLiteralDestination,
     CancelLiteralDestination,
     ReviewFiles,
@@ -100,6 +102,8 @@ struct Layout {
     review_panel: Option<Rect>,
     overlay_panel: Option<Rect>,
     literal_destination_field: Option<Rect>,
+    literal_user_field: Option<Rect>,
+    literal_port_field: Option<Rect>,
     overlay_confirm: Option<Rect>,
     overlay_cancel: Option<Rect>,
     close: Rect,
@@ -151,6 +155,18 @@ impl ConnectionHub {
                     .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
                 {
                     return Some(ConnectionHubHit::LiteralDestinationField);
+                }
+                if layout
+                    .literal_user_field
+                    .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
+                {
+                    return Some(ConnectionHubHit::LiteralUserField);
+                }
+                if layout
+                    .literal_port_field
+                    .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
+                {
+                    return Some(ConnectionHubHit::LiteralPortField);
                 }
                 if layout
                     .overlay_confirm
@@ -667,18 +683,29 @@ impl ConnectionHub {
         }
 
         if let Some(panel) = layout.overlay_panel {
-            if let (Some(value), Some(field)) = (
+            if let (
+                Some(value),
+                Some(user),
+                Some(port),
+                Some(host_field),
+                Some(user_field),
+                Some(port_field),
+            ) = (
                 presentation.literal_destination.as_deref(),
+                presentation.literal_user.as_deref(),
+                presentation.literal_port.as_deref(),
                 layout.literal_destination_field,
+                layout.literal_user_field,
+                layout.literal_port_field,
             ) {
                 render_literal_destination_editor(
                     sugarloaf,
                     panel,
-                    field,
-                    value,
+                    [host_field, user_field, port_field],
+                    [value, user, port],
                     presentation.ime_preedit.as_deref(),
                     presentation.literal_destination_diagnostic,
-                    presentation.view.focus == HubFocus::LiteralDestination,
+                    &presentation.view.focus,
                 );
             } else if let Some(value) = presentation.tag_editor.as_deref() {
                 render_tag_editor(
@@ -960,12 +987,41 @@ impl ConnectionHub {
                     Rect {
                         x: panel.x + 14.0,
                         y: panel.y + if panel.height < 180.0 { 2.0 } else { 76.0 },
-                        width: (panel.width - 28.0).max(1.0),
+                        width: ((panel.width - 40.0) * 0.5).max(1.0),
                         height: if panel.height < 180.0 {
                             (panel.height - 50.0).max(1.0)
                         } else {
                             42.0
                         },
+                    },
+                    panel,
+                )
+            });
+        let literal_user_field =
+            literal_destination_field
+                .zip(overlay_panel)
+                .map(|(destination, panel)| {
+                    bounded_to(
+                        Rect {
+                            x: destination.x + destination.width + 6.0,
+                            y: destination.y,
+                            width: ((panel.width - 40.0) * 0.28).max(1.0),
+                            height: destination.height,
+                        },
+                        panel,
+                    )
+                });
+        let literal_port_field =
+            literal_user_field.zip(overlay_panel).map(|(user, panel)| {
+                bounded_to(
+                    Rect {
+                        x: user.x + user.width + 6.0,
+                        y: user.y,
+                        width: (panel.x + panel.width
+                            - 14.0
+                            - (user.x + user.width + 6.0))
+                            .max(1.0),
+                        height: user.height,
                     },
                     panel,
                 )
@@ -1159,6 +1215,8 @@ impl ConnectionHub {
             review_panel,
             overlay_panel,
             literal_destination_field,
+            literal_user_field,
+            literal_port_field,
             overlay_confirm,
             overlay_cancel,
             close,
@@ -1256,6 +1314,24 @@ fn render_connection_review(
                 sugarloaf
                     .text_mut()
                     .draw(card.x + 8.0, card.y + 4.0, heading, &small);
+            }
+            if heading == "Safety" && card.height >= 52.0 {
+                if let Some(section) = review.sections.get(4) {
+                    let maximum = ((card.width - 22.0) / 5.5).floor().max(12.0) as usize;
+                    for (line, chunk) in
+                        wrap_without_truncation(&section.summary, maximum)
+                            .into_iter()
+                            .enumerate()
+                    {
+                        sugarloaf.text_mut().draw(
+                            card.x + 11.0,
+                            card.y + 34.0 + line as f32 * 12.0,
+                            &chunk,
+                            &small,
+                        );
+                    }
+                }
+                continue;
             }
             if card.height >= 104.0 {
                 for (line, index) in indices.into_iter().enumerate() {
@@ -1868,11 +1944,11 @@ fn source_label(source: Option<HubCatalogSource>) -> &'static str {
 fn render_literal_destination_editor(
     sugarloaf: &mut Sugarloaf,
     panel: Rect,
-    field: Rect,
-    value: &str,
+    fields: [Rect; 3],
+    values: [&str; 3],
     ime_preedit: Option<&str>,
     diagnostic: Option<&str>,
-    focused: bool,
+    focus: &HubFocus,
 ) {
     rounded(sugarloaf, panel, SURFACE, 8.0);
     let tiny = panel.height < 180.0;
@@ -1884,30 +1960,49 @@ fn render_literal_destination_editor(
         sugarloaf.text_mut().draw(
             panel.x + 14.0,
             panel.y + 16.0,
-            "Review one SSH host",
+            "Review direct SSH",
             &heading,
         );
         sugarloaf.text_mut().draw(
             panel.x + 14.0,
             panel.y + 47.0,
-            "Host or alias only · no user, port, URI, options, or jump route",
+            "Host required · user and port optional · Tab moves · no URI, options, or shell text",
             &small,
         );
     }
-    rounded(sugarloaf, field, if focused { SELECTED } else { CARD }, 7.0);
-    let composed = format!("{}{}", value, ime_preedit.unwrap_or_default());
-    let visible_characters = (((field.width - 20.0) / 7.0).floor() as usize).clamp(1, 72);
-    let visible = if composed.is_empty() {
-        truncated("host.example.com", visible_characters)
-    } else {
-        truncated(&composed, visible_characters)
-    };
-    sugarloaf.text_mut().draw(
-        field.x + if tiny { 4.0 } else { 10.0 },
-        field.y + if tiny { 2.0 } else { 11.0 },
-        &visible,
-        if tiny { &small } else { &body },
-    );
+    let focuses = [
+        HubFocus::LiteralDestination,
+        HubFocus::LiteralUser,
+        HubFocus::LiteralPort,
+    ];
+    let placeholders = ["host.example.com", "user (optional)", "port"];
+    for index in 0..3 {
+        let focused = focus == &focuses[index];
+        rounded(
+            sugarloaf,
+            fields[index],
+            if focused { SELECTED } else { CARD },
+            7.0,
+        );
+        let composed = if focused {
+            format!("{}{}", values[index], ime_preedit.unwrap_or_default())
+        } else {
+            values[index].to_owned()
+        };
+        let visible_characters =
+            (((fields[index].width - 12.0) / 7.0).floor() as usize).clamp(1, 72);
+        let visible = if composed.is_empty() {
+            truncated(placeholders[index], visible_characters)
+        } else {
+            truncated(&composed, visible_characters)
+        };
+        sugarloaf.text_mut().draw(
+            fields[index].x + if tiny { 3.0 } else { 7.0 },
+            fields[index].y + if tiny { 2.0 } else { 11.0 },
+            &visible,
+            if tiny { &small } else { &body },
+        );
+    }
     if !tiny {
         sugarloaf.text_mut().draw(
             panel.x + 14.0,
@@ -1923,7 +2018,6 @@ fn render_literal_destination_editor(
         );
     }
 }
-
 fn render_tag_editor(
     sugarloaf: &mut Sugarloaf,
     panel: Rect,
@@ -2224,6 +2318,17 @@ fn button(
     );
 }
 
+fn wrap_without_truncation(value: &str, max_chars: usize) -> Vec<String> {
+    let maximum = max_chars.max(1);
+    let characters = value.chars().collect::<Vec<_>>();
+    if characters.is_empty() {
+        return vec![String::new()];
+    }
+    characters
+        .chunks(maximum)
+        .map(|chunk| chunk.iter().collect())
+        .collect()
+}
 fn truncated(value: &str, max_chars: usize) -> String {
     let mut chars = value.chars();
     let mut result = chars.by_ref().take(max_chars).collect::<String>();
@@ -2265,6 +2370,8 @@ mod tests {
             row_group_labels: Vec::new(),
             ime_preedit: None,
             literal_destination: None,
+            literal_user: None,
+            literal_port: None,
             literal_destination_diagnostic: None,
             literal_destination_valid: false,
             grant_review_offset: 0,
@@ -2338,15 +2445,27 @@ mod tests {
             presentation.view.content_state = HubContentState::Ready;
             presentation.view.focus = HubFocus::LiteralDestination;
             presentation.literal_destination = Some("host.example.invalid".into());
+            presentation.literal_user = Some("operator".into());
+            presentation.literal_port = Some("2222".into());
             presentation.literal_destination_valid = true;
             let layout = ConnectionHub::layout(&presentation, dimensions);
             let panel = layout.overlay_panel.unwrap();
             let field = layout.literal_destination_field.unwrap();
+            let user = layout.literal_user_field.unwrap();
+            let port = layout.literal_port_field.unwrap();
             let confirm = layout.overlay_confirm.unwrap();
             let cancel = layout.overlay_cancel.unwrap();
             assert!(!layout.catalog_chrome_visible);
             assert!(layout.setup_panel.is_none());
-            for rect in [panel, field, confirm, cancel, layout.review_host] {
+            for rect in [
+                panel,
+                field,
+                user,
+                port,
+                confirm,
+                cancel,
+                layout.review_host,
+            ] {
                 assert!(rect.x >= layout.card.x);
                 assert!(rect.y >= layout.card.y);
                 assert!(rect.x + rect.width <= layout.card.x + layout.card.width);
@@ -2368,6 +2487,14 @@ mod tests {
             assert_eq!(
                 hub.hit_test(field.x + 1.0, field.y + 1.0, dimensions),
                 Some(ConnectionHubHit::LiteralDestinationField)
+            );
+            assert_eq!(
+                hub.hit_test(user.x + 1.0, user.y + 1.0, dimensions),
+                Some(ConnectionHubHit::LiteralUserField)
+            );
+            assert_eq!(
+                hub.hit_test(port.x + 1.0, port.y + 1.0, dimensions),
+                Some(ConnectionHubHit::LiteralPortField)
             );
             assert_eq!(
                 hub.hit_test(confirm.x + 1.0, confirm.y + 1.0, dimensions),

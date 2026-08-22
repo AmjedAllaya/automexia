@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the fail-closed F1/D0-D3 session-launch review contract."""
+"""Validate the fail-closed D0-D3/M3-M4 session-launch review contract."""
 
 from __future__ import annotations
 
@@ -10,10 +10,11 @@ import sys
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-CONTRACT = ROOT / "tests/fixtures/session-launch/d0-d3-contract-v3.json"
+CONTRACT = ROOT / "tests/fixtures/session-launch/d0-d3-contract-v4.json"
 HISTORICAL_CONTRACTS = [
     (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v1.json", "0d2120bd9aef13b3d75053d595356c9b844107bc9ddc98db60f01f0c779bd9d8", "schema-1"),
     (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v2.json", "eb561716075bd546268b1a3c4fdb2d3c3dceaafd5ca2f9fd7113f69c29d9ba4e", "schema-2"),
+    (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v3.json", "112209b674263a6a996a119b9e9120175f0d41aed082463a3e17d1bf806c3ed1", "schema-3"),
 ]
 MAX_EVIDENCE_BYTES = 262_144
 EXPECTED_KEYS = {
@@ -21,6 +22,7 @@ EXPECTED_KEYS = {
     "audit", "executable_resolution", "strict_defaults", "authority_ceiling",
     "manual_baseline", "trust_boundaries", "native_fixture_protocol",
     "native_scenarios", "evidence", "external_prerequisites", "managed_session",
+    "ssh_routes_trust",
 }
 EXPECTED_NATIVE_PLATFORMS = ["windows", "macos", "linux", "wsl"]
 EXPECTED_MANAGED_OPTIONS = [
@@ -31,6 +33,56 @@ EXPECTED_MANAGED_OPTIONS = [
     "-oProxyCommand=none", "-oProxyJump=none", "-oRemoteCommand=none",
     "-oStdinNull=no", "-oStrictHostKeyChecking=ask", "-oTunnel=no",
 ]
+EXPECTED_ROUTED_OPTIONS = [
+    option for option in EXPECTED_MANAGED_OPTIONS
+    if option not in {"-oProxyCommand=none", "-oProxyJump=none"}
+]
+EXPECTED_SSH_ROUTES_TRUST = {
+    "route_grammar": {
+        "typed_fields": ["host", "user", "port"],
+        "direct_shape": "managed-options-then-optional-l-user-optional-p-port-one-literal-host",
+        "routed_shape": "routed-managed-options-then-J-one-canonical-chain-one-config-alias",
+        "proxy_jump_source": "openssh-config-static-public-index",
+        "proxy_jump_hop": "[user@]host[:port]",
+        "max_proxy_jumps": 8,
+        "max_proxy_jump_bytes": 2048,
+        "proxy_command": False,
+        "freeform_options": False,
+        "remote_command": False,
+        "shell_interpretation": False,
+    },
+    "direct_managed_options": EXPECTED_MANAGED_OPTIONS,
+    "routed_managed_options": EXPECTED_ROUTED_OPTIONS,
+    "host_trust": {
+        "states": ["unknown", "first-use", "known", "changed"],
+        "fingerprint_format": "full-OpenSSH-SHA256-32-byte-base64",
+        "algorithm_required": True,
+        "truncation": False,
+        "first_use": "explicit-openssh-confirmation",
+        "known": "reviewed-evidence-match",
+        "changed": "hard-deny-no-launch-binding",
+        "known_hosts_mutation": False,
+        "known_hosts_write_owner": "system-openssh-or-explicit-user-recovery",
+    },
+    "user_owned_trust_handoff": {
+        "clipboard_copy": True,
+        "executes": False,
+        "implicit_enter": False,
+        "newline": False,
+    },
+    "public_identity_status": {
+        "executable_id": "ssh-add",
+        "arguments": ["-l", "-E", "sha256"],
+        "supported_kinds": ["agent", "certificate", "hardware"],
+        "private_material": False,
+        "timeout_ms": 2000,
+        "max_output_bytes": 65536,
+        "max_identities": 64,
+        "execution_enabled": False,
+    },
+    "agent_forwarding": False,
+    "production_activation": False,
+}
 EXPECTED_SCENARIOS = [
     {"id": "direct-alias", "required": True, "platforms": EXPECTED_NATIVE_PLATFORMS, "expected": "exact-managed-options-then-one-literal-destination-argument"},
     {"id": "explicit-destination", "required": True, "platforms": EXPECTED_NATIVE_PLATFORMS, "expected": "explicit-host-connect-without-shell"},
@@ -65,7 +117,7 @@ EXPECTED_TRUST_BOUNDARIES = [
 ]
 EXPECTED_NATIVE_FIXTURE_PROTOCOL = {
     "definition_status": "defined-not-executed",
-    "execution_owner": "M3/F5.1",
+    "execution_owner": "M3/F5.1+M4/F5.2",
     "server": "ephemeral-loopback-openssh",
     "network": "loopback-only-no-internet-or-cloud-account",
     "workspace": "per-case-private-temporary-directory",
@@ -98,6 +150,10 @@ EXPECTED_SOURCES = [
     "apps/automexia-terminal/src/automexia/connections/runtime.rs",
     "apps/automexia-terminal/src/application.rs",
     "apps/automexia-terminal/src/automexia/connections/private_fs.rs",
+    "extensions/devops-ssh/src/model.rs",
+    "extensions/devops-ssh/src/inventory.rs",
+    "apps/automexia-terminal/src/automexia/connections/direct_openssh.rs",
+    "apps/automexia-terminal/src/renderer/connection_hub.rs",
 ]
 EXPECTED_CHECKS = [
     "tools/ci/check_session_launch_d0.py",
@@ -137,7 +193,7 @@ def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise SessionLaunchD0Error(f"duplicate D0/D3 contract key: {key}")
+            raise SessionLaunchD0Error(f"duplicate D0/D3/M4 contract key: {key}")
         result[key] = value
     return result
 
@@ -145,11 +201,11 @@ def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 def load_contract(path: Path = CONTRACT) -> dict[str, Any]:
     document = json.loads(bounded_text(path), object_pairs_hook=reject_duplicate_keys)
     if not isinstance(document, dict) or set(document) != EXPECTED_KEYS:
-        raise SessionLaunchD0Error("D0/D3 contract keys changed")
+        raise SessionLaunchD0Error("D0/D3/M4 contract keys changed")
     if (document["schema"], document["phase"], document["status"]) != (
-        3, "F1/D0-D3+M3/F5.1/D5.2", "local-managed-session-source-complete-protected-activation-pending",
+        4, "F1/D0-D3+M3/F5.1/D5.2+M4/F5.2", "local-managed-ssh-routes-trust-source-complete-protected-activation-pending",
     ):
-        raise SessionLaunchD0Error("D0/D3 contract identity changed")
+        raise SessionLaunchD0Error("D0/D3/M4 contract identity changed")
     expected_sections = {
         "activation": {"production_enabled": False, "required_adr": "0012", "adr_status": "Accepted", "required_protected_approvals": 2},
         "package_identity": {"extension_id": "automexia.devops-ssh", "publisher": "io.github.AmjedAllaya", "version_source": "workspace-package-version", "digest_algorithm": "sha256", "digest_size_bytes": 32, "digest_zero_denied": True, "digest_source": "trusted-package-loader", "contract_version": 1, "compatibility": "exact", "allowed_verification": ["repository-reviewed", "first-party-signed"], "unverified_denied": True, "revocation_fail_closed": True},
@@ -159,19 +215,20 @@ def load_contract(path: Path = CONTRACT) -> dict[str, Any]:
         "executable_resolution": {"windows": {"mode": "system-directory", "ssh": "OpenSSH/ssh.exe", "ssh_add": "OpenSSH/ssh-add.exe", "ssh_keygen": "OpenSSH/ssh-keygen.exe"}, "macos": {"roots": ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"]}, "linux": {"roots": ["/usr/bin", "/bin", "/usr/local/bin"]}, "wsl": {"production_enabled": False, "future_windows_launcher": "System32/wsl.exe", "future_linux_ssh": "/usr/bin/ssh", "shell": False}, "path_lookup": False, "cwd_lookup": False, "relative_paths": False, "fallback_after_configured_override_failure": False, "identity_revalidated_before_spawn": True},
         "strict_defaults": {"host_key_checking": "ask-on-first-use-reject-changed", "unknown_host": "interactive-pty-confirmation", "changed_host": "deny", "agent_forwarding": False, "tcp_forwarding": False, "forward_listener_scope": "loopback-unless-explicitly-confirmed", "x11_forwarding": False, "remote_command": False, "config_command_execution_during_discovery": False, "environment_inheritance": False, "secret_resolution": False, "shell_interpretation": False, "managed_options": EXPECTED_MANAGED_OPTIONS, "openssh_kex_override": False, "openssh_weak_crypto_warning_override": False},
         "authority_ceiling": {"process": False, "pty": False, "network": False, "provider": False, "authentication": False, "key_custody": False, "renderer": False},
+        "ssh_routes_trust": EXPECTED_SSH_ROUTES_TRUST,
         "trust_boundaries": EXPECTED_TRUST_BOUNDARIES,
         "native_fixture_protocol": EXPECTED_NATIVE_FIXTURE_PROTOCOL,
-        "managed_session": {"launch_binding": "fresh-full-review-equality", "argument_shape": "exact-managed-options-then-one-typed-destination", "executable_identity": "reviewed-native-file-identity-revalidated-before-authorization", "user_configuration": "system-openssh-authoritative-launch-helper-risk-reviewed", "terminal_outcome": "child-exit-derived-no-close-assumption", "receipt_store": {"schema": 1, "max_records": 256, "max_bytes": 2097152, "write_owner": "bounded-connection-worker", "persistence": "private-atomic-primary-previous-recovery", "content": "provider-neutral-redacted-no-destination-or-terminal-text"}, "reconnect": "opaque-inventory-identity-current-source-only-fresh-review-and-approval", "notifications": "fixed-redacted-success-failure-status-unavailable-cancelled-and-storage-unavailable", "production_enabled": False},
+        "managed_session": {"launch_binding": "fresh-full-review-equality", "argument_shape": "exact-route-specific-options-then-typed-user-port-jump-destination", "executable_identity": "reviewed-native-file-identity-revalidated-before-authorization", "user_configuration": "system-openssh-authoritative-launch-helper-risk-reviewed", "terminal_outcome": "child-exit-derived-no-close-assumption", "receipt_store": {"schema": 1, "max_records": 256, "max_bytes": 2097152, "write_owner": "bounded-connection-worker", "persistence": "private-atomic-primary-previous-recovery", "content": "provider-neutral-redacted-no-destination-or-terminal-text"}, "reconnect": "opaque-inventory-identity-current-source-only-fresh-review-and-approval", "notifications": "fixed-redacted-success-failure-status-unavailable-cancelled-and-storage-unavailable", "production_enabled": False},
         "external_prerequisites": ["protected security review", "two protected exact-head approvals", "real loader attestation and revocation", "native process-tree PTY OpenSSH accessibility and resource evidence"],
     }
     for key, expected in expected_sections.items():
         if document[key] != expected:
-            raise SessionLaunchD0Error(f"D0/D3 {key.replace('_', ' ')} changed")
+            raise SessionLaunchD0Error(f"D0/D3/M4 {key.replace('_', ' ')} changed")
     scenarios = document["native_scenarios"]
     if scenarios != EXPECTED_SCENARIOS:
-        raise SessionLaunchD0Error("D0/D3 native scenario matrix changed")
+        raise SessionLaunchD0Error("D0/D3/M4 native scenario matrix changed")
     if document["evidence"] != {"source": EXPECTED_SOURCES, "checks": EXPECTED_CHECKS, "documents": EXPECTED_DOCUMENTS}:
-        raise SessionLaunchD0Error("D0/D3 evidence inventory changed")
+        raise SessionLaunchD0Error("D0/D3/M4 evidence inventory changed")
     return document
 
 
@@ -179,7 +236,7 @@ def require_tokens(relative: str, tokens: set[str], root: Path = ROOT) -> str:
     source = bounded_text(root / relative)
     missing = sorted(token for token in tokens if token not in source)
     if missing:
-        raise SessionLaunchD0Error(f"{relative} is missing D0/D3 evidence: {missing}")
+        raise SessionLaunchD0Error(f"{relative} is missing D0/D3/M4 evidence: {missing}")
     return source
 
 
@@ -199,6 +256,7 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "platform_resolution_contract_is_fixed_and_wsl_remains_disabled",
         "linked_candidate_path_stays_fail_closed_and_redacted_without_attestation",
         "reviewed_executable_identity_digest", "DIRECT_OPENSSH_MANAGED_OPTIONS",
+        "DIRECT_OPENSSH_ROUTED_OPTIONS", "validate_direct_openssh_arguments",
     }, root)
     broker_lower = broker.lower()
     broker_authority_markers = {
@@ -294,6 +352,7 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         '"allow-session"',
         '"deny"',
         "execution_enabled: false",
+        "direct-openssh-trust-copy",
     }, root)
     require_tokens(document["evidence"]["source"][6], {
         "pub struct CapabilityDecision", "pub operation_id: OperationId",
@@ -301,8 +360,10 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "pub expires_at_ms: u64",
     }, root)
     require_tokens(document["evidence"]["source"][7], {
-        "DIRECT_OPENSSH_MANAGED_OPTIONS", "pub struct DirectOpenSshLaunchBinding",
-        "pub fn bind_launch",
+        "DIRECT_OPENSSH_MANAGED_OPTIONS", "DIRECT_OPENSSH_ROUTED_OPTIONS",
+        "pub struct DirectOpenSshLaunchBinding", "pub fn bind_launch",
+        "pub fn bind_launch_m4", "prepare_direct_openssh_identity_status",
+        "parse_direct_openssh_agent_identities", "pub fn user_owned_command",
     }, root)
     require_tokens("automexia-devops/tests/direct_openssh_review.rs", {
         "managed_options_preserve_openssh_post_quantum_defaults_and_warnings",
@@ -327,6 +388,22 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "same_snapshot", "private_permissions_are_safe",
         "GetFileInformationByHandle", "nFileIndexHigh",
     }, root)
+    require_tokens(document["evidence"]["source"][12], {
+        "parse_proxy_jump_chain", "MAX_PROXY_JUMPS", "MAX_PROXY_JUMP_BYTES",
+        "canonical_proxy_jump_hop",
+    }, root)
+    require_tokens(document["evidence"]["source"][13], {
+        "proxy_jump_is_a_bounded_canonical_first_value_chain",
+        "proxy_jump_rejects_executable_ambiguous_and_excessive_routes",
+    }, root)
+    require_tokens(document["evidence"]["source"][14], {
+        "prepare_literal_direct_openssh_typed", "record.proxy_jump.clone()",
+        "config_route_is_preserved_while_invalid_generation_and_hostile_aliases_fail_closed",
+    }, root)
+    require_tokens(document["evidence"]["source"][15], {
+        "wrap_without_truncation", "Protected checks required",
+        "host-trust",
+    }, root)
 
     audit_start = broker.index("pub struct LaunchAuditRecord")
     audit_end = broker.index("pub struct DeniedLaunch", audit_start)
@@ -349,7 +426,7 @@ def validate_repository(root: Path = ROOT) -> dict[str, int]:
     for historical_path, expected_digest, label in HISTORICAL_CONTRACTS:
         historical = bounded_text(root / historical_path.relative_to(ROOT)).encode("utf-8")
         if hashlib.sha256(historical).hexdigest() != expected_digest:
-            raise SessionLaunchD0Error(f"historical D0/D3 {label} contract changed")
+            raise SessionLaunchD0Error(f"historical D0/D3/M4 {label} contract changed")
     document = load_contract(root / CONTRACT.relative_to(ROOT))
     return validate_sources(document, root)
 
@@ -358,9 +435,9 @@ def main() -> int:
     try:
         counts = validate_repository()
     except (SessionLaunchD0Error, OSError, UnicodeError, json.JSONDecodeError) as error:
-        print(f"D0/D3 session-launch validation failed: {error}", file=sys.stderr)
+        print(f"D0/D3/M4 session-launch validation failed: {error}", file=sys.stderr)
         return 1
-    print(f"PASS: D0/D3 session-launch contract is exact, fail-closed, and review-gated ({counts})")
+    print(f"PASS: D0/D3/M4 session-launch contract is exact, fail-closed, and review-gated ({counts})")
     return 0
 
 

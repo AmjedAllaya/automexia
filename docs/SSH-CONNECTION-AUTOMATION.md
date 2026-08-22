@@ -1,12 +1,12 @@
 # SSH access, multi-cloud connections, and automation recipes
 
-Status: D5.1's read-only Hub and the nonactivated F5.1 direct lifecycle are fully
+Status: D5.1's read-only Hub and nonactivated F5.1/F5.2 SSH source are fully
 implemented locally. Exact defensive argv, fresh review/current-executable
 binding, guarded PTY/route ownership, truthful child outcomes, fixed redacted
 notifications, bounded private receipts, and stale-source reconnect preparation
 are source-complete. Activation remains false and the linked package unverified.
 Protected approvals, real attestation/controller observation, native OpenSSH/
-forced-cleanup/resources/accessibility, M4/M5 routes/trust/tunnels, and D6
+forced-cleanup/resources/accessibility, actual public-status execution, F5.3 tunnels, and D6
 multi-cloud remain. Ordinary shell commands are unchanged.
 This document is the implementation authority for connection profiles and
 connection-scoped automation. The [Connection Hub](CONNECTION-HUB.md) owns the
@@ -57,10 +57,10 @@ The current repository provides:
 - the F3 private transactional Connection Library for validated profiles,
   recipes, and Hub preferences, with CAS/recovery and redacted fresh-ID
   transfer; and
-- the M2/M3 direct-OpenSSH boundary: one inventory alias or bounded literal
-  host, exact `ssh`/`session.launch` intent, revision invalidation, redacted
-  review, allow-once/session/deny UX, one hard-disabled application runner, and
-  ContextManager-owned guarded PTY/route publication.
+- the M2-M4 OpenSSH boundary: typed direct/config-jump routes, exact
+  `ssh`/`session.launch` argv, full host-key/public-identity evidence, safe copy,
+  revision invalidation, allow-once/session/deny UX, one hard-disabled runner,
+  and ContextManager-owned guarded PTY/route publication.
 
 It now provides the D5.1 rendered read-only Connection Hub in v0.5 source
 builds, but does **not** provide a profile/recipe editor, automatic SSH launch,
@@ -794,15 +794,18 @@ persistence/migration, and native UI evidence remain before D5C is fully done.
 
 ### D5D - managed system OpenSSH
 
-Status: **Partially done overall; direct F5.1 source is fully done and
+Status: **Partially done overall; F5.1 and F5.2 source are fully done and
 nonactivated.**
 
 - [x] **Fully done locally:** one inventory alias or bounded literal host maps
   to the canonical plan and accessible approval review with hostile rejection,
   stale invalidation, and private-value redaction.
-- [x] **Fully done locally; nonactivated:** 17 fixed defensive OpenSSH options
-  plus one destination are bound to a fresh full review and current executable
-  identity; the broker rejects any argv or identity drift.
+- [x] **Fully done locally; nonactivated:** exact direct/routed options, typed
+  host/user/port, and bounded config `-J` bind to fresh full review/current
+  executable identity; the broker rejects route, argv, trust, or identity drift.
+- [x] **Fully done locally; nonactivated:** full first-use/known/changed public
+  key evidence, changed-key denial, no `known_hosts` writes, safe `C` copy, and
+  bounded nonexecuting `ssh-add -l -E sha256` parsing are review-owned.
 - [x] **Fully done locally; nonactivated:** ContextManager-only PTY/route
   publication, actual child-exit classification, cancellation/revocation/close/
   shutdown, and fixed redacted notifications have one lifecycle owner.
@@ -812,7 +815,7 @@ nonactivated.**
 - [ ] **Partially done / external:** protected activation, real attestation,
   current observation consumption by the controller, native OpenSSH prompts,
   forced descendant cleanup, resources, and controlled accessibility remain.
-- [ ] **Not done:** M4 explicit routes/full trust/readiness and M5 jumps/tunnels.
+- [ ] **Not done:** F5.3 typed tunnels plus protected/native SSH and public-status execution evidence.
 
 Exit gate: deterministic source tests plus controlled native OpenSSH evidence
 pass on Windows, macOS, Linux, and separately gated WSL.

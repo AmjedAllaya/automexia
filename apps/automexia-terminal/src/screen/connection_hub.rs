@@ -7,6 +7,7 @@ use automexia_extension_api::Decision;
 use automexia_ui_model::connection_hub::{
     HubFocus, HubKey, HubVisualPreferences, Viewport,
 };
+use rio_backend::clipboard::{Clipboard, ClipboardType};
 use rio_window::{
     event::{ElementState, KeyEvent},
     keyboard::{Key, ModifiersState, NamedKey},
@@ -28,6 +29,7 @@ fn is_literal_destination_shortcut(logical_key: &Key, modifiers: ModifiersState)
 
 enum ManagedApprovalAction {
     Allow(Decision),
+    CopyReviewedCommand,
     Deny,
 }
 
@@ -50,6 +52,9 @@ fn managed_approval_action(
         }
         Key::Character(value) if value.eq_ignore_ascii_case("s") => {
             Some(ManagedApprovalAction::Allow(Decision::AllowSession))
+        }
+        Key::Character(value) if value.eq_ignore_ascii_case("c") => {
+            Some(ManagedApprovalAction::CopyReviewedCommand)
         }
         Key::Character(value) if value.eq_ignore_ascii_case("d") => {
             Some(ManagedApprovalAction::Deny)
@@ -150,7 +155,11 @@ impl Screen<'_> {
             .set_presentation(Some(presentation));
     }
 
-    pub fn handle_connection_hub_key(&mut self, key_event: &KeyEvent) -> bool {
+    pub fn handle_connection_hub_key(
+        &mut self,
+        key_event: &KeyEvent,
+        clipboard: &mut Clipboard,
+    ) -> bool {
         if !self.connection_hub.is_active() {
             return false;
         }
@@ -257,16 +266,25 @@ impl Screen<'_> {
                         .cycle_literal_destination_focus(modifiers.shift_key());
                 }
                 Key::Named(NamedKey::Backspace)
-                    if self.connection_hub.focus() == HubFocus::LiteralDestination =>
+                    if matches!(
+                        self.connection_hub.focus(),
+                        HubFocus::LiteralDestination
+                            | HubFocus::LiteralUser
+                            | HubFocus::LiteralPort
+                    ) =>
                 {
-                    self.connection_hub.backspace_literal_destination();
+                    self.connection_hub.backspace_literal_field();
                 }
                 Key::Character(value)
-                    if self.connection_hub.focus() == HubFocus::LiteralDestination
-                        && ((!modifiers.control_key() && !modifiers.super_key())
-                            || (modifiers.control_key() && modifiers.alt_key())) =>
+                    if matches!(
+                        self.connection_hub.focus(),
+                        HubFocus::LiteralDestination
+                            | HubFocus::LiteralUser
+                            | HubFocus::LiteralPort
+                    ) && ((!modifiers.control_key() && !modifiers.super_key())
+                        || (modifiers.control_key() && modifiers.alt_key())) =>
                 {
-                    let _ = self.connection_hub.append_literal_destination(value);
+                    let _ = self.connection_hub.append_literal_field(value);
                 }
                 _ => {}
             }
@@ -284,6 +302,22 @@ impl Screen<'_> {
             ) {
                 Some(ManagedApprovalAction::Allow(decision)) => {
                     self.attempt_managed_openssh(decision);
+                    self.sync_connection_hub();
+                    self.mark_dirty();
+                    return true;
+                }
+                Some(ManagedApprovalAction::CopyReviewedCommand) => {
+                    if let Some(preparation) =
+                        self.connection_hub.direct_openssh_preparation()
+                    {
+                        clipboard.set(
+                            ClipboardType::Clipboard,
+                            preparation.user_owned_command(),
+                        );
+                        self.connection_hub.report_direct_openssh_diagnostic(
+                            "connection-trust-command-copied",
+                        );
+                    }
                     self.sync_connection_hub();
                     self.mark_dirty();
                     return true;
@@ -430,6 +464,12 @@ impl Screen<'_> {
             ConnectionHubHit::LiteralDestinationField => {
                 self.connection_hub.focus_literal_destination();
             }
+            ConnectionHubHit::LiteralUserField => {
+                self.connection_hub.focus_literal_user();
+            }
+            ConnectionHubHit::LiteralPortField => {
+                self.connection_hub.focus_literal_port();
+            }
             ConnectionHubHit::ConfirmLiteralDestination => {
                 let _ = self.connection_hub.confirm_literal_destination();
             }
@@ -570,6 +610,10 @@ mod tests {
         assert!(matches!(
             managed_approval_action(&Key::Character("S".into()), none, &HubFocus::Review,),
             Some(ManagedApprovalAction::Allow(Decision::AllowSession))
+        ));
+        assert!(matches!(
+            managed_approval_action(&Key::Character("c".into()), none, &HubFocus::Review,),
+            Some(ManagedApprovalAction::CopyReviewedCommand)
         ));
         assert!(matches!(
             managed_approval_action(&Key::Character("d".into()), none, &HubFocus::Review,),

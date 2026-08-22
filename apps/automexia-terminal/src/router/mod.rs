@@ -441,7 +441,11 @@ impl Route<'_> {
             return true;
         }
 
-        if self.window.screen.handle_connection_hub_key(key_event) {
+        if self
+            .window
+            .screen
+            .handle_connection_hub_key(key_event, clipboard)
+        {
             self.request_overlay_redraw();
             return true;
         }
