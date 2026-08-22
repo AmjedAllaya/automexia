@@ -7,9 +7,9 @@ use std::{cmp::Ordering, fmt, ops::Range};
 
 use automexia_devops::connections::{
     ActionRisk, AuthState, AutomationAction, ConnectionReview, DestinationSurface,
-    DirectOpenSshHostTrustPolicy, DirectOpenSshIdentityReadiness, DirectOpenSshReview,
-    EnvironmentRisk, ExecutionStage, HostTrustState, ProviderKind,
-    ResolvedConnectionPlan, StaleAuthState,
+    DirectOpenSshHostTrustPolicy, DirectOpenSshIdentityReadiness,
+    DirectOpenSshPreparation, DirectOpenSshReview, EnvironmentRisk, ExecutionStage,
+    HostTrustState, ProviderKind, ResolvedConnectionPlan, StaleAuthState,
 };
 use serde::{Deserialize, Serialize};
 
@@ -996,6 +996,13 @@ pub fn apply_hub_key(state: &mut InteractionState, key: HubKey) -> InteractionEf
         HubKey::PageDown => {
             move_selection(state, state.selected_index.saturating_add(state.page_size))
         }
+        HubKey::Enter
+            if state.route != HubRoute::Results && state.focus == HubFocus::Back =>
+        {
+            state.route = HubRoute::Results;
+            state.focus = HubFocus::Results;
+            InteractionEffect::BackToResults
+        }
         HubKey::Enter if state.route == HubRoute::Results && state.result_count > 0 => {
             state.route = HubRoute::Review;
             state.focus = HubFocus::Review;
@@ -1199,6 +1206,108 @@ fn destination_surface_label(surface: DestinationSurface) -> &'static str {
         DestinationSurface::PaneTab => "Pane tab",
         DestinationSurface::WorkspaceTab => "Workspace tab",
         DestinationSurface::Window => "Window",
+    }
+}
+
+/// Project a selected D4 host while executable, identity, and host-trust
+/// observations are still pending. Exact aliases and opaque references remain
+/// outside the renderer-facing model.
+pub fn project_direct_openssh_preparation(
+    prepared: &DirectOpenSshPreparation,
+    viewport: Viewport,
+) -> ConnectionReviewView {
+    let profile = prepared.profile();
+    let plan = prepared.plan();
+    let sections = vec![
+        ReviewSectionView {
+            id: "identity".into(),
+            heading: "Identity readiness",
+            summary: format!("{} · verification pending", profile.identity.public_label),
+            blocking: true,
+        },
+        ReviewSectionView {
+            id: "target".into(),
+            heading: "Public target",
+            summary: profile.public_target.clone(),
+            blocking: false,
+        },
+        ReviewSectionView {
+            id: "transport".into(),
+            heading: "Transport and route",
+            summary: "System OpenSSH · direct".into(),
+            blocking: false,
+        },
+        ReviewSectionView {
+            id: "executable".into(),
+            heading: "Executable",
+            summary: "ssh · verification pending".into(),
+            blocking: true,
+        },
+        ReviewSectionView {
+            id: "host-trust".into(),
+            heading: "Host trust policy",
+            summary: "OpenSSH prompt after activation; changed keys blocked".into(),
+            blocking: true,
+        },
+        ReviewSectionView {
+            id: "capabilities".into(),
+            heading: "Exact capability",
+            summary: plan.requested_capabilities.join(", "),
+            blocking: true,
+        },
+        ReviewSectionView {
+            id: "risk".into(),
+            heading: "Environment risk",
+            summary: risk_label(profile.environment.risk).into(),
+            blocking: profile.environment.risk == EnvironmentRisk::Production,
+        },
+        ReviewSectionView {
+            id: "destination".into(),
+            heading: "Open in",
+            summary: destination_surface_label(profile.destination_preference).into(),
+            blocking: false,
+        },
+        ReviewSectionView {
+            id: "argv".into(),
+            heading: "Argument shape",
+            summary: "ssh <destination>".into(),
+            blocking: false,
+        },
+    ];
+    let mut accessibility_tree = vec![AccessibilityNode::new(
+        "direct-openssh-preparation",
+        AccessibilityRole::Group,
+        "Direct OpenSSH Connection Preparation",
+    )];
+    for section in &sections {
+        let mut node = AccessibilityNode::new(
+            format!("direct-openssh-preparation-{}", section.id),
+            if section.blocking {
+                AccessibilityRole::Alert
+            } else {
+                AccessibilityRole::Group
+            },
+            section.heading,
+        );
+        node.description = section.summary.clone();
+        accessibility_tree.push(node);
+    }
+    let mut primary = AccessibilityNode::new(
+        "direct-openssh-preparation-primary",
+        AccessibilityRole::Button,
+        "Connection unavailable; executable and identity verification are pending",
+    );
+    primary.disabled = true;
+    primary.focusable = true;
+    accessibility_tree.push(primary);
+    ConnectionReviewView {
+        layout: hub_layout(viewport),
+        sections,
+        changed_fields: Vec::new(),
+        warnings: vec!["Preparation only; no process, PTY, or network activity".into()],
+        primary_label: "Connection unavailable—verification pending",
+        execution_enabled: false,
+        accessibility_tree,
     }
 }
 

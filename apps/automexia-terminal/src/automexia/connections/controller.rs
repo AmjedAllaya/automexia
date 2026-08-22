@@ -2,15 +2,18 @@
 
 use std::{path::PathBuf, sync::Arc};
 
+use automexia_devops::connections::DirectOpenSshPreparation;
 use automexia_devops_ssh::GrantKind;
 use automexia_extension_runtime::CompletionWake;
 use automexia_ui_model::connection_hub::{
     apply_hub_key, hub_catalog_controls_visible, project_connection_catalog,
-    project_connection_hub, validate_connection_catalog_query, ConnectionCatalogEntry,
+    project_connection_hub, project_direct_openssh_preparation,
+    validate_connection_catalog_query, ConnectionCatalogEntry,
     ConnectionCatalogProjection, ConnectionCatalogQuery, ConnectionHubView,
-    ConnectionSummary, HubCatalogGrouping, HubCatalogSource, HubContentState, HubFocus,
-    HubKey, HubProjectionRequest, HubVisualPreferences, InteractionEffect,
-    InteractionState, Viewport, MAX_CATALOG_QUERY_BYTES, MAX_VISIBLE_ROWS,
+    ConnectionReviewView, ConnectionSummary, HubCatalogGrouping, HubCatalogSource,
+    HubContentState, HubFocus, HubKey, HubProjectionRequest, HubRoute,
+    HubVisualPreferences, InteractionEffect, InteractionState, Viewport,
+    MAX_CATALOG_QUERY_BYTES, MAX_VISIBLE_ROWS,
 };
 
 use super::{
@@ -70,6 +73,8 @@ pub struct HubControllerPresentation {
     pub metadata_review: Option<MetadataChangeReview>,
     pub tag_editor: Option<String>,
     pub selected_entry: Option<ConnectionCatalogEntry>,
+    pub direct_openssh_review: Option<ConnectionReviewView>,
+    pub direct_openssh_diagnostic: Option<&'static str>,
     pub grant_review: GrantReviewState,
     pub metadata_change: HubMetadataChangeState,
     pub library: HubLibrarySnapshot,
@@ -91,6 +96,8 @@ pub struct ConnectionHubController {
     projected_summaries: Vec<ConnectionSummary>,
     interaction: InteractionState,
     selected_id: Option<String>,
+    direct_openssh_preparation: Option<DirectOpenSshPreparation>,
+    direct_openssh_diagnostic: Option<&'static str>,
     #[cfg(test)]
     projection_refresh_count: u64,
     library_preferences_applied: bool,
@@ -128,6 +135,8 @@ impl ConnectionHubController {
                 "terminal-grid".into(),
             ),
             selected_id: None,
+            direct_openssh_preparation: None,
+            direct_openssh_diagnostic: None,
             #[cfg(test)]
             projection_refresh_count: 1,
             library_preferences_applied: false,
@@ -151,13 +160,15 @@ impl ConnectionHubController {
     }
 
     pub fn catalog_controls_visible(&self) -> bool {
-        hub_catalog_controls_visible(self.content_state())
+        self.interaction.route == HubRoute::Results
+            && hub_catalog_controls_visible(self.content_state())
             && self.owned_grant_review().is_none()
             && self.metadata_review.is_none()
             && self.tag_editor.is_none()
     }
 
     pub fn close(&mut self) -> String {
+        self.clear_direct_openssh_preparation();
         self.discard_owned_review();
         self.metadata_review = None;
         self.tag_editor = None;
@@ -187,6 +198,7 @@ impl ConnectionHubController {
 
     pub fn select_projected_index(&mut self, index: usize) {
         if index < self.projection.indices.len() {
+            self.clear_direct_openssh_preparation();
             self.interaction.selected_index = index;
             self.interaction.focus = HubFocus::Results;
             self.selected_id =
@@ -349,6 +361,9 @@ impl ConnectionHubController {
         let next_snapshot = self.runtime.snapshot();
         let catalog_changed =
             !Arc::ptr_eq(&self.runtime_snapshot.catalog, &next_snapshot.catalog);
+        let review_binding_changed = self.runtime_snapshot.state != next_snapshot.state
+            || self.runtime_snapshot.metadata_revision != next_snapshot.metadata_revision
+            || catalog_changed;
         self.runtime_snapshot = next_snapshot;
         let mut refresh_projection = catalog_changed;
         if !self.library_preferences_applied
@@ -377,6 +392,9 @@ impl ConnectionHubController {
         }
         if refresh_projection {
             self.refresh_projection();
+        }
+        if review_binding_changed && self.interaction.route == HubRoute::Review {
+            self.refresh_direct_openssh_preparation();
         }
         let review_len = match self.owned_grant_review() {
             Some(GrantReviewState::Ready { files, .. }) => files.len(),
@@ -424,6 +442,11 @@ impl ConnectionHubController {
             metadata_review: self.metadata_review.clone(),
             tag_editor: self.tag_editor.clone(),
             selected_entry: self.selected_entry().cloned(),
+            direct_openssh_review: self
+                .direct_openssh_preparation
+                .as_ref()
+                .map(|prepared| project_direct_openssh_preparation(prepared, viewport)),
+            direct_openssh_diagnostic: self.direct_openssh_diagnostic,
             grant_review: self
                 .owned_grant_review()
                 .cloned()
@@ -457,13 +480,24 @@ impl ConnectionHubController {
         let effect = apply_hub_key(&mut self.interaction, key);
         match &effect {
             InteractionEffect::SelectionChanged(_) => {
+                self.clear_direct_openssh_preparation();
                 self.selected_id =
                     self.selected_entry().map(|entry| entry.summary.id.clone());
+            }
+            InteractionEffect::OpenReview { selected_index } => {
+                self.selected_id = self
+                    .entry_at(*selected_index)
+                    .map(|entry| entry.summary.id.clone());
+                self.refresh_direct_openssh_preparation();
+            }
+            InteractionEffect::BackToResults => {
+                self.clear_direct_openssh_preparation();
             }
             InteractionEffect::ToggleFavorite { selected_index } => {
                 return self.toggle_favorite_at(*selected_index);
             }
             InteractionEffect::CloseAndRestoreFocus(opener) => {
+                self.clear_direct_openssh_preparation();
                 self.discard_owned_review();
                 self.active = false;
                 return HubControllerEffect::Closed {
@@ -613,6 +647,25 @@ impl ConnectionHubController {
 
     pub fn shutdown(&self) {
         self.runtime.shutdown();
+    }
+
+    fn refresh_direct_openssh_preparation(&mut self) {
+        self.direct_openssh_preparation = None;
+        self.direct_openssh_diagnostic = None;
+        let Some(connection_id) = self.selected_id.as_deref() else {
+            self.direct_openssh_diagnostic =
+                Some(HubRuntimeErrorCode::UnknownConnection.diagnostic_code());
+            return;
+        };
+        match self.runtime.prepare_direct_openssh(connection_id) {
+            Ok(prepared) => self.direct_openssh_preparation = Some(prepared),
+            Err(error) => self.direct_openssh_diagnostic = Some(error.diagnostic_code()),
+        }
+    }
+
+    fn clear_direct_openssh_preparation(&mut self) {
+        self.direct_openssh_preparation = None;
+        self.direct_openssh_diagnostic = None;
     }
 
     fn owned_grant_review(&self) -> Option<&GrantReviewState> {
@@ -803,5 +856,60 @@ mod tests {
             controller.projection_refresh_count(),
             refreshes.saturating_add(1)
         );
+    }
+
+    #[test]
+    fn enter_prepares_a_redacted_disabled_review_and_escape_discards_it() {
+        let temporary = tempfile::tempdir().unwrap();
+        let config = temporary.path().join("config");
+        std::fs::write(
+            &config,
+            b"Host private-alias-canary\n  HostName public.example.invalid\n",
+        )
+        .unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        let grant = automexia_devops_ssh::InventoryGrant::new(
+            "test-user-config",
+            temporary.path(),
+            [&config],
+            GrantKind::User,
+        )
+        .unwrap();
+        assert!(runtime.request_explicit_scan(vec![grant]) > 0);
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+
+        let mut controller = ConnectionHubController::new(runtime);
+        controller.open("terminal-grid");
+        let effect = controller.handle_key(HubKey::Enter, Box::new(|| {}));
+        assert!(matches!(
+            effect,
+            HubControllerEffect::Interaction(InteractionEffect::OpenReview {
+                selected_index: 0
+            })
+        ));
+        assert!(!controller.catalog_controls_visible());
+        let presentation = controller.presentation(
+            Viewport::new(1_280.0, 800.0, 1.0),
+            HubVisualPreferences::default(),
+        );
+        assert_eq!(presentation.view.route, HubRoute::Review);
+        let review = presentation.direct_openssh_review.unwrap();
+        assert_eq!(review.sections.len(), 9);
+        assert!(!review.execution_enabled);
+        assert!(presentation.direct_openssh_diagnostic.is_none());
+        assert!(!format!("{review:?}").contains("private-alias-canary"));
+
+        let effect = controller.handle_key(HubKey::Escape, Box::new(|| {}));
+        assert_eq!(
+            effect,
+            HubControllerEffect::Interaction(InteractionEffect::BackToResults)
+        );
+        let presentation = controller.presentation(
+            Viewport::new(1_280.0, 800.0, 1.0),
+            HubVisualPreferences::default(),
+        );
+        assert_eq!(presentation.view.route, HubRoute::Results);
+        assert!(presentation.direct_openssh_review.is_none());
     }
 }

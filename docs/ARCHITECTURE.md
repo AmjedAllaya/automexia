@@ -255,24 +255,31 @@ reviewed plan into an execution request. No lower crate may bypass those owners.
 
 ### M3 direct OpenSSH review boundary
 
-`automexia-devops::connections::direct_openssh` extends the existing F2 owner
-without adding a crate edge or authority. It accepts only a validated SSH
-profile, all-false F2 plan, exact identity observation, and public host-trust
-state. It emits an immutable request bound to the profile/source/capsule
-revisions, F2 approval fingerprint, canonical `ssh` file identity,
-`session.launch`, destination, validated observation content/generation and freshness, and trust state. The
-initial grammar is one inventory-typed concrete alias or one bounded literal ASCII
-host token; user, port, URI, IPv6, routes, and tunnels remain later slices.
+automexia-devops::connections::direct_openssh extends the F2 owner without a new
+crate edge or authority. It now owns two immutable stages: a pending preparation
+with no executable identity and an identity-bound review requiring a canonical
+current ssh executable, identity observation, and host-trust state. Both accept
+only the exact M3 direct alias/literal grammar, canonical F2 planning, exact
+session.launch, and an all-false authority ceiling.
 
-`automexia-ui-model::connection_hub` owns the corresponding disabled responsive
-and accessibility projection. It shows only public summaries and
-`ssh <destination>`; exact destination arguments, opaque references, and
-executable digests do not enter the view. The desktop application remains the
-only future composition root for D4 records, F2 profiles, broker decisions,
-process/PTY creation, and cleanup. Because M2 is not accepted, no production
-caller, renderer route, process, PTY, filesystem, network, credential, listener,
-or secret authority is added by M3.
+The desktop composition root maps one current direct D4 record into a stable
+public profile. Inventory generation binds profile/capsule revision; metadata
+revision joins the source revision; a domain-separated hash creates the public
+model ID without copying the raw record ID. Unsupported ProxyJump and invalid
+records fail closed. The runtime clones one bounded record under its existing
+lock, then performs pure composition without I/O, worker creation, or renderer-
+path discovery.
 
+automexia-ui-model owns the nine-section pending and identity-bound projections.
+The application controller discards or rebuilds pending state after selection,
+route, runtime-state, generation, catalog, or metadata changes. The native
+renderer consumes only presentation state and groups it into Connection, Safety,
+and Launch cards. Exact aliases, opaque references, executable digests, and
+fingerprints do not enter that view. Because M2 is not accepted, the action is
+disabled and no process, PTY, filesystem, network, credential, listener, host-
+trust mutation, or secret authority is added.
+
+### Environment Capsule contract
 ### Environment Capsule contract
 
 Every managed session has a non-secret, immutable `EnvironmentCapsule`:

@@ -64,7 +64,15 @@ The shell editor owns the command buffer. Automexia's completion refresh may run
 
 ### Managed SSH and process launch
 
-Static OpenSSH inventory has no network/process authority. A future reviewed launch request goes through one application-owned broker that verifies publisher/grant, expected executable, platform resolution/file identity, exact argv, environment/cwd limits, session ownership, and redacted audit state. System OpenSSH then retains full SSH protocol, configuration, agent/key, and host-key authority.
+Static OpenSSH inventory has no network/process authority. The current
+nonactivated application adapter may clone one selected direct record and build
+a canonical pending F2 plan plus disabled Connection Review; it resolves no
+executable and creates no process, PTY, credential, or network state. A future
+launch request must still pass the one application-owned broker that verifies
+publisher/grant, current executable and file identity, exact argv,
+environment/cwd limits, session ownership, and redacted audit state. System
+OpenSSH then retains full SSH protocol, configuration, agent/key, prompt, and
+host-key authority.
 
 ## Session and extension model
 

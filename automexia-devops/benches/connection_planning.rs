@@ -117,5 +117,19 @@ fn connection_plan_64_steps(criterion: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, connection_plan_64_steps);
+fn direct_openssh_preparation(criterion: &mut Criterion) {
+    let mut profile = profile();
+    profile.recipe_references.clear();
+    profile.source.kind = SourceKind::OpenSshInventory;
+    profile.destination_preference = DestinationSurface::PaneTab;
+    criterion.bench_function("direct_openssh_prepare_selected", |bencher| {
+        bencher.iter(|| black_box(prepare_direct_openssh(black_box(&profile))).unwrap())
+    });
+}
+
+criterion_group!(
+    benches,
+    connection_plan_64_steps,
+    direct_openssh_preparation
+);
 criterion_main!(benches);

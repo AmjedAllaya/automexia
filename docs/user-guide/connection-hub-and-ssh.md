@@ -1,12 +1,11 @@
 # Connection Hub and SSH
 
-> **Implemented locally / release-gated:** v0.5 source builds containing M1
-> expose a read-only Connection Hub. It can review explicitly selected OpenSSH
-> files, browse public inventory, and edit public favorites/tags. It cannot
-> connect, login, refresh a cloud provider, run a recipe, launch a process,
-> access the network, or create a PTY. Automexia v0.4 users should continue
-> using normal system OpenSSH in the shell.
-
+> **Implemented locally / release-gated:** v0.5 source builds expose a read-only
+> Connection Hub. After exact OpenSSH file review, it can browse public
+> inventory, edit public favorites/tags, and open a disabled preparation review
+> for one supported direct alias. It cannot connect, login, refresh a cloud
+> provider, run a recipe, launch a process, access the network, or create a PTY.
+> Automexia v0.4 users should continue using normal system OpenSSH in the shell.
 ## Use the read-only Connection Hub
 
 1. Press `Ctrl+Shift+H` on Windows/Linux/BSD or `Cmd+Shift+H` on macOS. You can
@@ -16,8 +15,12 @@
 3. Read the canonical-path review. Use Up/Down, Page Up/Page Down, Home/End, or
    the pointer to inspect it. Press Enter or choose the confirmation action to
    scan; press Escape or choose Cancel to revoke the selection.
-4. Browse the resulting aliases. Selecting a row opens its public inspector;
-   it never launches a connection.
+4. Browse the resulting aliases. Select a row and press Enter to open its
+   disabled Connection Review. Review the public target, identity verification,
+   direct system-OpenSSH route, strict host-key policy, requested capability,
+   environment risk, destination, and ssh <destination> shape.
+5. Press Escape, activate the focused Back control with Enter, or choose Back
+   with the pointer to return. The review never launches a connection.
 
 Opening the Hub does not scan standard locations. The selected files remain an
 in-memory grant for the current application lifetime and must be selected again
@@ -45,6 +48,7 @@ the search field is not receiving text:
 | Key | Result |
 |---|---|
 | Up/Down, Page Up/Page Down, Home/End | Move the managed selection |
+| Enter | Open the disabled preparation review; activate Back when it is focused |
 | `/` or `Ctrl/Cmd+F` | Focus search |
 | Tab / Shift+Tab | Move modal focus |
 | Space | Review a favorite change for the selected row |
@@ -96,20 +100,25 @@ until you select the exact file. Linux/BSD desktop packages need a working XDG
 portal backend or the documented native-dialog fallback; if no picker is
 available, the Hub stays open and fails closed.
 
-## What the next managed-SSH slice currently means
+## What the current managed-SSH preparation means
 
-Source builds now contain a tested, non-activated review model for one direct
-OpenSSH alias or literal host. It can reject an unsafe destination and describe
-the intended target, identity readiness, executable, trust policy, risk,
-capability, destination surface, and redacted `ssh <destination>` shape. It is
-not connected to this Hub, always reports M2 approval pending, and cannot launch
-OpenSSH, open the network, create a PTY, reconnect, or write recent-use state.
+For a selected direct inventory alias, the Hub now builds a current,
+generation-bound public profile and canonical pending F2 plan, then shows it in
+a compact Connection/Safety/Launch review. Identity and executable verification
+are explicitly pending, host-key handling stays owned by system OpenSSH, the
+only requested capability is session.launch, and the primary action remains
+disabled.
 
-This model is contributor evidence, not an alternative connection workflow. Do
-not expect a **Connect** button from it. Continue using the system client below;
-if future managed SSH is disabled or unavailable, that manual path remains the
-recovery path.
+The exact alias, opaque identity/source references, executable digest, and plan
+fingerprints are not copied into the presentation model. Selection, route,
+catalog, metadata, runtime-state, or generation changes discard or rebuild the
+preparation. Unsupported ProxyJump inventory entries fail closed with a
+path-free diagnostic. No OpenSSH process, network connection, PTY, login,
+reconnect, or recent-use write occurs.
 
+This is a review-preparation workflow, not a Connect button. Continue using the
+system client below; if future managed SSH is disabled or unavailable, that
+manual path remains the recovery path.
 ## Connect with system OpenSSH today
 
 The read-only Hub does not replace the shell. Use the system client normally:
@@ -152,8 +161,9 @@ configuration, keys, agents, or `known_hosts` as a Hub recovery step.
 
 ## What remains planned
 
-D5.2 owns reviewed system-OpenSSH launch, destination selection, independent
-PTYs, jumps, tunnels, host-trust explanation, cancellation, reconnect, and
+D5.2 still owns reviewed system-OpenSSH launch, current executable/identity
+observation, a product literal destination entry, independent PTYs, jumps,
+tunnels, full host-trust explanation, cancellation, reconnect, receipts, and
 lifecycle evidence. D6 separately owns AWS, Azure, Google Cloud, Kubernetes,
 OpenShift, Teleport, and OpenBao adapters. There is no current Hub remote-file
 browser, credential vault, automatic provider login, or cloud refresh.

@@ -72,7 +72,7 @@ documentation, feature assurance, and a change fragment.
 | Static OpenSSH inventory | D4 | Fully done | automexia-devops-ssh, hostile/property tests, fuzz, benchmark, assurance | Remains deliberately disabled until D5 |
 | Connection Hub model | D5.0 | Partially done | All local F2 schemas, reducers, dry-run planner, Hub/review/planner projections, fixtures, goldens, fuzz, mutations, and benchmark are implemented | Protected ADR 0012 acceptance remains for D5.0 closure/D5.2; capability-free D5.1 is complete under ADR 0022 |
 | Read-only Connection Hub | D5.1 | Fully done locally; external evidence partial | App-scoped joined runtime, exact reviewed native selection, bounded modal/search/filter/grouping, CAS favorite/tag diffs, read-only recent/library data, disabled authority, tests, benchmark, and release-build evidence | Native macOS/Linux picker/permission plus controlled Narrator/NVDA, VoiceOver, and Orca evidence |
-| Managed OpenSSH | D5.2 | Not done | Design and disabled D3/D4 foundations | Reviewed launch, PTY lifecycle, jumps, tunnels, host trust, reconnect, native proof |
+| Managed OpenSSH | D5.2 | Partially done; nonactivated | Selected D4 records compose into canonical pending F2 plans and a responsive accessible review route; exact identity-bound pure review is tested | M2 activation, reviewed launch, PTY lifecycle, reconnect/receipts, jumps, tunnels, full trust/identity UX, and native proof |
 | Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, approval fingerprints, and private transactional Connection Library persistence/redacted transfer are implemented | Product editor, remote workspace lifecycle, and separately gated execution remain |
 | Multi-cloud framework and providers | D6.0-D6.5 | Not done | Provider-neutral D1/D2 types only | Auth state machine, exact official CLI adapters, isolation, provider-by-provider gates |
 | Native completion | CP1 | Fully done | shell integration, xtask completion manager, CP1 contract/tests | Hosted three-OS and longitudinal release evidence |
@@ -392,20 +392,28 @@ fixed order.
 
 ### F5.1 direct reviewed SSH
 
-- [ ] **Partially done:** validate one inventory-typed concrete alias and one
-  bounded literal host as one exact redacted argument; reject option-like,
-  empty, whitespace/control/bidi, oversized, and ambiguous values. The pure
-  grammar is complete; D4-record-to-F2 product composition remains not done.
-- [x] **Fully done at the renderer-neutral model boundary:** bind the F2 plan,
-  source/profile/capsule revisions, canonical `ssh` identity, `session.launch`,
-  public target and identity readiness, direct route, trust policy, risk,
-  destination, and redacted argv shape. Execution remains visibly disabled.
+- [ ] **Partially done:** the pure exact grammar for one concrete inventory
+  alias and one bounded literal host is complete. One current direct D4 record
+  now maps to a stable profile and canonical pending F2 plan with exact
+  session.launch, no executable identity, all authority false, and source
+  generation/revision binding. A product literal-entry surface and M2 current
+  executable/identity observation remain missing.
+- [x] **Fully done for the non-activated application surface:** selecting a
+  supported result opens the route-owned responsive Connection Review with all
+  nine required semantic decisions, compact Connection/Safety/Launch groups,
+  icons plus text/color, a disabled action, pointer/keyboard Back, and no exact
+  alias, opaque reference, digest, process, PTY, or network authority.
 - [ ] **Not done:** preserve OpenSSH-owned prompts and diagnostics in a real PTY.
-- [ ] **Partially done:** changed profile/source/capsule/plan/executable/
-  capability/destination/observation/trust data invalidates review, and the
-  test-only broker owns pure cancel/rebind/revocation. Reconnect, notifications,
-  receipts, and independent process/session cleanup remain not done.
-
+- [ ] **Partially done:** identity-bound review changes invalidate the pure
+  request; selection, route, runtime state, generation, catalog, and metadata
+  changes invalidate or rebuild the product preparation. Reconnect,
+  notifications, receipts, and independent process/session cleanup remain not
+  done.
+- [ ] **Partially done:** model/controller/renderer and tiny-to-8K geometry tests
+  pass locally, and the selected-host Criterion run measured
+  6.3520–6.6011 µs on the 2026-08-22 Windows development host. Controlled
+  native pixels/screen readers, a real SSH child, before/after manual ssh,
+  and native lifecycle/resource evidence remain not done.
 ### F5.2 explicit routes and host trust
 
 - [ ] Add typed host/user/port and config-defined jump chains.

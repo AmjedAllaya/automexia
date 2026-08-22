@@ -2,7 +2,7 @@
 
 use automexia_ui_model::connection_hub::{
     hub_catalog_controls_visible, HubCatalogGrouping, HubCatalogSource, HubContentState,
-    HubLayout,
+    HubLayout, HubRoute,
 };
 use rio_backend::sugarloaf::{text::DrawOpts, Sugarloaf};
 
@@ -76,6 +76,7 @@ pub enum ConnectionHubHit {
     CancelOverlay,
     SelectRow { visible_index: usize },
     ToggleFavorite { visible_index: usize },
+    BackToResults,
     Close,
     Inert,
 }
@@ -97,6 +98,10 @@ struct Layout {
     inspector: Option<Rect>,
     edit_tags: Option<Rect>,
     setup_panel: Option<Rect>,
+    connection_review_panel: Option<Rect>,
+    connection_review_cards: Vec<Rect>,
+    connection_review_back: Option<Rect>,
+    connection_review_primary: Option<Rect>,
     catalog_chrome_visible: bool,
     compact: bool,
 }
@@ -139,6 +144,15 @@ impl ConnectionHub {
             {
                 return Some(ConnectionHubHit::CancelOverlay);
             }
+            return Some(ConnectionHubHit::Inert);
+        }
+        if layout
+            .connection_review_back
+            .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
+        {
+            return Some(ConnectionHubHit::BackToResults);
+        }
+        if layout.connection_review_panel.is_some() {
             return Some(ConnectionHubHit::Inert);
         }
         if layout.review_files.contains(mouse_x, mouse_y) {
@@ -257,10 +271,15 @@ impl ConnectionHub {
             &title,
         );
         if layout.card.width >= 340.0 {
+            let subtitle = if presentation.view.route == HubRoute::Review {
+                "Connection review"
+            } else {
+                "SSH inventory"
+            };
             sugarloaf.text_mut().draw(
                 left + 48.0,
                 layout.card.y + 45.0,
-                "SSH inventory",
+                subtitle,
                 &small,
             );
         }
@@ -375,7 +394,9 @@ impl ConnectionHub {
                     &small,
                 );
             }
-        } else if layout.setup_panel.is_none() {
+        } else if presentation.view.route == HubRoute::Results
+            && layout.setup_panel.is_none()
+        {
             action_button(
                 sugarloaf,
                 layout.review_files,
@@ -502,6 +523,10 @@ impl ConnectionHub {
             );
         }
 
+        if let Some(panel) = layout.connection_review_panel {
+            render_connection_review(sugarloaf, panel, &layout, presentation);
+        }
+
         if let Some(panel) = layout.setup_panel {
             render_setup_state(
                 sugarloaf,
@@ -595,9 +620,27 @@ impl ConnectionHub {
             presentation.metadata_review.is_some() || presentation.tag_editor.is_some();
         let review_ready =
             matches!(presentation.grant_review, GrantReviewState::Ready { .. });
-        let simple_state = !catalog_chrome_visible && !review_ready && !overlay_active;
-        let maximum_width: f32 = if simple_state { 760.0 } else { 1100.0 };
-        let maximum_height: f32 = if simple_state { 480.0 } else { 760.0 };
+        let connection_review_active = presentation.view.route == HubRoute::Review
+            && !review_ready
+            && !overlay_active;
+        let simple_state = !catalog_chrome_visible
+            && !review_ready
+            && !overlay_active
+            && !connection_review_active;
+        let maximum_width: f32 = if connection_review_active {
+            920.0
+        } else if simple_state {
+            760.0
+        } else {
+            1100.0
+        };
+        let maximum_height: f32 = if connection_review_active {
+            620.0
+        } else if simple_state {
+            480.0
+        } else {
+            760.0
+        };
         let width = maximum_width.min((viewport.width - margin * 2.0).max(1.0));
         let height = maximum_height.min((viewport.height - margin * 2.0).max(1.0));
         let card = Rect {
@@ -618,17 +661,18 @@ impl ConnectionHub {
             },
             card,
         );
-        let setup_panel = simple_state.then(|| {
-            bounded_to(
-                Rect {
-                    x: card.x + inner,
-                    y: card.y + 76.0,
-                    width: (card.width - inner * 2.0).max(1.0),
-                    height: (card.height - 134.0).max(1.0),
-                },
-                card,
-            )
-        });
+        let setup_panel = (simple_state && presentation.view.route == HubRoute::Results)
+            .then(|| {
+                bounded_to(
+                    Rect {
+                        x: card.x + inner,
+                        y: card.y + 76.0,
+                        width: (card.width - inner * 2.0).max(1.0),
+                        height: (card.height - 134.0).max(1.0),
+                    },
+                    card,
+                )
+            });
         let action_width = if compact { 142.0 } else { 174.0 };
         let review_files = if let Some(panel) = setup_panel {
             let width = 224.0_f32.min((panel.width - 24.0).max(1.0));
@@ -821,6 +865,80 @@ impl ConnectionHub {
                 panel,
             )
         });
+        let connection_review_back = connection_review_active.then(|| {
+            let tiny = card.height < 360.0;
+            bounded_to(
+                Rect {
+                    x: card.x + inner,
+                    y: card.y + if tiny { 60.0 } else { 78.0 },
+                    width: 112.0,
+                    height: if tiny { 28.0 } else { 36.0 },
+                },
+                card,
+            )
+        });
+        let connection_review_panel = connection_review_active.then(|| {
+            let tiny = card.height < 360.0;
+            let top = if tiny { 92.0 } else { 126.0 };
+            bounded_to(
+                Rect {
+                    x: card.x + inner,
+                    y: card.y + top,
+                    width: (card.width - inner * 2.0).max(1.0),
+                    height: (card.height - top - if tiny { 52.0 } else { 58.0 }).max(1.0),
+                },
+                card,
+            )
+        });
+        let connection_review_primary = connection_review_panel.map(|panel| {
+            let tiny = panel.height < 180.0;
+            bounded_to(
+                Rect {
+                    x: panel.x + 14.0,
+                    y: panel.y + panel.height - if tiny { 34.0 } else { 48.0 },
+                    width: (panel.width - 28.0).clamp(1.0, 360.0),
+                    height: if tiny { 28.0 } else { 34.0 },
+                },
+                panel,
+            )
+        });
+        let mut connection_review_cards = Vec::new();
+        if let (Some(panel), Some(primary)) =
+            (connection_review_panel, connection_review_primary)
+        {
+            let tiny = panel.height < 180.0;
+            let review_gap = if tiny { 4.0 } else { gap };
+            let cards_top = panel.y + if tiny { 6.0 } else { 42.0 };
+            let cards_bottom = (primary.y - review_gap).max(cards_top + 1.0);
+            if compact {
+                let height =
+                    ((cards_bottom - cards_top - review_gap * 2.0) / 3.0).max(1.0);
+                for index in 0..3 {
+                    connection_review_cards.push(bounded_to(
+                        Rect {
+                            x: panel.x + 14.0,
+                            y: cards_top + index as f32 * (height + review_gap),
+                            width: (panel.width - 28.0).max(1.0),
+                            height,
+                        },
+                        panel,
+                    ));
+                }
+            } else {
+                let width = ((panel.width - 28.0 - gap * 2.0) / 3.0).max(1.0);
+                for index in 0..3 {
+                    connection_review_cards.push(bounded_to(
+                        Rect {
+                            x: panel.x + 14.0 + index as f32 * (width + gap),
+                            y: cards_top,
+                            width,
+                            height: (cards_bottom - cards_top).max(1.0),
+                        },
+                        panel,
+                    ));
+                }
+            }
+        }
         Layout {
             card,
             search,
@@ -837,13 +955,18 @@ impl ConnectionHub {
             inspector,
             edit_tags,
             setup_panel,
+            connection_review_panel,
+            connection_review_cards,
+            connection_review_back,
+            connection_review_primary,
             catalog_chrome_visible,
             compact,
         }
     }
 }
 fn catalog_chrome_visible(presentation: &HubControllerPresentation) -> bool {
-    matches!(presentation.grant_review, GrantReviewState::None)
+    presentation.view.route == HubRoute::Results
+        && matches!(presentation.grant_review, GrantReviewState::None)
         && presentation.metadata_review.is_none()
         && presentation.tag_editor.is_none()
         && hub_catalog_controls_visible(presentation.view.content_state)
@@ -855,6 +978,125 @@ fn filters_are_active(presentation: &HubControllerPresentation) -> bool {
         || presentation.catalog_query.recent_only
         || presentation.catalog_query.source.is_some()
         || presentation.catalog_query.tag.is_some()
+}
+
+fn render_connection_review(
+    sugarloaf: &mut Sugarloaf,
+    panel: Rect,
+    layout: &Layout,
+    presentation: &HubControllerPresentation,
+) {
+    let body = text(12.0, [183, 211, 226, 255], false);
+    let small = text(10.0, [139, 177, 198, 255], false);
+    let label = text(12.0, [241, 250, 255, 255], true);
+    rounded(sugarloaf, panel, SURFACE, 10.0);
+    if let Some(back) = layout.connection_review_back {
+        button(sugarloaf, back, "← Back", false, &label);
+    }
+    if panel.height >= 180.0 {
+        sugarloaf.text_mut().draw(
+            panel.x + 14.0,
+            panel.y + 12.0,
+            "Review connection",
+            &label,
+        );
+        sugarloaf.text_mut().draw(
+            panel.x + 148.0,
+            panel.y + 14.0,
+            "Preparation only · no process, PTY, or network",
+            &small,
+        );
+    }
+
+    if let Some(review) = presentation.direct_openssh_review.as_ref() {
+        let groups = [
+            ("Connection", HubIcon::Connections, CYAN, [1, 0, 2]),
+            ("Safety", HubIcon::Shield, WARNING, [4, 5, 6]),
+            ("Launch", HubIcon::Status, VIOLET, [3, 7, 8]),
+        ];
+        for (card, (heading, icon, color, indices)) in
+            layout.connection_review_cards.iter().copied().zip(groups)
+        {
+            rounded(sugarloaf, card, SURFACE_RAISED, 8.0);
+            if card.height >= 30.0 {
+                draw_hub_icon(
+                    sugarloaf,
+                    icon,
+                    card.x + 10.0,
+                    card.y + 7.0,
+                    color,
+                    SURFACE_RAISED,
+                );
+                sugarloaf
+                    .text_mut()
+                    .draw(card.x + 39.0, card.y + 10.0, heading, &label);
+            } else if card.height >= 20.0 {
+                sugarloaf
+                    .text_mut()
+                    .draw(card.x + 8.0, card.y + 4.0, heading, &small);
+            }
+            if card.height >= 104.0 {
+                for (line, index) in indices.into_iter().enumerate() {
+                    if let Some(section) = review.sections.get(index) {
+                        let value = format!(
+                            "{} · {}",
+                            section.heading,
+                            truncated(&section.summary, 40)
+                        );
+                        sugarloaf.text_mut().draw(
+                            card.x + 11.0,
+                            card.y + 42.0 + line as f32 * 28.0,
+                            &value,
+                            &small,
+                        );
+                    }
+                }
+            } else if card.height >= 52.0 {
+                let summary = match heading {
+                    "Connection" => review
+                        .sections
+                        .get(1)
+                        .map(|section| section.summary.as_str()),
+                    "Safety" => Some("Launch blocked · strict host keys"),
+                    _ => review
+                        .sections
+                        .get(8)
+                        .map(|section| section.summary.as_str()),
+                }
+                .unwrap_or("Review unavailable");
+                sugarloaf.text_mut().draw(
+                    card.x + 11.0,
+                    card.y + 34.0,
+                    &truncated(summary, 46),
+                    &small,
+                );
+            }
+        }
+    } else {
+        sugarloaf.text_mut().draw(
+            panel.x + 14.0,
+            panel.y + 54.0,
+            "This connection cannot be prepared yet",
+            &body,
+        );
+        let diagnostic = presentation
+            .direct_openssh_diagnostic
+            .unwrap_or("connection-review-unavailable");
+        sugarloaf
+            .text_mut()
+            .draw(panel.x + 14.0, panel.y + 82.0, diagnostic, &small);
+    }
+    if let Some(primary) = layout.connection_review_primary {
+        let caption = if primary.width < 300.0 {
+            "Unavailable · verification pending"
+        } else {
+            presentation
+                .direct_openssh_review
+                .as_ref()
+                .map_or("Connection unavailable", |review| review.primary_label)
+        };
+        button(sugarloaf, primary, caption, true, &label);
+    }
 }
 
 fn render_setup_state(
@@ -1036,6 +1278,9 @@ fn status_summary(
     presentation: &HubControllerPresentation,
     operation_status: &str,
 ) -> String {
+    if presentation.view.route == HubRoute::Review {
+        return "Preparation only · launch unavailable".into();
+    }
     match &presentation.grant_review {
         GrantReviewState::Reviewing { .. } => "Reviewing selected files".into(),
         GrantReviewState::Ready { files, .. } => {
@@ -1661,6 +1906,8 @@ mod tests {
             metadata_review: None,
             tag_editor: None,
             selected_entry: None,
+            direct_openssh_review: None,
+            direct_openssh_diagnostic: None,
             grant_review: GrantReviewState::None,
             metadata_change: HubMetadataChangeState::Idle,
             library: HubLibrarySnapshot::default(),
@@ -1669,6 +1916,97 @@ mod tests {
                 PlatformFamily::Windows,
             ),
             disabled_actions: Vec::new(),
+        }
+    }
+
+    fn review_presentation() -> HubControllerPresentation {
+        let mut presentation = presentation();
+        presentation.view.route = HubRoute::Review;
+        presentation.view.content_state = HubContentState::Ready;
+        presentation.direct_openssh_review =
+            Some(automexia_ui_model::connection_hub::ConnectionReviewView {
+                layout: HubLayout::Wide,
+                sections: [
+                    ("identity", "Identity readiness", "Verification pending"),
+                    ("target", "Public target", "host.example.invalid"),
+                    (
+                        "transport",
+                        "Transport and route",
+                        "System OpenSSH · direct",
+                    ),
+                    ("executable", "Executable", "ssh · verification pending"),
+                    ("host-trust", "Host trust policy", "Changed keys blocked"),
+                    ("capabilities", "Exact capability", "session.launch"),
+                    ("risk", "Environment risk", "Development"),
+                    ("destination", "Open in", "Pane tab"),
+                    ("argv", "Argument shape", "ssh <destination>"),
+                ]
+                .into_iter()
+                .map(|(id, heading, summary)| {
+                    automexia_ui_model::connection_hub::ReviewSectionView {
+                        id: id.into(),
+                        heading,
+                        summary: summary.into(),
+                        blocking: false,
+                    }
+                })
+                .collect(),
+                changed_fields: Vec::new(),
+                warnings: Vec::new(),
+                primary_label: "Connection unavailable—verification pending",
+                execution_enabled: false,
+                accessibility_tree: Vec::new(),
+            });
+        presentation
+    }
+
+    #[test]
+    fn connection_review_is_responsive_inert_and_has_a_pointer_back_action() {
+        for dimensions in [
+            (360.0, 280.0, 1.0),
+            (1280.0, 720.0, 1.0),
+            (7680.0, 4320.0, 2.0),
+        ] {
+            let presentation = review_presentation();
+            let layout = ConnectionHub::layout(&presentation, dimensions);
+            let panel = layout.connection_review_panel.unwrap();
+            let back = layout.connection_review_back.unwrap();
+            let primary = layout.connection_review_primary.unwrap();
+            assert_eq!(layout.connection_review_cards.len(), 3);
+            assert!(!layout.catalog_chrome_visible);
+            assert!(layout.setup_panel.is_none());
+            assert!(layout.rows.is_empty());
+            assert_eq!(
+                status_summary(&presentation, "ignored"),
+                "Preparation only · launch unavailable"
+            );
+            if dimensions == (360.0, 280.0, 1.0) {
+                assert!(layout
+                    .connection_review_cards
+                    .iter()
+                    .all(|card| card.height >= 20.0));
+            }
+            for rect in layout
+                .connection_review_cards
+                .iter()
+                .copied()
+                .chain([panel, back, primary])
+            {
+                assert!(rect.x >= layout.card.x);
+                assert!(rect.y >= layout.card.y);
+                assert!(rect.x + rect.width <= layout.card.x + layout.card.width);
+                assert!(rect.y + rect.height <= layout.card.y + layout.card.height);
+            }
+            let mut hub = ConnectionHub::default();
+            hub.set_presentation(Some(presentation));
+            assert_eq!(
+                hub.hit_test(back.x + 1.0, back.y + 1.0, dimensions),
+                Some(ConnectionHubHit::BackToResults)
+            );
+            assert_eq!(
+                hub.hit_test(primary.x + 1.0, primary.y + 1.0, dimensions),
+                Some(ConnectionHubHit::Inert)
+            );
         }
     }
 

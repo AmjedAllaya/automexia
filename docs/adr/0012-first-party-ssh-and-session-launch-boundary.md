@@ -126,16 +126,20 @@ pure responsive Hub/review/planner and accessibility projections. Frozen
 all-provider/all-auth fixtures, hostile/property/mutation tests, fuzz ownership,
 and a 64-step benchmark are registered. Every process, network, provider,
 credential, PTY, listener, renderer, and GPU authority remains absent or false.
-As of 2026-08-21, M3 also has a pure direct-OpenSSH review binding. It accepts
-one inventory-typed concrete alias or one bounded literal ASCII host, binds the exact
-argument to the F2 profile/source/capsule revisions, plan fingerprint,
-canonical `ssh` identity, `session.launch`, validated identity-observation content/generation/freshness,
-and host-trust state, and invalidates every tested replacement. Its
-renderer-neutral projection exposes only public summaries and
-`ssh <destination>` with an M2-pending disabled action. The model has no
-application caller and adds no process, PTY, filesystem, network, credential,
-listener, renderer, or secret authority.
-
+As of 2026-08-22, M3 also has a production-reachable but nonactivated
+preparation route. The application maps one current direct D4 record into a
+stable public profile and canonical pending F2 plan. Inventory generation and
+metadata revision bind the preparation; session.launch is the only requested
+capability; no executable identity exists yet; every runtime authority remains
+false. The Connection Hub projects nine public decisions into responsive
+Connection/Safety/Launch groups and keeps the primary action disabled. Exact
+aliases, opaque references, executable digests, and fingerprints do not enter
+presentation state. Selection, route, runtime-state, generation, catalog, and
+metadata changes discard or rebuild the preparation. The existing
+identity-bound pure review remains the later consumer of M2-provided current
+executable, identity-observation, and host-trust evidence. No process, PTY,
+filesystem, network, credential, listener, host-trust mutation, or secret
+authority is enabled by this evidence.
 This evidence does not accept this ADR and does not enable the capability. The
 remaining acceptance evidence includes protected approval; binding a real
 package-loader attestation/revocation result to the frozen policy; visible

@@ -2,7 +2,7 @@
 
 Status: authoritative detailed implementation plan and evidence ledger.
 
-Last reconciled: 2026-08-21.
+Last reconciled: 2026-08-22.
 
 The [Connectivity and command-productivity focus roadmap](CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md)
 remains the owner of canonical phase order and phase status. This document is
@@ -124,7 +124,7 @@ native/release claim.
 | F2/D5.0 Hub and planning model | Partially done overall; fully done locally | Pure records, validation, reducers, fingerprints, review/planner projection, accessibility goldens, fuzz and benchmark | ADR 0012 acceptance blocks phase closure; no product authority is granted. |
 | F3/D5.1 read-only Connection Hub | Fully done locally; external evidence partially done | App-owned joined runtime, exact reviewed native selection, compact progressive setup, bounded browse/filter/group, redundant text/icon/color semantics, D4 favorite/tag CAS, read-only recent/library state, disabled authority, Windows tests/benchmark/build/native frame | Native macOS/Linux picker/permission and controlled screen-reader evidence remain external. |
 | F3 Connection Library | Fully done locally | `ConnectionLibraryStore` has 16 MiB private documents, CAS, recovery, transfer redaction, fresh import IDs, read-only/disk-full and link tests | Product editor/manager belongs to F6; macOS/Linux native permission and controlled screen-reader evidence remain. |
-| F5 managed OpenSSH | Not done | Only disabled D3/D4/F2 foundations | No reviewed launch, OpenSSH child, host-trust UX, routes/tunnels, lifecycle, or native sessions. |
+| F5 managed OpenSSH | Partially done; nonactivated | D4 selection now composes into a canonical pending F2 plan and a responsive, accessible Connection Review; the identity-bound pure review remains tested | M2 activation, executable/identity observation, OpenSSH child/PTy, reconnect/receipts/cleanup, routes/tunnels, and native sessions remain. |
 | F6 recipes and remote declarative workspaces | Not done | Typed pure profile/recipe models and F3 private persistence are reusable; CP3.3 local task bridges are separately complete | No compiler/runtime/editor/remote shell contract/layout restoration/broadcast. |
 | D6 provider-neutral authentication and capsule orchestration | Not done | Public provider/transport model variants and legacy display context exist | No visible official-CLI auth, isolated session pinning, cache/provenance/revocation, or provider adapter. |
 | AWS, Azure, Google Cloud, Kubernetes/OpenShift, Teleport, OpenBao | Not done | No corresponding extension directory or application adapter exists; there are only typed model variants and insert-only Quick Action packs | Implement and release each adapter independently after F4/F7 prerequisites. |
@@ -459,40 +459,50 @@ no provider receives a grant merely because the runner exists.
 
 ### M3 — F5.1 direct reviewed OpenSSH
 
-Status: **Partially done** at the non-activated pure-model boundary; production
-connection behavior remains blocked by M2.
+Status: **Partially done** at the non-activated application-review boundary;
+production connection behavior remains blocked by M2.
 
-- [ ] **Partially done:** add an exact reviewed request grammar for one
-  inventory-typed concrete alias and one typed literal destination. The pure
-  grammar is complete and rejects option-like, empty, control/bidi, whitespace,
-  oversized, or ambiguous values before review. D4-record-to-F2 product
-  composition remains not done. The initial literal is one bounded ASCII host
-  token; typed user, port, URI, IPv6, jump, tunnel, and free-form option forms
-  remain outside M3.
-- [x] **Fully done at the renderer-neutral model boundary:** build Connection
-  Review from the pure F2 plan and show public target, identity reference and
-  readiness, canonical `ssh` identity, direct route, strict host-trust policy,
-  exact `session.launch` capability, risk, pane/tab/window destination, and a
-  redacted one-argument shape. The action is disabled with the M2 approval
-  reason; app controller/renderer wiring and native visual/accessibility proof
-  remain not done.
+- [ ] **Partially done:** the exact grammar for one inventory-typed concrete
+  alias and one typed literal destination is complete. It rejects option-like,
+  empty, control/bidi, whitespace, oversized, and ambiguous values before
+  review. The application now maps one current D4 direct record into a stable
+  public profile and canonical pending F2 plan with session.launch, no
+  executable identity, an all-false authority ceiling, and generation/metadata
+  revision binding. A product literal-entry surface and the M2-provided current
+  executable/identity observation are still not implemented. Typed user, port,
+  URI, IPv6, jump, tunnel, and free-form option forms remain outside M3.
+- [x] **Fully done for the non-activated application surface:** Enter on a
+  selected result now opens a dedicated Connection Review showing public target,
+  identity verification state, system OpenSSH/direct route, pending executable,
+  strict host-trust policy, exact session.launch, environment risk,
+  pane-tab destination, and ssh <destination>. The route uses three compact
+  Connection/Safety/Launch cards with text plus semantic color/icons, a disabled
+  primary action, responsive tiny-to-8K geometry, semantic nine-section
+  accessibility, pointer Back, keyboard Escape, and focused-Back Enter. Exact
+  aliases, opaque references, and fingerprints do not enter presentation state.
+  Controlled native pixel and screen-reader evidence remains external.
 - [ ] **Not done:** launch system OpenSSH only through M2 into a new independent
   PTY. Preserve all prompts and diagnostics in that PTY; Automexia must not
   parse passwords, passphrases, MFA, or terminal content to decide
   authentication.
-- [ ] **Partially done:** immutable reviews now invalidate on profile, source,
-  capsule, F2 plan, canonical executable identity, capability, destination,
-  observation content/generation/freshness, or host-trust change. The existing test-only M2
-  broker covers pure cancel/rebind/revocation. Reconnect orchestration,
-  nonintrusive notifications, redacted completion receipts, and independent
-  process/session cleanup remain not done.
-- [ ] **Partially done:** the production module graph remains unchanged and the
-  D0 manual-shell baseline is mutation-checked. No managed process exists yet,
-  so the required before/after native `ssh host` test remains not done.
+- [ ] **Partially done:** immutable identity-bound reviews invalidate on profile,
+  source, capsule, F2 plan, canonical executable identity, capability,
+  destination, observation content/generation/freshness, or host-trust change.
+  The application pending preparation is also discarded or rebuilt on
+  selection, route, metadata, catalog, runtime-state, and generation changes.
+  The test-only M2 broker covers pure cancel/rebind/revocation. Reconnect
+  orchestration, nonintrusive notifications, redacted completion receipts, and
+  independent process/session cleanup remain not done.
+- [ ] **Partially done:** the production module graph now contains only the
+  non-executing D4-to-F2 adapter/controller/renderer route; process/network/PTY
+  activation remains absent and the D0 manual-shell baseline is
+  mutation-checked. The selected-host preparation benchmark measured
+  6.3520–6.6011 µs on the 2026-08-22 Windows development host. No managed
+  process exists, so the required before/after native ssh host test remains
+  not done.
 
 Exit: a reviewed direct SSH session is additive and isolated, with no secret
 custody or alternate SSH implementation.
-
 ### M4 — F5.2 explicit routes, host trust, and identity readiness
 
 Status: Not done; depends on M3.

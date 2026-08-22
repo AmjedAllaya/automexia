@@ -605,6 +605,11 @@ fn modal_tab_cycle_stays_on_controls_for_the_active_route() {
         apply_hub_key(&mut state, HubKey::ShiftTab),
         InteractionEffect::FocusChanged(HubFocus::Back),
     );
+    assert_eq!(
+        apply_hub_key(&mut state, HubKey::Enter),
+        InteractionEffect::BackToResults,
+    );
+    assert_eq!(state.route, HubRoute::Results);
     assert!(!state.execution_requested);
 }
 

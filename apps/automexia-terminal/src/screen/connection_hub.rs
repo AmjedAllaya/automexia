@@ -305,6 +305,10 @@ impl Screen<'_> {
             ConnectionHubHit::CancelReviewedScan => {
                 self.connection_hub.cancel_grant_review();
             }
+            ConnectionHubHit::BackToResults => {
+                let wake = self.context_manager.devops_refresh_completion(route_id);
+                let _ = self.connection_hub.handle_key(HubKey::Escape, wake);
+            }
             ConnectionHubHit::Close => {
                 self.connection_hub.close();
             }
