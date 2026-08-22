@@ -118,7 +118,7 @@ process.
 | `Tab` / `Shift+Tab` | Move through the active modal focus order; Connection Review includes its Allow once action. |
 | `Enter` | Review a valid host or activate the focused editor control; in Connection Review, Allow once only when Review or Allow once owns focus. |
 | `A` | Request Allow once from Connection Review. |
-| `S` | Request Allow for session from Connection Review. |
+| `S` | Request Allow for session from Connection Review. For remote, non-loopback, or production tunnels this action is disabled, omitted from focus, and reports that a fresh Allow once decision is required. |
 | `D` | Deny the managed launch and return to results. |
 | `C` | Copy the exact reviewed SSH command; no execution, newline, or implicit Enter. |
 | `Escape` | Cancel and clear the transient host editor; from review, return to results. |

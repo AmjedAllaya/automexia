@@ -14,7 +14,14 @@ once, allow for session, and deny exercise the fail-closed policy boundary. The
 activation gate is false and the linked package is unverified, so no managed
 process, PTY, network connection, or provider authority is reachable.
 
-**Implemented but activation-gated:** exact direct/config-jump argv, typed host/user/port, full host-key/public-identity review, safe copy, full-review/executable binding, guarded lifecycle, child outcomes, receipts, and reconnect preparation. **Planned/protected:** actual status/SSH execution, F5.3 tunnels, native cleanup/resource/accessibility proof, provider authentication and multi-cloud adapters, remote-file/session-memory/collaboration, and later ecosystem/AI features.
+**Implemented but activation-gated:** exact direct/config-jump/tunnel argv,
+typed host/user/port/endpoints, loopback defaults, strong tunnel confirmation,
+full host-key/public-identity review, safe copy, full-review/executable binding,
+guarded lifecycle, child outcomes, receipts, reconnect, and compact tunnel
+state. **Planned/protected:** actual status/SSH execution, controlled real
+F5.4 cleanup/resource/accessibility proof, provider authentication and
+multi-cloud adapters, remote-file/session-memory/collaboration, and later
+ecosystem/AI features.
 
 ## Internal Connection Library boundary
 
@@ -199,6 +206,28 @@ PTY-inert surface. Its implemented journey is:
 D5.2 launch remains blocked until the M2 protected, attestation, fresh executable
 review, native lifecycle/resource, and accessibility gates pass. An approval
 attempt does not pre-authorize a later launch.
+## Reviewed typed SSH tunnels (nonactivated)
+
+M5 preparation can represent local, remote, and dynamic TCP forwarding without
+reading SSH configuration. Local and dynamic binds default to
+`127.0.0.1`; the review shows the exact listen and target endpoints, direction,
+session lifetime, OpenSSH ownership, confirmation strength, and planned
+lifecycle state. A tunnel request is configuration-free (`-F none`) and cannot
+use a config alias or jump route, hidden forwarding, shell text, or arbitrary
+OpenSSH option.
+
+Remote, non-loopback, and production tunnels require a new Allow-once decision.
+The Allow for session control is visibly disabled and cannot be activated with
+`S`, focus, pointer, or accessibility action. Color reinforces state but the
+icon and text always carry the same meaning. Planned, starting, ready, collision,
+failed, cancelled, and closed are distinct owner-reported states; Automexia
+never infers readiness from terminal output.
+
+This is currently a review and test contract, not an available tunnel command.
+Managed activation is false, no OpenSSH child or listener can start, and no SSH
+file or service is changed. Use the system OpenSSH client manually until the
+protected activation and real Windows/macOS/Linux F5.4 evidence gates pass.
+
 ## Exact launch boundary
 
 Managed process launch is intentionally narrower than general process-spawn authority. A launch request identifies an approved first-party publisher/capability, an expected executable kind, exact argv, a bounded environment, a validated working directory, and audit/session identifiers. The broker resolves and verifies the executable according to platform policy, checks grants and current file identity, launches without shell interpretation, associates the PTY with one route/session, and records a redacted result.

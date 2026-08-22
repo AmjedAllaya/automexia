@@ -30,8 +30,11 @@ class PullRequestDocumentationPolicyTests(unittest.TestCase):
             "tests/fixtures/session-launch/d0-d3-contract-v2.json",
             "tests/fixtures/session-launch/d0-d3-contract-v3.json",
             "tests/fixtures/session-launch/d0-d3-contract-v4.json",
+            "tests/fixtures/session-launch/d0-d3-contract-v5.json",
             "tools/ci/check_pr_policy.py",
             "tools/ci/check_session_launch_d0.py",
+            "tools/ci/native_openssh_evidence.py",
+            "tools/ci/test_native_openssh_evidence.py",
         }
 
         self.assertEqual(POLICY.protected_paths(changed), sorted(changed))

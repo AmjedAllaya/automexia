@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mutation tests for the D0-D3/M3-M4 session-launch review contract."""
+"""Mutation tests for the D0-D3/M3-M5 session-launch review contract."""
 
 from __future__ import annotations
 
@@ -31,12 +31,13 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
         self.assertEqual(
             policy.validate_repository(),
             {
-                "schema": 4,
-                "scenarios": 19,
+                "schema": 5,
+                "scenarios": 23,
                 "boundaries": 9,
-                "sources": 16,
+                "sources": 17,
                 "documents": 11,
                 "production_enabled": 0,
+                "native_platforms": 3,
             },
         )
 
@@ -96,6 +97,41 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
         for mutate in mutations:
             self.validate_mutation(mutate)
 
+    def test_m5_tunnels_and_native_release_evidence_cannot_weaken(self) -> None:
+        mutations = [
+            lambda d: d["ssh_tunnels"].__setitem__("activation", True),
+            lambda d: d["ssh_tunnels"]["managed_options"].pop(),
+            lambda d: d["ssh_tunnels"]["configuration_arguments"].clear(),
+            lambda d: d["ssh_tunnels"]["grammar"].__setitem__(
+                "config_defined_routes", True
+            ),
+            lambda d: d["ssh_tunnels"]["confirmation"].__setitem__(
+                "persistent_grants", True
+            ),
+            lambda d: d["ssh_tunnels"]["lifecycle"].__setitem__(
+                "readiness", "terminal-text"
+            ),
+            lambda d: d["native_release_evidence"].__setitem__(
+                "wsl_accepted", True
+            ),
+            lambda d: d["native_release_evidence"].__setitem__(
+                "synthetic_release_evidence", True
+            ),
+            lambda d: d["native_release_evidence"]["scenario_ids"].pop(),
+            lambda d: d["native_release_evidence"].__setitem__(
+                "cleanup_counts_required", 1
+            ),
+            lambda d: d["native_release_evidence"].__setitem__(
+                "source_binding", "manifest-claims-only"
+            ),
+            lambda d: d["native_release_evidence"]["security_checks"].pop(),
+            lambda d: d["native_release_evidence"]["resource_budgets"].__setitem__(
+                "peak_cpu_millicores", 0
+            ),
+        ]
+        for mutate in mutations:
+            self.validate_mutation(mutate)
+
     def test_scenarios_evidence_and_external_blocker_cannot_drift(self) -> None:
         self.validate_mutation(lambda d: d["native_scenarios"].pop())
         self.validate_mutation(lambda d: d["evidence"]["source"].pop())
@@ -142,7 +178,7 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
             return source
 
         with mock.patch.object(policy, "bounded_text", side_effect=mutated):
-            with self.assertRaisesRegex(policy.SessionLaunchD0Error, "missing D0/D3/M4 evidence"):
+            with self.assertRaisesRegex(policy.SessionLaunchD0Error, "missing D0/D3/M5 evidence"):
                 policy.validate_sources(self.contract)
 
     def test_production_guard_and_runtime_authority_cannot_widen(self) -> None:

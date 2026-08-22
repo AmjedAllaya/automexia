@@ -703,6 +703,29 @@ def main() -> int:
     steps.append(collect_junit(run_dir))
 
     next_index = len(steps) + 1
+    if os.environ.get("AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE"):
+        steps.append(
+            run_step(
+                run_dir,
+                next_index,
+                "native-openssh-release-evidence",
+                [
+                    sys.executable,
+                    "tools/ci/native_openssh_evidence.py",
+                    "--validate-environment",
+                ],
+            )
+        )
+        next_index += 1
+    else:
+        steps.append(
+            skipped(
+                "native-openssh-release-evidence",
+                "set AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE to a private redacted manifest on each controlled native runner",
+                external=True,
+            )
+        )
+
     if truthy("AUTOMEXIA_QA_NATIVE") and os.name == "nt":
         steps.append(
             run_step(

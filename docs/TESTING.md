@@ -256,7 +256,7 @@ cargo test -p automexia-terminal --bin automexia --locked direct_openssh_review_
 cargo xtask verify architecture
 ```
 
-The checker locks schema-1/schema-2/schema-3 immutability and schema-4's
+The checker locks schema-1/schema-2/schema-3/schema-4 immutability and schema-5's
 production-disabled activation, linked unverified principal, trusted digest source/size, exact
 version/contract/verification, manual-shell behavior, grants/audits/defaults,
 nine trust boundaries, four-platform resolution, authority ceiling, nineteen
@@ -1233,11 +1233,12 @@ a dedicated C: temporary target with 23.58 GiB free, passed all three isolated
 verification phases and the application-version smoke test, then removed its
 7.79-GiB verification tree and disposable outer target.
 
-Active schema 4 freezes those M3 rules plus M4 and hash-checks historical schemas
-1, 2, and 3. No test in this slice enables `MANAGED_SESSION_LAUNCH_ENABLED` for
-the product or treats `Unverified` as attested. Real OpenSSH prompts, network
-traffic, descendant cleanup, manual-SSH regression, native pixels/screen readers,
-and Windows/macOS/Linux/WSL 1/10/50 resource campaigns remain external gates.
+Active schema 5 freezes the M3/M4 rules plus M5's typed-tunnel/native-manifest
+contract and hash-checks historical schemas 1, 2, 3, and 4. No test in this
+slice enables `MANAGED_SESSION_LAUNCH_ENABLED` for the product or treats
+`Unverified` as attested. Real OpenSSH prompts, network traffic, descendant
+cleanup, manual-SSH regression, native pixels/screen readers, and
+Windows/macOS/Linux/WSL 1/10/50 resource campaigns remain external gates.
 
 ### M4 SSH routes and trust contract
 
@@ -1306,6 +1307,97 @@ native pixel or controlled screen-reader run was captured for M4; real
 `ssh-add`, host-key prompts, system OpenSSH routing, protected activation,
 forced descendant cleanup, and Windows/macOS/Linux/WSL resources remain exact
 external gates.
+
+### M5 typed OpenSSH tunnels and native release evidence
+
+The M5 source and evidence-contract suites are reproducible with:
+
+    cargo test -p automexia-devops --test direct_openssh_tunnels --locked
+    cargo test -p automexia-ui-model --test direct_openssh_review --locked
+    cargo test -p automexia-terminal --bin automexia --locked strong_tunnels_reject_session_grants_and_require_allow_once
+    cargo test -p automexia-terminal connection_hub --locked
+    python tools/ci/native_openssh_evidence.py --check-repository
+    python tools/ci/test_native_openssh_evidence.py
+    python tools/ci/check_session_launch_d0.py
+    python tools/ci/test_session_launch_d0.py
+    python tools/ci/test_pr_policy.py
+
+The Rust regression set covers exact local/remote/dynamic `-F none` argv,
+independent grammar revalidation, unchanged no-tunnel behavior, hostile
+endpoints, local/dynamic versus remote collision domains, loopback defaults,
+strong confirmation, config-route denial, endpoint staleness, owner-scoped
+lifecycle transitions, stale observations, terminal reversal, closure, compact
+icon/color/text/accessibility projection, disabled session grants, and
+deterministic 1/10/50 cleanup. The repository checker binds active schema 5 to
+immutable schemas 1-4 and the synthetic evidence fixture. The Python mutation
+sets cover duplicate JSON keys, oversize manifests, contract/source drift, WSL,
+synthetic release claims, missing/reordered/failed scenarios, resource cleanup,
+manual-client/disable/uninstall baselines, forbidden fields, and redaction
+canaries.
+
+The safe local prerequisite probe is explicit:
+
+    python tools/ci/native_openssh_evidence.py
+
+It resolves only fixed platform OpenSSH locations, executes exact `-V` arrays
+with a 2-second/512-byte cap, and performs no install, service, network, or SSH
+configuration operation. On the 2026-08-22 Windows x86_64 development host it
+truthfully returned the external-prerequisite result: OpenSSH client 9.5 was
+present and `sshd` was absent. That is not native tunnel evidence.
+
+A controlled release runner keeps its redacted real manifest outside the
+repository and validates it through one of these platform forms:
+
+    $env:AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE='C:\private\m5-windows.json'
+    python tools/ci/native_openssh_evidence.py --validate-environment
+
+    AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE=/private/m5-linux.json \
+      python tools/ci/native_openssh_evidence.py --validate-environment
+
+The validator accepts only exact Windows, macOS, or Linux manifests tied to the
+current source commit and contract digest. The clean tracked-tree binding uses a
+two-second, no-output Git query. All 23 ordered scenarios must pass within
+bounded durations, including
+post-quantum KEX, weak-crypto warnings, restricted-key agent session binding,
+and tunnel bind collision. The manifest must match the current source commit,
+application binary/package hashes, and private loopback fixture/config/seed
+hashes. Exact 1/10/50 latency, CPU, memory, handles, process/PTY/listener/tunnel/
+task/route/cache/log/storage ceilings, zero cleanup deltas, redaction canaries,
+and stable manual-SSH plus disable/uninstall baselines are mandatory. WSL and
+synthetic evidence are
+rejected for release. The QA command runs this validation automatically only
+when the private environment variable is present and otherwise reports the step
+as an explicit external prerequisite without printing the manifest path.
+
+Final local M5 evidence on Windows x86_64 (2026-08-22): the tunnel crate suite
+passed 8 tests, the UI review suite passed 4, the renderer/Hub filter passed 11,
+and the exact strong-tunnel runner regression passed 1. The native-evidence
+checker completed 9 test methods with 1 Windows symlink-privilege skip; the
+schema mutation suite passed 10 and the protected-file policy suite passed 12.
+The required workspace gates then passed: Rustfmt; warning-denied all-target
+Clippy; Nextest with 1,824 passed and 7 skipped; documentation tests with 64
+passed and 3 ignored; and full QA, whose local report is
+`target/qa/20260822T182116Z-36592/report.html`. `cargo ready` independently
+passed a cold all-target check, warning-denied Clippy, unit/integration/doc
+tests, dependency policy, debug build, and `automexia 0.4.0` smoke check. It
+removed its 7.81 GiB isolated target, and the remaining verified temporary
+build target was removed after success.
+
+The evidence ladder found three local defects before handoff. The first
+architecture run rejected `std::net` in the authority-free F2 connection model;
+the loopback classifier was replaced with a pure allocation-free parser and the
+architecture gate then passed. The first full Clippy run reported a manual
+parity check in the independent tunnel grammar parser; it was replaced with
+`is_multiple_of(2)` and the exact full Clippy command then passed. Final review
+also found that the release validator captured complete Git status output for a
+boolean clean-tree decision; it now uses a deadline-bounded, no-output
+`diff-index --quiet` check, and its dirty-tree mutation passes. Neither first
+failure is counted as a passing result.
+
+No real server, network tunnel, native resource campaign, before/after install
+or uninstall, or controlled screen-reader run was executed in this local slice.
+Those Windows/macOS/Linux results remain F5.4 release gates; activation stays
+false and the repository fixture must never be cited as their substitute.
 
 ### Connection Hub F3 catalog contract
 

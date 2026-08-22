@@ -46,6 +46,8 @@ PROTECTED_EXACT_PATHS = {
     "tools/ci/test_pr_policy.py",
     "tools/ci/check_session_launch_d0.py",
     "tools/ci/test_session_launch_d0.py",
+    "tools/ci/native_openssh_evidence.py",
+    "tools/ci/test_native_openssh_evidence.py",
 }
 ENGINE_PREFIXES = (
     "corcovado/",
