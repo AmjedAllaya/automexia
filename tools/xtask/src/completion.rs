@@ -1048,8 +1048,10 @@ fn run_bounded(
             Ok(Some(status)) => {
                 // A provider leader can exit while a helper still owns the inherited
                 // output pipes. Terminate the remaining process group/Job Object
-                // before joining readers so refresh cannot hang past its deadline.
+                // and synchronously reap it before joining readers so refresh cannot
+                // publish while provider descendants are still alive.
                 let _ = child.start_kill();
+                let _ = child.wait();
                 break status;
             }
             Ok(None) if started.elapsed() < deadline => thread::sleep(POLL_INTERVAL),
@@ -1679,17 +1681,17 @@ mod tests {
     #[test]
     fn bounded_process_terminates_pipe_holders_after_leader_exit() {
         #[cfg(windows)]
-        let tree = "start /B ping -n 6 127.0.0.1 & exit /B 0";
+        let tree =
+            "start /B cmd.exe /D /C \"ping.exe -n 6 127.0.0.1 >NUL & echo leaked\" & exit /B 0";
         #[cfg(unix)]
-        let tree = "(sleep 5) & exit 0";
+        let tree = "(sleep 5; printf leaked) & exit 0";
         let (executable, args) = shell_command(tree);
-        let started = Instant::now();
         let captured =
             run_bounded(&executable, &args, Duration::from_secs(2), 1024, 1024).unwrap();
         assert!(captured.status.success());
         assert!(
-            started.elapsed() < Duration::from_secs(1),
-            "a provider helper retained output pipes after its leader exited"
+            captured.stdout.is_empty(),
+            "a provider helper survived group termination after its leader exited"
         );
     }
 
