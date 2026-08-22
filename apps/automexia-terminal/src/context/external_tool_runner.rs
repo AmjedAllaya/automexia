@@ -134,6 +134,13 @@ impl fmt::Debug for OpenSshLaunchIntent {
     }
 }
 
+fn managed_tunnel_decision_allowed(
+    requires_strong_confirmation: bool,
+    decision: Decision,
+) -> bool {
+    !requires_strong_confirmation || decision == Decision::AllowOnce
+}
+
 impl OpenSshLaunchIntent {
     pub fn new(
         reservation: super::ManagedRouteReservation,
@@ -145,6 +152,10 @@ impl OpenSshLaunchIntent {
             || binding.arguments().is_empty()
             || binding.review_fingerprint().is_empty()
             || binding.executable_identity_digest().is_empty()
+            || !managed_tunnel_decision_allowed(
+                binding.requires_strong_tunnel_confirmation(),
+                decision,
+            )
         {
             return Err(invalid_request());
         }
@@ -932,4 +943,24 @@ pub(crate) fn current_time_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod m5_tunnel_policy_tests {
+    use super::{managed_tunnel_decision_allowed, Decision};
+
+    #[test]
+    fn strong_tunnels_reject_session_grants_and_require_allow_once() {
+        assert!(managed_tunnel_decision_allowed(true, Decision::AllowOnce));
+        assert!(!managed_tunnel_decision_allowed(
+            true,
+            Decision::AllowSession
+        ));
+        assert!(!managed_tunnel_decision_allowed(true, Decision::Deny));
+        assert!(managed_tunnel_decision_allowed(false, Decision::AllowOnce));
+        assert!(managed_tunnel_decision_allowed(
+            false,
+            Decision::AllowSession
+        ));
+    }
 }

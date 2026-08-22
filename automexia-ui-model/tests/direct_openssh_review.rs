@@ -6,14 +6,16 @@ use automexia_devops::connections::{
     ConnectionObservation, ConnectionProfileV1, ConnectionSource, DestinationSurface,
     DirectOpenSshHostKeyEvidence, DirectOpenSshHostKeyProvenance,
     DirectOpenSshHostTrustEvidence, DirectOpenSshReviewEvidence,
+    DirectOpenSshTunnelEvent, DirectOpenSshTunnelLifecycle, DirectOpenSshTunnelState,
     EnvironmentCapsuleTemplate, EnvironmentClassification, EnvironmentKind,
     EnvironmentRisk, HostTrustState, IdentityKind, IdentityReference, OpaqueReference,
     PlanContext, ProviderKind, ResolvedExecutable, SourceKind, ToolState,
-    TransportDescriptor, TransportState, CONNECTION_SCHEMA_VERSION,
+    TransportDescriptor, TransportState, TunnelDefinitionV1, CONNECTION_SCHEMA_VERSION,
 };
+use automexia_extension_api::SessionId;
 use automexia_ui_model::connection_hub::{
-    project_direct_openssh_preparation, project_direct_openssh_review, HubLayout,
-    Viewport,
+    project_direct_openssh_preparation, project_direct_openssh_review,
+    project_direct_openssh_tunnel_lifecycle, HubLayout, Viewport,
 };
 
 fn digest(byte: char) -> String {
@@ -322,4 +324,83 @@ fn m3_projection_is_redacted_gated_actionable_and_accessible() {
             .iter()
             .any(|node| node.name == "Reviewed OpenSSH argument shape"));
     }
+}
+
+#[test]
+fn tunnel_review_is_compact_exact_accessible_and_disables_session_grants() {
+    let mut profile = fixture_profile();
+    profile.source.kind = SourceKind::User;
+    profile.transport = TransportDescriptor::OpenSshExplicit {
+        host: "production.example.invalid".into(),
+        port: None,
+        user: None,
+        proxy_jump: Vec::new(),
+    };
+    profile.tunnels = vec![
+        TunnelDefinitionV1::local_loopback(
+            "database",
+            15_432,
+            "database.internal",
+            5_432,
+        ),
+        TunnelDefinitionV1::dynamic_loopback("socks", 10_080),
+    ];
+    let prepared = prepare_direct_openssh(&profile).unwrap();
+
+    for viewport in [
+        Viewport::new(1_600.0, 900.0, 1.0),
+        Viewport::new(480.0, 800.0, 2.0),
+    ] {
+        let view = project_direct_openssh_preparation(&prepared, viewport);
+        assert_eq!(view.tunnels.len(), 2);
+        assert!(!view.allow_session_enabled);
+        assert_eq!(view.tunnels[0].semantic_icon, "local-forward");
+        assert_eq!(view.tunnels[0].listen_endpoint, "127.0.0.1:15432");
+        assert_eq!(
+            view.tunnels[0].target_endpoint.as_deref(),
+            Some("database.internal:5432")
+        );
+        assert_eq!(view.tunnels[0].state_label, "Planned");
+        assert_eq!(view.tunnels[0].owner_label, "OpenSSH session");
+        assert_eq!(view.tunnels[0].confirmation_label, "Strong every use");
+        assert!(view.tunnels[0].blocking);
+        assert!(view.accessibility_tree.iter().any(|node| {
+            node.id == "direct-openssh-tunnel-database"
+                && node.description.contains("127.0.0.1:15432")
+                && node.description.contains("database.internal:5432")
+        }));
+        assert!(view.accessibility_tree.iter().any(|node| {
+            node.id == "direct-openssh-decision-allow-session"
+                && node.disabled
+                && !node.focusable
+        }));
+    }
+
+    let session = SessionId::new(7);
+    let mut lifecycle =
+        DirectOpenSshTunnelLifecycle::new(session, 2, prepared.tunnel_plan(), 10)
+            .unwrap();
+    lifecycle
+        .apply(DirectOpenSshTunnelEvent::new(
+            session,
+            2,
+            "database",
+            DirectOpenSshTunnelState::Starting,
+            11,
+        ))
+        .unwrap();
+    lifecycle
+        .apply(DirectOpenSshTunnelEvent::new(
+            session,
+            2,
+            "database",
+            DirectOpenSshTunnelState::Collision,
+            12,
+        ))
+        .unwrap();
+    lifecycle.close_all(13).unwrap();
+    let projected = project_direct_openssh_tunnel_lifecycle(&lifecycle);
+    assert_eq!(projected[0].state_label, "Listener collision");
+    assert!(projected[0].blocking);
+    assert_eq!(projected[1].state_label, "Closed");
 }

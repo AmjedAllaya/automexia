@@ -8,8 +8,10 @@ use std::{cmp::Ordering, fmt, ops::Range};
 use automexia_devops::connections::{
     ActionRisk, AuthState, AutomationAction, ConnectionReview, DestinationSurface,
     DirectOpenSshHostTrustPolicy, DirectOpenSshIdentityReadiness,
-    DirectOpenSshPreparation, DirectOpenSshReview, EnvironmentRisk, ExecutionStage,
-    HostTrustState, ProviderKind, ResolvedConnectionPlan, StaleAuthState,
+    DirectOpenSshPreparation, DirectOpenSshReview, DirectOpenSshTunnelConfirmation,
+    DirectOpenSshTunnelDescriptor, DirectOpenSshTunnelLifecycle, DirectOpenSshTunnelPlan,
+    DirectOpenSshTunnelState, EnvironmentRisk, ExecutionStage, HostTrustState,
+    ProviderKind, ResolvedConnectionPlan, StaleAuthState, TunnelKind,
 };
 use serde::{Deserialize, Serialize};
 
@@ -1172,14 +1174,32 @@ pub struct ReviewSectionView {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct TunnelReviewView {
+    pub id: String,
+    pub semantic_icon: String,
+    pub kind_label: String,
+    pub listen_endpoint: String,
+    pub target_endpoint: Option<String>,
+    pub state_label: String,
+    pub owner_label: String,
+    pub confirmation_label: String,
+    pub blocking: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConnectionReviewView {
     pub layout: HubLayout,
     pub sections: Vec<ReviewSectionView>,
+    #[serde(default)]
+    pub tunnels: Vec<TunnelReviewView>,
     pub changed_fields: Vec<String>,
     pub warnings: Vec<String>,
     pub primary_label: &'static str,
     pub execution_enabled: bool,
     pub approval_action_enabled: bool,
+    #[serde(default)]
+    pub allow_session_enabled: bool,
     pub accessibility_tree: Vec<AccessibilityNode>,
 }
 
@@ -1280,12 +1300,139 @@ pub fn project_connection_review(
     ConnectionReviewView {
         layout: hub_layout(viewport),
         sections,
+        tunnels: Vec::new(),
         changed_fields: review.changed_fields.clone(),
         warnings: review.warnings.clone(),
         primary_label: "Connection unavailable—planning only",
         execution_enabled: false,
         approval_action_enabled: false,
+        allow_session_enabled: false,
         accessibility_tree,
+    }
+}
+
+fn tunnel_kind_label(kind: TunnelKind) -> &'static str {
+    match kind {
+        TunnelKind::Local => "Local",
+        TunnelKind::Remote => "Remote",
+        TunnelKind::Dynamic => "Dynamic SOCKS",
+    }
+}
+
+fn tunnel_semantic_icon(kind: TunnelKind) -> &'static str {
+    match kind {
+        TunnelKind::Local => "local-forward",
+        TunnelKind::Remote => "remote-forward",
+        TunnelKind::Dynamic => "dynamic-proxy",
+    }
+}
+
+fn tunnel_state_label(state: DirectOpenSshTunnelState) -> &'static str {
+    match state {
+        DirectOpenSshTunnelState::Planned => "Planned",
+        DirectOpenSshTunnelState::Starting => "Starting",
+        DirectOpenSshTunnelState::Ready => "Ready",
+        DirectOpenSshTunnelState::Collision => "Listener collision",
+        DirectOpenSshTunnelState::Failed => "Failed",
+        DirectOpenSshTunnelState::Cancelled => "Cancelled",
+        DirectOpenSshTunnelState::Closed => "Closed",
+    }
+}
+
+fn project_tunnel_descriptor(
+    descriptor: &DirectOpenSshTunnelDescriptor,
+    state: DirectOpenSshTunnelState,
+) -> TunnelReviewView {
+    let confirmation_label = match descriptor.confirmation() {
+        DirectOpenSshTunnelConfirmation::ReviewWithConnection => "Review with connection",
+        DirectOpenSshTunnelConfirmation::StrongEveryUse => "Strong every use",
+    };
+    TunnelReviewView {
+        id: descriptor.id().into(),
+        semantic_icon: tunnel_semantic_icon(descriptor.kind()).into(),
+        kind_label: tunnel_kind_label(descriptor.kind()).into(),
+        listen_endpoint: descriptor.listen_endpoint().into(),
+        target_endpoint: descriptor.target_endpoint().map(str::to_owned),
+        state_label: tunnel_state_label(state).into(),
+        owner_label: "OpenSSH session".into(),
+        confirmation_label: confirmation_label.into(),
+        blocking: descriptor.confirmation()
+            == DirectOpenSshTunnelConfirmation::StrongEveryUse
+            || matches!(
+                state,
+                DirectOpenSshTunnelState::Collision | DirectOpenSshTunnelState::Failed
+            ),
+    }
+}
+
+fn project_tunnel_plan(plan: &DirectOpenSshTunnelPlan) -> Vec<TunnelReviewView> {
+    plan.descriptors()
+        .iter()
+        .map(|descriptor| {
+            project_tunnel_descriptor(descriptor, DirectOpenSshTunnelState::Planned)
+        })
+        .collect()
+}
+
+pub fn project_direct_openssh_tunnel_lifecycle(
+    lifecycle: &DirectOpenSshTunnelLifecycle,
+) -> Vec<TunnelReviewView> {
+    lifecycle
+        .statuses()
+        .iter()
+        .map(|status| project_tunnel_descriptor(status.descriptor(), status.state()))
+        .collect()
+}
+
+fn direct_ssh_transport_summary(
+    jump_count: usize,
+    tunnel_count: usize,
+    reviewed: bool,
+) -> String {
+    let mut summary = if jump_count == 0 {
+        "System OpenSSH · direct · new terminal route".into()
+    } else if reviewed {
+        format!(
+            "System OpenSSH · {jump_count} reviewed config-defined jump(s) · new terminal route"
+        )
+    } else {
+        format!(
+            "System OpenSSH · {jump_count} config-defined jump(s) · new terminal route"
+        )
+    };
+    if tunnel_count != 0 {
+        summary.push_str(&format!(" · {tunnel_count} typed TCP tunnel(s)"));
+    }
+    summary
+}
+
+fn append_tunnel_accessibility(
+    tree: &mut Vec<AccessibilityNode>,
+    tunnels: &[TunnelReviewView],
+) {
+    for tunnel in tunnels {
+        let mut node = AccessibilityNode::new(
+            format!("direct-openssh-tunnel-{}", tunnel.id),
+            if tunnel.blocking {
+                AccessibilityRole::Alert
+            } else {
+                AccessibilityRole::Group
+            },
+            format!("{} tunnel {}", tunnel.kind_label, tunnel.state_label),
+        );
+        let target = tunnel
+            .target_endpoint
+            .as_deref()
+            .unwrap_or("dynamic SOCKS destinations");
+        node.description = format!(
+            "{} listens on {} and forwards to {}. Owner: {}. Confirmation: {}.",
+            tunnel.kind_label,
+            tunnel.listen_endpoint,
+            target,
+            tunnel.owner_label,
+            tunnel.confirmation_label,
+        );
+        tree.push(node);
     }
 }
 
@@ -1311,7 +1458,10 @@ fn destination_surface_label(surface: DestinationSurface) -> &'static str {
 /// Project a selected D4 host while executable, identity, and host-trust
 /// observations are still pending. Exact aliases and opaque references remain
 /// outside the renderer-facing model.
-fn append_direct_decision_accessibility(tree: &mut Vec<AccessibilityNode>) {
+fn append_direct_decision_accessibility(
+    tree: &mut Vec<AccessibilityNode>,
+    allow_session_enabled: bool,
+) {
     for (id, name, description) in [
         (
             "allow-once",
@@ -1334,8 +1484,14 @@ fn append_direct_decision_accessibility(tree: &mut Vec<AccessibilityNode>) {
             AccessibilityRole::Button,
             name,
         );
-        action.description = description.into();
-        action.focusable = true;
+        let unavailable = id == "allow-session" && !allow_session_enabled;
+        action.description = if unavailable {
+            "Unavailable. Remote, non-loopback, or production tunnels require a fresh Allow once decision.".into()
+        } else {
+            description.into()
+        };
+        action.disabled = unavailable;
+        action.focusable = !unavailable;
         tree.push(action);
     }
     let mut copy = AccessibilityNode::new(
@@ -1354,6 +1510,8 @@ pub fn project_direct_openssh_preparation(
 ) -> ConnectionReviewView {
     let profile = prepared.profile();
     let plan = prepared.plan();
+    let tunnels = project_tunnel_plan(prepared.tunnel_plan());
+    let allow_session_enabled = !prepared.tunnel_plan().requires_strong_confirmation();
     let sections = vec![
         ReviewSectionView {
             id: "identity".into(),
@@ -1370,14 +1528,11 @@ pub fn project_direct_openssh_preparation(
         ReviewSectionView {
             id: "transport".into(),
             heading: "Transport and route",
-            summary: if prepared.route().jump_count() == 0 {
-                "System OpenSSH · direct · new terminal route".into()
-            } else {
-                format!(
-                    "System OpenSSH · {} config-defined jump(s) · new terminal route",
-                    prepared.route().jump_count()
-                )
-            },
+            summary: direct_ssh_transport_summary(
+                prepared.route().jump_count(),
+                tunnels.len(),
+                false,
+            ),
             blocking: false,
         },
         ReviewSectionView {
@@ -1438,15 +1593,18 @@ pub fn project_direct_openssh_preparation(
         node.description = section.summary.clone();
         accessibility_tree.push(node);
     }
-    append_direct_decision_accessibility(&mut accessibility_tree);
+    append_tunnel_accessibility(&mut accessibility_tree, &tunnels);
+    append_direct_decision_accessibility(&mut accessibility_tree, allow_session_enabled);
     ConnectionReviewView {
         layout: hub_layout(viewport),
         sections,
+        tunnels,
         changed_fields: Vec::new(),
         warnings: vec!["No process starts unless every protected check succeeds".into()],
         primary_label: "Check & allow once  [A / Enter]",
         execution_enabled: false,
         approval_action_enabled: true,
+        allow_session_enabled,
         accessibility_tree,
     }
 }
@@ -1458,6 +1616,8 @@ pub fn project_direct_openssh_review(
     viewport: Viewport,
 ) -> ConnectionReviewView {
     let intent = &reviewed.review.normalized_intent;
+    let tunnels = project_tunnel_plan(&reviewed.tunnel_plan);
+    let allow_session_enabled = !reviewed.tunnel_plan.requires_strong_confirmation();
     let readiness = direct_ssh_readiness_label(reviewed.identity_readiness);
     let trust_policy = match reviewed.host_trust_policy {
         DirectOpenSshHostTrustPolicy::AskOnFirstUseRejectChanged => {
@@ -1503,14 +1663,11 @@ pub fn project_direct_openssh_review(
         ReviewSectionView {
             id: "transport".into(),
             heading: "Transport and route",
-            summary: if reviewed.route.jump_count() == 0 {
-                "System OpenSSH · direct · new terminal route".into()
-            } else {
-                format!(
-                    "System OpenSSH · {} reviewed config-defined jump(s) · new terminal route",
-                    reviewed.route.jump_count()
-                )
-            },
+            summary: direct_ssh_transport_summary(
+                reviewed.route.jump_count(),
+                tunnels.len(),
+                true,
+            ),
             blocking: false,
         },
         ReviewSectionView {
@@ -1582,16 +1739,19 @@ pub fn project_direct_openssh_review(
         node.description = section.summary.clone();
         accessibility_tree.push(node);
     }
-    append_direct_decision_accessibility(&mut accessibility_tree);
+    append_tunnel_accessibility(&mut accessibility_tree, &tunnels);
+    append_direct_decision_accessibility(&mut accessibility_tree, allow_session_enabled);
 
     ConnectionReviewView {
         layout: hub_layout(viewport),
         sections,
+        tunnels,
         changed_fields: reviewed.review.changed_fields.clone(),
         warnings: reviewed.review.warnings.clone(),
         primary_label: "Allow once & connect  [A / Enter]",
         execution_enabled: false,
         approval_action_enabled: true,
+        allow_session_enabled,
         accessibility_tree,
     }
 }

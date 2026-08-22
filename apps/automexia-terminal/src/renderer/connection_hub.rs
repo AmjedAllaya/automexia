@@ -2,7 +2,7 @@
 
 use automexia_ui_model::connection_hub::{
     hub_catalog_controls_visible, HubCatalogGrouping, HubCatalogSource, HubContentState,
-    HubFocus, HubLayout, HubRoute,
+    HubFocus, HubLayout, HubRoute, TunnelReviewView,
 };
 use rio_backend::sugarloaf::{text::DrawOpts, Sugarloaf};
 
@@ -206,10 +206,12 @@ impl ConnectionHub {
         {
             return Some(ConnectionHubHit::BackToResults);
         }
-        let approval_enabled = presentation
+        let (approval_enabled, allow_session_enabled) = presentation
             .direct_openssh_review
             .as_ref()
-            .is_some_and(|review| review.approval_action_enabled);
+            .map_or((false, false), |review| {
+                (review.approval_action_enabled, review.allow_session_enabled)
+            });
         if approval_enabled
             && layout
                 .connection_review_primary
@@ -218,6 +220,7 @@ impl ConnectionHub {
             return Some(ConnectionHubHit::ApproveOnce);
         }
         if approval_enabled
+            && allow_session_enabled
             && layout
                 .connection_review_session
                 .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
@@ -1260,6 +1263,27 @@ fn filters_are_active(presentation: &HubControllerPresentation) -> bool {
         || presentation.catalog_query.tag.is_some()
 }
 
+fn tunnel_review_summary(tunnel: &TunnelReviewView) -> String {
+    let target = tunnel
+        .target_endpoint
+        .as_deref()
+        .unwrap_or("dynamic destinations");
+    format!(
+        "{} · {} → {} · {}",
+        tunnel.kind_label, tunnel.listen_endpoint, target, tunnel.state_label
+    )
+}
+
+fn tunnel_review_color(tunnel: &TunnelReviewView) -> [f32; 4] {
+    if tunnel.blocking {
+        WARNING
+    } else if tunnel.state_label == "Ready" {
+        SUCCESS
+    } else {
+        CYAN
+    }
+}
+
 fn render_connection_review(
     sugarloaf: &mut Sugarloaf,
     panel: Rect,
@@ -1316,20 +1340,76 @@ fn render_connection_review(
                     .draw(card.x + 8.0, card.y + 4.0, heading, &small);
             }
             if heading == "Safety" && card.height >= 52.0 {
-                if let Some(section) = review.sections.get(4) {
-                    let maximum = ((card.width - 22.0) / 5.5).floor().max(12.0) as usize;
-                    for (line, chunk) in
-                        wrap_without_truncation(&section.summary, maximum)
-                            .into_iter()
-                            .enumerate()
-                    {
+                if review.tunnels.is_empty() {
+                    if let Some(section) = review.sections.get(4) {
+                        let maximum =
+                            ((card.width - 22.0) / 5.5).floor().max(12.0) as usize;
+                        for (line, chunk) in
+                            wrap_without_truncation(&section.summary, maximum)
+                                .into_iter()
+                                .enumerate()
+                        {
+                            sugarloaf.text_mut().draw(
+                                card.x + 11.0,
+                                card.y + 34.0 + line as f32 * 12.0,
+                                &chunk,
+                                &small,
+                            );
+                        }
+                    }
+                } else if card.height >= 76.0 {
+                    if let Some(section) = review.sections.get(4) {
                         sugarloaf.text_mut().draw(
                             card.x + 11.0,
-                            card.y + 34.0 + line as f32 * 12.0,
-                            &chunk,
+                            card.y + 34.0,
+                            &truncated(&section.summary, 48),
                             &small,
                         );
                     }
+                    let tunnel = &review.tunnels[0];
+                    draw_hub_icon(
+                        sugarloaf,
+                        HubIcon::Connections,
+                        card.x + 9.0,
+                        card.y + 49.0,
+                        tunnel_review_color(tunnel),
+                        SURFACE_RAISED,
+                    );
+                    sugarloaf.text_mut().draw(
+                        card.x + 39.0,
+                        card.y + 54.0,
+                        &truncated(&tunnel_review_summary(tunnel), 54),
+                        &small,
+                    );
+                    if review.tunnels.len() > 1 && card.height >= 96.0 {
+                        sugarloaf.text_mut().draw(
+                            card.x + 39.0,
+                            card.y + 76.0,
+                            &format!(
+                                "+ {} more reviewed tunnel(s)",
+                                review.tunnels.len() - 1
+                            ),
+                            &small,
+                        );
+                    }
+                } else {
+                    let confirmation = if review.allow_session_enabled {
+                        "reviewed with connection"
+                    } else {
+                        "fresh Allow once required"
+                    };
+                    sugarloaf.text_mut().draw(
+                        card.x + 11.0,
+                        card.y + 34.0,
+                        &truncated(
+                            &format!(
+                                "{} typed tunnel(s) · {confirmation}",
+                                review.tunnels.len()
+                            ),
+                            48,
+                        ),
+                        &small,
+                    );
                 }
                 continue;
             }
@@ -1386,10 +1466,12 @@ fn render_connection_review(
             .text_mut()
             .draw(panel.x + 14.0, panel.y + 82.0, diagnostic, &small);
     }
-    let approval_enabled = presentation
+    let (approval_enabled, allow_session_enabled) = presentation
         .direct_openssh_review
         .as_ref()
-        .is_some_and(|review| review.approval_action_enabled);
+        .map_or((false, false), |review| {
+            (review.approval_action_enabled, review.allow_session_enabled)
+        });
     if panel.height >= 200.0 {
         if let Some(diagnostic) = presentation.direct_openssh_diagnostic {
             let status = format!("⚠ {}", managed_launch_recovery(diagnostic));
@@ -1418,12 +1500,14 @@ fn render_connection_review(
         button(
             sugarloaf,
             session,
-            if session.width < 130.0 {
+            if !allow_session_enabled {
+                "Allow once required"
+            } else if session.width < 130.0 {
                 "Session  S"
             } else {
                 "Allow for session  S"
             },
-            !approval_enabled,
+            !(approval_enabled && allow_session_enabled),
             &label,
         );
     }
@@ -1444,6 +1528,9 @@ fn managed_launch_recovery(diagnostic: &str) -> &'static str {
         "connection-launch-executable-changed" => "OpenSSH changed; review again",
         "connection-launch-capacity-reached" => "50 managed sessions are already active",
         "connection-launch-review-stale" => "This review changed; reopen it",
+        "connection-launch-tunnel-allow-once-required" => {
+            "This tunnel requires a fresh Allow once decision"
+        }
         "connection-launch-working-directory-unavailable" => {
             "A safe working folder is unavailable"
         }
@@ -2423,11 +2510,13 @@ mod tests {
                     }
                 })
                 .collect(),
+                tunnels: Vec::new(),
                 changed_fields: Vec::new(),
                 warnings: Vec::new(),
                 primary_label: "Check & allow once  [A / Enter]",
                 execution_enabled: false,
                 approval_action_enabled: true,
+                allow_session_enabled: true,
                 accessibility_tree: Vec::new(),
             });
         presentation
@@ -2584,6 +2673,50 @@ mod tests {
                 Some(ConnectionHubHit::DenyManagedLaunch)
             );
         }
+    }
+
+    #[test]
+    fn strong_tunnel_is_colored_and_session_approval_is_inert() {
+        let mut presentation = review_presentation();
+        {
+            let review = presentation.direct_openssh_review.as_mut().unwrap();
+            review.allow_session_enabled = false;
+            review.tunnels.push(TunnelReviewView {
+                id: "admin-forward".into(),
+                semantic_icon: "remote-forward".into(),
+                kind_label: "Remote".into(),
+                listen_endpoint: "0.0.0.0:8443".into(),
+                target_endpoint: Some("127.0.0.1:443".into()),
+                state_label: "Planned".into(),
+                owner_label: "OpenSSH session".into(),
+                confirmation_label: "Strong every use".into(),
+                blocking: true,
+            });
+            let tunnel = &review.tunnels[0];
+            assert_eq!(
+                tunnel_review_summary(tunnel),
+                "Remote · 0.0.0.0:8443 → 127.0.0.1:443 · Planned"
+            );
+            assert_eq!(tunnel_review_color(tunnel), WARNING);
+        }
+        let dimensions = (1280.0, 720.0, 1.0);
+        let layout = ConnectionHub::layout(&presentation, dimensions);
+        let session = layout.connection_review_session.unwrap();
+
+        let mut hub = ConnectionHub::default();
+        hub.set_presentation(Some(presentation));
+        assert_eq!(
+            hub.hit_test(session.x + 1.0, session.y + 1.0, dimensions),
+            Some(ConnectionHubHit::Inert)
+        );
+    }
+
+    #[test]
+    fn strong_tunnel_recovery_is_actionable_and_fixed() {
+        assert_eq!(
+            managed_launch_recovery("connection-launch-tunnel-allow-once-required"),
+            "This tunnel requires a fresh Allow once decision"
+        );
     }
 
     #[test]

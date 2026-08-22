@@ -295,11 +295,92 @@ pub struct TunnelDefinitionV1 {
 }
 
 impl TunnelDefinitionV1 {
-    pub fn is_loopback(&self) -> bool {
-        matches!(
-            self.bind_address.as_str(),
-            "127.0.0.1" | "::1" | "localhost"
+    const DEFAULT_LOOPBACK_BIND_ADDRESS: &'static str = "127.0.0.1";
+
+    pub fn local_loopback(
+        id: impl Into<String>,
+        listen_port: u16,
+        destination_host: impl Into<String>,
+        destination_port: u16,
+    ) -> Self {
+        Self::fixed_loopback(
+            id,
+            TunnelKind::Local,
+            listen_port,
+            destination_host,
+            destination_port,
         )
+    }
+
+    pub fn remote_loopback(
+        id: impl Into<String>,
+        listen_port: u16,
+        destination_host: impl Into<String>,
+        destination_port: u16,
+    ) -> Self {
+        Self::fixed_loopback(
+            id,
+            TunnelKind::Remote,
+            listen_port,
+            destination_host,
+            destination_port,
+        )
+    }
+
+    pub fn dynamic_loopback(id: impl Into<String>, listen_port: u16) -> Self {
+        Self {
+            schema_version: CONNECTION_SCHEMA_VERSION,
+            id: id.into(),
+            kind: TunnelKind::Dynamic,
+            bind_address: Self::DEFAULT_LOOPBACK_BIND_ADDRESS.into(),
+            listen_port,
+            destination_host: None,
+            destination_port: None,
+            lifetime: TunnelLifetime::Session,
+        }
+    }
+
+    fn fixed_loopback(
+        id: impl Into<String>,
+        kind: TunnelKind,
+        listen_port: u16,
+        destination_host: impl Into<String>,
+        destination_port: u16,
+    ) -> Self {
+        Self {
+            schema_version: CONNECTION_SCHEMA_VERSION,
+            id: id.into(),
+            kind,
+            bind_address: Self::DEFAULT_LOOPBACK_BIND_ADDRESS.into(),
+            listen_port,
+            destination_host: Some(destination_host.into()),
+            destination_port: Some(destination_port),
+            lifetime: TunnelLifetime::Session,
+        }
+    }
+
+    pub fn is_loopback(&self) -> bool {
+        if matches!(self.bind_address.as_str(), "localhost" | "::1") {
+            return true;
+        }
+        let mut octets = self.bind_address.split('.');
+        let Some(first) = octets.next() else {
+            return false;
+        };
+        if first != "127" {
+            return false;
+        }
+        let mut remaining = 0;
+        for octet in octets {
+            if octet.is_empty()
+                || (octet.len() > 1 && octet.starts_with('0'))
+                || octet.parse::<u8>().is_err()
+            {
+                return false;
+            }
+            remaining += 1;
+        }
+        remaining == 3
     }
 }
 

@@ -3,6 +3,9 @@ use std::collections::{HashMap, HashSet};
 use serde::de::DeserializeOwned;
 
 use super::model::*;
+use super::openssh_tunnels::{
+    canonical_tunnel_bind_address, canonical_tunnel_destination_host,
+};
 
 fn error(
     code: ConnectionModelErrorCode,
@@ -537,7 +540,7 @@ fn validate_provider_transport(
 fn validate_tunnel(tunnel: &TunnelDefinitionV1) -> Result<(), ConnectionModelError> {
     validate_schema(tunnel.schema_version, "tunnel.schema_version")?;
     validate_identifier(&tunnel.id, "tunnel.id")?;
-    validate_target(&tunnel.bind_address, "tunnel.bind_address")?;
+    canonical_tunnel_bind_address(&tunnel.bind_address)?;
     if tunnel.listen_port == 0 {
         return Err(error(
             ConnectionModelErrorCode::InvalidPolicy,
@@ -563,7 +566,7 @@ fn validate_tunnel(tunnel: &TunnelDefinitionV1) -> Result<(), ConnectionModelErr
                     "forwarding destination is required",
                 ));
             };
-            validate_target(host, "tunnel.destination_host")?;
+            canonical_tunnel_destination_host(host)?;
             if tunnel.destination_port.is_none() || tunnel.destination_port == Some(0) {
                 return Err(error(
                     ConnectionModelErrorCode::InvalidPolicy,
@@ -595,8 +598,9 @@ fn validate_tunnels(tunnels: &[TunnelDefinitionV1]) -> Result<(), ConnectionMode
                 "duplicate tunnel IDs are forbidden",
             ));
         }
-        if matches!(tunnel.kind, TunnelKind::Local | TunnelKind::Dynamic)
-            && !listeners.insert((tunnel.bind_address.as_str(), tunnel.listen_port))
+        let listener_side_is_remote = tunnel.kind == TunnelKind::Remote;
+        let bind_address = canonical_tunnel_bind_address(&tunnel.bind_address)?;
+        if !listeners.insert((listener_side_is_remote, bind_address, tunnel.listen_port))
         {
             return Err(error(
                 ConnectionModelErrorCode::DuplicateId,
