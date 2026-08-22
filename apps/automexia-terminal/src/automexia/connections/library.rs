@@ -1,11 +1,11 @@
 //! Private, transactional persistence for Connection Hub public configuration.
 //!
-//! This application boundary stores validated profiles, recipes, and UI
-//! preferences. It owns no process, network, authentication, PTY, listener, or
-//! credential capability.
+//! This application boundary stores validated profiles, recipes, declarative
+//! workspaces, and UI preferences. It owns no process, network, authentication,
+//! PTY, listener, or credential capability.
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt,
     fs::{self, File, TryLockError},
     io::Write,
@@ -13,10 +13,12 @@ use std::{
 };
 
 use automexia_devops::connections::{
-    validate_profile_document, validate_recipe_document, AutomationRecipeDocumentV1,
-    AutomationRecipeV1, ConnectionProfileDocumentV1, ConnectionProfileV1,
-    ConnectionSource, IdentityKind, OpaqueReference, SourceKind, TransportDescriptor,
-    MAX_PROFILES, MAX_RECIPES,
+    fingerprint_profile, fingerprint_recipe, validate_profile_document,
+    validate_recipe_document, validate_workspace, validate_workspace_document,
+    AutomationRecipeDocumentV1, AutomationRecipeV1, ConnectionProfileDocumentV1,
+    ConnectionProfileV1, ConnectionSource, EnvironmentKind, EnvironmentRisk,
+    IdentityKind, OpaqueReference, SourceKind, TransportDescriptor, WorkspaceDocumentV1,
+    WorkspaceIntentV1, MAX_PROFILES, MAX_RECIPES, MAX_WORKSPACES,
 };
 use automexia_ui_model::connection_hub::{HubCatalogGrouping, HubCatalogSource};
 use serde::{Deserialize, Serialize};
@@ -24,12 +26,15 @@ use tempfile::NamedTempFile;
 
 use super::private_fs::{self as secure_fs, PrivateFsError, PrivateFsErrorCode};
 
-pub const CONNECTION_LIBRARY_SCHEMA: u16 = 1;
+pub const CONNECTION_LIBRARY_SCHEMA: u16 = 2;
+// Keep the established private filenames so schema-1 recovery remains atomic;
+// the document version, not its path, selects the reviewed migration.
 pub const CONNECTION_LIBRARY_FILE: &str = "library.v1.json";
 pub const CONNECTION_LIBRARY_PREVIOUS_FILE: &str = "library.previous.v1.json";
 pub const CONNECTION_LIBRARY_LOCK_FILE: &str = ".library.lock";
 pub const MAX_CONNECTION_LIBRARY_BYTES: usize = 16 * 1024 * 1024;
 const MAX_PREFERENCE_TEXT_BYTES: usize = 512;
+const MAX_FRESH_ID_ATTEMPTS: u64 = 1_024;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -48,6 +53,8 @@ pub struct ConnectionLibraryDocument {
     pub revision: u64,
     pub profiles: ConnectionProfileDocumentV1,
     pub recipes: AutomationRecipeDocumentV1,
+    #[serde(default)]
+    pub workspaces: WorkspaceDocumentV1,
     pub preferences: HubPreferences,
 }
 
@@ -66,6 +73,7 @@ impl Default for ConnectionLibraryDocument {
                 revision: 0,
                 recipes: Vec::new(),
             },
+            workspaces: WorkspaceDocumentV1::default(),
             preferences: HubPreferences::default(),
         }
     }
@@ -78,13 +86,17 @@ pub struct LibraryTransferDocument {
     pub redacted: bool,
     pub profiles: Vec<ConnectionProfileV1>,
     pub recipes: Vec<AutomationRecipeV1>,
+    #[serde(default)]
+    pub workspaces: Vec<WorkspaceIntentV1>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LibraryLoadOrigin {
     Empty,
     Primary,
+    PrimaryMigrationPreview,
     PreviousRecovery,
+    PreviousMigrationPreview,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -92,6 +104,100 @@ pub struct LibraryLoadResult {
     pub document: ConnectionLibraryDocument,
     pub origin: LibraryLoadOrigin,
     pub rejected_primary: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LibraryEdit {
+    PutProfile {
+        expected_entity_revision: Option<u64>,
+        profile: Box<ConnectionProfileV1>,
+    },
+    RemoveProfile {
+        expected_entity_revision: u64,
+        profile_id: String,
+    },
+    PutRecipe {
+        expected_entity_revision: Option<u64>,
+        recipe: Box<AutomationRecipeV1>,
+    },
+    RemoveRecipe {
+        expected_entity_revision: u64,
+        recipe_id: String,
+    },
+    PutWorkspace {
+        expected_entity_revision: Option<u64>,
+        workspace: Box<WorkspaceIntentV1>,
+    },
+    RemoveWorkspace {
+        expected_entity_revision: u64,
+        workspace_id: String,
+    },
+}
+
+impl LibraryEdit {
+    pub fn put_profile(
+        expected_entity_revision: Option<u64>,
+        profile: ConnectionProfileV1,
+    ) -> Self {
+        Self::PutProfile {
+            expected_entity_revision,
+            profile: Box::new(profile),
+        }
+    }
+
+    pub fn put_recipe(
+        expected_entity_revision: Option<u64>,
+        recipe: AutomationRecipeV1,
+    ) -> Self {
+        Self::PutRecipe {
+            expected_entity_revision,
+            recipe: Box::new(recipe),
+        }
+    }
+
+    pub fn put_workspace(
+        expected_entity_revision: Option<u64>,
+        workspace: WorkspaceIntentV1,
+    ) -> Self {
+        Self::PutWorkspace {
+            expected_entity_revision,
+            workspace: Box::new(workspace),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LibraryEditPreview {
+    pub base_revision: u64,
+    pub document: ConnectionLibraryDocument,
+    pub changed_entity: String,
+    pub invalidated_approval_count: usize,
+    pub preview_fingerprint: String,
+    pub review_required: bool,
+    pub execution_enabled: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LibraryExportPreview {
+    pub bytes: Vec<u8>,
+    pub profile_count: usize,
+    pub recipe_count: usize,
+    pub workspace_count: usize,
+    pub redacted: bool,
+    pub review_required: bool,
+    pub execution_enabled: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LibraryImportPreview {
+    pub base_revision: u64,
+    pub document: ConnectionLibraryDocument,
+    pub imported_profile_count: usize,
+    pub imported_recipe_count: usize,
+    pub imported_workspace_count: usize,
+    pub preview_fingerprint: String,
+    pub review_required: bool,
+    pub execution_enabled: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -109,6 +215,10 @@ pub enum LibraryErrorCode {
     RecoveryRequired,
     RecoveryNotRequired,
     TransferRejected,
+    InvalidEdit,
+    EntityNotFound,
+    ReferencedEntity,
+    PreviewMismatch,
     ReadOnly,
     DiskFull,
 }
@@ -192,9 +302,13 @@ impl ConnectionLibraryStore {
         secure_fs::validate_private_child_directory(&self.root)
             .map_err(map_private_fs)?;
         match read_optional(&self.path()) {
-            Ok(Some(document)) => Ok(LibraryLoadResult {
+            Ok(Some((document, migrated))) => Ok(LibraryLoadResult {
                 document,
-                origin: LibraryLoadOrigin::Primary,
+                origin: if migrated {
+                    LibraryLoadOrigin::PrimaryMigrationPreview
+                } else {
+                    LibraryLoadOrigin::Primary
+                },
                 rejected_primary: false,
             }),
             Ok(None) => self.load_previous(false),
@@ -211,6 +325,7 @@ impl ConnectionLibraryStore {
         if reviewed.revision != expected_revision
             || reviewed.profiles.revision != expected_revision
             || reviewed.recipes.revision != expected_revision
+            || reviewed.workspaces.revision != expected_revision
         {
             return Err(LibraryError::new(LibraryErrorCode::StaleRevision));
         }
@@ -235,7 +350,7 @@ impl ConnectionLibraryStore {
             Ok(None) | Err(ReadFailure::Recoverable(_)) => {}
             Err(ReadFailure::Fatal(error)) => return Err(error),
         }
-        let mut previous = read_optional(&self.previous_path())
+        let (mut previous, _) = read_optional(&self.previous_path())
             .map_err(read_failure_error)?
             .ok_or_else(|| LibraryError::new(LibraryErrorCode::RecoveryRequired))?;
         if previous.revision != expected_previous_revision {
@@ -250,10 +365,10 @@ impl ConnectionLibraryStore {
         Ok(previous)
     }
 
-    pub fn export_redacted(
+    pub fn preview_export_redacted(
         &self,
         document: &ConnectionLibraryDocument,
-    ) -> Result<Vec<u8>, LibraryError> {
+    ) -> Result<LibraryExportPreview, LibraryError> {
         validate_document(document)?;
         let transfer = LibraryTransferDocument {
             schema_version: CONNECTION_LIBRARY_SCHEMA,
@@ -276,8 +391,60 @@ impl ConnectionLibraryStore {
                     sanitized_recipe(recipe, format!("export-recipe-{index}"))
                 })
                 .collect(),
+            workspaces: document
+                .workspaces
+                .workspaces
+                .iter()
+                .enumerate()
+                .map(|(index, workspace)| {
+                    sanitized_workspace(workspace, format!("export-workspace-{index}"))
+                })
+                .collect::<Result<Vec<_>, _>>()?,
         };
-        serialize_bounded(&transfer)
+        let bytes = serialize_bounded(&transfer)?;
+        Ok(LibraryExportPreview {
+            bytes,
+            profile_count: transfer.profiles.len(),
+            recipe_count: transfer.recipes.len(),
+            workspace_count: transfer.workspaces.len(),
+            redacted: true,
+            review_required: true,
+            execution_enabled: false,
+        })
+    }
+
+    pub fn export_redacted(
+        &self,
+        document: &ConnectionLibraryDocument,
+    ) -> Result<Vec<u8>, LibraryError> {
+        self.preview_export_redacted(document)
+            .map(|preview| preview.bytes)
+    }
+
+    pub fn preview_import_redacted(
+        &self,
+        expected_revision: u64,
+        bytes: &[u8],
+    ) -> Result<LibraryImportPreview, LibraryError> {
+        let (current, _) = self.current_for_write()?;
+        if current.revision != expected_revision {
+            return Err(LibraryError::new(LibraryErrorCode::StaleRevision));
+        }
+        build_import_preview(&current, bytes)
+    }
+
+    pub fn commit_import(
+        &self,
+        preview: &LibraryImportPreview,
+    ) -> Result<ConnectionLibraryDocument, LibraryError> {
+        if preview.execution_enabled
+            || !preview.review_required
+            || preview.document.revision != preview.base_revision
+            || document_fingerprint(&preview.document)? != preview.preview_fingerprint
+        {
+            return Err(LibraryError::new(LibraryErrorCode::PreviewMismatch));
+        }
+        self.compare_and_swap(preview.base_revision, &preview.document)
     }
 
     pub fn import_redacted(
@@ -285,68 +452,22 @@ impl ConnectionLibraryStore {
         expected_revision: u64,
         bytes: &[u8],
     ) -> Result<ConnectionLibraryDocument, LibraryError> {
-        if bytes.len() > MAX_CONNECTION_LIBRARY_BYTES {
-            return Err(LibraryError::new(LibraryErrorCode::TooLarge));
-        }
-        let transfer: LibraryTransferDocument = serde_json::from_slice(bytes)
-            .map_err(|_| LibraryError::new(LibraryErrorCode::TransferRejected))?;
-        if transfer.schema_version != CONNECTION_LIBRARY_SCHEMA || !transfer.redacted {
-            return Err(LibraryError::new(LibraryErrorCode::TransferRejected));
-        }
-        validate_transfer(&transfer)?;
+        let preview = self.preview_import_redacted(expected_revision, bytes)?;
+        self.commit_import(&preview)
+    }
 
-        let _lock = self.try_write_lock()?;
-        let (mut current, current_bytes) = self.current_for_write()?;
-        if current.revision != expected_revision {
-            return Err(LibraryError::new(LibraryErrorCode::StaleRevision));
-        }
-        if current
-            .profiles
-            .profiles
-            .len()
-            .checked_add(transfer.profiles.len())
-            .is_none_or(|count| count > MAX_PROFILES)
-            || current
-                .recipes
-                .recipes
-                .len()
-                .checked_add(transfer.recipes.len())
-                .is_none_or(|count| count > MAX_RECIPES)
+    pub fn commit_edit(
+        &self,
+        preview: &LibraryEditPreview,
+    ) -> Result<ConnectionLibraryDocument, LibraryError> {
+        if preview.execution_enabled
+            || !preview.review_required
+            || preview.document.revision != preview.base_revision
+            || document_fingerprint(&preview.document)? != preview.preview_fingerprint
         {
-            return Err(LibraryError::new(LibraryErrorCode::TransferRejected));
+            return Err(LibraryError::new(LibraryErrorCode::PreviewMismatch));
         }
-        let mut profile_ids = current
-            .profiles
-            .profiles
-            .iter()
-            .map(|profile| profile.id.clone())
-            .collect::<HashSet<_>>();
-        let mut recipe_ids = current
-            .recipes
-            .recipes
-            .iter()
-            .map(|recipe| recipe.id.clone())
-            .collect::<HashSet<_>>();
-        for (index, profile) in transfer.profiles.iter().enumerate() {
-            let id = fresh_id("profile", bytes, expected_revision, index, &profile_ids);
-            profile_ids.insert(id.clone());
-            current
-                .profiles
-                .profiles
-                .push(sanitized_profile(profile, id));
-        }
-        for (index, recipe) in transfer.recipes.iter().enumerate() {
-            let id = fresh_id("recipe", bytes, expected_revision, index, &recipe_ids);
-            recipe_ids.insert(id.clone());
-            current.recipes.recipes.push(sanitized_recipe(recipe, id));
-        }
-        let next_revision = expected_revision
-            .checked_add(1)
-            .ok_or_else(|| LibraryError::new(LibraryErrorCode::RevisionOverflow))?;
-        set_revision(&mut current, next_revision);
-        validate_document(&current)?;
-        self.persist_document(&current, current_bytes.as_deref())?;
-        Ok(current)
+        self.compare_and_swap(preview.base_revision, &preview.document)
     }
 
     fn load_previous(
@@ -354,9 +475,13 @@ impl ConnectionLibraryStore {
         rejected_primary: bool,
     ) -> Result<LibraryLoadResult, LibraryError> {
         match read_optional(&self.previous_path()) {
-            Ok(Some(document)) => Ok(LibraryLoadResult {
+            Ok(Some((document, migrated))) => Ok(LibraryLoadResult {
                 document,
-                origin: LibraryLoadOrigin::PreviousRecovery,
+                origin: if migrated {
+                    LibraryLoadOrigin::PreviousMigrationPreview
+                } else {
+                    LibraryLoadOrigin::PreviousRecovery
+                },
                 rejected_primary,
             }),
             Ok(None) if !rejected_primary => Ok(LibraryLoadResult {
@@ -387,7 +512,7 @@ impl ConnectionLibraryStore {
         &self,
     ) -> Result<(ConnectionLibraryDocument, Option<Vec<u8>>), LibraryError> {
         match read_optional_bytes(&self.path()) {
-            Ok(Some((document, bytes))) => Ok((document, Some(bytes))),
+            Ok(Some((document, bytes, _))) => Ok((document, Some(bytes))),
             Ok(None) => match read_optional(&self.previous_path()) {
                 Ok(None) => Ok((ConnectionLibraryDocument::default(), None)),
                 Ok(Some(_)) | Err(ReadFailure::Recoverable(_)) => {
@@ -462,6 +587,7 @@ fn validate_document(document: &ConnectionLibraryDocument) -> Result<(), Library
     if document.schema_version != CONNECTION_LIBRARY_SCHEMA
         || document.profiles.revision != document.revision
         || document.recipes.revision != document.revision
+        || document.workspaces.revision != document.revision
     {
         return Err(LibraryError::new(LibraryErrorCode::ModelRejected));
     }
@@ -469,9 +595,53 @@ fn validate_document(document: &ConnectionLibraryDocument) -> Result<(), Library
         .map_err(|_| LibraryError::new(LibraryErrorCode::ModelRejected))?;
     validate_recipe_document(&document.recipes)
         .map_err(|_| LibraryError::new(LibraryErrorCode::ModelRejected))?;
+    validate_workspace_document(&document.workspaces)
+        .map_err(|_| LibraryError::new(LibraryErrorCode::ModelRejected))?;
+    let recipes = document
+        .recipes
+        .recipes
+        .iter()
+        .map(|recipe| {
+            fingerprint_recipe(recipe)
+                .map(|fingerprint| (recipe.id.as_str(), (recipe.revision, fingerprint)))
+        })
+        .collect::<Result<HashMap<_, _>, _>>()
+        .map_err(|_| LibraryError::new(LibraryErrorCode::ModelRejected))?;
+    for profile in &document.profiles.profiles {
+        for reference in &profile.recipe_references {
+            let Some((revision, fingerprint)) = recipes.get(reference.id.as_str()) else {
+                return Err(LibraryError::new(LibraryErrorCode::ModelRejected));
+            };
+            if *revision != reference.revision || *fingerprint != reference.fingerprint {
+                return Err(LibraryError::new(LibraryErrorCode::ModelRejected));
+            }
+        }
+    }
+    for workspace in &document.workspaces.workspaces {
+        for connection in &workspace.connections {
+            let profile = document
+                .profiles
+                .profiles
+                .iter()
+                .find(|profile| profile.id == connection.profile_id)
+                .ok_or_else(|| LibraryError::new(LibraryErrorCode::ModelRejected))?;
+            let profile_recipe_fingerprints = profile
+                .recipe_references
+                .iter()
+                .map(|reference| reference.fingerprint.clone())
+                .collect::<Vec<_>>();
+            if profile.revision != connection.profile_revision
+                || fingerprint_profile(profile)
+                    .map_err(|_| LibraryError::new(LibraryErrorCode::ModelRejected))?
+                    != connection.profile_fingerprint
+                || connection.recipe_fingerprints != profile_recipe_fingerprints
+            {
+                return Err(LibraryError::new(LibraryErrorCode::ModelRejected));
+            }
+        }
+    }
     validate_preferences(&document.preferences)
 }
-
 fn validate_preferences(preferences: &HubPreferences) -> Result<(), LibraryError> {
     if let Some(tag) = preferences.tag.as_deref() {
         if tag.trim().is_empty()
@@ -498,6 +668,7 @@ fn set_revision(document: &mut ConnectionLibraryDocument, revision: u64) {
     document.revision = revision;
     document.profiles.revision = revision;
     document.recipes.revision = revision;
+    document.workspaces.revision = revision;
 }
 
 fn validate_transfer(transfer: &LibraryTransferDocument) -> Result<(), LibraryError> {
@@ -511,6 +682,12 @@ fn validate_transfer(transfer: &LibraryTransferDocument) -> Result<(), LibraryEr
         schema_version: 1,
         revision: 0,
         recipes: transfer.recipes.clone(),
+    })
+    .map_err(|_| LibraryError::new(LibraryErrorCode::TransferRejected))?;
+    validate_workspace_document(&WorkspaceDocumentV1 {
+        schema_version: 1,
+        revision: 0,
+        workspaces: transfer.workspaces.clone(),
     })
     .map_err(|_| LibraryError::new(LibraryErrorCode::TransferRejected))
 }
@@ -621,14 +798,50 @@ fn sanitized_recipe(recipe: &AutomationRecipeV1, id: String) -> AutomationRecipe
     recipe
 }
 
+fn sanitized_workspace(
+    workspace: &WorkspaceIntentV1,
+    id: String,
+) -> Result<WorkspaceIntentV1, LibraryError> {
+    let mut workspace = workspace.clone();
+    workspace.id = id.clone();
+    workspace.revision = 1;
+    workspace.display_name = "Imported workspace".into();
+    workspace.description.clear();
+    workspace.environment.kind = EnvironmentKind::Custom;
+    workspace.environment.label = "Configure locally".into();
+    workspace.environment.risk = EnvironmentRisk::Local;
+    workspace.connections.clear();
+    workspace.approval_fingerprint = None;
+    workspace.created_at_ms = 0;
+    workspace.updated_at_ms = 0;
+    for (window_index, window) in workspace.windows.iter_mut().enumerate() {
+        window.id = format!("{id}-w{window_index}");
+        let mut pane_ids = HashMap::new();
+        for (pane_index, pane) in window.panes.iter_mut().enumerate() {
+            let previous = pane.id.clone();
+            pane.id = format!("{id}-w{window_index}-p{pane_index}");
+            pane_ids.insert(previous, pane.id.clone());
+        }
+        for pane in &mut window.panes {
+            if let Some(parent) = &mut pane.parent_pane_id {
+                *parent = pane_ids.get(parent).cloned().ok_or_else(|| {
+                    LibraryError::new(LibraryErrorCode::TransferRejected)
+                })?;
+            }
+        }
+    }
+    validate_workspace(&workspace)
+        .map_err(|_| LibraryError::new(LibraryErrorCode::TransferRejected))?;
+    Ok(workspace)
+}
 fn fresh_id(
     kind: &str,
     bytes: &[u8],
     revision: u64,
     index: usize,
     existing: &HashSet<String>,
-) -> String {
-    for salt in 0_u64.. {
+) -> Result<String, LibraryError> {
+    for salt in 0..MAX_FRESH_ID_ATTEMPTS {
         let mut hash = blake3::Hasher::new();
         hash.update(kind.as_bytes());
         hash.update(&revision.to_le_bytes());
@@ -638,12 +851,11 @@ fn fresh_id(
         let encoded = hash.finalize().to_hex();
         let candidate = format!("local-{kind}-{}", &encoded.as_str()[..24]);
         if !existing.contains(&candidate) {
-            return candidate;
+            return Ok(candidate);
         }
     }
-    unreachable!()
+    Err(LibraryError::new(LibraryErrorCode::TransferRejected))
 }
-
 struct BoundedWriter {
     bytes: Vec<u8>,
 }
@@ -684,13 +896,16 @@ fn serialize_bounded(value: &impl Serialize) -> Result<Vec<u8>, LibraryError> {
     Ok(writer.bytes)
 }
 
-fn read_optional(path: &Path) -> Result<Option<ConnectionLibraryDocument>, ReadFailure> {
-    read_optional_bytes(path).map(|value| value.map(|(document, _)| document))
+fn read_optional(
+    path: &Path,
+) -> Result<Option<(ConnectionLibraryDocument, bool)>, ReadFailure> {
+    read_optional_bytes(path)
+        .map(|value| value.map(|(document, _, migrated)| (document, migrated)))
 }
 
 fn read_optional_bytes(
     path: &Path,
-) -> Result<Option<(ConnectionLibraryDocument, Vec<u8>)>, ReadFailure> {
+) -> Result<Option<(ConnectionLibraryDocument, Vec<u8>, bool)>, ReadFailure> {
     match fs::symlink_metadata(path) {
         Ok(_) => secure_fs::inspect_private_file(path)
             .map_err(|error| ReadFailure::Fatal(map_private_fs(error)))?,
@@ -705,11 +920,26 @@ fn read_optional_bytes(
             _ => ReadFailure::Fatal(map_private_fs(error)),
         })?
         .ok_or_else(|| ReadFailure::Fatal(LibraryError::new(LibraryErrorCode::Io)))?;
-    let document = serde_json::from_slice(&bytes).map_err(|_| {
-        ReadFailure::Recoverable(LibraryError::new(LibraryErrorCode::Malformed))
-    })?;
+    let mut document: ConnectionLibraryDocument = serde_json::from_slice(&bytes)
+        .map_err(|_| {
+            ReadFailure::Recoverable(LibraryError::new(LibraryErrorCode::Malformed))
+        })?;
+    let migrated = match document.schema_version {
+        CONNECTION_LIBRARY_SCHEMA => false,
+        1 if document.workspaces.workspaces.is_empty() => {
+            document.schema_version = CONNECTION_LIBRARY_SCHEMA;
+            document.workspaces.schema_version = 1;
+            document.workspaces.revision = document.revision;
+            true
+        }
+        _ => {
+            return Err(ReadFailure::Recoverable(LibraryError::new(
+                LibraryErrorCode::ModelRejected,
+            )));
+        }
+    };
     validate_document(&document).map_err(ReadFailure::Recoverable)?;
-    Ok(Some((document, bytes)))
+    Ok(Some((document, bytes, migrated)))
 }
 
 fn map_private_fs(error: PrivateFsError) -> LibraryError {
@@ -736,6 +966,387 @@ fn read_failure_error(error: ReadFailure) -> LibraryError {
     }
 }
 
+fn document_fingerprint(
+    document: &ConnectionLibraryDocument,
+) -> Result<String, LibraryError> {
+    validate_document(document)?;
+    Ok(blake3::hash(&serialize_bounded(document)?)
+        .to_hex()
+        .to_string())
+}
+
+fn clear_approval(value: &mut Option<String>) -> usize {
+    usize::from(value.take().is_some())
+}
+
+fn next_entity_revision(current: u64) -> Result<u64, LibraryError> {
+    current
+        .checked_add(1)
+        .ok_or_else(|| LibraryError::new(LibraryErrorCode::RevisionOverflow))
+}
+
+fn validate_entity_revision(
+    existing: Option<u64>,
+    expected: Option<u64>,
+    replacement: u64,
+) -> Result<(), LibraryError> {
+    match (existing, expected) {
+        (None, None) if replacement == 1 => Ok(()),
+        (Some(current), Some(reviewed))
+            if current == reviewed
+                && next_entity_revision(current)
+                    .is_ok_and(|next| replacement == next) =>
+        {
+            Ok(())
+        }
+        (Some(_), None) | (None, Some(_)) => {
+            Err(LibraryError::new(LibraryErrorCode::StaleRevision))
+        }
+        _ => Err(LibraryError::new(LibraryErrorCode::InvalidEdit)),
+    }
+}
+pub fn preview_library_edit(
+    current: &ConnectionLibraryDocument,
+    edit: LibraryEdit,
+) -> Result<LibraryEditPreview, LibraryError> {
+    validate_document(current)?;
+    let mut document = current.clone();
+    let mut invalidated_approval_count = 0usize;
+    let changed_entity = match edit {
+        LibraryEdit::PutProfile {
+            expected_entity_revision,
+            profile,
+        } => {
+            let mut profile = *profile;
+            let existing_index = document
+                .profiles
+                .profiles
+                .iter()
+                .position(|candidate| candidate.id == profile.id);
+            validate_entity_revision(
+                existing_index.map(|index| document.profiles.profiles[index].revision),
+                expected_entity_revision,
+                profile.revision,
+            )?;
+            validate_profile_document(&ConnectionProfileDocumentV1 {
+                schema_version: 1,
+                revision: 0,
+                profiles: vec![profile.clone()],
+            })
+            .map_err(|_| LibraryError::new(LibraryErrorCode::InvalidEdit))?;
+            invalidated_approval_count +=
+                clear_approval(&mut profile.approval_fingerprint);
+            let profile_fingerprint = fingerprint_profile(&profile)
+                .map_err(|_| LibraryError::new(LibraryErrorCode::InvalidEdit))?;
+            let profile_id = profile.id.clone();
+            if let Some(index) = existing_index {
+                document.profiles.profiles[index] = profile.clone();
+            } else {
+                if document.profiles.profiles.len() >= MAX_PROFILES {
+                    return Err(LibraryError::new(LibraryErrorCode::InvalidEdit));
+                }
+                document.profiles.profiles.push(profile.clone());
+            }
+            let recipe_fingerprints = profile
+                .recipe_references
+                .iter()
+                .map(|reference| reference.fingerprint.clone())
+                .collect::<Vec<_>>();
+            for workspace in &mut document.workspaces.workspaces {
+                let mut changed = false;
+                for connection in &mut workspace.connections {
+                    if connection.profile_id == profile_id {
+                        connection.profile_revision = profile.revision;
+                        connection.profile_fingerprint = profile_fingerprint.clone();
+                        connection.recipe_fingerprints = recipe_fingerprints.clone();
+                        changed = true;
+                    }
+                }
+                if changed {
+                    workspace.revision = next_entity_revision(workspace.revision)?;
+                    invalidated_approval_count +=
+                        clear_approval(&mut workspace.approval_fingerprint);
+                }
+            }
+            format!("profile:{profile_id}")
+        }
+        LibraryEdit::RemoveProfile {
+            expected_entity_revision,
+            profile_id,
+        } => {
+            if document.workspaces.workspaces.iter().any(|workspace| {
+                workspace
+                    .connections
+                    .iter()
+                    .any(|connection| connection.profile_id == profile_id)
+            }) {
+                return Err(LibraryError::new(LibraryErrorCode::ReferencedEntity));
+            }
+            let index = document
+                .profiles
+                .profiles
+                .iter()
+                .position(|profile| {
+                    profile.id == profile_id
+                        && profile.revision == expected_entity_revision
+                })
+                .ok_or_else(|| LibraryError::new(LibraryErrorCode::EntityNotFound))?;
+            document.profiles.profiles.remove(index);
+            format!("profile:{profile_id}")
+        }
+        LibraryEdit::PutRecipe {
+            expected_entity_revision,
+            recipe,
+        } => {
+            let mut recipe = *recipe;
+            let existing_index = document
+                .recipes
+                .recipes
+                .iter()
+                .position(|candidate| candidate.id == recipe.id);
+            validate_entity_revision(
+                existing_index.map(|index| document.recipes.recipes[index].revision),
+                expected_entity_revision,
+                recipe.revision,
+            )?;
+            validate_recipe_document(&AutomationRecipeDocumentV1 {
+                schema_version: 1,
+                revision: 0,
+                recipes: vec![recipe.clone()],
+            })
+            .map_err(|_| LibraryError::new(LibraryErrorCode::InvalidEdit))?;
+            invalidated_approval_count +=
+                clear_approval(&mut recipe.approval_fingerprint);
+            let recipe_fingerprint = fingerprint_recipe(&recipe)
+                .map_err(|_| LibraryError::new(LibraryErrorCode::InvalidEdit))?;
+            let recipe_id = recipe.id.clone();
+            let recipe_revision = recipe.revision;
+            if let Some(index) = existing_index {
+                document.recipes.recipes[index] = recipe;
+            } else {
+                if document.recipes.recipes.len() >= MAX_RECIPES {
+                    return Err(LibraryError::new(LibraryErrorCode::InvalidEdit));
+                }
+                document.recipes.recipes.push(recipe);
+            }
+            let mut affected_profiles = HashMap::new();
+            for profile in &mut document.profiles.profiles {
+                let mut changed = false;
+                for reference in &mut profile.recipe_references {
+                    if reference.id == recipe_id {
+                        reference.revision = recipe_revision;
+                        reference.fingerprint = recipe_fingerprint.clone();
+                        changed = true;
+                    }
+                }
+                if changed {
+                    profile.revision = next_entity_revision(profile.revision)?;
+                    invalidated_approval_count +=
+                        clear_approval(&mut profile.approval_fingerprint);
+                    let fingerprint = fingerprint_profile(profile)
+                        .map_err(|_| LibraryError::new(LibraryErrorCode::InvalidEdit))?;
+                    let recipe_fingerprints = profile
+                        .recipe_references
+                        .iter()
+                        .map(|reference| reference.fingerprint.clone())
+                        .collect::<Vec<_>>();
+                    affected_profiles.insert(
+                        profile.id.clone(),
+                        (profile.revision, fingerprint, recipe_fingerprints),
+                    );
+                }
+            }
+            for workspace in &mut document.workspaces.workspaces {
+                let mut changed = false;
+                for connection in &mut workspace.connections {
+                    if let Some((revision, fingerprint, recipe_fingerprints)) =
+                        affected_profiles.get(&connection.profile_id)
+                    {
+                        connection.profile_revision = *revision;
+                        connection.profile_fingerprint = fingerprint.clone();
+                        connection.recipe_fingerprints = recipe_fingerprints.clone();
+                        changed = true;
+                    }
+                }
+                if changed {
+                    workspace.revision = next_entity_revision(workspace.revision)?;
+                    invalidated_approval_count +=
+                        clear_approval(&mut workspace.approval_fingerprint);
+                }
+            }
+            format!("recipe:{recipe_id}")
+        }
+        LibraryEdit::RemoveRecipe {
+            expected_entity_revision,
+            recipe_id,
+        } => {
+            if document.profiles.profiles.iter().any(|profile| {
+                profile
+                    .recipe_references
+                    .iter()
+                    .any(|reference| reference.id == recipe_id)
+            }) {
+                return Err(LibraryError::new(LibraryErrorCode::ReferencedEntity));
+            }
+            let index = document
+                .recipes
+                .recipes
+                .iter()
+                .position(|recipe| {
+                    recipe.id == recipe_id && recipe.revision == expected_entity_revision
+                })
+                .ok_or_else(|| LibraryError::new(LibraryErrorCode::EntityNotFound))?;
+            document.recipes.recipes.remove(index);
+            format!("recipe:{recipe_id}")
+        }
+        LibraryEdit::PutWorkspace {
+            expected_entity_revision,
+            workspace,
+        } => {
+            let mut workspace = *workspace;
+            let existing_index = document
+                .workspaces
+                .workspaces
+                .iter()
+                .position(|candidate| candidate.id == workspace.id);
+            validate_entity_revision(
+                existing_index
+                    .map(|index| document.workspaces.workspaces[index].revision),
+                expected_entity_revision,
+                workspace.revision,
+            )?;
+            validate_workspace(&workspace)
+                .map_err(|_| LibraryError::new(LibraryErrorCode::InvalidEdit))?;
+            invalidated_approval_count +=
+                clear_approval(&mut workspace.approval_fingerprint);
+            let workspace_id = workspace.id.clone();
+            if let Some(index) = existing_index {
+                document.workspaces.workspaces[index] = workspace;
+            } else {
+                if document.workspaces.workspaces.len() >= MAX_WORKSPACES {
+                    return Err(LibraryError::new(LibraryErrorCode::InvalidEdit));
+                }
+                document.workspaces.workspaces.push(workspace);
+            }
+            format!("workspace:{workspace_id}")
+        }
+        LibraryEdit::RemoveWorkspace {
+            expected_entity_revision,
+            workspace_id,
+        } => {
+            let index = document
+                .workspaces
+                .workspaces
+                .iter()
+                .position(|workspace| {
+                    workspace.id == workspace_id
+                        && workspace.revision == expected_entity_revision
+                })
+                .ok_or_else(|| LibraryError::new(LibraryErrorCode::EntityNotFound))?;
+            document.workspaces.workspaces.remove(index);
+            format!("workspace:{workspace_id}")
+        }
+    };
+    validate_document(&document)?;
+    let preview_fingerprint = document_fingerprint(&document)?;
+    Ok(LibraryEditPreview {
+        base_revision: current.revision,
+        document,
+        changed_entity,
+        invalidated_approval_count,
+        preview_fingerprint,
+        review_required: true,
+        execution_enabled: false,
+    })
+}
+
+fn build_import_preview(
+    current: &ConnectionLibraryDocument,
+    bytes: &[u8],
+) -> Result<LibraryImportPreview, LibraryError> {
+    if bytes.len() > MAX_CONNECTION_LIBRARY_BYTES {
+        return Err(LibraryError::new(LibraryErrorCode::TooLarge));
+    }
+    let transfer: LibraryTransferDocument = serde_json::from_slice(bytes)
+        .map_err(|_| LibraryError::new(LibraryErrorCode::TransferRejected))?;
+    if transfer.schema_version != CONNECTION_LIBRARY_SCHEMA || !transfer.redacted {
+        return Err(LibraryError::new(LibraryErrorCode::TransferRejected));
+    }
+    validate_transfer(&transfer)?;
+    if current
+        .profiles
+        .profiles
+        .len()
+        .checked_add(transfer.profiles.len())
+        .is_none_or(|count| count > MAX_PROFILES)
+        || current
+            .recipes
+            .recipes
+            .len()
+            .checked_add(transfer.recipes.len())
+            .is_none_or(|count| count > MAX_RECIPES)
+        || current
+            .workspaces
+            .workspaces
+            .len()
+            .checked_add(transfer.workspaces.len())
+            .is_none_or(|count| count > MAX_WORKSPACES)
+    {
+        return Err(LibraryError::new(LibraryErrorCode::TransferRejected));
+    }
+    let mut document = current.clone();
+    let mut profile_ids = document
+        .profiles
+        .profiles
+        .iter()
+        .map(|profile| profile.id.clone())
+        .collect::<HashSet<_>>();
+    let mut recipe_ids = document
+        .recipes
+        .recipes
+        .iter()
+        .map(|recipe| recipe.id.clone())
+        .collect::<HashSet<_>>();
+    let mut workspace_ids = document
+        .workspaces
+        .workspaces
+        .iter()
+        .map(|workspace| workspace.id.clone())
+        .collect::<HashSet<_>>();
+    for (index, profile) in transfer.profiles.iter().enumerate() {
+        let id = fresh_id("profile", bytes, current.revision, index, &profile_ids)?;
+        profile_ids.insert(id.clone());
+        document
+            .profiles
+            .profiles
+            .push(sanitized_profile(profile, id));
+    }
+    for (index, recipe) in transfer.recipes.iter().enumerate() {
+        let id = fresh_id("recipe", bytes, current.revision, index, &recipe_ids)?;
+        recipe_ids.insert(id.clone());
+        document.recipes.recipes.push(sanitized_recipe(recipe, id));
+    }
+    for (index, workspace) in transfer.workspaces.iter().enumerate() {
+        let id = fresh_id("workspace", bytes, current.revision, index, &workspace_ids)?;
+        workspace_ids.insert(id.clone());
+        document
+            .workspaces
+            .workspaces
+            .push(sanitized_workspace(workspace, id)?);
+    }
+    validate_document(&document)?;
+    let preview_fingerprint = document_fingerprint(&document)?;
+    Ok(LibraryImportPreview {
+        base_revision: current.revision,
+        document,
+        imported_profile_count: transfer.profiles.len(),
+        imported_recipe_count: transfer.recipes.len(),
+        imported_workspace_count: transfer.workspaces.len(),
+        preview_fingerprint,
+        review_required: true,
+        execution_enabled: false,
+    })
+}
 #[cfg(test)]
 mod tests {
     use super::*;
