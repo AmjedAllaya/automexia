@@ -2,7 +2,8 @@
 
 use automexia_devops::connections::*;
 use automexia_terminal::automexia::connections::{
-    ConnectionLibraryDocument, ConnectionLibraryStore, HubPreferences, LibraryLoadOrigin,
+    preview_library_edit, ConnectionLibraryDocument, ConnectionLibraryStore,
+    HubPreferences, LibraryEdit, LibraryLoadOrigin, CONNECTION_LIBRARY_SCHEMA,
 };
 use automexia_ui_model::connection_hub::{HubCatalogGrouping, HubCatalogSource};
 use std::sync::{Arc, Barrier};
@@ -100,19 +101,23 @@ fn recipe() -> AutomationRecipeV1 {
 }
 
 fn document() -> ConnectionLibraryDocument {
+    let recipe = recipe();
+    let mut profile = profile();
+    profile.recipe_references[0].fingerprint = fingerprint_recipe(&recipe).unwrap();
     ConnectionLibraryDocument {
-        schema_version: 1,
+        schema_version: CONNECTION_LIBRARY_SCHEMA,
         revision: 0,
         profiles: ConnectionProfileDocumentV1 {
             schema_version: 1,
             revision: 0,
-            profiles: vec![profile()],
+            profiles: vec![profile],
         },
         recipes: AutomationRecipeDocumentV1 {
             schema_version: 1,
             revision: 0,
-            recipes: vec![recipe()],
+            recipes: vec![recipe],
         },
+        workspaces: WorkspaceDocumentV1::default(),
         preferences: HubPreferences {
             grouping: HubCatalogGrouping::Environment,
             favorites_only: true,
@@ -121,6 +126,18 @@ fn document() -> ConnectionLibraryDocument {
             source: Some(HubCatalogSource::SavedProfile),
         },
     }
+}
+#[test]
+fn mismatched_recipe_reference_fingerprint_is_rejected_by_the_library() {
+    let temporary = tempfile::tempdir().unwrap();
+    let store =
+        ConnectionLibraryStore::open(temporary.path().join("connections")).unwrap();
+    let mut invalid = document();
+    invalid.profiles.profiles[0].recipe_references[0].fingerprint = digest('f');
+    assert_eq!(
+        store.compare_and_swap(0, &invalid).unwrap_err().code(),
+        automexia_terminal::automexia::connections::LibraryErrorCode::ModelRejected
+    );
 }
 
 #[test]
@@ -244,4 +261,188 @@ fn no_follow_reads_reject_a_linked_primary_without_touching_the_target() {
     symlink(&outside, store.path()).unwrap();
     assert!(store.load().is_err());
     assert_eq!(std::fs::read(&outside).unwrap(), b"outside-canary");
+}
+
+fn workspace(profile: &ConnectionProfileV1) -> WorkspaceIntentV1 {
+    WorkspaceIntentV1 {
+        schema_version: 1,
+        id: "operations".into(),
+        revision: 1,
+        display_name: "Operations".into(),
+        description: String::new(),
+        environment: profile.environment.clone(),
+        windows: vec![WorkspaceWindowIntentV1 {
+            id: "window".into(),
+            panes: vec![WorkspacePaneIntentV1 {
+                id: "pane".into(),
+                parent_pane_id: None,
+                split: None,
+            }],
+        }],
+        connections: vec![WorkspaceConnectionIntentV1 {
+            id: "connection".into(),
+            window_id: "window".into(),
+            pane_id: "pane".into(),
+            profile_id: profile.id.clone(),
+            profile_revision: profile.revision,
+            profile_fingerprint: fingerprint_profile(profile).unwrap(),
+            recipe_fingerprints: vec![fingerprint_recipe(&recipe()).unwrap()],
+            destination_surface: DestinationSurface::Pane,
+        }],
+        approval_fingerprint: Some(digest('d')),
+        created_at_ms: 1,
+        updated_at_ms: 1,
+    }
+}
+
+#[test]
+fn schema_one_library_loads_as_an_explicit_migration_preview_before_cas() {
+    let temporary = tempfile::tempdir().unwrap();
+    let store =
+        ConnectionLibraryStore::open(temporary.path().join("connections")).unwrap();
+    let saved = store.compare_and_swap(0, &document()).unwrap();
+    let mut legacy = serde_json::to_value(saved).unwrap();
+    legacy["schema_version"] = serde_json::json!(1);
+    legacy.as_object_mut().unwrap().remove("workspaces");
+    std::fs::write(store.path(), serde_json::to_vec_pretty(&legacy).unwrap()).unwrap();
+
+    let loaded = store.load().unwrap();
+    assert_eq!(loaded.origin, LibraryLoadOrigin::PrimaryMigrationPreview);
+    assert_eq!(loaded.document.schema_version, CONNECTION_LIBRARY_SCHEMA);
+    assert!(loaded.document.workspaces.workspaces.is_empty());
+    let accepted = store
+        .compare_and_swap(loaded.document.revision, &loaded.document)
+        .unwrap();
+    assert_eq!(accepted.schema_version, CONNECTION_LIBRARY_SCHEMA);
+    assert_eq!(store.load().unwrap().origin, LibraryLoadOrigin::Primary);
+}
+
+#[test]
+fn editor_preview_invalidates_recipe_profile_and_workspace_approvals_and_cas_conflicts() {
+    let temporary = tempfile::tempdir().unwrap();
+    let store =
+        ConnectionLibraryStore::open(temporary.path().join("connections")).unwrap();
+    let mut initial = document();
+    initial
+        .workspaces
+        .workspaces
+        .push(workspace(&initial.profiles.profiles[0]));
+    let saved = store.compare_and_swap(0, &initial).unwrap();
+
+    let mut changed_recipe = saved.recipes.recipes[0].clone();
+    changed_recipe.revision += 1;
+    changed_recipe.display_name = "Updated safe setup".into();
+    changed_recipe.approval_fingerprint = Some(digest('f'));
+    let preview =
+        preview_library_edit(&saved, LibraryEdit::put_recipe(Some(1), changed_recipe))
+            .unwrap();
+    assert_eq!(preview.base_revision, saved.revision);
+    assert!(preview.review_required);
+    assert!(!preview.execution_enabled);
+    assert!(preview.document.recipes.recipes[0]
+        .approval_fingerprint
+        .is_none());
+    assert!(preview.document.profiles.profiles[0]
+        .approval_fingerprint
+        .is_none());
+    assert!(preview.document.workspaces.workspaces[0]
+        .approval_fingerprint
+        .is_none());
+    assert!(preview.invalidated_approval_count >= 3);
+    let updated_recipe = &preview.document.recipes.recipes[0];
+    let updated_profile = &preview.document.profiles.profiles[0];
+    let updated_workspace = &preview.document.workspaces.workspaces[0];
+    assert_eq!(updated_profile.revision, 2);
+    assert_eq!(updated_profile.recipe_references[0].revision, 2);
+    assert_eq!(
+        updated_profile.recipe_references[0].fingerprint,
+        fingerprint_recipe(updated_recipe).unwrap()
+    );
+    assert_eq!(updated_workspace.revision, 2);
+    assert_eq!(updated_workspace.connections[0].profile_revision, 2);
+    assert_eq!(
+        updated_workspace.connections[0].profile_fingerprint,
+        fingerprint_profile(updated_profile).unwrap()
+    );
+
+    let committed = store.commit_edit(&preview).unwrap();
+    assert_eq!(committed.revision, saved.revision + 1);
+    assert!(store.commit_edit(&preview).is_err());
+}
+
+#[test]
+fn import_and_export_previews_are_redacted_nonexecuting_and_commit_with_cas() {
+    let temporary = tempfile::tempdir().unwrap();
+    let store =
+        ConnectionLibraryStore::open(temporary.path().join("connections")).unwrap();
+    let mut initial = document();
+    initial
+        .workspaces
+        .workspaces
+        .push(workspace(&initial.profiles.profiles[0]));
+    let saved = store.compare_and_swap(0, &initial).unwrap();
+    let export = store.preview_export_redacted(&saved).unwrap();
+    assert!(export.redacted);
+    assert!(export.review_required);
+    assert!(!export.execution_enabled);
+    assert_eq!(export.workspace_count, 1);
+    let exported_text = String::from_utf8(export.bytes.clone()).unwrap();
+    for canary in [
+        "secret.internal.example",
+        "private-user",
+        "private-bastion",
+        "private-identity-reference",
+        "operations",
+    ] {
+        assert!(!exported_text.contains(canary), "leaked canary: {canary}");
+    }
+    let import = store
+        .preview_import_redacted(saved.revision, &export.bytes)
+        .unwrap();
+    assert!(import.review_required);
+    assert!(!import.execution_enabled);
+    assert_eq!(import.document.revision, saved.revision);
+    assert_eq!(import.imported_workspace_count, 1);
+    let imported_workspace = import.document.workspaces.workspaces.last().unwrap();
+    assert!(imported_workspace.connections.is_empty());
+    assert_ne!(imported_workspace.id, "operations");
+    assert!(imported_workspace.approval_fingerprint.is_none());
+    let committed = store.commit_import(&import).unwrap();
+    assert_eq!(committed.revision, saved.revision + 1);
+    assert!(store.commit_import(&import).is_err());
+}
+#[test]
+fn redacted_workspace_export_scopes_reused_pane_ids_per_window() {
+    let temporary = tempfile::tempdir().unwrap();
+    let store =
+        ConnectionLibraryStore::open(temporary.path().join("connections")).unwrap();
+    let mut initial = document();
+    let mut saved_workspace = workspace(&initial.profiles.profiles[0]);
+    saved_workspace.windows[0]
+        .panes
+        .push(WorkspacePaneIntentV1 {
+            id: "child".into(),
+            parent_pane_id: Some("pane".into()),
+            split: Some(WorkspaceSplitIntent {
+                axis: WorkspaceSplitAxis::Horizontal,
+                ratio_basis_points: 5_000,
+            }),
+        });
+    saved_workspace.windows.push(WorkspaceWindowIntentV1 {
+        id: "secondary".into(),
+        panes: vec![WorkspacePaneIntentV1 {
+            id: "pane".into(),
+            parent_pane_id: None,
+            split: None,
+        }],
+    });
+    validate_workspace(&saved_workspace).unwrap();
+    initial.workspaces.workspaces.push(saved_workspace);
+    let saved = store.compare_and_swap(0, &initial).unwrap();
+
+    let export = store.preview_export_redacted(&saved).unwrap();
+    let import = store
+        .preview_import_redacted(saved.revision, &export.bytes)
+        .unwrap();
+    validate_workspace(import.document.workspaces.workspaces.last().unwrap()).unwrap();
 }

@@ -185,18 +185,26 @@ pub struct HubLibrarySnapshot {
     pub revision: u64,
     pub profile_count: usize,
     pub recipe_count: usize,
+    pub workspace_count: usize,
     pub preferences: HubPreferences,
     pub recovered: bool,
+    pub migration_preview: bool,
 }
 
 impl HubLibrarySnapshot {
-    fn from_document(document: &ConnectionLibraryDocument, recovered: bool) -> Self {
+    fn from_document(
+        document: &ConnectionLibraryDocument,
+        recovered: bool,
+        migration_preview: bool,
+    ) -> Self {
         Self {
             revision: document.revision,
             profile_count: document.profiles.profiles.len(),
             recipe_count: document.recipes.recipes.len(),
+            workspace_count: document.workspaces.workspaces.len(),
             preferences: document.preferences.clone(),
             recovered,
+            migration_preview,
         }
     }
 }
@@ -1079,10 +1087,22 @@ fn initialize_stores(
             let library = library_store.load().map_err(|_| ())?;
             let recovered = metadata.origin == MetadataLoadOrigin::PreviousRecovery
                 || metadata.rejected_primary
-                || library.origin == LibraryLoadOrigin::PreviousRecovery
+                || matches!(
+                    library.origin,
+                    LibraryLoadOrigin::PreviousRecovery
+                        | LibraryLoadOrigin::PreviousMigrationPreview
+                )
                 || library.rejected_primary;
-            let snapshot =
-                HubLibrarySnapshot::from_document(&library.document, recovered);
+            let migration_preview = matches!(
+                library.origin,
+                LibraryLoadOrigin::PrimaryMigrationPreview
+                    | LibraryLoadOrigin::PreviousMigrationPreview
+            );
+            let snapshot = HubLibrarySnapshot::from_document(
+                &library.document,
+                recovered,
+                migration_preview,
+            );
             let (receipt_store, receipt_document, receipt_store_state) =
                 match ManagedReceiptStore::open(&connections_root)
                     .and_then(|store| store.load().map(|loaded| (store, loaded)))

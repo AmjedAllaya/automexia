@@ -11,9 +11,10 @@ pub use controller::{
     HubControllerPresentation,
 };
 pub use library::{
-    ConnectionLibraryDocument, ConnectionLibraryStore, HubPreferences, LibraryError,
-    LibraryErrorCode, LibraryLoadOrigin, LibraryLoadResult, LibraryTransferDocument,
-    CONNECTION_LIBRARY_FILE, CONNECTION_LIBRARY_LOCK_FILE,
+    preview_library_edit, ConnectionLibraryDocument, ConnectionLibraryStore,
+    HubPreferences, LibraryEdit, LibraryEditPreview, LibraryError, LibraryErrorCode,
+    LibraryExportPreview, LibraryImportPreview, LibraryLoadOrigin, LibraryLoadResult,
+    LibraryTransferDocument, CONNECTION_LIBRARY_FILE, CONNECTION_LIBRARY_LOCK_FILE,
     CONNECTION_LIBRARY_PREVIOUS_FILE, CONNECTION_LIBRARY_SCHEMA,
     MAX_CONNECTION_LIBRARY_BYTES,
 };
