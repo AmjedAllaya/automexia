@@ -106,12 +106,20 @@ impl Screen<'_> {
         self.sync_connection_hub();
         self.mark_dirty();
     }
-    fn attempt_managed_openssh(&mut self, _decision: Decision) {
+    fn attempt_managed_openssh(&mut self, decision: Decision) {
         let Some(preparation) = self.connection_hub.direct_openssh_preparation() else {
             self.connection_hub
                 .report_direct_openssh_diagnostic("connection-launch-review-stale");
             return;
         };
+        if decision == Decision::AllowSession
+            && preparation.tunnel_plan().requires_strong_confirmation()
+        {
+            self.connection_hub.report_direct_openssh_diagnostic(
+                "connection-launch-tunnel-allow-once-required",
+            );
+            return;
+        }
         if preparation.reviewed_destination().is_err() {
             self.connection_hub
                 .report_direct_openssh_diagnostic("connection-launch-review-stale");

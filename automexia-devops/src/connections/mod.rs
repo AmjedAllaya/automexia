@@ -7,6 +7,7 @@
 mod direct_openssh;
 mod documents;
 mod model;
+mod openssh_tunnels;
 mod planner;
 mod state;
 mod validation;
@@ -32,6 +33,13 @@ pub use documents::{
     validate_recipe_document,
 };
 pub use model::*;
+pub use openssh_tunnels::{
+    DirectOpenSshTunnelConfirmation, DirectOpenSshTunnelDescriptor,
+    DirectOpenSshTunnelEvent, DirectOpenSshTunnelLifecycle,
+    DirectOpenSshTunnelLifecycleOwner, DirectOpenSshTunnelPlan, DirectOpenSshTunnelState,
+    DirectOpenSshTunnelStatus, DirectOpenSshTunnelTransport,
+    DIRECT_OPENSSH_TUNNEL_MANAGED_OPTIONS, MAX_DIRECT_OPENSSH_TUNNEL_HOST_BYTES,
+};
 pub use planner::{fingerprint_profile, fingerprint_recipe, resolve_connection_plan};
 pub use state::{apply_auth_event, apply_result_event};
 pub use validation::{

@@ -20,6 +20,10 @@ use super::model::{
     ResolvedConnectionPlan, ResolvedExecutable, SourceKind, ToolState,
     TransportDescriptor, TransportState, CONNECTION_SCHEMA_VERSION,
 };
+use super::openssh_tunnels::{
+    compile_direct_openssh_tunnels, validate_compiled_tunnel_argument,
+    DirectOpenSshTunnelPlan, DIRECT_OPENSSH_TUNNEL_MANAGED_OPTIONS,
+};
 use super::planner::{digest_is_valid, hash_serializable, resolve_connection_plan};
 use super::validation::{
     contains_hostile_format, validate_connection_observation, validate_connection_review,
@@ -124,7 +128,40 @@ impl DirectOpenSshRoute {
         self.config_defined
     }
 
-    fn arguments(&self) -> Vec<String> {
+    fn arguments(
+        &self,
+        tunnel_plan: &DirectOpenSshTunnelPlan,
+    ) -> Result<Vec<String>, ConnectionModelError> {
+        if !tunnel_plan.is_empty() {
+            if self.kind != DirectOpenSshDestinationKind::Literal
+                || self.config_defined
+                || !self.proxy_jump.is_empty()
+            {
+                return Err(error(
+                    ConnectionModelErrorCode::InvalidPolicy,
+                    "direct_openssh.tunnels",
+                    "managed tunnels require one configuration-free typed direct route",
+                ));
+            }
+            let mut arguments = DIRECT_OPENSSH_TUNNEL_MANAGED_OPTIONS
+                .iter()
+                .map(|argument| (*argument).to_owned())
+                .collect::<Vec<_>>();
+            arguments.push(if tunnel_plan.gateway_ports_enabled() {
+                "-oGatewayPorts=yes".into()
+            } else {
+                "-oGatewayPorts=no".into()
+            });
+            if let Some(user) = &self.public_user {
+                arguments.extend(["-l".into(), user.clone()]);
+            }
+            if let Some(port) = self.public_port {
+                arguments.extend(["-p".into(), port.to_string()]);
+            }
+            tunnel_plan.append_arguments(&mut arguments);
+            arguments.push(self.destination_argument.clone());
+            return Ok(arguments);
+        }
         let mut arguments = if self.proxy_jump.is_empty() {
             DIRECT_OPENSSH_MANAGED_OPTIONS
                 .iter()
@@ -149,7 +186,7 @@ impl DirectOpenSshRoute {
             arguments.extend(["-J".into(), self.proxy_jump.join(",")]);
         }
         arguments.push(self.destination_argument.clone());
-        arguments
+        Ok(arguments)
     }
 }
 
@@ -161,6 +198,8 @@ pub struct DirectOpenSshPreparation {
     profile: ConnectionProfileV1,
     plan: ResolvedConnectionPlan,
     route: DirectOpenSshRoute,
+    tunnel_plan: DirectOpenSshTunnelPlan,
+    arguments: Vec<String>,
 }
 
 impl fmt::Debug for DirectOpenSshPreparation {
@@ -171,6 +210,12 @@ impl fmt::Debug for DirectOpenSshPreparation {
             .field("environment_risk", &self.profile.environment.risk)
             .field("destination_surface", &self.profile.destination_preference)
             .field("route", &self.route)
+            .field("tunnel_count", &self.tunnel_plan.descriptors().len())
+            .field(
+                "requires_strong_tunnel_confirmation",
+                &self.tunnel_plan.requires_strong_confirmation(),
+            )
+            .field("arguments", &"<redacted>")
             .field("execution_enabled", &self.plan.execution_enabled)
             .finish()
     }
@@ -189,15 +234,27 @@ impl DirectOpenSshPreparation {
         &self.route
     }
 
+    pub fn tunnel_plan(&self) -> &DirectOpenSshTunnelPlan {
+        &self.tunnel_plan
+    }
+
+    pub fn arguments(&self) -> &[String] {
+        &self.arguments
+    }
+
     /// Return a user-owned clipboard handoff. This preparation cannot execute
     /// it and never includes a newline or implicit Enter.
     pub fn user_owned_command(&self) -> String {
-        format!("ssh {}", self.route.arguments().join(" "))
+        format!("ssh {}", self.arguments.join(" "))
     }
 
     pub fn reviewed_destination(&self) -> Result<&str, ConnectionModelError> {
-        let current = validate_m4_profile(&self.profile)?;
-        if current != self.route {
+        let (current_route, current_tunnels, current_arguments) =
+            validate_m5_profile_request(&self.profile)?;
+        if current_route != self.route
+            || current_tunnels != self.tunnel_plan
+            || current_arguments != self.arguments
+        {
             return Err(error(
                 ConnectionModelErrorCode::InvalidTransition,
                 "direct_openssh.preparation",
@@ -413,6 +470,7 @@ pub struct DirectOpenSshRequest {
     executable_identity_digest: String,
     review_fingerprint: String,
     route: DirectOpenSshRoute,
+    tunnel_plan: DirectOpenSshTunnelPlan,
     arguments: Vec<String>,
 }
 
@@ -428,6 +486,7 @@ impl fmt::Debug for DirectOpenSshRequest {
             .field("executable_identity_digest", &"<fingerprint>")
             .field("review_fingerprint", &"<fingerprint>")
             .field("route", &self.route)
+            .field("tunnel_count", &self.tunnel_plan.descriptors().len())
             .field("arguments", &"<redacted>")
             .finish()
     }
@@ -480,8 +539,7 @@ impl DirectOpenSshRequest {
         host_trust: &HostTrustState,
         now_ms: u64,
     ) -> Result<(), ConnectionModelError> {
-        let route = validate_m4_profile(profile)?;
-        let arguments = route.arguments();
+        let (route, tunnel_plan, arguments) = validate_m5_profile_request(profile)?;
         let executable = validate_m3_plan(profile, plan)?;
         let readiness =
             validate_m3_review_context(profile, observation, host_trust, now_ms)?;
@@ -491,6 +549,7 @@ impl DirectOpenSshRequest {
                 plan,
                 executable_identity: executable,
                 route: &route,
+                tunnel_plan: &tunnel_plan,
                 arguments: &arguments,
                 observation,
                 identity_readiness: readiness,
@@ -504,6 +563,7 @@ impl DirectOpenSshRequest {
             || self.plan_approval_fingerprint != plan.approval_fingerprint
             || self.executable_identity_digest != executable.identity_digest
             || self.route != route
+            || self.tunnel_plan != tunnel_plan
             || self.arguments != arguments
             || self.review_fingerprint != current_review_fingerprint
         {
@@ -523,6 +583,7 @@ pub struct DirectOpenSshReview {
     pub request: DirectOpenSshRequest,
     pub executable_identity: ResolvedExecutable,
     pub route: DirectOpenSshRoute,
+    pub tunnel_plan: DirectOpenSshTunnelPlan,
     pub identity_readiness: DirectOpenSshIdentityReadiness,
     pub host_trust_policy: DirectOpenSshHostTrustPolicy,
     pub environment_risk: EnvironmentRisk,
@@ -537,6 +598,7 @@ impl fmt::Debug for DirectOpenSshReview {
             .field("request", &self.request)
             .field("executable_id", &self.executable_identity.executable_id)
             .field("route", &self.route)
+            .field("tunnel_plan", &self.tunnel_plan)
             .field("identity_readiness", &self.identity_readiness)
             .field("host_trust_policy", &self.host_trust_policy)
             .field("environment_risk", &self.environment_risk)
@@ -575,7 +637,8 @@ impl DirectOpenSshLaunchBinding {
     /// Recompute the argument grammar from the bound route. The application
     /// broker uses this as defense in depth before it considers activation.
     pub fn validate_argument_contract(&self) -> Result<(), ConnectionModelError> {
-        if self.request.arguments == self.request.route.arguments() {
+        let current = self.request.route.arguments(&self.request.tunnel_plan)?;
+        if self.request.arguments == current {
             validate_direct_openssh_arguments(&self.request.arguments)
         } else {
             Err(error(
@@ -608,6 +671,14 @@ impl DirectOpenSshLaunchBinding {
 
     pub fn review_fingerprint(&self) -> &str {
         self.request.review_fingerprint()
+    }
+
+    pub fn tunnel_plan(&self) -> &DirectOpenSshTunnelPlan {
+        &self.request.tunnel_plan
+    }
+
+    pub const fn requires_strong_tunnel_confirmation(&self) -> bool {
+        self.request.tunnel_plan.requires_strong_confirmation()
     }
 }
 
@@ -799,6 +870,84 @@ fn validate_jump_token(value: &str) -> Result<(), ConnectionModelError> {
     Ok(())
 }
 
+fn validate_direct_openssh_tunnel_arguments(
+    tail: &[String],
+) -> Result<(), ConnectionModelError> {
+    let Some(gateway_option) = tail.first() else {
+        return Err(error(
+            ConnectionModelErrorCode::InvalidPolicy,
+            "direct_openssh.arguments",
+            "the tunnel OpenSSH argument grammar is incomplete",
+        ));
+    };
+    if !matches!(
+        gateway_option.as_str(),
+        "-oGatewayPorts=no" | "-oGatewayPorts=yes"
+    ) {
+        return Err(error(
+            ConnectionModelErrorCode::InvalidPolicy,
+            "direct_openssh.arguments",
+            "the tunnel gateway policy is invalid",
+        ));
+    }
+    let mut index = 1;
+    if tail.get(index).is_some_and(|value| value == "-l") {
+        let user = tail.get(index + 1).ok_or_else(|| {
+            error(
+                ConnectionModelErrorCode::InvalidPolicy,
+                "direct_openssh.arguments",
+                "the typed tunnel SSH user is missing",
+            )
+        })?;
+        validate_user_token(user)?;
+        index += 2;
+    }
+    if tail.get(index).is_some_and(|value| value == "-p") {
+        let port = tail.get(index + 1).ok_or_else(|| {
+            error(
+                ConnectionModelErrorCode::InvalidPolicy,
+                "direct_openssh.arguments",
+                "the typed tunnel SSH port is missing",
+            )
+        })?;
+        validate_port_text(port)?;
+        index += 2;
+    }
+    let remaining = &tail[index..];
+    if remaining.len() < 3 || !(remaining.len() - 1).is_multiple_of(2) {
+        return Err(error(
+            ConnectionModelErrorCode::InvalidPolicy,
+            "direct_openssh.arguments",
+            "the typed tunnel vector must contain flag/value pairs and one destination",
+        ));
+    }
+    let (tunnel_arguments, destination) = remaining.split_at(remaining.len() - 1);
+    let mut requires_gateway_ports = false;
+    for pair in tunnel_arguments.chunks_exact(2) {
+        let (kind, loopback) = validate_compiled_tunnel_argument(&pair[0], &pair[1])?;
+        if matches!(
+            kind,
+            super::model::TunnelKind::Local | super::model::TunnelKind::Dynamic
+        ) && !loopback
+        {
+            requires_gateway_ports = true;
+        }
+    }
+    let expected_gateway = if requires_gateway_ports {
+        "-oGatewayPorts=yes"
+    } else {
+        "-oGatewayPorts=no"
+    };
+    if gateway_option != expected_gateway {
+        return Err(error(
+            ConnectionModelErrorCode::InvalidPolicy,
+            "direct_openssh.arguments",
+            "the tunnel gateway policy does not match the exact listeners",
+        ));
+    }
+    validate_host_token(&destination[0])
+}
+
 pub fn validate_direct_openssh_arguments(
     arguments: &[String],
 ) -> Result<(), ConnectionModelError> {
@@ -809,7 +958,11 @@ pub fn validate_direct_openssh_arguments(
             .map(String::as_str)
             .eq(prefix.iter().copied())
     };
-    if prefix_matches(DIRECT_OPENSSH_MANAGED_OPTIONS) {
+    if prefix_matches(DIRECT_OPENSSH_TUNNEL_MANAGED_OPTIONS) {
+        validate_direct_openssh_tunnel_arguments(
+            &arguments[DIRECT_OPENSSH_TUNNEL_MANAGED_OPTIONS.len()..],
+        )
+    } else if prefix_matches(DIRECT_OPENSSH_MANAGED_OPTIONS) {
         let tail = &arguments[DIRECT_OPENSSH_MANAGED_OPTIONS.len()..];
         match tail {
             [destination] => validate_host_token(destination),
@@ -891,12 +1044,11 @@ fn validate_m4_profile(
     validate_profile(profile)?;
     if profile.provider != super::model::ProviderKind::Ssh
         || !profile.jump_profile_references.is_empty()
-        || !profile.tunnels.is_empty()
     {
         return Err(error(
             ConnectionModelErrorCode::InvalidPolicy,
             "direct_openssh.profile",
-            "managed SSH forbids profile-reference jumps and tunnels",
+            "managed SSH forbids profile-reference jumps",
         ));
     }
     let route = match &profile.transport {
@@ -992,6 +1144,19 @@ fn validate_m4_profile(
     Ok(route)
 }
 
+fn validate_m5_profile_request(
+    profile: &ConnectionProfileV1,
+) -> Result<
+    (DirectOpenSshRoute, DirectOpenSshTunnelPlan, Vec<String>),
+    ConnectionModelError,
+> {
+    let route = validate_m4_profile(profile)?;
+    let tunnel_plan = compile_direct_openssh_tunnels(profile)?;
+    let arguments = route.arguments(&tunnel_plan)?;
+    validate_direct_openssh_arguments(&arguments)?;
+    Ok((route, tunnel_plan, arguments))
+}
+
 /// Prepare one exact direct OpenSSH destination without resolving an executable,
 /// observing credentials, opening a network connection, or requesting runtime
 /// process/PTY authority. Later protected phases must replace this pending plan
@@ -999,7 +1164,7 @@ fn validate_m4_profile(
 pub fn prepare_direct_openssh(
     profile: &ConnectionProfileV1,
 ) -> Result<DirectOpenSshPreparation, ConnectionModelError> {
-    let route = validate_m4_profile(profile)?;
+    let (route, tunnel_plan, arguments) = validate_m5_profile_request(profile)?;
     let plan = resolve_connection_plan(
         profile,
         &[],
@@ -1015,6 +1180,8 @@ pub fn prepare_direct_openssh(
         profile: profile.clone(),
         plan,
         route,
+        tunnel_plan,
+        arguments,
     })
 }
 
@@ -1159,6 +1326,7 @@ struct ReviewFingerprintMaterial<'a> {
     source_revision: &'a str,
     capsule_revision: u64,
     route: &'a DirectOpenSshRoute,
+    tunnel_plan: &'a DirectOpenSshTunnelPlan,
     arguments: &'a [String],
     plan_approval_fingerprint: &'a str,
     executable_identity: &'a ResolvedExecutable,
@@ -1227,6 +1395,7 @@ struct DirectReviewFingerprintInput<'a> {
     plan: &'a ResolvedConnectionPlan,
     executable_identity: &'a ResolvedExecutable,
     route: &'a DirectOpenSshRoute,
+    tunnel_plan: &'a DirectOpenSshTunnelPlan,
     arguments: &'a [String],
     observation: &'a ConnectionObservation,
     identity_readiness: DirectOpenSshIdentityReadiness,
@@ -1243,6 +1412,7 @@ fn direct_review_fingerprint(
         source_revision: &input.profile.source.revision,
         capsule_revision: input.profile.capsule.revision,
         route: input.route,
+        tunnel_plan: input.tunnel_plan,
         arguments: input.arguments,
         plan_approval_fingerprint: &input.plan.approval_fingerprint,
         executable_identity: input.executable_identity,
@@ -1274,8 +1444,7 @@ fn review_direct_openssh_inner(
     evidence: Option<DirectOpenSshReviewEvidence>,
     now_ms: u64,
 ) -> Result<DirectOpenSshReview, ConnectionModelError> {
-    let route = validate_m4_profile(profile)?;
-    let arguments = route.arguments();
+    let (route, tunnel_plan, arguments) = validate_m5_profile_request(profile)?;
     let executable_identity = validate_m3_plan(profile, plan)?.clone();
     let identity_readiness =
         validate_m3_review_context(profile, observation, &host_trust, now_ms)?;
@@ -1285,6 +1454,7 @@ fn review_direct_openssh_inner(
         plan,
         executable_identity: &executable_identity,
         route: &route,
+        tunnel_plan: &tunnel_plan,
         arguments: &arguments,
         observation,
         identity_readiness,
@@ -1297,6 +1467,21 @@ fn review_direct_openssh_inner(
         outcome: PolicyOutcome::Deny,
         reason: "M2 protected approval and native process evidence remain pending".into(),
     }];
+    if !tunnel_plan.is_empty() {
+        policy_decisions.push(PolicyDecision {
+            code: if tunnel_plan.requires_strong_confirmation() {
+                "tunnel-strong-every-use-required".into()
+            } else {
+                "tunnel-review-required".into()
+            },
+            outcome: PolicyOutcome::Review,
+            reason: if tunnel_plan.requires_strong_confirmation() {
+                "Remote, non-loopback, or production forwarding requires a fresh allow-once decision".into()
+            } else {
+                "Loopback forwarding requires review with this exact connection".into()
+            },
+        });
+    }
     match host_trust {
         HostTrustState::Unknown | HostTrustState::FirstUse { .. } => {
             policy_decisions.push(PolicyDecision {
@@ -1321,7 +1506,7 @@ fn review_direct_openssh_inner(
         public_destination: profile.public_target.clone(),
         transport: profile.transport.clone(),
         jump_chain: route.proxy_jump.clone(),
-        tunnels: Vec::new(),
+        tunnels: profile.tunnels.clone(),
         identity: profile.identity.clone(),
         capsule: profile.capsule.clone(),
         destination_surface: profile.destination_preference,
@@ -1369,6 +1554,7 @@ fn review_direct_openssh_inner(
         executable_identity_digest: executable_identity.identity_digest.clone(),
         review_fingerprint,
         route: route.clone(),
+        tunnel_plan: tunnel_plan.clone(),
         arguments,
     };
     Ok(DirectOpenSshReview {
@@ -1376,6 +1562,7 @@ fn review_direct_openssh_inner(
         request,
         executable_identity,
         route,
+        tunnel_plan,
         identity_readiness,
         host_trust_policy,
         environment_risk: profile.environment.risk,
