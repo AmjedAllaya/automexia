@@ -52,6 +52,10 @@ use teletypewriter::create_pty;
 #[cfg(not(target_os = "windows"))]
 use teletypewriter::{create_pty_with_fork, create_pty_with_spawn};
 
+#[allow(
+    dead_code,
+    reason = "the reviewed M3 route seam remains dormant until managed SSH activation is approved"
+)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ManagedRouteReservation {
     route_id: usize,
@@ -60,6 +64,10 @@ pub struct ManagedRouteReservation {
     capsule_revision: u64,
 }
 
+#[allow(
+    dead_code,
+    reason = "the reviewed M3 route seam remains dormant until managed SSH activation is approved"
+)]
 impl ManagedRouteReservation {
     pub const fn operation_id(&self) -> OperationId {
         self.operation_id
@@ -84,6 +92,10 @@ impl ManagedRouteReservation {
     }
 }
 
+#[allow(
+    dead_code,
+    reason = "the reviewed M3 route seam remains dormant until managed SSH activation is approved"
+)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ManagedPublishError {
     CapacityExceeded,
@@ -112,15 +124,23 @@ struct ManagedSessionGuard {
 }
 
 impl ManagedSessionGuard {
-    fn complete(&mut self) {
-        if !self.reconciled
-            && self
-                .runner
-                .complete(self.lease, external_tool_runner::current_time_ms())
-                .is_ok()
-        {
-            self.reconciled = true;
+    fn complete(
+        &mut self,
+        outcome: external_tool_runner::ManagedProcessOutcome,
+    ) -> Option<external_tool_runner::ManagedCompletion> {
+        if self.reconciled {
+            return None;
         }
+        let completion = self
+            .runner
+            .complete_with_outcome(
+                self.lease,
+                external_tool_runner::current_time_ms(),
+                outcome,
+            )
+            .ok()?;
+        self.reconciled = true;
+        Some(completion)
     }
 }
 
@@ -336,6 +356,10 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         self.closing_routes.remove(&route_id)
     }
 
+    #[allow(
+        dead_code,
+        reason = "the reviewed M3 route seam remains dormant until managed SSH activation is approved"
+    )]
     #[inline]
     pub fn reserve_managed_route(
         &self,
@@ -357,6 +381,10 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         })
     }
 
+    #[allow(
+        dead_code,
+        reason = "the reviewed M3 route seam remains dormant until managed SSH activation is approved"
+    )]
     #[allow(clippy::too_many_arguments)]
     fn create_managed_context(
         cursor_state: (&Cursor, bool),
@@ -469,6 +497,10 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         })
     }
 
+    #[allow(
+        dead_code,
+        reason = "the reviewed M3 route seam remains dormant until managed SSH activation is approved"
+    )]
     pub fn publish_managed_context(
         &mut self,
         reservation: ManagedRouteReservation,
@@ -860,21 +892,26 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         })
     }
 
+    pub fn reconcile_managed_child_exit(
+        &mut self,
+        route_id: usize,
+        raw_status: Option<i32>,
+    ) -> Option<external_tool_runner::ManagedSessionNotification> {
+        let managed = self
+            .contexts
+            .iter_mut()
+            .find_map(|grid| grid.get_by_route_id(route_id))
+            .and_then(|context| context.managed_session.as_mut())?;
+        managed
+            .complete(managed_process_outcome(raw_status))
+            .and_then(|completion| completion.notification)
+    }
     #[inline]
     pub fn should_close_context_manager(
         &mut self,
         route_id: usize,
         sugarloaf: &mut Sugarloaf,
     ) -> bool {
-        if let Some(managed) = self
-            .contexts
-            .iter_mut()
-            .find_map(|grid| grid.get_by_route_id(route_id))
-            .and_then(|context| context.managed_session.as_mut())
-        {
-            managed.complete();
-        }
-
         // Dropping an explicitly closed Context causes its IO worker to emit a
         // delayed CloseTerminal. Consume that exact route once; never infer a
         // close for whichever tab happens to be active by then.
@@ -2091,6 +2128,36 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 }
 
+fn managed_process_outcome(
+    raw_status: Option<i32>,
+) -> external_tool_runner::ManagedProcessOutcome {
+    let Some(raw_status) = raw_status else {
+        return external_tool_runner::ManagedProcessOutcome::StatusUnavailable;
+    };
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if std::process::ExitStatus::from_raw(raw_status).success() {
+            external_tool_runner::ManagedProcessOutcome::Succeeded
+        } else {
+            external_tool_runner::ManagedProcessOutcome::Failed
+        }
+    }
+    #[cfg(windows)]
+    {
+        if raw_status == 0 {
+            external_tool_runner::ManagedProcessOutcome::Succeeded
+        } else {
+            external_tool_runner::ManagedProcessOutcome::Failed
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = raw_status;
+        external_tool_runner::ManagedProcessOutcome::StatusUnavailable
+    }
+}
 pub fn process_open_url(
     mut shell: Shell,
     mut working_dir: Option<String>,
@@ -2152,6 +2219,29 @@ pub mod test {
         assert_eq!(*listener.renders.lock().unwrap(), [(912, window_id)]);
     }
 
+    #[test]
+    fn managed_child_status_is_classified_without_guessing_missing_status() {
+        use external_tool_runner::ManagedProcessOutcome;
+
+        assert_eq!(
+            managed_process_outcome(None),
+            ManagedProcessOutcome::StatusUnavailable
+        );
+        assert_eq!(
+            managed_process_outcome(Some(0)),
+            ManagedProcessOutcome::Succeeded
+        );
+        #[cfg(unix)]
+        assert_eq!(
+            managed_process_outcome(Some(1 << 8)),
+            ManagedProcessOutcome::Failed
+        );
+        #[cfg(windows)]
+        assert_eq!(
+            managed_process_outcome(Some(1)),
+            ManagedProcessOutcome::Failed
+        );
+    }
     #[test]
     fn intentional_close_acknowledges_only_the_exact_route_once() {
         let window_id = WindowId::from(74);

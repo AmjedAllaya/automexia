@@ -1,6 +1,6 @@
 # Remote connections
 
-Automexia separates **normal shell connections**, the **read-only D5.1 Connection Hub plus nonactivated D5.2 guarded approval path implemented for v0.5 source builds**, and the still-gated managed SSH/provider authority. The approval surface deliberately has no reachable process or network authority.
+Automexia separates **normal shell connections**, the **read-only D5.1 Connection Hub plus source-complete, nonactivated F5.1 direct lifecycle for v0.5 source builds**, and the still-gated managed SSH/provider authority. The approval surface deliberately has no reachable process or network authority.
 
 ## Current product boundary
 
@@ -14,7 +14,7 @@ once, allow for session, and deny exercise the fail-closed policy boundary. The
 activation gate is false and the linked package is unverified, so no managed
 process, PTY, network connection, or provider authority is reachable.
 
-**Planned:** reviewed system-OpenSSH launch, tunnels/routes, provider authentication and multi-cloud adapters, remote-file/session-memory/collaboration features, and later ecosystem/AI features.
+**Implemented but activation-gated:** exact direct managed argv, full-review/executable binding, guarded PTY/route lifecycle, actual child outcomes, fixed notifications, bounded private receipts, and stale-source reconnect preparation. **Planned:** M4/M5 routes/trust/tunnels, provider authentication and multi-cloud adapters, remote-file/session-memory/collaboration features, and later ecosystem/AI features.
 
 ## Internal Connection Library boundary
 
@@ -203,7 +203,7 @@ attempt does not pre-authorize a later launch.
 
 Managed process launch is intentionally narrower than general process-spawn authority. A launch request identifies an approved first-party publisher/capability, an expected executable kind, exact argv, a bounded environment, a validated working directory, and audit/session identifiers. The broker resolves and verifies the executable according to platform policy, checks grants and current file identity, launches without shell interpretation, associates the PTY with one route/session, and records a redacted result.
 
-No background inventory worker may cross this boundary. Static SSH parsing, Connection Hub rendering, dry-run planning, and provider discovery remain non-executing.
+No background inventory worker may cross this boundary. Static SSH parsing, Connection Hub rendering, dry-run planning, and provider discovery remain non-executing. Completion storage runs only after a terminal outcome on the bounded connection worker, retains at most 256 provider-neutral records/2 MiB, and excludes destination, terminal content, credentials, paths, environment, PID, and executable identity. Reconnect is never automatic and requires current source plus fresh review and approval.
 
 ## Profiles and automation recipes
 

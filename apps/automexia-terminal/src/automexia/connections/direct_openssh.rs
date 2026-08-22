@@ -214,7 +214,7 @@ fn stable_literal_profile_id(destination: &str) -> String {
     format!("literal-openssh-{}", hasher.finalize().to_hex())
 }
 
-fn stable_profile_id(record: &ConnectionRecord) -> String {
+pub(super) fn stable_profile_id(record: &ConnectionRecord) -> String {
     let source = match record.source {
         SourceKind::OpenSshUser => b"user".as_slice(),
         SourceKind::OpenSshSystem => b"system".as_slice(),

@@ -38,3 +38,24 @@ and yanked advisories remain release-blocking.
 `CONDUCT_CONTACT_REQUIRED`: a dedicated private conduct-reporting address must
 replace this marker before v0.4.0 is publicly announced. This is deliberately
 enforced by `cargo xtask release`.
+## Managed SSH security boundary
+
+Managed SSH source remains compile-time disabled and the linked first-party
+package remains unverified. Activation requires the protected approvals,
+attestation/revocation, and native evidence in
+`docs/SESSION-LAUNCH-BROKER.md`; ordinary shell-owned OpenSSH remains the safe
+fallback.
+
+The M3 request accepts no caller-supplied option text. It freezes defensive
+OpenSSH options plus one typed destination, revalidates current executable file
+identity, never evaluates a shell, and does not override OpenSSH post-quantum
+algorithm defaults or downgrade warnings. Completion receipts are private,
+atomic, bounded, use no-follow and stable Windows handle identity checks, and
+exclude destination, terminal content, credentials, paths,
+environment, process IDs, and executable identity. Reconnect is never automatic
+and requires current inventory/source plus fresh review and approval.
+
+OpenSSH configuration is user-owned and may cause OpenSSH to start helper
+processes. Production activation therefore requires controlled native proof that
+all owned descendants, PTYs, routes, listeners, and temporary resources are
+closed on exit, cancellation, failure, and application shutdown.

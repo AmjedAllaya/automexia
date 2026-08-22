@@ -10,6 +10,7 @@ use automexia_devops::connections::{
     IdentityKind, IdentityReference, OpaqueReference, PlanContext, ProviderKind,
     ResolvedConnectionPlan, ResolvedExecutable, SourceKind, ToolState,
     TransportDescriptor, TransportState, CONNECTION_SCHEMA_VERSION,
+    DIRECT_OPENSSH_MANAGED_OPTIONS,
 };
 
 const NOW_MS: u64 = 1_700_000_000_001;
@@ -167,7 +168,7 @@ fn inventory_preparation_rejects_indirect_and_stale_profiles() {
 }
 
 #[test]
-fn inventory_typed_alias_binds_one_redacted_exact_argument_to_the_f2_plan() {
+fn inventory_typed_alias_binds_the_safe_exact_argv_to_the_f2_plan() {
     let profile = alias_profile("prod-alias");
     let plan = plan(&profile);
     let reviewed = review_direct_openssh(
@@ -182,7 +183,22 @@ fn inventory_typed_alias_binds_one_redacted_exact_argument_to_the_f2_plan() {
         reviewed.request.destination_kind(),
         DirectOpenSshDestinationKind::InventoryAlias
     );
-    assert_eq!(reviewed.request.arguments(), ["prod-alias"]);
+    let arguments = reviewed.request.arguments();
+    assert_eq!(arguments.last(), Some(&"prod-alias"));
+    assert_eq!(
+        &arguments[..arguments.len() - 1],
+        DIRECT_OPENSSH_MANAGED_OPTIONS
+    );
+    assert!(arguments
+        .iter()
+        .take(arguments.len() - 1)
+        .all(|argument| argument.starts_with("-o")));
+    assert!(arguments.contains(&"-oClearAllForwardings=yes"));
+    assert!(arguments.contains(&"-oEnableEscapeCommandline=no"));
+    assert!(arguments.contains(&"-oForwardAgent=no"));
+    assert!(arguments.contains(&"-oProxyCommand=none"));
+    assert!(arguments.contains(&"-oProxyJump=none"));
+    assert!(arguments.contains(&"-oStrictHostKeyChecking=ask"));
     assert_eq!(reviewed.executable_identity.executable_id, "ssh");
     assert_eq!(
         reviewed.identity_readiness,
@@ -194,11 +210,15 @@ fn inventory_typed_alias_binds_one_redacted_exact_argument_to_the_f2_plan() {
     );
     assert_eq!(reviewed.environment_risk, EnvironmentRisk::Production);
     assert!(!reviewed.execution_enabled);
-    assert_eq!(
-        reviewed.review.executable_preview[0].arguments[0].label,
-        "destination"
-    );
-    assert!(reviewed.review.executable_preview[0].arguments[0].redacted);
+    let preview = &reviewed.review.executable_preview[0].arguments;
+    assert_eq!(preview.len(), arguments.len());
+    assert!(preview[..preview.len() - 1]
+        .iter()
+        .all(
+            |argument| argument.label == "managed-security-option" && !argument.redacted
+        ));
+    assert_eq!(preview.last().unwrap().label, "destination");
+    assert!(preview.last().unwrap().redacted);
     assert!(reviewed
         .review
         .policy_decisions
@@ -211,7 +231,17 @@ fn inventory_typed_alias_binds_one_redacted_exact_argument_to_the_f2_plan() {
 }
 
 #[test]
-fn typed_literal_is_one_argument_and_defers_user_port_and_routes_to_m4() {
+fn managed_options_preserve_openssh_post_quantum_defaults_and_warnings() {
+    assert!(DIRECT_OPENSSH_MANAGED_OPTIONS
+        .iter()
+        .all(|argument| !argument.starts_with("-oKexAlgorithms=")));
+    assert!(DIRECT_OPENSSH_MANAGED_OPTIONS
+        .iter()
+        .all(|argument| !argument.starts_with("-oWarnWeakCrypto=")));
+}
+
+#[test]
+fn typed_literal_keeps_one_destination_and_defers_user_port_and_routes_to_m4() {
     let profile = literal_profile("host.example.invalid");
     let reviewed = review_direct_openssh(
         &profile,
@@ -226,7 +256,16 @@ fn typed_literal_is_one_argument_and_defers_user_port_and_routes_to_m4() {
         reviewed.request.destination_kind(),
         DirectOpenSshDestinationKind::Literal
     );
-    assert_eq!(reviewed.request.arguments(), ["host.example.invalid"]);
+    let arguments = reviewed.request.arguments();
+    assert_eq!(arguments.last(), Some(&"host.example.invalid"));
+    assert_eq!(
+        arguments
+            .iter()
+            .filter(|argument| !argument.starts_with("-o"))
+            .copied()
+            .collect::<Vec<_>>(),
+        ["host.example.invalid"]
+    );
 
     let mut user = literal_profile("host.example.invalid");
     if let TransportDescriptor::OpenSshExplicit { user, .. } = &mut user.transport {
@@ -681,4 +720,40 @@ fn forged_plan_non_applicable_trust_and_misleading_literal_target_fail_closed() 
         HostTrustState::Unknown
     )
     .is_err());
+}
+
+#[test]
+fn only_a_current_review_can_create_a_redacted_launch_binding() {
+    let profile = alias_profile("private-binding-canary");
+    let plan = plan(&profile);
+    let observation = observation(&profile);
+    let trust = HostTrustState::Known {
+        fingerprint_sha256: digest('b'),
+    };
+    let reviewed =
+        review_direct_openssh(&profile, &plan, &observation, trust.clone()).unwrap();
+    let binding = reviewed
+        .bind_launch(&profile, &plan, &observation, &trust, NOW_MS)
+        .unwrap();
+
+    assert_eq!(binding.public_connection_id(), profile.id);
+    assert_eq!(binding.source_revision(), profile.source.revision);
+    assert_eq!(binding.capsule_revision(), profile.capsule.revision);
+    assert_eq!(binding.arguments().last(), Some(&"private-binding-canary"));
+    assert_eq!(
+        binding.review_fingerprint(),
+        reviewed.request.review_fingerprint()
+    );
+    assert!(!format!("{binding:?}").contains("private-binding-canary"));
+
+    let mut changed_observation = observation.clone();
+    changed_observation.generation += 1;
+    assert!(reviewed
+        .bind_launch(&profile, &plan, &changed_observation, &trust, NOW_MS,)
+        .is_err());
+
+    let expired_at = observation.observed_at_ms + observation.stale_after_ms;
+    assert!(reviewed
+        .bind_launch(&profile, &plan, &observation, &trust, expired_at)
+        .is_err());
 }

@@ -790,6 +790,22 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     }
                 }
             }
+            RioEventType::Rio(RioEvent::ChildExited(route_id, raw_status)) => {
+                let notification =
+                    self.router.routes.get_mut(&window_id).and_then(|route| {
+                        route
+                            .window
+                            .screen
+                            .context_manager
+                            .reconcile_managed_child_exit(route_id, raw_status)
+                    });
+                if let Some(notification) = notification {
+                    self.handle_desktop_notification(
+                        notification.title,
+                        notification.body,
+                    );
+                }
+            }
             RioEventType::Rio(RioEvent::CloseTerminal(route_id)) => {
                 let should_close_window =
                     self.router.routes.get_mut(&window_id).is_some_and(|route| {

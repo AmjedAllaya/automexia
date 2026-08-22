@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     fmt,
     path::{Path, PathBuf},
     sync::{mpsc, Arc, Condvar, Mutex, MutexGuard, Weak},
@@ -22,10 +22,14 @@ use automexia_ui_model::connection_hub::{
 };
 
 use super::direct_openssh::{
-    prepare_inventory_direct_openssh, InventoryPreparationError,
+    prepare_inventory_direct_openssh, stable_profile_id, InventoryPreparationError,
 };
 use super::library::{
     ConnectionLibraryDocument, ConnectionLibraryStore, HubPreferences, LibraryLoadOrigin,
+};
+use super::receipts::{
+    ManagedReceiptDocument, ManagedReceiptLoadOrigin, ManagedReceiptPersistenceState,
+    ManagedReceiptRecord, ManagedReceiptSink, ManagedReceiptStore, MAX_MANAGED_RECEIPTS,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,6 +72,7 @@ const WORKER_BUSY_DIAGNOSTIC: &str = "connection-worker-busy";
 const WORK_QUEUE_CAPACITY: usize = 2;
 const STORE_DIAGNOSTIC: &str = "connection-private-store-unavailable";
 const METADATA_DIAGNOSTIC: &str = "connection-metadata-write-failed";
+const RECEIPT_STORE_DIAGNOSTIC: &str = "connection-receipt-store-unavailable";
 const MAX_REVIEW_PATH_DISPLAY_BYTES: usize = 1_024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -91,6 +96,7 @@ pub enum HubRuntimeErrorCode {
     ConnectionNotReady,
     UnsupportedConnectionRoute,
     InvalidConnection,
+    StaleReconnect,
 }
 
 impl HubRuntimeErrorCode {
@@ -107,6 +113,7 @@ impl HubRuntimeErrorCode {
             Self::ConnectionNotReady => "connection-review-not-ready",
             Self::UnsupportedConnectionRoute => "connection-route-not-supported",
             Self::InvalidConnection => "connection-review-invalid",
+            Self::StaleReconnect => "connection-reconnect-stale",
         }
     }
 }
@@ -202,6 +209,8 @@ pub struct HubRuntimeSnapshot {
     pub metadata_change: HubMetadataChangeState,
     pub metadata_revision: u64,
     pub store_state: HubStoreState,
+    pub receipt_store_state: HubStoreState,
+    pub receipt_count: usize,
     pub library: HubLibrarySnapshot,
 }
 
@@ -246,6 +255,7 @@ enum Work {
         cancellation: ScanCancellation,
     },
     ApplyMetadata(MetadataChangeReview),
+    FlushReceipts,
     #[cfg(test)]
     TestBarrier {
         started: mpsc::Sender<()>,
@@ -262,6 +272,7 @@ struct WorkRequest {
 struct WorkerStores {
     metadata: MetadataStore,
     _library: Option<ConnectionLibraryStore>,
+    receipts: Option<ManagedReceiptStore>,
 }
 
 struct RuntimeData {
@@ -279,6 +290,9 @@ struct RuntimeData {
     reviewed_grants: Option<(u64, Vec<InventoryGrant>)>,
     metadata_change: HubMetadataChangeState,
     store_state: HubStoreState,
+    receipt_store_state: HubStoreState,
+    receipt_records: Arc<Vec<ManagedReceiptRecord>>,
+    pending_receipts: VecDeque<ManagedReceiptRecord>,
     library: HubLibrarySnapshot,
 }
 
@@ -364,6 +378,9 @@ impl ConnectionHubRuntime {
                 reviewed_grants: None,
                 metadata_change: HubMetadataChangeState::Idle,
                 store_state: HubStoreState::Initializing,
+                receipt_store_state: HubStoreState::Initializing,
+                receipt_records: Arc::new(Vec::new()),
+                pending_receipts: VecDeque::with_capacity(MAX_MANAGED_RECEIPTS),
                 library: HubLibrarySnapshot::default(),
             }),
             settled: Condvar::new(),
@@ -417,6 +434,11 @@ impl ConnectionHubRuntime {
                     store_state: HubStoreState::Unavailable {
                         diagnostic_code: STORE_DIAGNOSTIC,
                     },
+                    receipt_store_state: HubStoreState::Unavailable {
+                        diagnostic_code: RECEIPT_STORE_DIAGNOSTIC,
+                    },
+                    receipt_records: Arc::new(Vec::new()),
+                    pending_receipts: VecDeque::with_capacity(MAX_MANAGED_RECEIPTS),
                     library: HubLibrarySnapshot::default(),
                 }),
                 settled: Condvar::new(),
@@ -697,6 +719,85 @@ impl ConnectionHubRuntime {
         })
     }
 
+    /// Rebuild a reconnect from the current inventory and reject any receipt
+    /// whose opaque profile identity or source revision no longer matches.
+    /// The returned preparation still requires a new executable observation,
+    /// host-trust observation, review, and explicit approval.
+    pub fn prepare_managed_reconnect(
+        &self,
+        receipt: &ManagedReceiptRecord,
+    ) -> Result<DirectOpenSshPreparation, HubRuntimeErrorCode> {
+        let (public_connection_id, source_revision) = receipt
+            .reconnect_identity()
+            .ok_or(HubRuntimeErrorCode::UnsupportedConnectionRoute)?;
+        let (record, metadata, generation, metadata_revision) = {
+            let data = lock(&self.inner.data);
+            let generation = match data.state {
+                HubRuntimeState::Ready { generation }
+                    if generation > 0 && generation == data.successful_generation =>
+                {
+                    generation
+                }
+                _ => return Err(HubRuntimeErrorCode::ConnectionNotReady),
+            };
+            let record = data
+                .records
+                .iter()
+                .find(|record| stable_profile_id(record) == public_connection_id)
+                .cloned()
+                .ok_or(HubRuntimeErrorCode::StaleReconnect)?;
+            let metadata = data
+                .metadata
+                .connections
+                .iter()
+                .find(|item| item.connection_id == record.id)
+                .cloned();
+            (record, metadata, generation, data.metadata.revision)
+        };
+        let preparation = prepare_inventory_direct_openssh(
+            &record,
+            metadata.as_ref(),
+            generation,
+            metadata_revision,
+        )
+        .map_err(|_| HubRuntimeErrorCode::InvalidConnection)?;
+        if preparation.profile().source.revision != source_revision {
+            return Err(HubRuntimeErrorCode::StaleReconnect);
+        }
+        Ok(preparation)
+    }
+    pub fn managed_receipt_records(&self) -> Arc<Vec<ManagedReceiptRecord>> {
+        Arc::clone(&lock(&self.inner.data).receipt_records)
+    }
+
+    pub fn wait_for_managed_receipts(
+        &self,
+        minimum_count: usize,
+        timeout: Duration,
+    ) -> bool {
+        let deadline = Instant::now() + timeout;
+        let mut data = lock(&self.inner.data);
+        loop {
+            if data.receipt_records.len() >= minimum_count {
+                return true;
+            }
+            if matches!(data.receipt_store_state, HubStoreState::Unavailable { .. }) {
+                return false;
+            }
+            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+                return false;
+            };
+            let (next, result) = self
+                .inner
+                .settled
+                .wait_timeout(data, remaining)
+                .unwrap_or_else(|error| error.into_inner());
+            data = next;
+            if result.timed_out() && data.receipt_records.len() < minimum_count {
+                return false;
+            }
+        }
+    }
     pub fn state(&self) -> HubRuntimeState {
         lock(&self.inner.data).state.clone()
     }
@@ -714,6 +815,8 @@ impl ConnectionHubRuntime {
             metadata_change: data.metadata_change.clone(),
             metadata_revision: data.metadata.revision,
             store_state: data.store_state,
+            receipt_store_state: data.receipt_store_state,
+            receipt_count: data.receipt_records.len(),
             library: data.library.clone(),
         }
     }
@@ -768,10 +871,52 @@ impl ConnectionHubRuntime {
     }
 }
 
+impl ManagedReceiptSink for ConnectionHubRuntime {
+    fn try_persist(
+        &self,
+        record: ManagedReceiptRecord,
+    ) -> ManagedReceiptPersistenceState {
+        let sender = match lock(&self.inner.sender).as_ref().cloned() {
+            Some(sender) => sender,
+            None => return ManagedReceiptPersistenceState::Unavailable,
+        };
+        let request = {
+            let mut data = lock(&self.inner.data);
+            if data.shutdown
+                || matches!(data.receipt_store_state, HubStoreState::Unavailable { .. })
+            {
+                return ManagedReceiptPersistenceState::Unavailable;
+            }
+            if data.pending_receipts.len() == MAX_MANAGED_RECEIPTS {
+                data.pending_receipts.pop_front();
+            }
+            data.pending_receipts.push_back(record);
+            data.requested
+        };
+        match sender.try_send(WorkRequest {
+            request,
+            work: Work::FlushReceipts,
+            wake: None,
+        }) {
+            Ok(()) | Err(mpsc::TrySendError::Full(_)) => {
+                ManagedReceiptPersistenceState::Queued
+            }
+            Err(mpsc::TrySendError::Disconnected(_)) => {
+                let mut data = lock(&self.inner.data);
+                data.pending_receipts.clear();
+                data.receipt_store_state = HubStoreState::Unavailable {
+                    diagnostic_code: RECEIPT_STORE_DIAGNOSTIC,
+                };
+                ManagedReceiptPersistenceState::Unavailable
+            }
+        }
+    }
+}
+
 fn worker_loop(inner: Weak<RuntimeInner>, receiver: mpsc::Receiver<WorkRequest>) {
     let mut stores = None;
     while let Ok(work_request) = receiver.recv() {
-        let Some(inner) = inner.upgrade() else {
+        let Some(runtime) = inner.upgrade() else {
             return;
         };
         let WorkRequest {
@@ -780,23 +925,32 @@ fn worker_loop(inner: Weak<RuntimeInner>, receiver: mpsc::Receiver<WorkRequest>)
             wake,
         } = work_request;
         let is_initialization = matches!(&work, Work::Initialize(_));
-        if !is_initialization && !is_current_request(&inner, request) {
+        let is_receipt_flush = matches!(&work, Work::FlushReceipts);
+        if !is_initialization
+            && !is_receipt_flush
+            && !is_current_request(&runtime, request)
+        {
+            let _ = flush_pending_receipts(&runtime, stores.as_ref());
+            if lock(&runtime.data).shutdown {
+                return;
+            }
             continue;
         }
         let published = match work {
             Work::Initialize(startup) => {
-                complete_initialization(&inner, request, startup, &mut stores)
+                complete_initialization(&runtime, request, startup, &mut stores)
             }
             Work::ReviewFiles { paths, kind } => {
-                complete_file_review(&inner, request, paths, kind, stores.is_some())
+                complete_file_review(&runtime, request, paths, kind, stores.is_some())
             }
             Work::Scan {
                 grants,
                 cancellation,
-            } => complete_scan(&inner, request, grants, cancellation, stores.is_some()),
+            } => complete_scan(&runtime, request, grants, cancellation, stores.is_some()),
             Work::ApplyMetadata(review) => {
-                complete_metadata_change(&inner, request, review, stores.as_ref())
+                complete_metadata_change(&runtime, request, review, stores.as_ref())
             }
+            Work::FlushReceipts => flush_pending_receipts(&runtime, stores.as_ref()),
             #[cfg(test)]
             Work::TestBarrier { started, release } => {
                 let _ = started.send(());
@@ -810,14 +964,20 @@ fn worker_loop(inner: Weak<RuntimeInner>, receiver: mpsc::Receiver<WorkRequest>)
                 true
             }
         };
+        if !is_receipt_flush {
+            let _ = flush_pending_receipts(&runtime, stores.as_ref());
+        }
         if published {
             if let Some(wake) = wake {
                 wake.wake();
             }
         }
-        if lock(&inner.data).shutdown {
+        if lock(&runtime.data).shutdown {
             return;
         }
+    }
+    if let Some(runtime) = inner.upgrade() {
+        let _ = flush_pending_receipts(&runtime, stores.as_ref());
     }
 }
 
@@ -837,7 +997,14 @@ fn complete_initialization(
     data.initialized = true;
     data.completed = data.completed.max(request);
     match initialized {
-        Ok((worker_stores, metadata, library, recovered)) => {
+        Ok((
+            worker_stores,
+            metadata,
+            library,
+            recovered,
+            receipt_document,
+            receipt_store_state,
+        )) => {
             data.metadata = metadata;
             data.library = library;
             data.store_state = if recovered {
@@ -845,6 +1012,8 @@ fn complete_initialization(
             } else {
                 HubStoreState::Ready
             };
+            data.receipt_records = Arc::new(receipt_document.records);
+            data.receipt_store_state = receipt_store_state;
             if matches!(data.state, HubRuntimeState::Initializing) {
                 data.state = HubRuntimeState::InitialSetup;
             }
@@ -853,6 +1022,9 @@ fn complete_initialization(
         Err(()) => {
             data.store_state = HubStoreState::Unavailable {
                 diagnostic_code: STORE_DIAGNOSTIC,
+            };
+            data.receipt_store_state = HubStoreState::Unavailable {
+                diagnostic_code: RECEIPT_STORE_DIAGNOSTIC,
             };
             data.state = HubRuntimeState::Error {
                 diagnostic_code: STORE_DIAGNOSTIC,
@@ -866,7 +1038,17 @@ fn complete_initialization(
 
 fn initialize_stores(
     startup: Startup,
-) -> Result<(WorkerStores, MetadataDocument, HubLibrarySnapshot, bool), ()> {
+) -> Result<
+    (
+        WorkerStores,
+        MetadataDocument,
+        HubLibrarySnapshot,
+        bool,
+        ManagedReceiptDocument,
+        HubStoreState,
+    ),
+    (),
+> {
     match startup {
         Startup::Preloaded {
             metadata_store,
@@ -878,10 +1060,15 @@ fn initialize_stores(
                 WorkerStores {
                     metadata: metadata_store,
                     _library: None,
+                    receipts: None,
                 },
                 metadata.document,
                 HubLibrarySnapshot::default(),
                 recovered,
+                ManagedReceiptDocument::default(),
+                HubStoreState::Unavailable {
+                    diagnostic_code: RECEIPT_STORE_DIAGNOSTIC,
+                },
             ))
         }
         Startup::Root(root) => {
@@ -889,8 +1076,9 @@ fn initialize_stores(
                 MetadataStore::new(root.join("extensions").join("devops-ssh"))
                     .map_err(|_| ())?;
             let metadata = metadata_store.load_with_recovery().map_err(|_| ())?;
+            let connections_root = root.join("connections");
             let library_store =
-                ConnectionLibraryStore::open(root.join("connections")).map_err(|_| ())?;
+                ConnectionLibraryStore::open(&connections_root).map_err(|_| ())?;
             let library = library_store.load().map_err(|_| ())?;
             let recovered = metadata.origin == MetadataLoadOrigin::PreviousRecovery
                 || metadata.rejected_primary
@@ -898,15 +1086,76 @@ fn initialize_stores(
                 || library.rejected_primary;
             let snapshot =
                 HubLibrarySnapshot::from_document(&library.document, recovered);
+            let (receipt_store, receipt_document, receipt_store_state) =
+                match ManagedReceiptStore::open(&connections_root)
+                    .and_then(|store| store.load().map(|loaded| (store, loaded)))
+                {
+                    Ok((store, loaded)) => {
+                        let state = if loaded.origin
+                            == ManagedReceiptLoadOrigin::PreviousRecovery
+                            || loaded.rejected_primary
+                        {
+                            HubStoreState::Recovered
+                        } else {
+                            HubStoreState::Ready
+                        };
+                        (Some(store), loaded.document, state)
+                    }
+                    Err(_) => (
+                        None,
+                        ManagedReceiptDocument::default(),
+                        HubStoreState::Unavailable {
+                            diagnostic_code: RECEIPT_STORE_DIAGNOSTIC,
+                        },
+                    ),
+                };
             Ok((
                 WorkerStores {
                     metadata: metadata_store,
                     _library: Some(library_store),
+                    receipts: receipt_store,
                 },
                 metadata.document,
                 snapshot,
                 recovered,
+                receipt_document,
+                receipt_store_state,
             ))
+        }
+    }
+}
+
+fn flush_pending_receipts(inner: &RuntimeInner, stores: Option<&WorkerStores>) -> bool {
+    let pending = {
+        let mut data = lock(&inner.data);
+        if data.pending_receipts.is_empty() {
+            return true;
+        }
+        data.pending_receipts.drain(..).collect::<Vec<_>>()
+    };
+    let Some(store) = stores.and_then(|stores| stores.receipts.as_ref()) else {
+        let mut data = lock(&inner.data);
+        data.receipt_store_state = HubStoreState::Unavailable {
+            diagnostic_code: RECEIPT_STORE_DIAGNOSTIC,
+        };
+        inner.settled.notify_all();
+        return false;
+    };
+    match store.append_batch(&pending) {
+        Ok(document) => {
+            let mut data = lock(&inner.data);
+            data.receipt_records = Arc::new(document.records);
+            data.receipt_store_state = HubStoreState::Ready;
+            inner.settled.notify_all();
+            true
+        }
+        Err(_) => {
+            let mut data = lock(&inner.data);
+            data.receipt_store_state = HubStoreState::Unavailable {
+                diagnostic_code: RECEIPT_STORE_DIAGNOSTIC,
+            };
+            inner.settled.notify_all();
+            false
         }
     }
 }
@@ -1327,6 +1576,35 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use automexia_devops::connections::{
+        ConnectionReceipt, OpaqueReference, OperationResultState,
+        CONNECTION_SCHEMA_VERSION,
+    };
+
+    fn managed_receipt(index: usize) -> ManagedReceiptRecord {
+        ManagedReceiptRecord::new(
+            ConnectionReceipt {
+                schema_version: CONNECTION_SCHEMA_VERSION,
+                operation_id: format!("operation-{index}"),
+                session_id: format!("session-{index}"),
+                capsule_id: format!("capsule-{index}"),
+                approved_intent_digest: format!("{index:064x}"),
+                source_revision: format!("source-{index}"),
+                process_ownership_references: vec![OpaqueReference::new(format!(
+                    "process-{index}"
+                ))],
+                route_ownership_references: vec![OpaqueReference::new(format!(
+                    "route-{index}"
+                ))],
+                tunnel_ownership_references: Vec::new(),
+                started_at_ms: index as u64,
+                outcome: OperationResultState::Succeeded,
+            },
+            Some((format!("profile-{index}"), format!("source-{index}"))),
+            index as u64 + 1,
+        )
+        .unwrap()
+    }
 
     #[test]
     fn saturated_work_queue_rejects_immediately_and_remains_bounded() {
@@ -1361,14 +1639,52 @@ mod tests {
             runtime.enqueue(work()),
             Err(HubRuntimeErrorCode::WorkerBusy)
         );
+        assert_eq!(
+            runtime.try_persist(managed_receipt(1)),
+            ManagedReceiptPersistenceState::Queued
+        );
 
         let (released, ready) = &*release;
         *lock(released) = true;
         ready.notify_all();
         runtime.shutdown();
         assert_eq!(runtime.state(), HubRuntimeState::Shutdown);
+        let persisted = ManagedReceiptStore::open(temporary.path().join("connections"))
+            .unwrap()
+            .load()
+            .unwrap();
+        assert_eq!(persisted.document.records.len(), 1);
     }
 
+    #[test]
+    fn managed_receipts_survive_restart_with_only_fresh_review_identity() {
+        let temporary = tempfile::tempdir().unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        assert_eq!(
+            runtime.try_persist(managed_receipt(7)),
+            ManagedReceiptPersistenceState::Queued
+        );
+        assert!(runtime.wait_for_managed_receipts(1, Duration::from_secs(5)));
+        let records = runtime.managed_receipt_records();
+        assert_eq!(records.len(), 1);
+        assert_eq!(
+            records[0].reconnect_identity(),
+            Some(("profile-7", "source-7"))
+        );
+        runtime.shutdown();
+
+        let restarted = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(restarted.wait_for_settled(Duration::from_secs(5)));
+        let records = restarted.managed_receipt_records();
+        assert_eq!(records.len(), 1);
+        assert_eq!(
+            records[0].reconnect_identity(),
+            Some(("profile-7", "source-7"))
+        );
+        assert_eq!(restarted.snapshot().receipt_count, 1);
+        restarted.shutdown();
+    }
     #[test]
     fn direct_review_preparation_requires_a_current_exact_runtime_record() {
         let temporary = tempfile::tempdir().unwrap();
@@ -1394,6 +1710,42 @@ mod tests {
 
         let prepared = runtime.prepare_direct_openssh("openssh:prod").unwrap();
         assert_eq!(prepared.profile().revision, 9);
+        let reconnect_receipt = ManagedReceiptRecord::new(
+            ConnectionReceipt {
+                schema_version: CONNECTION_SCHEMA_VERSION,
+                operation_id: "operation-reconnect".into(),
+                session_id: "session-reconnect".into(),
+                capsule_id: "capsule-reconnect".into(),
+                approved_intent_digest: "d".repeat(64),
+                source_revision: prepared.profile().source.revision.clone(),
+                process_ownership_references: vec![OpaqueReference::new(
+                    "process-reconnect",
+                )],
+                route_ownership_references: vec![OpaqueReference::new("route-reconnect")],
+                tunnel_ownership_references: Vec::new(),
+                started_at_ms: 10,
+                outcome: OperationResultState::Succeeded,
+            },
+            Some((
+                prepared.profile().id.clone(),
+                prepared.profile().source.revision.clone(),
+            )),
+            20,
+        )
+        .unwrap();
+        assert_eq!(
+            runtime
+                .prepare_managed_reconnect(&reconnect_receipt)
+                .unwrap()
+                .profile(),
+            prepared.profile()
+        );
+        lock(&runtime.inner.data).metadata.revision = 1;
+        assert_eq!(
+            runtime.prepare_managed_reconnect(&reconnect_receipt),
+            Err(HubRuntimeErrorCode::StaleReconnect)
+        );
+        lock(&runtime.inner.data).metadata.revision = 0;
         assert_eq!(
             runtime.prepare_direct_openssh("openssh:missing"),
             Err(HubRuntimeErrorCode::UnknownConnection)

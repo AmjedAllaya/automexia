@@ -31,10 +31,10 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
         self.assertEqual(
             policy.validate_repository(),
             {
-                "schema": 2,
+                "schema": 3,
                 "scenarios": 19,
                 "boundaries": 9,
-                "sources": 7,
+                "sources": 12,
                 "documents": 11,
                 "production_enabled": 0,
             },
@@ -52,6 +52,7 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
             lambda d: d["grant"].__setitem__("persistent_grants", True),
             lambda d: d["strict_defaults"].__setitem__("host_key_checking", "accept-new"),
             lambda d: d["strict_defaults"].__setitem__("forward_listener_scope", "any"),
+            lambda d: d["strict_defaults"]["managed_options"].pop(),
             lambda d: d["strict_defaults"].__setitem__(
                 "config_command_execution_during_discovery", True
             ),

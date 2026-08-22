@@ -14,7 +14,8 @@ mod validation;
 pub use direct_openssh::{
     prepare_direct_openssh, review_direct_openssh, DirectOpenSshDestinationKind,
     DirectOpenSshHostTrustPolicy, DirectOpenSshIdentityReadiness,
-    DirectOpenSshPreparation, DirectOpenSshRequest, DirectOpenSshReview,
+    DirectOpenSshLaunchBinding, DirectOpenSshPreparation, DirectOpenSshRequest,
+    DirectOpenSshReview, DIRECT_OPENSSH_MANAGED_OPTIONS,
     MAX_DIRECT_OPENSSH_DESTINATION_BYTES,
 };
 pub use documents::{

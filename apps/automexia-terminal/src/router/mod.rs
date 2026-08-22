@@ -23,6 +23,7 @@ use rio_window::platform::startup_notify::{
 use rio_window::window::Window;
 use routes::{assistant, RoutePath};
 use rustc_hash::FxHashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 // 𜱭𜱭 unicode is not available yet for all OS
@@ -500,6 +501,14 @@ impl Router<'_> {
             });
         }
 
+        let connection_hub =
+            crate::automexia::connections::ConnectionHubRuntime::open_default();
+        let external_tool_runner =
+            crate::context::external_tool_runner::ExternalToolRunner::pending_security_review();
+        debug_assert!(
+            external_tool_runner.attach_receipt_sink(Arc::new(connection_hub.clone()))
+        );
+
         Router {
             routes: FxHashMap::default(),
             propagated_report,
@@ -510,10 +519,8 @@ impl Router<'_> {
             current_tab_id: 0,
             quick_actions:
                 crate::automexia::quick_actions::QuickActionRuntime::open_default(),
-            connection_hub:
-                crate::automexia::connections::ConnectionHubRuntime::open_default(),
-            external_tool_runner:
-                crate::context::external_tool_runner::ExternalToolRunner::pending_security_review(),
+            connection_hub,
+            external_tool_runner,
         }
     }
 
@@ -523,8 +530,8 @@ impl Router<'_> {
     }
 
     pub fn shutdown_services(&self) {
-        self.connection_hub.shutdown();
         let cancelled = self.external_tool_runner.shutdown_now();
+        self.connection_hub.shutdown();
         let audit_count = self.external_tool_runner.recent_audits().len();
         debug_assert!(self.external_tool_runner.is_idle());
         tracing::info!(
