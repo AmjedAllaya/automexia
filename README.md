@@ -1,239 +1,242 @@
-# Automexia Terminal
+<p align="center">
+  <img src="assets/brand/automexia-terminal-source-512.png" alt="Automexia Terminal logo" width="180">
+</p>
 
-Automexia Terminal is a fast, hardware-accelerated desktop terminal focused on
-modern development workflows. Version 0.4.0 is a standalone downstream of Rio
-with a separate executable, application identity, configuration root, and
-release process.
+<h1 align="center">Automexia Terminal</h1>
 
-Start with the [documentation home](docs/index.md) for a guided path through
-installation/building, features, configuration, shortcuts, shells,
-troubleshooting, platform support, architecture decisions, testing, and
-release operations.
+<p align="center"><strong>A fast, focused terminal for real development work.</strong></p>
 
-> The supplied Automexia raster mark is integrated for development and nightly
-> packages. Stable v0.4.0 publication remains blocked until its vector variants
-> and rights approval, Windows signing certificate, Apple signing/notarization
-> credentials, and a private conduct-reporting contact are configured. No build
-> reuses Rio artwork.
+<p align="center">
+  <a href="docs/user-guide/index.md">User Guide</a> ·
+  <a href="docs/FEATURES.md">Features</a> ·
+  <a href="docs/CONFIGURATION.md">Configuration</a> ·
+  <a href="docs/KEYBOARD.md">Keyboard</a> ·
+  <a href="docs/ROADMAP.md">Roadmap</a>
+</p>
 
-## Build, verify, and run
+Automexia Terminal is a hardware-accelerated desktop terminal for Windows,
+Linux, and macOS. It keeps shells at the center of the experience while making
+windows, tabs, panes, search, images, and project context easier to manage.
 
-Install the Rust toolchain declared in `rust-toolchain.toml`, then use one
-command for the complete local workflow:
+Version 0.4.0 is a standalone product built from Rio's open-source history. It
+has its own executable, application identity, configuration folder, artwork,
+and release process.
 
-```text
-cargo dev
-```
+## Why Automexia
 
-This checks required tools and repository formats; verifies identity,
-architecture, provenance, packages, and brand assets; runs rustfmt, locked
-metadata, native shell-integration validation, workspace checks, warning-denied
-Clippy, all tests, and `cargo deny`; builds Automexia; verifies
-`automexia --version`; installs or refreshes the shell integration; and launches
-the terminal. On Windows that automatic phase prepares PowerShell, Command
-Prompt, and every detected user WSL distribution. On macOS/Linux it prepares Bash, Zsh,
-and user-local terminfo. No separate integration command or restart is needed.
-The first run can take several minutes. Exhaustive checks use a dedicated,
-non-incremental verification target that is removed whether the gate passes or
-returns an ordinary failure; only the reusable application build remains in the
-normal Cargo target.
+Terminal work should feel direct. Automexia keeps the command line familiar and
+adds useful structure around it:
 
-No Automexia window appears until those checks pass. The workflow prints its
-launch and verification phases and keeps compiler/build-script progress live,
-including long WGPU and native shader compilation. This distinguishes active
-work from a stalled process.
+- arrange work with windows, window tabs, split panes, and pane-local tabs;
+- open a fresh shell or clone the current shell and working directory;
+- search one pane or every visible pane without sending input to the shell;
+- keep the active pane, command state, path, and shell context easy to see;
+- preview local images without uploading them or fetching remote content;
+- use keyboard controls for the full everyday workflow;
+- change appearance and behavior through a readable TOML configuration file.
 
-The complete gate requires Python 3 with PyYAML and `cargo-deny`. If either is
-missing, `cargo dev` reports it before starting the expensive build. Install
-them with your platform package manager or:
+The interface uses Automexia's blue-black surfaces, cyan and blue actions, and
+clear status colors. Important meaning is also shown with text or icons, so it
+does not depend on color alone.
+
+## What works today
+
+### Workspaces that stay organized
+
+Automexia supports independent operating-system windows, window-level tabs,
+split panes, and tabs inside each pane. Pane-local tabs own separate terminal
+sessions and do not rearrange neighboring panes.
+
+Fresh splits open the normal configured shell. Clone actions open an independent
+session with the active shell, profile, WSL identity, and working directory.
+
+### Search and command access
+
+Pane search stays inside the selected terminal. Workspace search covers all
+visible panes in the active workspace without opening hidden tabs. Both search
+surfaces keep keyboard input away from the PTY until they close.
+
+The command palette gives one place to find actions when a shortcut is hard to
+remember.
+
+### Shells that feel at home
+
+Automexia has session-scoped support for PowerShell, Command Prompt, WSL, Bash,
+and Zsh workflows. It can show the current path, shell, user, command timing,
+and useful development context without writing decorative text into terminal
+output. Icon-aware listings remain normal shell data when piped to another tool.
+
+Shell integration used by a normal launch belongs only to that child session.
+Persistent profile installation is a separate, explicit maintenance action and
+can be inspected or removed.
+
+### Local and inline images
+
+Applications can render Sixel, Kitty Graphics, and iTerm2 inline images.
+Automexia can also preview bounded local raster files selected from terminal
+output. Local previews load in the background, stay with the current terminal
+view, and do not fetch anything from the internet.
+
+### Configuration that fails safely
+
+Automexia reads TOML configuration and supports platform overrides, themes,
+fonts, window settings, navigation, shell settings, and custom bindings. Live
+reload publishes a complete valid configuration or keeps the last known good
+one when the new file is invalid.
+
+An optional Ghostty 1.3 keyboard profile is available for users who want a
+familiar migration path. Automexia's own bindings remain the default.
+
+## Quick start from source
+
+Install the Rust toolchain declared in `rust-toolchain.toml`, Python 3 with
+PyYAML, and the pinned `cargo-deny` release. Then run:
 
 ```text
 python -m pip install PyYAML
 cargo install --locked cargo-deny --version 0.20.2
+cargo dev
 ```
 
-On Windows, `cargo xtask doctor` also reports the installed PowerShell host,
-newest available PSReadLine module, and PowerShell 7 availability. Its history
-advisory is informational: it never installs or updates shell software.
+`cargo dev` runs the complete contributor gate, builds Automexia, checks the
+resulting executable, prepares session-only shell support, and opens the
+terminal. The first run can take several minutes and requires at least 12 GiB
+of free space on the selected Cargo target filesystem.
 
-When developing inside WSL, keep the Linux checkout and Cargo target under the
-WSL filesystem (for example `~/src/automexia-terminal`), not under
-`/mnt/c` or `/mnt/d`. Keep this NTFS checkout for Windows/MSVC,
-ConPTY, GPU, and packaging work. `cargo xtask doctor` reports the effective
-workspace I/O mode, and compilation-heavy project workflows fail early on a
-cross-filesystem WSL checkout instead of spending hours in avoidable metadata
-I/O. The supported two-checkout workflow and diagnostic override are documented
-in [Windows and WSL development](docs/WSL-DEVELOPMENT.md).
-
-For normal day-to-day launches after the repository is known to be healthy:
+After the repository has passed the full gate, use the faster daily command:
 
 ```text
 cargo automexia
 ```
 
-It rebuilds only changed code, performs a version smoke, exposes the
-repository-owned integration to the new child shell, and launches Automexia.
-It does not repeat the exhaustive isolated gate and is the recommended command
-for normal launches after `cargo ready` or `cargo dev` has passed once.
-Both launch commands return after starting the Automexia process, so the
-terminal remains usable and Cargo's build output stays unlocked. A normal
-launch never writes profiles, runs an integration installer, changes PowerShell
-execution policy, or provisions WSL. Each launch
-uses a generation-specific copy under `target/automexia-runtime`; stale copies
-are reclaimed automatically on later launches. Missing session resources leave
-the user's shell unmodified. Persistent integration for nested shells outside
-Automexia is an explicit
-`automexia shell-integration install` operation and can be inspected or
-removed with `doctor`/`uninstall`.
-Pass terminal arguments after `--`, for example:
-
-```text
-cargo automexia -- --working-dir D:\work
-```
-
-Before opening a pull request, run the same complete gate without launching a
-window:
+Before opening a pull request, run the full non-launching gate:
 
 ```text
 cargo ready
 ```
 
-For the deeper Phase 0 evidence profile, including pinned Nextest/JUnit,
-property/model checks, hard subprocess deadlines with process-tree cleanup,
-privacy-bounded host/resource/coverage evidence, and explicit external-gate
-status, run:
+Use `cargo storage` to inspect build storage. `cargo purge` removes all Cargo
+build artifacts and should only be used after Automexia windows are closed.
+
+Windows and WSL builds should use separate native checkouts. Keep Linux builds
+inside the WSL filesystem, such as `~/src/automexia-terminal`, and keep
+Windows/MSVC, ConPTY, GPU, and packaging work on NTFS.
+
+Read the [contributor guide](CONTRIBUTING.md) and
+[testing guide](docs/TESTING.md) for platform tools, focused checks, native
+evidence, packaging, and release validation.
+
+## Run Automexia
+
+With the executable on `PATH`:
 
 ```text
-cargo qa
-cargo qa --bundle
+automexia
+automexia --working-dir <PATH>
+automexia -e <PROGRAM> [ARGS...]
 ```
 
-The executable remains available at `target/debug/automexia`
-(`automexia.exe` on Windows). Advanced scoped `cargo xtask` commands are
-documented in [CONTRIBUTING.md](CONTRIBUTING.md) and
-[docs/TESTING.md](docs/TESTING.md).
+The `-e` or `--command` option must be last because everything after the program
+name is passed directly to that program.
 
-The workflow refuses to start an exhaustive gate with less than 12 GiB free or
-an application build with less than 4 GiB free on the target filesystem. Check
-where build storage is being used with `cargo storage`. To remove all Cargo
-build artifacts, close running Automexia windows and run `cargo purge`.
-Brand-source and platform-export rules are in
-[docs/BRANDING.md](docs/BRANDING.md).
-The latest plan-by-plan implementation evidence and explicit external release
-blockers are recorded in [docs/READINESS-AUDIT.md](docs/READINESS-AUDIT.md).
+Configuration is stored in these locations by default:
 
-The native liquid-hacker interface, responsive pane-local tab rail,
-passive session footers, per-command operational context, tab/window
-interactions, shell prompt, command timing, semantic output styling, and focused regression commands are documented in
-[docs/LIQUID-HACKER-UX.md](docs/LIQUID-HACKER-UX.md).
+| Platform | Configuration folder |
+|---|---|
+| Windows | `%LOCALAPPDATA%\Automexia\Terminal` |
+| macOS | `~/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal` |
+| Linux/BSD | `$XDG_CONFIG_HOME/automexia`, or `~/.config/automexia` |
 
-Both `cargo dev` and `cargo automexia` use repository-owned shell resources
-only in the child session. `cargo ready`, `cargo check`, CI, and normal
-launch remain non-mutating with respect to user profiles. Signed release
-resources are loaded from the installed package; persistent profile support is
-available only through the explicit application maintenance command.
+Set `AUTOMEXIA_CONFIG_HOME` to use a different folder.
 
-Native PowerShell gains icon-aware `ls` output through a bundled, pipeline-safe
-format view and does not require `eza`. Typing bare `cmd` or `cmd.exe` from an
-integrated PowerShell pane opens Command Prompt inside that same Automexia pane;
-CMD receives the branded full-path/lambda prompt, live shell/user/path context,
-and icon-aware `ls`/`ll`. Identity is reasserted on every CMD prompt, and
-PowerShell restores its own metadata immediately after `exit`; built-in `dir`
-and explicit `cmd /c` behavior stay native. In Bash and Zsh, the integration
-uses an
-installed `eza` for icon-aware `ls`, `ll`, and `tree` output and falls back
-cleanly when `eza` is unavailable. A bundled compatibility layer gives older
-Ubuntu/WSL eza 0.18.x releases the same colored composite folder badges as
-PowerShell without changing filenames or piped output; see
-[docs/LIQUID-HACKER-UX.md](docs/LIQUID-HACKER-UX.md#file-and-folder-icons) for
-the shortcuts, sensitive/config/log/source/test/build category vocabulary, and
-opt-out.
+## Keyboard-first by design
 
-Clone the active PowerShell, Command Prompt, Bash, Zsh, or WSL session into an
-independent right/lower split with the original Automexia shortcuts
-`Ctrl`+`R` / `Ctrl`+`D`. `Ctrl`+`Alt`+`R` sends history search to the shell and
-`Ctrl`+`Alt`+`D` sends EOF/logout. Fresh default-shell splits use
-`Ctrl`+`Shift`+`R` / `Ctrl`+`Shift`+`D` on Windows/Linux/BSD and `Cmd`+`D` /
-`Cmd`+`Shift`+`D` on macOS.
+Automexia can be used without a pointer. The main controls cover command search,
+terminal search, selection, windows, tabs, panes, local tabs, image previews,
+configuration, and appearance.
 
-On Windows, Linux, and BSD, `Ctrl`+`T` adds a window-level tab and
-`Ctrl`+`Shift`+`T` adds an independent tab inside the selected split/session.
-macOS uses `Cmd`+`T` and `Cmd`+`Shift`+`T` for those two scopes. Pane-local tabs preserve the selected
-shell/profile, WSL identity, and working directory while owning independent
-PTYs. When a pane has multiple local tabs, their controls live inside that pane
-and do not resize its siblings. Navigate panes geometrically with
-`Alt`+Arrow on Windows/Linux/BSD (`Cmd`+`Alt`+Arrow on macOS), or cycle them
-with `F6` / `Shift`+`F6` (`Cmd`+`]` / `Cmd`+`[` on macOS).
-`Alt`+`PageDown` / `Alt`+`PageUp` switches tabs only inside the selected pane;
-macOS uses `Cmd`+`Alt`+`]` / `Cmd`+`Alt`+`[`.
-`Ctrl`+`Tab` remains reserved for window-level tabs. See
-[configuration](docs/CONFIGURATION.md). Ghostty compatibility is a
-future opt-in profile tracked separately in the
-[compatibility roadmap](docs/GHOSTTY-COMPATIBILITY-ROADMAP.md); it is not the
-implicit Automexia default.
+Shortcuts follow the conventions of each platform, so macOS uses Command for
+common desktop actions while Windows, Linux, and BSD use Control. See the
+[practical shortcut guide](docs/user-guide/shortcuts.md) or the
+[complete keyboard reference](docs/KEYBOARD.md).
 
-Select terminal text without reaching for the mouse on every supported OS:
-`Shift`+Arrow extends by one visible cell or row, and
-`Ctrl`+`Shift`+Left/Right extends by a Unicode-aware word boundary. The first
-press anchors at the live terminal cursor; later presses grow or reverse the
-same selection. Search, Vi mode, image-preview browsing, and explicit user
-bindings retain their established ownership.
+## Platforms
 
-## Image previews
+| Platform | Current position |
+|---|---|
+| Windows | Supported with native ConPTY, PowerShell, Command Prompt, and WSL workflows |
+| Linux | Supported with native Unix PTY and desktop integration |
+| macOS | Supported with native desktop and shell integration |
+| BSD | Source-compatible and best effort where the Unix paths apply |
 
-Automexia renders application-driven Sixel, Kitty Graphics (including Unicode
-placeholders), and iTerm2 inline images. It also provides local quick look for
-paths printed by ordinary commands: hover a filename, click it to pin, then use
-the arrow keys to browse other visible images. `Esc` closes the card. Selecting
-a path and pressing `Ctrl`+`Alt`+`I` (`Cmd`+`Alt`+`I` on macOS) and the
-**Preview Selected Image** palette action remain keyboard alternatives.
-Decoding is local-only, bounded, asynchronous, route-scoped, and responsive
-across pane sizes. See
-[image previews](docs/IMAGE-PREVIEWS.md) for supported tools, formats, security
-limits, and focused tests.
+Cross-compilation is useful build evidence, but it does not replace native
+runtime, graphics, packaging, or accessibility testing. The exact platform
+claims are listed in [platform support](docs/PLATFORMS.md).
 
-## Configuration
+## Clear security boundaries
 
-Automexia uses these roots by default:
+Automexia treats terminal output, paths, imported files, provider output,
+completions, and generated content as untrusted input. Structured actions use
+exact executables and argument lists instead of building shell command strings.
+Queues, history, image dimensions, files, retries, logs, and stored data have
+explicit limits.
 
-- Windows: `%LOCALAPPDATA%\Automexia\Terminal`
-- macOS: `~/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal`
-- Linux/BSD: `$XDG_CONFIG_HOME/automexia`, or `~/.config/automexia`
+Credentials remain in platform or external credential stores whenever possible.
+The terminal does not turn background discovery into hidden process or network
+authority.
 
-`AUTOMEXIA_CONFIG_HOME` overrides the root. See
-the [configuration reference](docs/CONFIGURATION.md) for the complete
-schema, defaults, limits, platform overrides, reload behavior, migration, and
-compatibility details.
+Managed SSH, live cloud-provider authentication, third-party extension
+downloads, public extension execution, and AI command execution are not shipped
+v0.4 features. Some later foundations exist in source with execution disabled;
+the documentation labels them as internal, release-gated, or planned instead of
+presenting them as available product behavior.
+
+Read [Security](SECURITY.md), [Architecture](docs/ARCHITECTURE.md), and the
+[build, wrap, or adopt boundary](docs/BUILD-WRAP-ADOPT-ARCHITECTURE.md) for the
+full trust model.
 
 ## Project status
 
-- v0.4 keeps attributed private `rio-*`, `librio`, Sugarloaf, and related
-  engine crate names while all product-facing identity is Automexia.
-- v0.5.0 will perform the smallest behavior-preserving API/runtime/UI-model
-  extraction required to ship an optional first-party `devops-ssh` extension
-  through the system OpenSSH client. v0.5.1 then adds separately enabled AWS,
-  Azure, Google Cloud, Kubernetes, OpenShift, and infrastructure extensions with
-  per-PTY environment isolation. These are planned, not current v0.4 features;
-  see the [roadmap](docs/ROADMAP.md) and
-  [SSH/DevOps/multi-cloud architecture](docs/SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md).
-- The v0.5 [Command Productivity](docs/COMMAND-PRODUCTIVITY.md) track has
-  completed CP1 shell-native completion health and bounded explicit provider
-  refresh. Persistent typed Quick Actions, opt-in non-colliding aliases, and
-  reviewed DevOps packs remain later phases; built-in short aliases remain
-  disabled by default.
-- Grouping inherited engines beneath `engine/` remains lower priority than the
-  release-critical v0.5 extension/session boundary.
-- Third-party extension downloads, a public extension SDK, and Wasm sandboxing
-  remain out of scope until the documented v0.6 milestone.
+The source tree contains the current v0.4 terminal and carefully separated v0.5
+foundations. The [feature catalog](docs/FEATURES.md) explains what is available,
+what is implemented locally but still release-gated, what is internal and
+disabled, and what remains planned.
 
-## Contributing and security
+Stable v0.4 publication still requires the final vector and monochrome logo
+sources, written artwork-rights approval, Windows signing, Apple signing and
+notarization, and the remaining private reporting/release prerequisites. The
+current raster mark is used for development and nightly packages. See the
+[brand asset workflow](docs/BRANDING.md) and
+[release readiness audit](docs/READINESS-AUDIT.md).
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md),
-[SUPPORT.md](SUPPORT.md), and [GOVERNANCE.md](GOVERNANCE.md). All commits must
-carry a DCO `Signed-off-by` line.
+## Documentation
 
-## License and provenance
+- [Complete User Guide](docs/user-guide/index.md)
+- [Start and launch sessions](docs/user-guide/start-and-launch.md)
+- [Workspaces, tabs, and panes](docs/user-guide/workspace.md)
+- [Commands and shell workflows](docs/user-guide/commands-and-shell.md)
+- [Files and image previews](docs/user-guide/files-and-images.md)
+- [Configuration reference](docs/CONFIGURATION.md)
+- [CLI reference](docs/CLI-REFERENCE.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Testing](docs/TESTING.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Decision index](docs/DECISIONS.md)
 
-Automexia Terminal is MIT licensed. It preserves Rio's full Git history and
-copyright notice. See [NOTICE.md](NOTICE.md) and [UPSTREAM.md](UPSTREAM.md) for
-the exact fork point and upstream-port policy.
+The [documentation home](docs/index.md) has the complete reading map.
+
+## Contributing
+
+Contributions should be focused, tested, documented, and signed off under the
+Developer Certificate of Origin. Start with [CONTRIBUTING.md](CONTRIBUTING.md)
+and the repository's [AI contributor workflow](AGENTS.md).
+
+For help or responsible reporting, read [SUPPORT.md](SUPPORT.md),
+[SECURITY.md](SECURITY.md), and [GOVERNANCE.md](GOVERNANCE.md).
+
+## License and upstream history
+
+Automexia Terminal is available under the MIT License. The repository preserves
+Rio's Git history and copyright notices. See [NOTICE.md](NOTICE.md) and
+[UPSTREAM.md](UPSTREAM.md) for the exact fork point and upstream-port policy.
