@@ -32,6 +32,7 @@ use crate::hints::HintState;
 use crate::layout::ContextDimension;
 use crate::mouse::{calculate_mouse_position, Mouse};
 use crate::renderer::island::{self, ChromeAction, LocalTabAction, TabStripLayout};
+use crate::renderer::search::SearchScope;
 use crate::renderer::session_footer;
 use crate::renderer::{utils::padding_top_from_config, Renderer};
 use crate::screen::hint::HintMatches;
@@ -68,6 +69,34 @@ const MAX_SEARCH_WHILE_TYPING: Option<usize> = Some(1000);
 
 /// Maximum number of search terms stored in the history.
 const MAX_SEARCH_HISTORY_SIZE: usize = 255;
+
+/// Bound untrusted terminal-search input before compiling a regex.
+const MAX_SEARCH_QUERY_BYTES: usize = 4 * 1024;
+
+fn visible_search_route_order(
+    mut routes: Vec<usize>,
+    current_route: usize,
+) -> Vec<usize> {
+    if let Some(index) = routes.iter().position(|route| *route == current_route) {
+        routes.rotate_left(index);
+    }
+    routes
+}
+
+fn search_match_wrapped(
+    search_match: &rio_backend::crosswords::search::Match,
+    origin: Pos,
+    direction: Direction,
+) -> bool {
+    match direction {
+        Direction::Right => *search_match.start() < origin,
+        Direction::Left => *search_match.end() > origin,
+    }
+}
+
+fn search_query_accepts_char(current_bytes: usize, character: char) -> bool {
+    current_bytes.saturating_add(character.len_utf8()) <= MAX_SEARCH_QUERY_BYTES
+}
 
 fn adjacent_preview_index(len: usize, current: Option<usize>, direction: isize) -> usize {
     debug_assert!(len > 0);
@@ -370,6 +399,8 @@ struct NativeWindowSnapshot {
     active_tab_profile: Option<String>,
     palette_enabled: bool,
     confirm_quit_active: bool,
+    search_active: bool,
+    search_scope: Option<&'static str>,
 }
 
 #[cfg(feature = "native-gui-test-hooks")]
@@ -449,7 +480,7 @@ fn write_native_resize_snapshot(
         })?;
         Some(prompt_start.saturating_sub(previous_output + 1))
     });
-    let snapshot = serde_json::json!({
+    let mut snapshot = serde_json::json!({
         "sequence": sequence,
         "columns": content.columns,
         "rows": content.screen_lines,
@@ -501,6 +532,8 @@ fn write_native_resize_snapshot(
         "panel_count": panels.len(),
         "panels": panels,
     });
+    snapshot["search_active"] = serde_json::json!(window.search_active);
+    snapshot["search_scope"] = serde_json::json!(window.search_scope);
 
     let payload = snapshot.to_string();
     if let Err(error) = publish_native_resize_snapshot_generation(
@@ -576,6 +609,7 @@ pub struct Screen<'screen> {
     pub mouse: Mouse,
     pub touchpurpose: TouchPurpose,
     pub search_state: SearchState,
+    search_scope: SearchScope,
     pub hint_state: HintState,
     image_preview: crate::image_preview::ImagePreview,
     action_surface: action_surface::Controller,
@@ -829,6 +863,7 @@ impl Screen<'_> {
 
         Ok(Screen {
             search_state: SearchState::default(),
+            search_scope: SearchScope::Pane { route_id: 0 },
             hint_state: HintState::new(config.hints.alphabet.clone()),
             image_preview: crate::image_preview::ImagePreview::default(),
             action_surface,
@@ -1993,6 +2028,16 @@ impl Screen<'_> {
                         self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
+                    Act::SearchGlobalForward => {
+                        self.start_workspace_search(Direction::Right);
+                        self.resize_top_or_bottom_line();
+                        self.mark_dirty();
+                    }
+                    Act::SearchGlobalBackward => {
+                        self.start_workspace_search(Direction::Left);
+                        self.resize_top_or_bottom_line();
+                        self.mark_dirty();
+                    }
                     Act::Search(SearchAction::SearchConfirm) => {
                         self.confirm_search(clipboard);
                         self.resize_top_or_bottom_line();
@@ -2005,8 +2050,9 @@ impl Screen<'_> {
                     }
                     Act::Search(SearchAction::SearchClear) => {
                         let direction = self.search_state.direction;
+                        let scope = self.search_scope;
                         self.cancel_search(clipboard);
-                        self.start_search(direction);
+                        self.start_search_in_scope(direction, scope);
                         self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
@@ -3694,16 +3740,10 @@ impl Screen<'_> {
         }
 
         let scale_factor = self.sugarloaf.scale_factor();
-        let window_size = self.sugarloaf.window_size();
-        let window_width = window_size.width;
         let mouse_x = self.mouse.x as f32 / scale_factor;
         let mouse_y = self.mouse.y as f32 / scale_factor;
 
-        match self
-            .renderer
-            .search
-            .hit_test(mouse_x, mouse_y, window_width, scale_factor)
-        {
+        match self.renderer.search.hit_test(mouse_x, mouse_y) {
             Ok(Some(action)) => {
                 use crate::renderer::search::SearchOverlayAction;
                 match action {
@@ -3981,6 +4021,21 @@ impl Screen<'_> {
     #[inline]
     pub fn take_chrome_press(&mut self) -> Option<ChromePress> {
         self.last_chrome_press.take()
+    }
+
+    /// Update search hover using physical pointer coordinates. The first return
+    /// value means the pointer is over the complete search surface and all
+    /// underlying pane/chrome handling must stop; the second reports repaint.
+    pub fn update_search_hover(&mut self, mouse_x: f64, mouse_y: f64) -> (bool, bool) {
+        let scale = self.sugarloaf.scale_factor().max(f32::EPSILON);
+        let logical_x = mouse_x as f32 / scale;
+        let logical_y = mouse_y as f32 / scale;
+        let changed = self.renderer.search.hover(logical_x, logical_y);
+        let over_surface = self
+            .renderer
+            .search
+            .pointer_is_over_surface(logical_x, logical_y);
+        (over_surface, changed)
     }
 
     fn is_close_press_tail(&self, x_unscaled: f32) -> bool {
@@ -4522,6 +4577,29 @@ impl Screen<'_> {
 
     #[inline]
     fn start_search(&mut self, direction: Direction) {
+        let scope = SearchScope::Pane {
+            route_id: self.context_manager.current_route(),
+        };
+        self.start_search_in_scope(direction, scope);
+    }
+
+    #[inline]
+    fn start_workspace_search(&mut self, direction: Direction) {
+        self.start_search_in_scope(direction, SearchScope::Workspace);
+    }
+
+    fn start_search_in_scope(&mut self, direction: Direction, scope: SearchScope) {
+        // Vi search always belongs to its selected pane; the global launcher is
+        // excluded in Vi mode, and this fail-safe preserves that invariant for
+        // user-defined bindings.
+        self.search_scope = if self.get_mode().contains(Mode::VI) {
+            SearchScope::Pane {
+                route_id: self.context_manager.current_route(),
+            }
+        } else {
+            scope
+        };
+
         // Only create new history entry if the previous regex wasn't empty.
         if self
             .search_state
@@ -4633,8 +4711,14 @@ impl Screen<'_> {
             '\x08' | '\x7f' => {
                 let _ = regex.pop();
             }
-            // Add ascii and unicode text.
-            ' '..='~' | '\u{a0}'..='\u{10ffff}' => regex.push(c),
+            // Add bounded ASCII and Unicode text. Regex compilation treats this
+            // as untrusted input, so oversized queries fail closed.
+            ' '..='~' | '\u{a0}'..='\u{10ffff}'
+                if search_query_accepts_char(regex.len(), c) =>
+            {
+                regex.push(c);
+            }
+            ' '..='~' | '\u{a0}'..='\u{10ffff}' => return,
             // Ignore non-printable characters.
             _ => return,
         }
@@ -4698,6 +4782,13 @@ impl Screen<'_> {
 
     /// Jump to the first regex match from the search origin.
     fn goto_match(&mut self, mut limit: Option<usize>) {
+        if self.search_scope == SearchScope::Workspace
+            && !self.get_mode().contains(Mode::VI)
+        {
+            self.goto_workspace_match(limit);
+            return;
+        }
+
         let dfas = match &mut self.search_state.dfas {
             Some(dfas) => dfas,
             None => return,
@@ -4762,6 +4853,100 @@ impl Screen<'_> {
         if should_reset_search_state {
             self.search_reset_state();
         }
+    }
+
+    /// Search the active local tab of every visible pane. The existing terminal
+    /// regex engine remains authoritative; this method only supplies a bounded,
+    /// deterministic route order and publishes the pane containing the result.
+    fn goto_workspace_match(&mut self, limit: Option<usize>) {
+        let current_route = self.context_manager.current_route();
+        let routes = visible_search_route_order(
+            self.context_manager.visible_route_ids_in_search_order(),
+            current_route,
+        );
+        let direction = self.search_state.direction;
+        let current_origin = self.search_state.origin;
+        let mut wrapped_current = None;
+        let mut found = None;
+
+        {
+            let Some(dfas) = self.search_state.dfas.as_mut() else {
+                return;
+            };
+            for route_id in routes {
+                let Some(context) = self.context_manager.get_by_route_id(route_id) else {
+                    continue;
+                };
+                let terminal = context.terminal.lock();
+                let origin = if route_id == current_route {
+                    current_origin.grid_clamp(&*terminal, Boundary::Grid)
+                } else {
+                    match direction {
+                        Direction::Right => Pos::new(terminal.topmost_line(), Column(0)),
+                        Direction::Left => {
+                            Pos::new(terminal.bottommost_line(), terminal.last_column())
+                        }
+                    }
+                };
+                let route_limit = limit.filter(|&value| value <= terminal.total_lines());
+                let result = terminal.search_next(
+                    dfas,
+                    origin,
+                    direction,
+                    Side::Left,
+                    route_limit,
+                );
+                drop(terminal);
+
+                let Some(search_match) = result else {
+                    continue;
+                };
+                if route_id == current_route
+                    && search_match_wrapped(&search_match, origin, direction)
+                {
+                    wrapped_current = Some((route_id, search_match));
+                    continue;
+                }
+                found = Some((route_id, search_match));
+                break;
+            }
+        }
+
+        let Some((route_id, search_match)) = found.or(wrapped_current) else {
+            if limit.is_none() {
+                self.search_reset_state();
+            } else {
+                self.search_state.focused_match = None;
+            }
+            return;
+        };
+
+        if route_id != current_route {
+            let previous = self.context_manager.current_mut();
+            previous.renderable_content.hint_matches = None;
+            previous
+                .renderable_content
+                .pending_update
+                .set_terminal_damage(rio_backend::event::TerminalDamage::Full);
+            if !self.context_manager.select_visible_route(route_id) {
+                self.search_state.focused_match = None;
+                return;
+            }
+            self.search_state.display_offset_delta = 0;
+        }
+
+        let mut terminal = self.context_manager.current_mut().terminal.lock();
+        let old_offset = terminal.display_offset() as i32;
+        terminal.scroll_to_pos(*search_match.start());
+        let display_offset = terminal.display_offset();
+        drop(terminal);
+
+        self.search_state.display_offset_delta += old_offset - display_offset as i32;
+        self.search_state.origin = match direction {
+            Direction::Right => *search_match.start(),
+            Direction::Left => *search_match.end(),
+        };
+        self.search_state.focused_match = Some(search_match);
     }
 
     fn sgr_mouse_report(&mut self, pos: Pos, button: u8, state: ElementState) {
@@ -5210,6 +5395,12 @@ impl Screen<'_> {
             PaletteAction::SearchBackward => {
                 self.start_search(Direction::Left);
             }
+            PaletteAction::SearchGlobalForward => {
+                self.start_workspace_search(Direction::Right);
+            }
+            PaletteAction::SearchGlobalBackward => {
+                self.start_workspace_search(Direction::Left);
+            }
             PaletteAction::PreviewSelectedImage => {
                 self.preview_selected_image();
             }
@@ -5244,7 +5435,13 @@ impl Screen<'_> {
     }
 
     pub(crate) fn render(&mut self) -> Option<crate::context::renderable::WindowUpdate> {
-        self.update_close_button_hover(self.mouse.x, self.mouse.y);
+        let (over_search, _) = self.update_search_hover(self.mouse.x, self.mouse.y);
+        if over_search {
+            self.clear_close_button_hover();
+            self.clear_chrome_action_hover();
+        } else {
+            self.update_close_button_hover(self.mouse.x, self.mouse.y);
+        }
         self.sync_action_surface();
         self.sync_connection_hub();
 
@@ -5260,15 +5457,29 @@ impl Screen<'_> {
             self.context_manager.schedule_render_on_route(millis);
         }
 
-        let is_search_active = self.search_active();
+        let mut is_search_active = self.search_active();
+        if is_search_active
+            && matches!(
+                self.search_scope,
+                SearchScope::Pane { route_id }
+                    if route_id != self.context_manager.current_route()
+            )
+        {
+            // A pointer focus change ends pane-local search instead of silently
+            // applying the query to a different PTY.
+            self.search_state.dfas = None;
+            self.exit_search();
+            is_search_active = false;
+        }
         if is_search_active {
             if let Some(history_index) = self.search_state.history_index {
                 self.renderer.set_active_search(
                     self.search_state.history.get(history_index).cloned(),
+                    self.search_scope,
                 );
             }
         } else {
-            self.renderer.set_active_search(None);
+            self.renderer.set_active_search(None, self.search_scope);
         }
 
         if is_search_active {
@@ -5351,6 +5562,13 @@ impl Screen<'_> {
                         .tab_profile_identity(self.context_manager.current_index()),
                     palette_enabled: self.renderer.command_palette.is_enabled(),
                     confirm_quit_active: self.renderer.confirm_quit.is_active(),
+                    search_active: self.search_active(),
+                    search_scope: self.search_active().then_some(
+                        match self.search_scope {
+                            SearchScope::Pane { .. } => "pane",
+                            SearchScope::Workspace => "workspace",
+                        },
+                    ),
                 },
                 &self.native_test_last_control,
                 self.image_preview.native_test_state(&self.sugarloaf),
@@ -6139,6 +6357,18 @@ impl Screen<'_> {
                 self.open_connection_hub();
                 self.mark_dirty();
             }
+            "open-pane-search" => {
+                self.renderer.command_palette.set_enabled(false);
+                self.renderer.confirm_quit.set_active(false);
+                self.start_search(Direction::Right);
+                self.mark_dirty();
+            }
+            "open-workspace-search" => {
+                self.renderer.command_palette.set_enabled(false);
+                self.renderer.confirm_quit.set_active(false);
+                self.start_workspace_search(Direction::Right);
+                self.mark_dirty();
+            }
             "confirm-quit" => {
                 self.renderer.command_palette.set_enabled(false);
                 self.renderer.confirm_quit.set_active(true);
@@ -6848,6 +7078,36 @@ mod tests {
         releases.record_press(key);
         releases.clear();
         assert!(!releases.take_release(&key));
+    }
+
+    #[test]
+    fn workspace_search_starts_at_current_route_then_uses_visual_order() {
+        assert_eq!(
+            visible_search_route_order(vec![11, 22, 33, 44], 33),
+            [33, 44, 11, 22]
+        );
+        assert_eq!(visible_search_route_order(vec![11, 22], 9_999), [11, 22]);
+        assert!(visible_search_route_order(Vec::new(), 11).is_empty());
+    }
+
+    #[test]
+    fn global_wrap_detection_defers_current_pane_until_other_panes() {
+        let origin = Pos::new(Line(5), Column(4));
+        let before = Pos::new(Line(2), Column(1))..=Pos::new(Line(2), Column(3));
+        let after = Pos::new(Line(8), Column(1))..=Pos::new(Line(8), Column(3));
+
+        assert!(search_match_wrapped(&before, origin, Direction::Right));
+        assert!(!search_match_wrapped(&after, origin, Direction::Right));
+        assert!(search_match_wrapped(&after, origin, Direction::Left));
+        assert!(!search_match_wrapped(&before, origin, Direction::Left));
+    }
+
+    #[test]
+    fn terminal_search_query_byte_limit_handles_multibyte_boundaries() {
+        assert!(search_query_accepts_char(MAX_SEARCH_QUERY_BYTES - 1, 'a'));
+        assert!(!search_query_accepts_char(MAX_SEARCH_QUERY_BYTES, 'a'));
+        assert!(search_query_accepts_char(MAX_SEARCH_QUERY_BYTES - 4, '🦀'));
+        assert!(!search_query_accepts_char(MAX_SEARCH_QUERY_BYTES - 3, '🦀'));
     }
 
     #[test]

@@ -49,7 +49,8 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `Ctrl+0`, `Ctrl+=` or `Ctrl++`, `Ctrl+-` | Reset, increase, or decrease pane font size. |
 | `Shift+Home/End` | Scroll to history top / bottom outside the alternate screen. |
 | `Shift+PageUp/PageDown` | Scroll one page up / down outside the alternate screen. |
-| `Ctrl+Shift+F` / `Ctrl+Shift+B` | Search forward / backward. |
+| `Ctrl+F` | Find forward in the selected pane. |
+| `Ctrl+Shift+F` / `Ctrl+Shift+B` | Search forward / backward across all visible panes in the selected workspace tab. |
 | `Ctrl+Shift+Space` | Toggle Vi mode on Windows. |
 | `Alt+Shift+Space` | Toggle Vi mode on Linux/BSD and all platforms through the common binding. |
 | `Ctrl+Shift+K` | Clear history on Windows. |
@@ -86,7 +87,8 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `Cmd+C` / `Cmd+V` | Copy / paste. `Ctrl+C` remains selection-aware as described above. |
 | `Cmd+A` | Select all. |
 | `Cmd+0`, `Cmd+=` or `Cmd++`, `Cmd+-` | Reset, increase, or decrease font size. |
-| `Cmd+F` / `Cmd+B` | Search forward / backward. |
+| `Cmd+F` / `Cmd+B` | Find forward / backward in the selected pane. |
+| `Cmd+Shift+F` / `Cmd+Shift+B` | Search forward / backward across all visible panes in the selected workspace tab. |
 | `Cmd+K` | Clear visible screen and then history. |
 | `Ctrl+Cmd+F` | Toggle fullscreen. |
 | `Cmd+Alt+I` | Preview selected image. |
@@ -130,6 +132,10 @@ viewports. Modified approval/copy letters remain available to their existing
 owners.
 
 ## Search mode
+
+Pane search replaces only the selected pane's footer, keeping its scope and result ownership visible without covering terminal text or window controls. If an exceptionally narrow pane cannot contain the controls, the same pane-scoped surface falls back to the safe bottom position. Workspace search uses a bottom-centered surface above the footer; it searches the active local tab in every currently visible split of the selected workspace tab. Hidden pane-local tabs and other window-level tabs are deliberately excluded.
+
+The surface shows a redundant scope label (`PANE` or `ALL PANES`), themed search icon, placeholder, previous/next controls, and a distinct close control. Its entire painted rectangle consumes pointer input, so clicks cannot fall through to a terminal, splitter, tab, or window-close control behind it. Moving focus to another pane closes a pane-local search instead of silently retargeting it. Queries are limited to 4 KiB of UTF-8 input; invalid regular expressions remain non-matching and never reach the PTY.
 
 | Shortcut | Result |
 |---|---|
@@ -179,7 +185,7 @@ Stable action names are case-insensitive:
 Paste, Copy, SelectAll,
 ExtendSelectionLeft, ExtendSelectionRight, ExtendSelectionUp,
 ExtendSelectionDown, ExtendSelectionWordLeft, ExtendSelectionWordRight,
-SearchForward, SearchBackward, SearchConfirm, SearchCancel, SearchClear,
+SearchForward, SearchBackward, SearchGlobalForward, SearchGlobalBackward, SearchConfirm, SearchCancel, SearchClear,
 SearchFocusNext, SearchFocusPrevious, SearchDeleteWord, SearchHistoryNext,
 SearchHistoryPrevious, ClearHistory, ClearScreen,
 ResetFontSize, IncreaseFontSize, DecreaseFontSize,

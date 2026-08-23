@@ -737,6 +737,25 @@ mod pane_tab_tests {
     }
 
     #[test]
+    fn visible_search_routes_are_deterministic_and_select_only_active_panes() {
+        let mut grid = two_panel_grid();
+        for item in grid.inner.values_mut() {
+            item.layout_rect = if item.val.route_id == 11 {
+                [0.0, 0.0, 100.0, 100.0]
+            } else {
+                [100.0, 0.0, 100.0, 100.0]
+            };
+        }
+        assert_eq!(grid.active_route_ids_in_visual_order(), [11, 22]);
+        assert!(grid.select_active_route(11));
+        assert_eq!(grid.current().route_id, 11);
+        assert!(grid.select_active_route(22));
+        assert_eq!(grid.current().route_id, 22);
+        assert!(!grid.select_active_route(9_999));
+        assert_eq!(grid.current().route_id, 22);
+    }
+
+    #[test]
     fn split_zoom_hides_only_siblings_and_restores_every_exact_style() {
         let mut grid = two_panel_grid();
         let before = grid
@@ -1813,9 +1832,34 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             a.1.partial_cmp(&b.1)
                 .unwrap_or(std::cmp::Ordering::Equal)
                 .then(a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
+                .then(u64::from(a.0).cmp(&u64::from(b.0)))
         });
 
         panels.into_iter().map(|(id, _, _)| id).collect()
+    }
+
+    /// Active PTY routes in deterministic visual order. Hidden pane-local and
+    /// top-level tabs are deliberately excluded from workspace search.
+    pub fn active_route_ids_in_visual_order(&self) -> Vec<usize> {
+        self.get_ordered_keys()
+            .into_iter()
+            .filter_map(|key| self.inner.get(&key))
+            .map(|item| item.val.route_id)
+            .collect()
+    }
+
+    /// Select an already-visible pane route without changing local-tab or
+    /// top-level-tab ownership.
+    pub fn select_active_route(&mut self, route_id: usize) -> bool {
+        let Some(key) = self.get_ordered_keys().into_iter().find(|key| {
+            self.inner
+                .get(key)
+                .is_some_and(|item| item.val.route_id == route_id)
+        }) else {
+            return false;
+        };
+        self.current = key;
+        true
     }
 
     #[inline]

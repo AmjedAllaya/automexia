@@ -6,6 +6,7 @@
 
 use crate::context::ContextManager;
 use crate::layout::pane_footer_reserved_height;
+use crate::renderer::search::SearchRect;
 use rio_backend::event::EventListener;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Attributes;
@@ -123,6 +124,7 @@ impl SessionFooter {
         sugarloaf: &mut Sugarloaf,
         context_manager: &ContextManager<T>,
         background: [f32; 4],
+        suppressed_route: Option<usize>,
     ) where
         T: EventListener + Clone + Send + 'static,
     {
@@ -143,6 +145,9 @@ impl SessionFooter {
                 continue;
             };
             let context = item.context();
+            if suppressed_route == Some(context.route_id) {
+                continue;
+            }
             let rc = &context.renderable_content;
             let Some(geometry) = footer_geometry(item.layout_rect, frame, scale) else {
                 continue;
@@ -213,6 +218,34 @@ where
         });
     }
     None
+}
+
+pub(crate) fn surface_for_route<T>(
+    context_manager: &ContextManager<T>,
+    route_id: usize,
+    scale: f32,
+) -> Option<SearchRect>
+where
+    T: EventListener + Clone + Send + 'static,
+{
+    let grid = context_manager.current_grid();
+    let frame = FooterFrame {
+        viewport_width: grid.width,
+        top: grid.scaled_margin.top,
+        right: grid.scaled_margin.right,
+        left: grid.scaled_margin.left,
+    };
+    let item = grid
+        .contexts()
+        .values()
+        .find(|item| item.context().route_id == route_id)?;
+    let surface = footer_geometry(item.layout_rect, frame, scale)?.surface;
+    Some(SearchRect::new(
+        surface.x,
+        surface.y,
+        surface.width,
+        surface.height,
+    ))
 }
 
 fn draw_footer(

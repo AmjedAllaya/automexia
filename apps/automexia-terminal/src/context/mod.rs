@@ -854,9 +854,10 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             }
         }
 
+        let initial_route = initial_context.route_id;
         Ok(ContextManager {
             current_index: 0,
-            current_route: 0,
+            current_route: initial_route,
             contexts: smallvec![ContextGrid::new(
                 initial_context,
                 scaled_margin,
@@ -895,9 +896,10 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             &config,
         )?;
 
+        let initial_route = initial_context.route_id;
         Ok(ContextManager {
             current_index: 0,
-            current_route: 0,
+            current_route: initial_route,
             contexts: smallvec![ContextGrid::new(
                 initial_context,
                 Margin::default(),
@@ -1284,6 +1286,22 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             .iter()
             .flat_map(ContextGrid::route_ids)
             .collect()
+    }
+
+    /// Active local-tab routes for every visible pane in the selected
+    /// workspace tab, ordered top-to-bottom then left-to-right.
+    pub fn visible_route_ids_in_search_order(&self) -> Vec<usize> {
+        self.current_grid().active_route_ids_in_visual_order()
+    }
+
+    /// Focus an already-visible pane route. Workspace search never activates a
+    /// hidden top-level or pane-local tab as a side effect.
+    pub fn select_visible_route(&mut self, route_id: usize) -> bool {
+        if !self.current_grid_mut().select_active_route(route_id) {
+            return false;
+        }
+        self.current_route = route_id;
+        true
     }
 
     #[inline]
@@ -2390,6 +2408,15 @@ pub mod test {
     use crate::event::VoidListener;
     use std::sync::Mutex;
 
+    #[test]
+    fn initial_route_tracks_the_authoritative_active_context() {
+        let manager =
+            ContextManager::start_with_capacity(4, VoidListener {}, WindowId::from(30))
+                .expect("dead context manager");
+
+        assert_ne!(manager.current_route(), 0);
+        assert_eq!(manager.current_route(), manager.current().route_id);
+    }
     #[test]
     fn parked_topology_history_is_count_and_time_bounded() {
         let window_id = WindowId::from(0);

@@ -1,0 +1,246 @@
+---
+source: apps/automexia-terminal/src/renderer/search.rs
+expression: matrix
+---
+[
+    (
+        "pane-footer",
+        Some(
+            SearchLayout {
+                surface: SearchRect {
+                    x: 420.0,
+                    y: 736.0,
+                    width: 612.0,
+                    height: 32.0,
+                },
+                input: SearchRect {
+                    x: 508.0,
+                    y: 739.0,
+                    width: 426.0,
+                    height: 26.0,
+                },
+                previous: SearchRect {
+                    x: 938.0,
+                    y: 739.0,
+                    width: 26.0,
+                    height: 26.0,
+                },
+                next: SearchRect {
+                    x: 968.0,
+                    y: 739.0,
+                    width: 26.0,
+                    height: 26.0,
+                },
+                close: SearchRect {
+                    x: 998.0,
+                    y: 739.0,
+                    width: 26.0,
+                    height: 26.0,
+                },
+                scope: SearchRect {
+                    x: 428.0,
+                    y: 739.0,
+                    width: 76.0,
+                    height: 26.0,
+                },
+                scope_label: "PANE",
+                placeholder: "Find in pane",
+                show_scope: true,
+                show_search_icon: true,
+                floating: false,
+            },
+        ),
+    ),
+    (
+        "workspace-normal",
+        Some(
+            SearchLayout {
+                surface: SearchRect {
+                    x: 480.0,
+                    y: 812.0,
+                    width: 480.0,
+                    height: 44.0,
+                },
+                input: SearchRect {
+                    x: 568.0,
+                    y: 821.0,
+                    width: 294.0,
+                    height: 26.0,
+                },
+                previous: SearchRect {
+                    x: 866.0,
+                    y: 821.0,
+                    width: 26.0,
+                    height: 26.0,
+                },
+                next: SearchRect {
+                    x: 896.0,
+                    y: 821.0,
+                    width: 26.0,
+                    height: 26.0,
+                },
+                close: SearchRect {
+                    x: 926.0,
+                    y: 821.0,
+                    width: 26.0,
+                    height: 26.0,
+                },
+                scope: SearchRect {
+                    x: 488.0,
+                    y: 821.0,
+                    width: 76.0,
+                    height: 26.0,
+                },
+                scope_label: "ALL PANES",
+                placeholder: "Search all visible panes",
+                show_scope: true,
+                show_search_icon: true,
+                floating: true,
+            },
+        ),
+    ),
+    (
+        "workspace-tiny",
+        Some(
+            SearchLayout {
+                surface: SearchRect {
+                    x: 12.0,
+                    y: 72.0,
+                    width: 216.0,
+                    height: 44.0,
+                },
+                input: SearchRect {
+                    x: 20.0,
+                    y: 83.0,
+                    width: 122.0,
+                    height: 22.0,
+                },
+                previous: SearchRect {
+                    x: 146.0,
+                    y: 83.0,
+                    width: 22.0,
+                    height: 22.0,
+                },
+                next: SearchRect {
+                    x: 172.0,
+                    y: 83.0,
+                    width: 22.0,
+                    height: 22.0,
+                },
+                close: SearchRect {
+                    x: 198.0,
+                    y: 83.0,
+                    width: 22.0,
+                    height: 22.0,
+                },
+                scope: SearchRect {
+                    x: 20.0,
+                    y: 83.0,
+                    width: 0.0,
+                    height: 22.0,
+                },
+                scope_label: "ALL PANES",
+                placeholder: "Search all visible panes",
+                show_scope: false,
+                show_search_icon: true,
+                floating: true,
+            },
+        ),
+    ),
+    (
+        "workspace-hidpi",
+        Some(
+            SearchLayout {
+                surface: SearchRect {
+                    x: 60.0,
+                    y: 312.0,
+                    width: 480.0,
+                    height: 44.0,
+                },
+                input: SearchRect {
+                    x: 148.0,
+                    y: 322.0,
+                    width: 300.0,
+                    height: 24.0,
+                },
+                previous: SearchRect {
+                    x: 452.0,
+                    y: 322.0,
+                    width: 24.0,
+                    height: 24.0,
+                },
+                next: SearchRect {
+                    x: 480.0,
+                    y: 322.0,
+                    width: 24.0,
+                    height: 24.0,
+                },
+                close: SearchRect {
+                    x: 508.0,
+                    y: 322.0,
+                    width: 24.0,
+                    height: 24.0,
+                },
+                scope: SearchRect {
+                    x: 68.0,
+                    y: 322.0,
+                    width: 76.0,
+                    height: 24.0,
+                },
+                scope_label: "ALL PANES",
+                placeholder: "Search all visible panes",
+                show_scope: true,
+                show_search_icon: true,
+                floating: true,
+            },
+        ),
+    ),
+    (
+        "workspace-ultrawide",
+        Some(
+            SearchLayout {
+                surface: SearchRect {
+                    x: 3600.0,
+                    y: 2072.0,
+                    width: 480.0,
+                    height: 44.0,
+                },
+                input: SearchRect {
+                    x: 3688.0,
+                    y: 2081.0,
+                    width: 294.0,
+                    height: 26.0,
+                },
+                previous: SearchRect {
+                    x: 3986.0,
+                    y: 2081.0,
+                    width: 26.0,
+                    height: 26.0,
+                },
+                next: SearchRect {
+                    x: 4016.0,
+                    y: 2081.0,
+                    width: 26.0,
+                    height: 26.0,
+                },
+                close: SearchRect {
+                    x: 4046.0,
+                    y: 2081.0,
+                    width: 26.0,
+                    height: 26.0,
+                },
+                scope: SearchRect {
+                    x: 3608.0,
+                    y: 2081.0,
+                    width: 76.0,
+                    height: 26.0,
+                },
+                scope_label: "ALL PANES",
+                placeholder: "Search all visible panes",
+                show_scope: true,
+                show_search_icon: true,
+                floating: true,
+            },
+        ),
+    ),
+]

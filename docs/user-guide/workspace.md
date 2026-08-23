@@ -154,8 +154,10 @@ This behavior prevents Automexia's selection controls from secretly changing she
 
 Search is a terminal view operation, not a shell command:
 
-- Windows/Linux/BSD: `Ctrl+Shift+F` forward, `Ctrl+Shift+B` backward.
-- macOS: `Cmd+F` forward, `Cmd+B` backward.
+- Pane search: Windows/Linux/BSD `Ctrl+F`; macOS `Cmd+F` forward or `Cmd+B` backward.
+- All-visible-pane search: Windows/Linux/BSD `Ctrl+Shift+F` forward or `Ctrl+Shift+B` backward; macOS `Cmd+Shift+F` forward or `Cmd+Shift+B` backward.
+
+Pane search replaces the selected pane's footer; an exceptionally narrow pane falls back to the same safe bottom position without changing its pane scope. All-visible-pane search is bottom-centered above the footer and cannot cover top-level tab or window-close controls. Its deterministic scope is the active local tab in every visible split of the selected workspace tab; hidden local tabs and other window tabs are not activated. The `PANE` / `ALL PANES` chip, themed icon, placeholder, and colored close control keep scope and actions recognizable without relying on color alone. The full surface captures pointer input so a click cannot activate UI behind it.
 
 Inside search mode:
 
