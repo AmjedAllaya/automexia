@@ -456,21 +456,50 @@ impl Route<'_> {
             return true;
         }
 
+        // Diagnostic dialogs are modal in every route. Consume all keyboard
+        // input so no key can reach a terminal hidden behind the scrim.
+        if self.window.screen.renderer.assistant.is_active() {
+            if key_event.state == rio_window::event::ElementState::Pressed {
+                match &key_event.logical_key {
+                    Key::Named(NamedKey::Escape | NamedKey::Enter) => {
+                        self.assistant.clear();
+                        self.window.screen.renderer.assistant.clear();
+                        self.request_overlay_redraw();
+                    }
+                    Key::Character(c) if c.as_str().eq_ignore_ascii_case("d") => {
+                        Screen::open_docs_url();
+                    }
+                    _ => {}
+                }
+            }
+            return true;
+        }
+
+        if self
+            .window
+            .screen
+            .renderer
+            .compatibility_inspector
+            .is_active()
+        {
+            if key_event.state == rio_window::event::ElementState::Pressed
+                && key_event.logical_key == Key::Named(NamedKey::Escape)
+            {
+                self.window
+                    .screen
+                    .renderer
+                    .compatibility_inspector
+                    .set_visibility("hide");
+                self.request_overlay_redraw();
+            }
+            return true;
+        }
+
         if self.path == RoutePath::Terminal {
             return false;
         }
 
         let is_enter = key_event.logical_key == Key::Named(NamedKey::Enter);
-
-        // Handle assistant overlay dismiss
-        if self.window.screen.renderer.assistant.is_active() {
-            if is_enter {
-                self.assistant.clear();
-                self.window.screen.renderer.assistant.clear();
-                self.request_overlay_redraw();
-            }
-            return true;
-        }
 
         if self.path == RoutePath::Welcome && is_enter {
             rio_backend::config::create_config_file(None);

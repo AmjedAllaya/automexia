@@ -19,9 +19,9 @@ const SCROLLBAR_HIT_WIDTH: f32 = 14.0;
 pub const FADE_OUT_DELAY_MS: u128 = 2000;
 pub const FADE_OUT_DURATION_MS: u128 = 300;
 
-// Colors
-pub const SCROLLBAR_COLOR: [f32; 4] = [0.6, 0.6, 0.6, 0.5];
-pub const SCROLLBAR_DRAG_COLOR: [f32; 4] = [0.7, 0.7, 0.7, 0.7];
+// Cyan/blue application-chrome role from the liquid-hacker palette.
+pub const SCROLLBAR_COLOR: [f32; 4] = [0.063, 0.88, 1.0, 0.45];
+pub const SCROLLBAR_DRAG_COLOR: [f32; 4] = [0.18, 0.58, 0.96, 0.82];
 
 // Depth / order for the terminal-surface scrollbar (render on top of
 // content but below overlays). Palette / other UIs pick their own
@@ -118,7 +118,17 @@ pub fn draw_thumb(
         SCROLLBAR_COLOR
     };
     let color = [base[0], base[1], base[2], base[3] * opacity];
-    sugarloaf.rect(None, x, y, SCROLLBAR_WIDTH, height, color, depth, order);
+    sugarloaf.rounded_rect(
+        None,
+        x,
+        y,
+        SCROLLBAR_WIDTH,
+        height,
+        color,
+        depth,
+        (SCROLLBAR_WIDTH * 0.5).min(height * 0.5),
+        order,
+    );
 }
 
 /// Computed geometry of a scrollbar track and thumb in logical pixels.
@@ -470,6 +480,16 @@ impl Scrollbar {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scrollbar_uses_distinct_branded_idle_and_drag_roles() {
+        const {
+            assert!(SCROLLBAR_COLOR[2] > SCROLLBAR_COLOR[0]);
+            assert!(SCROLLBAR_COLOR[1] > SCROLLBAR_COLOR[0]);
+            assert!(SCROLLBAR_DRAG_COLOR[3] > SCROLLBAR_COLOR[3]);
+        }
+        assert_ne!(SCROLLBAR_COLOR, SCROLLBAR_DRAG_COLOR);
+    }
 
     #[test]
     fn opacity_zero_when_never_scrolled() {

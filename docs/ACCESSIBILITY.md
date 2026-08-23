@@ -27,6 +27,14 @@ a separate Automexia text/document milestone.
 | Tab rail | Selected tab, stable title, close/add hit regions | Existing tab creation, selection, and close bindings | Native screen-reader role exposure is not yet complete |
 | Split panes | Exactly one active pane with a visible outline | `Alt`+Arrow (`Cmd`+`Alt`+Arrow on macOS) geometric focus plus next/previous cycling | Native screen-reader focus announcements require the v0.5 adapter |
 | Command palette | Search input, selected command, visible shortcut, category label | Open, filter, move, activate, and dismiss without a pointer | Platform role announcements require the v0.5 adapter |
+| Pane and workspace search | Scope icon and label, editable query, result position, previous/next, and visible close | Ctrl/Cmd+F searches one pane; Ctrl/Cmd+Shift+F searches visible panes; arrows/Enter/Escape operate without a pointer | Platform role and live-result announcements require the v0.5 adapter |
+| First-run welcome | Automexia title, concise time/effort/flexibility value statement, and one visible Enter instruction; no local path is rendered | Enter creates starter settings and continues; no pointer-only action or background animation | Platform heading/action announcements require the v0.5 adapter |
+| Diagnostic assistant | Error/warning text, severity label, visible close, and troubleshooting action | Escape or Enter dismisses; D opens the fixed guide; all terminal input behind the scrim is inert | Platform dialog/action announcements require the v0.5 adapter |
+| Compatibility inspector | Explicit REDACTED label, public snapshot fields, diagnostic empty state, and visible close | Escape dismisses; all terminal input behind the scrim is inert | Platform dialog/list announcements require the v0.5 adapter |
+| Quit confirmation | Destructive consequence, explicit Cancel/Close labels, key hints, and pointer hover | Escape/N cancels; Y confirms; both buttons have large hit targets | Platform alert-dialog announcements require the v0.5 adapter |
+| Tab appearance picker | Labeled title field, 24-pixel swatches, selected check, clear icon, and apply/cancel help | Type/backspace edits; Enter applies; Escape cancels; non-fitting layouts cancel safely | Platform field/radio-group announcements require the v0.5 adapter |
+| Connection Hub | Search/filter/group controls, labeled actions, status and empty/error states | Complete keyboard navigation and visible close; terminal input behind the scrim is inert | Native picker and screen-reader evidence remains release-gated |
+| Scrollbar | Rounded cyan/blue thumb plus a wider invisible grab area; drag state differs in opacity and color | Wheel and terminal navigation remain primary; pointer dragging is optional | Native screen readers use terminal/document scrolling rather than this visual thumb |
 | Context segments | Icon plus text label; meaning never depends only on color | Passive information; no hidden pointer-only action | Freshness/error announcements remain provider-neutral roadmap work |
 | Session footer | Passive pane/tab/grid/line-ending/clock status | No action is hidden in the footer | It is intentionally omitted when a pane cannot spare terminal rows |
 | Terminal grid | Shell output, selection, cursor, and input remain authoritative | Standard terminal and configured shell bindings | Full text-range exposure requires the v0.5 accessibility model |
@@ -41,6 +49,12 @@ The normal and Phase 0 gates cover:
 - active-pane outline geometry at tiny, normal, split, HiDPI, 4K, and
   8K-equivalent layouts;
 - semantic color contrast correction and redundant icon/text identity;
+- first-run startup layout/DPI/target invariants and a regression guard against
+  rendering local configuration paths;
+- diagnostic/inspector/quit layout, 24-pixel pointer-target, hover, hit-test,
+  redaction, modal-input, and opaque-surface tests;
+- tab-appearance fit, 24-pixel swatch, redundant selected/clear meaning, and
+  256-byte control-free UTF-8 title tests;
 - Proptest viewport/DPI invariants with checked-in minimized regressions;
 - reviewed structured footer geometry snapshots;
 - font/glyph coverage and responsive omission of low-priority chrome;

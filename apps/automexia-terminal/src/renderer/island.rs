@@ -9,6 +9,9 @@
 use crate::context::ContextManager;
 use crate::renderer::helpers::spring::Spring;
 use crate::renderer::responsive::{ChromeMetrics, Viewport};
+use crate::renderer::ui_theme::{
+    color_u8 as theme_color_u8, UiTheme, BRAND_CYAN, BRAND_PURPLE,
+};
 use rio_backend::event::{EventProxy, ProgressReport, ProgressState};
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::{Attributes, Sugarloaf};
@@ -36,20 +39,23 @@ const DRAG_ANIMATION_LENGTH: f32 = 0.15;
 const DRAG_MAX_DT: f32 = 0.05;
 const ISLAND_MARGIN_RIGHT: f32 = 8.0;
 
-/// Color picker constants
-const PICKER_SWATCH_SIZE: f32 = 18.0;
-const PICKER_SWATCH_GAP: f32 = 4.0;
-const PICKER_PADDING: f32 = 6.0;
-const PICKER_INPUT_HEIGHT: f32 = 26.0;
+/// Tab-appearance picker geometry in logical pixels. Interactive targets
+/// satisfy the project's 24×24 minimum without depending on display scale.
+const PICKER_SWATCH_SIZE: f32 = 24.0;
+const PICKER_SWATCH_GAP: f32 = 6.0;
+const PICKER_PADDING: f32 = 10.0;
+const PICKER_LABEL_HEIGHT: f32 = 18.0;
+const PICKER_INPUT_HEIGHT: f32 = 32.0;
 const PICKER_INPUT_FONT_SIZE: f32 = 12.0;
 const PICKER_INPUT_MARGIN_TOP: f32 = 8.0;
-const PICKER_TOP_PADDING: f32 = 4.0;
-const PICKER_HEIGHT: f32 = PICKER_TOP_PADDING
+const PICKER_FOOTER_HEIGHT: f32 = 20.0;
+const PICKER_HEIGHT: f32 = PICKER_PADDING * 2.0
+    + PICKER_LABEL_HEIGHT
     + PICKER_SWATCH_SIZE
-    + PICKER_PADDING * 2.0
     + PICKER_INPUT_MARGIN_TOP
     + PICKER_INPUT_HEIGHT
-    + PICKER_PADDING;
+    + PICKER_FOOTER_HEIGHT;
+const PICKER_MAX_RENAME_BYTES: usize = 256;
 const PICKER_COLORS: [[f32; 4]; 6] = [
     // red
     [0.86, 0.26, 0.27, 1.0],
@@ -64,6 +70,48 @@ const PICKER_COLORS: [[f32; 4]; 6] = [
     // purple
     [0.68, 0.40, 0.80, 1.0],
 ];
+
+#[derive(Clone, Copy)]
+struct PickerRenderContext {
+    tab_x: f32,
+    tab_width: f32,
+    selected_color: Option<[f32; 4]>,
+    header_height: f32,
+    logical_width: f32,
+    configured_background: [f32; 4],
+}
+
+fn picker_width() -> f32 {
+    let slot_count = PICKER_COLORS.len() + 1;
+    slot_count as f32 * PICKER_SWATCH_SIZE
+        + (slot_count - 1) as f32 * PICKER_SWATCH_GAP
+        + PICKER_PADDING * 2.0
+}
+
+fn picker_fits(logical_width: f32, logical_height: f32, header_height: f32) -> bool {
+    logical_width >= picker_width()
+        && logical_height >= header_height + PICKER_HEIGHT + 8.0
+}
+
+fn bounded_rename(value: &str) -> String {
+    let mut result = String::new();
+    for ch in value.chars().filter(|ch| !ch.is_control()) {
+        if result.len() + ch.len_utf8() > PICKER_MAX_RENAME_BYTES {
+            break;
+        }
+        result.push(ch);
+    }
+    result
+}
+
+fn push_bounded_rename(target: &mut String, value: &str) {
+    for ch in value.chars().filter(|ch| !ch.is_control()) {
+        if target.len() + ch.len_utf8() > PICKER_MAX_RENAME_BYTES {
+            break;
+        }
+        target.push(ch);
+    }
+}
 
 /// Left margin on macOS to account for traffic light buttons
 #[cfg(target_os = "macos")]
@@ -1563,18 +1611,26 @@ impl Island {
         if let Some(picker_tab) = self.color_picker_tab {
             let logical_height = window_height / scale_factor.max(f32::EPSILON);
             if picker_tab < num_tabs
-                && logical_height >= metrics.header_height + PICKER_HEIGHT + 8.0
+                && picker_fits(logical_width, logical_height, metrics.header_height)
             {
                 let picker_tab_x = left_margin + picker_tab as f32 * tab_width;
                 let selected = context_manager.custom_color(picker_tab);
                 self.render_color_picker(
                     sugarloaf,
-                    picker_tab_x,
-                    tab_width,
-                    selected,
-                    metrics.header_height,
-                    logical_width,
+                    PickerRenderContext {
+                        tab_x: picker_tab_x,
+                        tab_width,
+                        selected_color: selected,
+                        header_height: metrics.header_height,
+                        logical_width,
+                        configured_background: bg_color,
+                    },
                 );
+            } else {
+                // A picker that cannot fit would become an invisible input
+                // trap. Cancel without committing the pending title.
+                self.color_picker_tab = None;
+                self.rename_input.clear();
             }
         }
 
@@ -1600,10 +1656,10 @@ impl Island {
         } else {
             self.color_picker_tab = Some(tab_index);
             // Initialize rename input with custom title or current displayed title
-            self.rename_input = context_manager
+            let initial_title = context_manager
                 .custom_title(tab_index)
-                .map(str::to_string)
-                .unwrap_or_else(|| current_title.to_string());
+                .unwrap_or(current_title);
+            self.rename_input = bounded_rename(initial_title);
             self.rename_caret_time = Instant::now();
         }
     }
@@ -1670,8 +1726,8 @@ impl Island {
             _ => {
                 if let Some(text) = key_event.text.as_ref() {
                     let s = text.as_str();
-                    if !s.is_empty() && s.chars().all(|c| !c.is_control()) {
-                        self.rename_input.push_str(s);
+                    if !s.is_empty() {
+                        push_bounded_rename(&mut self.rename_input, s);
                         self.rename_caret_time = Instant::now();
                     }
                 }
@@ -1698,6 +1754,16 @@ impl Island {
         let (window_width, window_height, scale_factor) = dimensions;
         let mouse_x_unscaled = mouse_x / scale_factor;
         let mouse_y_unscaled = mouse_y / scale_factor;
+        let logical_width = window_width / scale_factor.max(f32::EPSILON);
+        let logical_height = window_height / scale_factor.max(f32::EPSILON);
+        let metrics = chrome_metrics(window_width, window_height, scale_factor);
+        if picker_tab >= num_tabs
+            || !picker_fits(logical_width, logical_height, metrics.header_height)
+        {
+            self.color_picker_tab = None;
+            self.rename_input.clear();
+            return true;
+        }
 
         // Compute the same tab layout as render()
         let TabStripLayout {
@@ -1712,8 +1778,6 @@ impl Island {
             self.max_tab_width,
         );
         let tab_x = left_margin + picker_tab as f32 * tab_width;
-        let logical_width = window_width / scale_factor.max(f32::EPSILON);
-        let metrics = chrome_metrics(window_width, window_height, scale_factor);
 
         // Picker is rendered just below the island
         let picker_y = metrics.header_height;
@@ -1723,7 +1787,7 @@ impl Island {
             // Click outside picker — apply rename and close
             self.apply_rename(context_manager);
             self.color_picker_tab = None;
-            return false;
+            return true;
         }
 
         // Total picker width — N color swatches + 1 reset swatch
@@ -1736,7 +1800,7 @@ impl Island {
         let picker_start_x = bg_x + PICKER_PADDING;
 
         // Check each swatch
-        let swatch_y = picker_y + PICKER_PADDING + PICKER_TOP_PADDING;
+        let swatch_y = picker_y + PICKER_PADDING + PICKER_LABEL_HEIGHT;
         let swatch_y_end = swatch_y + PICKER_SWATCH_SIZE;
         for (i, color) in PICKER_COLORS.iter().enumerate() {
             let swatch_x =
@@ -1775,89 +1839,140 @@ impl Island {
     fn render_color_picker(
         &mut self,
         sugarloaf: &mut Sugarloaf,
-        tab_x: f32,
-        tab_width: f32,
-        selected_color: Option<[f32; 4]>,
-        header_height: f32,
-        logical_width: f32,
+        context: PickerRenderContext,
     ) {
-        let padding = PICKER_PADDING;
-        let bg_y = header_height;
-
-        // Compute total swatches width to derive the consistent inner content width
-        // N color swatches + 1 reset swatch
-        let slot_count = PICKER_COLORS.len() + 1;
-        let total_swatches_width = slot_count as f32 * PICKER_SWATCH_SIZE
-            + (slot_count - 1) as f32 * PICKER_SWATCH_GAP;
-        let inner_width = total_swatches_width;
-        let bg_width = inner_width + padding * 2.0;
+        let PickerRenderContext {
+            tab_x,
+            tab_width,
+            selected_color,
+            header_height,
+            logical_width,
+            configured_background,
+        } = context;
+        let theme = UiTheme::resolve(
+            configured_background,
+            self.active_text_color,
+            self.inactive_text_color,
+        );
+        let bg_width = picker_width();
         let bg_x = (tab_x + (tab_width - bg_width) / 2.0)
             .clamp(0.0, (logical_width - bg_width).max(0.0));
-        let content_x = bg_x + padding;
+        let bg_y = header_height;
+        let content_x = bg_x + PICKER_PADDING;
+        let inner_width = bg_width - PICKER_PADDING * 2.0;
 
-        // Background
+        sugarloaf.begin_modal_layer();
+        sugarloaf.rounded_rect(
+            None,
+            bg_x + 5.0,
+            bg_y + 7.0,
+            bg_width,
+            PICKER_HEIGHT,
+            [0.0, 0.0, 0.0, 0.48],
+            0.0,
+            10.0,
+            10,
+        );
         sugarloaf.rounded_rect(
             None,
             bg_x,
             bg_y,
             bg_width,
             PICKER_HEIGHT,
-            [0.15, 0.15, 0.15, 1.0],
+            BRAND_PURPLE,
             0.0,
-            4.0,
+            10.0,
+            10,
+        );
+        sugarloaf.rounded_rect(
+            None,
+            bg_x + 1.0,
+            bg_y + 1.0,
+            (bg_width - 2.0).max(1.0),
+            (PICKER_HEIGHT - 2.0).max(1.0),
+            theme.background,
+            0.0,
+            9.0,
             10,
         );
 
-        // Swatches — aligned to content_x
-        let swatch_y = bg_y + padding + PICKER_TOP_PADDING;
-        for (i, color) in PICKER_COLORS.iter().enumerate() {
-            let sx = content_x + i as f32 * (PICKER_SWATCH_SIZE + PICKER_SWATCH_GAP);
-            let is_selected = selected_color == Some(*color);
+        let heading = DrawOpts {
+            font_size: 10.5,
+            color: theme_color_u8(BRAND_PURPLE),
+            bold: true,
+            ..DrawOpts::default()
+        };
+        sugarloaf.text_mut().draw(
+            content_x,
+            bg_y + PICKER_PADDING,
+            "◇  TAB APPEARANCE",
+            &heading,
+        );
 
-            // Draw white border behind selected swatch
-            if is_selected {
-                let border = 2.0;
+        let swatch_y = bg_y + PICKER_PADDING + PICKER_LABEL_HEIGHT;
+        for (index, color) in PICKER_COLORS.iter().enumerate() {
+            let x = content_x + index as f32 * (PICKER_SWATCH_SIZE + PICKER_SWATCH_GAP);
+            let selected = selected_color == Some(*color);
+            if selected {
                 sugarloaf.rounded_rect(
                     None,
-                    sx - border,
-                    swatch_y - border,
-                    PICKER_SWATCH_SIZE + border * 2.0,
-                    PICKER_SWATCH_SIZE + border * 2.0,
-                    [1.0, 1.0, 1.0, 1.0],
+                    x - 2.0,
+                    swatch_y - 2.0,
+                    PICKER_SWATCH_SIZE + 4.0,
+                    PICKER_SWATCH_SIZE + 4.0,
+                    BRAND_CYAN,
                     0.0,
-                    4.0,
+                    7.0,
                     10,
                 );
             }
-
             sugarloaf.rounded_rect(
                 None,
-                sx,
+                x,
                 swatch_y,
                 PICKER_SWATCH_SIZE,
                 PICKER_SWATCH_SIZE,
                 *color,
                 0.0,
-                3.0,
+                5.0,
                 10,
             );
+            if selected {
+                sugarloaf.rounded_rect(
+                    None,
+                    x + 5.0,
+                    swatch_y + 5.0,
+                    14.0,
+                    14.0,
+                    theme.background,
+                    0.0,
+                    7.0,
+                    10,
+                );
+                let check = DrawOpts {
+                    font_size: 10.0,
+                    color: theme_color_u8(theme.text),
+                    bold: true,
+                    ..DrawOpts::default()
+                };
+                sugarloaf
+                    .text_mut()
+                    .draw(x + 7.0, swatch_y + 5.0, "✓", &check);
+            }
         }
 
-        // Reset swatch — neutral box with a diagonal slash, selected when no color is set
         let reset_x = content_x
             + PICKER_COLORS.len() as f32 * (PICKER_SWATCH_SIZE + PICKER_SWATCH_GAP);
-        let reset_selected = selected_color.is_none();
-        if reset_selected {
-            let border = 2.0;
+        if selected_color.is_none() {
             sugarloaf.rounded_rect(
                 None,
-                reset_x - border,
-                swatch_y - border,
-                PICKER_SWATCH_SIZE + border * 2.0,
-                PICKER_SWATCH_SIZE + border * 2.0,
-                [1.0, 1.0, 1.0, 1.0],
+                reset_x - 2.0,
+                swatch_y - 2.0,
+                PICKER_SWATCH_SIZE + 4.0,
+                PICKER_SWATCH_SIZE + 4.0,
+                BRAND_CYAN,
                 0.0,
-                4.0,
+                7.0,
                 10,
             );
         }
@@ -1867,74 +1982,74 @@ impl Island {
             swatch_y,
             PICKER_SWATCH_SIZE,
             PICKER_SWATCH_SIZE,
-            [0.22, 0.22, 0.22, 1.0],
+            theme.raised,
             0.0,
-            3.0,
+            5.0,
             10,
         );
-        let slash_inset = 3.0;
-        sugarloaf.line(
-            reset_x + slash_inset,
-            swatch_y + PICKER_SWATCH_SIZE - slash_inset,
-            reset_x + PICKER_SWATCH_SIZE - slash_inset,
-            swatch_y + slash_inset,
-            1.5,
-            0.0,
-            [0.86, 0.26, 0.27, 1.0],
-            10,
-        );
+        let reset = DrawOpts {
+            font_size: 15.0,
+            color: theme_color_u8(theme.text),
+            bold: true,
+            ..DrawOpts::default()
+        };
+        sugarloaf
+            .text_mut()
+            .draw(reset_x + 7.0, swatch_y + 3.0, "×", &reset);
 
-        // Rename text input — same left/right edge as swatches
         let input_y = swatch_y + PICKER_SWATCH_SIZE + PICKER_INPUT_MARGIN_TOP;
-        let input_x = content_x;
-        let input_width = inner_width;
-
-        // Input background
         sugarloaf.rounded_rect(
             None,
-            input_x,
+            content_x,
             input_y,
-            input_width,
+            inner_width,
             PICKER_INPUT_HEIGHT,
-            [0.10, 0.10, 0.10, 1.0],
+            theme.outline,
             0.0,
-            3.0,
+            7.0,
+            10,
+        );
+        sugarloaf.rounded_rect(
+            None,
+            content_x + 1.0,
+            input_y + 1.0,
+            (inner_width - 2.0).max(1.0),
+            (PICKER_INPUT_HEIGHT - 2.0).max(1.0),
+            theme.surface,
+            0.0,
+            6.0,
             10,
         );
 
-        let text_inset = 6.0;
-        let text_x = input_x + text_inset;
-        let max_text_width = input_width - text_inset * 2.0;
-        let text_y = input_y + (PICKER_INPUT_HEIGHT - PICKER_INPUT_FONT_SIZE) / 2.0;
-
+        let text_inset = 9.0;
+        let text_x = content_x + text_inset;
+        let max_text_width = inner_width - text_inset * 2.0;
+        let text_y = input_y + (PICKER_INPUT_HEIGHT - PICKER_INPUT_FONT_SIZE) * 0.5;
         let text_color = if self.rename_input.is_empty() {
-            [0.45, 0.45, 0.45, 1.0]
+            theme.muted_text
         } else {
-            [0.93, 0.93, 0.93, 1.0]
+            theme.text
         };
         let rename_opts = DrawOpts {
             font_size: PICKER_INPUT_FONT_SIZE,
-            color: color_u8(text_color),
+            color: theme_color_u8(text_color),
             ..DrawOpts::default()
         };
 
-        // Determine visible text: trim from the front if it overflows.
         let display_text: String = if self.rename_input.is_empty() {
-            "Tab title...".to_string()
+            "Tab title".to_string()
         } else {
             let input = self.rename_input.as_str();
             let chars: Vec<char> = input.chars().collect();
             let ui = sugarloaf.text_mut();
             let mut start = 0;
-            let full_width = ui.measure(input, &rename_opts);
-            if full_width > max_text_width {
+            if ui.measure(input, &rename_opts) > max_text_width {
                 let mut lo = 0;
                 let mut hi = chars.len();
                 while lo < hi {
                     let mid = (lo + hi) / 2;
-                    let substr: String = chars[mid..].iter().collect();
-                    let w = ui.measure(&substr, &rename_opts);
-                    if w > max_text_width {
+                    let suffix: String = chars[mid..].iter().collect();
+                    if ui.measure(&suffix, &rename_opts) > max_text_width {
                         lo = mid + 1;
                     } else {
                         hi = mid;
@@ -1954,25 +2069,34 @@ impl Island {
         } else {
             rendered_width
         };
-
-        // Blinking caret
-        let elapsed = self.rename_caret_time.elapsed().as_millis();
-        let show_caret = (elapsed / 500).is_multiple_of(2);
-        if show_caret {
+        if (self.rename_caret_time.elapsed().as_millis() / 500).is_multiple_of(2) {
             let caret_x = text_x + rendered_width;
-            if caret_x <= input_x + input_width {
+            if caret_x <= content_x + inner_width - text_inset {
                 sugarloaf.rect(
                     None,
                     caret_x,
-                    input_y + 4.0,
+                    input_y + 6.0,
                     1.5,
-                    PICKER_INPUT_HEIGHT - 8.0,
-                    [0.93, 0.93, 0.93, 1.0],
+                    PICKER_INPUT_HEIGHT - 12.0,
+                    BRAND_CYAN,
                     0.0,
                     10,
                 );
             }
         }
+
+        let footer = DrawOpts {
+            font_size: 10.0,
+            color: theme_color_u8(theme.muted_text),
+            ..DrawOpts::default()
+        };
+        sugarloaf.text_mut().draw(
+            content_x,
+            input_y + PICKER_INPUT_HEIGHT + 7.0,
+            "Enter apply  ·  Esc cancel",
+            &footer,
+        );
+        sugarloaf.end_modal_layer();
     }
 
     /// Whether the color picker is currently open
@@ -2810,6 +2934,39 @@ mod tests {
             240.0,
             false,
         )
+    }
+
+    #[test]
+    fn tab_appearance_picker_targets_and_surface_are_bounded() {
+        const {
+            assert!(PICKER_SWATCH_SIZE >= 24.0);
+        }
+        assert_eq!(
+            picker_width(),
+            (PICKER_COLORS.len() + 1) as f32 * PICKER_SWATCH_SIZE
+                + PICKER_COLORS.len() as f32 * PICKER_SWATCH_GAP
+                + PICKER_PADDING * 2.0
+        );
+        assert!(picker_fits(
+            picker_width(),
+            48.0 + PICKER_HEIGHT + 8.0,
+            48.0
+        ));
+        assert!(!picker_fits(picker_width() - 1.0, 600.0, 48.0));
+        assert!(!picker_fits(picker_width(), 48.0 + PICKER_HEIGHT, 48.0));
+    }
+
+    #[test]
+    fn tab_rename_is_utf8_safe_control_free_and_byte_bounded() {
+        let value = format!("{}\nignored", "é".repeat(PICKER_MAX_RENAME_BYTES));
+        let bounded = bounded_rename(&value);
+        assert!(bounded.len() <= PICKER_MAX_RENAME_BYTES);
+        assert!(bounded.is_char_boundary(bounded.len()));
+        assert!(bounded.chars().all(|ch| !ch.is_control()));
+
+        let mut target = "x".repeat(PICKER_MAX_RENAME_BYTES - 1);
+        push_bounded_rename(&mut target, "éoverflow");
+        assert_eq!(target.len(), PICKER_MAX_RENAME_BYTES - 1);
     }
 
     #[test]
