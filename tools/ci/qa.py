@@ -618,6 +618,11 @@ def main() -> int:
             None,
         ),
         (
+            "d7-cp6-ecosystem-mutations",
+            [sys.executable, "tools/ci/test_ecosystem_d7_cp6.py"],
+            None,
+        ),
+        (
             "cp50-research-format",
             [
                 "cargo",

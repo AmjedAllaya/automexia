@@ -1,0 +1,428 @@
+{
+  "schema": 1,
+  "phase": "D7/CP6",
+  "status": "proposed-not-authorized",
+  "authority": {
+    "adr": "0029",
+    "accepted": false,
+    "runtime_activation": false,
+    "public_downloads": false,
+    "public_sdk": false,
+    "component_execution": false,
+    "ai_provider_calls": false,
+    "ai_tool_calls": false,
+    "automatic_execution": false,
+    "new_dependencies": "none",
+    "fallback": "private-first-party-extensions-and-cp1-cp3"
+  },
+  "ownership": {
+    "terminal_core": [
+      "capability-policy",
+      "generation-and-cancellation",
+      "typed-operation-revalidation",
+      "immutable-ui-publication",
+      "redaction-and-resource-policy"
+    ],
+    "ecosystem_domain": [
+      "manifest-and-package-model",
+      "compatibility",
+      "capability-diff",
+      "verification-receipts",
+      "lifecycle-state"
+    ],
+    "sandbox_host": [
+      "component-validation",
+      "custom-wit-linking",
+      "fuel-deadline-resource-limits",
+      "typed-host-calls",
+      "crash-isolation-and-joined-cleanup"
+    ],
+    "external_authorities": [
+      "publisher-key-custody",
+      "transparency-and-provenance-services",
+      "model-inference",
+      "model-account-and-credential-custody"
+    ],
+    "forbidden_duplicate_owners": [
+      "pty",
+      "terminal-grid",
+      "session",
+      "renderer",
+      "process-runner",
+      "credential-store",
+      "shell-editor"
+    ]
+  },
+  "package": {
+    "initial_ingress": "explicit-local-file-only",
+    "immutable": true,
+    "required_entries": [
+      "manifest.json",
+      "component.wasm",
+      "signature-bundle.json",
+      "provenance.json",
+      "sbom.spdx.json",
+      "LICENSES.txt"
+    ],
+    "forbidden_payloads": [
+      "native-library",
+      "native-executable",
+      "shell-script",
+      "symlink",
+      "hardlink",
+      "device",
+      "fifo",
+      "socket"
+    ],
+    "path_policy": [
+      "utf-8-portable-relative",
+      "canonical-unique",
+      "no-empty-dot-or-dotdot-segments",
+      "no-absolute-drive-unc-or-option-like-paths",
+      "no-control-bidi-or-normalization-collision"
+    ],
+    "extraction": [
+      "verify-before-extract",
+      "private-no-follow-staging",
+      "disk-space-preflight",
+      "bounded-expansion",
+      "fsync-and-atomic-publish",
+      "last-known-good-generation",
+      "crash-recovery"
+    ]
+  },
+  "sandbox": {
+    "candidate": "wasmtime-component-model",
+    "adopted_dependency": false,
+    "world": "automexia:ecosystem/suggestion@1",
+    "default_wasi": "none",
+    "allowed_imports": [
+      "automexia:ecosystem/public-context@1",
+      "automexia:ecosystem/selected-input@1",
+      "automexia:ecosystem/suggestion@1",
+      "automexia:ecosystem/diagnostic@1"
+    ],
+    "forbidden_import_families": [
+      "wasi:cli",
+      "wasi:filesystem",
+      "wasi:sockets",
+      "wasi:http",
+      "wasi:random",
+      "process",
+      "environment",
+      "clipboard",
+      "pty",
+      "terminal-history",
+      "terminal-output",
+      "ssh-agent",
+      "credentials",
+      "provider-cache",
+      "capsule-secret",
+      "connection"
+    ],
+    "cpu": "deterministic-fuel-plus-emergency-epoch-deadline",
+    "memory": "guest-and-host-transfer-limited",
+    "worker": "dedicated-bounded-joined-off-hot-paths",
+    "publication": "typed-sanitized-policy-revalidated-generation-current-only",
+    "execution_output": "never-pty-input-never-enter-never-process"
+  },
+  "capabilities": {
+    "default": "deny",
+    "initial_available": [
+      "public-metadata.read",
+      "selected-input.read-once",
+      "suggestion.publish",
+      "structured-operation.propose",
+      "diagnostic.publish-redacted"
+    ],
+    "initial_unavailable": [
+      "filesystem.read",
+      "filesystem.write",
+      "network.connect",
+      "process.request",
+      "clipboard.read",
+      "clipboard.write",
+      "pty.read",
+      "pty.write",
+      "terminal-history.read",
+      "terminal-output.read",
+      "environment.read",
+      "credential-reference.use",
+      "ssh-agent.use",
+      "provider-cache.read",
+      "capsule-secret.read",
+      "connection.use",
+      "ai.tool-call",
+      "command.execute"
+    ],
+    "grant_binding": [
+      "publisher",
+      "extension-id",
+      "version",
+      "exact-package-digest",
+      "capability",
+      "exact-scope",
+      "profile",
+      "expiry"
+    ],
+    "fresh_review_on_change": [
+      "digest",
+      "publisher-or-signer",
+      "imports",
+      "capabilities",
+      "scope",
+      "data-flow",
+      "quotas",
+      "ai-provider-or-locality",
+      "risk"
+    ],
+    "persistent_ambient_grants": false,
+    "read_implies_command": false,
+    "guest_may_mint_grant": false
+  },
+  "provenance": {
+    "verification_before_review": true,
+    "binds": [
+      "package-digest",
+      "publisher-identity",
+      "signature",
+      "trusted-root",
+      "timestamp",
+      "provenance",
+      "sbom-and-licenses",
+      "compatibility",
+      "current-revocation-state"
+    ],
+    "signature_is_safety_claim": false,
+    "offline_bundle_required": true,
+    "verification_receipt": "content-free-bounded-redacted",
+    "revocation_check": "before-every-invocation",
+    "older-cache_bypasses_revocation": false
+  },
+  "distribution": {
+    "enabled": false,
+    "transport": "future-https-only",
+    "https_is_authenticity": false,
+    "metadata_roles": ["root", "targets", "snapshot", "timestamp"],
+    "required_controls": [
+      "threshold-and-role-separation",
+      "trusted-root-rotation",
+      "monotonic-versions",
+      "expiry",
+      "rollback-freeze-and-mix-and-match-resistance",
+      "consistent-snapshots",
+      "bounded-cache-retries-and-refresh",
+      "publisher-delegation-and-emergency-revocation"
+    ],
+    "refresh": "explicit-only",
+    "startup_network": false,
+    "typing_network": false,
+    "offline_behavior": "truthful-no-install-or-update-and-validity-horizon-enforced"
+  },
+  "lifecycle": {
+    "states": [
+      "unavailable",
+      "discovered",
+      "parsed",
+      "verified",
+      "reviewed",
+      "installed-disabled",
+      "enabled",
+      "running",
+      "quarantined",
+      "revoked",
+      "disabled",
+      "uninstalled"
+    ],
+    "default_state": "unavailable",
+    "activation_now": "always-denied",
+    "queue": "bounded-fair-generation-aware",
+    "stale_results": "reject",
+    "crash_policy": "quarantine-after-three-failures-in-five-minutes",
+    "kill_switch": "deny-cancel-join-close-clear-rotate-fallback-without-restart",
+    "disable": "remove-grants-retain-verified-bundle",
+    "uninstall": "remove-exact-automexia-owned-bundle-cache-and-grant-generations",
+    "preserve": [
+      "native-shell-state",
+      "provider-state",
+      "credentials",
+      "user-files",
+      "first-party-extensions",
+      "cp1-cp3-fallback"
+    ]
+  },
+  "ai": {
+    "enabled": false,
+    "separate_opt_in": true,
+    "trigger": "explicit-user-request-only",
+    "consent_per_request": true,
+    "review_discloses": [
+      "exact-selected-data",
+      "redactions",
+      "provider",
+      "local-or-remote",
+      "model",
+      "destination",
+      "purpose",
+      "retention",
+      "byte-count",
+      "environment-risk"
+    ],
+    "allowed_input": ["explicit-selected-text"],
+    "forbidden_input": [
+      "ambient-terminal-output",
+      "terminal-history",
+      "clipboard",
+      "filesystem",
+      "environment",
+      "credentials",
+      "ssh-agent",
+      "provider-cache",
+      "capsule-secrets",
+      "connections",
+      "other-panes",
+      "logs",
+      "telemetry",
+      "support-bundles"
+    ],
+    "response": "typed-bounded-explanation-or-suggestion",
+    "risk": "independently-classified-by-automexia",
+    "delivery": "copy-or-insert-without-enter",
+    "tool_calls": false,
+    "mcp_passthrough": false,
+    "background_requests": false,
+    "typing_requests": false,
+    "automatic_execution": false,
+    "logging": "metadata-allowlist-without-input-or-output-content"
+  },
+  "security_threats": [
+    {
+      "id": "D7-T01-supply-chain-rollback-freeze",
+      "asset": "package identity, publisher trust, provenance, and current revocation state",
+      "controls": ["exact digest and publisher binding", "offline signature bundle and trusted roots", "role-separated versioned expiring repository metadata", "rollback floor and emergency revocation", "verify before review or extraction"],
+      "hostile_mutations": ["digest substitution", "valid signature for another publisher or package", "compromised signer", "older targets or snapshot", "expired timestamp", "revoked publisher with cached older package"],
+      "verification_owner": ["verification unit/property/mutation tests", "compromised-key and rollback/freeze drills", "native offline and root-rotation fixtures"],
+      "residual_risk": "Trusted-root and publisher governance remain human and operational authorities that require incident-response ownership."
+    },
+    {
+      "id": "D7-T02-hostile-bundle-parser",
+      "asset": "local filesystem, disk capacity, parser memory, and installed generations",
+      "controls": ["verify before extraction", "private no-follow staging", "portable canonical unique paths", "file byte depth and expansion limits", "atomic publication and recovery"],
+      "hostile_mutations": ["absolute traversal or option-like path", "symlink hardlink device fifo or socket", "duplicate normalization collision", "zip bomb or false size", "disk full read-only or interrupted publish"],
+      "verification_owner": ["hostile archive corpus", "parser fuzz/property tests", "disk-full permission link and crash-recovery integration tests"],
+      "residual_risk": "Archive and filesystem behavior varies by platform and needs native containment evidence."
+    },
+    {
+      "id": "D7-T03-sandbox-and-confused-deputy",
+      "asset": "host process, terminal sessions, credentials, providers, files, network, and capability broker",
+      "controls": ["custom WIT allowlist and no default WASI", "reject unknown imports and unsupported features", "digest scope generation and grant checked host calls", "typed output revalidation", "no native payloads or direct PTY process network file clipboard or secret path"],
+      "hostile_mutations": ["unexpected WASI import", "forged scope or stale generation", "reentrant host call", "guest-minted grant", "typed operation bypassing ordinary review"],
+      "verification_owner": ["component import inventory tests", "malicious-component conformance/fuzz tests", "capability mutation and cross-session isolation tests", "independent sandbox review"],
+      "residual_risk": "A runtime escape or host binding bug remains possible; sandboxing is defense in depth and requires prompt updates."
+    },
+    {
+      "id": "D7-T04-resource-and-lifecycle-amplification",
+      "asset": "input latency, CPU, memory, tables, host allocations, queues, handles, threads, storage, and shutdown",
+      "controls": ["fuel plus emergency deadline", "guest and host-transfer resource limits", "bounded concurrency queue output logs cache and versions", "generation cancellation and stale rejection", "crash quarantine and joined teardown"],
+      "hostile_mutations": ["infinite loop", "memory or table growth", "large canonical ABI transfer", "output log or request storm", "trap loop", "cancel shutdown or enable-disable race"],
+      "verification_owner": ["deterministic fuel/resource tests", "saturation cancellation and model tests", "Criterion and binary-startup measurements", "1000-cycle and 30-day resource campaigns"],
+      "residual_risk": "Runtime and host allocations not covered by linear-memory limits require same-host measurement and conservative global ceilings."
+    },
+    {
+      "id": "D7-T05-capability-upgrade-and-isolation",
+      "asset": "user intent, grants, profiles, sessions, panes, versions, and rollback",
+      "controls": ["default deny and narrow initial capabilities", "digest version scope profile and expiry bound grants", "fresh review for authority or data-flow changes", "revocation before invocation", "cross-route and stale-generation denial"],
+      "hostile_mutations": ["silent capability expansion", "same version different code", "cross-profile grant replay", "scope wildcard", "downgrade to broader cached grant", "revoked extension still running"],
+      "verification_owner": ["capability diff golden/mutation tests", "multi-profile pane session generation models", "update revoke rollback disable and uninstall tests"],
+      "residual_risk": "People can approve risky requests; UX must show exact changes and safer alternatives without relying on color."
+    },
+    {
+      "id": "D7-T06-untrusted-output-and-ui-spoofing",
+      "asset": "visible trust state, accessible meaning, clipboard/insertion truth, focus, and command review",
+      "controls": ["bounded untrusted plain text", "control bidi and markup containment", "host-owned icons colors trust badges and risk labels", "full accessible values and keyboard focus restoration", "copy or insert without Enter and final policy review"],
+      "hostile_mutations": ["terminal escape or markup", "bidi hidden suffix", "fake verified or system label", "color-only risk", "focus stealing modal occlusion", "display insertion mismatch"],
+      "verification_owner": ["hostile Unicode corpus", "renderer-neutral tiny-to-8K goldens", "accessibility semantics and native screen-reader assessment", "copy-insert-no-enter tests"],
+      "residual_risk": "Unicode confusables cannot be eliminated; source, exact value disclosure, and textual risk reduce ambiguity."
+    },
+    {
+      "id": "D7-T07-compatibility-and-migration-downgrade",
+      "asset": "manifest, WIT, component features, state schema, support window, and last-known-good data",
+      "controls": ["exact major and bounded minor compatibility", "reject unknown fields imports exports and features", "side-by-side migration with validation", "atomic schema publication and rollback", "versioned conformance kit and deprecation policy"],
+      "hostile_mutations": ["schema downgrade", "unknown field ignored", "component feature drift", "partial migration", "new SDK with old risk policy", "rollback across incompatible state"],
+      "verification_owner": ["compatibility matrix and golden fixtures", "migration interruption/recovery tests", "current plus prior SDK conformance", "unsupported-version diagnostics"],
+      "residual_risk": "The Component Model evolves; supported runtime and SDK versions need a named update owner and explicit release window."
+    },
+    {
+      "id": "CP6-T08-ai-privacy-prompt-injection-and-execution",
+      "asset": "selected input, secrets, provider identity, privacy choice, operation risk, and execution authority",
+      "controls": ["separate opt-in and per-request exact data-flow review", "selected bounded input only with redaction preview", "provider locality model destination purpose and retention disclosure", "typed bounded response with independent risk classification", "no tools MCP background typing requests or automatic execution"],
+      "hostile_mutations": ["ambient history grid clipboard file or environment capture", "secret canary exfiltration", "prompt asks for tools or credentials", "provider or locality substitution", "malformed oversized or stale response", "suggestion auto-runs"],
+      "verification_owner": ["privacy data-flow and redaction-canary tests", "prompt-injection/malformed-response corpus", "provider offline timeout cancellation and stale-route tests", "insert-copy-no-enter native tests"],
+      "residual_risk": "Selected text can itself contain sensitive data; explicit preview and provider policy cannot replace the user's judgment."
+    },
+    {
+      "id": "D7-T09-cache-uninstall-and-cross-scope-leakage",
+      "asset": "package cache, selected input, grants, receipts, profiles, sessions, handles, and user-owned state",
+      "controls": ["content-free bounded receipts", "selected input memory only", "profile and route isolation", "exact owned-generation inventory", "kill disable uninstall and revocation cleanup", "preserve native provider credential user and first-party state"],
+      "hostile_mutations": ["selected input in logs crash reports or support bundles", "cross-profile cache publication", "orphan host or handle", "uninstall leaves grant", "uninstall deletes user files", "revoked bytes selected by rollback"],
+      "verification_owner": ["negative persistence and support-bundle scans", "multi-profile/session isolation models", "handle thread process and storage leak tests", "exact uninstall and recovery fixtures"],
+      "residual_risk": "Operating-system deletion and file-lock semantics differ and require native repeated-lifecycle evidence."
+    }
+  ],
+  "limits": {
+    "bundle_bytes": 16777216,
+    "expanded_bytes": 33554432,
+    "package_files": 32,
+    "path_bytes": 512,
+    "manifest_bytes": 65536,
+    "manifest_depth": 16,
+    "manifest_string_bytes": 4096,
+    "component_bytes": 8388608,
+    "wit_imports": 64,
+    "capability_requests": 32,
+    "linear_memory_bytes": 67108864,
+    "table_elements": 100000,
+    "instances_per_extension": 2,
+    "fuel_per_call": 10000000,
+    "host_transfer_bytes_per_call": 1048576,
+    "interactive_deadline_ms": 250,
+    "explicit_deadline_ms": 2000,
+    "output_bytes_per_call": 1048576,
+    "log_bytes_per_call": 65536,
+    "queued_calls_per_extension": 16,
+    "concurrent_calls_per_extension": 2,
+    "concurrent_calls_global": 8,
+    "crashes_per_five_minutes": 3,
+    "selected_ai_input_bytes": 16384,
+    "ai_response_bytes": 65536,
+    "cache_bytes": 268435456,
+    "retained_versions_per_extension": 2,
+    "installed_extensions": 128
+  },
+  "verification": {
+    "contract": ["strict-json", "duplicate-key-rejection", "canonical-digest", "mutation"],
+    "package": ["property", "fuzz", "hostile-corpus", "disk-permission-and-recovery"],
+    "provenance": ["signer-digest-root-time-revocation", "rollback-freeze", "compromised-key", "offline"],
+    "sandbox": ["import-inventory", "malicious-components", "fuel-memory-host-transfer", "trap-and-host-panic"],
+    "concurrency": ["generation", "saturation", "fairness", "cancel", "shutdown", "multi-session"],
+    "privacy": ["redaction-canary", "negative-persistence", "support-bundle-scan", "provider-data-flow"],
+    "ui": ["tiny-to-8k", "scale-100-to-300", "theme-and-localization", "focus-ime-modal-and-reduced-motion"],
+    "accessibility": ["renderer-neutral-semantics", "keyboard-only", "textual-risk", "native-screen-readers"],
+    "performance": ["cold-and-warm-compile", "invocation-p95", "cancel-p95", "startup-and-binary-size"],
+    "resources": ["1000-lifecycle-cycles", "handle-thread-process-memory-storage", "30-day-soak"],
+    "platforms": ["windows-native-signed", "linux-native-packaged", "macos-native-signed-notarized"],
+    "rollback": ["kill", "disable", "quarantine", "revoke", "uninstall", "last-known-good", "first-party-and-cp1-cp3-fallback"]
+  },
+  "external_gates": [
+    "explicit protected acceptance of ADR 0029 and this exact contract digest",
+    "two independent exact-head protected approvals plus non-bypassable server enforcement for every activated authority",
+    "named trusted-root publisher-repository revocation incident-response SDK-compatibility and dependency-update owners",
+    "completed dependency license advisory provenance unsafe MSRV platform binary-size startup performance resource and rollback reviews",
+    "controlled malicious-package compromised-key rollback-freeze expired-metadata offline disk-full interrupted-update and emergency-revocation drills",
+    "native Windows Linux and macOS signed-package sandbox cleanup accessibility IME focus and uninstall evidence",
+    "controlled low-end through high-scale performance allocation memory handle thread process storage and cancellation baselines",
+    "1000 lifecycle cycles and a 30-day multi-extension multi-session soak without unbounded growth",
+    "privacy and legal review for every remote AI provider data flow retention policy and deletion path",
+    "verified kill disable uninstall rollback and private-first-party plus CP1-CP3 fallback"
+  ]
+}

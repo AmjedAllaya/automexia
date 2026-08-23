@@ -1916,6 +1916,14 @@ provider/network/authentication work during startup and typing. Benchmarks must
 publish distribution, machine identity, corpus, cold/warm state, sample count,
 and peak memory; a single fast local run is not release evidence.
 
+## D7/CP6 ecosystem proposal and future runtime gate
+
+The offline checker and mutation commands, exact local results, future package/
+provenance/sandbox/capability/action-pack/AI evidence matrix, and reporting rules
+are maintained in [Sandboxed ecosystem and optional AI testing](ECOSYSTEM-PLATFORM-TESTING.md).
+No runtime exists; the page distinguishes proposal evidence from protected
+native release gates.
+
 ## External-tool and adopted-dependency assurance
 
 The canonical ownership policy is

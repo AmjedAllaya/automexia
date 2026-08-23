@@ -65,6 +65,30 @@ processes. Production activation therefore requires controlled native proof that
 all owned descendants, PTYs, routes, listeners, and temporary resources are
 closed on exit, cancellation, failure, and application shutdown.
 
+## Proposed third-party ecosystem security boundary
+
+D7/CP6 is non-activating. Proposed ADR 0029 and its digest-frozen machine
+contract define package containment, custom-WIT sandboxing, provenance, trusted
+roots, update/revocation freshness, capability binding, resource ceilings, AI
+data-flow consent, rollback, and uninstall. They add no runtime dependency,
+download, package parser/store, public SDK, component execution, provider request,
+tool call, product surface, credential access, process, filesystem, or network
+authority.
+
+A future component starts with no default WASI or ambient filesystem, network,
+process, PTY, terminal, history, environment, clipboard, credential, SSH-agent,
+provider-cache, capsule-secret, or connection import. Every host call remains
+digest/version/grant/scope/profile/generation/deadline/quota checked; guest output
+is untrusted typed data and never becomes PTY input, Enter, or execution.
+
+Optional AI receives only exact selected bounded input after per-request
+redaction and provider/locality/model/destination/purpose/retention/size/risk
+review. Tool calls, MCP passthrough, ambient data, background/typing requests,
+and automatic execution are forbidden by the proposal. Explicit ADR acceptance,
+ADR 0003 protected approvals for each authority, dependency review, and native
+malicious-package/supply-chain/privacy/accessibility/resource/release evidence
+remain mandatory before activation.
+
 ## Provider-neutral authentication security boundary
 
 M7/D6.0 is implemented as an authority-free framework. It validates bounded
