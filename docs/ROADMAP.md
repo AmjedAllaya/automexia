@@ -62,6 +62,9 @@ the audit's executive matrix so the two cannot drift.
 | **Partially done** | G5 | CLI inspection, safe migration, xtask generation/verification/tests, generated docs, property/fuzz targets, allocation-free indexes, and Windows Criterion evidence are implemented. Native three-platform keyboard/visual/AT/resource evidence and an activated 30-day baseline remain. |
 | **Partially done** | G6 | Accepted ADRs and a redacted inspector are implemented; complete closed top-level window tabs have bounded parked-PTY undo/redo. Individual split, pane-local-tab, and native-window closure history plus native lifecycle evidence remain. |
 
+G6 also lacks user-visible parked-session count, list, and clear controls; the
+implemented newest-tab restore shortcut is not a complete management surface.
+
 <!-- roadmap-status-register:end -->
 
 ## v0.4 — standalone stability

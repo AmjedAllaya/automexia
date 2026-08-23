@@ -1,8 +1,12 @@
 # Phase implementation audit
 
-Audit date: 2026-08-23
+Audit date: 2026-08-24
 
-Audited source baseline: 5333b7e77854f8eb184a82968e23c1af464163f3 plus the current D7/CP6 proposal-policy changes
+Audited source baseline: 20ff7928ea2d1eac5d26f13c62d0cda9b86bc078 (committed implementation baseline)
+
+Uncommitted application, renderer, and documentation changes observed after
+this commit were preserved as work in progress and are not counted as shipped
+evidence.
 
 Scope: every execution phase defined by the product, stabilization, DevOps/SSH,
 Connection Hub, command-productivity, persistent-alias, Ghostty compatibility,
@@ -1221,8 +1225,10 @@ terminal output, clipboard, environment, commands, paths, and credentials.
 Accepted ADR 0028 enables memory-only parked-PTY undo/redo for a complete closed
 top-level window tab, bounded to 8 entries, 5 minutes, and 250,000 retained
 history lines per window with redo invalidation and owner-driven cleanup.
-Individual split, pane-local-tab, and whole-native-window history plus native
-lifecycle/resource evidence remain outside the activated scope.
+User-visible parked-session count, list, and clear controls remain missing; the
+newest-tab restore shortcut is not a complete management surface. Individual
+split, pane-local-tab, and whole-native-window history plus native
+lifecycle/resource evidence also remain outside the activated scope.
 
 ## Version milestone assessment
 

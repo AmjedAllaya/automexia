@@ -202,7 +202,7 @@ Keep two Git checkouts and exchange source changes through commits:
 
 ```text
 Windows / MSVC / ConPTY:
-D:\workstation\projects\...\automexia-terminal\standalone
+C:\src\automexia-terminal
 
 WSL / Linux Cargo / Unix PTY:
 ~/src/automexia-terminal

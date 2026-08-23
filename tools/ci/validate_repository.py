@@ -53,9 +53,11 @@ from check_provider_quick_actions_cp4 import (
     validate_repository as validate_provider_quick_actions_cp4,
 )
 from check_documentation_coverage import validate as validate_documentation_coverage
+from check_documentation_hygiene import validate as validate_documentation_hygiene
 from check_devops_alias_spec import validate_repository as validate_devops_alias_spec
 from check_feature_assurance import load_and_validate as validate_feature_assurance
 from check_phase_implementation_audit import validate as validate_phase_audit
+from check_repository_aligned_docs import validate as validate_repository_aligned_docs
 from check_platform_coverage import validate_repository_workflows
 from release_trust import load_policy as validate_release_trust_policy
 
@@ -298,6 +300,8 @@ def validate() -> None:
     counts["desktop"] = len(desktop_files)
 
     counts["Markdown"] = validate_markdown_links()
+    counts["Markdown hygiene"] = validate_documentation_hygiene()
+    counts["aligned documentation pack"] = validate_repository_aligned_docs()
     counts["pinned Actions"] = validate_action_pins()
 
     validate_repository_workflows()

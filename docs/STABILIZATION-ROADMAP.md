@@ -550,7 +550,7 @@ CP2/CP3 implementation details and exit evidence are canonical in
 | CP5 Shell Completion and Suggestions | CP5.0 research fully done with CP1 retained; proposed ADR 0025 and its machine threat contract await explicit acceptance; CP2/CP3 for action candidates; CP4/D6 for provider context | Proposal/limits/owners/shell matrix/mutations/audit are complete without activation. CP5.1 runtime through CP5.6 preview/rollback remain not implemented. | No grid/history-file/remote-output inference, network/auth/secret work, or per-keystroke process. P2 must prove protocol/fuzz/security, exact insertion, IME/grapheme, accessibility, responsive layout, native shell/OS, cancellation, latency, leaks, 30-day baseline, disable, uninstall, and measurable benefit. Not a v0.5.0 blocker. |
 | CP6 ecosystem packs | v0.6 capability/sandbox/signing gates | Signed third-party packs and separate opt-in AI tools only through provenance, capability, quota, revocation, and privacy policy. | Malicious-package/sandbox/supply-chain/data-flow gates pass; no ambient terminal, secret, provider, or process authority. |
 
-#### CP5 status and activation ledger
+### CP5 status and activation ledger
 
 | CP5 checkpoint | Required implementation | Blocking proof |
 |---|---|---|
@@ -566,7 +566,7 @@ Failure at any checkpoint leaves CP1 native completion unchanged; a visually
 working popup is not evidence that the bridge, privacy, insertion, accessibility,
 or lifecycle gates are satisfied.
 
-#### CP0 implementation ledger
+### CP0 implementation ledger
 
 | CP0 step | Audit before implementation | Implemented evidence | Remaining gate |
 |---|---|---|---|
@@ -581,7 +581,7 @@ CP0 result: satisfied at the source/policy boundary. It grants no runtime
 capability and does not claim CP1 completion, Fish support, Quick Action
 persistence, generated aliases, provider execution, or a custom completion UI.
 
-#### CP1 implementation ledger
+### CP1 implementation ledger
 
 | CP1 step | Audit before implementation | Implemented evidence | Remaining gate |
 |---|---|---|---|
@@ -599,7 +599,7 @@ CP2.0-CP2.2 are implemented locally through reviewed insert/copy. Stable release
 claims still require the pushed hosted Windows,
 Linux, and macOS checks plus the existing controlled release gates.
 
-#### CP2.0 implementation ledger
+### CP2.0 implementation ledger
 
 | CP2.0 step | Audit before implementation | Implemented evidence | Remaining gate |
 |---|---|---|---|
@@ -613,7 +613,7 @@ CP2.0 result: satisfied at the pure source/model boundary. It adds no filesystem
 watcher, process, network, secret, UI, PTY, shell-profile, provider, alias, or
 execution capability.
 
-#### CP2.1 implementation ledger
+### CP2.1 implementation ledger
 
 | CP2.1 step | Audit before implementation | Implemented evidence | Remaining gate |
 |---|---|---|---|
@@ -627,7 +627,7 @@ CP2.1 result: satisfied as an internal persistence library. CP2.2 consumes it
 without granting provider, profile, network, secret, or exact-execution
 authority.
 
-#### CP2.2 implementation ledger
+### CP2.2 implementation ledger
 
 | CP2.2 step | Audit before implementation | Implemented evidence | Remaining gate |
 |---|---|---|---|
@@ -1191,6 +1191,12 @@ for the complete 30-day baseline, the owned-code coverage record, and the
 documented keyboard/focus/contrast/scaling plus screen-reader baseline. A
 compile-only benchmark job or renderer-neutral JSON alone does not satisfy the
 corresponding performance or visual gate.
+
+Provider, credential, managed-SSH, public-extension, and AI activation gates
+belong to v0.5 or later. They must not be added as prerequisites for closing
+v0.4. Conversely, passing v0.4 terminal release evidence does not authorize
+those later capabilities. The two lanes can progress concurrently but retain
+separate acceptance evidence and release decisions.
 
 The S0 source gates pass locally, but stable v0.4 remains blocked until every
 applicable S1, hosted, native, and external release gate is satisfied. S1

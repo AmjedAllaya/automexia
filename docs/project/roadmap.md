@@ -1,6 +1,11 @@
 # Roadmap
 
-This page is the single source of truth for **future sequencing and phase status**. It intentionally omits detailed test commands, benchmark logs, implementation-agent checklists, and dated readiness narratives; those belong in [Testing and release](../developer/testing-release.md) or version-control/release evidence.
+This page is a condensed project overview retained from the documentation
+reorganization. The [canonical roadmap](../ROADMAP.md) and
+[phase implementation audit](../PHASE-IMPLEMENTATION-AUDIT.md) are the
+machine-enforced sources for current sequencing and phase status. This summary
+must not override them. Detailed test commands and evidence live in
+[Testing](../TESTING.md).
 
 A phase can be source-complete while release evidence is still partial. User-facing guides remain authoritative for what users can rely on today.
 

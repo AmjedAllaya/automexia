@@ -6,7 +6,7 @@ Documentation is a product surface. The goal is not to maximize page count; it i
 
 Use one reader intent per page:
 
-| Category | Reader need | Canonical pages |
+| Category | Reader need | Reader-facing pages |
 |---|---|---|
 | User Guide | Learn how to use the product, choose an approach, and follow end-to-end tasks | `user-guide/` |
 | Guide | Understand deeper product behavior or a specialized workflow | `guide/` |
@@ -16,20 +16,31 @@ Use one reader intent per page:
 
 A roadmap is never the only documentation for current behavior. An ADR explains why a durable boundary exists; it does not duplicate the user guide. A testing page proves a claim; it does not become the feature specification.
 
-## Canonical ownership
+## Authority and reader-facing ownership
 
-- `docs/index.md` owns navigation and the short current-product status summary.
-- `user-guide/index.md` owns the practical learning path; other `user-guide/` pages own task-oriented explanations and recipes, while linking back to exact reference pages instead of redefining syntax.
-- `guide/terminal-experience.md` owns tabs/panes/context/footer/semantic UI/image behavior.
-- `guide/shell-productivity.md` owns shell integration, completion, Quick Actions, aliases, imports, and trusted workspace task behavior.
-- `guide/remote-connections.md` owns the current manual-SSH boundary and planned managed-connection product model.
-- `reference/configuration.md`, `reference/keyboard.md`, and `reference/cli.md` own exact public syntax/defaults/commands.
-- `developer/architecture.md` owns technical boundaries and architecture rationale links.
-- `developer/testing-release.md` owns evidence levels, contributor gates, release trust, and release blockers.
-- `project/roadmap.md` owns release sequencing and phase status only.
-- `project/decisions.md` and `project/adr/` own durable decision history.
+The machine-enforced authority policy is
+[Documentation contribution guide](../DOCUMENTATION.md). This page is its
+concise contributor-oriented companion; if they conflict, the detailed policy
+wins.
 
-Other pages link to these owners instead of copying their tables or status prose.
+- [Documentation index](../index.md) owns navigation and the short product
+  status summary.
+- User Guide and guide pages own task-oriented learning flows.
+- [Configuration](../CONFIGURATION.md), [keyboard](../KEYBOARD.md), and
+  [CLI](../CLI-REFERENCE.md) own exact machine-checked public contracts;
+  reference pages present the same facts in reader-oriented locations.
+- [Architecture](../ARCHITECTURE.md) owns the detailed technical contract;
+  this developer section provides a concise orientation.
+- [Testing](../TESTING.md) owns evidence levels, commands, and detailed release
+  proof; the testing/release overview summarizes it.
+- [Roadmap](../ROADMAP.md) and the
+  [phase implementation audit](../PHASE-IMPLEMENTATION-AUDIT.md) own phase
+  status. The project roadmap is a condensed compatibility summary.
+- [Decision index](../DECISIONS.md) and [canonical ADRs](../adr/) own durable
+  decisions. The project decision/ADR tree is a retained navigation mirror.
+
+Reader-facing summaries must link to these owners instead of silently
+forking exact tables, status, limits, or evidence.
 
 ## Writing rules
 

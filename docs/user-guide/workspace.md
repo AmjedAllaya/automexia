@@ -113,7 +113,7 @@ Use geometric navigation when the layout is spatial:
 Use cycling when you just want the next/previous pane:
 
 - Windows/Linux/BSD: `F6` / `Shift+F6`
-- macOS: `Cmd+]` / `Cmd+[` 
+- macOS: `Cmd+]` / `Cmd+[`
 
 The selected pane owns keyboard input, its local-tab scope, search state, selection, and footer emphasis.
 

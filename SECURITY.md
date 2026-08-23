@@ -33,6 +33,15 @@ Temporary transitive unmaintained-dependency exceptions and their removal
 conditions are audited in `docs/SECURITY-DEBT.md`. Vulnerability, unsoundness,
 and yanked advisories remain release-blocking.
 
+Dependency and tool acquisition is staged separately from normal and release
+builds. Exact lockfiles, registries, build scripts, procedural macros, native
+code, downloaded tools, model weights, and managed runtimes are reviewed as
+code-execution and redistribution inputs. Verified artifacts are pinned by
+digest and builds run without network access where the platform permits. Each
+managed input has a named update owner, removal/rollback path, emergency disable
+mechanism, and a security-fix response target appropriate to its authority;
+SBOM and provenance evidence never substitutes for that review.
+
 ## Conduct reporting prerequisite
 
 `CONDUCT_CONTACT_REQUIRED`: a dedicated private conduct-reporting address must

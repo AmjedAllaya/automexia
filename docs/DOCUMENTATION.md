@@ -52,6 +52,23 @@ the claim.
   evidence-based status reconciliation across the S, D, CP, and G roadmap
   tracks.
 - root governance/support/security/release files own their named policies.
+- `automexia_docs_repository_aligned/` is a versioned research and proposal
+  pack. Its manifest, snapshots, and RFDs preserve analysis and candidate
+  decisions; they do not override accepted ADRs, canonical pages, source,
+  tests, or release evidence. Integrate an accepted conclusion into its
+  canonical owner and leave a backlink instead of making the pack a second
+  authority.
+
+Reader-oriented pages under [user-guide](user-guide/index.md), [guide](guide/),
+[reference](reference/), [developer](developer/), and [project](project/) may
+summarize or reorganize these detailed owners for a specific audience. They
+must link back, preserve the same current behavior and status, and never
+override a machine-enforced top-level contract.
+
+The complete decision authority is [DECISIONS.md](DECISIONS.md) plus
+[docs/adr](adr/). The older project decision index, project roadmap, and
+path-adapted ADR copies 0001-0023 are retained as navigation and compatibility
+summaries. New decisions live only in the complete ADR tree.
 
 Other pages should link to these sources instead of copying large tables.
 
@@ -100,6 +117,11 @@ even when the feature's roadmap status does not change.
 12. Documentation is part of implementation, not a later follow-up. Update the
     affected guide, reference, testing evidence, roadmap/audit status, and
     changelog together with the behavior they describe.
+13. Research and proposal packs must identify an exact audited committed
+    baseline, distinguish implemented state from desired state, preserve
+    historical inputs explicitly, and avoid duplicate non-historical
+    authorities. Dependency names and imperative architecture language remain
+    candidates until an accepted ADR and implementation evidence say otherwise.
 
 ## Change checklist
 
@@ -115,10 +137,18 @@ even when the feature's roadmap status does not change.
 - Update `SUPPORT.md`, `SECURITY.md`, migration, or release docs when their
   contracts change.
 - Add a `changes/` fragment unless the PR has an allowed docs-only label.
+- Run `python tools/ci/test_repository_aligned_docs.py` and
+  `python tools/ci/check_repository_aligned_docs.py` when the aligned pack changes.
 - Run `python tools/ci/test_pr_policy.py`,
   `python tools/ci/check_phase_implementation_audit.py`,
   `python tools/ci/test_phase_implementation_audit.py`,
   `python tools/ci/validate_repository.py`, and `cargo ready`.
+
+Run the Markdown hygiene regression test and aligned-pack regression test
+whenever documentation tooling or the proposal pack changes:
+
+    python tools/ci/test_documentation_hygiene.py
+    python tools/ci/test_repository_aligned_docs.py
 
 The pull-request policy rejects source, configuration, test, workflow, asset,
 or packaging changes that do not update at least one affected `docs/*.md` file

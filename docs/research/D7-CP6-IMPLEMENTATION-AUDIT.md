@@ -5,7 +5,7 @@ boundary. Runtime implementation is blocked on explicit acceptance of
 [ADR 0029](../adr/0029-sandboxed-signed-ecosystem-boundary.md) and its exact
 machine contract.
 
-Audited source baseline: 5333b7e77854f8eb184a82968e23c1af464163f3
+Audited source baseline: 20ff7928ea2d1eac5d26f13c62d0cda9b86bc078 (committed implementation baseline)
 
 Canonical schema-1 contract SHA-256:
 `fdd765ec52cf043ebbf2132177a94ae8be5bcb8175d4f1b566bcac4b96b346b4`

@@ -1,10 +1,17 @@
 # Source consolidation map
 
-This map makes the reorganization auditable. It shows which new canonical page owns the useful content from every previous top-level documentation file. The original files remain available in source history/the input archive; they are not copied as parallel canonical pages because that would recreate the duplication this reorganization removes.
+This historical map makes the 2026 documentation reorganization auditable. It
+records where reader-oriented summaries were initially consolidated. Later
+feature work restored several detailed top-level pages as machine-enforced
+contract owners; those current owners are listed in
+[Documentation contribution guide](../DOCUMENTATION.md).
 
-The later `docs/user-guide/` category is a **task-oriented learning layer derived from the canonical guide/reference pages**. It does not become a second technical source of truth: exact CLI syntax remains owned by `reference/cli.md`, exact shortcuts by `reference/keyboard.md`, and exact settings by `reference/configuration.md`.
+The category pages remain useful tutorials, guides, references, developer
+overviews, and project summaries. They must not contradict or replace the
+detailed owner for exact syntax, status, limits, architecture, evidence, or
+decisions.
 
-| Previous file | New canonical owner | Treatment |
+| Previous file | Consolidated reader-facing page | Treatment |
 |---|---|---|
 | `ACCESSIBILITY.md` | [`guide/platforms-accessibility.md`](../guide/platforms-accessibility.md) | Merged/re-written |
 | `ARCHITECTURE.md` | [`developer/architecture.md`](../developer/architecture.md) | Merged/re-written |
@@ -49,7 +56,7 @@ The later `docs/user-guide/` category is a **task-oriented learning layer derive
 
 ## ADRs
 
-All 21 ADRs are preserved as individual immutable decision-history files under `project/adr/`. They are intentionally not merged into the architecture narrative: the architecture page states the current model, while ADRs preserve the context and trade-offs behind durable choices.
+Path-adapted compatibility copies of ADRs 0001-0023 remain under `project/adr/`. The complete canonical decision tree is [`docs/adr/`](../adr/) and currently contains ADRs 0001-0029. New ADRs are authored only there; the retained copies are not an independent decision authority.
 
 ## Consolidation principles
 

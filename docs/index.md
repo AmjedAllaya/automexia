@@ -25,10 +25,11 @@ This documentation is organized around **reader intent**, not implementation pha
 | Look up every shortcut/action | [Keyboard reference](reference/keyboard.md) |
 | Configure or inspect Ghostty-compatible bindings | [Ghostty compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md), [generated bindings](generated/ghostty-1.3-keybindings.md), [generated actions](generated/ghostty-1.3-actions.md) |
 | Look up every config key/default | [Configuration reference](reference/configuration.md) |
-| Understand the technical design | [Architecture](developer/architecture.md) |
-| Run verification or understand release gates | [Testing and release](developer/testing-release.md) |
+| Understand the technical design | [Architecture overview](developer/architecture.md), [detailed architecture contract](ARCHITECTURE.md) |
+| Run verification or understand release gates | [Testing overview](developer/testing-release.md), [complete testing and evidence contract](TESTING.md) |
 | Review stabilization/S2 status and external evidence | [Stabilization roadmap](STABILIZATION-ROADMAP.md), [S1/S2 implementation audit](research/S1-S2-IMPLEMENTATION-AUDIT.md) |
-| See future work / decision history | [Roadmap](project/roadmap.md), [Decision index](project/decisions.md) |
+| See future work / decision history | [Canonical roadmap](ROADMAP.md), [canonical decision index](DECISIONS.md), [condensed project overview](project/roadmap.md) |
+| Review reconciled research and proposals | [Aligned research/proposal pack](../automexia_docs_repository_aligned/README.md) - non-authoritative until integrated into a canonical owner |
 | Follow the detailed SSH and multi-cloud implementation phases | [SSH, connectivity, multi-environment, and multi-cloud plan](SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md), [provider audit](MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md) |
 
 ## What is available today
@@ -36,6 +37,11 @@ This documentation is organized around **reader intent**, not implementation pha
 Automexia v0.4 is a standalone hardware-accelerated terminal for Windows, Linux, and macOS. Its shipped product surface includes the VT/PTY terminal core, tabs and split panes, renderer-owned operational chrome, shell/context integration, icon-aware listings, local and protocol image rendering, TOML configuration with last-known-good reload, and non-destructive Rio migration.
 
 The repository also contains substantial v0.5 foundations. Native shell completion and the CP2/CP3 Quick Action/alias pipeline are implemented locally, while S1 visual/model tooling and the S2 release ratchet are source-complete at their boundaries. Stable release still depends on hosted native/accessibility evidence, approved visual matrices, and 30 consecutive controlled performance days. The v0.5 read-only Connection Hub is implemented locally with process/network authority deliberately disabled; native macOS/Linux and controlled accessibility evidence remain release-gated. Managed SSH, multi-cloud provider authentication, public extensions, and AI execution are **not** shipped v0.4 behavior.
+
+Release work has two independent lanes: **v0.4 release closure** proves the
+existing terminal product on its declared native, security, visual,
+accessibility, packaging, and performance gates; **v0.5 activation hardening**
+governs managed SSH, providers, credentials, ecosystem runtime, and AI authority.
 
 | Area | Product status | Where to read |
 |---|---|---|
@@ -48,8 +54,8 @@ The repository also contains substantial v0.5 foundations. Native shell completi
 | Optional Automexia autocomplete surface | **Proposal and threat contract complete; runtime not authorized** | [CP5 implementation audit](research/CP51-CP56-IMPLEMENTATION-AUDIT.md), [proposed ADR 0025](adr/0025-authenticated-native-editor-suggestion-bridge.md), [CP5.0 research](research/CP5-AUTOCOMPLETE-RESEARCH.md) |
 | Static OpenSSH inventory, read-only Hub, and disabled direct-review preparation | **Implemented locally; release evidence gated; no launch authority** | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md) |
 | Connection Hub records, pending selected-host review, and dry-run models | **Implemented locally; authority disabled** | [Remote connections](guide/remote-connections.md) |
-| Recipes and multi-environment workspace review (M6) | **Implemented internally; product activation/execution disabled** | [Connection automation](SSH-CONNECTION-AUTOMATION.md#m6-review-only-implementation), [M6 roadmap](project/roadmap.md) |
-| Managed OpenSSH sessions | **Planned** | [Remote connections](guide/remote-connections.md), [Roadmap](project/roadmap.md) |
+| Recipes and multi-environment workspace review (M6) | **Implemented internally; product activation/execution disabled** | [Connection automation](SSH-CONNECTION-AUTOMATION.md#m6-review-only-implementation), [M6 roadmap](ROADMAP.md) |
+| Managed OpenSSH sessions | **Planned** | [Remote connections](guide/remote-connections.md), [Roadmap](ROADMAP.md) |
 | AWS provider source contracts | **Implemented internally, not activated** | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md), [M8 testing](TESTING.md#m8-aws-adapter-source-contracts) |
 | Azure provider source contracts | **Implemented internally, not activated** | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md), [M9 testing](TESTING.md#m9-azure-adapter-source-contracts) |
 | Google Cloud provider source contracts | **Implemented internally, not activated** | [Provider testing](MULTI-CLOUD-PROVIDERS-TESTING.md#m10-google-cloud-adapter-source-contracts), [Provider audit](MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md) |
@@ -59,15 +65,16 @@ The repository also contains substantial v0.5 foundations. Native shell completi
 
 ## Documentation model
 
-The set intentionally separates five kinds of information:
+The set intentionally separates six kinds of information:
 
 - **User Guide** pages teach practical use, choices, commands, shortcuts, and end-to-end workflows.
 - **Guide** pages explain deeper product behavior and specialized workflows without becoming exact schema tables.
 - **Reference** pages contain exact settings, bindings, commands, defaults, and limits.
 - **Developer** pages explain architecture, security boundaries, testing, and release trust.
-- **Project** pages contain the roadmap and Architecture Decision Records (ADRs). They are not instructions for current product behavior.
+- **Project** pages summarize roadmap and decision history for readers. The complete machine-enforced status register and ADR set remain the canonical owners linked above; project summaries are not instructions for current product behavior.
+- **Research/proposal pack** pages preserve evidence, alternatives, and candidate plans. They are inputs to canonical documentation and ADR review, not product instructions or implementation proof.
 
-The original documentation mixed these roles heavily. The [source consolidation map](project/source-map.md) shows where every previous page was merged and which page is now canonical.
+The original documentation mixed these roles heavily. The [source consolidation map](project/source-map.md) records that reorganization and the later restoration of detailed, machine-enforced owners; it is a provenance map, not a competing authority list.
 
 ## CP3.3 evidence
 

@@ -1,6 +1,10 @@
 # Architecture
 
-This is the canonical technical explanation of Automexia's ownership, dependency, process/thread, persistence, and trust boundaries. Detailed historical rationale belongs in [Architecture Decision Records](../project/decisions.md); current user behavior belongs in guides and references.
+This is a concise technical orientation to Automexia's ownership, dependency,
+process/thread, persistence, and trust boundaries. The
+[detailed architecture contract](../ARCHITECTURE.md) is the machine-linked
+authority; [canonical Architecture Decision Records](../DECISIONS.md) preserve
+historical rationale, and guides/references describe current user behavior.
 
 ## Architectural goals
 

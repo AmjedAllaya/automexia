@@ -13,6 +13,15 @@ is not an active dependency until its owning D, CP, or S phase passes the
 required architecture decision, threat model, license and supply-chain review,
 benchmarks, platform evidence, documentation, and feature-ledger gate.
 
+Dependency acquisition and product builds are separate stages. A controlled
+acquisition job may fetch and verify an exact lockfile, tool, model, or managed
+runtime; ordinary and release builds consume only those verified inputs and run
+without network access where the platform permits. Reviews cover build scripts,
+procedural macros, native code, downloaded assets, and transitive provenance,
+not only runtime APIs. Every managed binary or model needs a digest, license,
+source, update owner, rollback path, and emergency disable mechanism before it
+enters a protected slice.
+
 The durable decision is [ADR 0020](adr/0020-hybrid-build-wrap-adopt-boundary.md).
 Release sequencing remains authoritative in the [roadmap](ROADMAP.md), and
 evidence gates remain authoritative in the

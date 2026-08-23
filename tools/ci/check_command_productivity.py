@@ -1056,7 +1056,7 @@ def validate_documents(root: Path = ROOT) -> dict[str, int]:
     require_text(
         root / "docs/STABILIZATION-ROADMAP.md",
         {
-            "#### CP0 implementation ledger",
+            "### CP0 implementation ledger",
             "CP0 result: satisfied",
             "14 hard ceilings",
             "11-case hostile corpus",

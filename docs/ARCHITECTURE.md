@@ -106,6 +106,11 @@ exact argv, validated cwd, and bounded allowlisted environment, and owns
 deadlines, output caps, cancellation, descendant cleanup, session identity,
 version state, and redacted diagnostics.
 
+`ExternalToolRunner` is the logical authority, not a requirement for a new
+crate, daemon, or second scheduler. It may remain in the application composition
+root while ownership is singular, typed, tested, and kept off startup, input,
+resize, PTY, and renderer hot paths.
+
 ### VT control-string trust boundary
 
 Child-process output is untrusted. The VT parser caps retained OSC, APC, and
@@ -1125,6 +1130,13 @@ startup, and tests remain offline and never execute Ghostty. See
 [ADR 0026](adr/0026-versioned-ghostty-keybinding-profiles.md), the
 [compatibility guide](GHOSTTY-KEYBOARD-COMPATIBILITY.md), and the
 [release roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md).
+
+The G0-G6 identifiers stay stable for roadmap and test traceability. Their
+intent is classified separately as Automexia-owned terminal capability (TC),
+explicit Ghostty migration (GM), or persistent-session lifecycle (PS). Ghostty
+is a
+differential reference for selected behavior, not an authority over Automexia's
+architecture or a promise of exhaustive parity.
 
 ## Build artifact lifecycle
 

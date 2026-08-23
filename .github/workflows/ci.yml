@@ -99,6 +99,10 @@ jobs:
         run: |
           python tools/ci/check_documentation_coverage.py
           python tools/ci/test_documentation_coverage.py
+      - name: Documentation integrity tests
+        run: |
+          python tools/ci/test_documentation_hygiene.py
+          python tools/ci/test_repository_aligned_docs.py
       - name: Roadmap phase-audit coverage tests
         run: |
           python tools/ci/check_phase_implementation_audit.py

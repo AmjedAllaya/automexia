@@ -2,7 +2,12 @@
 
 Status: canonical execution source of truth for the current product focus.
 
-Audit baseline: 2d9079ab036cf34b313d7a09e5b0d7ea9a2e85b6 on 2026-08-17.
+Audited committed baseline:
+`20ff7928ea2d1eac5d26f13c62d0cda9b86bc078` on 2026-08-23.
+
+This is the **v0.5 activation-hardening lane**. It may proceed in parallel with
+v0.4 release closure, but provider/credential/managed-SSH completion is not a
+v0.4 release prerequisite, and v0.4 evidence does not authorize activation.
 
 ## Outcome and scope
 

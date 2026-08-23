@@ -1,6 +1,10 @@
 # Testing and release assurance
 
-This page is the canonical explanation of how Automexia proves behavior and what evidence is required before a release. It replaces separate testing, readiness-audit, release-trust, branding, and security-debt pages whose repeated status prose made it difficult to distinguish a test command from an unresolved release gate.
+This page is a concise orientation to how Automexia proves behavior and what
+evidence is required before release. The
+[complete testing and evidence contract](../TESTING.md) and its linked
+readiness, release-trust, branding, and security-debt owners remain
+machine-enforced; this overview must not replace their exact commands or status.
 
 ## Evidence vocabulary
 
