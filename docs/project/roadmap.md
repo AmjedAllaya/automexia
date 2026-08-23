@@ -34,13 +34,13 @@ A phase can be source-complete while release evidence is still partial. User-fac
 | Productivity | CP5.0 | **Fully implemented at research boundary** | **Complete locally** | Seven-shell API matrix, pure insertion prototype, locked matcher/dependency evidence, privacy review, and retain-CP1/defer-P2 decision are machine-gated; no runtime surface exists. |
 | Productivity | CP5.1-CP5.6 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance** | Proposed ADR 0025, schema-1 six-threat contract, 17 mutations/document tests, fixed ownership/limits/shell matrix, and detailed audit exist. No runtime code or UI is authorized; CP1 remains fallback. |
 | Productivity | CP6 | **Not implemented; deferred** | **Blocked by design** | Signed ecosystem packs and AI tools require v0.6 gates. |
-| Compatibility | G0 | **Partial** | **Partial** | Shared safety prerequisites pass; versioned Ghostty fixtures, generation, checksums, and replacement ADR are absent. |
-| Compatibility | G1 | **Not implemented** | **Not started** | No private typed/compiled keybinding registry exists. |
-| Compatibility | G2 | **Partial** | **Not started for profile release** | Generic last-known-good reload exists; profiles, unbind layers, migration, and profile compiler do not. |
-| Compatibility | G3 | **Partial** | **Not started for profile release** | Some fallthrough behavior exists; structured outcomes, sequences, tables, and chains do not. |
-| Compatibility | G4 | **Partial** | **Partial** | Some actions exist; clear variants, extended selection/search, zoom/equalize, and screen export remain. |
-| Compatibility | G5 | **Not implemented** | **Not started** | Generated profiles, CLI/migration, xtask generation, compatibility fuzz, and registry benchmarks are absent. |
-| Compatibility | G6 | **Not implemented; deferred** | **Blocked by design** | Inspector and parked-PTY undo/redo need separate ADR/security/resource design. |
+| Compatibility | G0 | **Partially done** | **Partially done** | Exact Ghostty 1.3.1 Linux/BSD provenance/fixtures/checksums, deterministic Windows adaptation, ADR 0026, generation, verification, classic golden, and properties exist. Native macOS fixture and Linux/macOS release evidence remain. |
+| Compatibility | G1 | **Fully done** | **Partially done** | Pure typed registry, schemas, layers, direct/reverse indexed lookup, reserved sequence/table structures, classic bridge, palette derivation, and Windows latency evidence exist; external platform evidence remains. |
+| Compatibility | G2 | **Fully done** | **Partially done** | Explicit profiles, bind/unbind/priority layers, strict diagnostics, immutable atomic reload, global/palette transaction, and dry-run/confirmed migration are implemented; native release matrices remain. |
+| Compatibility | G3 | **Fully done** | **Partially done** | Structured outcomes, fallthrough, exact sequences/cancellation, bounded tables/catch-all/chains, stable all-surface execution, per-route state, and shell ownership are implemented; native IME/layout evidence remains. |
+| Compatibility | G4 | **Fully done** | **Partially done** | Clear, selection/search, topology, zoom/equalize/resize, and bounded private export families are implemented; controlled native visual/resource checks remain. |
+| Compatibility | G5 | **Partially done** | **Partially done** | CLI/migration, xtask generation/verification/tests, generated references, property/fuzz targets, and Windows Criterion benchmarks exist. Native three-platform, visual, accessibility, resource, and 30-day evidence remains. |
+| Compatibility | G6 | **Partially done** | **Partially done** | ADRs 0027/0028, the redacted inspector, and bounded parked-PTY undo/redo for complete top-level tabs exist. Individual split/local-tab/native-window history and native lifecycle evidence remain. |
 
 ## SSH activation M2/F4/D3 status
 
@@ -99,17 +99,30 @@ Public extension distribution, sandboxing, signed third-party packs, direct prov
 
 ## Ghostty compatibility track
 
-Automexia keeps its own shortcut model as the default. A complete Ghostty-compatible profile is not silently enabled and is not a v0.4 release criterion.
+Automexia keeps its own shortcut model as the implicit default. The explicit
+pinned and moving Ghostty profiles never enable themselves and are not a v0.4
+release criterion.
 
-- **G0:** source/fixture provenance and shared safety — partial.
-- **G1:** typed/compiled keybinding registry — not implemented.
-- **G2:** versioned profiles, unbind/override layers, migration, atomic profile reload — partial only because generic reload exists.
-- **G3:** structured dispatch outcomes, sequences/tables/chains — partial.
-- **G4:** remaining stateless actions/parity work — partial.
-- **G5:** generated tooling, migration CLI, compatibility fuzz/benchmarks/release verification — not implemented.
-- **G6:** high-lifecycle inspector and parked-PTY undo/redo — deferred pending dedicated architecture/security/resource design.
+- **G0 — Partially done:** exact Linux/BSD source/binary/checksum provenance,
+  fixtures, generator, Windows adaptation, ADR, and offline checks exist;
+  native macOS fixture and Linux/macOS release evidence remain.
+- **G1 — Fully done:** pure typed/compiled registry, indexed/reverse lookup,
+  classic adapter, and registry-derived palette are implemented.
+- **G2 — Fully done:** profiles, layers/unbinds, migration, diagnostics, and
+  atomic last-known-good reload are implemented.
+- **G3 — Fully done:** structured dispatch, fallthrough, sequences, tables,
+  catch-all, chains, route isolation, and exact pending-byte behavior exist.
+- **G4 — Fully done:** planned stateless compatibility actions and their bounded
+  security/resource behavior are implemented.
+- **G5 — Partially done:** tooling, generated references, fuzz/property tests,
+  and Windows benchmarks exist; controlled native/release evidence remains.
+- **G6 — Partially done:** redacted inspector and complete-top-level-tab
+  parked-PTY history exist; individual split/local-tab/native-window history is
+  not activated.
 
-Compatibility work must not regress Automexia defaults or bypass the same security/performance/accessibility gates as native bindings.
+Compatibility work must not regress Automexia defaults or bypass the same
+security, performance, accessibility, native, and release gates as other input
+behavior.
 
 ## Release gates that cut across phases
 

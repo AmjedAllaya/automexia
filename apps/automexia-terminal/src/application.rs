@@ -276,9 +276,15 @@ impl Application<'_> {
     /// global hotkey API, the compositor keybinding + a regular
     /// binding cover it there.
     fn setup_quake_hotkey(&mut self) {
+        let typed_triggers = crate::bindings::registry::build(&self.config)
+            .ok()
+            .flatten()
+            .map(|snapshot| snapshot.global_quake_triggers())
+            .unwrap_or_default();
         match crate::global_hotkey::setup(
             self.event_proxy.clone(),
             &self.config.bindings.keys,
+            &typed_triggers,
         ) {
             Ok(hotkeys) => self.global_hotkey = hotkeys,
             Err(error) => tracing::warn!("{error}"),
@@ -288,15 +294,19 @@ impl Application<'_> {
     fn replace_quake_hotkeys(
         &mut self,
         keys: &[rio_backend::config::bindings::KeyBinding],
+        typed_triggers: &[String],
     ) -> Result<(), String> {
         if let Some(hotkeys) = self.global_hotkey.as_mut() {
-            hotkeys.try_replace(keys)?;
+            hotkeys.try_replace(keys, typed_triggers)?;
             if hotkeys.is_empty() {
                 self.global_hotkey = None;
             }
         } else {
-            self.global_hotkey =
-                crate::global_hotkey::setup(self.event_proxy.clone(), keys)?;
+            self.global_hotkey = crate::global_hotkey::setup(
+                self.event_proxy.clone(),
+                keys,
+                typed_triggers,
+            )?;
         }
         Ok(())
     }
@@ -683,7 +693,33 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 update_colors_based_on_theme(&mut config, theme);
 
                 let has_font_updates = self.config.fonts != config.fonts;
-                let has_binding_updates = self.config.bindings != config.bindings;
+                let has_binding_updates = self.config.bindings != config.bindings
+                    || self.config.keyboard.binding_profile
+                        != config.keyboard.binding_profile
+                    || self.config.keyboard.binding_strict
+                        != config.keyboard.binding_strict;
+                let prepared_binding_registry = if has_binding_updates {
+                    match crate::bindings::registry::build(&config) {
+                        Ok(snapshot) => Some(snapshot),
+                        Err(error) => {
+                            let report = rio_backend::error::RioError {
+                                level: rio_backend::error::RioErrorLevel::Warning,
+                                report: rio_backend::error::RioErrorType::InvalidConfigurationFormat(
+                                    format!(
+                                        "keybinding profile preparation failed: {error}. The last known-good configuration remains active."
+                                    ),
+                                ),
+                            };
+                            for route in self.router.routes.values_mut() {
+                                route.report_error(&report);
+                                route.request_redraw();
+                            }
+                            return;
+                        }
+                    }
+                } else {
+                    None
+                };
 
                 let prepared_font_library = match prepare_runtime_font_reload(
                     has_font_updates,
@@ -707,7 +743,13 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 };
 
                 if has_binding_updates {
-                    if let Err(error) = self.replace_quake_hotkeys(&config.bindings.keys)
+                    let typed_triggers = prepared_binding_registry
+                        .as_ref()
+                        .and_then(|snapshot| snapshot.as_ref())
+                        .map(|snapshot| snapshot.global_quake_triggers())
+                        .unwrap_or_default();
+                    if let Err(error) =
+                        self.replace_quake_hotkeys(&config.bindings.keys, &typed_triggers)
                     {
                         let report = rio_backend::error::RioError {
                             level: rio_backend::error::RioErrorLevel::Warning,
@@ -735,6 +777,8 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         &self.config,
                         &self.router.font_library,
                         has_font_updates,
+                        prepared_binding_registry.clone().unwrap_or(None),
+                        has_binding_updates,
                     );
                     route.window.configure_window(&self.config);
                     route.clear_errors();
@@ -1200,6 +1244,8 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     route.window.screen.update_config(
                         &self.config,
                         &self.router.font_library,
+                        false,
+                        None,
                         false,
                     );
                     route.window.configure_window(&self.config);
@@ -2460,6 +2506,8 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 route.window.screen.update_config(
                     &self.config,
                     &self.router.font_library,
+                    false,
+                    None,
                     false,
                 );
                 route.window.configure_window(&self.config);

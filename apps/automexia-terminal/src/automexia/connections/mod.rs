@@ -3,7 +3,6 @@
 mod controller;
 mod direct_openssh;
 mod library;
-mod private_fs;
 mod receipts;
 mod runtime;
 pub use controller::{

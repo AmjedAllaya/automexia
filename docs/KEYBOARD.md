@@ -2,8 +2,8 @@
 
 This page defines Automexia's active v0.4 defaults. Explicit entries under
 `[bindings]` replace matching default triggers. The separate
-[Ghostty compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md) page describes a
-future opt-in profile and is not the active default set.
+[Ghostty compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md) documents the
+explicit opt-in profiles; they never replace the active default implicitly.
 
 `Cmd` means the macOS Command key. Search and Vi-mode bindings apply only while
 their mode is active. A terminal application can own a key when the table says
@@ -220,3 +220,26 @@ UI: Connection Hub remains read-only, and Quick Actions still requires its
 normal review/insert step. None of these shortcuts writes to or executes in the
 PTY. The mnemonic letters are **H**ub, **O**pen actions, **M**arketplace, and
 **L**ist fonts.
+## Ghostty compatibility profiles
+
+`automexia` remains the implicit profile. Set `keyboard.binding-profile` to
+`ghostty-1.3` for the pinned Ghostty 1.3.1 profile or to `ghostty` for the
+visible moving alias, which currently resolves to `ghostty-1.3`. User entries
+and `unbind` directives are compiled after the selected profile. A failed strict
+compile or reload leaves the previous complete registry active.
+
+Strict Ghostty bindings use window-level tabs and independent-PTY splits. Bare
+`Ctrl+R` and `Ctrl+D` fall through to the terminal. Platform-global entries are
+installed through the OS hotkey owner, while focused, all-surface, sequences,
+tables, chains, `performable`, and `unconsumed` policies stay isolated per
+surface. Unsupported actions remain visibly unavailable; they are never mapped
+to unrelated behavior.
+
+The generated tables are the canonical inventory:
+
+- [Ghostty 1.3 keybindings](generated/ghostty-1.3-keybindings.md)
+- [Ghostty 1.3 actions](generated/ghostty-1.3-actions.md)
+
+See [Ghostty keyboard compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md) for
+configuration, migration, provenance, deviations, and current native-evidence
+limits.

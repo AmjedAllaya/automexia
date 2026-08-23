@@ -73,6 +73,19 @@ releases. The publish step refuses a pre-existing tag release, uploads without
 `--clobber`, and publishes one new draft; enabling immutable releases is an
 external repository-owner prerequisite.
 
+## Ghostty compatibility profile gate
+
+A release that advertises `ghostty-1.3` compatibility must byte-verify the
+checked-in fixtures and generated references, run the dedicated keybinding,
+fuzz-compilation, migration, full CI, and package gates, and retain the exact
+Ghostty 1.3.1 source/binary/checksum provenance. Windows must be labeled as an
+Automexia adaptation, never as an upstream Ghostty Windows profile.
+
+The release remains blocked until native Linux/BSD and macOS fixture/smoke
+evidence, native Windows/Linux/macOS keyboard-layout and rendered-frame
+matrices, screen-reader checks, repeated lifecycle/resource cleanup, and an
+activated comparable 30-day registry benchmark baseline are reviewed. The
+macOS selector must continue to fail closed while its fixture is absent.
 No stable release may contain placeholder assets or unsigned/notarized desktop
 artifacts. A signed artifact can still receive a vendor false positive; follow
 the evidence and submission procedure in `docs/RELEASE-TRUST.md` instead of

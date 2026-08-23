@@ -1,0 +1,60 @@
+{
+  "automexia": [
+    {
+      "actions": [
+        "increase_font_size",
+        "decrease_font_size",
+        "set_font_size"
+      ],
+      "automexia_points": "6..=100",
+      "code": "font_range_clamped",
+      "reason": "preserves Automexia's reviewed readable renderer range",
+      "upstream_points": "1..=255"
+    }
+  ],
+  "macos": {
+    "not_synthesized": true,
+    "status": "external_prerequisite"
+  },
+  "rules": [
+    "super_is_the_windows_key",
+    "primary_selection_uses_clipboard",
+    "unsupported_globals_are_omitted",
+    "os_intercepted_combinations_are_diagnostic"
+  ],
+  "schema_version": 1,
+  "windows": [
+    {
+      "code": "primary_selection_uses_clipboard",
+      "entry": 5
+    },
+    {
+      "code": "super_uses_windows_key",
+      "entry": 12
+    },
+    {
+      "code": "super_uses_windows_key",
+      "entry": 36
+    },
+    {
+      "code": "super_uses_windows_key",
+      "entry": 37
+    },
+    {
+      "code": "super_uses_windows_key",
+      "entry": 42
+    },
+    {
+      "code": "super_uses_windows_key",
+      "entry": 43
+    },
+    {
+      "code": "super_uses_windows_key",
+      "entry": 44
+    },
+    {
+      "code": "super_uses_windows_key",
+      "entry": 45
+    }
+  ]
+}

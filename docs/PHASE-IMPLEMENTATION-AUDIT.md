@@ -112,13 +112,13 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Productivity | CP5.0 | **Fully implemented at research boundary** | **Complete locally** | Seven-shell API matrix, pure insertion prototype, locked matcher/dependency evidence, privacy review, and retain-CP1/defer-P2 decision are machine-gated; no runtime surface exists. |
 | Productivity | CP5.1-CP5.6 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance** | Proposed ADR 0025, schema-1 six-threat contract, 17 mutations/document tests, fixed ownership/limits/shell matrix, and detailed audit exist. No runtime code or UI is authorized; CP1 remains fallback. |
 | Productivity | CP6 | **Not implemented; deferred** | **Blocked by design** | Signed ecosystem packs and AI tools require v0.6 gates. |
-| Compatibility | G0 | **Partial** | **Partial** | Shared safety prerequisites pass; versioned Ghostty fixtures, generation, checksums, and replacement ADR are absent. |
-| Compatibility | G1 | **Not implemented** | **Not started** | No private typed/compiled keybinding registry exists. |
-| Compatibility | G2 | **Partial** | **Not started for profile release** | Generic last-known-good reload exists; profiles, unbind layers, migration, and profile compiler do not. |
-| Compatibility | G3 | **Partial** | **Not started for profile release** | Some fallthrough behavior exists; structured outcomes, sequences, tables, and chains do not. |
-| Compatibility | G4 | **Partial** | **Partial** | Some actions exist; clear variants, extended selection/search, zoom/equalize, and screen export remain. |
-| Compatibility | G5 | **Not implemented** | **Not started** | Generated profiles, CLI/migration, xtask generation, compatibility fuzz, and registry benchmarks are absent. |
-| Compatibility | G6 | **Not implemented; deferred** | **Blocked by design** | Inspector and parked-PTY undo/redo need separate ADR/security/resource design. |
+| Compatibility | G0 | **Partially implemented** | **Partially done** | Exact Ghostty 1.3.1 Linux/BSD provenance/fixtures/checksums, deterministic Windows adaptation, ADR 0026, generation, verification, classic golden, and properties exist. Native macOS fixture and Linux/macOS release evidence remain. |
+| Compatibility | G1 | **Fully implemented locally** | **Partially done** | Pure typed registry, schemas, layers, direct/reverse indexed lookup, reserved sequence/table structures, classic bridge, palette derivation, and Windows latency evidence exist; external platform evidence remains. |
+| Compatibility | G2 | **Fully implemented locally** | **Partially done** | Explicit profiles, bind/unbind/priority layers, strict diagnostics, immutable atomic reload, global/palette transaction, and dry-run/confirmed migration are implemented; native release matrices remain. |
+| Compatibility | G3 | **Fully implemented locally** | **Partially done** | Structured outcomes, fallthrough, exact sequences/cancellation, bounded tables/catch-all/chains, stable all-surface execution, per-route state, and shell ownership are implemented; native IME/layout evidence remains. |
+| Compatibility | G4 | **Fully implemented locally** | **Partially done** | Clear, selection/search, topology, zoom/equalize/resize, and bounded private export families are implemented; controlled native visual/resource checks remain. |
+| Compatibility | G5 | **Partially implemented** | **Partially done** | CLI/migration, xtask generation/verification/tests, generated references, property/fuzz targets, and Windows Criterion benchmarks exist. Native three-platform, visual, accessibility, resource, and 30-day evidence remains. |
+| Compatibility | G6 | **Partially implemented** | **Partially done** | ADRs 0027/0028, the redacted inspector, and bounded parked-PTY undo/redo for complete top-level tabs exist. Individual split/local-tab/native-window history and native lifecycle evidence remain. |
 
 ### Architecture Phase 0-5 mapping
 
@@ -678,6 +678,7 @@ managed execution, real OpenSSH/PTY/process/handle/socket cleanup, native
 Windows/macOS/Linux, controlled screen-reader/visual, hosted policy, and release
 evidence remain. M6 activation stays false and CP3.3 local workspace tasks gain
 no remote/provider authority.
+
 ### D6.0-D6.5 — providers and multi-cloud
 
 **Partially implemented overall: D6.0/M7 is fully implemented locally; D6.1/M8 through D6.4/M11 and the D6.5/M12 Teleport slice are source-complete and nonactivated; OpenBao is not implemented pending ADR 0024 acceptance.**
@@ -1118,70 +1119,84 @@ and changelog. `ax` remains optional and cannot shadow native user state.
 
 ## Ghostty compatibility phases
 
-Automexia ships its classic shortcuts. It has no selectable Ghostty profile and
-must not claim complete Ghostty action/keybinding-language parity.
+The implicit `automexia` profile remains unchanged. `ghostty-1.3` is explicit
+and pinned; `ghostty` is an explicit moving alias. Cross-platform release claims
+remain narrower than the locally implemented source/runtime surface.
 
-### G0 — source lock and safety
+### G0 — source lock and safety — Partially done
 
-**Partially implemented.**
+**Partially implemented:** native macOS fixture and native Linux/macOS release smoke evidence remain external.
 
-Present: recorded audit commit, tested classic mappings, last-known-good reload,
-Automexia identity, bounded control strings, Nextest/QA/property/fuzz
-infrastructure, and a hand-maintained compatibility matrix.
+Ghostty 1.3.1 tag `v1.3.1` and commit
+`22efb0be2bbea73e5339f5426fa3b20edabcaa11` are pinned. Reviewed Linux/BSD
+keybindings/actions, source and binary hashes, deterministic Windows adaptation,
+classic default golden, schema/checksum manifest, generator, offline verifier,
+property tests, and accepted ADR 0026 exist. Normal builds never execute
+Ghostty. A native macOS fixture and native Linux/macOS release smoke evidence
+remain external.
 
-Missing: verified Ghostty 1.3.1 tag generation; normalized Linux/macOS/
-Windows-adapted/actions/provenance/deviations fixtures; checksums/generator;
-Automexia default golden; replacement ADR; transform Proptest; QA fixture
-identity. CI must stay offline and never require Ghostty.
+### G1 — typed registry — Fully done
 
-### G1 — typed registry
+**Fully implemented at the local source boundary.**
 
-**Not implemented.** No automexia-keybindings crate, stable action schemas,
-typed trigger/predicate/scope/origin model, direct/reverse lookup, trie/table
-registry, or palette generation exists. Current bindings remain a flat vector
-with some ad hoc string parsing.
+The private pure `automexia-keybindings` owner provides stable action schemas,
+typed logical/physical/named triggers, predicates, scopes, origins, policies,
+bounded compilation, allocation-free indexed direct lookup, reverse lookup,
+sequence trie/table storage, deterministic diagnostics, classic bridging, and
+registry-derived palette hints. It owns no IO or runtime effects.
 
-### G2 — profiles, overrides, migration, atomic profile reload
+### G2 — profiles, overrides, migration, and reload — Fully done
 
-**Partially implemented through generic reload only.** Missing explicit
-automexia/ghostty/versioned profiles, moving/pinned rules, unbind/priority/
-origin layers, strict defaults, complete diagnostics, immutable off-thread
-compile/swap, migration dry-run/apply, and transactional global/palette update.
+**Fully implemented at the local source boundary.**
 
-### G3 — outcomes, sequences, tables, and chains
+Default `automexia`, moving `ghostty`, and pinned `ghostty-1.3` profiles, typed
+bind/unbind layers, strict/permissive compilation, moving-alias disclosure,
+legacy bridging, bounded dry-run/confirmed migration, and complete immutable
+last-known-good reload are implemented. Profile, palette, and typed global
+hotkey publication is transactional and never recreates a PTY.
 
-**Partially implemented.** Existing copy-or-ETX, search/Vi ownership, some edge
-fallthrough, and passthrough can be reused. Missing ActionOutcome/can_perform,
-lower-priority/PTY fallthrough, all-surface snapshots, prefix byte/cancel rules,
-table stack/one-shot/catch-all, chains, IME/AltGr/dead-key/Kitty handling,
-per-surface pending state/UI, and fuzz/model proof.
+### G3 — outcomes, sequences, tables, and chains — Fully done
 
-### G4 — stateless actions
+**Fully implemented at the local source boundary.**
 
-**Partially implemented.** Present: many frontend actions, config/raw input,
-selection/search/Vi, directional/word selection, tab/window/pane/split/clone/
-close/move, and geometric focus.
+Structured action outcomes, performability, consumption/fallthrough, shell-owned
+bare controls, stable all-surface route snapshots, coalesced damage, exact
+pending bytes, cancellation/replacement flushing, bounded nested/one-shot
+tables, catch-all, ordered chains, and route-isolated indicators are implemented
+with deterministic/property/fuzz contracts.
 
-Missing: distinct clear variants; page/home/end/line selection; scroll/search
-from selection; exact profile wiring; split resize/zoom/equalize; secure bounded
-screen export/open/copy/paste-path with restrictive temp cleanup. Each action
-needs unit/dispatch/binding/palette/CLI/generated-doc/security/platform/resource
-tests.
+### G4 — stateless actions — Fully done
 
-### G5 — generated tooling and release verification
+**Fully implemented at the local source boundary.**
 
-**Not implemented.** Missing generated profiles; list-actions/list-keybinds/
-explain/collision/JSON CLI; safe migration; xtask generate/verify/test; generated
-docs; fixture parity; compatibility fuzz/Proptest/Loom/native layouts/goldens/
-resources; Criterion registry/sequence/table/reload/reverse-index benchmarks;
-and the 30-day lookup/dispatch baseline.
+Ghostty-compatible configuration/raw input, exact primary clear behavior,
+separate Automexia clear variants, extended selection/search, window/tab/split
+semantics, inherited independent PTYs, geometric focus, logical resize,
+transactional zoom/equalize, and restrictive bounded screen export/cleanup are
+implemented and discoverable through the shared registry.
 
-### G6 — inspector and undo/redo
+### G5 — tooling and release verification — Partially done
 
-**Not implemented and deferred.** Inspector needs a redacted model excluding
-secrets/clipboard/hidden/private output. Undo/redo needs bounded parked
-independent PTYs, topology transactions, count/time/memory/scrollback ceilings,
-cleanup, recovery, redo invalidation, and separate ADRs.
+**Partially implemented:** controlled native, accessibility, resource, long-campaign, and release evidence remain external.
+
+Pre-GUI action/keybinding/explain/JSON CLI, dry-run-first migration, xtask
+generate/verify/test, generated fixture/reference comparison, two fuzz targets,
+properties, and Criterion coverage are implemented. Native Windows x64 timing
+was observed on 2026-08-23. Native Linux/BSD/macOS fixtures and keyboard/visual/
+assistive-technology/resource matrices, a fixed fuzz campaign, QA bundle, and an
+activated like-hardware 30-day baseline remain release prerequisites.
+
+### G6 — inspector and topology history — Partially done
+
+**Partially implemented:** individual split, local-tab, and native-window history plus native lifecycle evidence remain external.
+
+Accepted ADR 0027 protects a bounded renderer-owned inspector that excludes
+terminal output, clipboard, environment, commands, paths, and credentials.
+Accepted ADR 0028 enables memory-only parked-PTY undo/redo for a complete closed
+top-level window tab, bounded to 8 entries, 5 minutes, and 250,000 retained
+history lines per window with redo invalidation and owner-driven cleanup.
+Individual split, pane-local-tab, and whole-native-window history plus native
+lifecycle/resource evidence remain outside the activated scope.
 
 ## Version milestone assessment
 

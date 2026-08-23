@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use automexia_keybindings::{parse_binding_lines, BindingOrigin, MAX_BINDINGS};
+use serde::{Deserialize, Deserializer, Serialize};
 
 // Examples:
 // { key = "w", mods: "super", action = "quit" }
@@ -21,7 +22,32 @@ pub type KeyBindings = Vec<KeyBinding>;
 
 #[derive(Default, Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Bindings {
+    #[serde(default)]
     pub keys: KeyBindings,
+
+    /// Ghostty-compatible typed binding lines. These are parsed without shell,
+    /// filesystem, process, or renderer authority and layer above the selected
+    /// profile. Legacy `keys` remain supported during migration.
+    #[serde(
+        default,
+        rename = "keybinds",
+        deserialize_with = "deserialize_keybinds"
+    )]
+    pub keybinds: Vec<String>,
+}
+
+fn deserialize_keybinds<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let lines = Vec::<String>::deserialize(deserializer)?;
+    if lines.len() > MAX_BINDINGS {
+        return Err(serde::de::Error::custom("too many typed keybindings"));
+    }
+    parse_binding_lines(lines.iter().map(String::as_str), BindingOrigin::User).map_err(
+        |error| serde::de::Error::custom(format!("invalid typed keybinding: {error:?}")),
+    )?;
+    Ok(lines)
 }
 
 #[cfg(test)]
@@ -166,5 +192,28 @@ mod tests {
         let decoded = toml::from_str::<Root>(content).unwrap();
         assert_eq!(decoded.bindings.keys[0].esc, "\x1b[2J\x1b[H");
         assert_eq!(decoded.bindings.keys[0].esc.as_bytes(), b"\x1b[2J\x1b[H");
+    }
+
+    #[test]
+    fn ghostty_compatible_keybinds_are_validated_during_deserialization() {
+        let decoded = toml::from_str::<Root>(
+            r#"
+            [bindings]
+            keybinds = [
+                "ctrl+a>ctrl+b=quit",
+                "unconsumed:performable:nav/catch_all=ignore",
+            ]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(decoded.bindings.keybinds.len(), 2);
+
+        assert!(toml::from_str::<Root>(
+            r#"
+            [bindings]
+            keybinds = ["ctrl+a=unknown_action"]
+            "#,
+        )
+        .is_err());
     }
 }

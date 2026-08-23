@@ -258,7 +258,7 @@ EXPECTED_SOURCES = [
     "apps/automexia-terminal/src/automexia/connections/receipts.rs",
     "apps/automexia-terminal/src/automexia/connections/runtime.rs",
     "apps/automexia-terminal/src/application.rs",
-    "apps/automexia-terminal/src/automexia/connections/private_fs.rs",
+    "apps/automexia-terminal/src/automexia/private_fs.rs",
     "extensions/devops-ssh/src/model.rs",
     "extensions/devops-ssh/src/inventory.rs",
     "apps/automexia-terminal/src/automexia/connections/direct_openssh.rs",
@@ -502,7 +502,7 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "handle_desktop_notification",
     }, root)
     require_tokens(document["evidence"]["source"][11], {
-        "pub(super) enum PrivateFsErrorCode", "FILE_FLAG_OPEN_REPARSE_POINT",
+        "pub(crate) enum PrivateFsErrorCode", "FILE_FLAG_OPEN_REPARSE_POINT",
         "PROTECTED_DACL_SECURITY_INFORMATION", "libc::O_NOFOLLOW",
         "same_snapshot", "private_permissions_are_safe",
         "GetFileInformationByHandle", "nFileIndexHigh",

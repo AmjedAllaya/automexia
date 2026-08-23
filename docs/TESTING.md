@@ -982,43 +982,49 @@ the clear/repaint pattern emitted by PSReadLine, Readline, and ZLE for Up Arrow
 and reverse-history search. Runtime must remain proportional to the live prompt
 block, not the configured scrollback depth.
 
-Current keybinding tests construct macOS, Windows, and Linux/BSD default
-tables on every host, verify classic tab/split/clone scopes, geometric pane
-focus, pane-local tab cycling, global-tab separation, explicit shell
-passthroughs, and the four mnemonic app-surface launchers. They exercise stable
-configuration names, user overrides, mode suppression, and intentional
-compound actions, and reject shortcut collisions, blank palette labels, and
-duplicate visible palette labels. Pure layout
-tests cover all four directions, uneven/nested grids, perpendicular-beam
-preference, deterministic ties, edge stopping, and local-tab wraparound. The
-planned compiled-profile suite—including fixture provenance,
-origins and shadowing, atomic reload, fallthrough, sequences/tables/chains,
-generated docs, fuzzing, and hot-path latency—is specified in the
-[full Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md) and must
-not be reported as implemented until those gates exist and pass.
+Current keybinding assurance constructs the classic platform tables and the
+pinned Ghostty profile on every host. The pure suite verifies fixture hashes,
+action schemas, aliases, bounded parsing, layer precedence, strict/permissive
+diagnostics, unbinds, allocation-free physical/named/logical precedence,
+sequences, exact byte flushing, tables, chains, scopes, and deterministic
+Windows adaptation. Frontend tests cover atomic registry publication, classic
+bridging, shell fallthrough, finite numeric parameter translation, Ghostty's
+positive-down scroll convention, clear semantics, selection/search,
+zoom/equalize, secure export, profile-derived palette hints, migration,
+inspector redaction, bounded selection serialization, and bounded top-level-tab
+parking.
 
-The focused feature-shortcut contract is:
+The focused compatibility gate is:
 
 ```powershell
-cargo test -p automexia-terminal palette_shortcuts_are_complete_and_unique --locked
-cargo test -p automexia-terminal feature_surface_actions_parse_with_stable_configuration_names --locked
-cargo test -p automexia-terminal automexia_windows_defaults_restore_the_classic_workflow --locked
-cargo test -p automexia-terminal automexia_unix_defaults_restore_the_classic_workflow --locked
-cargo test -p automexia-terminal automexia_macos_defaults_restore_the_classic_workflow --locked
+cargo xtask test keybindings
+cargo xtask generate keybindings --version 1.3.1
+cargo xtask generate keybindings --check
+cargo xtask verify keybindings
+cargo check --manifest-path fuzz/Cargo.toml --bins --locked --offline
+cargo bench -p automexia-keybindings --bench registry --locked
 ```
 
-These tests prove table construction and pure dispatch contracts on any host;
-they do not replace native macOS/Linux keyboard-layout or controlled assistive-
-technology runs.
+`cargo xtask test keybindings` runs all `automexia-keybindings` unit/property
+tests plus the frontend registry, command-palette, inspector, compatibility
+action, export, migration, zoom/equalize, topology-history, and VT bounded-
+selection owners before byte-verifying generated artifacts and references. The
+two fuzz targets exercise hostile binding text/sequence resolution and bounded
+migration/include graphs; the check above proves they compile offline, while a
+release campaign still needs a fixed-duration nightly runner.
 
-Feature-shortcut completion evidence was recorded on native Windows x64 on
-2026-08-21: the frontend, format, warning-denied Clippy, Nextest, doctest, QA,
-native WGPU/CPU resize, and `cargo ready` gates passed on that audited tree.
-Detailed historical counts remain in version control rather than being treated
-as current S1/S2 results. Native Linux/macOS keyboard layouts, controlled
-assistive technology, elevated AppVerifier/WPR, and the 30-day benchmark
-campaign remain external.
+A native Windows x64 Criterion run on 2026-08-23 measured median
+`compile_1000_bindings` 4.1217 ms, single-key lookup 33.485 ns, lookup in a
+1,000-binding registry 66.353 ns, reverse lookup 202.60 ns, four-level sequence
+188.95 ns, invalid-prefix flush 136.32 ns, and active-table lookup 94.829 ns.
+These are same-host development observations, not an activated 30-day
+like-hardware baseline.
 
+These tests prove pure compilation and Windows runtime contracts; they do not
+replace native macOS/Linux keyboard-layout, rendered-frame, assistive-
+technology, resource-cycle, packaging, or signing evidence. The macOS fixture
+is an explicit external prerequisite and profile selection fails closed until
+it exists.
 Nightly builds unsigned installers for every artifact target. The Windows x64
 MSI uses cargo-packager/WiX 3; ARM64 uses the pinned repository-owned WiX 5
 source because WiX 3 has no ARM64 MSI support. Linux package jobs install the
@@ -1577,6 +1583,7 @@ Unix launch arguments, host-trust behavior, session isolation, and bounded
 MFA, cancellation, offline, denial, cache isolation, and external credential
 custody for each provider. Synthetic fixtures remain mandatory but never
 substitute for controlled native evidence.
+
 ## CP2.0-CP2.2 Quick Action assurance
 
 The capability-free schema/parser/validator, activation index, and CP3.0
@@ -1752,6 +1759,7 @@ Windows/Linux/macOS/WSL results and the 30-day resource baseline remain release
 evidence. CP3.2 static actions remain disabled and unaliased. CP3.3 native
 imports and trusted task bridges are fully implemented locally, insert-only,
 unaliasable, explicitly selected/trusted, and separately revocable.
+
 ## Command-productivity CP0 contract
 
 CP0 is a non-runtime policy boundary. It does not enable managed completion,
@@ -2012,6 +2020,7 @@ inventory, capability denial, exact preview UX, alias safety, lifecycle, source,
 tests, benchmark, fuzz, CI wiring, and eight CP3.2 documents. Hosted
 cross-platform and
 30-day comparable measurements remain release evidence.
+
 ## M6 typed automation and multi-environment workspaces
 
 Run the focused review-only evidence with:
@@ -2081,6 +2090,7 @@ collection/generation behavior only. Proposed ADR 0023 acceptance, actual produc
 controller/renderer/CLI flows, real OpenSSH execution and forced cleanup, native
 Windows/macOS/Linux resources, controlled screen readers/visuals, and hosted
 release evidence remain external and must not be inferred from these tests.
+
 ## M7 provider-neutral authentication and capsule isolation
 
 M7 is fully done at the authority-free local framework boundary. Run its focused
@@ -2207,6 +2217,7 @@ These gates cover six explicit native formats, exact just/Task/mise bridges,
 dry-run/CAS import, path-free trust receipts, revocation/removal, background and
 final insertion authorization, hostile input, Unix no-follow cases, fuzzing, and
 benchmarks. Hosted native/accessibility and controlled 30-day evidence remain.
+
 ## M13 provider-aware Quick Actions
 
 M13/CP4 is source-complete and nonactivated locally. The M8-M12 sections own

@@ -13,6 +13,7 @@ The [detailed SSH/connectivity/multi-environment/multi-cloud plan](SSH-CONNECTIV
 owns the M0-M13 implementation and evidence checklist used for future phases.
 
 <!-- roadmap-status-register:start -->
+
 ## Current feature status
 
 The status appears before every feature/phase and uses exactly **Fully done**,
@@ -53,13 +54,13 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | CP5.0 | Native API/version research, a bounded non-runtime editor-state prototype, 32/128/512 matcher evidence, dependency review, privacy delta, and a retain-CP1/defer-P2 decision are machine-gated. |
 | **Partially done** | CP5.1-CP5.6 | Proposed ADR 0025, its mutation-tested six-threat machine contract, fixed limits/owners/shell matrix, and execution audit are complete. Runtime still requires explicit acceptance; CP1 remains the fallback. |
 | **Not done** | CP6 | Signed ecosystem packs and AI tools are deferred to later gates. |
-| **Partially done** | G0 | Shared safety prerequisites exist; fixtures, generation, checksums, and the replacement ADR remain. |
-| **Not done** | G1 | No private typed/compiled keybinding registry exists. |
-| **Partially done** | G2 | Generic last-known-good reload exists; profile layers, migration, and compilation remain. |
-| **Partially done** | G3 | Some fallthrough behavior exists; structured outcomes, sequences, tables, and chains remain. |
-| **Partially done** | G4 | Some actions exist; remaining clear, selection/search, zoom/equalize, and export actions are incomplete. |
-| **Not done** | G5 | Generated profiles/tooling, migration CLI, compatibility fuzzing, and registry benchmarks are absent. |
-| **Not done** | G6 | Inspector and parked-PTY undo/redo are deferred pending separate safety design. |
+| **Partially done** | G0 | Pinned Ghostty 1.3.1 Linux/BSD source/binary/checksum provenance, generated fixtures/references, deterministic Windows adaptation, accepted ADR 0026, classic golden, property tests, and offline verification are implemented. Native macOS fixture plus native Linux/macOS release evidence remain. |
+| **Fully done** | G1 | The pure private typed/compiled registry, schemas, origins, scopes, policies, direct/reverse indexes, sequence trie/table reservation, classic adapter, registry-derived palette, and latency evidence are implemented. |
+| **Fully done** | G2 | Explicit default/moving/pinned profiles, typed bind/unbind layers, strict diagnostics, immutable last-known-good publication, transactional hotkeys/palette, and dry-run/confirmed atomic migration are implemented. |
+| **Fully done** | G3 | Structured outcomes, performable/unconsumed fallthrough, exact pending-byte sequences, bounded tables/catch-all/chains, all-surface snapshots, per-route state, and shell passthrough are implemented and tested. |
+| **Fully done** | G4 | Clear semantics, extended selection/search, typed independent splits, logical resize, transactional zoom/equalize, and private bounded screen export with cleanup are implemented and tested. |
+| **Partially done** | G5 | CLI inspection, safe migration, xtask generation/verification/tests, generated docs, property/fuzz targets, allocation-free indexes, and Windows Criterion evidence are implemented. Native three-platform keyboard/visual/AT/resource evidence and an activated 30-day baseline remain. |
+| **Partially done** | G6 | Accepted ADRs and a redacted inspector are implemented; complete closed top-level window tabs have bounded parked-PTY undo/redo. Individual split, pane-local-tab, and native-window closure history plus native lifecycle evidence remain. |
 
 <!-- roadmap-status-register:end -->
 
@@ -371,6 +372,7 @@ below-16-ms target; the release executable is 22,670,336 bytes, a 650,752-byte
 native macOS/Linux picker and permission/recovery coverage plus controlled
 Narrator/NVDA, VoiceOver, and Orca verification. Those external gates do not
 permit or block ordinary terminal/manual OpenSSH use and do not imply D5.2.
+
 ### v0.5.x command productivity track
 
 Command completion and persistent DevOps shortcuts are now an explicit parallel
@@ -655,14 +657,14 @@ permission, and destructive operations require policy plus explicit review.
 
 ## Compatibility track
 
-Automexia ships its classic shortcut table. Ghostty compatibility is not an
-implicit default or currently selectable profile. The separate
-[full Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md) records
-every implemented, partial, planned, deferred, and excluded capability. Its
-ordered work covers fixture provenance, the typed registry, atomic reload,
-versioned profiles, dispatch semantics, missing actions, generated tooling,
-and later high-lifecycle features. Complete compatibility is deliberately not
-a v0.4 release criterion.
+Automexia keeps its classic `automexia` shortcuts as the implicit default. The
+explicit `ghostty-1.3` profile and moving `ghostty` alias are implemented, but
+an unqualified cross-platform compatibility release is still gated. The
+[full Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md) is the
+source of truth: G1-G4 are fully done locally; G0/G5 remain partially done on
+native release evidence; G6 is partially done at the accepted redacted
+inspector and complete-top-level-tab history scope. Complete compatibility is
+not a v0.4 release criterion.
 
 ## Assurance delivery track
 

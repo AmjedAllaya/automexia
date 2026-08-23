@@ -8,8 +8,12 @@ pub mod api;
 pub mod builtins;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod connections;
+#[doc(hidden)]
+pub mod export;
+pub mod ghostty_migration;
 pub mod marketplace;
 pub mod migration;
+pub(crate) mod private_fs;
 pub mod quick_actions;
 pub mod runtime;
 #[cfg(target_os = "windows")]

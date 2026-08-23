@@ -10,6 +10,8 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 automexia-image = { path = "../automexia-image" }
+automexia-keybindings = { path = "../automexia-keybindings" }
+automexia-terminal = { path = "../apps/automexia-terminal", default-features = false }
 automexia-devops = { path = "../automexia-devops" }
 automexia-devops-ssh = { path = "../extensions/devops-ssh" }
 rio-backend = { path = "../rio-backend", default-features = false }
@@ -102,6 +104,21 @@ path = "fuzz_targets/connection_planning.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "ghostty_keybindings"
+path = "fuzz_targets/ghostty_keybindings.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ghostty_migration"
+path = "fuzz_targets/ghostty_migration.rs"
+test = false
+doc = false
+bench = false
+
 [[bin]]
 name = "provider_quick_actions"
 path = "fuzz_targets/provider_quick_actions.rs"

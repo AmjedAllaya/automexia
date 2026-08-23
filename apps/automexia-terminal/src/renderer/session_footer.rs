@@ -10,6 +10,7 @@ use rio_backend::event::EventListener;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Attributes;
 use rio_backend::sugarloaf::Sugarloaf;
+use rustc_hash::FxHashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SessionFooterHit {
@@ -95,10 +96,28 @@ fn footer_geometry(
     Some(FooterGeometry { outer, surface })
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CompatibilityIndicator {
+    pub profile: Option<String>,
+    pub pending: bool,
+    pub table: Option<String>,
+    pub diagnostics: usize,
+    pub zoomed: bool,
+}
+
 #[derive(Default)]
-pub struct SessionFooter;
+pub struct SessionFooter {
+    compatibility: FxHashMap<usize, CompatibilityIndicator>,
+}
 
 impl SessionFooter {
+    pub fn replace_compatibility_indicators(
+        &mut self,
+        indicators: FxHashMap<usize, CompatibilityIndicator>,
+    ) {
+        self.compatibility = indicators;
+    }
+
     pub fn render<T>(
         &self,
         sugarloaf: &mut Sugarloaf,
@@ -141,6 +160,7 @@ impl SessionFooter {
                 line_ending: line_ending_for_shell(rc.shell_name.as_deref()),
                 clock: &clock,
                 is_active,
+                compatibility: self.compatibility.get(&context.route_id),
             };
             draw_footer(sugarloaf, geometry, state, background);
         }
@@ -160,6 +180,7 @@ struct FooterRenderState<'a> {
     line_ending: &'static str,
     clock: &'a str,
     is_active: bool,
+    compatibility: Option<&'a CompatibilityIndicator>,
 }
 
 pub fn hit_test<T>(
@@ -350,6 +371,72 @@ fn draw_footer(
             &tab,
             quiet_opts,
         );
+    }
+    if state.is_active {
+        if let Some(compatibility) = state.compatibility {
+            let accent_opts = DrawOpts {
+                color: [48, 190, 238, 255],
+                ..quiet_opts
+            };
+            if let Some(profile) = &compatibility.profile {
+                let _ = draw_left_status(
+                    sugarloaf,
+                    &mut left_x,
+                    left_limit,
+                    text_y,
+                    profile,
+                    accent_opts,
+                );
+            }
+            if compatibility.pending {
+                let _ = draw_left_status(
+                    sugarloaf,
+                    &mut left_x,
+                    left_limit,
+                    text_y,
+                    "CHORD …",
+                    DrawOpts {
+                        color: [244, 184, 66, 255],
+                        ..quiet_opts
+                    },
+                );
+            }
+            if let Some(table) = &compatibility.table {
+                let table = format!("TABLE {table}");
+                let _ = draw_left_status(
+                    sugarloaf,
+                    &mut left_x,
+                    left_limit,
+                    text_y,
+                    &table,
+                    accent_opts,
+                );
+            }
+            if compatibility.zoomed {
+                let _ = draw_left_status(
+                    sugarloaf,
+                    &mut left_x,
+                    left_limit,
+                    text_y,
+                    "ZOOM",
+                    accent_opts,
+                );
+            }
+            if compatibility.diagnostics > 0 {
+                let diagnostics = format!("KEYS !{}", compatibility.diagnostics);
+                let _ = draw_left_status(
+                    sugarloaf,
+                    &mut left_x,
+                    left_limit,
+                    text_y,
+                    &diagnostics,
+                    DrawOpts {
+                        color: [244, 184, 66, 255],
+                        ..quiet_opts
+                    },
+                );
+            }
+        }
     }
     if state.display_offset > 0 {
         let history_opts = DrawOpts {

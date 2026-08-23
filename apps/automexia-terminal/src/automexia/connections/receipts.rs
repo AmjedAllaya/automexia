@@ -17,7 +17,9 @@ use automexia_devops::connections::{
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 
-use super::private_fs::{self as secure_fs, PrivateFsError, PrivateFsErrorCode};
+use crate::automexia::private_fs::{
+    self as secure_fs, PrivateFsError, PrivateFsErrorCode,
+};
 
 pub const MANAGED_RECEIPT_SCHEMA: u16 = 1;
 pub const MANAGED_RECEIPT_FILE: &str = "managed-receipts.v1.json";

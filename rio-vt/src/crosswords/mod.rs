@@ -66,6 +66,10 @@ pub type NamedColor = colors::NamedColor;
 
 pub const MIN_COLUMNS: usize = 2;
 pub const MIN_LINES: usize = 1;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SelectionTextError {
+    CapacityExceeded,
+}
 
 // Max. number of graphics stored in a single cell.
 // const MAX_GRAPHICS_PER_CELL: usize = 20;
@@ -691,6 +695,12 @@ impl<U: EventListener> Crosswords<U> {
     #[inline]
     pub fn display_offset(&self) -> usize {
         self.grid.display_offset()
+    }
+
+    /// Clear the visible viewport without discarding saved scrollback.
+    #[inline]
+    pub fn clear_visible_screen(&mut self) {
+        self.clear_screen(ClearMode::All);
     }
 
     #[inline]
@@ -2231,6 +2241,98 @@ impl<U: EventListener> Crosswords<U> {
         Some(res)
     }
 
+    /// Serialize the active selection only when its maximum copied text fits.
+    ///
+    /// The preflight walks cell text, including combining marks, before
+    /// allocating the result. The final length check protects this contract if
+    /// selection serialization later gains another output source.
+    pub fn selection_to_string_bounded(
+        &self,
+        max_bytes: usize,
+    ) -> Result<Option<String>, SelectionTextError> {
+        let Some(selection_range) =
+            self.selection.as_ref().and_then(|s| s.to_range(self))
+        else {
+            return Ok(None);
+        };
+        if !self.selection_text_fits(selection_range, max_bytes) {
+            return Err(SelectionTextError::CapacityExceeded);
+        }
+        let text = self.selection_to_string();
+        if text.as_ref().is_some_and(|text| text.len() > max_bytes) {
+            return Err(SelectionTextError::CapacityExceeded);
+        }
+        Ok(text)
+    }
+
+    fn selection_text_fits(&self, range: SelectionRange, max_bytes: usize) -> bool {
+        let block = matches!(
+            self.selection,
+            Some(Selection {
+                ty: SelectionType::Block,
+                ..
+            })
+        );
+        let last_col = self.grid.last_column();
+        let mut bytes = 0usize;
+
+        for line in (range.start.row.0..=range.end.row.0).map(Line::from) {
+            let start_col = if block || line == range.start.row {
+                range.start.col
+            } else {
+                Column(0)
+            };
+            let end_col = if block || line == range.end.row {
+                range.end.col
+            } else {
+                last_col
+            };
+            let grid_line = &self.grid[line];
+            let line_length = std::cmp::min(grid_line.line_length(), end_col + 1);
+            let mut first_col = start_col;
+            if first_col < self.grid.columns()
+                && matches!(grid_line[first_col].wide(), Wide::Spacer)
+            {
+                first_col -= 1;
+            }
+
+            for column in (first_col.0..line_length.0).map(Column::from) {
+                for character in self.grid.cell_text(Pos {
+                    row: line,
+                    col: column,
+                }) {
+                    bytes = bytes.saturating_add(character.len_utf8());
+                    if bytes > max_bytes {
+                        return false;
+                    }
+                }
+            }
+
+            if line_length == self.grid.columns()
+                && line_length.0 >= 2
+                && matches!(grid_line[line_length - 1].wide(), Wide::LeadingSpacer)
+            {
+                for character in self.grid.cell_text(Pos {
+                    row: line - 1i32,
+                    col: Column(0),
+                }) {
+                    bytes = bytes.saturating_add(character.len_utf8());
+                    if bytes > max_bytes {
+                        return false;
+                    }
+                }
+            }
+
+            if line != range.end.row {
+                bytes = bytes.saturating_add(1);
+                if bytes > max_bytes {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
     pub fn bounds_to_string(&self, start: Pos, end: Pos) -> String {
         let mut text = String::new();
         let mut blank_rows: usize = 0;
@@ -7816,6 +7918,83 @@ mod tests {
     }
 
     #[test]
+    fn bounded_selection_serialization_rejects_before_copying_oversize_text() {
+        let size = CrosswordsSize::new(5, 1);
+        let window_id = crate::event::WindowId::from(0);
+        let mut term = Crosswords::new(
+            size,
+            CursorShape::Block,
+            VoidListener {},
+            window_id,
+            0,
+            10_000,
+        );
+        let mut grid: Grid<Square> = Grid::new(1, 5, 0);
+        for column in 0..5 {
+            grid[Line(0)][Column(column)].set_c('é');
+        }
+        term.grid = grid;
+        term.selection = Some(Selection::new(
+            SelectionType::Simple,
+            Pos {
+                row: Line(0),
+                col: Column(0),
+            },
+            Side::Left,
+        ));
+        term.selection.as_mut().unwrap().update(
+            Pos {
+                row: Line(0),
+                col: Column(4),
+            },
+            Side::Right,
+        );
+
+        assert_eq!(
+            term.selection_to_string_bounded(9),
+            Err(SelectionTextError::CapacityExceeded)
+        );
+        assert_eq!(
+            term.selection_to_string_bounded(10),
+            Ok(Some("ééééé".into()))
+        );
+
+        let mut combining = Crosswords::new(
+            CrosswordsSize::new(1, 1),
+            CursorShape::Block,
+            VoidListener {},
+            window_id,
+            0,
+            10_000,
+        );
+        combining.input('e');
+        combining.input('\u{0301}');
+        combining.selection = Some(Selection::new(
+            SelectionType::Simple,
+            Pos {
+                row: Line(0),
+                col: Column(0),
+            },
+            Side::Left,
+        ));
+        combining.selection.as_mut().unwrap().update(
+            Pos {
+                row: Line(0),
+                col: Column(0),
+            },
+            Side::Right,
+        );
+        assert_eq!(
+            combining.selection_to_string_bounded(2),
+            Err(SelectionTextError::CapacityExceeded)
+        );
+        assert_eq!(
+            combining.selection_to_string_bounded(3),
+            Ok(Some("e\u{0301}".into()))
+        );
+    }
+
+    #[test]
     fn line_selection_works() {
         let size = CrosswordsSize::new(5, 1);
         let window_id = crate::event::WindowId::from(0);
@@ -8062,6 +8241,40 @@ mod tests {
         assert_eq!(version_number("999.99.99"), 9_99_99_99);
     }
 
+    #[test]
+    fn visible_only_clear_preserves_saved_history() {
+        let mut term = make_crosswords();
+        term.grid[Line(0)][Column(0)].set_c('h');
+        term.grid.scroll_up(&(Line(0)..Line(4)), 2);
+        let history = term.history_size();
+        term.grid[Line(1)][Column(1)].set_c('v');
+
+        term.clear_visible_screen();
+
+        // `clear_viewport` moves the current viewport into scrollback. The
+        // pre-existing history must remain present even though the total can
+        // grow by the visible non-empty rows.
+        assert!(term.history_size() >= history);
+        assert!((-i32::try_from(term.history_size()).unwrap()..0)
+            .any(|row| term.grid[Line(row)][Column(0)].c() == 'h'));
+        for row in 0..4 {
+            assert_eq!(term.grid[Line(row)].occ, 0);
+        }
+    }
+
+    #[test]
+    fn history_only_clear_preserves_visible_content() {
+        let mut term = make_crosswords();
+        term.grid[Line(0)][Column(0)].set_c('h');
+        term.grid.scroll_up(&(Line(0)..Line(4)), 2);
+        term.grid[Line(1)][Column(1)].set_c('v');
+        assert!(term.history_size() > 0);
+
+        term.clear_saved_history();
+
+        assert_eq!(term.history_size(), 0);
+        assert_eq!(term.grid[Line(1)][Column(1)].c(), 'v');
+    }
     #[test]
     fn clear_screen_and_history_removes_visible_and_saved_content() {
         let mut term = make_crosswords();

@@ -23,6 +23,7 @@ This documentation is organized around **reader intent**, not implementation pha
 | Diagnose a problem | [Troubleshooting](guide/troubleshooting.md) |
 | Look up exact CLI syntax | [CLI reference](reference/cli.md) |
 | Look up every shortcut/action | [Keyboard reference](reference/keyboard.md) |
+| Configure or inspect Ghostty-compatible bindings | [Ghostty compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md), [generated bindings](generated/ghostty-1.3-keybindings.md), [generated actions](generated/ghostty-1.3-actions.md) |
 | Look up every config key/default | [Configuration reference](reference/configuration.md) |
 | Understand the technical design | [Architecture](developer/architecture.md) |
 | Run verification or understand release gates | [Testing and release](developer/testing-release.md) |

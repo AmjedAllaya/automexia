@@ -404,6 +404,7 @@ records this durable boundary. Product controller/renderer/CLI integration and
 all managed execution remain gated by its acceptance plus ADR 0012/D3/M5
 activation and native evidence. CP3.3 trusted workspace tasks stay a distinct
 insert-only local authority.
+
 ### Environment Capsule contract
 
 Every managed session has a non-secret, immutable `EnvironmentCapsule`:
@@ -621,6 +622,7 @@ flags remain false behind D3. Reverting or disabling either registration does
 not edit kubeconfig or CLI state; real file allocation/cleanup, client/plugin/
 cluster execution, network, browser, PTY, and native release evidence remain
 external activation gates.
+
 ### M12 Teleport organization-identity source boundary
 
 `automexia-devops-teleport` is the independently disabled D6.5 Teleport owner.
@@ -661,6 +663,7 @@ network, browser/MFA, cache/certificate/agent, PTY, cleanup/resource,
 accessibility, packaging, signing, and release evidence remain D3/native gates.
 OpenBao is not part of this authority and remains absent pending ADR 0024
 acceptance.
+
 ### M13 provider-aware Quick Actions boundary
 
 M13/CP4 is source-complete at a nonactivating boundary. It extends the existing
@@ -707,6 +710,7 @@ benchmarks freeze this boundary. Real provider publication, exact execution,
 OpenBao, provider-native accounts/CLIs/clusters, controlled accessibility,
 resource, packaging, and multi-OS release proof remain external activation
 gates.
+
 ### Capability and process-launch contract
 
 The v0.4 capability enum is descriptive and local-read-only in practice. The
@@ -1074,27 +1078,35 @@ exact machine contract are explicitly accepted.
 
 ## Keyboard compatibility boundary
 
-The v0.4 frontend owns a flat list of typed runtime bindings. It scans that
-list for each key event, applies user entries by removing overlapping defaults,
-and maintains separate hard-coded macOS, Windows, and Linux/BSD default tables.
-Live reload rebuilds the list for existing windows. Command-palette labels are
-currently duplicated platform constants rather than registry-derived data.
+The private, renderer-independent `automexia-keybindings` crate is the single
+pure owner of stable action schemas, typed triggers/predicates/scopes/origins,
+profile compilation, collision diagnostics, direct and reverse indexes,
+sequence tries, table stacks, and action chains. It has no filesystem, process,
+PTY, window, renderer, clipboard, environment, credential, or network
+authority. The desktop frontend remains the sole owner of platform events and
+all effects.
 
-This is sufficient for the tested default subset but is not the final strict
-compatibility architecture. The
-[full Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md) places a
-future `automexia-keybindings` crate between configuration and the frontend.
-That private crate must remain renderer-, PTY-, and GPU-independent and own
-typed action IDs, triggers, predicates, origins, compilation, direct lookup,
-sequence tries, collision analysis, and reverse action lookup. Adoption starts
-with a behavior-preserving adapter; profiles, fallthrough, sequences, tables,
-and new actions follow only after equivalence tests pass.
+Configuration compiles `automexia`, the moving `ghostty` alias, or pinned
+`ghostty-1.3` plus user bind/unbind layers off the input path. Only a complete
+immutable registry is published. Strict errors and failed reloads retain the
+last known-good registry, palette labels, and OS hotkeys. Focused lookup uses
+allocation-free indexed physical, named, then logical precedence; sequence and
+table state is isolated per route and flushes exact pending bytes on invalid
+continuation, cancellation, or replacement.
 
-`cargo ready` includes the architecture gate. For focused diagnosis,
-`cargo xtask verify architecture` checks the Cargo graph and critical source
-invariants. Tests cover publication-before-wake ordering, exact-route wake-up,
-bounded queue pressure, busy/disconnected workers, session isolation, prompt
-lifecycle, resize/reflow, and semantic precedence.
+The command palette, CLI inspection, collision reporting, generated references,
+and frontend dispatch read that same registry. OS-global bindings are accepted
+only by the existing typed global-hotkey owner. All-surface actions use a stable
+route snapshot and coalesce damage; unavailable and adapted actions remain
+explicit rather than being aliased to unrelated behavior.
+
+Ghostty 1.3.1 Linux/BSD fixtures are checked in with source/binary/checksum
+provenance; Windows is a deterministic, labeled adaptation. macOS profile
+selection fails closed until a native fixture is reviewed. Normal builds,
+startup, and tests remain offline and never execute Ghostty. See
+[ADR 0026](adr/0026-versioned-ghostty-keybinding-profiles.md), the
+[compatibility guide](GHOSTTY-KEYBOARD-COMPATIBILITY.md), and the
+[release roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md).
 
 ## Build artifact lifecycle
 
@@ -1247,6 +1259,7 @@ are frozen by the CP3.2 machine contract, reviewed digest assertion, mutation
 checker, integration/CLI tests, Criterion targets,
 and nightly libFuzzer target. CP3.3 imports and task bridges are outside this
 boundary.
+
 ## CP3.3 native import and trusted workspace boundary
 
 CP3.3 is fully implemented with the same capability-free/application-owned

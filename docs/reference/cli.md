@@ -20,6 +20,34 @@ automexia [OPTIONS] [COMMAND]
 | `-h, --help` | Print application help. |
 | `-V, --version` | Print the Automexia version. |
 
+## Ghostty compatibility inspection and migration
+
+Inspection exits before GUI initialization and never launches Ghostty:
+
+```text
+automexia --list-actions [--aliases] [--unavailable] [--json]
+automexia --list-keybinds [--profile automexia|ghostty|ghostty-1.3]
+  [--platform linux-bsd|macos|windows] [--origin ORIGIN]
+  [--effective] [--shadowing] [--explain TRIGGER_OR_ACTION] [--json]
+```
+
+The synthetic macOS Ghostty profile fails closed until its native fixture is
+reviewed. Windows output is labeled as Automexia's deterministic adaptation.
+Stable JSON includes profile identity, origins, policies, diagnostics, and
+registry statistics.
+
+Ghostty migration is dry-run by default and reads only bounded keybinding and
+include directives:
+
+```text
+automexia migrate ghostty [--input PATH] [--dry-run] [--json]
+automexia migrate ghostty [--input PATH] [--output PATH] --apply --confirm
+```
+
+Apply requires explicit confirmation, refuses an existing typed section,
+validates the complete result, creates a backup, and publishes atomically. It
+never evaluates Ghostty configuration as code or invokes a shell or Ghostty
+process. See [Ghostty keyboard compatibility](../GHOSTTY-KEYBOARD-COMPATIBILITY.md).
 Non-GUI shell maintenance commands are explicit:
 
 | Command | Mutation |
@@ -91,6 +119,7 @@ nonexecuting review contracts only; the command grammar in roadmap/specification
 pages is planned and must not be used as shipped syntax. Continue using system
 OpenSSH in the shell and normal pane/window controls. A future CLI must consume
 the same reviewed fingerprints and activation gates rather than bypass them.
+
 ## Daily Cargo aliases
 
 | Command | Mutates profiles? | Result |
@@ -128,6 +157,9 @@ has passed.
 | `cargo xtask verify architecture` | Enforce dependency, threading, prompt metadata, renderer, shell, and capability boundaries. |
 | `cargo xtask verify identity` | Reject non-allowlisted user-facing Rio identity. |
 | `cargo xtask verify provenance` | Protect licenses, notices, fork attribution, and private crate publication policy. |
+| `cargo xtask verify keybindings` | Verify the checked-in Ghostty 1.3.1 provenance, generated manifests, profiles, and reference tables without changing them. |
+| `cargo xtask generate keybindings <--version 1.3.1\|--check>` | Regenerate the pinned Ghostty 1.3.1 artifacts from reviewed native fixtures, or byte-check them with `--check`. Native macOS generation fails closed until its external fixture is available. |
+| `cargo xtask test keybindings` | Run the focused keybinding compiler, registry, dispatch, migration, UI-model, topology-history, bounded-selection, and generated-artifact checks. |
 | `cargo xtask verify all` | Run all repository verification scopes plus Phase 0 assurance contracts. |
 | `cargo xtask test conformance` | Run VT/Unicode/terminal conformance fixtures. |
 | `cargo xtask test resize-stress [--native-gui]` | Deterministic prompt/reflow stress; optional real Windows GUI/ConPTY storm. |

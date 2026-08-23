@@ -2,77 +2,47 @@
 
 ## Scope and status
 
-Automexia currently ships its tested classic shortcuts. It does **not** yet
-provide a selectable Ghostty compatibility profile, Ghostty's complete
-keybinding language, or every Ghostty action. The current compatibility status
-and deliberate classic differences are maintained in
-[Ghostty keyboard compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md).
+This is the canonical source of truth for the Ghostty G0-G6 track. Automexia
+keeps `automexia` as the implicit profile and provides explicit pinned
+`ghostty-1.3` and moving `ghostty` selectors. The local source/runtime contract
+is implemented through G4; broader release and lifecycle claims remain bounded
+by the status table below.
 
-This roadmap reconciles the proposed full-compatibility design with the
-current source tree. It uses these status values:
+Only these status labels are used:
 
-- **Implemented**: present in code and covered by focused tests.
-- **Partial**: useful behavior exists, but it does not satisfy the complete
-  compatibility contract.
-- **Planned**: should be implemented in the stated order.
-- **Deferred**: valuable, but depends on more fundamental work or has a high
-  lifecycle/security cost.
-- **Excluded**: should not be implemented as a default or automated behavior.
+- **Fully done**: the stated local implementation contract and deterministic
+  owner tests are complete.
+- **Partially done**: useful implementation exists, but a stated behavior,
+  native-platform, lifecycle, accessibility, performance, or release gate
+  remains.
+- **Not done**: no authoritative implementation owner and contract tests exist.
 
-Full Ghostty compatibility is a separate compatibility track, not a v0.4.0
-release criterion. Stable v0.4 must not claim an exact Ghostty profile.
+| Phase | Status | Implemented evidence | Remaining exit work |
+|---|---|---|---|
+| G0 — source lock and safety | **Partially done** | Ghostty 1.3.1 Linux/BSD source/binary/checksum provenance, normalized bindings/actions, deterministic Windows adaptation, classic golden, generator/verifier, properties, and accepted ADR 0026 | Native macOS fixture and native Linux/macOS release smoke |
+| G1 — typed registry | **Fully done** | Pure bounded crate, stable schemas, typed triggers/predicates/scopes/origins/policies, allocation-free indexed lookup, reverse lookup, trie/table storage, classic adapter, registry-derived palette | Cross-platform release evidence is tracked under G5 |
+| G2 — profiles and reload | **Fully done** | Default/moving/pinned profiles, bind/unbind layers, strict diagnostics, immutable last-known-good publication, transactional global/palette update, safe migration | Native release matrix is tracked under G5 |
+| G3 — dispatch language | **Fully done** | Structured outcomes, performable/unconsumed fallthrough, exact sequences and cancellation, bounded tables/catch-all/chains, route isolation, all-surface snapshots | Native IME/layout evidence is tracked under G5 |
+| G4 — stateless actions | **Fully done** | Clear, selection/search, topology, inherited independent splits, exact logical resize, transactional zoom/equalize, private bounded export and cleanup | Controlled visual/resource proof is tracked under G5 |
+| G5 — tooling and release assurance | **Partially done** | CLI/explain/JSON, dry-run migration, xtask generation/verify/test, generated docs, property/fuzz targets, Windows Criterion results | Native Linux/macOS/Windows layout/visual/AT/resource evidence, fixed fuzz campaign, QA bundle, and activated 30-day baseline |
+| G6 — high-lifecycle features | **Partially done** | Accepted redaction/lifecycle ADRs, renderer-owned inspector, and bounded parked-PTY undo/redo for a complete closed top-level tab | Individual split, pane-local-tab, and native-window closure history plus native lifecycle evidence |
+
+Full Ghostty compatibility remains a separate track and is not a v0.4 release
+criterion. The [Ghostty keyboard compatibility guide](GHOSTTY-KEYBOARD-COMPATIBILITY.md)
+documents usable behavior, safe rollback, and deliberate deviations. Generated
+[action](generated/ghostty-1.3-actions.md) and
+[keybinding](generated/ghostty-1.3-keybindings.md) references are canonical for
+the bundled registry.
 
 ## Shared assurance prerequisites
 
-Compatibility work inherits the versioned QA foundation in the
-[stabilization roadmap](STABILIZATION-ROADMAP.md#verification-infrastructure-plan).
-It does not create a second test runner, snapshot format, benchmark store, or
-evidence bundle. G0 may prepare fixtures while that foundation lands, but no
-Ghostty profile becomes user-facing until:
-
-- pinned Nextest profiles produce JUnit, timeout, leak, and flaky-test evidence;
-- renderer-state and controlled rendered-frame snapshots cover profile/palette
-  indicators, pending sequences, focus, and narrow layouts;
-- Proptest, fuzz, and applicable Loom models persist minimized regressions;
-- Criterion benchmarks execute on a named runner and compare with the accepted
-  baseline instead of stopping after `--no-run`; and
-- `cargo xtask qa --full --bundle` identifies the compiled profile, fixture
-  checksums, platform transform, native checks, skips, and redactions.
-
-The v0.5 AccessKit model owns accessibility semantics for profile controls and
-pending/table indicators. Until it lands, compatibility UI changes must still
-pass the v0.4 keyboard, focus, contrast, scaling, and recorded screen-reader
-baseline without claiming a complete accessibility tree.
-
-## Current implementation audit
-
-| Roadmap capability | Status | Current evidence and remaining work |
-|---|---|---|
-| Platform-specific Ghostty-style defaults | Planned | ADR 0011 restored Automexia's classic defaults. Ghostty mappings require an explicit versioned profile. |
-| Shell ownership of `Ctrl+R` and `Ctrl+D` | Profile-dependent, planned | Classic Automexia uses them for cloning and exposes history/EOF through `Ctrl+Alt+R`/`Ctrl+Alt+D`; a future strict Ghostty profile must forward the bare chords. |
-| Automexia classic shortcuts | Implemented | Pane-local tabs, cloning, fresh splits, shell passthroughs, link hints, quake mode, appearance, and palette labels are documented and tested. |
-| Logical and physical key triggers | Partial | Runtime bindings support logical keys, key location, and physical scancodes. The config schema exposes only string keys and does not provide Ghostty-compatible typed trigger atoms or portable physical-key serialization. |
-| Mode predicates | Partial | Application cursor/keypad, alternate screen, vi, search, and keyboard-protocol modes exist as bitflags. There are no named platform/profile predicates, scope objects, or compiled predicate diagnostics. |
-| User override precedence | Partial | A user binding removes matching default triggers and is then appended. There is no explicit `unbind`, origin metadata, precedence report, or profile-layer merge model. |
-| Typed action model | Partial | The frontend has a Rust `Action` enum, but configuration parses action strings at runtime and several parameterized actions use ad hoc regular expressions. There are no stable action IDs, schemas, aliases, capability metadata, or reverse lookup index. |
-| Compiled binding registry | Planned | Active bindings remain a flat `Vec` scanned for every key event. There is no direct lookup map, sequence trie, table stack, origin table, or reverse action index. |
-| Versioned profiles | Planned | There is no `automexia`, `ghostty`, or `ghostty-<version>` profile selector and no checked-in generated Ghostty fixture. |
-| Runtime configuration reload | Partial | Base configuration reload now validates candidates and retains the last-known-good config, fonts, windows, bindings, and transactionally replaced global hotkeys on failure. Full Ghostty-profile atomicity remains planned until the typed immutable registry/profile compiler exists. |
-| Performable/unconsumed dispatch | Planned | Matching bindings are executed during one list scan and the function returns only whether text input should be suppressed. It cannot distinguish handled, unavailable, unconsumed, or fallthrough outcomes. |
-| Multi-key sequences, tables, chains, and `catch_all` | Planned | Kitty keyboard escape-sequence encoding is unrelated to a user key-sequence language. No pending-prefix state, table stack, chained action, or catch-all binding model exists. |
-| Central action/shortcut registry | Planned | Command-palette shortcut labels are platform-specific constants duplicated from the binding tables. They are not generated from active bindings. |
-| Config editor and raw terminal input | Partial | The config editor and arbitrary escape-string actions exist. They require typed registry metadata and safer parsing before strict profile import. |
-| Clear screen/history semantics | Partial | `ClearHistory` clears saved history. `ClearScreen` currently clears both the visible screen and saved history. Distinct visible-only `ClearScreen`, history-only `ClearHistory`, and combined `ClearScreenAndHistory` actions are still required. |
-| Selection and search actions | Partial | Select-all, copy, clear selection, terminal search, vi selection, result navigation, four-direction `Shift`+Arrow extension, and Unicode-aware `Ctrl`+`Shift`+Left/Right word extension exist in the Automexia profile. Page, home/end, line-boundary, scroll-to-selection, search-from-selection, and generated Ghostty-profile wiring remain. |
-| Screen export actions | Planned | Visible-screen export to a secure temporary file, paste/copy path, and explicit open are absent. |
-| Tab/window/split semantics | Partial | Automexia has explicit window, window-tab, pane-local-tab, split, clone, close, move, sequential focus, and non-wrapping geometric focus actions. Directional focus ranks rendered pane rectangles by perpendicular overlap, edge distance, centre alignment, and stable visual order. Split zoom and equalize remain absent. |
-| Inspector | Deferred | There is no terminal inspector action or redacted inspector surface. Its privacy boundary must be designed first. |
-| Undo/redo closed surfaces | Deferred | Closed windows, tabs, and splits are destroyed; no bounded parked-PTY lifecycle exists. |
-| Exact generated platform profiles | Planned | The audited Ghostty commit is recorded for comparison only. There is no generated Linux/macOS fixture or deterministic Windows transform. |
-| Keybinding/action CLI | Planned | `automexia --list-keybinds`, `--list-actions`, explain/collision output, and config migration commands do not exist. |
-| Dedicated `xtask` compatibility commands | Planned | The contributor gate runs current collision and palette tests, but there are no `ghostty-sync`, `keybindings-check`, or generated-doc verification commands. |
-| Generated user documentation | Planned | The compatibility matrix is hand-maintained. Reference tables are not generated from an action registry or compiled profile. |
-| Fuzz and performance coverage for the binding engine | Planned | Current deterministic binding tests cover mappings and collisions. Parser/config fuzzing does not yet target sequences, profile compilation, or dispatch latency. |
+Compatibility reuses the repository's Nextest, doctest, fuzz, snapshot,
+Criterion, QA, and release infrastructure. Normal startup/build/test paths are
+offline and never execute Ghostty. A compatibility-profile release must add the
+remaining native fixture, keyboard-layout, rendered-frame, assistive-technology,
+resource-cycle, packaging, and comparable 30-day benchmark evidence to the
+redacted QA bundle; synthetic platform tables and a Windows-only run cannot
+close those gates.
 
 ## Decisions
 
@@ -119,24 +89,22 @@ compatibility manifests. Suggested internal modules are `action`, `binding`,
 
 The frontend remains responsible for platform event normalization and concrete
 effects. Its input/action adapters own clipboard, configuration, layout,
-search, selection, session, export, and later undo operations. The binding
+search, selection, session, export, inspector, and bounded topology-history operations. The binding
 crate must not initialize a PTY, window, font system, renderer, or GPU. This
 keeps profile compilation deterministic and cheap to test.
 
-### Defer
+### Constrained follow-up
 
-These features remain desirable but should follow the stateless registry and
-action work:
+The implemented registry/actions activated only the lifecycle scope accepted by
+ADRs 0027 and 0028. Remaining compatibility work is deliberately bounded to:
 
-- the terminal inspector, until its data model has an explicit redaction
-  policy for environment values, clipboard data, hidden output, and secrets;
-- undo/redo for closed windows, tabs, and splits, until a bounded parked-PTY
-  lifecycle defines process ownership, resource limits, expiry, failure
-  recovery, and user-visible state;
-- a broad user-facing key-table ecosystem, until the base profile compiler,
-  prefix handling, consumption semantics, and migration tooling are stable;
-- exact compatibility claims for a new Ghostty release until its fixture is
-  regenerated and reviewed rather than copied manually.
+- a native macOS 1.3.1 fixture and the controlled release-evidence matrix;
+- individual split, pane-local-tab, and native-window closure history after
+  owner/resource/native proof (complete top-level closed tabs already work);
+- a broad user-facing key-table ecosystem only after real-world profile and
+  migration evidence is stable; and
+- exact claims for a newer Ghostty release only after its fixture is regenerated
+  and reviewed rather than copied manually.
 
 ### Exclude
 
@@ -159,44 +127,39 @@ diagnostic; it must not become an active default.
 
 ## Delivery order
 
-### G0 — source lock and safety prerequisites
+### G0 — source lock and safety prerequisites — Partially done
 
-Before expanding shortcut coverage:
+The Linux/BSD and Windows-adapted fixture/provenance path is implemented; the
+native macOS fixture and native release evidence remain.
 
-- verify the proposed Ghostty v1.3.1 source tag and exact commit, then generate
-  rather than hand-copy the fixture; until that review lands, the current
-  `d2c70a8c7b9b6893c13640c02d7b6f9a1624f3f0` audit remains the shipped baseline;
-- capture normalized `linux.json`, `macos.json`, `windows-adapted.json`,
-  `actions.json`, `provenance.json`, and `deviations.json` under
-  `tests/fixtures/keybindings/ghostty/1.3.1/`;
-- record tag, commit, Ghostty binary hash, generation commands, retrieval date,
-  platform, source links, schema version, and fixture checksums;
-- generate the source fixture explicitly from `ghostty +list-keybinds
-  --default` and `ghostty +list-actions`; only the maintainer generation command
-  may execute an external Ghostty binary;
-- add a normalized fixture schema and checksum verification;
-- add a golden manifest for Automexia's current effective defaults;
-- replace ADR 0010 only after a new ADR accepts profile precedence,
-  compatibility versioning, the private crate boundary, and Windows adaptation;
-- preserve the completed v0.4 prerequisites: invalid reload retains the active
-  configuration; XTGETTCAP reports `automexia`; and OSC/APC/XTGETTCAP inputs
-  remain bounded, safely cancelled/discarded, recoverable, and fuzzed;
-- record the pinned Nextest, snapshot schema, fixture generator, benchmark
-  schema, and QA-bundle schema versions used to validate the compatibility
-  baseline; fixture generation remains offline during normal CI;
-- add Proptest strategies for normalized triggers/actions/platform transforms
-  and persist every minimized mismatch as a deterministic regression;
-- include fixture provenance/checksums and the effective classic Automexia
-  manifest in the redacted QA bundle without including user keybindings.
+Implemented locally:
 
-The v0.4 identity/security prerequisites are complete locally and remain
-mandatory regression gates; they do not imply that the Ghostty profile exists.
+- pinned Ghostty v1.3.1 commit
+  `22efb0be2bbea73e5339f5426fa3b20edabcaa11` after source/tag review;
+- generated raw Linux/BSD bindings and actions with source, binary, Zig, and
+  normalized-output checksums;
+- checked-in `linux.json`, `windows-adapted.json`, `actions.json`,
+  `provenance.json`, `deviations.json`, `manifest.json`, and the Automexia
+  classic Windows golden under `tests/fixtures/keybindings/ghostty/1.3.1/`;
+- deterministic Windows transformation and explicit deviations;
+- accepted ADR 0026 for profile precedence, versioning, pure-crate ownership,
+  and Windows adaptation;
+- exact offline regeneration/checks, bounded parser/property coverage, and the
+  existing Automexia identity/control-string safety gates.
 
+Remaining:
+
+- generate and review the native macOS fixture on macOS; it is intentionally not
+  synthesized from Linux and the selector fails closed until it exists; and
+- add the native Linux/macOS fixture smoke and provenance result to the release
+  evidence bundle.
 Exit gate: fixtures are reproducible and reviewable; invalid reloads do not
 change active behavior; hostile control strings cannot grow memory without a
 bound; product identity responses are Automexia-owned.
 
-### G1 — typed registry without behavior changes
+### G1 — typed registry without behavior changes — Fully done
+
+The following registry contract is implemented and covered by owner tests.
 
 - add the private `automexia-keybindings` crate;
 - introduce stable action IDs, parameter schemas, aliases, and capability
@@ -219,7 +182,9 @@ Exit gate: current mappings, user overrides, shell-owned controls, and palette
 behavior are byte-for-byte equivalent; collision and lookup tests pass on all
 platform tables; dispatch does not regress the recorded latency baseline.
 
-### G2 — profiles, overrides, migration, and atomic reload
+### G2 — profiles, overrides, migration, and atomic reload — Fully done
+
+The following profile, layering, migration, and publication contract is implemented.
 
 - add `keyboard.profile = "automexia" | "ghostty" | "ghostty-1.3"`;
 - bind `ghostty-1.3` permanently to the reviewed 1.3.1 fixture and make the
@@ -246,7 +211,9 @@ platform tables; dispatch does not regress the recorded latency baseline.
 Exit gate: fresh, reloaded, invalid, partially invalid, repeated, and concurrent
 configuration cases are deterministic; no failed reload changes active input.
 
-### G3 — consumption, sequences, tables, and chains
+### G3 — consumption, sequences, tables, and chains — Fully done
+
+The following structured dispatch contract is implemented and bounded per route.
 
 - give every action `can_perform` and `execute` contracts;
 - add structured `ActionOutcome` values for performed/consumed state, terminal
@@ -282,20 +249,25 @@ configuration cases are deterministic; no failed reload changes active input.
 Exit gate: sequence ambiguity, indefinite waiting, cancellation, table nesting, chains,
 fallthrough, and shell passthrough have deterministic and fuzz coverage.
 
-### G4 — missing stateless actions
+### G4 — missing stateless actions — Fully done
+
+The planned stateless action families below are implemented; external native
+visual/resource evidence remains part of G5.
 
 Implement one focused action family per pull request:
 
 1. typed configuration/raw-terminal actions: open/reload config, text, ESC,
    CSI, cursor-key normal/application variants, terminal reset, and
-   parameterized font-size changes;
+   parameterized finite fractional font-size changes, including absolute set and
+   the documented 6–100 point Automexia renderer adaptation;
 2. visible-only clear, history-only clear, and combined clear;
 3. reuse the implemented directional cell/row and word-boundary selection
    engine, then add page, home/end, and line-boundary extension plus generated
    Ghostty-profile bindings. Preserve its wide-cell, wrapped-line, viewport,
    scrollback, Unicode, and active-direction guarantees;
-4. scroll-to-selection, search-from-selection, search start/end, and next/
-   previous match with correct mode-dependent fallthrough;
+4. scroll-to-selection, absolute-row, line and fractional-page scrolling with
+   Ghostty's positive-down sign convention, search-from-selection, search
+   start/end, and next/previous match with correct mode-dependent fallthrough;
 5. typed window/tab/pane-local-tab/split/close actions and an explicit split
    launch policy for a fresh default shell, inherited shell/profile/cwd, or a
    `SessionLaunchDescriptor` clone;
@@ -318,7 +290,10 @@ Each action requires direct unit tests, dispatch tests, platform bindings,
 palette/CLI discoverability, generated documentation, and security review when
 it touches the filesystem or another process.
 
-### G5 — tooling, generation, and release verification
+### G5 — tooling, generation, and release verification — Partially done
+
+Local tooling, generation, fuzz-build, properties, and Windows benchmarks are
+implemented. The native and controlled release items below remain open.
 
 - generate exact Linux/macOS profiles from the pinned fixtures and generate
   Windows through a deterministic transform: Super becomes the Windows key,
@@ -375,20 +350,28 @@ it touches the filesystem or another process.
 Exit gate: generated artifacts are reproducible, the working tree stays clean,
 normal tests are offline, and profile claims are backed by native evidence.
 
-### G6 — high-lifecycle features
+### G6 — high-lifecycle features — Partially done
 
-After the preceding gates are stable, design and implement:
+Implemented:
 
-- a renderer-owned inspector showing grid/viewport dimensions, terminal modes,
-  active profile/binding origin, pending table/sequence state, PTY identity,
-  route, and recent parser diagnostics while excluding environment secrets,
-  clipboard contents, and output beyond what is already visible;
-- bounded undo/redo transaction history for new/closed windows, tabs, and
-  splits using parked independent PTYs that retain exact topology placement;
-- per-topology isolation plus cleanup on count, timeout, scrollback/memory
-  pressure, shutdown, expiry, failed restore, and redo invalidation.
+- renderer-owned inspector with bounded grid/viewport/mode/profile/origin/
+  pending/table/opaque-ID/diagnostic metadata and explicit exclusion of output,
+  clipboard, environment, commands, paths, and credentials;
+- memory-only parked-PTY undo/redo for a complete closed top-level window tab,
+  retaining its contained splits, pane-local tabs, route IDs, and independent
+  PTYs without relaunch;
+- limits of 8 entries, 5 minutes, and 250,000 retained history lines per window,
+  plus redo invalidation and cleanup on pressure, expiry, child exit, failed
+  restore, and shutdown.
 
-These features require their own ADRs and are not implied by shortcut parity.
+Remaining:
+
+- individual split and pane-local-tab closure history;
+- whole native-window history; and
+- controlled native lifecycle, resource, visual, and accessibility evidence.
+
+The accepted ADRs make this narrower scope explicit; shortcut parity does not
+implicitly authorize a broader parked-process lifetime.
 
 ## Test and review requirements
 
@@ -443,19 +426,16 @@ Execution tiers are mandatory:
 
 ## Documentation contract
 
-Until G1 lands, the hand-maintained
-[compatibility matrix](GHOSTTY-KEYBOARD-COMPATIBILITY.md) remains canonical for
-current defaults. Once the registry can generate stable output, generated
-action and binding references become canonical and this roadmap will link to
-them. Any new profile, action, trigger syntax, migration behavior, or platform
-transform must update configuration, compatibility, testing, contributor, and
-release documentation in the same pull request.
+The generated action and effective-binding references are canonical for the
+bundled registry. Any profile, action, trigger syntax, migration, platform
+transform, inspector, or topology-history change must regenerate them and
+update configuration, keyboard, CLI, architecture, testing, release, feature,
+roadmap/audit, navigation, and changelog ownership in the same change.
 
-When the profile system becomes user-facing, add generated `KEYBOARD-PROFILES`,
-`KEYBINDINGS`, compatibility, and migration guides and expose it first through
-an opt-in beta. Onboarding may offer the profile only after fixture parity,
-native-platform evidence, backward compatibility, and all mandatory gates
-pass.
+The profile remains explicit opt-in. Onboarding must not select it automatically,
+and a full cross-platform claim waits for the remaining native fixture,
+backward-compatibility, visual, accessibility, performance, resource, packaging,
+and release gates.
 
 ## Final acceptance gate
 

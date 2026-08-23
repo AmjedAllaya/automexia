@@ -96,10 +96,16 @@ impl Route<'_> {
         config: &RioConfig,
         db: &rio_backend::sugarloaf::font::FontLibrary,
         should_update_font: bool,
+        binding_registry: Option<crate::bindings::registry::RegistrySnapshot>,
+        should_update_bindings: bool,
     ) {
-        self.window
-            .screen
-            .update_config(config, db, should_update_font);
+        self.window.screen.update_config(
+            config,
+            db,
+            should_update_font,
+            binding_registry,
+            should_update_bindings,
+        );
     }
 
     #[inline]

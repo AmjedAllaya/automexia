@@ -45,6 +45,7 @@ credential, listener, filesystem, renderer, or clock authority enters the pure
 model, and CP3.3 local workspace tasks remain separate. See
 [proposed ADR 0023](../project/adr/0023-typed-automation-and-declarative-workspaces.md)
 and the [detailed architecture](../ARCHITECTURE.md#m6-typed-automation-and-declarative-workspace-boundary).
+
 ## Build, wrap, or adopt
 
 A useful technology decision is made by asking who should own the security-sensitive semantics:
@@ -130,7 +131,17 @@ Accessibility semantics live beside renderer-neutral UI state, not in GPU pixels
 
 ## Keyboard compatibility boundary
 
-Automexia owns a typed runtime binding table with platform defaults and user overrides. User bindings replace overlapping defaults only when they are valid; invalid actions do not silently erase the safe default. The classic Automexia table remains the default profile. Ghostty compatibility is an explicit future/profile track rather than a silent replacement of established bindings.
+`automexia-keybindings` is a pure private crate below the desktop composition
+root. It compiles explicit `automexia`, moving `ghostty`, and pinned
+`ghostty-1.3` profiles plus user bind/unbind layers into bounded immutable
+direct/reverse indexes, sequence tries, and tables. The frontend alone owns
+platform events and effects; registry compilation performs no IO, process,
+window, PTY, renderer, clipboard, environment, credential, or network work.
+Reload publishes the complete candidate registry atomically or retains the last
+known-good state. Palette labels, CLI output, diagnostics, global-hotkey
+registration, and dispatch derive from the same snapshot. Linux/BSD fixtures are
+pinned, Windows is a labeled deterministic adaptation, and macOS fails closed
+until native fixture evidence exists. See [ADR 0026](../adr/0026-versioned-ghostty-keybinding-profiles.md).
 
 ## Release boundaries by version
 

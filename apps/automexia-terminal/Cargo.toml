@@ -42,6 +42,7 @@ name = "automexia"
 path = "src/main.rs"
 
 [dependencies]
+automexia-keybindings = { workspace = true }
 automexia-extension-api = { workspace = true }
 automexia-extension-runtime = { workspace = true }
 automexia-devops = { workspace = true }

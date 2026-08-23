@@ -6,6 +6,7 @@ publish = false
 license.workspace = true
 
 [dependencies]
+automexia-keybindings = { workspace = true }
 fs2 = "0.4.3"
 image_rs = { workspace = true }
 process-wrap = { version = "9.1.0", default-features = false, features = ["std", "job-object", "process-group"] }
