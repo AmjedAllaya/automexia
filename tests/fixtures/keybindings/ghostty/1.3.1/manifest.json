@@ -1,0 +1,30 @@
+{
+  "artifacts": {
+    "actions.json": {
+      "bytes": 14641,
+      "sha256": "d989f806c0d7ae1b8ff186aae40492e835906e210940a2e598a14f73b2684898"
+    },
+    "automexia-classic-windows.json": {
+      "bytes": 58059,
+      "sha256": "b51e66f200dadfbb5f80edc83d555b4b8af3fc63f2e9ab03c932be862dbddff9"
+    },
+    "deviations.json": {
+      "bytes": 1213,
+      "sha256": "415056840eb07ff8983c90f95892d00c97e331808886b564041bbbddc94fea27"
+    },
+    "linux.json": {
+      "bytes": 41117,
+      "sha256": "4c03bc1c42d0d705088f3d229928905ad7bf1cffa005f916af6ffb2d31a2fe16"
+    },
+    "provenance.json": {
+      "bytes": 2196,
+      "sha256": "12f65fd15648c390e4d874829c3d5abce607247ac03c861f62f2aeddac59037e"
+    },
+    "windows-adapted.json": {
+      "bytes": 41153,
+      "sha256": "9830f5c1452b393760599629343b2c64d9eee009c889c19199aac27dadf435aa"
+    }
+  },
+  "schema_version": 1,
+  "version": "1.3.1"
+}

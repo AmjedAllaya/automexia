@@ -2,8 +2,8 @@
 
 This page defines Automexia's active v0.4 defaults. Explicit entries under
 `[bindings]` replace matching default triggers. The separate
-[Ghostty compatibility](keyboard.md) page describes a
-future opt-in profile and is not the active default set.
+[Ghostty compatibility](../GHOSTTY-KEYBOARD-COMPATIBILITY.md) documents the
+explicit opt-in profiles; they never replace the active default implicitly.
 
 `Cmd` means the macOS Command key. Search and Vi-mode bindings apply only while
 their mode is active. A terminal application can own a key when the table says
@@ -223,54 +223,26 @@ insert. None of these shortcuts writes to or executes in the PTY. The mnemonic
 letters are **H**ub, **O**pen actions, **M**arketplace, and
 **L**ist fonts.
 
+## Ghostty compatibility profiles
 
-## Ghostty compatibility policy
+`automexia` remains the implicit profile. Set `keyboard.binding-profile` to
+`ghostty-1.3` for the pinned Ghostty 1.3.1 profile or to `ghostty` for the
+visible moving alias, which currently resolves to `ghostty-1.3`. User entries
+and `unbind` directives are compiled after the selected profile. A failed strict
+compile or reload leaves the previous complete registry active.
 
-Automexia does not use Ghostty shortcuts as its implicit default. The original
-Automexia platform mappings were restored by ADR 0011 after user evaluation.
-The active shortcuts are documented in [configuration](configuration.md) and
-are enforced by binding, palette-label, override, and architecture tests.
+Strict Ghostty bindings use window-level tabs and independent-PTY splits. Bare
+`Ctrl+R` and `Ctrl+D` fall through to the terminal. Platform-global entries are
+installed through the OS hotkey owner, while focused, all-surface, sequences,
+tables, chains, `performable`, and `unconsumed` policies stay isolated per
+surface. Unsupported actions remain visibly unavailable; they are never mapped
+to unrelated behavior.
 
-Ghostty compatibility remains a future, explicit opt-in profile. Enabling such
-a profile must never silently rewrite an existing configuration or replace the
-`automexia` default. The implementation must provide a typed binding registry,
-versioned upstream fixtures, atomic reload, collision diagnostics, generated
-documentation, and clear handling for unsupported Ghostty actions before the
-profile can be advertised.
+The generated tables are the canonical inventory:
 
-The audited comparison baseline remains Ghostty commit
-[`d2c70a8c7b9b6893c13640c02d7b6f9a1624f3f0`](https://github.com/ghostty-org/ghostty/tree/d2c70a8c7b9b6893c13640c02d7b6f9a1624f3f0),
-but no binding from that baseline is automatically installed merely because it
-exists in Ghostty. The complete implementation and verification sequence is in
-the [Ghostty compatibility roadmap](../project/roadmap.md).
+- [Ghostty 1.3 keybindings](../generated/ghostty-1.3-keybindings.md)
+- [Ghostty 1.3 actions](../generated/ghostty-1.3-actions.md)
 
-### Deliberate classic differences
-
-| Automexia default | Action | Strict Ghostty profile behavior, if implemented |
-|---|---|---|
-| `Ctrl`+`T` | new window-level tab | forwarded to the shell |
-| `Ctrl`+`Shift`+`T` | new pane-local independent tab | new window-level tab |
-| `Ctrl`+`Shift`+`R` / `Ctrl`+`Shift`+`D` | fresh right/down split | Ghostty uses `Ctrl`+`Shift`+`O` / `Ctrl`+`Shift`+`E` |
-| `Ctrl`+`Shift`+`O` | open reviewed Quick Actions | Ghostty uses it for a fresh split; an explicit future Ghostty profile must replace this trigger atomically |
-| `Ctrl`+`R` / `Ctrl`+`D` | clone active session right/down | forwarded to history search / EOF |
-| `Ctrl`+`Alt`+`R` / `Ctrl`+`Alt`+`D` | explicit history-search / EOF passthrough | available for profile-specific actions |
-| `Alt`+Arrow | focus the nearest pane geometrically | geometric split focus uses profile-specific chords |
-| `F6` / `Shift`+`F6` | cycle panes in visual order | available as configurable split actions |
-| `Alt`+`PageDown` / `Alt`+`PageUp` | next/previous tab inside the selected pane | Ghostty has no Automexia pane-local-tab scope |
-| `Ctrl`+`Tab` / `Ctrl`+`Shift`+`Tab` | next/previous window-level tab | next/previous tab |
-
-macOS retains the classic `Cmd`+`T` window tab, `Cmd`+`Shift`+`T` pane-local
-tab, and `Cmd`+`D` / `Cmd`+`Shift`+`D` fresh splits. Session cloning remains on
-`Ctrl`+`R` / `Ctrl`+`D` on every platform. It uses `Cmd`+`Alt`+Arrow for
-geometric pane focus and `Cmd`+`Alt`+`]` / `Cmd`+`Alt`+`[` for pane-local tab
-navigation.
-
-### Policy
-
-- `automexia` remains the only implicit profile for v0.4.
-- A future Ghostty profile is selected explicitly and is versioned.
-- User bindings remain authoritative over any profile defaults.
-- Normal startup, builds, and tests never execute Ghostty or access its files.
-- Compatibility claims require generated fixtures and host-independent tests.
-- Missing Ghostty actions stay unbound; they are never mapped to an unrelated
-  Automexia action merely to increase shortcut counts.
+See [Ghostty keyboard compatibility](../GHOSTTY-KEYBOARD-COMPATIBILITY.md) for
+configuration, migration, provenance, deviations, and current native-evidence
+limits.

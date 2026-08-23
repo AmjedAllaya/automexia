@@ -7,6 +7,7 @@
 // which is licensed under Apache 2.0 license.
 
 pub(crate) mod action_surface;
+mod compatibility;
 mod connection_hub;
 pub mod hint;
 pub mod touch;
@@ -563,6 +564,11 @@ pub(crate) struct ScreenServices {
 
 pub struct Screen<'screen> {
     bindings: crate::bindings::KeyBindings,
+    binding_registry: Option<crate::bindings::registry::RegistrySnapshot>,
+    binding_states:
+        rustc_hash::FxHashMap<usize, automexia_keybindings::SurfaceBindingState>,
+    last_compatibility_bindings:
+        rustc_hash::FxHashMap<usize, (String, automexia_keybindings::BindingOrigin)>,
     mouse_bindings: Vec<MouseBinding>,
     pub modifiers: Modifiers,
     #[cfg(windows)]
@@ -575,6 +581,7 @@ pub struct Screen<'screen> {
     action_surface: action_surface::Controller,
     connection_hub: crate::automexia::connections::ConnectionHubController,
     external_tool_runner: crate::context::external_tool_runner::ExternalToolRunner,
+    export_manager: crate::automexia::export::ExportManager,
     pub renderer: Renderer,
     pub sugarloaf: Sugarloaf<'screen>,
     pub context_manager: context::ContextManager<EventProxy>,
@@ -719,6 +726,17 @@ impl Screen<'_> {
         let mut renderer = Renderer::new(config);
 
         let bindings = crate::bindings::default_key_bindings(config);
+        let binding_registry = crate::bindings::registry::build(config)?;
+        let legacy_unbinds = binding_registry
+            .as_ref()
+            .map_or_else(Vec::new, |snapshot| snapshot.legacy_unbind_labels());
+        renderer.command_palette.set_binding_registry(
+            binding_registry
+                .as_ref()
+                .map(|snapshot| snapshot.registry.as_ref()),
+            config.keyboard.binding_profile,
+            &legacy_unbinds,
+        );
 
         let is_native = config.navigation.is_native();
 
@@ -816,6 +834,7 @@ impl Screen<'_> {
             action_surface,
             connection_hub,
             external_tool_runner,
+            export_manager: crate::automexia::export::ExportManager::new(),
             hints_config: config
                 .hints
                 .rules
@@ -832,6 +851,9 @@ impl Screen<'_> {
             touchpurpose: TouchPurpose::default(),
             renderer,
             bindings,
+            binding_registry,
+            binding_states: rustc_hash::FxHashMap::default(),
+            last_compatibility_bindings: rustc_hash::FxHashMap::default(),
             last_ime_cursor_pos: None,
             resize_state: None,
             #[cfg(target_os = "macos")]
@@ -1251,6 +1273,8 @@ impl Screen<'_> {
         config: &rio_backend::config::Config,
         font_library: &rio_backend::sugarloaf::font::FontLibrary,
         should_update_font_library: bool,
+        binding_registry: Option<crate::bindings::registry::RegistrySnapshot>,
+        should_update_bindings: bool,
     ) {
         let window_size = self.sugarloaf.window_size();
         let scale = self.sugarloaf.scale_factor();
@@ -1280,9 +1304,35 @@ impl Screen<'_> {
         self.sugarloaf
             .update_filters(config.renderer.filters.as_slice());
 
-        // Rebuild bindings so `[bindings]` edits live-reload like the
-        // rest of the config instead of waiting for a new window.
-        self.bindings = crate::bindings::default_key_bindings(config);
+        if should_update_bindings {
+            // Prefix state belongs to the registry generation. Flush retained
+            // bytes to each original PTY before the immutable snapshot swap.
+            let mut states = std::mem::take(&mut self.binding_states);
+            for (route_id, state) in &mut states {
+                let bytes = state
+                    .cancel(automexia_keybindings::CancellationReason::RegistryReplaced);
+                if !bytes.is_empty() {
+                    if let Some(context) = self.context_manager.get_by_route_id(*route_id)
+                    {
+                        context.messenger.send_write(bytes);
+                    }
+                }
+            }
+            self.binding_registry = binding_registry;
+            self.last_compatibility_bindings.clear();
+            self.bindings = crate::bindings::default_key_bindings(config);
+            let legacy_unbinds = self
+                .binding_registry
+                .as_ref()
+                .map_or_else(Vec::new, |snapshot| snapshot.legacy_unbind_labels());
+            self.renderer.command_palette.set_binding_registry(
+                self.binding_registry
+                    .as_ref()
+                    .map(|snapshot| snapshot.registry.as_ref()),
+                config.keyboard.binding_profile,
+                &legacy_unbinds,
+            );
+        }
 
         // Apply configuration in-place. Replacing the renderer here used to
         // discard transient UI state (command palette, search, diagnostics,
@@ -1656,6 +1706,15 @@ impl Screen<'_> {
             return;
         }
 
+        if self.process_compatibility_key_binding(key, mode, mods, clipboard) {
+            #[cfg(windows)]
+            if mode.contains(Mode::WIN32_INPUT) {
+                self.consumed_win32_key_releases
+                    .record_press(key.physical_key);
+            }
+            return;
+        }
+
         let ignore_chars = self.process_key_bindings(key, &mode, mods, clipboard);
         if ignore_chars {
             #[cfg(windows)]
@@ -1703,23 +1762,37 @@ impl Screen<'_> {
             return;
         }
 
-        // Mask `Alt` modifier from input when we won't send esc.
+        let bytes = self.encode_pressed_key_event(key, text, mode, mods);
+
+        if !bytes.is_empty() {
+            self.scroll_bottom_when_cursor_not_visible();
+            self.clear_selection();
+
+            self.ctx_mut().current_mut().messenger.send_write(bytes);
+        }
+    }
+
+    /// Encode one pressed key exactly as the current PTY would receive it.
+    /// Compatibility sequences retain this representation and never replay a
+    /// normalized or reconstructed substitute.
+    pub(super) fn encode_pressed_key_event(
+        &self,
+        key: &rio_window::event::KeyEvent,
+        text: &str,
+        mode: Mode,
+        mods: ModifiersState,
+    ) -> Vec<u8> {
+        #[cfg(windows)]
+        if mode.contains(Mode::WIN32_INPUT) {
+            return build_win32_key_sequence(key).unwrap_or_default();
+        }
+
         let mods = if self.alt_send_esc(key, text) {
             mods
         } else {
             mods & !ModifiersState::ALT
         };
-
         let build_key_sequence = Self::should_build_sequence(key, text, mode, mods);
-
-        // Legacy ctrl encoding runs before trusting the platform text:
-        // the OS is inconsistent about synthesizing C0 characters for
-        // combos like ctrl+6 or ctrl+/ (macOS reports the plain char,
-        // Windows reports nothing), so the byte is computed from the
-        // kitty C0 table directly. Gated on the exact flag set that
-        // makes `build_key_sequence` produce CSI u (`kitty_seq`), so
-        // kitty-protocol encoding is untouched in every mode where it
-        // applies.
         let kitty_seq = mode.intersects(
             Mode::REPORT_ALL_KEYS_AS_ESC
                 | Mode::DISAMBIGUATE_ESC_CODES
@@ -1731,7 +1804,7 @@ impl Screen<'_> {
             crate::bindings::ctrl_seq(&key.logical_key, text, mods)
         };
 
-        let bytes = if let Some(c0) = ctrl_c0 {
+        if let Some(c0) = ctrl_c0 {
             if mods.alt_key() {
                 vec![b'\x1b', c0]
             } else {
@@ -1744,16 +1817,8 @@ impl Screen<'_> {
             if mods.alt_key() {
                 bytes.push(b'\x1b');
             }
-
             bytes.extend_from_slice(text.as_bytes());
             bytes
-        };
-
-        if !bytes.is_empty() {
-            self.scroll_bottom_when_cursor_not_visible();
-            self.clear_selection();
-
-            self.ctx_mut().current_mut().messenger.send_write(bytes);
         }
     }
 
@@ -2502,6 +2567,7 @@ impl Screen<'_> {
     }
 
     pub fn split_right_with_config(&mut self, config: rio_backend::config::Config) {
+        let previous_len = self.context_manager.current_grid_len();
         // Allocate panel id; position lands on `ContextDimension`
         // through the Taffy layout pass (`apply_taffy_layout`).
         let _ = config.margin.left;
@@ -2512,24 +2578,35 @@ impl Screen<'_> {
             config,
             &mut self.sugarloaf,
         );
+        if self.context_manager.current_grid_len() > previous_len {
+            self.context_manager.invalidate_topology_redo();
+        }
 
         self.resize_top_or_bottom_line();
         self.mark_dirty();
     }
 
     pub fn split_right(&mut self) {
+        let previous_len = self.context_manager.current_grid_len();
         let rich_text_id = next_rich_text_id();
         self.context_manager
             .split(rich_text_id, false, &mut self.sugarloaf);
+        if self.context_manager.current_grid_len() > previous_len {
+            self.context_manager.invalidate_topology_redo();
+        }
 
         self.resize_top_or_bottom_line();
         self.mark_dirty();
     }
 
     pub fn split_down(&mut self) {
+        let previous_len = self.context_manager.current_grid_len();
         let rich_text_id = next_rich_text_id();
         self.context_manager
             .split(rich_text_id, true, &mut self.sugarloaf);
+        if self.context_manager.current_grid_len() > previous_len {
+            self.context_manager.invalidate_topology_redo();
+        }
 
         self.resize_top_or_bottom_line();
         self.mark_dirty();
@@ -2541,6 +2618,7 @@ impl Screen<'_> {
             .context_manager
             .clone_split(rich_text_id, false, &mut self.sugarloaf)
         {
+            self.context_manager.invalidate_topology_redo();
             self.resize_top_or_bottom_line();
             self.mark_dirty();
         }
@@ -2552,6 +2630,7 @@ impl Screen<'_> {
             .context_manager
             .clone_split(rich_text_id, true, &mut self.sugarloaf)
         {
+            self.context_manager.invalidate_topology_redo();
             self.resize_top_or_bottom_line();
             self.mark_dirty();
         }
@@ -2630,6 +2709,7 @@ impl Screen<'_> {
         if self.context_manager.len() == previous_len {
             return false;
         }
+        self.context_manager.invalidate_topology_redo();
         let new_index = self.context_manager.current_index();
         self.context_manager.switch_context_visibility(
             &mut self.sugarloaf,
@@ -2661,6 +2741,7 @@ impl Screen<'_> {
             .context_manager
             .clone_local_tab(rich_text_id, &mut self.sugarloaf)
         {
+            self.context_manager.invalidate_topology_redo();
             self.relayout_current_grid();
             self.clear_selection();
             self.cancel_search(clipboard);
@@ -2673,12 +2754,14 @@ impl Screen<'_> {
             .context_manager
             .close_current_local_tab(&mut self.sugarloaf)
         {
+            self.context_manager.invalidate_topology_redo();
             self.relayout_current_grid();
             self.clear_selection();
             self.cancel_search(clipboard);
             self.mark_dirty();
         } else if self.context_manager.current_grid_len() > 1 {
             self.clear_selection();
+            self.context_manager.invalidate_topology_redo();
             self.context_manager
                 .remove_current_grid(&mut self.sugarloaf);
             self.resize_top_or_bottom_line();
@@ -2693,6 +2776,7 @@ impl Screen<'_> {
             .context_manager
             .close_current_local_tab(&mut self.sugarloaf)
         {
+            self.context_manager.invalidate_topology_redo();
             self.relayout_current_grid();
             self.clear_selection();
             self.cancel_search(clipboard);
@@ -2867,7 +2951,7 @@ impl Screen<'_> {
     }
 
     /// Whether we should send `ESC` due to `Alt` being pressed.
-    fn alt_send_esc(&mut self, key: &rio_window::event::KeyEvent, text: &str) -> bool {
+    fn alt_send_esc(&self, key: &rio_window::event::KeyEvent, text: &str) -> bool {
         #[cfg(not(target_os = "macos"))]
         let alt_send_esc = self.modifiers.state().alt_key();
 
@@ -5211,6 +5295,7 @@ impl Screen<'_> {
             }
         }
 
+        self.publish_compatibility_indicators();
         let (window_update, any_panel_dirty) = self
             .renderer
             .run(&mut self.sugarloaf, &mut self.context_manager);

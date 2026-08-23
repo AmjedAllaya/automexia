@@ -32,9 +32,13 @@ impl HotkeyRegistry for GlobalHotKeyManager {
 
 fn parse_quake_hotkeys(
     keys: &[rio_backend::config::bindings::KeyBinding],
+    typed_triggers: &[String],
 ) -> Result<Vec<(String, HotKey)>, String> {
     let mut parsed = Vec::new();
-    for trigger in quake_triggers(keys) {
+    for trigger in quake_triggers(keys)
+        .into_iter()
+        .chain(typed_triggers.iter().cloned())
+    {
         let hotkey = parse_hotkey(&trigger)
             .map_err(|error| format!("quake hotkey '{trigger}': {error}"))?;
         if !parsed.iter().any(|(_, existing)| *existing == hotkey) {
@@ -122,8 +126,9 @@ impl GlobalHotkeys {
     pub fn try_replace(
         &mut self,
         keys: &[rio_backend::config::bindings::KeyBinding],
+        typed_triggers: &[String],
     ) -> Result<(), String> {
-        let next = parse_quake_hotkeys(keys)?;
+        let next = parse_quake_hotkeys(keys, typed_triggers)?;
         replace_registered_hotkeys(&self.manager, &mut self.registered, next)
     }
 
@@ -138,8 +143,9 @@ impl GlobalHotkeys {
 pub fn setup(
     event_proxy: EventProxy,
     keys: &[rio_backend::config::bindings::KeyBinding],
+    typed_triggers: &[String],
 ) -> Result<Option<GlobalHotkeys>, String> {
-    let hotkeys = parse_quake_hotkeys(keys)?;
+    let hotkeys = parse_quake_hotkeys(keys, typed_triggers)?;
     if hotkeys.is_empty() {
         return Ok(None);
     }
@@ -410,9 +416,16 @@ mod tests {
             binding("q", "control", "ToggleQuake"),
             binding("banana", "super", "ToggleQuake"),
         ];
-        assert!(parse_quake_hotkeys(&keys).is_err());
+        assert!(parse_quake_hotkeys(&keys, &[]).is_err());
     }
 
+    #[test]
+    fn typed_and_legacy_quake_triggers_share_one_deduplicated_transaction() {
+        let keys = vec![binding("`", "super", "ToggleQuake")];
+        let parsed = parse_quake_hotkeys(&keys, &["super+`".into()]).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].0, "super+`");
+    }
     #[test]
     fn failed_hotkey_addition_keeps_the_previous_registration() {
         let old = HotKey::new(Some(Modifiers::CONTROL), Code::KeyA);

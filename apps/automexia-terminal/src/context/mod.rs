@@ -30,6 +30,7 @@ use rio_backend::event::EventListener;
 use rio_backend::event::WindowId;
 use rio_backend::selection::SelectionRange;
 use rio_backend::sugarloaf::{font::SugarloafFont, Rect, Sugarloaf, SugarloafErrors};
+use std::collections::VecDeque;
 use std::error::Error;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -269,6 +270,21 @@ pub struct ContextManagerConfig {
 
 const DEFAULT_CONTEXT_CAPACITY: usize = 28;
 
+const MAX_PARKED_TOPOLOGIES: usize = 8;
+const MAX_PARKED_HISTORY_LINES: usize = 250_000;
+const PARKED_TOPOLOGY_TTL: Duration = Duration::from_secs(5 * 60);
+
+struct ParkedTopLevel<T: EventListener> {
+    grid: ContextGrid<T>,
+    index: usize,
+    parked_at: Instant,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct RestoredTopLevel {
+    route_id: usize,
+    index: usize,
+}
 pub struct ContextManager<T: EventListener> {
     contexts: SmallVec<[ContextGrid<T>; DEFAULT_CONTEXT_CAPACITY]>,
     current_index: usize,
@@ -282,6 +298,10 @@ pub struct ContextManager<T: EventListener> {
     /// PTYs intentionally removed by UI actions. Their asynchronous shutdown
     /// events are acknowledgements, not requests to close another tab.
     closing_routes: FxHashSet<usize>,
+    /// Closed top-level tabs whose independent PTYs remain parked for a
+    /// bounded undo window. They are isolated per OS-window manager.
+    parked_topologies: VecDeque<ParkedTopLevel<T>>,
+    restored_topologies: VecDeque<RestoredTopLevel>,
 }
 
 pub fn create_dead_context<T: rio_backend::event::EventListener>(
@@ -850,6 +870,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             config: ctx_config,
             last_title_update: None,
             closing_routes: FxHashSet::default(),
+            parked_topologies: VecDeque::new(),
+            restored_topologies: VecDeque::new(),
         })
     }
 
@@ -889,6 +911,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             config,
             last_title_update: None,
             closing_routes: FxHashSet::default(),
+            parked_topologies: VecDeque::new(),
+            restored_topologies: VecDeque::new(),
         })
     }
 
@@ -916,6 +940,17 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         // delayed CloseTerminal. Consume that exact route once; never infer a
         // close for whichever tab happens to be active by then.
         if self.acknowledge_intentional_close(route_id) {
+            return false;
+        }
+
+        if let Some(index) = self
+            .parked_topologies
+            .iter()
+            .position(|parked| parked.grid.route_ids().contains(&route_id))
+        {
+            self.parked_topologies.remove(index);
+            self.restored_topologies
+                .retain(|entry| entry.route_id != route_id);
             return false;
         }
 
@@ -1062,6 +1097,24 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    pub fn select_next_split_no_loop(&mut self) -> bool {
+        if !self.contexts[self.current_index].select_next_split_no_loop() {
+            return false;
+        }
+        self.current_route = self.current().route_id;
+        true
+    }
+
+    #[inline]
+    pub fn select_prev_split_no_loop(&mut self) -> bool {
+        if !self.contexts[self.current_index].select_prev_split_no_loop() {
+            return false;
+        }
+        self.current_route = self.current().route_id;
+        true
+    }
+
+    #[inline]
     pub fn select_split_direction(
         &mut self,
         direction: crate::layout::PaneDirection,
@@ -1102,6 +1155,21 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             current_tab.current = last_key;
         }
         self.current_route = self.current().route_id;
+    }
+
+    #[inline]
+    pub fn is_split_zoomed(&self) -> bool {
+        self.contexts[self.current_index].is_zoomed()
+    }
+
+    #[inline]
+    pub fn toggle_split_zoom(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        self.contexts[self.current_index].toggle_split_zoom(sugarloaf)
+    }
+
+    #[inline]
+    pub fn equalize_splits(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        self.contexts[self.current_index].equalize_splits(sugarloaf)
     }
 
     #[inline]
@@ -1491,25 +1559,153 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             return;
         }
 
+        self.contexts[self.current_index].remove_all_rich_text(sugarloaf);
+        if self.park_current_topology_model() {
+            self.keep_only_active_context_visible(sugarloaf);
+        }
+    }
+
+    /// Move the complete current top-level tab into bounded memory-only
+    /// history without touching renderer state. The public close wrapper owns
+    /// rich-text cleanup and visibility publication.
+    fn park_current_topology_model(&mut self) -> bool {
+        if self.contexts.len() <= 1 {
+            return false;
+        }
+        self.prune_topology_history();
+        self.restored_topologies.clear();
         let index_to_remove = self.current_index;
-        self.closing_routes
-            .extend(self.contexts[index_to_remove].route_ids());
-        let mut should_set_current = false;
-        if index_to_remove > 1 {
-            self.set_current(self.current_index - 1);
-        } else {
-            should_set_current = true;
+        let grid = self.contexts.remove(index_to_remove);
+        self.parked_topologies.push_back(ParkedTopLevel {
+            grid,
+            index: index_to_remove,
+            parked_at: Instant::now(),
+        });
+        self.enforce_topology_history_limits();
+        self.current_index = index_to_remove
+            .saturating_sub(1)
+            .min(self.contexts.len().saturating_sub(1));
+        self.current_route = self.current().route_id;
+        true
+    }
+
+    pub fn can_undo_topology(&self) -> bool {
+        !self.parked_topologies.is_empty()
+    }
+
+    pub fn can_redo_topology(&self) -> bool {
+        !self.restored_topologies.is_empty()
+    }
+
+    pub fn invalidate_topology_redo(&mut self) {
+        self.restored_topologies.clear();
+    }
+
+    pub fn undo_topology(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        if !self.undo_topology_model() {
+            return false;
         }
-
-        // Remove all rich text from the grid before removing the context
-        self.contexts[index_to_remove].remove_all_rich_text(sugarloaf);
-        self.contexts.remove(index_to_remove);
-
-        if should_set_current {
-            self.set_current(0);
-        }
-
         self.keep_only_active_context_visible(sugarloaf);
+        true
+    }
+
+    fn undo_topology_model(&mut self) -> bool {
+        self.prune_topology_history();
+        let Some(parked) = self.parked_topologies.pop_back() else {
+            return false;
+        };
+        if self.contexts.len() >= self.capacity {
+            self.parked_topologies.push_back(parked);
+            return false;
+        }
+        let index = parked.index.min(self.contexts.len());
+        let route_id = parked.grid.current().route_id;
+        self.contexts.insert(index, parked.grid);
+        self.current_index = index;
+        self.current_route = route_id;
+        self.restored_topologies
+            .push_back(RestoredTopLevel { route_id, index });
+        while self.restored_topologies.len() > MAX_PARKED_TOPOLOGIES {
+            self.restored_topologies.pop_front();
+        }
+        true
+    }
+
+    pub fn redo_topology(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        // Discard renderer-owned overlays before the model moves this exact
+        // grid out of the visible topology. Terminal glyphs remain dynamic.
+        if self.contexts.len() > 1 {
+            let restored_route =
+                self.restored_topologies.back().map(|entry| entry.route_id);
+            if let Some(index) = restored_route.and_then(|route_id| {
+                self.contexts
+                    .iter()
+                    .position(|grid| grid.route_ids().contains(&route_id))
+            }) {
+                self.contexts[index].remove_all_rich_text(sugarloaf);
+            }
+        }
+        if !self.redo_topology_model() {
+            return false;
+        }
+        self.keep_only_active_context_visible(sugarloaf);
+        true
+    }
+
+    fn redo_topology_model(&mut self) -> bool {
+        self.prune_topology_history();
+        let Some(restored) = self.restored_topologies.pop_back() else {
+            return false;
+        };
+        let Some(index) = self
+            .contexts
+            .iter()
+            .position(|grid| grid.route_ids().contains(&restored.route_id))
+        else {
+            return false;
+        };
+        if self.contexts.len() <= 1 {
+            return false;
+        }
+        let grid = self.contexts.remove(index);
+        self.parked_topologies.push_back(ParkedTopLevel {
+            grid,
+            index: restored.index,
+            parked_at: Instant::now(),
+        });
+        self.enforce_topology_history_limits();
+        self.current_index = index
+            .saturating_sub(1)
+            .min(self.contexts.len().saturating_sub(1));
+        self.current_route = self.current().route_id;
+        true
+    }
+    fn prune_topology_history(&mut self) {
+        while self
+            .parked_topologies
+            .front()
+            .is_some_and(|entry| entry.parked_at.elapsed() >= PARKED_TOPOLOGY_TTL)
+        {
+            self.parked_topologies.pop_front();
+        }
+        self.enforce_topology_history_limits();
+    }
+
+    fn enforce_topology_history_limits(&mut self) {
+        while self.parked_topologies.len() > MAX_PARKED_TOPOLOGIES {
+            self.parked_topologies.pop_front();
+        }
+        while self
+            .parked_topologies
+            .iter()
+            .map(|entry| entry.grid.retained_history_lines())
+            .fold(0usize, usize::saturating_add)
+            > MAX_PARKED_HISTORY_LINES
+        {
+            if self.parked_topologies.pop_front().is_none() {
+                break;
+            }
+        }
     }
 
     #[inline]
@@ -2194,6 +2390,71 @@ pub mod test {
     use crate::event::VoidListener;
     use std::sync::Mutex;
 
+    #[test]
+    fn parked_topology_history_is_count_and_time_bounded() {
+        let window_id = WindowId::from(0);
+        let mut manager =
+            ContextManager::start_with_capacity(16, VoidListener {}, window_id).unwrap();
+        for route_id in 100..110 {
+            let context = create_dead_context(
+                VoidListener {},
+                window_id,
+                route_id,
+                route_id,
+                ContextDimension::default(),
+            );
+            manager.parked_topologies.push_back(ParkedTopLevel {
+                grid: ContextGrid::new(
+                    context,
+                    Margin::default(),
+                    manager.config.split_color,
+                    manager.config.split_active_color,
+                    manager.config.panel,
+                ),
+                index: 0,
+                parked_at: Instant::now(),
+            });
+        }
+        manager.enforce_topology_history_limits();
+        assert_eq!(manager.parked_topologies.len(), MAX_PARKED_TOPOLOGIES);
+
+        manager.parked_topologies.front_mut().unwrap().parked_at =
+            Instant::now() - PARKED_TOPOLOGY_TTL;
+        manager.prune_topology_history();
+        assert_eq!(manager.parked_topologies.len(), MAX_PARKED_TOPOLOGIES - 1);
+    }
+    #[test]
+    fn parked_topology_restores_exact_order_and_route_and_capacity_refuses_safely() {
+        let window_id = WindowId::from(73);
+        let mut manager =
+            ContextManager::start_with_capacity(3, VoidListener {}, window_id).unwrap();
+        manager.add_context(true, 0);
+        let original_routes = manager.route_ids();
+        let closed_route = manager.current().route_id;
+        assert_eq!(manager.current_index(), 1);
+
+        assert!(manager.park_current_topology_model());
+        assert_eq!(manager.len(), 1);
+        assert!(manager.can_undo_topology());
+
+        manager.capacity = 1;
+        assert!(!manager.undo_topology_model());
+        assert_eq!(manager.len(), 1);
+        assert!(manager.can_undo_topology());
+
+        manager.capacity = 3;
+        assert!(manager.undo_topology_model());
+        assert_eq!(manager.route_ids(), original_routes);
+        assert_eq!(manager.current_index(), 1);
+        assert_eq!(manager.current().route_id, closed_route);
+        assert!(manager.can_redo_topology());
+
+        assert!(manager.redo_topology_model());
+        assert_eq!(manager.len(), 1);
+        assert_eq!(manager.parked_topologies.back().unwrap().index, 1);
+        assert!(manager.can_undo_topology());
+        assert!(!manager.can_redo_topology());
+    }
     #[derive(Clone, Default)]
     struct RecordingListener {
         renders: Arc<Mutex<Vec<(usize, WindowId)>>>,

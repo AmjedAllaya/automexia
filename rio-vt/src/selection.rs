@@ -46,6 +46,12 @@ pub enum SelectionMotion {
     Down,
     WordLeft,
     WordRight,
+    PageUp,
+    PageDown,
+    Home,
+    End,
+    LineStart,
+    LineEnd,
 }
 
 /// Represents a range of selected cells.
@@ -484,6 +490,23 @@ impl<T: EventListener> Crosswords<T> {
             SelectionMotion::Down => self.selection_vertical_target(anchor, true),
             SelectionMotion::WordLeft => self.selection_word_target(anchor, false),
             SelectionMotion::WordRight => self.selection_word_target(anchor, true),
+            SelectionMotion::PageUp => self.selection_page_target(anchor, false),
+            SelectionMotion::PageDown => self.selection_page_target(anchor, true),
+            SelectionMotion::Home => {
+                Anchor::new(Pos::new(self.grid.topmost_line(), Column(0)), Side::Left)
+            }
+            SelectionMotion::End => Anchor::new(
+                Pos::new(self.grid.bottommost_line(), self.grid.last_column()),
+                Side::Right,
+            ),
+            SelectionMotion::LineStart => {
+                let point = self.row_search_left(anchor.point);
+                Anchor::new(point, Side::Left)
+            }
+            SelectionMotion::LineEnd => {
+                let point = self.row_search_right(anchor.point);
+                Anchor::new(point, Side::Right)
+            }
         };
 
         self.scroll_to_pos(target.point);
@@ -533,6 +556,26 @@ impl<T: EventListener> Crosswords<T> {
         } else {
             Anchor::new(Pos::new(row, Column(boundary_column)), Side::Left)
         };
+        let boundary = self.selection_boundary_index(target);
+        if self.selection_cell_is_continuation(boundary) {
+            self.selection_anchor_from_boundary(boundary.saturating_sub(1))
+        } else {
+            target
+        }
+    }
+
+    fn selection_page_target(&self, anchor: Anchor, down: bool) -> Anchor {
+        let page = i32::try_from(self.grid.screen_lines()).unwrap_or(i32::MAX);
+        let row = if down {
+            Line(anchor.point.row.0.saturating_add(page))
+        } else {
+            Line(anchor.point.row.0.saturating_sub(page))
+        };
+        let row = std::cmp::max(
+            self.grid.topmost_line(),
+            std::cmp::min(row, self.grid.bottommost_line()),
+        );
+        let target = Anchor::new(Pos::new(row, anchor.point.col), anchor.side);
         let boundary = self.selection_boundary_index(target);
         if self.selection_cell_is_continuation(boundary) {
             self.selection_anchor_from_boundary(boundary.saturating_sub(1))
@@ -1112,6 +1155,39 @@ mod tests {
         assert_eq!(
             terminal.selection_motion_target(grid_end, SelectionMotion::Right),
             grid_end
+        );
+    }
+
+    #[test]
+    fn keyboard_page_document_and_wrapped_line_boundaries_are_bounded() {
+        let mut terminal = term(4, 5);
+        let origin = Anchor::new(Pos::new(Line(2), Column(2)), Side::Left);
+        assert_eq!(
+            terminal.selection_motion_target(origin, SelectionMotion::PageUp),
+            Anchor::new(Pos::new(Line(0), Column(2)), Side::Left)
+        );
+        assert_eq!(
+            terminal.selection_motion_target(origin, SelectionMotion::PageDown),
+            Anchor::new(Pos::new(Line(3), Column(2)), Side::Left)
+        );
+        assert_eq!(
+            terminal.selection_motion_target(origin, SelectionMotion::Home),
+            Anchor::new(Pos::new(Line(0), Column(0)), Side::Left)
+        );
+        assert_eq!(
+            terminal.selection_motion_target(origin, SelectionMotion::End),
+            Anchor::new(Pos::new(Line(3), Column(4)), Side::Right)
+        );
+
+        terminal.grid[Line(1)][Column(4)].set_wrapline(true);
+        terminal.grid[Line(2)][Column(4)].set_wrapline(true);
+        assert_eq!(
+            terminal.selection_motion_target(origin, SelectionMotion::LineStart),
+            Anchor::new(Pos::new(Line(1), Column(0)), Side::Left)
+        );
+        assert_eq!(
+            terminal.selection_motion_target(origin, SelectionMotion::LineEnd),
+            Anchor::new(Pos::new(Line(3), Column(4)), Side::Right)
         );
     }
 

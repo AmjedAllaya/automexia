@@ -24,7 +24,9 @@ use automexia_ui_model::connection_hub::{HubCatalogGrouping, HubCatalogSource};
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 
-use super::private_fs::{self as secure_fs, PrivateFsError, PrivateFsErrorCode};
+use crate::automexia::private_fs::{
+    self as secure_fs, PrivateFsError, PrivateFsErrorCode,
+};
 
 pub const CONNECTION_LIBRARY_SCHEMA: u16 = 2;
 // Keep the established private filenames so schema-1 recovery remains atomic;

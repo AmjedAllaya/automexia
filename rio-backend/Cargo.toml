@@ -15,6 +15,7 @@ path = "src/lib.rs"
 crate-type = ["rlib"]
 
 [dependencies]
+automexia-keybindings = { workspace = true }
 tracing = { workspace = true }
 
 # Most of the former dependencies (corcovado, copypasta, onig-based search,

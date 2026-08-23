@@ -128,6 +128,9 @@ has passed.
 | `cargo xtask verify architecture` | Enforce dependency, threading, prompt metadata, renderer, shell, and capability boundaries. |
 | `cargo xtask verify identity` | Reject non-allowlisted user-facing Rio identity. |
 | `cargo xtask verify provenance` | Protect licenses, notices, fork attribution, and private crate publication policy. |
+| `cargo xtask verify keybindings` | Verify the checked-in Ghostty 1.3.1 provenance, generated manifests, profiles, and reference tables without changing them. |
+| `cargo xtask generate keybindings <--version 1.3.1\|--check>` | Regenerate the pinned Ghostty 1.3.1 artifacts from reviewed native fixtures, or byte-check them with `--check`. Native macOS generation fails closed until its external fixture is available. |
+| `cargo xtask test keybindings` | Run the focused keybinding compiler, registry, dispatch, migration, UI-model, topology-history, bounded-selection, and generated-artifact checks. |
 | `cargo xtask verify all` | Run all repository verification scopes plus Phase 0 assurance contracts. |
 | `cargo xtask test conformance` | Run VT/Unicode/terminal conformance fixtures. |
 | `cargo xtask test resize-stress [--native-gui]` | Deterministic prompt/reflow stress; optional real Windows GUI/ConPTY storm. |

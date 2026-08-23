@@ -33,6 +33,9 @@ decision supersedes an old one instead of silently rewriting history.
 | [0023](adr/0023-typed-automation-and-declarative-workspaces.md) | Typed automation and declarative workspaces (proposed) | Bind recipes, profiles, layouts, restore, and armed broadcast to immutable review-only generations without adding process, PTY, network, credential, or arbitrary remote-code authority. |
 | [0024](adr/0024-openbao-token-helper-and-ssh-certificate-boundary.md) | OpenBao token-helper and SSH-certificate boundary (proposed) | Keep token custody external and require separately reviewed transient public-certificate ownership before an OpenBao adapter exists. |
 | [0025](adr/0025-authenticated-native-editor-suggestion-bridge.md) | Authenticated native-editor suggestion bridge (proposed) | Require private peer-checked local transport, per-route capabilities, native-editor insertion, bounded local sources, collision-safe UI, and CP1 fallback before CP5 code is authorized. |
+| [0026](adr/0026-versioned-ghostty-keybinding-profiles.md) | Versioned Ghostty keybinding profiles | Preserve Automexia defaults while compiling explicit pinned compatibility profiles in a pure, bounded registry with offline fixture provenance. |
+| [0027](adr/0027-redacted-compatibility-inspector.md) | Redacted compatibility inspector | Expose only bounded public terminal/binding metadata in a renderer-owned modal and forbid output, paths, commands, clipboard, environment, and credentials. |
+| [0028](adr/0028-bounded-parked-pty-topology-history.md) | Bounded parked-PTY topology history | Undo/redo only complete closed top-level tabs initially, preserving existing route ownership while bounding count, age, history lines, invalidation, and cleanup. |
 
 ## When an ADR is required
 

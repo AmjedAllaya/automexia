@@ -3,6 +3,7 @@
 // which is licensed under Apache 2.0 license.
 
 pub mod kitty_keyboard;
+pub mod registry;
 
 use crate::crosswords::vi_mode::ViMotion;
 use crate::crosswords::Mode;
@@ -723,6 +724,9 @@ pub fn default_mouse_bindings() -> Vec<MouseBinding> {
 }
 
 pub fn default_key_bindings(config: &rio_backend::config::Config) -> Vec<KeyBinding> {
+    if config.keyboard.binding_profile != automexia_keybindings::ProfileId::Automexia {
+        return config_key_bindings(config.bindings.keys.to_owned(), Vec::new());
+    }
     let mut bindings = bindings!(
         KeyBinding;
         Key::Named(Copy);  Action::Copy;

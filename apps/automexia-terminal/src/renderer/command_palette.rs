@@ -475,6 +475,64 @@ struct Command {
     action: PaletteAction,
 }
 
+fn palette_binding_target(
+    action: PaletteAction,
+) -> Option<(&'static str, Option<&'static str>)> {
+    use PaletteAction::*;
+    match action {
+        TabCreate => Some(("new_tab", None)),
+        TabClose => Some(("close_tab", Some("this"))),
+        SelectNextTab => Some(("next_tab", None)),
+        SelectPrevTab => Some(("previous_tab", None)),
+        SplitRight => Some(("new_split", Some("right"))),
+        SplitDown => Some(("new_split", Some("down"))),
+        SelectNextSplit => Some(("goto_split", Some("next"))),
+        SelectPrevSplit => Some(("goto_split", Some("previous"))),
+        SelectPaneLeft => Some(("goto_split", Some("left"))),
+        SelectPaneRight => Some(("goto_split", Some("right"))),
+        SelectPaneUp => Some(("goto_split", Some("up"))),
+        SelectPaneDown => Some(("goto_split", Some("down"))),
+        ConfigEditor => Some(("open_config", None)),
+        WindowCreateNew => Some(("new_window", None)),
+        IncreaseFontSize => Some(("increase_font_size", Some("1"))),
+        DecreaseFontSize => Some(("decrease_font_size", Some("1"))),
+        ResetFontSize => Some(("reset_font_size", None)),
+        ToggleFullscreen => Some(("toggle_fullscreen", None)),
+        Copy => Some(("copy_to_clipboard", None)),
+        Paste => Some(("paste_from_clipboard", None)),
+        SearchForward => Some(("start_search", None)),
+        SearchBackward => Some(("start_search", None)),
+        ClearScreen => Some(("clear_screen", None)),
+        CloseCurrentSplitOrTab => Some(("close_surface", None)),
+        Quit => Some(("quit", None)),
+        LocalTabCreate
+        | TabCloseUnfocused
+        | SelectNextLocalTab
+        | SelectPrevLocalTab
+        | CloneSplitRight
+        | CloneSplitDown
+        | ToggleViMode
+        | ToggleAppearanceTheme
+        | PreviewSelectedImage
+        | OpenMarket
+        | OpenConnections
+        | OpenActions
+        | ListFonts => None,
+    }
+}
+
+fn binding_origin_label(origin: automexia_keybindings::BindingOrigin) -> &'static str {
+    use automexia_keybindings::BindingOrigin::*;
+    match origin {
+        BuiltIn => "Built-in",
+        Profile => "Profile",
+        WindowsAdaptation => "Windows",
+        Imported => "Imported",
+        LegacyUser => "Legacy",
+        User => "User",
+    }
+}
+
 const COMMANDS: &[Command] = &[
     Command {
         title: "New Window Tab",
@@ -1291,6 +1349,10 @@ pub struct CommandPalette {
     pub selected_index: usize,
     scroll_offset: usize,
     pub has_adaptive_theme: bool,
+    /// Profile-aware labels generated from the immutable binding registry.
+    /// The classic constants remain the fallback only for the implicit
+    /// Automexia profile while its legacy adapter is active.
+    registry_shortcuts: Vec<(PaletteAction, String)>,
     /// Which list the palette is showing (commands or fonts).
     mode: PaletteMode,
     /// Timestamp for caret blinking
@@ -1313,6 +1375,7 @@ impl Default for CommandPalette {
             selected_index: 0,
             scroll_offset: 0,
             has_adaptive_theme: false,
+            registry_shortcuts: Vec::new(),
             mode: PaletteMode::Commands,
             caret_blink_start: Instant::now(),
             last_scroll_time: None,
@@ -1328,6 +1391,71 @@ impl CommandPalette {
 
     pub fn is_enabled(&self) -> bool {
         self.enabled
+    }
+
+    pub fn set_binding_registry(
+        &mut self,
+        registry: Option<&automexia_keybindings::CompiledRegistry>,
+        profile: automexia_keybindings::ProfileId,
+        legacy_unbinds: &[String],
+    ) {
+        self.registry_shortcuts.clear();
+        let Some(registry) = registry else {
+            return;
+        };
+        let strict_profile = profile != automexia_keybindings::ProfileId::Automexia;
+        for command in COMMANDS {
+            let binding =
+                palette_binding_target(command.action).and_then(|(id, parameter)| {
+                    registry.bindings_for_action(id).find(|binding| {
+                        binding.table == "default"
+                            && binding.sequence.len() == 1
+                            && parameter.is_none_or(|expected| {
+                                binding.actions.iter().any(|action| {
+                                    action.id.as_str() == id
+                                        && action.parameter.as_deref() == Some(expected)
+                                })
+                            })
+                    })
+                });
+            let label = if let Some(binding) = binding {
+                let support = binding
+                    .actions
+                    .first()
+                    .and_then(|action| {
+                        automexia_keybindings::resolve_action(action.id.as_str())
+                    })
+                    .map(|schema| schema.support);
+                format!(
+                    "{} · {}{}",
+                    binding.trigger_label(),
+                    binding_origin_label(binding.origin),
+                    if support == Some(automexia_keybindings::SupportLevel::Adapted) {
+                        " ↪"
+                    } else {
+                        ""
+                    }
+                )
+            } else if strict_profile
+                || legacy_unbinds
+                    .iter()
+                    .any(|trigger| trigger.eq_ignore_ascii_case(command.shortcut))
+            {
+                "Unbound".to_string()
+            } else {
+                continue;
+            };
+            self.registry_shortcuts.push((command.action, label));
+        }
+    }
+
+    fn command_shortcut<'a>(&'a self, command: &'a Command) -> &'a str {
+        self.registry_shortcuts
+            .iter()
+            .find_map(|(action, shortcut)| {
+                (*action == command.action).then_some(shortcut.as_str())
+            })
+            .unwrap_or(command.shortcut)
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
@@ -1549,7 +1677,7 @@ impl CommandPalette {
                             score,
                             PaletteRow::Command {
                                 title: cmd.title,
-                                shortcut: cmd.shortcut,
+                                shortcut: self.command_shortcut(cmd),
                                 action: cmd.action,
                             },
                         ))
@@ -2413,6 +2541,51 @@ mod tests {
             CommandIcon::Image
         );
     }
+    #[test]
+    fn strict_profile_palette_labels_come_from_the_compiled_registry() {
+        let bindings = automexia_keybindings::bundled_profile(
+            automexia_keybindings::ProfileId::Ghostty13,
+            automexia_keybindings::PlatformFamily::LinuxBsd,
+        )
+        .unwrap();
+        let registry = automexia_keybindings::compile(&bindings).registry.unwrap();
+        let mut palette = CommandPalette::new();
+        palette.set_binding_registry(
+            Some(&registry),
+            automexia_keybindings::ProfileId::Ghostty13,
+            &[],
+        );
+        let shortcut = |action| {
+            let command = COMMANDS
+                .iter()
+                .find(|command| command.action == action)
+                .unwrap();
+            palette.command_shortcut(command).to_string()
+        };
+        assert_eq!(shortcut(PaletteAction::TabCreate), "ctrl+shift+t · Profile");
+        assert_eq!(
+            shortcut(PaletteAction::SplitRight),
+            "ctrl+shift+o · Profile"
+        );
+        assert_eq!(shortcut(PaletteAction::LocalTabCreate), "Unbound");
+    }
+
+    #[test]
+    fn automexia_typed_unbind_is_visible_as_unbound() {
+        let registry = automexia_keybindings::compile(&[]).registry.unwrap();
+        let mut palette = CommandPalette::new();
+        palette.set_binding_registry(
+            Some(&registry),
+            automexia_keybindings::ProfileId::Automexia,
+            &["ctrl+t".into()],
+        );
+        let command = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::TabCreate)
+            .unwrap();
+        assert_eq!(palette.command_shortcut(command), "Unbound");
+    }
+
     #[test]
     fn palette_shortcuts_are_complete_and_unique() {
         let mut shortcuts = std::collections::HashMap::new();

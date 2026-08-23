@@ -1,4 +1,5 @@
 mod completion;
+mod keybindings;
 mod visual_diff;
 
 use serde_json::Value;
@@ -109,6 +110,17 @@ fn dispatch(args: Vec<String>) -> TaskResult {
         [command, scope] if command == "verify" && scope == "provenance" => {
             verify_provenance()
         }
+        [command, scope] if command == "verify" && scope == "keybindings" => {
+            keybindings::verify()
+        }
+        [command, scope] if command == "test" && scope == "keybindings" => {
+            keybindings::test()
+        }
+        [command, scope, generate_args @ ..]
+            if command == "generate" && scope == "keybindings" =>
+        {
+            keybindings::generate(generate_args)
+        }
         [command, scope] if command == "verify" && scope == "all" => verify_all(),
         [command, scope] if command == "test" && scope == "conformance" => {
             test_conformance()
@@ -172,7 +184,7 @@ fn dispatch(args: Vec<String>) -> TaskResult {
 }
 
 fn usage() -> String {
-    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH|check|ci|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify all|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
+    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH|check|ci|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify keybindings|verify all|generate keybindings <--version 1.3.1|--check>|test keybindings|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
 }
 
 fn root() -> PathBuf {
@@ -2215,7 +2227,11 @@ fn verify_architecture() -> TaskResult {
         "frontend package is outside apps/automexia-terminal",
     )?;
 
-    let private_crates: [(&str, &[&str]); 6] = [
+    let private_crates: [(&str, &[&str]); 7] = [
+        (
+            "automexia-keybindings",
+            &["criterion", "proptest", "serde", "serde_json", "sha2"],
+        ),
         (
             "automexia-extension-api",
             &["serde", "serde_json", "unicode-segmentation"],

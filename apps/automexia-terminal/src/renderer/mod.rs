@@ -1,5 +1,6 @@
 pub mod assistant;
 pub mod command_palette;
+pub mod compatibility_inspector;
 pub mod confirm_quit;
 pub mod connection_hub;
 pub mod custom_cursor;
@@ -444,6 +445,7 @@ pub struct Renderer {
     pub margin: rio_backend::config::layout::Margin,
     pub island: Option<island::Island>,
     pub command_palette: command_palette::CommandPalette,
+    pub compatibility_inspector: compatibility_inspector::CompatibilityInspector,
     pub connection_hub: connection_hub::ConnectionHub,
     pub devops_enabled: bool,
     extension_generation: u32,
@@ -549,6 +551,8 @@ impl Renderer {
                 palette.has_adaptive_theme = config.adaptive_colors.is_some();
                 palette
             },
+            compatibility_inspector:
+                compatibility_inspector::CompatibilityInspector::default(),
             connection_hub: connection_hub::ConnectionHub::default(),
             devops_enabled: crate::automexia::runtime::context_status_enabled(),
             extension_generation: crate::automexia::runtime::generation(),
@@ -563,7 +567,7 @@ impl Renderer {
             assistant: assistant::AssistantOverlay::default(),
             confirm_quit: confirm_quit::ConfirmQuit::default(),
             scrollbar: scrollbar::Scrollbar::new(config.enable_scroll_bar),
-            session_footer: session_footer::SessionFooter,
+            session_footer: session_footer::SessionFooter::default(),
             is_game_mode_enabled: config.renderer.strategy.is_game(),
             custom_mouse_cursor: config.effects.custom_mouse_cursor,
             trail_cursor_enabled: config.effects.trail_cursor,
@@ -1608,8 +1612,11 @@ impl Renderer {
             self.confirm_quit.render(sugarloaf, modal_dimensions);
         } else if self.connection_hub.is_active() {
             self.connection_hub.render(sugarloaf, modal_dimensions);
-        } else {
+        } else if self.command_palette.is_enabled() {
             self.command_palette.render(sugarloaf, modal_dimensions);
+        } else {
+            self.compatibility_inspector
+                .render(sugarloaf, modal_dimensions);
         }
 
         // Render scrollbars for each panel

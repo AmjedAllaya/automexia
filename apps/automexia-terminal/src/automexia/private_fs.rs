@@ -1,7 +1,7 @@
-//! Connection-owned no-follow filesystem and private-permission adapter.
+//! Shared no-follow filesystem and private-permission adapter.
 //!
-//! This module is shared only by Connection Library and managed receipt
-//! persistence. It owns no process, network, PTY, renderer, or credential data.
+//! This module is shared by trusted Automexia features that persist or export
+//! private files. It owns no process, network, PTY, renderer, or credential data.
 
 use std::{
     fs::{self, File, Metadata, OpenOptions},
@@ -10,7 +10,7 @@ use std::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum PrivateFsErrorCode {
+pub(crate) enum PrivateFsErrorCode {
     Io,
     LinkRejected,
     NotDirectory,
@@ -22,7 +22,7 @@ pub(super) enum PrivateFsErrorCode {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct PrivateFsError {
+pub(crate) struct PrivateFsError {
     code: PrivateFsErrorCode,
 }
 
@@ -35,7 +35,7 @@ impl PrivateFsError {
         Self::new(PrivateFsErrorCode::Io)
     }
 
-    pub(super) const fn code(&self) -> PrivateFsErrorCode {
+    pub(crate) const fn code(&self) -> PrivateFsErrorCode {
         self.code
     }
 }
@@ -152,6 +152,27 @@ pub(crate) fn reject_link_or_non_file(path: &Path) -> Result<(), PrivateFsError>
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(PrivateFsError::io(error)),
     }
+}
+
+/// Atomically reserve a new regular file without following links and restrict
+/// it to the current user before any caller-controlled content is written.
+pub(crate) fn create_private_file(path: &Path) -> Result<File, PrivateFsError> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    apply_no_follow(&mut options);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+    let file = options.open(path).map_err(PrivateFsError::io)?;
+    if let Err(error) = apply_private_permissions(path, false) {
+        drop(file);
+        let _ = fs::remove_file(path);
+        return Err(error);
+    }
+    validate_regular(&file.metadata().map_err(PrivateFsError::io)?)?;
+    Ok(file)
 }
 
 pub(crate) fn apply_private_file_permissions(path: &Path) -> Result<(), PrivateFsError> {

@@ -1,0 +1,2151 @@
+{
+  "bindings": [
+    {
+      "actions": [
+        {
+          "id": "reload_config"
+        }
+      ],
+      "id": 0,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": ","
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "open_config"
+        }
+      ],
+      "id": 1,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": ","
+          },
+          "modifiers": 2
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "copy_to_clipboard",
+          "parameter": "mixed"
+        }
+      ],
+      "id": 2,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "copy"
+          },
+          "modifiers": 0
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "paste_from_clipboard"
+        }
+      ],
+      "id": 3,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "paste"
+          },
+          "modifiers": 0
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "copy_to_clipboard",
+          "parameter": "mixed"
+        }
+      ],
+      "id": 4,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "insert"
+          },
+          "modifiers": 2
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "copy_to_clipboard",
+          "parameter": "mixed"
+        }
+      ],
+      "id": 5,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "c"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "paste_from_clipboard"
+        }
+      ],
+      "id": 6,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "v"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "increase_font_size",
+          "parameter": "1"
+        }
+      ],
+      "id": 7,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "="
+          },
+          "modifiers": 2
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "increase_font_size",
+          "parameter": "1"
+        }
+      ],
+      "id": 8,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "+"
+          },
+          "modifiers": 2
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "decrease_font_size",
+          "parameter": "1"
+        }
+      ],
+      "id": 9,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "_"
+          },
+          "modifiers": 2
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "reset_font_size"
+        }
+      ],
+      "id": 10,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "0"
+          },
+          "modifiers": 2
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "write_screen_file",
+          "parameter": "paste,plain"
+        }
+      ],
+      "id": 11,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "j"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "write_screen_file",
+          "parameter": "open,plain"
+        }
+      ],
+      "id": 12,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "j"
+          },
+          "modifiers": 7
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "adjust_selection",
+          "parameter": "left"
+        }
+      ],
+      "id": 13,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "arrow_left"
+          },
+          "modifiers": 1
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "adjust_selection",
+          "parameter": "right"
+        }
+      ],
+      "id": 14,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "arrow_right"
+          },
+          "modifiers": 1
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "adjust_selection",
+          "parameter": "up"
+        }
+      ],
+      "id": 15,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "arrow_up"
+          },
+          "modifiers": 1
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "adjust_selection",
+          "parameter": "down"
+        }
+      ],
+      "id": 16,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "arrow_down"
+          },
+          "modifiers": 1
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "scroll_page_up"
+        }
+      ],
+      "id": 17,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "page_up"
+          },
+          "modifiers": 1
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "scroll_page_down"
+        }
+      ],
+      "id": 18,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "page_down"
+          },
+          "modifiers": 1
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "scroll_to_top"
+        }
+      ],
+      "id": 19,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "home"
+          },
+          "modifiers": 1
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "scroll_to_bottom"
+        }
+      ],
+      "id": 20,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "end"
+          },
+          "modifiers": 1
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "previous_tab"
+        }
+      ],
+      "id": 21,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "tab"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "next_tab"
+        }
+      ],
+      "id": 22,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "tab"
+          },
+          "modifiers": 2
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "new_window"
+        }
+      ],
+      "id": 23,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "n"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "close_tab",
+          "parameter": "this"
+        }
+      ],
+      "id": 24,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "w"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "quit"
+        }
+      ],
+      "id": 25,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "q"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "close_window"
+        }
+      ],
+      "id": 26,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": {
+              "f": 4
+            }
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "new_tab"
+        }
+      ],
+      "id": 27,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "t"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "previous_tab"
+        }
+      ],
+      "id": 28,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "arrow_left"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "next_tab"
+        }
+      ],
+      "id": 29,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "arrow_right"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "previous_tab"
+        }
+      ],
+      "id": 30,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "page_up"
+          },
+          "modifiers": 2
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "next_tab"
+        }
+      ],
+      "id": 31,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "page_down"
+          },
+          "modifiers": 2
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "new_split",
+          "parameter": "right"
+        }
+      ],
+      "id": 32,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "o"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "new_split",
+          "parameter": "down"
+        }
+      ],
+      "id": 33,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "e"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_split",
+          "parameter": "up"
+        }
+      ],
+      "id": 34,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "arrow_up"
+          },
+          "modifiers": 6
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_split",
+          "parameter": "down"
+        }
+      ],
+      "id": 35,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "arrow_down"
+          },
+          "modifiers": 6
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_split",
+          "parameter": "left"
+        }
+      ],
+      "id": 36,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "arrow_left"
+          },
+          "modifiers": 6
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_split",
+          "parameter": "right"
+        }
+      ],
+      "id": 37,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "arrow_right"
+          },
+          "modifiers": 6
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "jump_to_prompt",
+          "parameter": "-1"
+        }
+      ],
+      "id": 38,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "page_up"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "jump_to_prompt",
+          "parameter": "1"
+        }
+      ],
+      "id": 39,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "page_down"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "start_search"
+        }
+      ],
+      "id": 40,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "f"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "end_search"
+        }
+      ],
+      "id": 41,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "escape"
+          },
+          "modifiers": 0
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "inspector",
+          "parameter": "toggle"
+        }
+      ],
+      "id": 42,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "i"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "select_all"
+        }
+      ],
+      "id": 43,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "a"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_tab",
+          "parameter": "1"
+        }
+      ],
+      "id": 44,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "physical",
+            "value": "Digit1"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_tab",
+          "parameter": "1"
+        }
+      ],
+      "id": 45,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "1"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_tab",
+          "parameter": "2"
+        }
+      ],
+      "id": 46,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "physical",
+            "value": "Digit2"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_tab",
+          "parameter": "2"
+        }
+      ],
+      "id": 47,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "2"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_tab",
+          "parameter": "3"
+        }
+      ],
+      "id": 48,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "physical",
+            "value": "Digit3"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_tab",
+          "parameter": "3"
+        }
+      ],
+      "id": 49,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "3"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_tab",
+          "parameter": "4"
+        }
+      ],
+      "id": 50,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "physical",
+            "value": "Digit4"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_tab",
+          "parameter": "4"
+        }
+      ],
+      "id": 51,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "4"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_tab",
+          "parameter": "5"
+        }
+      ],
+      "id": 52,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "physical",
+            "value": "Digit5"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_tab",
+          "parameter": "5"
+        }
+      ],
+      "id": 53,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "5"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_tab",
+          "parameter": "6"
+        }
+      ],
+      "id": 54,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "physical",
+            "value": "Digit6"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_tab",
+          "parameter": "6"
+        }
+      ],
+      "id": 55,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "6"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_tab",
+          "parameter": "7"
+        }
+      ],
+      "id": 56,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "physical",
+            "value": "Digit7"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_tab",
+          "parameter": "7"
+        }
+      ],
+      "id": 57,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "7"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_tab",
+          "parameter": "8"
+        }
+      ],
+      "id": 58,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "physical",
+            "value": "Digit8"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_tab",
+          "parameter": "8"
+        }
+      ],
+      "id": 59,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "8"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "last_tab"
+        }
+      ],
+      "id": 60,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "9"
+          },
+          "modifiers": 4
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "toggle_fullscreen"
+        }
+      ],
+      "id": 61,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "enter"
+          },
+          "modifiers": 2
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "toggle_split_zoom"
+        }
+      ],
+      "id": 62,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "enter"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "toggle_command_palette"
+        }
+      ],
+      "id": 63,
+      "origin": "profile",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "p"
+          },
+          "modifiers": 3
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "paste_from_clipboard"
+        }
+      ],
+      "id": 64,
+      "origin": "windows_adaptation",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "insert"
+          },
+          "modifiers": 1
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "write_screen_file",
+          "parameter": "copy,plain"
+        }
+      ],
+      "id": 65,
+      "origin": "windows_adaptation",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "j"
+          },
+          "modifiers": 11
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_split",
+          "parameter": "previous"
+        }
+      ],
+      "id": 66,
+      "origin": "windows_adaptation",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "["
+          },
+          "modifiers": 10
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "goto_split",
+          "parameter": "next"
+        }
+      ],
+      "id": 67,
+      "origin": "windows_adaptation",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "logical",
+            "value": "]"
+          },
+          "modifiers": 10
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "resize_split",
+          "parameter": "up,10"
+        }
+      ],
+      "id": 68,
+      "origin": "windows_adaptation",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "arrow_up"
+          },
+          "modifiers": 11
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "resize_split",
+          "parameter": "down,10"
+        }
+      ],
+      "id": 69,
+      "origin": "windows_adaptation",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "arrow_down"
+          },
+          "modifiers": 11
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "resize_split",
+          "parameter": "left,10"
+        }
+      ],
+      "id": 70,
+      "origin": "windows_adaptation",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "arrow_left"
+          },
+          "modifiers": 11
+        }
+      ],
+      "table": "default"
+    },
+    {
+      "actions": [
+        {
+          "id": "resize_split",
+          "parameter": "right,10"
+        }
+      ],
+      "id": 71,
+      "origin": "windows_adaptation",
+      "policy": {
+        "consumption": "consumed",
+        "performable": false
+      },
+      "predicate": {
+        "forbidden": 0,
+        "required": 0
+      },
+      "priority": 0,
+      "scope": "focused_surface",
+      "sequence": [
+        {
+          "key": {
+            "kind": "named",
+            "value": "arrow_right"
+          },
+          "modifiers": 11
+        }
+      ],
+      "table": "default"
+    }
+  ],
+  "diagnostics": [],
+  "platform": "windows_adapted",
+  "profile": "ghostty-1.3",
+  "schema_version": 1,
+  "stats": {
+    "bindings": 72,
+    "max_candidates_per_trigger": 1,
+    "reverse_actions": 33,
+    "tables": 1,
+    "trie_nodes": 73
+  },
+  "upstream_platform": "linux_bsd"
+}

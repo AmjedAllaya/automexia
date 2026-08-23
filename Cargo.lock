@@ -497,6 +497,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "automexia-keybindings"
+version = "0.4.0"
+dependencies = [
+ "criterion",
+ "proptest",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "automexia-terminal"
 version = "0.4.0"
 dependencies = [
@@ -512,6 +523,7 @@ dependencies = [
  "automexia-extension-api",
  "automexia-extension-runtime",
  "automexia-image",
+ "automexia-keybindings",
  "automexia-ui-model",
  "base64",
  "bitflags 2.13.1",
@@ -4271,6 +4283,7 @@ dependencies = [
 name = "rio-backend"
 version = "0.4.0"
 dependencies = [
+ "automexia-keybindings",
  "base64",
  "dirs",
  "onig",
@@ -6490,6 +6503,7 @@ checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
 name = "xtask"
 version = "0.4.0"
 dependencies = [
+ "automexia-keybindings",
  "fs2",
  "image",
  "process-wrap",

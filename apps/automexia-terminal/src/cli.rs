@@ -13,6 +13,50 @@ pub struct Cli {
     #[clap(subcommand)]
     pub command: Option<CliCommand>,
 
+    /// List typed compatibility actions without starting the GUI.
+    #[clap(long, conflicts_with = "list_keybinds")]
+    pub list_actions: bool,
+
+    /// List effective compatibility keybindings without starting the GUI.
+    #[clap(long, conflicts_with = "list_actions")]
+    pub list_keybinds: bool,
+
+    /// Profile used by keybinding list/explain output.
+    #[clap(long, value_enum)]
+    pub profile: Option<KeybindingProfile>,
+
+    /// Synthetic platform table used by keybinding list/explain output.
+    #[clap(long, value_enum)]
+    pub platform: Option<KeybindingPlatform>,
+
+    /// Filter keybinding output by origin.
+    #[clap(long, value_enum)]
+    pub origin: Option<KeybindingOrigin>,
+
+    /// Include action aliases and unavailable/deprecated schemas.
+    #[clap(long)]
+    pub aliases: bool,
+
+    /// Include compiler collision/shadowing diagnostics.
+    #[clap(long)]
+    pub shadowing: bool,
+
+    /// Include unavailable or deprecated actions in list output.
+    #[clap(long)]
+    pub unavailable: bool,
+
+    /// Show only effective compiled bindings.
+    #[clap(long)]
+    pub effective: bool,
+
+    /// Explain one trigger or stable action ID.
+    #[clap(long)]
+    pub explain: Option<String>,
+
+    /// Emit stable JSON for compatibility list/explain output.
+    #[clap(long)]
+    pub json: bool,
+
     /// Options which can be passed via IPC.
     #[clap(flatten)]
     pub window_options: WindowOptions,
@@ -28,6 +72,101 @@ pub enum CliCommand {
     Aliases(AliasesCommand),
     /// Inspect and explicitly enable reviewed DevOps Quick Action packs.
     Packs(PacksCommand),
+    /// Preview or explicitly apply a bounded compatibility migration.
+    Migrate(MigrationCommand),
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum KeybindingProfile {
+    #[default]
+    Automexia,
+    Ghostty,
+    #[value(name = "ghostty-1.3", alias = "ghostty13")]
+    Ghostty13,
+}
+
+impl From<KeybindingProfile> for automexia_keybindings::ProfileId {
+    fn from(value: KeybindingProfile) -> Self {
+        match value {
+            KeybindingProfile::Automexia => Self::Automexia,
+            KeybindingProfile::Ghostty => Self::Ghostty,
+            KeybindingProfile::Ghostty13 => Self::Ghostty13,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum KeybindingPlatform {
+    LinuxBsd,
+    Macos,
+    Windows,
+}
+
+impl From<KeybindingPlatform> for automexia_keybindings::PlatformFamily {
+    fn from(value: KeybindingPlatform) -> Self {
+        match value {
+            KeybindingPlatform::LinuxBsd => Self::LinuxBsd,
+            KeybindingPlatform::Macos => Self::Macos,
+            KeybindingPlatform::Windows => Self::Windows,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum KeybindingOrigin {
+    BuiltIn,
+    Profile,
+    WindowsAdaptation,
+    Imported,
+    LegacyUser,
+    User,
+}
+
+impl From<KeybindingOrigin> for automexia_keybindings::BindingOrigin {
+    fn from(value: KeybindingOrigin) -> Self {
+        match value {
+            KeybindingOrigin::BuiltIn => Self::BuiltIn,
+            KeybindingOrigin::Profile => Self::Profile,
+            KeybindingOrigin::WindowsAdaptation => Self::WindowsAdaptation,
+            KeybindingOrigin::Imported => Self::Imported,
+            KeybindingOrigin::LegacyUser => Self::LegacyUser,
+            KeybindingOrigin::User => Self::User,
+        }
+    }
+}
+
+#[derive(Args, Debug)]
+pub struct MigrationCommand {
+    #[clap(subcommand)]
+    pub source: MigrationSource,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum MigrationSource {
+    /// Import only Ghostty keybindings; every other option is ignored.
+    Ghostty {
+        /// Exact root Ghostty configuration. Auto-detected when omitted.
+        #[clap(long, value_hint = ValueHint::FilePath)]
+        input: Option<PathBuf>,
+        /// Automexia configuration to update. Defaults to the active path.
+        #[clap(long, value_hint = ValueHint::FilePath)]
+        output: Option<PathBuf>,
+        /// Preview only. This is the default and never writes.
+        #[clap(long, conflicts_with = "apply")]
+        dry_run: bool,
+        /// Apply the reviewed migration atomically.
+        #[clap(long, requires = "confirm", conflicts_with = "dry_run")]
+        apply: bool,
+        /// Confirm that the dry-run report was reviewed.
+        #[clap(long, requires = "apply")]
+        confirm: bool,
+        /// Emit the report as stable JSON.
+        #[clap(long)]
+        json: bool,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -527,6 +666,56 @@ mod tests {
         assert_eq!(command.get_name(), "automexia");
         assert_eq!(command.get_bin_name(), Some("automexia"));
         assert_eq!(command.get_version(), Some(env!("CARGO_PKG_VERSION")));
+    }
+
+    #[test]
+    fn compatibility_listing_and_migration_mutation_are_explicit() {
+        let listing = Cli::try_parse_from([
+            "automexia",
+            "--list-keybinds",
+            "--profile",
+            "ghostty-1.3",
+            "--platform",
+            "windows",
+            "--json",
+        ])
+        .unwrap();
+        assert!(listing.list_keybinds);
+        assert_eq!(listing.profile, Some(KeybindingProfile::Ghostty13));
+
+        let preview = Cli::try_parse_from([
+            "automexia",
+            "migrate",
+            "ghostty",
+            "--input",
+            "ghostty.conf",
+        ])
+        .unwrap();
+        assert!(matches!(
+            preview.command,
+            Some(CliCommand::Migrate(MigrationCommand {
+                source: MigrationSource::Ghostty { apply: false, .. }
+            }))
+        ));
+        assert!(Cli::try_parse_from([
+            "automexia",
+            "migrate",
+            "ghostty",
+            "--input",
+            "ghostty.conf",
+            "--apply",
+        ])
+        .is_err());
+        assert!(Cli::try_parse_from([
+            "automexia",
+            "migrate",
+            "ghostty",
+            "--input",
+            "ghostty.conf",
+            "--apply",
+            "--confirm",
+        ])
+        .is_ok());
     }
 
     #[test]

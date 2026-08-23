@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "automexia-keybindings",
     "automexia-extension-api",
     "automexia-extension-runtime",
     "automexia-devops",
@@ -58,6 +59,7 @@ log-level-environment = "AUTOMEXIA_LOG_LEVEL"
 shell-integration-environment = "AUTOMEXIA_SHELL_INTEGRATION"
 
 [workspace.dependencies]
+automexia-keybindings = { path = "automexia-keybindings", version = "0.4.0" }
 automexia-extension-api = { path = "automexia-extension-api", version = "0.4.0" }
 automexia-extension-runtime = { path = "automexia-extension-runtime", version = "0.4.0" }
 automexia-devops = { path = "automexia-devops", version = "0.4.0" }
