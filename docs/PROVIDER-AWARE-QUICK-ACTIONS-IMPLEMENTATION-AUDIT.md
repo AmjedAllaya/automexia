@@ -179,3 +179,26 @@ checks pass.
 Rollback removes provider contributions and the route-published CP4 snapshot
 path. Existing CP2/CP3 persisted actions, shortcut, search, insertion, provider
 capsules, official CLI state, and terminal operation remain unchanged.
+
+## Implementation progress
+
+The neutral model increment is now fully implemented locally. The action core
+owns bounded candidate/snapshot validation, deterministic context and binding
+digests, redacted debug/audit values, explicit freshness/expiry/broker
+decisions, production confirmation metadata, and optional capsule-layer search
+indexing. Focused tests cover current and every non-current state, exact
+session/revision isolation, expiry, production, broker-required actions,
+hostile bidi text, invalid generations, duplicates, searchability, and
+redaction. The existing Quick Action Criterion target now measures 16-action
+snapshot construction and cached search.
+
+The 2026-08-23 Windows same-host Criterion run (50 samples, 16 AWS fixtures,
+optimized benchmark profile) measured snapshot construction at
+201.49–205.17 µs and cached search at 48.200–50.620 µs. This is local
+comparative evidence rather than a release threshold or multi-platform claim;
+the run reported high outliers in 7/50 and 6/50 samples respectively.
+
+Provider contributions, application route publication, UI presentation and
+revalidation, policy/fuzz evidence, final documentation, and the full gate
+ladder remain in progress. No product or provider activation is claimed by this
+increment.

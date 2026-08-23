@@ -13,8 +13,9 @@ use std::{
 
 use super::{
     validate_quick_actions, ActionScope, ActionTemplate, ArgumentToken, ExecutionMode,
-    PlaceholderSensitivity, QuickAction, QuickActionDocument, RiskClass, ShellKind,
-    MAX_ACTIONS, MAX_STRING_BYTES, QUICK_ACTION_SCHEMA_VERSION,
+    PlaceholderSensitivity, ProviderActionBinding, ProviderActionSnapshot, QuickAction,
+    QuickActionDocument, RiskClass, ShellKind, MAX_ACTIONS, MAX_STRING_BYTES,
+    QUICK_ACTION_SCHEMA_VERSION,
 };
 
 pub const MAX_QUERY_BYTES: usize = MAX_STRING_BYTES;
@@ -87,6 +88,7 @@ struct IndexedAction {
     action: Arc<QuickAction>,
     layer: LayerIdentity,
     revision: u64,
+    provider: Option<Arc<ProviderActionBinding>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -99,6 +101,7 @@ pub struct ActionConflict {
 #[derive(Clone, Debug)]
 pub struct ActionSearchHit {
     pub action: Arc<QuickAction>,
+    pub provider: Option<Arc<ProviderActionBinding>>,
     pub source: &'static str,
     pub source_revision: u64,
     pub score: i32,
@@ -195,11 +198,63 @@ impl ActionIndex {
                     action: Arc::new(action),
                     layer: layer.identity.clone(),
                     revision: layer.revision,
+                    provider: None,
                 });
             }
         }
         indexed.sort_by_key(|entry| entry.layer.precedence());
         Ok(Self { actions: indexed })
+    }
+
+    pub fn build_with_provider_snapshot(
+        mut layers: Vec<ActionLayer>,
+        snapshot: &ProviderActionSnapshot,
+    ) -> Result<Self, IndexError> {
+        let identity = LayerIdentity::Capsule {
+            session_id: snapshot.session_id(),
+            revision: snapshot.capsule_revision(),
+        };
+        if layers.iter().any(|layer| layer.identity == identity) {
+            return Err(IndexError::InvalidLayerIdentity);
+        }
+        let bindings = snapshot
+            .actions()
+            .iter()
+            .map(|candidate| {
+                (
+                    candidate.action().id.clone(),
+                    Arc::new(candidate.binding().clone()),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        layers.push(ActionLayer {
+            identity: identity.clone(),
+            revision: snapshot.capsule_revision(),
+            actions: snapshot
+                .actions()
+                .iter()
+                .map(|candidate| candidate.action().clone())
+                .collect(),
+        });
+        let mut index = Self::build(layers)?;
+        let mut attached = 0usize;
+        for entry in &mut index.actions {
+            if entry.layer == identity {
+                let Some(binding) = bindings.get(&entry.action.id) else {
+                    return Err(IndexError::InvalidAction {
+                        layer: identity.label(),
+                    });
+                };
+                entry.provider = Some(Arc::clone(binding));
+                attached += 1;
+            }
+        }
+        if attached != bindings.len() {
+            return Err(IndexError::InvalidAction {
+                layer: identity.label(),
+            });
+        }
+        Ok(index)
     }
 
     pub fn len(&self) -> usize {
@@ -234,6 +289,7 @@ impl ActionIndex {
                 let score = search_score(&normalized, &entry.action)?;
                 Some(ActionSearchHit {
                     action: Arc::clone(&entry.action),
+                    provider: entry.provider.as_ref().map(Arc::clone),
                     source: entry.layer.label(),
                     source_revision: entry.revision,
                     score,

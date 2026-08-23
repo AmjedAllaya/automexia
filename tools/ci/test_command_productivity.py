@@ -58,6 +58,7 @@ class CommandProductivityPolicyTests(unittest.TestCase):
         self.assertEqual(counts["threats"], 16)
         self.assertGreater(counts["runtime_files"], 100)
         self.assertEqual(counts["cp2_pure_action_files"], 7)
+        self.assertEqual(counts["cp4_pure_action_files"], 1)
         self.assertEqual(counts["cp2_persistence_files"], 13)
 
     def test_versioned_hostile_mutation_corpus_is_rejected(self) -> None:
@@ -233,7 +234,7 @@ class CommandProductivityPolicyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             files = []
-            for relative in sorted(POLICY.CP2_PURE_ACTION_FILES):
+            for relative in sorted(POLICY.PURE_ACTION_FILES):
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("struct QuickAction;\n", encoding="utf-8")
@@ -258,7 +259,7 @@ class CommandProductivityPolicyTests(unittest.TestCase):
                         encoding="utf-8",
                     )
                     with self.assertRaisesRegex(
-                        POLICY.CommandProductivityError, "capability-free CP2"
+                        POLICY.CommandProductivityError, "capability-free CP2/CP3/CP4"
                     ):
                         POLICY.validate_pure_action_sources(root, files)
 
@@ -266,7 +267,7 @@ class CommandProductivityPolicyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             files = []
-            for relative in sorted(POLICY.CP2_PURE_ACTION_FILES):
+            for relative in sorted(POLICY.PURE_ACTION_FILES):
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("struct QuickAction;\n", encoding="utf-8")
@@ -278,6 +279,17 @@ class CommandProductivityPolicyTests(unittest.TestCase):
                 POLICY.CommandProductivityError, "exact reviewed boundary"
             ):
                 POLICY.validate_pure_action_sources(root, files)
+
+    def test_cp4_provider_projection_has_a_separate_pure_source_owner(self) -> None:
+        self.assertEqual(
+            POLICY.CP4_PURE_ACTION_FILES,
+            {"automexia-devops/src/actions/provider.rs"},
+        )
+        self.assertTrue(
+            POLICY.CP2_PURE_ACTION_FILES.isdisjoint(
+                POLICY.CP4_PURE_ACTION_FILES
+            )
+        )
 
     def _persistence_fixture(self, root: Path) -> list[Path]:
         files = []

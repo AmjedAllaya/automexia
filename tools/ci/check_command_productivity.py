@@ -177,6 +177,10 @@ CP2_PURE_ACTION_FILES = {
     "automexia-devops/src/actions/projection.rs",
     "automexia-devops/src/actions/validation.rs",
 }
+CP4_PURE_ACTION_FILES = {
+    "automexia-devops/src/actions/provider.rs",
+}
+PURE_ACTION_FILES = CP2_PURE_ACTION_FILES | CP4_PURE_ACTION_FILES
 CP2_PERSISTENCE_FILES = {
     "apps/automexia-terminal/src/automexia/quick_actions/cli.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/mod.rs",
@@ -798,10 +802,10 @@ def validate_pure_action_sources(root: Path, runtime_files: list[Path]) -> set[s
     }
     if not present:
         return set()
-    if present != CP2_PURE_ACTION_FILES:
-        unexpected = sorted(present.symmetric_difference(CP2_PURE_ACTION_FILES))
+    if present != PURE_ACTION_FILES:
+        unexpected = sorted(present.symmetric_difference(PURE_ACTION_FILES))
         raise CommandProductivityError(
-            f"CP2/CP3 pure action source set is not the exact reviewed boundary: {unexpected}"
+            f"CP2/CP3/CP4 pure action source set is not the exact reviewed boundary: {unexpected}"
         )
     for relative in sorted(present):
         content = read_lower(root / relative)
@@ -811,7 +815,7 @@ def validate_pure_action_sources(root: Path, runtime_files: list[Path]) -> set[s
         )
         if marker is not None:
             raise CommandProductivityError(
-                f"{relative} crosses the capability-free CP2/CP3 model boundary: {marker!r}"
+                f"{relative} crosses the capability-free CP2/CP3/CP4 model boundary: {marker!r}"
             )
     return present
 
@@ -967,7 +971,8 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
     return {
         "shell_files": len(shell_files),
         "cp1_allowed_shell_files": len(CP1_ALLOWED_SHELL_FILES),
-        "cp2_pure_action_files": len(pure_action_files),
+        "cp2_pure_action_files": len(pure_action_files & CP2_PURE_ACTION_FILES),
+        "cp4_pure_action_files": len(pure_action_files & CP4_PURE_ACTION_FILES),
         "cp2_persistence_files": len(persistence_files),
         "interactive_files": len(interactive_files),
         "runtime_files": len(runtime_files),
@@ -1100,6 +1105,7 @@ def main() -> int:
         f"interactive_files={counts['interactive_files']}, "
         f"runtime_files={counts['runtime_files']}, "
         f"cp2_pure_action_files={counts['cp2_pure_action_files']}, "
+        f"cp4_pure_action_files={counts['cp4_pure_action_files']}, "
         f"cp2_persistence_files={counts['cp2_persistence_files']})"
     )
     return 0
