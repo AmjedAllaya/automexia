@@ -1079,7 +1079,7 @@ accessibility evidence remain D6.1-D6.5 work.
 1. **D6.1 AWS — source-complete, nonactivated:** independent bounded public
    profiles, exact IAM Identity Center PKCE/device and STS operations, strict
    caller-identity output, exact SSM plugin/PTY/tree-cleanup plan, and EKS
-   dry-run intent pass locally. Product controls, D3 activation, M11 ingestion,
+   dry-run intent pass locally. Product controls and D3 activation into M11 runtime ingestion,
    and controlled native provider evidence remain.
 2. **D6.2 Azure — source-complete, nonactivated:** bounded public account JSON,
    exact tenant-bound broker/browser/device login and subscription status, AAD-only
@@ -1089,8 +1089,12 @@ accessibility evidence remain D6.1-D6.5 work.
    configuration, per-command user/project observation, opaque Workforce/
    Workload references, scope-bound IAP/OS Login, and private-environment GKE
    intent pass locally. D3/M11 product/native evidence remains.
-4. **D6.4 Kubernetes/OpenShift — not done:** trusted kubeconfig sources, exec
-   allowlists, contexts/namespaces/projects, and visible login.
+4. **D6.4 Kubernetes/OpenShift — source-complete, nonactivated:** independent
+   packages now enforce bounded stable exact sources/private transient inputs,
+   collision-denied YAML/JSON merge, public-only contexts/namespaces/projects,
+   default-denied exact exec review, and exact isolated kubectl/oc plans. Product
+   activation, real clients/clusters/plugins, transient-file lifecycle, native
+   cleanup/resources/accessibility, and release evidence remain.
 5. **D6.5 organization adapters — not done:** Teleport first; OpenBao only after
    proposed ADR 0024 is accepted and its token-helper/certificate boundary
    passes protected security review.

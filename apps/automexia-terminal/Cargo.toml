@@ -73,6 +73,8 @@ automexia-devops-ssh = { workspace = true }
 automexia-devops-aws = { workspace = true }
 automexia-devops-azure = { workspace = true }
 automexia-devops-gcp = { workspace = true }
+automexia-devops-kubernetes = { workspace = true }
+automexia-devops-openshift = { workspace = true }
 blake3 = "1.8.5"
 dirs = "6.0.0"
 notify = "8.2.0"

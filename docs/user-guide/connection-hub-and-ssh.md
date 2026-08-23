@@ -254,12 +254,28 @@ with gcloud, Workforce/Workload files remain opaque, IAP stays bound to the
 capsule project/zone with gcloud-owned SSH keys and OS Login, and GKE can name
 only an opaque M11-owned private `KUBECONFIG` reference.
 
+D6.4/M11 now adds internal, nonactivated Kubernetes and OpenShift review
+boundaries. An explicit future scan may read only an exact absolute file grant
+with a stable regular-file check, or a newly allocated private cloud output. It
+keeps public context/cluster/user-reference/namespace/project/TLS/provenance
+metadata only, rejects ambiguous merges and external credential paths, and
+shows exec declarations as denied. Tokens, passwords, client keys/certificates,
+and exec environment values are never shown or persisted. Exact `kubectl`/`oc`
+plans use a private `KUBECONFIG`; OpenShift login must write to a new private
+output, and managed plans never change shared current context or project.
+
+These controls are not available as product buttons yet. If a future review
+reports `source changed`, reselect and review the source; if it reports an exec
+plugin, keep it denied unless an administrator can verify its executable digest,
+ordered arguments, environment names, and interactivity. Disabling or removing
+either internal registration leaves external kubeconfig and CLI state unchanged.
 Continue to authenticate with the official CLI in a shell today. Do not expect
 the Hub to change an AWS default profile, Azure subscription, Google Cloud active
 configuration, Kubernetes current context, or kubeconfig. Any later provider
 flow must return to fresh review and can be cancelled, revoked, disabled, or
-removed without affecting ordinary terminal use. D6.4-D6.5 adapters and all real
-native/provider evidence remain separate work.
+removed without affecting ordinary terminal use. D6.5 adapters and all real
+client/cluster/native provider evidence remain separate work; D6.4 is source-
+complete but not product-active.
 
 ## Connect with system OpenSSH today
 
@@ -315,8 +331,9 @@ protected release gate. Typed user/port/config jumps, full host-trust explanatio
 safe copy recovery, cancellation/reconnect/receipts source, and public identity
 status parsing are complete locally but nonactivated. D6.0's provider-neutral
 capsule/authentication framework is complete locally. D6.1 AWS, D6.2 Azure, and
-D6.3 Google Cloud adapters are source-complete but nonactivated; D6.4-D6.5 still
-own Kubernetes, OpenShift, Teleport, and OpenBao adapters. There is no current
+D6.3 Google Cloud and D6.4 Kubernetes/OpenShift adapters are source-complete
+but nonactivated; D6.5 still owns Teleport and, after ADR 0024 acceptance,
+OpenBao. There is no current
 Hub remote-file browser,
 credential vault, automatic provider login, cloud refresh, or provider command
 execution.
