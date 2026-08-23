@@ -41,6 +41,7 @@ fn profile() -> ConnectionProfileV1 {
             revision: 1,
             public_environment: Vec::new(),
             context_references: Vec::new(),
+            provider_contexts: Vec::new(),
         },
         recipe_references: vec![RecipeReference {
             id: "benchmark-recipe".into(),
@@ -215,10 +216,63 @@ fn m6_workspace_and_broadcast_planning(criterion: &mut Criterion) {
         })
     });
 }
+fn provider_context(index: usize) -> ProviderContextTemplate {
+    ProviderContextTemplate {
+        provider: ProviderKind::Aws,
+        configuration_reference: OpaqueReference::new(format!("config-{index}")),
+        public_identity: format!("account-{index}"),
+        scope: vec![ProviderScopeBinding {
+            name: "region".into(),
+            public_value: "eu-west-3".into(),
+        }],
+        provenance: ProviderContextProvenance {
+            kind: ProviderProvenanceKind::UserSelected,
+            source_reference: OpaqueReference::new(format!("source-{index}")),
+            source_revision: "revision-1".into(),
+            observed_at_ms: 1,
+        },
+        freshness: ProviderContextFreshness::Current,
+        expires_at_ms: Some(60_000),
+        risk: EnvironmentRisk::Development,
+    }
+}
+
+fn m7_provider_capsule_isolation(criterion: &mut Criterion) {
+    let capsules = (0..MAX_PROVIDER_CAPSULES)
+        .map(|index| ProviderCapsule {
+            schema_version: CONNECTION_SCHEMA_VERSION,
+            capsule_id: format!("capsule-{index}"),
+            session_id: index as u64 + 1,
+            revision: 1,
+            contexts: vec![provider_context(index)],
+            created_at_ms: 1,
+        })
+        .collect::<Vec<_>>();
+    criterion.bench_function("provider_auth_bind_and_read_64_capsules", |bencher| {
+        bencher.iter(|| {
+            let mut store = ProviderAuthCapsuleStore::new(MAX_PROVIDER_CAPSULES);
+            for capsule in black_box(&capsules) {
+                store.bind(capsule.clone()).unwrap();
+            }
+            for index in 0..MAX_PROVIDER_CAPSULES {
+                black_box(
+                    store
+                        .cached(
+                            black_box(&format!("capsule-{index}")),
+                            index as u64 + 1,
+                            ProviderKind::Aws,
+                        )
+                        .unwrap(),
+                );
+            }
+        })
+    });
+}
 criterion_group!(
     benches,
     connection_plan_64_steps,
     direct_openssh_preparation,
-    m6_workspace_and_broadcast_planning
+    m6_workspace_and_broadcast_planning,
+    m7_provider_capsule_isolation
 );
 criterion_main!(benches);

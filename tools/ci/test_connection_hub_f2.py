@@ -34,7 +34,7 @@ class F2ContractTests(unittest.TestCase):
                 "models": 9,
                 "tests": 51,
                 "providers": 10,
-                "auth_states": 14,
+                "auth_states": 19,
                 "layouts": 4,
                 "fixtures": 4,
             },

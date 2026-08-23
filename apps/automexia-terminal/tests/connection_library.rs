@@ -48,6 +48,7 @@ fn profile() -> ConnectionProfileV1 {
                 value: "/private/path".into(),
             }],
             context_references: vec![OpaqueReference::new("private-context")],
+            provider_contexts: Vec::new(),
         },
         recipe_references: vec![RecipeReference {
             id: "private-recipe-id".into(),

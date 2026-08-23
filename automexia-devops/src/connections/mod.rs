@@ -10,6 +10,7 @@ mod documents;
 mod model;
 mod openssh_tunnels;
 mod planner;
+mod provider_auth;
 mod state;
 mod validation;
 mod workspace;
@@ -44,6 +45,7 @@ pub use openssh_tunnels::{
     DIRECT_OPENSSH_TUNNEL_MANAGED_OPTIONS, MAX_DIRECT_OPENSSH_TUNNEL_HOST_BYTES,
 };
 pub use planner::{fingerprint_profile, fingerprint_recipe, resolve_connection_plan};
+pub use provider_auth::*;
 pub use state::{apply_auth_event, apply_result_event};
 pub use validation::{
     parse_connection_definition_json, parse_connection_intent_json,

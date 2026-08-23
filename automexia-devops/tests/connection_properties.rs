@@ -45,6 +45,7 @@ fn profile(display_name: String, target: String) -> ConnectionProfileV1 {
             revision: 1,
             public_environment: Vec::new(),
             context_references: Vec::new(),
+            provider_contexts: Vec::new(),
         },
         recipe_references: Vec::new(),
         tunnels: Vec::new(),

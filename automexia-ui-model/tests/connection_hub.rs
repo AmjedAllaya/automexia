@@ -465,12 +465,12 @@ fn synthetic_provider_and_auth_fixtures_cover_the_frozen_matrices() {
         "../../tests/fixtures/connection-hub/provider-observations/all-auth-states-v1.json"
     ))
     .unwrap();
-    assert_eq!(observations.len(), 14);
+    assert_eq!(observations.len(), 19);
     let ids = observations
         .iter()
         .map(|observation| observation.id.as_str())
         .collect::<std::collections::HashSet<_>>();
-    assert_eq!(ids.len(), 14);
+    assert_eq!(ids.len(), 19);
     for (index, observation) in observations.into_iter().enumerate() {
         let connection = ConnectionSummary {
             id: format!("auth-{index}"),
