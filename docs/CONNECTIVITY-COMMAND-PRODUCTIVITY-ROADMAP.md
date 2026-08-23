@@ -74,7 +74,7 @@ documentation, feature assurance, and a change fragment.
 | Read-only Connection Hub | D5.1 | Fully done locally; external evidence partial | App-scoped joined runtime, exact reviewed native selection, bounded modal/search/filter/grouping, CAS favorite/tag diffs, read-only recent/library data, disabled authority, tests, benchmark, and release-build evidence | Native macOS/Linux picker/permission plus controlled Narrator/NVDA, VoiceOver, and Orca evidence |
 | Managed OpenSSH | D5.2 | Partially done overall; F5.1-F5.3 source-complete nonactivated | Exact direct/routed/tunnel argv, typed endpoints, loopback defaults, strong tunnel review, full trust evidence, safe copy, guarded lifecycle, receipts, reconnect, and compact states pass locally | Protected activation/attestation, actual status execution, real OpenSSH/forced cleanup, native resources/accessibility, and F5.4 manifests |
 | Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, approval fingerprints, and private transactional Connection Library persistence/redacted transfer are implemented | Product editor, remote workspace lifecycle, and separately gated execution remain |
-| Multi-cloud framework and providers | D6.0-D6.5 | Partially done overall: D6.0 fully done locally; D6.1-D6.4 source-complete nonactivated; D6.5 not done | Provider-neutral capsules plus independent AWS, Azure, GCP, Kubernetes, and OpenShift bounded/exact source contracts, tests, and benchmarks | D3 product activation, Teleport/OpenBao gates, and real official-CLI/cluster/native evidence |
+| Multi-cloud framework and providers | D6.0-D6.5 | Partially done overall: D6.0 fully done locally; D6.1-D6.5 Teleport slice source-complete/nonactivated; OpenBao not done | Provider-neutral capsules plus independent AWS, Azure, GCP, Kubernetes, OpenShift, and Teleport bounded/exact source contracts, tests, and benchmarks | D3 product activation, accepted ADR 0024 plus OpenBao implementation, and real official-CLI/cluster/native evidence |
 | Native completion | CP1 | Fully done | shell integration, xtask completion manager, CP1 contract/tests | Hosted three-OS and longitudinal release evidence |
 | Quick Actions and persistence | CP2.0-CP2.2 | Fully done | automexia-devops model, application store/worker/UI/CLI tests | Hosted shell insertion, controlled accessibility, longitudinal evidence |
 | Aliases and DevOps packs | CP3.0-CP3.2 | Fully done | compiler, private generations, shell activation, packs, fuzz/bench/contracts | Hosted native and controlled baseline evidence |
@@ -549,9 +549,10 @@ custom code and every M6 execution path remain disabled.
 
 ## F7 - implement D6.0 provider-neutral auth and capsule orchestration
 
-Status: **Fully done locally** at the authority-free D6.0 framework boundary;
-D6.1-D6.5 adapters, product controls, and real official-CLI/native evidence are
-not done or external.
+Status: **Fully done locally** at the authority-free D6.0 framework boundary.
+D6.1-D6.4 and D6.5 Teleport source adapters are complete and nonactivated;
+product controls, real official-CLI/native evidence, and OpenBao remain external
+or not done.
 
 - [x] **Fully done locally:** strict bounded public provider identity, auth
   observation, immutable capsule, freshness, provenance, risk, operation,
@@ -673,17 +674,24 @@ Exit is met for the independently disabled source packages only. No client,
 cluster, network, credential, browser, PTY, or user kubeconfig ran.
 ## F12 - implement D6.5 organization identity slices
 
-Status: Not done.
+Status: Partially done overall: Teleport is source-complete and nonactivated;
+OpenBao is not implemented pending ADR 0024 acceptance.
 
-- [ ] Implement Teleport first through exact tsh version/login/status/ssh flows
-  with the external agent/cache remaining authoritative.
-- [ ] Add OpenBao public-key SSH certificate signing only after its token-helper
-  and certificate-file boundary passes separate security review.
-- [ ] Keep opaque references and public certificate metadata only.
-- [ ] Give each adapter independent grants, cache, revocation, native fixtures,
-  documentation, disable, and uninstall behavior.
+- [x] **Fully done locally:** implement Teleport through exact reviewed tsh
+  version/login/status/ssh/logout flows with Teleport-owned agent/cache/browser/
+  MFA/certificate authority and explicit agent/environment isolation.
+- [ ] **External prerequisite/not done:** add OpenBao public-key SSH certificate
+  signing only after ADR 0024 accepts its token-helper and certificate-file
+  boundary.
+- [x] **Fully done for Teleport:** retain opaque references and bounded public
+  proxy/cluster/user/role/login/Kubernetes/expiry/provenance metadata only.
+- [x] **Fully done for Teleport source:** independent disabled registration,
+  exact grants, revoke/logout, docs, hostile/redaction tests, and benchmark.
+- [ ] **External:** real `tsh`, proxy, browser/MFA, cache/certificate/agent, PTY,
+  cleanup/resource, accessibility, packaging, signing, and release fixtures.
 
-Exit: each organization adapter is independently approved and releasable.
+Exit is met only for Teleport’s disabled source package, not product activation
+or the combined organization-adapter release.
 
 ## F13 - implement CP4 provider-aware Quick Actions
 

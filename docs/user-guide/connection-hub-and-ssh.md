@@ -264,6 +264,16 @@ and exec environment values are never shown or persisted. Exact `kubectl`/`oc`
 plans use a private `KUBECONFIG`; OpenShift login must write to a new private
 output, and managed plans never change shared current context or project.
 
+D6.5/M12 now adds an internal, nonactivated Teleport boundary. A future explicit
+status action may ask the reviewed `tsh` client for bounded public proxy,
+cluster, user, role/login/Kubernetes hints, and certificate expiry; Automexia
+does not read `~/.tsh`, certificate contents, identity files, tokens, or SSH
+agent material. Exact reviewed login and SSH plans keep browser/MFA/cache/
+certificates with Teleport, opt out of agent addition, and refuse surprise
+relogin or automatic access requests. Logout revokes through `tsh`; disabling
+the internal adapter removes only its Automexia catalog entry. OpenBao is not
+implemented and requires ADR 0024 acceptance first.
+
 These controls are not available as product buttons yet. If a future review
 reports `source changed`, reselect and review the source; if it reports an exec
 plugin, keep it denied unless an administrator can verify its executable digest,
@@ -330,10 +340,10 @@ tunnels, real OpenSSH/forced-cleanup/resource/accessibility evidence, and the
 protected release gate. Typed user/port/config jumps, full host-trust explanation,
 safe copy recovery, cancellation/reconnect/receipts source, and public identity
 status parsing are complete locally but nonactivated. D6.0's provider-neutral
-capsule/authentication framework is complete locally. D6.1 AWS, D6.2 Azure, and
-D6.3 Google Cloud and D6.4 Kubernetes/OpenShift adapters are source-complete
-but nonactivated; D6.5 still owns Teleport and, after ADR 0024 acceptance,
-OpenBao. There is no current
+capsule/authentication framework is complete locally. D6.1 AWS, D6.2 Azure,
+D6.3 Google Cloud, D6.4 Kubernetes/OpenShift, and the D6.5 Teleport adapter are
+source-complete but nonactivated. OpenBao remains absent until ADR 0024 is
+accepted. There is no current
 Hub remote-file browser,
 credential vault, automatic provider login, cloud refresh, or provider command
 execution.

@@ -274,7 +274,7 @@ This approach also keeps external tools authoritative. OpenSSH remains the SSH i
 
 After production system-OpenSSH launch is proven, separately enabled provider adapters can contribute authentication/availability state, environment capsule metadata, cluster/cloud context, and bounded inventory. Provider-neutral core code must not import provider SDKs or credentials. Official CLIs and local configuration are preferred first; a later out-of-process adapter host is reserved for cases that genuinely need SDK/API access.
 
-Provider work is sequenced independently so AWS, Azure, Google Cloud, Kubernetes, OpenShift, Teleport, OpenBao, or future adapters can fail, be disabled, or be removed without destabilizing the terminal core.
+Provider work is sequenced independently so AWS, Azure, Google Cloud, Kubernetes, OpenShift, Teleport, OpenBao, or future adapters can fail, be disabled, or be removed without destabilizing the terminal core. The M8-M11 adapters and M12 Teleport source contract are implemented internally but nonactivated; OpenBao remains absent until ADR 0024 is accepted.
 
 ## What is not shipped v0.4 behavior
 

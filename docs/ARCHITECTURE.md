@@ -621,6 +621,46 @@ flags remain false behind D3. Reverting or disabling either registration does
 not edit kubeconfig or CLI state; real file allocation/cleanup, client/plugin/
 cluster execution, network, browser, PTY, and native release evidence remain
 external activation gates.
+### M12 Teleport organization-identity source boundary
+
+`automexia-devops-teleport` is the independently disabled D6.5 Teleport owner.
+It is a pure adapter over caller-supplied bytes and typed M7 capsules: no
+filesystem, process, socket, browser, agent, certificate cache, PTY, worker,
+persistence, renderer, startup, input, or resize authority exists in the crate.
+The application registers its manifest separately with only `ProcessSpawn` and
+`Network`, while every returned plan remains `execution_enabled == false`.
+
+Status ingress is frozen to the reviewed Teleport 18.10 client schema from
+`tsh status --client --format=json`. The decoder caps output at 256 KiB, JSON at
+4,096 nodes and depth 16, total active-plus-profile records at 32, collection
+items at 64, and public fields at 4 KiB. Benign unretained fields are discarded;
+malformed structure, non-empty environment overrides, sensitive unknown key
+names, userinfo/non-HTTPS proxy
+URLs, controls/bidi, duplicate profiles, and expired selections fail closed.
+Only normalized proxy, cluster, user, roles, logins, Kubernetes hints, RFC 3339
+expiry, and official-CLI provenance survive; unretained traits and profile data
+are discarded. `time` 0.3.55 parses the timestamp with only `std` and `parsing`.
+
+Exact local plans use `tsh version --client` and `tsh status --client
+--format=json`. Login, logout, and SSH bind proxy, cluster, user, capsule ID,
+session, revision, configuration reference, destination, ordered argv,
+capabilities, timeout/output ceilings, and whole-tree cancellation. All plans
+force `--add-keys-to-agent=no` and clear Teleport/agent overrides. SSH also uses
+`--relogin=false --request-mode=off`, preventing a reviewed connection from
+silently reauthenticating or creating an access request. `tsh` remains the only
+owner of its cache, certificates, browser, MFA, hardware keys, access policy,
+and any interactive authentication.
+
+Version support is intentionally narrow: Teleport 18.10 or later within major
+18 is accepted; earlier 18.x and future majors fail closed until reviewed.
+Revalidation rejects capsule, session, revision, proxy, cluster, user, and
+expiry drift before a plan may reach the protected D3 seam. Logout is the only
+revoke request and does not delete user-owned Teleport data. Disabling or
+reverting the package removes its catalog entry only. Real `tsh`, proxy,
+network, browser/MFA, cache/certificate/agent, PTY, cleanup/resource,
+accessibility, packaging, signing, and release evidence remain D3/native gates.
+OpenBao is not part of this authority and remains absent pending ADR 0024
+acceptance.
 ### Capability and process-launch contract
 
 The v0.4 capability enum is descriptive and local-read-only in practice. The

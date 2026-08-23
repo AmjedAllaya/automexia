@@ -8,6 +8,7 @@ members = [
     "extensions/devops-gcp",
     "extensions/devops-kubernetes",
     "extensions/devops-openshift",
+    "extensions/devops-teleport",
     "extensions/devops-ssh",
     "automexia-image",
     "automexia-ui-model",
@@ -65,6 +66,7 @@ automexia-devops-azure = { path = "extensions/devops-azure", version = "0.4.0" }
 automexia-devops-gcp = { path = "extensions/devops-gcp", version = "0.4.0" }
 automexia-devops-kubernetes = { path = "extensions/devops-kubernetes", version = "0.4.0" }
 automexia-devops-openshift = { path = "extensions/devops-openshift", version = "0.4.0" }
+automexia-devops-teleport = { path = "extensions/devops-teleport", version = "0.4.0" }
 automexia-devops-ssh = { path = "extensions/devops-ssh", version = "0.4.0" }
 automexia-image = { path = "automexia-image", version = "0.4.0" }
 automexia-ui-model = { path = "automexia-ui-model", version = "0.4.0" }
@@ -140,6 +142,7 @@ proptest = "1.11.0"
 dashmap = "6.2.1"
 flate2 = "1.1.9"
 configparser = { version = "3.2.0", default-features = false }
+time = { version = "=0.3.55", default-features = false, features = ["std", "parsing"] }
 
 [profile.release]
 strip = "symbols"           # See split-debuginfo - allows us to drop the size by ~65%

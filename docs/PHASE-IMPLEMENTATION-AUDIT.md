@@ -97,7 +97,7 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Multi-cloud | D6.2/M9 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded Azure public-account parser plus exact tenant login/account, AAD-only Bastion, opaque transient AKS contracts, and eight focused tests pass. D3 activation, M11 AKS ingestion, product UI, and controlled native/provider/resource/accessibility evidence remain. |
 | Multi-cloud | D6.3/M10 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded named gcloud parser plus exact per-command user/project, opaque federation, scope-bound IAP, private-environment GKE contracts, eight focused tests, and near-limit benchmark pass. D3 activation, M11 GKE ingestion, product UI, and controlled native/provider evidence remain. |
 | Multi-cloud | D6.4/M11 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded Kubernetes/OpenShift packages, trusted source/merge/exec/capsule/exact CLI contracts, 13 focused tests, app guards, dependency policy, and near-limit benchmark pass. D3/product activation and controlled real client/cluster/native/resource/accessibility evidence remain. |
-| Multi-cloud | D6.5/M12 | **Not implemented** | **Blocked** | Teleport remains planned; OpenBao requires ADR 0024 acceptance before code. Product UI and controlled native/provider evidence remain independently gated. |
+| Multi-cloud | D6.5/M12 | **Partial overall; Teleport source-complete/nonactivated** | **Partial/blocked** | Teleport has a bounded exact adapter and focused evidence; D3 product UI/activation and controlled native/provider evidence remain. OpenBao is absent pending ADR 0024 acceptance. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
 | Productivity | CP1 | **Fully implemented** | **Partial** | Shell-native completion and bounded explicit refresh exist; hosted native evidence remains. |
@@ -669,7 +669,7 @@ evidence remain. M6 activation stays false and CP3.3 local workspace tasks gain
 no remote/provider authority.
 ### D6.0-D6.5 — providers and multi-cloud
 
-**Partially implemented overall: D6.0/M7 is fully implemented locally; D6.1/M8 through D6.4/M11 are source-complete and nonactivated; D6.5/M12 is not implemented.**
+**Partially implemented overall: D6.0/M7 is fully implemented locally; D6.1/M8 through D6.4/M11 and the D6.5/M12 Teleport slice are source-complete and nonactivated; OpenBao is not implemented pending ADR 0024 acceptance.**
 
 D6.0 now owns one authority-free provider-neutral source boundary:
 
@@ -734,15 +734,20 @@ Eight Kubernetes and five OpenShift tests, app guards, warning-denied Clippy,
 passed. No real client, cluster, network, credential, plugin, browser, PTY, or
 user kubeconfig ran.
 
-The remaining provider slice is still not implemented:
+D6.5 Teleport now has an independently disabled source package. It parses only
+bounded public `tsh status --client --format=json`, requires exact current
+proxy/cluster/user and fresh RFC 3339 expiry, clears Teleport environment and
+agent integration, and builds exact nonactivated 18.10+ version/login/status/
+ssh/logout plans with capsule/session/revision revalidation. Eleven focused
+tests, app registration, warning-denied Clippy, dependency policy, and a noisy
+but statistically unchanged 100-sample Windows benchmark pass. No `tsh`, proxy,
+network, browser/MFA, cache/certificate/agent, PTY, or native release fixture
+ran.
 
-1. D6.5 independently enabled Teleport, then OpenBao after proposed ADR 0024 is accepted.
-
-D6.1-D6.4 still need D3 product activation/attestation, actual private
-transient-file allocation and cleanup, product review UI, controlled real-tool
-native tests, cleanup/resource/accessibility, and release evidence. D6.5 still
-needs independent Teleport implementation; OpenBao additionally needs accepted
-ADR 0024. Direct SDK inventory remains a later, explicit, lazy authority.
+D6.1-D6.5 still need D3 product activation/attestation, actual private
+transient-file allocation and cleanup where applicable, product review UI,
+controlled real-tool native tests, cleanup/resource/accessibility, and release
+evidence. OpenBao remains intentionally absent until ADR 0024 is accepted. Direct SDK inventory remains a later, explicit, lazy authority.
 
 ### D7 — public ecosystem, direct APIs, and AI
 
@@ -1059,7 +1064,7 @@ Planned work, with no shipped-command claim:
 | Identity references, agent/certificate/hardware public state, known-host explanation, routes/jumps/proxies/tunnels | D5.2 | M4 references/status/trust and M5 exact local/remote/dynamic tunnels, loopback defaults, strong review, and lifecycle are fully implemented locally and nonactivated; actual status execution, broader proxies, protected activation, and real F5.4 native evidence remain |
 | Quick Actions, aliases, lifecycle hooks, reviewed multi-target execution | CP2.2-CP4/D5E | CP2/CP3 actions are local/insert-only; M6 typed recipe lifecycle and armed broadcast review are source-complete, but multi-target execution remains disabled |
 | Declarative workspace persistence/restoration and visibly armed broadcast | M6/F6 | Review-only schema-2 persistence, restore, armed broadcast, semantic projection, and bounded tests are complete locally; product controller/renderer/execution and native evidence remain |
-| Per-pane multi-cloud/context commands and typed import/reconcile adapters | D6.0-D6.5/CP4 | Partially implemented: D6.0 immutable provider-context/capsule/auth lifecycle and review contracts are complete locally; all provider commands, import/reconcile adapters, product flows, and CP4 remain not implemented |
+| Per-pane multi-cloud/context commands and typed import/reconcile adapters | D6.0-D6.5/CP4 | Partially implemented: D6.0 provider-neutral lifecycle and the M8-M11 plus M12 Teleport bounded/exact source adapters are complete locally and nonactivated; product commands/import/reconcile flows, CP4, real provider/native evidence, and OpenBao remain gated |
 | Structured files/SFTP, bounded logs/bookmarks, team state/policy, shared sessions | D7 protected slices | Not implemented |
 | Mosh, Telnet, serial, public ecosystem packs, optional editor popup, AI explain/suggest | D7/CP5-CP6 | Not implemented/deferred |
 

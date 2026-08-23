@@ -291,6 +291,17 @@ and configurable resource budgets fit the 1 MiB untrusted kubeconfig boundary;
 values are avoided, and a handwritten YAML parser is rejected. The OpenShift
 package reuses this public kubeconfig contract but remains independently
 disabled and owns only exact `oc` plans.
+M12 wraps the organization-installed Teleport `tsh`; it does not bundle
+Teleport, implement its protocol, read `~/.tsh`, or adopt an SSH agent/browser/
+MFA stack. The reviewed 18.10 client contract uses exact local version/status
+commands and exact login/logout/SSH plans with agent addition, ambient Teleport
+environment, surprise relogin, and automatic access requests disabled. The
+adapter adopts pinned `time` 0.3.55 with only `std` and `parsing` for bounded RFC
+3339 expiry decoding. A handwritten timestamp parser and accepting unreviewed
+future `tsh` majors were rejected. The dependency is MIT OR Apache-2.0, pure
+Rust in this feature set, off hot paths, and passed advisories/bans/licenses/
+sources policy. Removing the Teleport package and `time` workspace dependency
+is the rollback; official Teleport state remains untouched.
 **Extensions build:** version-aware JSON/config parsers and normalization.
 Kubeconfig credential `exec` plugins must never run during passive indexing;
 launch uses an explicit deny/allow/allowlist decision.

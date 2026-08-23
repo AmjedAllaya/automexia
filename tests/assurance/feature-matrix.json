@@ -835,6 +835,31 @@
         "linux": {"level": "pr", "evidence": ["extensions/devops-kubernetes/src/implementation.rs", ".github/workflows/ci.yml#native"], "rationale": "Unix no-follow and symlink tests compile, but this M11 run did not execute natively on Linux."},
         "macos": {"level": "pr", "evidence": ["extensions/devops-kubernetes/src/implementation.rs", ".github/workflows/ci.yml#native"], "rationale": "Unix no-follow and symlink tests compile, but this M11 run did not execute natively on macOS."}
       }
+    },
+    {
+      "id": "provider-teleport-m12-source",
+      "title": "Nonactivated bounded Teleport organization-identity source contracts",
+      "components": ["extensions/devops-teleport", "automexia-devops", "automexia-extension-api", "apps/automexia-terminal"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#provider-authentication-framework-current-source-boundary"],
+        "reference": ["docs/MULTI-CLOUD-PROVIDERS-TESTING.md#m12-teleport-source-contracts"],
+        "explanation": ["docs/ARCHITECTURE.md#m12-teleport-organization-identity-source-boundary", "docs/MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "M12 adds no active renderer or control; product UI and controlled native screen-reader evidence remain external."},
+        "correctness": {"level": "pr", "evidence": ["extensions/devops-teleport/src/lib.rs", "extensions/devops-teleport/tests/contracts.rs", "apps/automexia-terminal/src/automexia/builtins/mod.rs"], "rationale": "Eleven focused contracts and one app guard cover bounded public status, expiry, exact version/login/status/ssh/logout plans, capsule revalidation, explicit failures, and independent disabled registration."},
+        "security": {"level": "pr", "evidence": ["extensions/devops-teleport/src/lib.rs", "extensions/devops-teleport/tests/contracts.rs", "automexia-devops/src/connections/provider_auth.rs"], "rationale": "Sensitive/ambient/hostile/expired input, proxy or capsule drift, agent addition, inherited Teleport environment, surprise relogin, and automatic access requests fail closed; the adapter never reads tsh cache, certificate, token, identity, or agent material."},
+        "performance": {"level": "controlled", "evidence": ["extensions/devops-teleport/benches/status.rs", "docs/MULTI-CLOUD-PROVIDERS-TESTING.md#m12-teleport-source-contracts"], "rationale": "A longer 100-sample Windows run measured 18.359-18.945 microseconds and found no statistically significant change (p=0.82) after a noisy 50-sample regression signal; controlled named-hardware baselines remain external."},
+        "resource_lifetime": {"level": "pr", "evidence": ["extensions/devops-teleport/src/lib.rs", "extensions/devops-teleport/tests/contracts.rs"], "rationale": "Pure plans own no worker, process, socket, browser, listener, file, certificate, cache, agent, PTY, route, or GPU resource; every future operation is bounded, cancellable as a process tree, and nonactivated."},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "The adapter performs no filesystem I/O or persistence, never reads or writes ~/.tsh, and retains only bounded public status plus opaque references."},
+        "resilience": {"level": "pr", "evidence": ["extensions/devops-teleport/tests/contracts.rs"], "rationale": "Malformed, over-complex, sensitive-schema-drifted, mismatched, expired, revoked, MFA-required, cancelled, offline, denied, unsupported-version, and generic-error cases are deterministic and non-ready; benign unretained fields are discarded and disable/uninstall affects only Automexia registration."},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "No product pixels are added; hierarchy, responsive layout, focus, and visual review remain an external integration gate."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["extensions/devops-teleport/tests/contracts.rs", "extensions/devops-teleport/benches/status.rs", "apps/automexia-terminal/src/automexia/builtins/mod.rs"], "rationale": "Focused tests, app registration, warning-denied Clippy, dependency policy, and benchmark ran locally on Windows x86_64 without tsh, proxy, browser, agent, PTY, or network."},
+        "linux": {"level": "pr", "evidence": ["extensions/devops-teleport/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M12 run did not execute natively on Linux."},
+        "macos": {"level": "pr", "evidence": ["extensions/devops-teleport/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M12 run did not execute natively on macOS."}
+      }
     }
   ]
 }

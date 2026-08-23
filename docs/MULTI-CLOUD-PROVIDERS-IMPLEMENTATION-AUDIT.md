@@ -55,7 +55,7 @@ native host is available as assumed evidence.
 | M9 / D6.2 Azure | Partially done overall; source-complete and nonactivated | Independent bounded extension; public JSON parser; exact tenant login/account, AAD-only Bastion, opaque transient AKS contracts; eight focused tests and app registration | D3 activation, M11 private kubeconfig ingestion, product UI, and controlled real Azure/native/resource/accessibility/release evidence |
 | M10 / D6.3 Google Cloud | Partially done overall; source-complete and nonactivated | Independent bounded extension; named public parser; exact per-command user/project, opaque federation, scope-bound IAP, private-environment GKE; eight focused tests, app registration, benchmark | D3 activation, M11 private kubeconfig ingestion, product UI, and controlled real Google/native/resource/accessibility/release evidence |
 | M11 / D6.4 Kubernetes/OpenShift | Partially done overall; source-complete and nonactivated | Independent packages; 1 MiB typed YAML/JSON parser; exact stable source grants/private transient ingestion; collision-denied merge; public-only metadata; default-denied exact exec review; capsule pinning; exact isolated kubectl/oc plans; 13 tests, app guards, benchmark | D3/product activation, real kubectl/oc/cloud/OpenShift fixtures, transient-file lifecycle, native cleanup/resources/accessibility/release |
-| M12.1 / D6.5 Teleport | Not done | Provider-neutral `Teleport` kind and SSH transport descriptor | Independent extension, bounded public status decoder, exact version/login/status/ssh builders, tests, docs, native fixtures |
+| M12.1 / D6.5 Teleport | Partially done overall; source-complete and nonactivated | Independent disabled extension; 256 KiB/4,096-node/32-profile bounded public status; RFC 3339 expiry; exact reviewed 18.10+ version/login/status/ssh/logout plans; agent/environment isolation; eleven focused tests, app guard, dependency policy, benchmark | D3 product activation/attestation, real `tsh`/proxy/browser/MFA/cache/certificate/agent/PTY execution, native cleanup/resources/accessibility/packaging/signing/release evidence |
 | M12.2 / D6.5 OpenBao | External prerequisite | Provider-neutral kind only | Accepted security ADR for token-helper/certificate-file custody, then a separate implementation and native evidence |
 
 M11 now adopts [`serde-saphyr` 1.1.0](https://docs.rs/serde-saphyr/1.1.0/serde_saphyr/) with deserialization only: MIT OR
@@ -78,7 +78,7 @@ remote-session authorities. Automexia wraps exact invocations; it does not add
 cloud SDKs, Kubernetes clients, browser components, vaults, or independent
 process launchers.
 
-Two format parsers are adopted behind provider-owned byte and complexity
+Two configuration parsers and one timestamp parser are adopted behind provider-owned byte and complexity
 limits:
 
 - `configparser` with no optional async/runtime features for AWS/GCP INI-style
@@ -89,6 +89,11 @@ limits:
   pure Rust, declares no unsafe code, rejects malformed typed input, and has
   parser budgets for input bytes, depth, events, nodes, anchors, aliases, and
   scalar bytes. Automexia tightens those defaults for kubeconfig.
+- `time` 0.3.55 with only `std` and `parsing` decodes Teleport RFC 3339
+  `valid_until` values. It owns no clock, I/O, locale, formatting, macros, or
+  credential behavior; the provider adapter receives the comparison time from
+  its caller. `cargo deny` passes and the pinned release contains the upstream
+  RFC 2822 stack-exhaustion fix recorded in the project dependency review.
 
 Both are removable by deleting only their provider extensions. Neither is on
 startup, renderer, input, PTY, resize, or keystroke paths. Lockfile, license,
@@ -177,9 +182,12 @@ not claim them from pure model tests.
   resolve from the config directory, and exec plugins can return tokens or
   client keys/certificates. This implementation rejects exec and relative
   credential paths rather than evaluating them.
-- Teleport `tsh status --format=json` is the public status seam. `tsh` retains
-  certificate/cache/agent/browser/MFA authority; per-session MFA may occur for
-  each SSH session.
+- Teleport 18.10 freezes `tsh version --client` and `tsh status --client
+  --format=json` as local public seams. Exact plans force
+  `--add-keys-to-agent=no`; status clears Teleport environment overrides, login
+  leaves browser/MFA to `tsh`, and SSH sets `--relogin=false` plus
+  `--request-mode=off` so reviewed launch cannot silently reauthenticate or
+  create an access request. `tsh` retains certificate/cache/agent authority.
 - OpenBao token helpers receive `get`, `store`, and `erase` and exchange the
   token over standard streams; signed SSH certificates combine a certificate
   file with the user's private key. Those custody boundaries require the
@@ -208,7 +216,9 @@ preference precedence, capsule/config matching, browser choices, isolation,
 production risk, redaction, disabled manifests, and uninstall independence.
 Kubernetes adds YAML/JSON corpus, merge ordering/collisions, relative paths,
 source drift, exec denial, cloud generated-config isolation, and repeated parse
-cleanup. Teleport adds version/status schema drift and cache/agent non-import.
+cleanup. Teleport adds status byte/node/depth/profile limits, schema and major-
+version drift, exact proxy/cluster/user matching, expiry, revocation, agent and
+environment isolation, stale capsule/session/revision rejection, and redaction.
 
 After focused crate tests, run warning-denied Clippy per changed owner,
 architecture/identity/repository validation, dependency policy, benchmarks for

@@ -1095,9 +1095,11 @@ accessibility evidence remain D6.1-D6.5 work.
    default-denied exact exec review, and exact isolated kubectl/oc plans. Product
    activation, real clients/clusters/plugins, transient-file lifecycle, native
    cleanup/resources/accessibility, and release evidence remain.
-5. **D6.5 organization adapters — not done:** Teleport first; OpenBao only after
-   proposed ADR 0024 is accepted and its token-helper/certificate boundary
-   passes protected security review.
+5. **D6.5 Teleport — source-complete, nonactivated; OpenBao blocked:** the
+   independent Teleport package bounds public client status, expiry, and exact
+   version/login/status/ssh/logout plans while isolating agent/environment and
+   leaving cache/certificates/browser/MFA with `tsh`. Product/native proof
+   remains. OpenBao is absent until proposed ADR 0024 is accepted.
 
 Each slice is independently enabled, revoked, tested, and releasable. A provider
 does not wait for or inherit another provider's capability.

@@ -126,12 +126,12 @@ native/release claim.
 | F3 Connection Library | Fully done locally | `ConnectionLibraryStore` has 16 MiB private documents, CAS, recovery, transfer redaction, fresh import IDs, read-only/disk-full and link tests | Product editor/manager belongs to F6; macOS/Linux native permission and controlled screen-reader evidence remain. |
 | F5 managed OpenSSH | Partially done overall; F5.1-F5.3 source-complete nonactivated | Exact direct/routed/tunnel argv; typed host/user/port/endpoints; loopback defaults; strong per-use tunnel review; full trust evidence; guarded lifecycle; receipts; reconnect; and compact tunnel state pass locally | Protected activation/attestation, actual status execution, real OpenSSH/forced cleanup, native resources/accessibility, and validated F5.4 real manifests remain. |
 | F6 recipes and remote declarative workspaces | Partially done; review-only source contracts complete locally | Library schema 2/editor/migration previews, exact dependent fingerprints, pure recipe review/lifecycle, typed remote initialization, declarative workspaces/restore, armed broadcast, semantic projections, fuzz, mutation, and benchmarks pass | Proposed ADR 0023 acceptance, product editor/controller/renderer wiring, managed execution adapters, and controlled native/resource/accessibility evidence remain. |
-| D6.0/M7 provider-neutral authentication and capsule orchestration | Fully done locally | Bounded strict schemas, immutable provider contexts, 19-state lifecycle, generation/session isolation, exact allow-once review, redacted receipts/audits, passive-status migration, fuzz/mutation/benchmark evidence | Provider-specific operation builders and real official-CLI/native evidence belong to D6.1-D6.5 and remain not done/external. |
+| D6.0/M7 provider-neutral authentication and capsule orchestration | Fully done locally | Bounded strict schemas, immutable provider contexts, 19-state lifecycle, generation/session isolation, exact allow-once review, redacted receipts/audits, passive-status migration, fuzz/mutation/benchmark evidence | D6.1-D6.4 and D6.5 Teleport builders are source-complete/nonactivated; product activation, real official-CLI/native evidence, and OpenBao remain external/not done. |
 | D6.1/M8 AWS | Partially done overall; source-complete nonactivated | Independent `automexia-devops-aws`; bounded public profiles; exact SSO/STS/SSM/EKS dry-run contracts; 10 focused tests | D3 product activation/attestation, M11 EKS ingestion, and controlled real official-tool/native/resource/accessibility/release evidence remain. |
 | D6.2/M9 Azure | Partially done overall; source-complete nonactivated | Independent `automexia-devops-azure`; bounded public account JSON; exact tenant-scoped login/account observation; AAD-only Bastion plan; opaque transient AKS intent; 8 focused tests | D3 product activation/attestation, M11 AKS ingestion, and controlled real Azure/native/resource/accessibility/release evidence remain. |
 | D6.3/M10 Google Cloud | Partially done overall; source-complete nonactivated | Independent `automexia-devops-gcp`; bounded named public config; exact per-command login/project observation; opaque federation; scope-bound IAP; private-environment GKE intent; 8 focused tests | D3 activation/attestation, M11 GKE ingestion, and controlled real Google/native/resource/accessibility/release evidence remain. |
 | D6.4/M11 Kubernetes/OpenShift | Partially done overall; source-complete nonactivated | Independent Kubernetes/OpenShift packages; bounded exact-source YAML/JSON parsing and merge; default-denied exec review; exact isolated kubectl/oc plans; 13 tests and benchmark | D3/product activation, real client/cluster/native/resource/accessibility/release evidence. |
-| D6.5/M12 Teleport/OpenBao | Not done | Provider-neutral model variants only; OpenBao ADR 0024 is proposed and unaccepted | Implement Teleport independently; accept ADR 0024 before any OpenBao code. |
+| D6.5/M12 Teleport/OpenBao | Partially done overall | Teleport is source-complete and nonactivated through a separate bounded extension with exact version/login/status/ssh/logout plans; OpenBao ADR 0024 remains proposed and unaccepted | Activate and prove Teleport only through D3/native release gates; accept ADR 0024 before any OpenBao code. |
 | Provider-aware Quick Actions (CP4/F13) | Not done and blocked | CP2/CP3 typed/persistent/insert-only Quick Actions and static packs exist | Consume only F7+ cached public context; exact execution stays behind F4. |
 
 ### Important distinction: existing legacy DevOps status is not D6
@@ -703,8 +703,9 @@ code or automatic persistent change, but no M6 product action can execute.
 ### M7 — F7/D6.0 provider-neutral auth and capsule orchestration
 
 Status: **Fully done locally** at the provider-neutral framework boundary.
-D6.1-D6.5 provider adapters and controlled real official-CLI/native evidence
-remain separate not-done/external gates.
+D6.1-D6.4 and D6.5 Teleport source adapters are complete and nonactivated;
+controlled real official-CLI/native evidence and OpenBao remain separate
+external/not-done gates.
 
 - [x] **Fully done locally** - Freeze strict, bounded schemas for provider
   identity/context, authentication observation, immutable capsule template,
@@ -934,33 +935,45 @@ activation or release. No Kubernetes/OpenShift executable, plugin, network,
 credential, cluster, browser, PTY, or user kubeconfig ran in this slice.
 ### M12 — F12 organization identity: Teleport, then OpenBao
 
-Status: Not done; implement in two independently approved releases.
+Status: Partially done overall. Teleport is source-complete and nonactivated;
+OpenBao is not implemented and remains an external prerequisite pending ADR
+0024 acceptance.
 
 #### M12.1 Teleport
 
-- [ ] Add a separate Teleport extension using reviewed exact `tsh version`,
-  `tsh login`, `tsh status`, and `tsh ssh` flows. Teleport’s cache, certificate,
-  SSH agent integration, browser, MFA, and expiry remain authoritative.
-- [ ] Read/publicize only bounded status, cluster/proxy reference, permitted
-  public target metadata, certificate freshness/expiry, and provenance; never
-  import `~/.tsh` credentials or agent material.
-- [ ] Test login/status/expiry/revocation/offline/cancelled states, target and
-  proxy changes, agent opt-out, exact argv, session isolation, redaction,
-  disable/uninstall, and native fixture behavior.
+- [x] **Fully done locally:** a separate disabled Teleport extension uses the
+  reviewed exact `tsh version --client`, `tsh login`, `tsh status --client
+  --format=json`, `tsh ssh`, and `tsh logout` contracts. Teleport’s cache,
+  certificates, browser, MFA, and expiry remain authoritative; agent addition
+  and ambient Teleport environment overrides are denied.
+- [x] **Fully done locally:** bounded public status retains only exact proxy,
+  cluster, user, roles, logins, Kubernetes hints, freshness/expiry, and
+  provenance. It never reads `~/.tsh`, certificate contents, tokens, identity
+  files, agent material, or inherited provider state.
+- [x] **Fully done locally:** deterministic contracts cover bytes/nodes/depth/
+  profile totals, benign-field discard, sensitive/major-version drift, expiry,
+  revocation, offline/cancelled/MFA states,
+  proxy/target/session/revision drift, exact argv, relogin/access-request denial,
+  redaction, disable/uninstall, and bounded process-tree intent.
+- [ ] **External:** D3 product activation/attestation plus real `tsh`, proxy,
+  browser/MFA, cache/certificate/agent, PTY, native cleanup/resources,
+  accessibility, packaging, signing, and release fixtures remain.
 
 #### M12.2 OpenBao SSH certificates
 
-- [ ] Write and obtain a separate security ADR/review for OpenBao’s token-helper
-  and certificate-file boundary before any implementation. This is not covered
-  by Teleport or generic OpenSSH approval.
+- [ ] **External prerequisite/not done:** obtain acceptance of proposed ADR 0024
+  for OpenBao’s token-helper and certificate-file boundary before any
+  implementation. Teleport or generic OpenSSH approval does not cover it.
 - [ ] Keep token/helper interaction external; retain only opaque references and
   bounded public certificate metadata. Do not accept password/private-key
   material or serialize certificate contents as an Automexia credential store.
-- [ ] Give it independent capability grant, cache, revocation, certificate
+- [ ] Give it an independent capability grant, cache, revocation, certificate
   expiry/cleanup, native fixtures, recovery/uninstall behavior, and docs.
 
-Exit: Teleport and OpenBao may be installed, enabled, revoked, and removed
-independently; neither grants authority to the other.
+Exit is met only for Teleport’s independently disabled source package. Product
+activation and native release evidence remain external. The combined M12 exit
+is not met because OpenBao is intentionally absent until ADR 0024 is accepted;
+neither organization adapter may grant authority to the other.
 
 ### M13 — F13/CP4 provider-aware Quick Actions
 
