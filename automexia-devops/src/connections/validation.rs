@@ -6,6 +6,7 @@ use super::model::*;
 use super::openssh_tunnels::{
     canonical_tunnel_bind_address, canonical_tunnel_destination_host,
 };
+use super::provider_auth::{validate_provider_context, MAX_PROVIDER_CONTEXTS};
 
 fn error(
     code: ConnectionModelErrorCode,
@@ -357,7 +358,26 @@ fn validate_capsule(
         &capsule.context_references,
         "capsule.context_references",
         MAX_CAPABILITIES,
-    )
+    )?;
+    if capsule.provider_contexts.len() > MAX_PROVIDER_CONTEXTS {
+        return Err(error(
+            ConnectionModelErrorCode::LimitExceeded,
+            "capsule.provider_contexts",
+            "capsule provider contexts exceed their fixed item ceiling",
+        ));
+    }
+    let mut providers = HashSet::with_capacity(capsule.provider_contexts.len());
+    for context in &capsule.provider_contexts {
+        validate_provider_context(context)?;
+        if !providers.insert(context.provider) {
+            return Err(error(
+                ConnectionModelErrorCode::DuplicateId,
+                "capsule.provider_contexts.provider",
+                "duplicate capsule providers are forbidden",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_transport(
@@ -708,17 +728,28 @@ pub fn validate_profile(
     Ok(())
 }
 
-fn validate_auth_state(state: &AuthState) -> Result<(), ConnectionModelError> {
+pub(super) fn validate_auth_state(state: &AuthState) -> Result<(), ConnectionModelError> {
     match state {
         AuthState::Unknown | AuthState::Stale { .. } => Ok(()),
         AuthState::Checking { operation_id }
-        | AuthState::Authenticating { operation_id } => {
+        | AuthState::Refreshing { operation_id }
+        | AuthState::Authenticating { operation_id }
+        | AuthState::BrowserPending { operation_id }
+        | AuthState::DeviceCodePending { operation_id } => {
             validate_identifier(operation_id, "auth_state.operation_id")
         }
-        AuthState::Ready {
+        AuthState::Available { evidence_id }
+        | AuthState::Ready {
             evidence_id,
             expires_at_ms: _,
         } => validate_identifier(evidence_id, "auth_state.evidence_id"),
+        AuthState::MfaPending {
+            operation_id,
+            diagnostic_code,
+        } => {
+            validate_identifier(operation_id, "auth_state.operation_id")?;
+            validate_identifier(diagnostic_code, "auth_state.diagnostic_code")
+        }
         AuthState::Locked { diagnostic_code }
         | AuthState::Missing { diagnostic_code }
         | AuthState::MfaRequired { diagnostic_code }

@@ -674,11 +674,23 @@ fn auth_labels(state: &AuthState) -> (&'static str, &'static str) {
     match state {
         AuthState::Unknown => ("Unknown", "Check status"),
         AuthState::Checking { .. } => ("Checking", "Cancel check"),
+        AuthState::Available { .. } => ("Available", "Refresh or sign in"),
+        AuthState::Refreshing { .. } => ("Refreshing", "Cancel refresh"),
         AuthState::Ready { .. } => ("Ready", "Review plan"),
         AuthState::Locked { .. } => ("Locked", "Unlock externally"),
         AuthState::Missing { .. } => ("Missing", "Set up or choose another"),
         AuthState::Expired { .. } => ("Expired", "Log in or renew"),
-        AuthState::MfaRequired { .. } => ("MFA required", "Continue sign-in"),
+        AuthState::MfaRequired { .. } => ("MFA required", "Start sign-in"),
+        AuthState::MfaPending { .. } => {
+            ("Waiting for MFA", "Continue in provider sign-in")
+        }
+        AuthState::BrowserPending { .. } => {
+            ("Waiting for browser", "Open provider sign-in")
+        }
+        AuthState::DeviceCodePending { .. } => (
+            "Waiting for device approval",
+            "Continue on the provider device page",
+        ),
         AuthState::Authenticating { .. } => ("Authenticating", "Focus sign-in"),
         AuthState::Cancelled { .. } => ("Cancelled", "Retry"),
         AuthState::Offline { .. } => ("Offline", "Retry when online"),
@@ -691,6 +703,7 @@ fn auth_labels(state: &AuthState) -> (&'static str, &'static str) {
 
 fn stale_label(previous: StaleAuthState) -> &'static str {
     match previous {
+        StaleAuthState::Available => "Stale (was available)",
         StaleAuthState::Ready => "Stale (was ready)",
         StaleAuthState::Locked => "Stale (was locked)",
         StaleAuthState::Missing => "Stale (was missing)",

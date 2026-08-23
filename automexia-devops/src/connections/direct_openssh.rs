@@ -1302,10 +1302,15 @@ fn identity_readiness(
     }
     match observation.auth_state {
         AuthState::Unknown => DirectOpenSshIdentityReadiness::Unknown,
-        AuthState::Checking { .. } | AuthState::Authenticating { .. } => {
-            DirectOpenSshIdentityReadiness::Checking
+        AuthState::Checking { .. }
+        | AuthState::Refreshing { .. }
+        | AuthState::Authenticating { .. }
+        | AuthState::MfaPending { .. }
+        | AuthState::BrowserPending { .. }
+        | AuthState::DeviceCodePending { .. } => DirectOpenSshIdentityReadiness::Checking,
+        AuthState::Available { .. } | AuthState::Ready { .. } => {
+            DirectOpenSshIdentityReadiness::Ready
         }
-        AuthState::Ready { .. } => DirectOpenSshIdentityReadiness::Ready,
         AuthState::Stale { .. } => DirectOpenSshIdentityReadiness::Stale,
         AuthState::Locked { .. }
         | AuthState::Missing { .. }

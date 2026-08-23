@@ -208,7 +208,8 @@ pub fn plan_rebind(
     let requires_relaunch = current.cwd != next.cwd
         || current.shell != next.shell
         || current.distribution != next.distribution
-        || current.user != next.user;
+        || current.user != next.user
+        || current.providers != next.providers;
     let disposition = if requires_relaunch {
         if current.session_id == next.session_id {
             return Err(ContractError::InvalidCharacter(
@@ -675,6 +676,27 @@ mod tests {
         );
     }
 
+    #[test]
+    fn provider_context_rebind_requires_a_fresh_session() {
+        let current = EnvironmentCapsule::new(SessionId::new(5), 3, Vec::new()).unwrap();
+        let mut next = EnvironmentCapsule::new(
+            SessionId::new(6),
+            4,
+            vec![automexia_extension_api::ProviderIdentity {
+                provider: BoundedText::new("aws").unwrap(),
+                account: Some(BoundedText::new("development").unwrap()),
+                region: Some(BoundedText::new("eu-west-3").unwrap()),
+            }],
+        )
+        .unwrap();
+        assert_eq!(
+            plan_rebind(&current, &next).unwrap().disposition,
+            RebindDisposition::RelaunchRequired
+        );
+
+        next.session_id = current.session_id;
+        assert!(plan_rebind(&current, &next).is_err());
+    }
     #[test]
     fn loom_models_coalescing_to_the_newest_revision() {
         loom::model(|| {

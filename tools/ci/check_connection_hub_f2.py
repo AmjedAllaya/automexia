@@ -30,8 +30,9 @@ EXPECTED_PROVIDERS = [
     "teleport", "open-bao", "local-container",
 ]
 EXPECTED_AUTH_STATES = [
-    "unknown", "checking", "ready", "locked", "missing", "expired",
-    "mfa-required", "authenticating", "cancelled", "offline", "denied",
+    "unknown", "checking", "available", "refreshing", "ready", "locked",
+    "missing", "expired", "mfa-required", "mfa-pending", "browser-pending",
+    "device-code-pending", "authenticating", "cancelled", "offline", "denied",
     "unsupported", "stale", "error",
 ]
 EXPECTED_RESULT_STATES = [

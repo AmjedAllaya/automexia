@@ -3,6 +3,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use super::provider_auth::ProviderContextTemplate;
+
 pub const CONNECTION_SCHEMA_VERSION: u16 = 1;
 pub const MAX_DOCUMENT_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_PROFILES: usize = 10_000;
@@ -257,6 +259,8 @@ pub struct EnvironmentCapsuleTemplate {
     pub public_environment: Vec<PublicEnvironmentBinding>,
     #[serde(default)]
     pub context_references: Vec<OpaqueReference>,
+    #[serde(default)]
+    pub provider_contexts: Vec<ProviderContextTemplate>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -480,6 +484,7 @@ pub enum TransportState {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum StaleAuthState {
+    Available,
     Ready,
     Locked,
     Missing,
@@ -499,6 +504,12 @@ pub enum AuthState {
     Checking {
         operation_id: String,
     },
+    Available {
+        evidence_id: String,
+    },
+    Refreshing {
+        operation_id: String,
+    },
     Ready {
         evidence_id: String,
         expires_at_ms: Option<u64>,
@@ -514,6 +525,16 @@ pub enum AuthState {
     },
     MfaRequired {
         diagnostic_code: String,
+    },
+    MfaPending {
+        operation_id: String,
+        diagnostic_code: String,
+    },
+    BrowserPending {
+        operation_id: String,
+    },
+    DeviceCodePending {
+        operation_id: String,
     },
     Authenticating {
         operation_id: String,
@@ -543,6 +564,13 @@ pub enum AuthEvent {
     BeginCheck {
         operation_id: String,
     },
+    BeginRefresh {
+        operation_id: String,
+    },
+    ObservedAvailable {
+        operation_id: String,
+        evidence_id: String,
+    },
     ObservedReady {
         operation_id: String,
         evidence_id: String,
@@ -563,6 +591,16 @@ pub enum AuthEvent {
     ObservedMfaRequired {
         operation_id: String,
         diagnostic_code: String,
+    },
+    ObservedMfaPending {
+        operation_id: String,
+        diagnostic_code: String,
+    },
+    ObservedBrowserPending {
+        operation_id: String,
+    },
+    ObservedDeviceCodePending {
+        operation_id: String,
     },
     ObservedCancelled {
         operation_id: String,

@@ -62,6 +62,7 @@ fn profile(
             revision: 3,
             public_environment: Vec::new(),
             context_references: Vec::new(),
+            provider_contexts: Vec::new(),
         },
         recipe_references: Vec::new(),
         tunnels: Vec::new(),
