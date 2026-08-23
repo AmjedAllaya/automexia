@@ -2,8 +2,8 @@
 
 Status: CP0-CP3.3 are fully implemented at the local/source boundary; stable
 hosted, native accessibility, and longitudinal release evidence is partial.
-CP4 provider-aware actions and CP5 Automexia-rendered suggestions are not
-shipped.
+CP4 provider-aware actions are source-complete and nonactivated; CP5
+Automexia-rendered suggestions are not shipped.
 
 ## Purpose
 
@@ -24,7 +24,7 @@ machine-readable authority is
 | CMD | Prompt/listing DOSKEY helpers, truthful native fallback, and conservative reviewed insertion | CP1 fallback; CP2.2 local | Hosted native insertion/accessibility evidence |
 | DevOps short aliases | Opt-in native-wins five-shell generations with collision review, private atomic publication, reload, rollback, diagnostics, and exact uninstall | CP3.0/CP3.1 implemented locally | Hosted native/macOS/WSL and longitudinal evidence |
 | Persistent Quick Actions | Bounded private store, joined application worker, layered local search, reviewed placeholders, dry-run CLI/import/export, insert/copy, reviewed static packs, native imports, and trusted local workspace task bridges | CP2.2/CP3.2/CP3.3 implemented locally | Hosted native and controlled accessibility/performance evidence |
-| Provider-aware candidates | Existing status context only, not completion | Not implemented and forbidden on input | CP4 after D6 |
+| Provider-aware candidates | Explicit immutable cached public capsule snapshot; no provider work on input | CP4 source-complete/nonactivated for SSH, AWS, Azure, GCP, Kubernetes, OpenShift, and Teleport | Product capsule publication, exact provider execution, OpenBao, native provider/accessibility/release evidence |
 | Automexia suggestion surface | No app-rendered buffer-aware suggestion UI or editor bridge | CP5.0 research fully done; CP5.1-CP5.6 not implemented; CP1/native behavior remains authoritative | Retain-CP1 report and a separate accepted bridge ADR before any P2 |
 
 This audit is deliberately strict: prompt path styling, icon-aware `ls`, command

@@ -79,7 +79,7 @@ documentation, feature assurance, and a change fragment.
 | Quick Actions and persistence | CP2.0-CP2.2 | Fully done | automexia-devops model, application store/worker/UI/CLI tests | Hosted shell insertion, controlled accessibility, longitudinal evidence |
 | Aliases and DevOps packs | CP3.0-CP3.2 | Fully done | compiler, private generations, shell activation, packs, fuzz/bench/contracts | Hosted native and controlled baseline evidence |
 | Trusted local workspace tasks | CP3.3 | Fully done | native imports, workspace store/trust/runtime/CLI tests and ADR 0021 | Hosted native/accessibility and longitudinal evidence |
-| Provider-aware Quick Actions | CP4 | Not done | Specification only | Activated D3 and public cached D5/D6 context |
+| Provider-aware Quick Actions | CP4 | Partially done overall; source-complete nonactivated | Seven provider projections, route-scoped snapshots, cached search, final revalidation, compact accessible context, production confirmation, fuzz/benchmark/policy evidence | Product capsule publication, exact provider execution, OpenBao, and native provider/accessibility/release evidence |
 | Autocomplete research | CP5.0/P1 | Fully done | Shell/API matrix, pure bounded insertion prototype, locked matcher benchmark, dependency/privacy review, retain-CP1 decision | External low-end/Zsh/Fish/accessibility evidence applies only to a future P2 proposal |
 | Automexia suggestion surface | CP5.1-CP5.6/P2-P4 | Not done | Detailed bridge/source/ranking/UI plan only | Separate accepted ADR, protocol, sources, ranking, UI, shell and release gates |
 | Ecosystem packs and AI | CP6/D7 | Not done | Deferred specifications | Separate sandbox, provenance, privacy, quota, and revocation programs |
@@ -695,21 +695,32 @@ or the combined organization-adapter release.
 
 ## F13 - implement CP4 provider-aware Quick Actions
 
-Status: Not done; dependency-blocked by F4-F12.
+Status: **Partially done overall; source-complete and nonactivated locally.**
 
-- [ ] Add capsule, SSH target, provider/account/project/subscription, cluster/
-  context/namespace, region/zone, and infrastructure fields from bounded cached
-  public context only.
-- [ ] Label freshness, provenance, production risk, missing/expired/offline
-  state, and the exact target in search and review.
-- [ ] Cancel stale generations and isolate panes, sessions, providers, and
-  workspaces.
-- [ ] Permit exact execution only through F4 grants; preserve insert-without-
-  Enter as the safe fallback.
-- [ ] Add provider-specific actions one slice at a time with native tests,
-  revocation, cancellation, redacted audit, and no keystroke-time refresh.
+- [x] **Fully done locally:** bounded cached public capsules project SSH target,
+  provider/account/project/subscription, cluster/context/namespace, region/zone,
+  infrastructure, freshness/provenance, risk, and state.
+- [x] **Fully done locally:** compact search/review labels and accessible names
+  show exact target, current/refreshing/stale/missing/expired/offline/error/
+  changed state, provenance-backed context, and production risk.
+- [x] **Fully done locally:** route/session/capsule/generation keys cancel stale
+  results and isolate panes, provider snapshots, and workspace layers; route
+  cleanup and explicit clear revoke candidates.
+- [x] **Fully done locally:** current observations remain insert-without-Enter;
+  private-environment/exact operations are broker-required, so CP4 cannot
+  execute or fall back to ambient provider state.
+- [x] **Fully done locally:** SSH/AWS/Azure/GCP/Kubernetes/OpenShift/Teleport
+  contributions, fake/model/application tests, final revalidation, redacted
+  audit, production confirmation, fuzz, benchmark, and no-keystroke-provider-
+  work policy are present. Unsupported OpenBao prevents partial publication.
+- [ ] **Partially done — external activation/native evidence:** connect an
+  approved provider refresh controller, activate exact execution through F4,
+  implement OpenBao after ADR 0024, and run real provider/account/cluster,
+  Linux/macOS, screen-reader/resource, packaging/signing/release fixtures.
 
-Exit: provider-aware actions never widen provider or session authority.
+Exit is met locally at the nonactivating authority boundary: provider-aware
+actions never widen provider or session authority. Product/release exit remains
+partial until the final item passes.
 
 ## P1 - execute CP5.0 native autocomplete research
 

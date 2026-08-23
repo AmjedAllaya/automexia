@@ -661,6 +661,52 @@ network, browser/MFA, cache/certificate/agent, PTY, cleanup/resource,
 accessibility, packaging, signing, and release evidence remain D3/native gates.
 OpenBao is not part of this authority and remains absent pending ADR 0024
 acceptance.
+### M13 provider-aware Quick Actions boundary
+
+M13/CP4 is source-complete at a nonactivating boundary. It extends the existing
+Quick Action model rather than introducing a second provider-action registry.
+`automexia-devops::actions::provider` owns capability-free candidate, binding,
+snapshot, digest, availability, redacted audit, and final revalidation types.
+Each accepted first-party provider owns its exact executable/argument grammar;
+the SSH projection remains in the pure action core to preserve the acyclic
+provider graph. The application `quick_actions::providers` module is the only
+cross-provider composition owner and accepts only a previously validated public
+`ProviderCapsule`.
+
+Composition performs no discovery, refresh, authentication, filesystem,
+network, process, credential, PTY, renderer, startup, or input work. It builds a
+complete immutable snapshot and index before publication; an unsupported or
+rejected provider prevents partial replacement. OpenBao and local-container
+contexts fail closed because neither has an accepted CP4 adapter. Provider
+errors leave the last published snapshot unchanged.
+
+`QuickActionRuntime` stores at most one immutable provider snapshot for each of
+32 routes. Publication rejects a non-monotonic generation for the same session
+and capsule revision. Search captures the route/session/revision/generation key,
+uses only cached indexes, gives the capsule layer deterministic precedence over
+a same-ID persisted action, and checks the key both before search and before
+publishing a result. Route cleanup, explicit clear, and runtime shutdown remove
+snapshots. A snapshot is in-memory only and never enters the CP2/CP3 action
+store, export, alias, history, log, or provider configuration.
+
+The screen carries the structured binding through selection and review. It
+revalidates the exact route, session, capsule revision, generation, snapshot and
+binding digests, freshness, expiry, environment risk, and execution mode before
+placeholder expansion and again immediately before copy or bracketed insertion.
+Only `InsertWithoutEnter` can continue. Refreshing, stale, expired, offline,
+unavailable, error, changed, or broker-required decisions become an actionable
+unavailable review; no ambient provider environment is substituted. Production
+adds textual and accessible risk plus the existing second confirmation even for
+a read-only observation.
+
+Ceilings are 256 actions per snapshot, 16 per provider, 32 public presentation
+fields, 32 route snapshots, and 128 search results. The schema-1 CP4 contract,
+a dedicated authority/interactive-path checker and mutation suite, provider and
+application tests, hostile-capsule fuzzing, and cached construction/search
+benchmarks freeze this boundary. Real provider publication, exact execution,
+OpenBao, provider-native accounts/CLIs/clusters, controlled accessibility,
+resource, packaging, and multi-OS release proof remain external activation
+gates.
 ### Capability and process-launch contract
 
 The v0.4 capability enum is descriptive and local-read-only in practice. The
@@ -1190,7 +1236,7 @@ CP3.2 is fully implemented at a capability-free/application-owned split:
   projection absent.
 - Pack health consumes bounded observations supplied by a caller. Runtime tool
   discovery/execution is deliberately absent; CP1 continues to own explicit
-  completion refresh and later CP4/D5/D6 own provider-aware context.
+  completion refresh; CP4 now owns cached provider-action context while D5/D6 own refresh and activation.
 
 The exact serialized 11-pack/33-action payload, inventory, and source boundary
 are frozen by the CP3.2 machine contract, reviewed digest assertion, mutation

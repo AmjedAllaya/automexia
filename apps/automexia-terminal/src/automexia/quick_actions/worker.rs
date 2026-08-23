@@ -13,8 +13,10 @@ use std::{
 };
 
 use automexia_devops::actions::{
-    validate_search_query, ActionIndex, ActionLayer, ActionProvenance, ActionScope,
-    ActionSearchHit, IndexError, LayerIdentity, QuickAction, SearchContext,
+    merge_action_search_hits, revalidate_provider_action, validate_search_query,
+    ActionIndex, ActionLayer, ActionProvenance, ActionScope, ActionSearchHit, IndexError,
+    LayerIdentity, ProviderActionBinding, ProviderActionReview, ProviderActionSnapshot,
+    QuickAction, SearchContext,
 };
 use automexia_extension_runtime::CompletionWake;
 
@@ -43,6 +45,8 @@ pub enum QuickActionRuntimeErrorCode {
     InvalidQuery,
     RouteCapacity,
     WorkerUnavailable,
+    ProviderSnapshot,
+    StaleProviderSnapshot,
 }
 
 impl fmt::Display for QuickActionRuntimeErrorCode {
@@ -53,6 +57,8 @@ impl fmt::Display for QuickActionRuntimeErrorCode {
             Self::InvalidQuery => formatter.write_str("invalid-query"),
             Self::RouteCapacity => formatter.write_str("route-capacity"),
             Self::WorkerUnavailable => formatter.write_str("worker-unavailable"),
+            Self::ProviderSnapshot => formatter.write_str("provider-snapshot"),
+            Self::StaleProviderSnapshot => formatter.write_str("stale-provider-snapshot"),
         }
     }
 }
@@ -87,6 +93,10 @@ pub struct QuickActionSearchResult {
     pub query: String,
     pub hits: Vec<ActionSearchHit>,
     pub status: QuickActionRuntimeStatus,
+    pub provider_generation: Option<u64>,
+    provider_key: Option<ProviderSnapshotKey>,
+    search_session_id: u64,
+    search_capsule_revision: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -102,8 +112,31 @@ struct SearchRequest {
     context: SearchContext,
     workspace_path: Option<PathBuf>,
     wake: CompletionWake,
+    provider_key: Option<ProviderSnapshotKey>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ProviderSnapshotKey {
+    session_id: u64,
+    capsule_revision: u64,
+    generation: u64,
+}
+
+impl ProviderSnapshotKey {
+    fn from_snapshot(snapshot: &ProviderActionSnapshot) -> Self {
+        Self {
+            session_id: snapshot.session_id(),
+            capsule_revision: snapshot.capsule_revision(),
+            generation: snapshot.generation(),
+        }
+    }
+}
+
+struct PublishedProviderSnapshot {
+    key: ProviderSnapshotKey,
+    snapshot: ProviderActionSnapshot,
+    index: ActionIndex,
+}
 #[derive(Clone, Debug)]
 struct RouteWorkspaceAuthorization {
     workspace_path: PathBuf,
@@ -117,6 +150,15 @@ struct PendingState {
     shutdown: bool,
 }
 
+struct WorkerShared {
+    pending: Arc<(Mutex<PendingState>, Condvar)>,
+    latest_requested: Arc<Mutex<BTreeMap<usize, u64>>>,
+    results: Arc<Mutex<BTreeMap<usize, QuickActionSearchResult>>>,
+    workspace_trust_root: PathBuf,
+    workspace_authorizations: Arc<Mutex<BTreeMap<usize, RouteWorkspaceAuthorization>>>,
+    provider_snapshots: Arc<Mutex<BTreeMap<usize, Arc<PublishedProviderSnapshot>>>>,
+}
+
 struct RuntimeInner {
     service: Option<QuickActionService>,
     disabled: Option<QuickActionRuntimeErrorCode>,
@@ -124,6 +166,7 @@ struct RuntimeInner {
     latest_requested: Arc<Mutex<BTreeMap<usize, u64>>>,
     results: Arc<Mutex<BTreeMap<usize, QuickActionSearchResult>>>,
     workspace_authorizations: Arc<Mutex<BTreeMap<usize, RouteWorkspaceAuthorization>>>,
+    provider_snapshots: Arc<Mutex<BTreeMap<usize, Arc<PublishedProviderSnapshot>>>>,
     next_request: AtomicU64,
     handle: Mutex<Option<JoinHandle<()>>>,
 }
@@ -176,14 +219,18 @@ impl QuickActionRuntime {
         let latest_requested = Arc::new(Mutex::new(BTreeMap::new()));
         let results = Arc::new(Mutex::new(BTreeMap::new()));
         let workspace_authorizations = Arc::new(Mutex::new(BTreeMap::new()));
+        let provider_snapshots = Arc::new(Mutex::new(BTreeMap::new()));
         let handle = spawn_worker(
             monitor,
             initial,
-            Arc::clone(&pending),
-            Arc::clone(&latest_requested),
-            Arc::clone(&results),
-            workspace_trust_root,
-            Arc::clone(&workspace_authorizations),
+            WorkerShared {
+                pending: Arc::clone(&pending),
+                latest_requested: Arc::clone(&latest_requested),
+                results: Arc::clone(&results),
+                workspace_trust_root,
+                workspace_authorizations: Arc::clone(&workspace_authorizations),
+                provider_snapshots: Arc::clone(&provider_snapshots),
+            },
         )
         .ok_or(QuickActionRuntimeErrorCode::WorkerUnavailable)?;
         Ok(Self(Arc::new(RuntimeInner {
@@ -193,6 +240,7 @@ impl QuickActionRuntime {
             latest_requested,
             results,
             workspace_authorizations,
+            provider_snapshots,
             next_request: AtomicU64::new(1),
             handle: Mutex::new(Some(handle)),
         })))
@@ -206,6 +254,7 @@ impl QuickActionRuntime {
             latest_requested: Arc::new(Mutex::new(BTreeMap::new())),
             results: Arc::new(Mutex::new(BTreeMap::new())),
             workspace_authorizations: Arc::new(Mutex::new(BTreeMap::new())),
+            provider_snapshots: Arc::new(Mutex::new(BTreeMap::new())),
             next_request: AtomicU64::new(1),
             handle: Mutex::new(None),
         }))
@@ -284,6 +333,12 @@ impl QuickActionRuntime {
                 error: QuickActionRuntimeErrorCode::RouteCapacity,
             };
         }
+        let provider_key = current_provider_key(
+            &lock(&self.0.provider_snapshots),
+            route_id,
+            context.session_id,
+            context.capsule_revision,
+        );
         let request_id = self.0.next_request.fetch_add(1, Ordering::AcqRel);
         latest_requested.insert(route_id, request_id);
         drop(latest_requested);
@@ -296,6 +351,7 @@ impl QuickActionRuntime {
                 context,
                 workspace_path,
                 wake,
+                provider_key,
             },
         );
         condition.notify_one();
@@ -326,14 +382,83 @@ impl QuickActionRuntime {
             && authorization.workspace_identity == *workspace_identity
     }
 
+    pub fn publish_provider_snapshot(
+        &self,
+        route_id: usize,
+        snapshot: ProviderActionSnapshot,
+    ) -> Result<(), QuickActionRuntimeErrorCode> {
+        if self.0.disabled.is_some()
+            || lock(&self.0.handle)
+                .as_ref()
+                .is_none_or(JoinHandle::is_finished)
+        {
+            return Err(QuickActionRuntimeErrorCode::WorkerUnavailable);
+        }
+        let key = ProviderSnapshotKey::from_snapshot(&snapshot);
+        let index = ActionIndex::build_with_provider_snapshot(Vec::new(), &snapshot)
+            .map_err(|_| QuickActionRuntimeErrorCode::ProviderSnapshot)?;
+        let published = Arc::new(PublishedProviderSnapshot {
+            key,
+            snapshot,
+            index,
+        });
+        let mut snapshots = lock(&self.0.provider_snapshots);
+        if !snapshots.contains_key(&route_id) && snapshots.len() >= MAX_RESULT_ROUTES {
+            return Err(QuickActionRuntimeErrorCode::RouteCapacity);
+        }
+        if snapshots.get(&route_id).is_some_and(|current| {
+            current.key.session_id == key.session_id
+                && current.key.capsule_revision == key.capsule_revision
+                && current.key.generation >= key.generation
+        }) {
+            return Err(QuickActionRuntimeErrorCode::StaleProviderSnapshot);
+        }
+        snapshots.insert(route_id, published);
+        drop(snapshots);
+        lock(&self.0.results).remove(&route_id);
+        Ok(())
+    }
+
+    pub fn clear_provider_snapshot(&self, route_id: usize) -> bool {
+        let removed = lock(&self.0.provider_snapshots).remove(&route_id).is_some();
+        lock(&self.0.results).remove(&route_id);
+        removed
+    }
+
+    pub fn revalidate_provider_binding(
+        &self,
+        route_id: usize,
+        current_session_id: u64,
+        current_capsule_revision: u64,
+        binding: &ProviderActionBinding,
+        now_ms: u64,
+    ) -> Option<ProviderActionReview> {
+        let published = lock(&self.0.provider_snapshots).get(&route_id).cloned()?;
+        if published.key.session_id != current_session_id
+            || published.key.capsule_revision != current_capsule_revision
+        {
+            return None;
+        }
+        Some(revalidate_provider_action(
+            &published.snapshot,
+            binding,
+            now_ms,
+        ))
+    }
     pub fn take_result(
         &self,
         route_id: usize,
         minimum_request_id: u64,
     ) -> Option<QuickActionSearchResult> {
-        let mut results = lock(&self.0.results);
-        let result = results.remove(&route_id)?;
-        (result.request_id >= minimum_request_id).then_some(result)
+        let result = lock(&self.0.results).remove(&route_id)?;
+        let provider_key = current_provider_key(
+            &lock(&self.0.provider_snapshots),
+            route_id,
+            result.search_session_id,
+            result.search_capsule_revision,
+        );
+        (result.request_id >= minimum_request_id && provider_key == result.provider_key)
+            .then_some(result)
     }
 
     pub fn forget_route(&self, route_id: usize) {
@@ -342,6 +467,7 @@ impl QuickActionRuntime {
         lock(&self.0.latest_requested).remove(&route_id);
         lock(&self.0.results).remove(&route_id);
         lock(&self.0.workspace_authorizations).remove(&route_id);
+        lock(&self.0.provider_snapshots).remove(&route_id);
     }
 }
 
@@ -458,12 +584,16 @@ fn resolve_trusted_workspace(
 fn spawn_worker(
     mut monitor: QuickActionMonitor,
     mut index: ActionIndex,
-    pending: Arc<(Mutex<PendingState>, Condvar)>,
-    latest_requested: Arc<Mutex<BTreeMap<usize, u64>>>,
-    results: Arc<Mutex<BTreeMap<usize, QuickActionSearchResult>>>,
-    workspace_trust_root: PathBuf,
-    workspace_authorizations: Arc<Mutex<BTreeMap<usize, RouteWorkspaceAuthorization>>>,
+    shared: WorkerShared,
 ) -> Option<JoinHandle<()>> {
+    let WorkerShared {
+        pending,
+        latest_requested,
+        results,
+        workspace_trust_root,
+        workspace_authorizations,
+        provider_snapshots,
+    } = shared;
     let mut workspace_cache = WorkspaceIndexCache::new(workspace_trust_root);
     thread::Builder::new()
         .name("automexia-quick-actions".into())
@@ -513,22 +643,58 @@ fn spawn_worker(
                 continue;
             }
             for (_, request) in request {
+                let published_provider = {
+                    let snapshots = lock(&provider_snapshots);
+                    if current_provider_key(
+                        &snapshots,
+                        request.route_id,
+                        request.context.session_id,
+                        request.context.capsule_revision,
+                    ) != request.provider_key
+                    {
+                        continue;
+                    }
+                    request.provider_key.and_then(|key| {
+                        snapshots
+                            .get(&request.route_id)
+                            .filter(|published| published.key == key)
+                            .cloned()
+                    })
+                };
                 let (request_index, authorization) = workspace_cache.index_for(
                     request.workspace_path.as_deref(),
                     monitor.service(),
                     &index,
                     Instant::now(),
                 );
+                let search_session_id = request.context.session_id;
+                let search_capsule_revision = request.context.capsule_revision;
                 let mut context = request.context;
                 context.workspace_identity = authorization
                     .as_ref()
                     .map(|authorization| authorization.workspace_identity.clone());
                 context.workspace_trusted = authorization.is_some();
-                let hits = request_index
+                let base_hits = request_index
                     .search(&request.query, &context)
                     .unwrap_or_default();
+                let hits = published_provider
+                    .as_ref()
+                    .map(|published| {
+                        let provider_hits = published
+                            .index
+                            .search(&request.query, &context)
+                            .unwrap_or_default();
+                        merge_action_search_hits(provider_hits, base_hits.clone())
+                    })
+                    .unwrap_or(base_hits);
                 if lock(&latest_requested).get(&request.route_id).copied()
                     != Some(request.request_id)
+                    || current_provider_key(
+                        &lock(&provider_snapshots),
+                        request.route_id,
+                        search_session_id,
+                        search_capsule_revision,
+                    ) != request.provider_key
                 {
                     continue;
                 }
@@ -545,6 +711,10 @@ fn spawn_worker(
                     query: request.query,
                     hits,
                     status: status_from_service(monitor.service().status()),
+                    provider_generation: request.provider_key.map(|key| key.generation),
+                    provider_key: request.provider_key,
+                    search_session_id,
+                    search_capsule_revision,
                 };
                 lock(&results).insert(request.route_id, result);
                 request.wake.wake();
@@ -604,6 +774,19 @@ fn status_from_service(status: ServiceStatus) -> QuickActionRuntimeStatus {
     }
 }
 
+fn current_provider_key(
+    snapshots: &BTreeMap<usize, Arc<PublishedProviderSnapshot>>,
+    route_id: usize,
+    session_id: u64,
+    capsule_revision: u64,
+) -> Option<ProviderSnapshotKey> {
+    snapshots
+        .get(&route_id)
+        .map(|published| published.key)
+        .filter(|key| {
+            key.session_id == session_id && key.capsule_revision == capsule_revision
+        })
+}
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
@@ -613,9 +796,18 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use automexia_devops::actions::{
-        ActionProvenance, ActionScope, ActionTemplate, ExecutionMode, QuickAction,
-        RiskClass, ShellKind, WorkingDirectoryPolicy,
+    use automexia_devops::{
+        actions::{
+            build_provider_action_snapshot, build_ssh_provider_action, ActionProvenance,
+            ActionScope, ActionTemplate, ExecutionMode, ProviderActionDecision,
+            ProviderActionSnapshot, QuickAction, RiskClass, ShellKind,
+            WorkingDirectoryPolicy,
+        },
+        connections::{
+            EnvironmentRisk, OpaqueReference, ProviderCapsule, ProviderContextFreshness,
+            ProviderContextProvenance, ProviderContextTemplate, ProviderKind,
+            ProviderProvenanceKind, ProviderScopeBinding, CONNECTION_SCHEMA_VERSION,
+        },
     };
     use std::sync::mpsc;
 
@@ -649,6 +841,150 @@ mod tests {
             workspace_trusted: false,
             shell: ShellKind::Bash,
         }
+    }
+
+    fn provider_snapshot(generation: u64) -> ProviderActionSnapshot {
+        let capsule = ProviderCapsule {
+            schema_version: CONNECTION_SCHEMA_VERSION,
+            capsule_id: "capsule.ssh.production".into(),
+            session_id: 8,
+            revision: 1,
+            contexts: vec![ProviderContextTemplate {
+                provider: ProviderKind::Ssh,
+                configuration_reference: OpaqueReference::new("ssh.inventory.production"),
+                public_identity: "engineer".into(),
+                scope: vec![ProviderScopeBinding {
+                    name: "target".into(),
+                    public_value: "production-bastion".into(),
+                }],
+                provenance: ProviderContextProvenance {
+                    kind: ProviderProvenanceKind::ImportedPublicMetadata,
+                    source_reference: OpaqueReference::new("grant.ssh.inventory"),
+                    source_revision: "revision-9".into(),
+                    observed_at_ms: 100,
+                },
+                freshness: ProviderContextFreshness::Current,
+                expires_at_ms: Some(10_000),
+                risk: EnvironmentRisk::Production,
+            }],
+            created_at_ms: 100,
+        };
+        let candidate = build_ssh_provider_action(&capsule, generation, 200).unwrap();
+        build_provider_action_snapshot(&capsule, generation, 200, vec![candidate])
+            .unwrap()
+    }
+
+    #[test]
+    fn provider_snapshots_are_route_isolated_monotonic_and_revalidated() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = QuickActionRuntime::open(root.path().join("actions")).unwrap();
+        let first = provider_snapshot(1);
+        let old_binding = first.binding("provider.ssh.target").unwrap().clone();
+        runtime.publish_provider_snapshot(8, first).unwrap();
+
+        let (sender, receiver) = mpsc::channel();
+        runtime.submit(
+            9,
+            "production-bastion".into(),
+            context(),
+            Box::new(move || {
+                let _ = sender.send(());
+            }),
+        );
+        receiver.recv_timeout(Duration::from_secs(2)).unwrap();
+        let isolated = runtime.take_result(9, 0).unwrap();
+        assert_eq!(isolated.provider_generation, None);
+        assert!(isolated
+            .hits
+            .iter()
+            .all(|hit| hit.action.id != "provider.ssh.target"));
+
+        let (sender, receiver) = mpsc::channel();
+        runtime.submit(
+            8,
+            "production-bastion".into(),
+            context(),
+            Box::new(move || {
+                let _ = sender.send(());
+            }),
+        );
+        receiver.recv_timeout(Duration::from_secs(2)).unwrap();
+
+        runtime
+            .publish_provider_snapshot(8, provider_snapshot(2))
+            .unwrap();
+        assert!(runtime.take_result(8, 0).is_none());
+        assert_eq!(
+            runtime.publish_provider_snapshot(8, provider_snapshot(2)),
+            Err(QuickActionRuntimeErrorCode::StaleProviderSnapshot)
+        );
+        assert_eq!(
+            runtime
+                .revalidate_provider_binding(8, 8, 1, &old_binding, 500)
+                .unwrap()
+                .decision(),
+            ProviderActionDecision::Replaced
+        );
+
+        let (sender, receiver) = mpsc::channel();
+        runtime.submit(
+            8,
+            "production-bastion".into(),
+            context(),
+            Box::new(move || {
+                let _ = sender.send(());
+            }),
+        );
+        receiver.recv_timeout(Duration::from_secs(2)).unwrap();
+        let result = runtime.take_result(8, 0).unwrap();
+        assert_eq!(result.provider_generation, Some(2));
+        let hit = result
+            .hits
+            .iter()
+            .find(|hit| hit.action.id == "provider.ssh.target")
+            .unwrap();
+        assert!(hit.provider.is_some());
+        let review = runtime
+            .revalidate_provider_binding(8, 8, 1, hit.provider.as_deref().unwrap(), 500)
+            .unwrap();
+        assert_eq!(
+            review.decision(),
+            ProviderActionDecision::InsertWithoutEnter
+        );
+        assert!(review.requires_production_confirmation());
+        assert!(runtime
+            .revalidate_provider_binding(8, 9, 1, hit.provider.as_deref().unwrap(), 500,)
+            .is_none());
+        assert!(runtime
+            .revalidate_provider_binding(8, 8, 2, hit.provider.as_deref().unwrap(), 500,)
+            .is_none());
+
+        assert!(runtime.clear_provider_snapshot(8));
+        assert!(runtime
+            .revalidate_provider_binding(8, 8, 1, hit.provider.as_deref().unwrap(), 500)
+            .is_none());
+        assert!(!runtime.clear_provider_snapshot(8));
+        runtime.forget_route(9);
+    }
+
+    #[test]
+    fn provider_snapshot_capacity_recovers_after_route_cleanup() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = QuickActionRuntime::open(root.path().join("actions")).unwrap();
+        for route_id in 1..=MAX_RESULT_ROUTES {
+            runtime
+                .publish_provider_snapshot(route_id, provider_snapshot(1))
+                .unwrap();
+        }
+        assert_eq!(
+            runtime
+                .publish_provider_snapshot(MAX_RESULT_ROUTES + 1, provider_snapshot(1),),
+            Err(QuickActionRuntimeErrorCode::RouteCapacity)
+        );
+        runtime.forget_route(1);
+        runtime
+            .publish_provider_snapshot(MAX_RESULT_ROUTES + 1, provider_snapshot(1))
+            .unwrap();
     }
 
     #[test]

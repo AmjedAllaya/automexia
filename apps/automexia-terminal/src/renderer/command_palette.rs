@@ -724,6 +724,7 @@ enum PaletteRow<'a> {
     PlaceholderContinue,
     ReviewCommand {
         command: &'a str,
+        context: &'a str,
     },
     ReviewInsert {
         label: &'a str,
@@ -743,7 +744,7 @@ impl<'a> PaletteRow<'a> {
             PaletteRow::QuickAction { item } => &item.name,
             PaletteRow::QuickActionNotice { message } => message,
             PaletteRow::PlaceholderContinue => "Continue to review",
-            PaletteRow::ReviewCommand { command } => command,
+            PaletteRow::ReviewCommand { command, .. } => command,
             PaletteRow::ReviewInsert { label, .. } => label,
             PaletteRow::ReviewCopy { .. } => "Copy command",
         }
@@ -762,7 +763,7 @@ impl<'a> PaletteRow<'a> {
             PaletteRow::QuickAction { item } => item.metadata_label.as_str(),
             PaletteRow::QuickActionNotice { .. } => "",
             PaletteRow::PlaceholderContinue => "Enter",
-            PaletteRow::ReviewCommand { .. } => "Exact command",
+            PaletteRow::ReviewCommand { context, .. } => context,
             PaletteRow::ReviewInsert { risk, .. } | PaletteRow::ReviewCopy { risk } => {
                 risk_label(risk)
             }
@@ -802,6 +803,12 @@ impl<'a> PaletteRow<'a> {
                 icon: CommandIcon::Extension,
                 accent: BRAND_CYAN,
             },
+            PaletteRow::QuickAction { item } if item.provider_context => {
+                RowPresentation {
+                    icon: CommandIcon::Connections,
+                    accent: BRAND_CYAN,
+                }
+            }
             PaletteRow::QuickAction { item } => RowPresentation {
                 icon: CommandIcon::Code,
                 accent: risk_accent(item.risk),
@@ -1602,6 +1609,7 @@ impl CommandPalette {
                     3,
                     PaletteRow::ReviewCommand {
                         command: &view.command_preview,
+                        context: &view.command_context_label,
                     },
                 )];
                 if view.copy_allowed {
@@ -2744,6 +2752,48 @@ mod tests {
             palette.get_selected_action_item_id().as_deref(),
             Some("cluster.delete")
         );
+    }
+
+    #[test]
+    fn provider_actions_use_connection_visuals_and_show_context_in_review() {
+        let mut ordinary = CommandPalette::new();
+        ordinary.enter_action_review(QuickActionReviewView::new(
+            "ordinary.action".into(),
+            "Ordinary action".into(),
+            "git status".into(),
+            QuickActionRisk::ReadOnly,
+            automexia_ui_model::quick_actions::QuickActionMode::Insert,
+        ));
+        assert_eq!(ordinary.filtered_rows()[0].1.shortcut(), "Exact command");
+
+        let item = QuickActionListItem::new(
+            "provider.aws.identity".into(),
+            "Show AWS identity".into(),
+            "Inspect identity".into(),
+            "Environment capsule".into(),
+            QuickActionRisk::ReadOnly,
+            0,
+        )
+        .with_provider_context(
+            "AWS · Account 123456789012 · Current · Production".into(),
+        );
+        let row = PaletteRow::QuickAction { item: &item };
+        assert_eq!(row.presentation().icon, CommandIcon::Connections);
+        assert_eq!(row.presentation().accent, BRAND_CYAN);
+        assert_eq!(row.shortcut(), item.metadata_label);
+
+        let mut palette = CommandPalette::new();
+        palette.enter_action_review(
+            QuickActionReviewView::new(
+                item.id,
+                item.name,
+                "aws 'sts' 'get-caller-identity'".into(),
+                QuickActionRisk::ReadOnly,
+                automexia_ui_model::quick_actions::QuickActionMode::Insert,
+            )
+            .with_provider_context(item.metadata_label.clone(), true),
+        );
+        assert_eq!(palette.filtered_rows()[0].1.shortcut(), item.metadata_label);
     }
 
     #[test]

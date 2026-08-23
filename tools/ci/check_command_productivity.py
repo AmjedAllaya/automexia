@@ -199,6 +199,9 @@ CP2_PERSISTENCE_FILES = {
     "apps/automexia-terminal/src/automexia/quick_actions/transfer.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/worker.rs",
 }
+CP4_APPLICATION_FILES = {
+    "apps/automexia-terminal/src/automexia/quick_actions/providers.rs",
+}
 CP31_PUBLICATION_FILES = {
     "apps/automexia-terminal/src/automexia/quick_actions/aliases.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/aliases_cli.rs",
@@ -843,16 +846,19 @@ def validate_persistence_sources(root: Path, runtime_files: list[Path]) -> set[s
         | CP31_PUBLICATION_FILES
         | CP32_PACK_FILES
         | CP33_WORKSPACE_FILES
+        | CP4_APPLICATION_FILES
     )
     cp31_present = present & CP31_PUBLICATION_FILES
     cp32_present = present & CP32_PACK_FILES
     cp33_present = present & CP33_WORKSPACE_FILES
+    cp4_present = present & CP4_APPLICATION_FILES
     if (
         not CP2_PERSISTENCE_FILES.issubset(present)
         or present - expected
         or (cp31_present and cp31_present != CP31_PUBLICATION_FILES)
         or (cp32_present and cp32_present != CP32_PACK_FILES)
         or (cp33_present and cp33_present != CP33_WORKSPACE_FILES)
+        or (cp4_present and cp4_present != CP4_APPLICATION_FILES)
     ):
         baseline = CP2_PERSISTENCE_FILES
         if cp31_present:
@@ -861,9 +867,11 @@ def validate_persistence_sources(root: Path, runtime_files: list[Path]) -> set[s
             baseline |= CP32_PACK_FILES
         if cp33_present:
             baseline |= CP33_WORKSPACE_FILES
+        if cp4_present:
+            baseline |= CP4_APPLICATION_FILES
         unexpected = sorted(present.symmetric_difference(baseline))
         raise CommandProductivityError(
-            "CP2.1/CP3.1/CP3.2/CP3.3 application source set is not the exact "
+            "CP2.1/CP3.1/CP3.2/CP3.3/CP4 application source set is not the exact "
             f"reviewed boundary: {unexpected}"
         )
     for relative in sorted(present):
@@ -885,6 +893,8 @@ def validate_persistence_sources(root: Path, runtime_files: list[Path]) -> set[s
                 if relative in CP32_PACK_FILES
                 else "CP3.3 import/workspace"
                 if relative in CP33_WORKSPACE_FILES
+                else "CP4 provider composition"
+                if relative in CP4_APPLICATION_FILES
                 else "CP2.1 persistence"
             )
             raise CommandProductivityError(
@@ -983,6 +993,7 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
         "cp2_pure_action_files": len(pure_action_files & CP2_PURE_ACTION_FILES),
         "cp4_pure_action_files": len(pure_action_files & CP4_PURE_ACTION_FILES),
         "cp4_provider_action_files": len(CP4_PROVIDER_ACTION_FILES),
+        "cp4_application_files": len(persistence_files & CP4_APPLICATION_FILES),
         "cp2_persistence_files": len(persistence_files),
         "interactive_files": len(interactive_files),
         "runtime_files": len(runtime_files),
@@ -1107,7 +1118,7 @@ def main() -> int:
         print(f"command productivity CP0 validation failed: {error}", file=sys.stderr)
         return 1
     print(
-        "PASS: command productivity CP0/CP1 and bounded CP2.0-CP3.3 model/application boundaries are confined to reviewed allowlists "
+        "PASS: command productivity CP0/CP1 and bounded CP2.0-CP4 model/application boundaries are confined to reviewed allowlists "
         f"(shells={counts['shells']}, providers={counts['providers']}, "
         f"discoveries={counts['discoveries']}, "
         f"cases={counts['cases']}, threats={counts['threats']}, "
@@ -1117,6 +1128,7 @@ def main() -> int:
         f"cp2_pure_action_files={counts['cp2_pure_action_files']}, "
         f"cp4_pure_action_files={counts['cp4_pure_action_files']}, "
         f"cp4_provider_action_files={counts['cp4_provider_action_files']}, "
+        f"cp4_application_files={counts['cp4_application_files']}, "
         f"cp2_persistence_files={counts['cp2_persistence_files']})"
     )
     return 0

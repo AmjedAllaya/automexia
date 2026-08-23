@@ -102,3 +102,9 @@ path = "fuzz_targets/connection_planning.rs"
 test = false
 doc = false
 bench = false
+[[bin]]
+name = "provider_quick_actions"
+path = "fuzz_targets/provider_quick_actions.rs"
+test = false
+doc = false
+bench = false

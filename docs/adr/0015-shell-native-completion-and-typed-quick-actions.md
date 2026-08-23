@@ -3,7 +3,7 @@
 - Status: Accepted for v0.5
 - Date: 2026-08-15
 
-Implementation note (updated 2026-08-17): CP2.2 implements bounded local search,
+Implementation note (updated 2026-08-23): CP2.2 implements bounded local search,
 review, dry-run administration/import/export, and explicit insert/copy. CP3.1
 implements explicitly opted-in persistent user aliases through private immutable
 five-shell generations, journaled source/generation CAS, verified native-wins
@@ -12,10 +12,12 @@ capability-free static pack boundary: 11 immutable provider manifests, 33
 disabled/unaliased typed actions, pure health and update planning, manifest-aware
 alias denial, and dry-run/CAS enablement. CP3.3 implements explicitly selected,
 capability-free native alias imports and exact, receipt-bound trusted-workspace
-task bridges under [ADR 0021](0021-trusted-workspace-task-bridges.md). Exact
-launch, secret expansion, provider-aware candidates, and CP5 suggestions remain
-outside that authority. Stable publication still requires hosted native and
-controlled accessibility/performance evidence.
+task bridges under [ADR 0021](0021-trusted-workspace-task-bridges.md). CP4 now
+implements bounded cached public provider candidates, route-scoped generation
+isolation, final copy/insert revalidation, and production confirmation without
+provider refresh or execution authority. Exact launch, secret expansion, and
+CP5 suggestions remain outside that authority. Stable publication still
+requires hosted native and controlled accessibility/performance evidence.
 
 Verification note (2026-08-17): the CP2.2 re-audit made shell-user and
 global-user precedence structurally distinct, revalidates every activation
@@ -122,7 +124,7 @@ Acceptance of this ADR authorizes implementation of bounded static storage,
 search, insertion, and managed shell adapters. It does not authorize arbitrary
 process execution, direct network access, secret reads, third-party pack
 downloads, or AI command generation. Exact launch remains blocked until the D3
-broker ADR and protected activation gates are accepted.
+protected activation and native evidence gates pass.
 
 CP0 acceptance is limited to the documented architecture, threat model,
 compatibility fixtures, and non-activation ratchets. It does not itself ship a

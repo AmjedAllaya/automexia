@@ -1,9 +1,11 @@
 use automexia_devops::actions::{
-    expand_for_shell, ActionIndex, ActionLayer, ActionProvenance, ActionScope,
-    ActionTemplate, ArgumentToken, ExecutionMode, ExpansionError, LayerIdentity,
-    Placeholder, PlaceholderBindings, PlaceholderSensitivity, QuickAction, RiskClass,
-    SearchContext, ShellKind, WorkingDirectoryPolicy,
+    expand_for_shell, merge_action_search_hits, ActionIndex, ActionLayer,
+    ActionProvenance, ActionScope, ActionSearchHit, ActionTemplate, ArgumentToken,
+    ExecutionMode, ExpansionError, LayerIdentity, Placeholder, PlaceholderBindings,
+    PlaceholderSensitivity, QuickAction, RiskClass, SearchContext, ShellKind,
+    WorkingDirectoryPolicy,
 };
+use std::sync::Arc;
 
 fn action(id: &str, scope: ActionScope, shell: ShellKind) -> QuickAction {
     QuickAction {
@@ -289,4 +291,41 @@ fn optional_empty_values_are_quoted_and_required_empty_values_fail_closed() {
         expand_for_shell(&required, ShellKind::Bash, &bindings).unwrap_err(),
         ExpansionError::MissingPlaceholder("target".into())
     );
+}
+
+#[test]
+fn cached_provider_hits_take_precedence_without_duplicate_rows() {
+    let mut provider_action = action(
+        "shared.provider-action",
+        ActionScope::Session,
+        ShellKind::Bash,
+    );
+    provider_action.description = "provider-bound".into();
+    let mut persisted_action = provider_action.clone();
+    persisted_action.description = "persisted".into();
+
+    let merged = merge_action_search_hits(
+        vec![ActionSearchHit {
+            action: Arc::new(provider_action),
+            provider: None,
+            source: "Provider capsule",
+            source_revision: 9,
+            score: 200,
+            shadowed_count: 1,
+        }],
+        vec![ActionSearchHit {
+            action: Arc::new(persisted_action),
+            provider: None,
+            source: "Global user",
+            source_revision: 4,
+            score: 900,
+            shadowed_count: 2,
+        }],
+    );
+
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged[0].action.description, "provider-bound");
+    assert_eq!(merged[0].source, "Provider capsule");
+    assert_eq!(merged[0].source_revision, 9);
+    assert_eq!(merged[0].shadowed_count, 4);
 }

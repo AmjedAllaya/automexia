@@ -625,14 +625,46 @@ evidence, not missing CP3.3 source implementation.
 
 ### CP4 — capsule/provider-aware productivity
 
-- After D5/D6, filter and parameterize actions with the selected SSH target,
-  capsule, cluster/context, account/subscription/project, region, and workspace.
-- Use only bounded cached public context; refresh explicitly or through the
-  extension freshness contract, never synchronously from a keystroke.
-- Permit reviewed exact-launch actions through D3 with capability and audit.
+Status: **Partially done overall; source-complete and nonactivated locally.**
+The existing Quick Actions surface can consume an explicitly published,
+immutable public capsule snapshot for SSH, AWS, Azure, Google Cloud,
+Kubernetes, OpenShift, and Teleport. OpenBao remains absent pending ADR 0024,
+and no current product provider-refresh path publishes these snapshots.
 
-Exit: multi-pane/session isolation, stale-context labeling, production safety,
-revocation, cancellation, offline behavior, and provider-native tests pass.
+The implementation:
+
+- projects exact cached targets plus account/subscription/project, region/zone,
+  cluster/context/namespace, infrastructure, provenance, freshness, state, and
+  environment risk without provider, network, filesystem, credential, startup,
+  renderer, or keystroke-time work;
+- publishes at most 32 route-owned snapshots and 256 actions, with 16 actions
+  per provider, 32 presentation fields, and 128 search results;
+- discards stale requests, rejects non-monotonic generations, isolates route,
+  session and capsule revision, removes snapshots on route cleanup, and
+  revalidates the binding immediately before copy or bracketed insertion;
+- gives capsule candidates precedence over same-ID persisted actions without
+  duplicate rows, while preserving deterministic ranking and shadow counts;
+- shows provider, exact target, current/stale/refreshing/expired/offline/
+  unavailable/error/replaced state, provenance-backed context, and development/
+  staging/production risk in compact visible and accessible text;
+- keeps current observation actions insert-without-Enter. Kubernetes,
+  OpenShift, and Teleport operations that need a private environment or D3
+  launch remain visibly broker-required and never fall back to ambient state;
+- requires a second confirmation for production even when the command is
+  read-only, and never treats color as the only production or failure signal.
+
+The versioned CP4 contract, static authority checker, six mutation cases,
+19 named regressions, hostile-capsule fuzz target, and cached snapshot/search
+benchmark own the local source claim. Exact process execution, OpenBao, real
+provider accounts/CLIs/clusters, native Linux/macOS execution, screen-reader
+inspection, controlled resource baselines, packaging, and release evidence
+remain external gates. Disabling CP4 means clearing the route snapshot or not
+publishing one; persisted CP2/CP3 actions and provider-owned state are unchanged.
+
+Exit is met locally at the nonactivating authority boundary: provider-aware
+discovery does not widen provider, credential, process, or session authority.
+The combined product/release exit remains partial until the external gates above
+actually run.
 
 ### CP5 — Shell Completion and Suggestions
 

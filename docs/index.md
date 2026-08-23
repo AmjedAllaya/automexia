@@ -42,6 +42,7 @@ The repository also contains substantial v0.5 foundations. Native shell completi
 | Session-only shell integration | **Available now** | [Shell and command productivity](guide/shell-productivity.md) |
 | Native shell completion | **Implemented locally; release evidence still gated** | [Shell and command productivity](guide/shell-productivity.md) |
 | Typed Quick Actions and opt-in aliases | **Implemented locally; release evidence still gated** | [Shell and command productivity](guide/shell-productivity.md) |
+| Provider-aware Quick Actions (CP4) | **Source-complete internally; provider publication/execution not activated** | [Commands and shell](user-guide/commands-and-shell.md#provider-aware-quick-actions), [CP4 audit](PROVIDER-AWARE-QUICK-ACTIONS-IMPLEMENTATION-AUDIT.md), [testing](TESTING.md#m13-provider-aware-quick-actions) |
 | Optional Automexia autocomplete surface | **Research complete; no runtime surface approved** | [CP5.0 research](research/CP5-AUTOCOMPLETE-RESEARCH.md), [Roadmap](project/roadmap.md) |
 | Static OpenSSH inventory, read-only Hub, and disabled direct-review preparation | **Implemented locally; release evidence gated; no launch authority** | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md) |
 | Connection Hub records, pending selected-host review, and dry-run models | **Implemented locally; authority disabled** | [Remote connections](guide/remote-connections.md) |

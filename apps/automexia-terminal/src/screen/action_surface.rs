@@ -8,9 +8,10 @@
 use std::sync::Arc;
 
 use automexia_devops::actions::{
-    ActionSearchHit, ExecutionMode, ExpandedAction, PlaceholderBindings,
-    PlaceholderSensitivity, QuickAction, RiskClass, SearchContext, ShellKind,
-    MAX_QUERY_BYTES, MAX_STRING_BYTES,
+    environment_risk_label, ActionSearchHit, ExecutionMode, ExpandedAction,
+    PlaceholderBindings, PlaceholderSensitivity, ProviderActionBinding,
+    ProviderActionDecision, ProviderActionReview, QuickAction, RiskClass, SearchContext,
+    ShellKind, MAX_QUERY_BYTES, MAX_STRING_BYTES,
 };
 use automexia_ui_model::quick_actions::{
     QuickActionListItem, QuickActionMode, QuickActionReviewView, QuickActionRisk,
@@ -49,6 +50,8 @@ struct State {
     search_query: String,
     hits: Vec<ActionSearchHit>,
     selected: Option<Arc<QuickAction>>,
+    selected_provider: Option<Arc<ProviderActionBinding>>,
+    provider_review: Option<ProviderActionReview>,
     bindings: PlaceholderBindings,
     placeholder_index: usize,
     expanded: Option<ExpandedAction>,
@@ -83,6 +86,8 @@ impl Screen<'_> {
             return false;
         }
         self.action_surface.state.selected = None;
+        self.action_surface.state.selected_provider = None;
+        self.action_surface.state.provider_review = None;
         self.action_surface.state.expanded = None;
         self.action_surface.state.bindings = PlaceholderBindings::default();
         self.action_surface.state.placeholder_index = 0;
@@ -98,17 +103,24 @@ impl Screen<'_> {
     }
 
     pub fn begin_action_review(&mut self, action_id: &str) {
-        let Some(action) = self
+        let Some((action, provider)) = self
             .action_surface
             .state
             .hits
             .iter()
             .find(|hit| hit.action.id == action_id)
-            .map(|hit| Arc::clone(&hit.action))
+            .map(|hit| {
+                (
+                    Arc::clone(&hit.action),
+                    hit.provider.as_ref().map(Arc::clone),
+                )
+            })
         else {
             return;
         };
         self.action_surface.state.selected = Some(action);
+        self.action_surface.state.selected_provider = provider;
+        self.action_surface.state.provider_review = None;
         self.action_surface.state.bindings = PlaceholderBindings::default();
         self.action_surface.state.placeholder_index = 0;
         self.action_surface.state.expanded = None;
@@ -147,7 +159,9 @@ impl Screen<'_> {
         choice: crate::renderer::command_palette::QuickActionReviewChoice,
         clipboard: &mut Clipboard,
     ) {
-        if !self.ensure_selected_workspace_action_authorized() {
+        if !self.ensure_selected_provider_action_authorized()
+            || !self.ensure_selected_workspace_action_authorized()
+        {
             return;
         }
         let Some(expanded) = self.action_surface.state.expanded.clone() else {
@@ -157,11 +171,15 @@ impl Screen<'_> {
             && !self.action_surface.state.confirmation_armed
         {
             self.action_surface.state.confirmation_armed = true;
-            let mut view = review_view(&expanded);
+            let mut view = review_view(
+                &expanded,
+                self.action_surface.state.selected_provider.as_deref(),
+                self.action_surface.state.provider_review.as_ref(),
+            );
             view.title = format!("Confirm {}", view.title);
-            view.accessibility_label = format!(
-                "Final confirmation for {}. The command remains unexecuted.",
-                expanded.display_name
+            view.accessibility_label = final_confirmation_accessibility_label(
+                &expanded.display_name,
+                &view.command_context_label,
             );
             self.renderer.command_palette.enter_action_review(view);
             return;
@@ -246,7 +264,9 @@ impl Screen<'_> {
     }
 
     fn continue_action_review(&mut self) {
-        if !self.ensure_selected_workspace_action_authorized() {
+        if !self.ensure_selected_provider_action_authorized()
+            || !self.ensure_selected_workspace_action_authorized()
+        {
             return;
         }
         let Some(action) = self.action_surface.state.selected.as_ref() else {
@@ -289,8 +309,17 @@ impl Screen<'_> {
                 self.action_surface.state.requires_second_confirmation = matches!(
                     expanded.risk,
                     RiskClass::Destructive | RiskClass::Privileged
+                ) || self
+                    .action_surface
+                    .state
+                    .provider_review
+                    .as_ref()
+                    .is_some_and(ProviderActionReview::requires_production_confirmation);
+                let view = review_view(
+                    &expanded,
+                    self.action_surface.state.selected_provider.as_deref(),
+                    self.action_surface.state.provider_review.as_ref(),
                 );
-                let view = review_view(&expanded);
                 self.action_surface.state.expanded = Some(expanded);
                 self.renderer.command_palette.enter_action_review(view);
             }
@@ -308,6 +337,55 @@ impl Screen<'_> {
         }
     }
 
+    fn ensure_selected_provider_action_authorized(&mut self) -> bool {
+        let Some(binding) = self.action_surface.state.selected_provider.clone() else {
+            self.action_surface.state.provider_review = None;
+            return true;
+        };
+        let Some(action) = self.action_surface.state.selected.clone() else {
+            return false;
+        };
+        let route_id = self.context_manager.current().route_id;
+        let context = self.current_action_context();
+        let review = self.action_surface.runtime.revalidate_provider_binding(
+            route_id,
+            context.session_id,
+            context.capsule_revision,
+            &binding,
+            current_time_ms(),
+        );
+        let Some(review) = review else {
+            self.action_surface.state.provider_review = None;
+            self.action_surface.state.expanded = None;
+            self.action_surface.state.confirmation_armed = false;
+            self.renderer
+                .command_palette
+                .enter_action_review(provider_unavailable_view(
+                    &action,
+                    &binding,
+                    ProviderActionDecision::Replaced,
+                    "Provider context was revoked; refresh and review again",
+                    false,
+                ));
+            return false;
+        };
+        self.action_surface.state.provider_review = Some(review.clone());
+        if review.decision().can_insert() {
+            return true;
+        }
+        self.action_surface.state.expanded = None;
+        self.action_surface.state.confirmation_armed = false;
+        self.renderer
+            .command_palette
+            .enter_action_review(provider_unavailable_view(
+                &action,
+                &binding,
+                review.decision(),
+                provider_unavailable_reason(review.decision()),
+                review.requires_production_confirmation(),
+            ));
+        false
+    }
     fn ensure_selected_workspace_action_authorized(&mut self) -> bool {
         let Some(action) = self.action_surface.state.selected.clone() else {
             return true;
@@ -374,6 +452,10 @@ fn list_items(
                 risk(hit.action.risk),
                 hit.shadowed_count,
             );
+            let item = match &hit.provider {
+                Some(binding) => item.with_provider_context(binding.presentation_label()),
+                None => item,
+            };
             match health {
                 Some(health) => item.with_health(health),
                 None => item,
@@ -441,19 +523,107 @@ const fn risk(value: RiskClass) -> QuickActionRisk {
     }
 }
 
-fn review_view(expanded: &ExpandedAction) -> QuickActionReviewView {
+fn review_view(
+    expanded: &ExpandedAction,
+    provider: Option<&ProviderActionBinding>,
+    provider_review: Option<&ProviderActionReview>,
+) -> QuickActionReviewView {
     let mode = match expanded.mode {
         ExecutionMode::Insert => QuickActionMode::Insert,
         ExecutionMode::Copy => QuickActionMode::Copy,
         ExecutionMode::ExactLaunch => QuickActionMode::Unavailable,
     };
-    QuickActionReviewView::new(
+    let view = QuickActionReviewView::new(
         expanded.action_id.clone(),
         expanded.display_name.clone(),
         expanded.command.clone(),
         risk(expanded.risk),
         mode,
+    );
+    match (provider, provider_review) {
+        (Some(binding), Some(review)) => view.with_provider_context(
+            provider_context_label(binding, review.decision()),
+            review.requires_production_confirmation(),
+        ),
+        _ => view,
+    }
+}
+
+fn final_confirmation_accessibility_label(display_name: &str, context: &str) -> String {
+    format!(
+        "Final confirmation for {display_name}. Context: {context}. The command remains unexecuted."
     )
+}
+
+fn provider_unavailable_view(
+    action: &QuickAction,
+    binding: &ProviderActionBinding,
+    decision: ProviderActionDecision,
+    reason: &str,
+    requires_production_confirmation: bool,
+) -> QuickActionReviewView {
+    QuickActionReviewView::new(
+        action.id.clone(),
+        action.display_name.clone(),
+        reason.into(),
+        risk(action.risk),
+        QuickActionMode::Unavailable,
+    )
+    .with_provider_context(
+        provider_context_label(binding, decision),
+        requires_production_confirmation,
+    )
+}
+
+fn provider_context_label(
+    binding: &ProviderActionBinding,
+    decision: ProviderActionDecision,
+) -> String {
+    format!(
+        "{} · {} {} · {} · {}",
+        binding.provider_label(),
+        binding.target_kind(),
+        binding.exact_target(),
+        decision.status_label(),
+        environment_risk_label(binding.environment_risk()),
+    )
+}
+
+const fn provider_unavailable_reason(decision: ProviderActionDecision) -> &'static str {
+    match decision {
+        ProviderActionDecision::BrokerRequired => {
+            "Reviewed provider broker is required; ambient context is not allowed"
+        }
+        ProviderActionDecision::Refreshing => {
+            "Provider context is refreshing; wait for a complete snapshot"
+        }
+        ProviderActionDecision::Stale => {
+            "Provider context is stale; refresh and review again"
+        }
+        ProviderActionDecision::Expired => {
+            "Provider context expired; refresh and review again"
+        }
+        ProviderActionDecision::Offline => {
+            "Provider is offline; restore connectivity and refresh"
+        }
+        ProviderActionDecision::Unavailable => {
+            "Provider context is unavailable; refresh and review again"
+        }
+        ProviderActionDecision::Error => {
+            "Provider refresh failed; inspect the provider status and retry"
+        }
+        ProviderActionDecision::Replaced => {
+            "Provider context changed; refresh and review again"
+        }
+        ProviderActionDecision::InsertWithoutEnter => "Provider action is ready",
+    }
+}
+
+fn current_time_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
+        .unwrap_or(0)
 }
 
 fn shell_kind(identity: &str, wsl_distro: Option<&str>) -> ShellKind {
@@ -542,6 +712,39 @@ mod tests {
         assert!(unavailable_before_placeholder(&action)
             .unwrap()
             .contains("Exact launch"));
+    }
+
+    #[test]
+    fn final_confirmation_keeps_exact_provider_context_accessible() {
+        let label = final_confirmation_accessibility_label(
+            "Show AWS identity",
+            "AWS · Account 123456789012 · Current · Production",
+        );
+        assert!(label.contains("AWS · Account 123456789012"));
+        assert!(label.contains("Production"));
+        assert!(label.ends_with("The command remains unexecuted."));
+    }
+
+    #[test]
+    fn provider_failure_states_are_actionable_and_never_claim_execution() {
+        for decision in [
+            ProviderActionDecision::BrokerRequired,
+            ProviderActionDecision::Refreshing,
+            ProviderActionDecision::Stale,
+            ProviderActionDecision::Expired,
+            ProviderActionDecision::Offline,
+            ProviderActionDecision::Unavailable,
+            ProviderActionDecision::Error,
+            ProviderActionDecision::Replaced,
+        ] {
+            let reason = provider_unavailable_reason(decision);
+            assert!(!reason.is_empty());
+            assert!(!reason.to_ascii_lowercase().contains("executed"));
+        }
+        assert!(
+            provider_unavailable_reason(ProviderActionDecision::BrokerRequired)
+                .contains("ambient context is not allowed")
+        );
     }
 
     #[test]

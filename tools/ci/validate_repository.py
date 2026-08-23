@@ -43,6 +43,9 @@ from check_command_productivity_cp50 import (
 )
 from check_session_launch_d0 import validate_repository as validate_session_launch_d0
 from check_provider_auth_m7 import validate_repository as validate_provider_auth_m7
+from check_provider_quick_actions_cp4 import (
+    validate_repository as validate_provider_quick_actions_cp4,
+)
 from check_documentation_coverage import validate as validate_documentation_coverage
 from check_devops_alias_spec import validate_repository as validate_devops_alias_spec
 from check_feature_assurance import load_and_validate as validate_feature_assurance
@@ -330,6 +333,8 @@ def validate() -> None:
     counts["session launch D0/D3"] = session_launch_d0_counts["scenarios"]
     provider_auth_m7_counts = validate_provider_auth_m7()
     counts["provider auth M7/D6.0"] = provider_auth_m7_counts["tests"]
+    provider_cp4_counts = validate_provider_quick_actions_cp4()
+    counts["provider Quick Actions M13/CP4"] = provider_cp4_counts["tests"]
 
     alias_spec_counts = validate_devops_alias_spec()
     counts["planned CP2/CP3 alias assurance"] = alias_spec_counts[

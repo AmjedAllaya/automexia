@@ -60,7 +60,8 @@ class CommandProductivityPolicyTests(unittest.TestCase):
         self.assertEqual(counts["cp2_pure_action_files"], 7)
         self.assertEqual(counts["cp4_pure_action_files"], 1)
         self.assertEqual(counts["cp4_provider_action_files"], 6)
-        self.assertEqual(counts["cp2_persistence_files"], 13)
+        self.assertEqual(counts["cp4_application_files"], 1)
+        self.assertEqual(counts["cp2_persistence_files"], 14)
 
     def test_versioned_hostile_mutation_corpus_is_rejected(self) -> None:
         self.assertEqual(set(self.hostile), {"schema", "phase", "cases"})
@@ -305,6 +306,13 @@ class CommandProductivityPolicyTests(unittest.TestCase):
             )
         )
 
+    def test_cp4_application_composition_has_one_reviewed_owner(self) -> None:
+        self.assertEqual(
+            POLICY.CP4_APPLICATION_FILES,
+            {
+                "apps/automexia-terminal/src/automexia/quick_actions/providers.rs",
+            },
+        )
     def _persistence_fixture(self, root: Path) -> list[Path]:
         files = []
         for relative in sorted(POLICY.CP2_PERSISTENCE_FILES):

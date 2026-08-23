@@ -215,6 +215,47 @@ ratchet now permits exactly six provider adapter source owners plus the one pure
 CP4 source, its 28 policy tests pass, and `cargo xtask verify architecture`
 confirms the dependency graph and capability boundaries.
 
-Application route publication, UI presentation and final revalidation,
-policy/fuzz evidence, final documentation, and the full gate ladder remain in
-progress. No product or provider activation is claimed by this increment.
+Application route publication, UI presentation, final revalidation, policy,
+and fuzz ownership are now source-complete. The runtime prebuilds and publishes
+one immutable snapshot for each of at most 32 routes, rejects non-monotonic
+same-capsule generations, captures the generation in each request, checks it
+before and after cached search, and removes it on explicit clear or route
+cleanup. Provider hits have deterministic precedence over same-ID persisted
+hits without duplicate rows. Selection retains the structured binding and
+revalidates it before expansion and immediately before copy/bracketed insert.
+
+The compact existing Quick Actions surface now gives provider rows the
+connection icon and cyan semantic accent, replaces dense generic metadata with
+provider/target/state/risk context, and repeats that context in accessibility
+labels and review. Production requires the existing second confirmation.
+Broker-required, refreshing, stale, expired, offline, unavailable, error, and
+replaced states show precise recovery text and cannot copy or insert. The global
+`Ctrl+Shift+O` / `Cmd+Shift+O` shortcut remains unchanged; no new modal or input
+owner was introduced.
+
+The schema-1 machine contract fixes seven providers, nine decisions, eleven
+denied authorities, five limits, thirteen source owners, thirteen evidence
+files, 19 named regressions, the fuzz target, benchmark, and documents. The
+dedicated checker and six mutation cases reject authority widening, provider
+adapter imports/composition on interactive paths, contract/evidence drift,
+duplicate keys, and linked evidence where supported. The hostile-capsule fuzz
+target compiles and is registered for nightly execution. Aggregate policy now
+permits exactly one CP4 application composition source; all 29 aggregate
+mutations and six CP4 mutations pass locally (the Windows symlink mutation is
+skipped because the current host cannot create that link).
+
+On the 2026-08-23 Windows development host, formatting and warning-denied
+workspace Clippy passed; locked CI-profile nextest ran 1,931 tests successfully
+with seven profile/platform skips; locked workspace documentation tests ran 64
+successfully with three upstream windowing examples ignored. Full QA passed
+every locally runnable stage, including repository/PowerShell contracts,
+dependency policy, resize stress, session clone, and loom. `cargo ready` then
+passed its clean isolated workspace check/Clippy/test/documentation sequence,
+dependency audit, application build, and `automexia 0.4.0` smoke test.
+
+Full QA classified native OpenSSH/provider manifests, interactive Windows GPU,
+Application Verifier/WPR, controlled benchmarks, the 30-day baseline,
+Linux/macOS GPU, and screen-reader evidence as external; coverage remained
+opt-in and was skipped. No product provider-refresh publisher, exact provider
+execution, OpenBao adapter, real account/CLI/cluster, packaging, signing, or
+release evidence is claimed.

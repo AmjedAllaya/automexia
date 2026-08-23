@@ -59,6 +59,10 @@ jobs:
         run: python tools/ci/test_command_productivity_cp32.py
       - name: Command productivity CP3.3 import and task-bridge mutation tests
         run: python tools/ci/test_command_productivity_cp33.py
+      - name: Provider-aware Quick Actions CP4 contract and mutation tests
+        run: |
+          python tools/ci/check_provider_quick_actions_cp4.py
+          python tools/ci/test_provider_quick_actions_cp4.py
       - name: Connection Hub F2 contract and mutation tests
         run: |
           python tools/ci/check_connection_hub_f2.py

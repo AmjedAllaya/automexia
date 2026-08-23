@@ -59,7 +59,7 @@ enables an alias. Generated shell files are caches, never the database.
    risk, source, and expansion before activation.
 4. **Collision surprises:** the UI detects native commands, aliases, functions,
    abbreviations, macros, and completers before installing anything.
-5. **Multi-environment mistakes:** later CP4 actions bind to the current
+5. **Multi-environment mistakes:** source-complete CP4 actions bind to the current
    immutable Environment Capsule instead of changing global provider state.
 6. **Broken completion:** every alias records whether and how completion follows
    the underlying official provider integration.

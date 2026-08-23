@@ -30,7 +30,7 @@ A phase can be source-complete while release evidence is still partial. User-fac
 | Productivity | CP3.1 | **Fully implemented locally** | **Partial** | Explicit opt-in persistence, crash-safe all-old/all-new publication, verified five-shell startup/reload, diagnostics, rollback, and exact uninstall are implemented; hosted native/macOS/WSL and controlled-baseline evidence remains. |
 | Productivity | CP3.2 | **Fully implemented locally** | **Partial** | Eleven static provider packs, 33 disabled-by-default actions, health/update/alias-safety, CLI, tests, fuzz, benchmarks, and policy gates are complete; hosted evidence remains. |
 | Productivity | CP3.3 | **Fully implemented locally** | **Partial** | Six explicit native inventory formats, exact just/Task/mise bridges, bounded dry-run/CAS import/workspace/trust/revocation/removal, path-free digest/revision receipts, background cache authorization, final insertion recheck, tests, mutation, fuzz, benchmark, ADR, CLI, and docs are complete; hosted native/accessibility and 30-day evidence remain. |
-| Productivity | CP4 | **Not implemented** | **Blocked** | Requires activated D3 and D5/D6 capsule/provider context. |
+| Productivity | CP4 | **Partially implemented overall; source-complete nonactivated** | **Partial/external** | Seven cached provider projections, route/session/generation isolation, final revalidation, compact accessible state/risk UX, production confirmation, fuzz/benchmark/policy evidence are complete locally. Product provider publication/execution, OpenBao, and real native/provider/accessibility/release evidence remain. |
 | Productivity | CP5.0 | **Fully implemented at research boundary** | **Complete locally** | Seven-shell API matrix, pure insertion prototype, locked matcher/dependency evidence, privacy review, and retain-CP1/defer-P2 decision are machine-gated; no runtime surface exists. |
 | Productivity | CP5.1-CP5.6 | **Not implemented** | **Not started** | A separate accepted bridge ADR plus protocol, sources, ranking, UI, shell activation, and release proof are required; CP1 remains fallback. |
 | Productivity | CP6 | **Not implemented; deferred** | **Blocked by design** | Signed ecosystem packs and AI tools require v0.6 gates. |
@@ -93,7 +93,7 @@ Public extension distribution, sandboxing, signed third-party packs, direct prov
 - **CP1:** shell-native completion — complete locally; native release evidence remains.
 - **CP2.0-CP2.2:** typed actions, private store, review/search/admin/insert-copy — complete locally.
 - **CP3.0-CP3.3:** pure five-shell projection, opt-in aliases, reviewed packs, selected native import/trusted workspace bridges — complete locally with remaining release evidence.
-- **CP4:** provider/capsule-aware actions — waits for activated managed-session context.
+- **CP4:** provider/capsule-aware actions — source-complete and nonactivated; product capsule publication and execution remain gated.
 - **CP5:** optional app-owned suggestions — planned; native CP1 completion remains fallback.
 - **CP6:** signed ecosystem/AI action packs — deferred.
 

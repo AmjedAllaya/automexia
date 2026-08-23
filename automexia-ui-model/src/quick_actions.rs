@@ -35,6 +35,7 @@ pub struct QuickActionListItem {
     pub shadowed_count: usize,
     pub metadata_label: String,
     pub accessibility_label: String,
+    pub provider_context: bool,
 }
 
 impl QuickActionListItem {
@@ -68,9 +69,17 @@ impl QuickActionListItem {
             source,
             risk,
             shadowed_count,
+            provider_context: false,
         }
     }
 
+    pub fn with_provider_context(mut self, label: String) -> Self {
+        self.metadata_label = label.clone();
+        self.accessibility_label.push_str(", provider context ");
+        self.accessibility_label.push_str(&label);
+        self.provider_context = true;
+        self
+    }
     pub fn with_health(mut self, health: &'static str) -> Self {
         self.metadata_label.push_str(" · ");
         self.metadata_label.push_str(health);
@@ -85,12 +94,14 @@ pub struct QuickActionReviewView {
     pub action_id: String,
     pub title: String,
     pub command_preview: String,
+    pub command_context_label: String,
     pub risk_label: &'static str,
     pub risk: QuickActionRisk,
     pub primary_label: &'static str,
     pub copy_allowed: bool,
     pub requires_second_confirmation: bool,
     pub accessibility_label: String,
+    pub provider_context: bool,
 }
 
 impl QuickActionReviewView {
@@ -115,6 +126,7 @@ impl QuickActionReviewView {
             action_id,
             title: title.clone(),
             command_preview,
+            command_context_label: "Exact command".into(),
             risk_label: risk_name,
             risk,
             primary_label,
@@ -123,7 +135,22 @@ impl QuickActionReviewView {
             accessibility_label: format!(
                 "Review {title}, {risk_name} risk. {primary_label}. Command remains unexecuted."
             ),
+            provider_context: false,
         }
+    }
+
+    pub fn with_provider_context(
+        mut self,
+        label: String,
+        requires_production_confirmation: bool,
+    ) -> Self {
+        self.command_context_label = label.clone();
+        self.accessibility_label.push_str(" Provider context ");
+        self.accessibility_label.push_str(&label);
+        self.accessibility_label.push('.');
+        self.requires_second_confirmation |= requires_production_confirmation;
+        self.provider_context = true;
+        self
     }
 }
 
@@ -181,6 +208,41 @@ mod tests {
         assert!(stale
             .accessibility_label
             .ends_with(", status Last-known-good"));
+    }
+
+    #[test]
+    fn provider_context_is_concise_visible_accessible_and_production_confirmed() {
+        let item = QuickActionListItem::new(
+            "provider.aws.identity".into(),
+            "Show AWS identity".into(),
+            "Inspect identity".into(),
+            "Environment capsule".into(),
+            QuickActionRisk::ReadOnly,
+            0,
+        )
+        .with_provider_context(
+            "AWS · Account 123456789012 · Current · Production".into(),
+        );
+        assert!(item.provider_context);
+        assert_eq!(
+            item.metadata_label,
+            "AWS · Account 123456789012 · Current · Production"
+        );
+        assert!(item.accessibility_label.contains("Read-only risk"));
+        assert!(item.accessibility_label.contains("provider context AWS"));
+
+        let review = QuickActionReviewView::new(
+            item.id,
+            item.name,
+            "aws sts get-caller-identity".into(),
+            QuickActionRisk::ReadOnly,
+            QuickActionMode::Insert,
+        )
+        .with_provider_context(item.metadata_label, true);
+        assert!(review.provider_context);
+        assert!(review.requires_second_confirmation);
+        assert_eq!(review.primary_label, "Insert without Enter");
+        assert!(review.accessibility_label.contains("Production"));
     }
 
     #[test]

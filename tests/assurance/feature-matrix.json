@@ -363,6 +363,31 @@
       }
     },
     {
+      "id": "command-productivity-cp4-provider-actions",
+      "title": "Bounded cached provider-aware Quick Actions with final route binding revalidation",
+      "components": ["apps/automexia-terminal", "automexia-devops", "automexia-ui-model", "extensions/devops-aws", "extensions/devops-azure", "extensions/devops-gcp", "extensions/devops-kubernetes", "extensions/devops-openshift", "extensions/devops-teleport", "tools/ci", "tests/fixtures/command-productivity", "fuzz"],
+      "documentation": {
+        "guide": ["docs/user-guide/commands-and-shell.md#provider-aware-quick-actions"],
+        "reference": ["docs/COMMAND-PRODUCTIVITY.md#cp4-capsuleprovider-aware-productivity", "docs/TESTING.md#m13-provider-aware-quick-actions"],
+        "explanation": ["docs/PROVIDER-AWARE-QUICK-ACTIONS-IMPLEMENTATION-AUDIT.md", "docs/ARCHITECTURE.md#m13-provider-aware-quick-actions-boundary", "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "controlled", "evidence": ["automexia-ui-model/src/quick_actions.rs", "apps/automexia-terminal/src/screen/action_surface.rs", "apps/automexia-terminal/src/renderer/command_palette.rs", "docs/ACCESSIBILITY.md"], "rationale": "Compact provider/target/state/risk labels, semantic icons/colors, textual redundancy, production confirmation, and unavailable recovery language are deterministic tests; native Narrator/NVDA/VoiceOver/Orca evidence remains controlled."},
+        "correctness": {"level": "pr", "evidence": ["automexia-devops/src/actions/provider.rs", "automexia-devops/tests/provider_quick_actions_cp4.rs", "automexia-devops/tests/quick_action_activation.rs", "apps/automexia-terminal/src/automexia/quick_actions/providers.rs", "apps/automexia-terminal/src/automexia/quick_actions/worker.rs", "apps/automexia-terminal/src/screen/action_surface.rs"]},
+        "security": {"level": "nightly", "evidence": ["tools/ci/check_provider_quick_actions_cp4.py", "tools/ci/test_provider_quick_actions_cp4.py", "tests/fixtures/command-productivity/cp4-contract-v1.json", "automexia-devops/tests/provider_quick_actions_cp4.rs", "fuzz/fuzz_targets/provider_quick_actions.rs", ".github/workflows/nightly.yml#fuzz"]},
+        "performance": {"level": "controlled", "evidence": ["automexia-devops/benches/quick_actions.rs", ".github/workflows/nightly.yml#benchmarks-controlled", "tools/ci/qa.py"], "rationale": "A 16-action same-host cached snapshot/search baseline exists; named-hardware longitudinal and multi-platform baselines remain controlled."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/worker.rs"], "rationale": "The 32-route ceiling, route cleanup, replacement, clear, stale-result rejection, and joined worker shutdown are deterministic tests; sustained native provider resources remain external."},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "CP4 snapshots are memory-only and never enter the Quick Action store, provider configuration, credentials, aliases, history, logs, or exports."},
+        "resilience": {"level": "pr", "evidence": ["automexia-devops/src/actions/provider.rs", "apps/automexia-terminal/src/automexia/quick_actions/providers.rs", "apps/automexia-terminal/src/automexia/quick_actions/worker.rs", "apps/automexia-terminal/src/screen/action_surface.rs"], "rationale": "All-or-nothing composition, monotonic publication, last-known-good preservation, cancellation, revocation, expiry/offline/error states, and final pre-insert checks fail closed."},
+        "visual_quality": {"level": "controlled", "evidence": ["automexia-ui-model/src/quick_actions.rs", "apps/automexia-terminal/src/renderer/command_palette.rs", "docs/LIQUID-HACKER-UX.md"], "rationale": "Renderer-neutral row/review presentation proves concise metadata and semantic connection visuals; native screenshots at scale and custom themes remain controlled."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-devops/tests/provider_quick_actions_cp4.rs", "apps/automexia-terminal/src/automexia/quick_actions/worker.rs"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-devops/tests/provider_quick_actions_cp4.rs", "apps/automexia-terminal/src/automexia/quick_actions/worker.rs"], "rationale": "Hosted pure/application tests are configured; real provider CLI/account/cluster and native accessibility remain external."},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-devops/tests/provider_quick_actions_cp4.rs", "apps/automexia-terminal/src/automexia/quick_actions/worker.rs"], "rationale": "Hosted pure/application tests are configured; real provider CLI/account/cluster and native accessibility remain external."}
+      }
+    },
+    {
       "id": "command-productivity-cp31-persistent-aliases",
       "title": "Explicit opt-in private transactional aliases with verified native startup, reload, rollback, and uninstall",
       "components": ["apps/automexia-terminal", "shell-integration", "tools/ci", "tests/fixtures/command-productivity"],

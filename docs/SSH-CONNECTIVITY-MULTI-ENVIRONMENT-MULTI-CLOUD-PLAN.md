@@ -132,7 +132,7 @@ native/release claim.
 | D6.3/M10 Google Cloud | Partially done overall; source-complete nonactivated | Independent `automexia-devops-gcp`; bounded named public config; exact per-command login/project observation; opaque federation; scope-bound IAP; private-environment GKE intent; 8 focused tests | D3 activation/attestation, M11 GKE ingestion, and controlled real Google/native/resource/accessibility/release evidence remain. |
 | D6.4/M11 Kubernetes/OpenShift | Partially done overall; source-complete nonactivated | Independent Kubernetes/OpenShift packages; bounded exact-source YAML/JSON parsing and merge; default-denied exec review; exact isolated kubectl/oc plans; 13 tests and benchmark | D3/product activation, real client/cluster/native/resource/accessibility/release evidence. |
 | D6.5/M12 Teleport/OpenBao | Partially done overall | Teleport is source-complete and nonactivated through a separate bounded extension with exact version/login/status/ssh/logout plans; OpenBao ADR 0024 remains proposed and unaccepted | Activate and prove Teleport only through D3/native release gates; accept ADR 0024 before any OpenBao code. |
-| Provider-aware Quick Actions (CP4/F13) | Not done and blocked | CP2/CP3 typed/persistent/insert-only Quick Actions and static packs exist | Consume only F7+ cached public context; exact execution stays behind F4. |
+| Provider-aware Quick Actions (CP4/F13) | Partially done overall; source-complete nonactivated | Seven provider projections, immutable route snapshots, cached search, final revalidation, compact accessible context, production confirmation, fuzz/benchmark/policy evidence | Product provider publication, exact provider execution, OpenBao, and real native/provider/accessibility/release evidence remain. |
 
 ### Important distinction: existing legacy DevOps status is not D6
 
@@ -977,22 +977,35 @@ neither organization adapter may grant authority to the other.
 
 ### M13 — F13/CP4 provider-aware Quick Actions
 
-Status: Not done and dependency-blocked by M2–M12.
+Status: **Partially done overall; source-complete and nonactivated locally.**
 
-- [ ] Extend Quick Action candidates only from bounded cached public capsules:
-  target, provider/account/subscription/project, cluster/context/namespace,
-  region/zone, infrastructure reference, freshness/provenance, risk, and state.
-- [ ] Show exact target and stale/missing/expired/offline/production signals in
-  search and review. Cancel stale query generations and preserve pane/session/
-  provider/workspace isolation.
-- [ ] Preserve insert-without-Enter as the fallback. Exact action execution must
-  use an M2 reviewed grant and each provider slice’s approved grammar.
-- [ ] Add actions one provider at a time with fake/native tests, cancellation,
-  revocation, audit/redaction, accessibility, disable/uninstall, and explicit
-  no-provider-work-on-keystroke proof.
+- [x] **Fully done locally — bounded public projection.** Quick Action
+  candidates carry exact target, provider/account/subscription/project,
+  cluster/context/namespace, region/zone, infrastructure reference,
+  freshness/provenance, risk, and state from validated cached capsules only.
+- [x] **Fully done locally — compact truthful UX and isolation.** Search and
+  review show exact target and refreshing/stale/missing/expired/offline/error/
+  changed/production signals with text, accessibility labels, icons, and color.
+  Request plus route/session/capsule/generation checks discard stale work and
+  isolate panes, providers, and workspace layers.
+- [x] **Fully done locally — safe fallback and broker denial.** Current
+  observation actions insert without Enter. Private-environment or exact-launch
+  actions remain broker-required; CP4 cannot execute, copy through ambient
+  state, or widen an M2/D3 grant.
+- [x] **Fully done locally — independent source slices.** SSH, AWS, Azure,
+  Google Cloud, Kubernetes, OpenShift, and Teleport own exact contributions.
+  Fake/model/application tests cover cancellation, replacement, revocation,
+  redacted audit, accessible production confirmation, cleanup/capacity, and
+  explicit no-provider-work-on-keystroke policy. OpenBao fails unsupported.
+- [ ] **Partially done — native and activated product evidence.** A shipped
+  provider-refresh controller does not yet publish the in-memory snapshot;
+  exact provider execution, OpenBao, real accounts/CLIs/clusters, Linux/macOS
+  native runtime, controlled screen-reader/resource, packaging, signing, and
+  release fixtures remain external.
 
-Exit: provider-aware productivity improves discovery without widening provider,
-credential, or session authority.
+Exit is met locally at the nonactivating authority boundary: provider-aware
+discovery does not widen provider, credential, process, or session authority.
+The combined product/release exit remains partial until the final item passes.
 
 ## 5. Research and compatibility decisions to preserve
 

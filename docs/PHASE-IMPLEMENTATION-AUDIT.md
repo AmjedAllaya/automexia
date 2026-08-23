@@ -108,7 +108,7 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Productivity | CP3.1 | **Fully implemented locally** | **Partial** | Explicit opt-in persistence, crash-safe all-old/all-new publication, verified five-shell startup/reload, diagnostics, rollback, and exact uninstall are implemented; hosted native/macOS/WSL and controlled-baseline evidence remains. |
 | Productivity | CP3.2 | **Fully implemented locally** | **Partial** | Eleven static provider packs, 33 disabled-by-default actions, health/update/alias-safety, CLI, tests, fuzz, benchmarks, and policy gates are complete; hosted evidence remains. |
 | Productivity | CP3.3 | **Fully implemented locally** | **Partial** | Six explicit native inventory formats, exact just/Task/mise bridges, bounded dry-run/CAS import/workspace/trust/revocation/removal, path-free digest/revision receipts, background cache authorization, final insertion recheck, tests, mutation, fuzz, benchmark, ADR, CLI, and docs are complete; hosted native/accessibility and 30-day evidence remain. |
-| Productivity | CP4 | **Not implemented** | **Blocked** | Requires activated D3 and D5/D6 capsule/provider context. |
+| Productivity | CP4 | **Partially implemented overall; source-complete nonactivated** | **Partial/external** | Seven provider projections, bounded route snapshots, cached search, stale cancellation, final revalidation, redacted audit, compact accessible risk/state UX, production confirmation, fuzz/benchmark/mutation/policy evidence are complete locally. Product provider publication, exact execution, OpenBao, and real native/provider/accessibility/release evidence remain. |
 | Productivity | CP5.0 | **Fully implemented at research boundary** | **Complete locally** | Seven-shell API matrix, pure insertion prototype, locked matcher/dependency evidence, privacy review, and retain-CP1/defer-P2 decision are machine-gated; no runtime surface exists. |
 | Productivity | CP5.1-CP5.6 | **Not implemented** | **Not started** | A separate accepted bridge ADR plus protocol, sources, ranking, UI, shell activation, and release proof are required; CP1 remains fallback. |
 | Productivity | CP6 | **Not implemented; deferred** | **Blocked by design** | Signed ecosystem packs and AI tools require v0.6 gates. |
@@ -993,10 +993,33 @@ are present. Hosted native/accessibility and controlled 30-day evidence remain.
 
 ### CP4 — capsule/provider actions
 
-**Not implemented and dependency-blocked.** Requires D3/D5/D6, cached public
-context only, freshness, explicit refresh, production risk, exact brokered
-launch, isolation, cancellation/revocation/offline/expiry/redacted audit, and
-multi-provider native/resource tests.
+**Partially implemented overall; source-complete and nonactivated locally.**
+The capability-free action core validates immutable public provider candidates,
+bindings, digests, nine freshness/availability decisions, production risk, and
+redacted audit. SSH plus six first-party provider owners contribute exact typed
+argv; the application composes an all-or-nothing snapshot and publishes a
+prebuilt index for one of at most 32 routes. Search rejects stale route/session/
+capsule/generation results, provider rows deterministically shadow same-ID
+persisted actions, and route cleanup/revocation removes the snapshot.
+
+Search/review show compact provider, exact target, state, and environment risk
+with connection icon/color plus complete textual/accessibility redundancy. The
+screen revalidates immediately before copy or bracketed insertion. Current
+observations remain insert-without-Enter; production adds a second confirmation;
+refreshing/stale/expired/offline/unavailable/error/replaced and broker-required
+operations cannot copy or insert. No provider adapter is imported by the worker
+or interactive UI, and no CP4 source refreshes, authenticates, connects, starts
+a process, reads credentials/files, persists provider state, or gains PTY/
+renderer authority.
+
+The schema-1 contract fixes seven providers, nine decisions, eleven denied
+authorities, five ceilings, 19 named regressions, a hostile-capsule fuzz target,
+two cached benchmarks, and policy mutation coverage. Final local Windows gate
+evidence is recorded in the implementation audit only after it completes.
+Product capsule publication,
+exact provider execution, OpenBao after ADR 0024, real accounts/CLIs/clusters,
+Linux/macOS native runtime, controlled accessibility/resources, packaging,
+signing, and release fixtures remain external.
 
 ### CP5.0 — autocomplete research
 
@@ -1062,9 +1085,9 @@ Planned work, with no shipped-command claim:
 | Canonical operation registry, `automexia` domains, generated palette/help/accessibility, optional collision-safe `ax` | CP2.2-CP3/D5 | Not implemented |
 | Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | D5.1 picker/browse/metadata and D5.2 typed direct/config-jump preparation, full trust review, safe copy, fail-closed runner, exact PTY seam, and route publication are complete locally but nonactivated; protected connect and native evidence remain |
 | Identity references, agent/certificate/hardware public state, known-host explanation, routes/jumps/proxies/tunnels | D5.2 | M4 references/status/trust and M5 exact local/remote/dynamic tunnels, loopback defaults, strong review, and lifecycle are fully implemented locally and nonactivated; actual status execution, broader proxies, protected activation, and real F5.4 native evidence remain |
-| Quick Actions, aliases, lifecycle hooks, reviewed multi-target execution | CP2.2-CP4/D5E | CP2/CP3 actions are local/insert-only; M6 typed recipe lifecycle and armed broadcast review are source-complete, but multi-target execution remains disabled |
+| Quick Actions, aliases, lifecycle hooks, reviewed multi-target execution | CP2.2-CP4/D5E | CP2/CP3 actions and CP4 cached provider discovery/final revalidation are source-complete locally; exact provider and multi-target execution remain disabled |
 | Declarative workspace persistence/restoration and visibly armed broadcast | M6/F6 | Review-only schema-2 persistence, restore, armed broadcast, semantic projection, and bounded tests are complete locally; product controller/renderer/execution and native evidence remain |
-| Per-pane multi-cloud/context commands and typed import/reconcile adapters | D6.0-D6.5/CP4 | Partially implemented: D6.0 provider-neutral lifecycle and the M8-M11 plus M12 Teleport bounded/exact source adapters are complete locally and nonactivated; product commands/import/reconcile flows, CP4, real provider/native evidence, and OpenBao remain gated |
+| Per-pane multi-cloud/context commands and typed import/reconcile adapters | D6.0-D6.5/CP4 | Partially implemented: D6.0, M8-M11, M12 Teleport, and CP4 cached provider-action projection are source-complete and nonactivated; product refresh/import/reconcile/execution, real provider/native evidence, and OpenBao remain gated |
 | Structured files/SFTP, bounded logs/bookmarks, team state/policy, shared sessions | D7 protected slices | Not implemented |
 | Mosh, Telnet, serial, public ecosystem packs, optional editor popup, AI explain/suggest | D7/CP5-CP6 | Not implemented/deferred |
 
@@ -1279,7 +1302,7 @@ At this audited baseline, the focused order is:
    workspaces before adding provider execution.
 5. Preserve the complete local D6.0 boundary and implement each D6.1-D6.5 provider independently through official
    CLI/auth authorities and isolated immutable capsules.
-6. Implement CP4 only after D3/D5/D6 expose bounded cached public context.
+6. Preserve the source-complete nonactivated CP4 boundary; activate publication or exact provider execution only after D3/D5/D6 expose approved product context and native evidence.
 7. Preserve the fully completed CP5.0 retain-CP1 decision. CP5.1-CP5.6 remain
    not started and may proceed only after a new proposal's separate bridge ADR
    and gates pass.
@@ -1295,8 +1318,8 @@ DevOps foundations. It has substantive tests, benchmarks, fuzz ownership,
 security controls, resource limits, documentation, and platform policy.
 
 The full roadmap is not complete. Stable v0.4 evidence is incomplete;
-production SSH/Connection Hub, remote workspaces, multi-cloud, provider-aware
-actions, Automexia-owned suggestions, full Ghostty compatibility, public
+production SSH/Connection Hub, remote workspaces, multi-cloud/provider-action
+activation, Automexia-owned suggestions, full Ghostty compatibility, public
 extensions, and AI remain.
 
 > Current milestone: v0.4 source stabilization, D1/D2, disabled D4, the complete
