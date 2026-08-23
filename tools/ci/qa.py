@@ -597,6 +597,11 @@ def main() -> int:
         ("repository-contracts", ["cargo", "xtask", "verify", "all"], None),
         ("repository-formats", [sys.executable, "tools/ci/validate_repository.py"], None),
         (
+            "cp51-proposal-mutations",
+            [sys.executable, "tools/ci/test_command_productivity_cp51.py"],
+            None,
+        ),
+        (
             "cp50-research-format",
             [
                 "cargo",

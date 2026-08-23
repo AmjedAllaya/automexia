@@ -381,7 +381,10 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
             "P1 - execute CP5.0 native autocomplete research",
             "Status: Fully done",
         },
-        "docs/ROADMAP.md": {"**Fully done** | CP5.0", "**Not done** | CP5.1-CP5.6"},
+        "docs/ROADMAP.md": {
+            "**Fully done** | CP5.0",
+            "**Partially done** | CP5.1-CP5.6",
+        },
         "docs/PHASE-IMPLEMENTATION-AUDIT.md": {
             "CP5.0 — autocomplete research",
             "**Fully implemented at the research boundary.**",
@@ -391,15 +394,15 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
             "CP5.1 bridge",
         },
         "docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md": {
-            "CP5.0 research fully done",
-            "CP5.1-CP5.6 not implemented",
+            "CP5.0 fully done",
+            "partially done at proposal-only boundary",
         },
         "docs/project/roadmap.md": {
             "CP5.0",
             "**Fully implemented at research boundary**",
         },
         "docs/index.md": {
-            "Research complete; no runtime surface approved",
+            "Proposal and threat contract complete; runtime not authorized",
             "research/CP5-AUTOCOMPLETE-RESEARCH.md",
         },
         "tools/ci/validate_repository.py": {"validate_command_productivity_cp50"},
