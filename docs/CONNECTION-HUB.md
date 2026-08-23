@@ -1085,8 +1085,10 @@ accessibility evidence remain D6.1-D6.5 work.
    exact tenant-bound broker/browser/device login and subscription status, AAD-only
    Bastion, and opaque transient AKS intent pass locally. D3/M11 activation,
    product UI, and controlled real Azure/native evidence remain.
-3. **D6.3 Google Cloud — not done:** named configurations, Workforce/Workload
-   Identity, IAP/OS Login, and GKE.
+3. **D6.3 Google Cloud — source-complete, nonactivated:** bounded named public
+   configuration, per-command user/project observation, opaque Workforce/
+   Workload references, scope-bound IAP/OS Login, and private-environment GKE
+   intent pass locally. D3/M11 product/native evidence remains.
 4. **D6.4 Kubernetes/OpenShift — not done:** trusted kubeconfig sources, exec
    allowlists, contexts/namespaces/projects, and visible login.
 5. **D6.5 organization adapters — not done:** Teleport first; OpenBao only after
