@@ -549,6 +549,34 @@ output reference; M11 alone may resolve that reference to a newly allocated,
 private, validated, lifecycle-owned transient file. No user kubeconfig or
 current context is named. Disabling/reverting the package removes only the
 Automexia catalog entry and does not alter Azure CLI state.
+
+### M10 Google Cloud adapter source boundary
+
+`extensions/devops-gcp` is the independent disabled D6.3 owner. It uses M7 and
+the already-adopted dependency-free `configparser`, with no Google SDK,
+filesystem, environment discovery, process, network, credential DB, PTY,
+browser, background task, or persistence owner. One exact caller-supplied named
+configuration is capped at 256 KiB, 64 sections, 512 entries, and 4 KiB public
+fields. Only account/project/region/zone survive. Duplicate/malformed/hostile
+input and credential/token/secret/password/private-key/login-config/token-file
+keys fail closed; caller-created configurations are revalidated at ingress.
+
+User browser/remote-bootstrap login and public project/IAM observation carry the
+capsule configuration through exact `--configuration` arguments. Configuration,
+account, project, region/zone, session/revision, executable/argv, endpoint,
+browser policy, timeout, risk, and process/network scopes are review-bound. No
+operation activates or changes global configuration, updates ADC, prints a
+token, evaluates a shell, or uses ambient `CLOUDSDK_ACTIVE_CONFIG_NAME`.
+Workforce `--login-config` and Workload `--cred-file` exist only as immutable
+nonexecuting intents split around opaque private references.
+
+IAP is bound to capsule project/zone/configuration, requires interactive PTY and
+whole-tree cancellation, and leaves SSH-key and OS Login behavior with gcloud.
+GKE carries an opaque M11-owned private reference and the fixed `KUBECONFIG`
+environment name; it cannot name or merge a user file. All execution stays false
+behind D3/M11. Disabling/reverting the package removes only its catalog entry and
+does not alter gcloud configuration, credentials, SSH state, or kubeconfig.
+
 ### Capability and process-launch contract
 
 The v0.4 capability enum is descriptive and local-read-only in practice. The

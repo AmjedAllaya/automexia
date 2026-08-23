@@ -623,20 +623,27 @@ Status: Partially done overall; source-complete and nonactivated locally.
 
 Exit is complete only for the independently disabled source adapter. No Azure
 process, network, authentication, cache, Bastion, AKS, PTY, or filesystem ran.
+
 ## F10 - implement D6.3 Google Cloud slice
 
-Status: Not done.
+Status: Partially done overall; source-complete and nonactivated locally.
 
-- [ ] Parse bounded named gcloud configurations and public account/project/
-  region/zone metadata without copying credentials.
-- [ ] Use visible gcloud-owned user, Workforce, or Workload Identity login.
-- [ ] Pin configuration, account reference, project, region/zone, expiry, and
-  provenance per capsule instead of changing the global active configuration.
-- [ ] Add exact IAP/OS Login and GKE context flows through official tools.
-- [ ] Test untrusted credential-configuration rejection, 2FA, IAM denial,
-  configuration precedence, cancellation, offline, isolation, and uninstall.
+- [x] Parse one bounded exact granted named configuration and retain only public
+  account/project/region/zone; reject external credential/token material.
+- [x] Use exact `--configuration` for user browser/remote login and public
+  project/IAM observation; never globally activate/set config or update ADC.
+- [x] Keep Workforce/Workload config files opaque and nonexecuting; pin complete
+  capsule/session/config/project/region/zone/provenance/freshness/risk scope.
+- [x] Add scope-bound IAP/OS Login planning with gcloud-owned SSH-key behavior
+  and M11-only opaque private-`KUBECONFIG` GKE intent.
+- [x] Pass eight focused tests, app registration, warning-denied all-target
+  Clippy, formatting, and a near-limit 444.00–460.66 µs Criterion target on
+  Windows x86_64.
+- [ ] Activate through D3/M11 only; add product review UI and run real user/2FA/
+  federation/IAM/IAP/OS Login/GKE/native cleanup/resource/accessibility/release.
 
-Exit: Google Cloud is independently enabled, revocable, tested, and releasable.
+Exit is complete only for the independently disabled source adapter. No gcloud
+process, network, authentication, credential DB, IAP, GKE, PTY, or file ran.
 
 ## F11 - implement D6.4 Kubernetes and OpenShift slice
 

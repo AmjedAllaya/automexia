@@ -246,12 +246,21 @@ CLI-owned Windows broker, browser, or device-code behavior and `az account show
 to the capsule subscription. AKS carries only an opaque reference to a future
 M11-owned private transient file, never a user kubeconfig path.
 
+D6.3/M10 adds a nonactivated Google Cloud boundary. It reads only one exact
+granted named configuration and keeps account/project/region/zone public hints.
+Every operation carries `--configuration`; it never activates or changes the
+global config or Application Default Credentials. User browser/remote auth stays
+with gcloud, Workforce/Workload files remain opaque, IAP stays bound to the
+capsule project/zone with gcloud-owned SSH keys and OS Login, and GKE can name
+only an opaque M11-owned private `KUBECONFIG` reference.
+
 Continue to authenticate with the official CLI in a shell today. Do not expect
 the Hub to change an AWS default profile, Azure subscription, Google Cloud active
-configuration, Kubernetes current context, or kubeconfig. Any later AWS or Azure
-product flow must return to a fresh review and can be cancelled, revoked,
-disabled, or removed without affecting ordinary terminal use. D6.3-D6.5
-provider adapters and all real native/provider evidence remain separate work.
+configuration, Kubernetes current context, or kubeconfig. Any later provider
+flow must return to fresh review and can be cancelled, revoked, disabled, or
+removed without affecting ordinary terminal use. D6.4-D6.5 adapters and all real
+native/provider evidence remain separate work.
+
 ## Connect with system OpenSSH today
 
 The read-only Hub does not replace the shell. Use the system client normally:
@@ -304,8 +313,11 @@ observations, actual bounded public status execution, independent native PTYs,
 tunnels, real OpenSSH/forced-cleanup/resource/accessibility evidence, and the
 protected release gate. Typed user/port/config jumps, full host-trust explanation,
 safe copy recovery, cancellation/reconnect/receipts source, and public identity
-status parsing are complete locally but nonactivated. D6.0's provider-neutral capsule/authentication framework is complete locally,
-D6.1 AWS and D6.2 Azure adapters are source-complete but nonactivated; D6.3-D6.5 still own Google Cloud, Kubernetes, OpenShift, Teleport, and OpenBao adapters. There is no current Hub remote-file browser,
+status parsing are complete locally but nonactivated. D6.0's provider-neutral
+capsule/authentication framework is complete locally. D6.1 AWS, D6.2 Azure, and
+D6.3 Google Cloud adapters are source-complete but nonactivated; D6.4-D6.5 still
+own Kubernetes, OpenShift, Teleport, and OpenBao adapters. There is no current
+Hub remote-file browser,
 credential vault, automatic provider login, cloud refresh, or provider command
 execution.
 

@@ -49,7 +49,8 @@ The repository also contains substantial v0.5 foundations. Native shell completi
 | Managed OpenSSH sessions | **Planned** | [Remote connections](guide/remote-connections.md), [Roadmap](project/roadmap.md) |
 | AWS provider source contracts | **Implemented internally, not activated** | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md), [M8 testing](TESTING.md#m8-aws-adapter-source-contracts) |
 | Azure provider source contracts | **Implemented internally, not activated** | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md), [M9 testing](TESTING.md#m9-azure-adapter-source-contracts) |
-| Google Cloud, Kubernetes/OpenShift, Teleport, and OpenBao adapters | **Planned / separately gated** | [Provider audit](MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md), [Roadmap](project/roadmap.md) |
+| Google Cloud provider source contracts | **Implemented internally, not activated** | [Provider testing](MULTI-CLOUD-PROVIDERS-TESTING.md#m10-google-cloud-adapter-source-contracts), [Provider audit](MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md) |
+| Kubernetes/OpenShift, Teleport, and OpenBao adapters | **Planned / separately gated** | [Provider audit](MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md), [Roadmap](project/roadmap.md) |
 | Public extension SDK / sandbox / AI execution | **Deferred** | [Roadmap](project/roadmap.md) |
 
 ## Documentation model

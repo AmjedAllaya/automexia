@@ -129,7 +129,8 @@ native/release claim.
 | D6.0/M7 provider-neutral authentication and capsule orchestration | Fully done locally | Bounded strict schemas, immutable provider contexts, 19-state lifecycle, generation/session isolation, exact allow-once review, redacted receipts/audits, passive-status migration, fuzz/mutation/benchmark evidence | Provider-specific operation builders and real official-CLI/native evidence belong to D6.1-D6.5 and remain not done/external. |
 | D6.1/M8 AWS | Partially done overall; source-complete nonactivated | Independent `automexia-devops-aws`; bounded public profiles; exact SSO/STS/SSM/EKS dry-run contracts; 10 focused tests | D3 product activation/attestation, M11 EKS ingestion, and controlled real official-tool/native/resource/accessibility/release evidence remain. |
 | D6.2/M9 Azure | Partially done overall; source-complete nonactivated | Independent `automexia-devops-azure`; bounded public account JSON; exact tenant-scoped login/account observation; AAD-only Bastion plan; opaque transient AKS intent; 8 focused tests | D3 product activation/attestation, M11 AKS ingestion, and controlled real Azure/native/resource/accessibility/release evidence remain. |
-| D6.3-D6.5 Google Cloud, Kubernetes/OpenShift, Teleport, OpenBao | Not done | Provider-neutral model variants only; OpenBao ADR 0024 is proposed and unaccepted | Implement every adapter independently; accept ADR 0024 before any OpenBao code. |
+| D6.3/M10 Google Cloud | Partially done overall; source-complete nonactivated | Independent `automexia-devops-gcp`; bounded named public config; exact per-command login/project observation; opaque federation; scope-bound IAP; private-environment GKE intent; 8 focused tests | D3 activation/attestation, M11 GKE ingestion, and controlled real Google/native/resource/accessibility/release evidence remain. |
+| D6.4-D6.5 Kubernetes/OpenShift, Teleport, OpenBao | Not done | Provider-neutral model variants only; OpenBao ADR 0024 is proposed and unaccepted | Implement every adapter independently; accept ADR 0024 before any OpenBao code. |
 | Provider-aware Quick Actions (CP4/F13) | Not done and blocked | CP2/CP3 typed/persistent/insert-only Quick Actions and static packs exist | Consume only F7+ cached public context; exact execution stays behind F4. |
 
 ### Important distinction: existing legacy DevOps status is not D6
@@ -844,28 +845,46 @@ Exit is met for the independent Azure source contract, not for product
 activation or release. No Azure CLI, WAM/browser/device flow, Microsoft network,
 token cache, Bastion connection, AKS cluster, PTY, or provider filesystem ran in
 this slice.
+
 ### M10 — F10 Google Cloud slice
 
-Status: Not done; depends on M7, with GKE execution also depending on M11.
+Status: Partially done overall; source-complete and nonactivated on Windows
+x86_64, with product activation, GKE ingestion, and external evidence remaining.
 
-- [ ] Create an independently enabled GCP extension that parses bounded named
-  configurations and public account/project/region/zone hints from exact granted
-  sources, never copied credentials or external-account token data.
-- [ ] Use visible Google CLI-owned user, Workforce, or Workload Identity login
-  only after M2 review. Research and document the supported configuration/
-  environment isolation mechanism before using it; do not mutate the global
-  active configuration.
-- [ ] Pin configuration reference, account reference, project, region/zone,
-  freshness, expiry, provenance, and risk per capsule.
-- [ ] Add exact IAP/OS Login flows through reviewed `gcloud` operations. Treat
-  GKE credential generation/context as M11 work and never overwrite user
-  kubeconfig as a side effect.
-- [ ] Test untrusted external credential configuration, 2FA, IAM denial,
-  configuration precedence, cancellation, offline, stale capsule isolation,
-  redaction, revocation, and uninstall.
+- [x] **Fully done locally:** add independent `automexia-devops-gcp`, disabled by
+  default with exact process/network declarations and separate app registration.
+- [x] **Fully done locally:** parse one exact named configuration with 256 KiB,
+  64-section, 512-entry, and 4 KiB-field limits. Retain only account/project/
+  region/zone, reject duplicates/invalid UTF-8/hostile values and credential,
+  token, secret, password, private-key, login-config, or token-file keys.
+- [x] **Fully done locally:** pin configuration/account/project/region/zone,
+  provenance/freshness/risk and use `--configuration` on every exact operation.
+  User browser/remote bootstrap remains gcloud-owned; public project observation
+  contacts only Cloud Resource Manager. No global configuration activation,
+  `config set`, ADC update, token output, shell evaluation, or ambient env switch.
+- [x] **Fully done locally:** represent Workforce `--login-config` and Workload
+  `--cred-file` only as opaque private configuration references in immutable,
+  nonexecuting intents. The adapter never reads or serializes their file paths,
+  external-account content, tokens, or service-account private keys.
+- [x] **Fully done locally:** build project/zone/configuration-bound IAP SSH with
+  `--tunnel-through-iap`, interactive PTY, process-tree cancellation, and
+  gcloud-owned SSH-key/OS Login behavior. Execution remains false behind D3.
+- [x] **Fully done locally:** build GKE credentials only with an opaque M11-owned
+  private `KUBECONFIG` environment reference; never name or merge user config.
+- [x] **Fully done locally:** eight focused tests, app registration, warning-
+  denied all-target Clippy, formatting, and a near-limit Criterion target pass on
+  Windows x86_64. The benchmark measured 444.00–460.66 µs over 100 samples and
+  reported 9 high-side outliers.
+- [ ] **Partially done/external:** connect through protected D3 review/runner only
+  after activation/attestation; M11 must allocate/validate/publish/revoke/clean
+  the GKE file and approve any resulting exec credential plugin independently.
+- [ ] **External prerequisite:** controlled real gcloud user browser/remote/2FA,
+  Workforce/Workload federation, IAM denial/offline/cancel, IAP/OS Login, GKE,
+  Windows/macOS/Linux cleanup/resources/accessibility, packaging/signing/release.
 
-Exit: GCP context is per-session and official CLI credential ownership remains
-intact.
+Exit is met for the independent Google Cloud source contract, not activation or
+release. No gcloud process, auth flow, network, credential database, IAP/SSH,
+GKE cluster, kubeconfig file, or provider PTY ran in this slice.
 
 ### M11 — F11 Kubernetes and OpenShift slice
 

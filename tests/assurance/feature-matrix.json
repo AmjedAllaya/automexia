@@ -785,6 +785,31 @@
         "windows": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs", "apps/automexia-terminal/src/automexia/builtins/mod.rs"], "rationale": "Focused tests, app registration, and warning-denied Clippy passed locally on Windows x86_64 without running Azure tools, WAM, or network."},
         "linux": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M9 run did not execute natively on Linux."},
         "macos": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M9 run did not execute natively on macOS."}
-      }}
+      }},
+    {
+      "id": "provider-gcp-m10-source",
+      "title": "Nonactivated bounded Google Cloud official-CLI adapter contracts",
+      "components": ["extensions/devops-gcp", "automexia-devops", "automexia-extension-api", "apps/automexia-terminal"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#provider-authentication-framework-current-source-boundary"],
+        "reference": ["docs/CONNECTION-HUB.md#google-cloud", "docs/MULTI-CLOUD-PROVIDERS-TESTING.md#m10-google-cloud-adapter-source-contracts"],
+        "explanation": ["docs/ARCHITECTURE.md#m10-google-cloud-adapter-source-boundary", "docs/adr/0020-hybrid-build-wrap-adopt-boundary.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "M10 adds no active renderer or control; product UI and controlled native screen-reader evidence remain external."},
+        "correctness": {"level": "pr", "evidence": ["extensions/devops-gcp/src/lib.rs", "apps/automexia-terminal/src/automexia/builtins/mod.rs"], "rationale": "Eight focused tests cover bounded named public configuration, exact per-command user/project requests, opaque federation, scope-bound IAP, private-environment GKE, version/failure behavior, and independent disabled app registration."},
+        "security": {"level": "pr", "evidence": ["extensions/devops-gcp/src/lib.rs", "automexia-devops/src/connections/provider_auth.rs"], "rationale": "Credential/token/secret/private-key/login-config fields, hostile/duplicate config, global activation/set/ADC mutation, IAP scope drift, user kubeconfig paths, and secret output fail closed; private federation and GKE sources remain opaque."},
+        "performance": {"level": "pr", "evidence": ["extensions/devops-gcp/src/lib.rs", "extensions/devops-gcp/benches/provider.rs"], "rationale": "The local Windows near-limit Criterion target measured 444.00-460.66 microseconds over 100 samples with 9 high-side outliers. Parsing is bounded and off startup/input/render/PTY paths; controlled baselines remain external."},
+        "resource_lifetime": {"level": "pr", "evidence": ["extensions/devops-gcp/src/lib.rs"], "rationale": "Pure functions own no worker, process, child, socket, listener, handle, file, PTY, route, cache, browser, credential DB, or GPU resource; IAP declares future whole-tree cancellation."},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "The adapter performs no I/O or persistence, never discovers active config or credentials, and stores only public fields and opaque private references; it cannot touch ADC or kubeconfig."},
+        "resilience": {"level": "pr", "evidence": ["extensions/devops-gcp/src/lib.rs"], "rationale": "Malformed, duplicate, hostile, oversized, credential-bearing, unsupported-version, scope-mismatched, missing, expired, 2FA, cancelled, offline, and IAM-denied cases fail closed or remain non-ready."},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "No product pixels are added; hierarchy, responsive layout, focus, and visual review remain an external integration gate."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["extensions/devops-gcp/src/lib.rs", "extensions/devops-gcp/benches/provider.rs", "apps/automexia-terminal/src/automexia/builtins/mod.rs"], "rationale": "Tests, app registration, warning-denied Clippy, and benchmark ran locally on Windows x86_64 without gcloud or network."},
+        "linux": {"level": "pr", "evidence": ["extensions/devops-gcp/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M10 run did not execute natively on Linux."},
+        "macos": {"level": "pr", "evidence": ["extensions/devops-gcp/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M10 run did not execute natively on macOS."}
+      }
+    }
   ]
 }
