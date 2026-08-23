@@ -139,6 +139,36 @@ Use a Quick Action when a command is worth remembering as a named workflow but s
 
 See [Command productivity](productivity.md) for the management workflow.
 
+### Provider-aware Quick Actions
+
+**Implemented internally / not product-activated.** The source boundary can add
+cached SSH and provider context to the same Quick Actions surface opened with
+`Ctrl+Shift+O` on Windows/Linux/BSD or `Cmd+Shift+O` on macOS. No account is
+queried and no provider command runs when the surface opens or while you type.
+Until an explicit provider-refresh controller publishes a capsule for the
+current pane, these contextual rows do not appear.
+
+A contextual row uses the connection icon and a concise label such as
+`AWS · Account 123456789012 · Current · Production`. Review repeats the exact
+public target, provider state, and environment risk in text and in its accessible
+name. Current read-only observations may be inserted into the shell without
+Enter. Production requires a second confirmation. Actions that need the D3
+broker or private provider environment show **Broker required** and cannot be
+copied or inserted through ambient CLI state.
+
+If a row says **Refreshing**, **Stale**, **Expired**, **Offline**,
+**Unavailable**, **Error**, or **Context changed**, refresh the owning provider
+outside the Quick Actions surface and review the newly published row. The old
+row is rejected immediately before copy or insertion even if it was already
+open. Closing the pane or disabling/uninstalling the provider removes the
+in-memory contextual snapshot; it does not alter persisted Quick Actions,
+provider configuration, credentials, shell profiles, or cloud state.
+
+OpenBao is not included in this source slice. Real-provider activation, native
+provider/account testing, and controlled screen-reader/release evidence remain
+release gates; this section does not claim those workflows are available in the
+v0.4 product.
+
 ## 6. Use persistent aliases for high-frequency reviewed actions
 
 **Implemented locally / release-gated.** Persistent aliases are generated from canonical typed actions. They are projections, not the source of truth.

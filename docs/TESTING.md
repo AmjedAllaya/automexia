@@ -2198,46 +2198,53 @@ release remain external.
 
 ## CP3.3 native imports and trusted workspace task bridges
 
-CP3.3 is fully done at the local source boundary. Run the focused evidence with:
+CP3.3 is fully done at the local source boundary. Its complete schema-1
+contract and evidence are in ADR 0021 and the phase audit. Run:
 
 ```text
 cargo test -p automexia-devops --test quick_action_imports --locked
 cargo test -p automexia-terminal --test quick_action_native_import --locked
 cargo test -p automexia-terminal --test quick_action_workspace_trust --locked
-cargo test -p automexia-terminal trusted_workspace_tasks_are_cached_off_thread_and_revocation_fails_closed --lib --locked
-cargo test -p automexia-terminal cp33_native_import_and_workspace_mutations_are_explicit_and_cas_guarded --lib --locked
 cargo check --manifest-path fuzz/Cargo.toml --bin quick_action_imports
 cargo bench -p automexia-devops --bench quick_actions --no-run --locked
 python tools/ci/check_command_productivity_cp33.py
 python tools/ci/test_command_productivity_cp33.py
-python tools/ci/check_command_productivity.py
-python tools/ci/test_command_productivity.py
-python tools/ci/check_devops_alias_spec.py
-python tools/ci/test_devops_alias_spec.py
 ```
 
-The 14 named cross-platform regressions comprise five capability-free parser/
-task/trust cases, three application import cases, four workspace/trust cases,
-one background runtime revocation case, and one CLI parser case. Twelve execute
-on Windows; the two additional Unix cases create real linked inventory,
-workspace, and trust sources and prove no-follow rejection. Coverage includes
-all six native formats, exact just/Task/mise argv, secret/control/bidi/path/
-substitution/pipeline/metacharacter rejection, explicit selection, stable rename,
-conflict/replace, portable export, source preservation, dry-run/CAS, private
-path-free receipts, source-change invalidation, revocation, removal, read-only
-no-side-effect lookup, bounded background cache authorization, and final
-review/insertion failure UX.
+These gates cover six explicit native formats, exact just/Task/mise bridges,
+dry-run/CAS import, path-free trust receipts, revocation/removal, background and
+final insertion authorization, hostile input, Unix no-follow cases, fuzzing, and
+benchmarks. Hosted native/accessibility and controlled 30-day evidence remain.
+## M13 provider-aware Quick Actions
 
-The schema-1 contract freezes six formats, three runners, six commands, 18
-security assertions, 12 lifecycle assertions, ten reviewed source files, all
-named tests, twelve synchronized documents, the benchmark, and the fuzz target.
-Seven mutation tests weaken inventories, security/lifecycle values, parser/
-trust/runtime/UI guards, dry-run/CAS dispatch, test evidence, benchmark, fuzz,
-duplicate keys, and nightly registration. The aggregate CP2-CP3.3 checkers keep
-the pure and application capability allowlists exact.
+M13/CP4 is source-complete and nonactivated locally. The M8-M12 sections own
+each provider's full suite; run the CP4 integration evidence with:
 
-A short local Windows release-profile Criterion run on 2026-08-17 measured
-1,024 Bash alias records at 9.7948-12.291 ms and exact workspace trust
-verification at 20.081-21.105 us (10 samples, one-second measurement window).
-These measurements prove the target and current bound; they do not replace the
-controlled named-hardware 30-day baseline or hosted native/accessibility gates.
+```text
+cargo test -p automexia-devops --test provider_quick_actions_cp4 --locked
+cargo test -p automexia-devops --test quick_action_activation --locked
+cargo test -p automexia-terminal --lib --locked provider
+cargo test -p automexia-terminal --bin automexia --locked provider
+cargo test -p automexia-ui-model --locked provider_context
+cargo check --manifest-path fuzz/Cargo.toml --bin provider_quick_actions
+cargo bench -p automexia-devops --bench quick_actions --locked -- provider_quick_action
+python3 tools/ci/check_provider_quick_actions_cp4.py
+python3 tools/ci/test_provider_quick_actions_cp4.py
+cargo xtask verify architecture
+```
+
+The schema-1 contract freezes seven providers, nine decisions, eleven denied
+authorities, five ceilings, 19 named regressions, fuzz, benchmarks, and docs.
+Tests cover exact grammar reuse, all-or-nothing composition, precedence,
+route/session/revision/generation isolation, cancellation/revocation, final
+revalidation, production confirmation, compact accessible states,
+capacity/cleanup, redaction, and no provider work while typing. Six mutations
+reject authority, interactive-import, contract, evidence, key, and supported
+symlink drift.
+
+A 2026-08-23 Windows x86_64 optimized 50-sample run measured 16-action snapshot
+construction at 201.49–205.17 microseconds and cached search at 48.200–50.620
+microseconds (7/50 and 6/50 high outliers). This is local comparison evidence.
+No long fuzz campaign, real provider/account/CLI/cluster, product publication/
+execution, native screen-reader, Linux/macOS runtime, controlled resource,
+packaging, signing, or release fixture is claimed.

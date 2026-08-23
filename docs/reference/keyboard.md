@@ -217,8 +217,10 @@ global shortcut table is not used across every mode and OS.
 The four app-surface launchers are inactive while Search, Vi mode, or an
 alternate-screen terminal application owns input. They only open application
 UI: Connection Hub remains read-only, and Quick Actions still requires its
-normal review/insert step. None of these shortcuts writes to or executes in the
-PTY. The mnemonic letters are **H**ub, **O**pen actions, **M**arketplace, and
+normal review/insert step. A published CP4 production-context row adds a second
+confirmation; broker-required or non-current provider rows cannot copy or
+insert. None of these shortcuts writes to or executes in the PTY. The mnemonic
+letters are **H**ub, **O**pen actions, **M**arketplace, and
 **L**ist fonts.
 
 

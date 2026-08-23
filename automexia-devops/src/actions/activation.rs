@@ -297,18 +297,7 @@ impl ActionIndex {
                 })
             })
             .collect::<Vec<_>>();
-        hits.sort_by(|left, right| {
-            Reverse(left.score)
-                .cmp(&Reverse(right.score))
-                .then_with(|| {
-                    left.action
-                        .display_name
-                        .to_lowercase()
-                        .cmp(&right.action.display_name.to_lowercase())
-                })
-                .then_with(|| left.action.id.cmp(&right.action.id))
-        });
-        hits.truncate(MAX_SEARCH_RESULTS);
+        sort_and_truncate_hits(&mut hits);
         Ok(hits)
     }
 
@@ -334,6 +323,41 @@ impl ActionIndex {
     }
 }
 
+/// Merge independently cached search layers while preserving primary precedence.
+pub fn merge_action_search_hits(
+    primary: Vec<ActionSearchHit>,
+    secondary: Vec<ActionSearchHit>,
+) -> Vec<ActionSearchHit> {
+    let mut winners = BTreeMap::<String, ActionSearchHit>::new();
+    for hit in primary.into_iter().chain(secondary) {
+        if let Some(winner) = winners.get_mut(&hit.action.id) {
+            winner.shadowed_count = winner
+                .shadowed_count
+                .saturating_add(hit.shadowed_count)
+                .saturating_add(1);
+        } else {
+            winners.insert(hit.action.id.clone(), hit);
+        }
+    }
+    let mut hits = winners.into_values().collect::<Vec<_>>();
+    sort_and_truncate_hits(&mut hits);
+    hits
+}
+
+fn sort_and_truncate_hits(hits: &mut Vec<ActionSearchHit>) {
+    hits.sort_by(|left, right| {
+        Reverse(left.score)
+            .cmp(&Reverse(right.score))
+            .then_with(|| {
+                left.action
+                    .display_name
+                    .to_lowercase()
+                    .cmp(&right.action.display_name.to_lowercase())
+            })
+            .then_with(|| left.action.id.cmp(&right.action.id))
+    });
+    hits.truncate(MAX_SEARCH_RESULTS);
+}
 fn validate_layer_identity(identity: &LayerIdentity) -> Result<(), IndexError> {
     let valid = match identity {
         LayerIdentity::Session { session_id } => *session_id != 0,

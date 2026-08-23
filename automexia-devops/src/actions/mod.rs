@@ -15,10 +15,10 @@ mod validation;
 use std::fmt;
 
 pub use activation::{
-    expand_for_shell, validate_search_query, ActionConflict, ActionIndex, ActionLayer,
-    ActionSearchHit, ExpandedAction, ExpansionError, IndexError, LayerIdentity,
-    PlaceholderBindings, SearchContext, MAX_EXPANDED_COMMAND_BYTES, MAX_QUERY_BYTES,
-    MAX_SEARCH_RESULTS,
+    expand_for_shell, merge_action_search_hits, validate_search_query, ActionConflict,
+    ActionIndex, ActionLayer, ActionSearchHit, ExpandedAction, ExpansionError,
+    IndexError, LayerIdentity, PlaceholderBindings, SearchContext,
+    MAX_EXPANDED_COMMAND_BYTES, MAX_QUERY_BYTES, MAX_SEARCH_RESULTS,
 };
 pub use imports::{
     build_trusted_task_bridge, preview_native_alias_import, trusted_workspace_layer,

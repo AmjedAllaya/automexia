@@ -1,9 +1,10 @@
-//! Application-owned CP2.1 Quick Action persistence and refresh services.
+//! Application-owned Quick Action persistence, refresh, and CP4 publication.
 //!
 //! The typed model remains capability-free in `automexia-devops::actions`.
-//! This boundary owns only the explicit user-private `actions/` directory,
-//! bounded atomic storage, immutable last-known-good snapshots, and an exact
-//! parent-directory watcher. It has no renderer, input, VT, PTY, provider,
+//! This boundary owns the explicit user-private `actions/` directory, bounded
+//! atomic storage, immutable last-known-good action/provider snapshots, and an
+//! exact parent-directory watcher. CP4 composes already refreshed public
+//! provider capsules; it has no renderer, input, VT, PTY, provider discovery,
 //! network, shell-profile, clipboard, secret-store, or execution authority.
 
 mod aliases;
@@ -11,6 +12,8 @@ mod aliases_cli;
 mod cli;
 mod native_import;
 mod packs_cli;
+#[cfg(not(target_arch = "wasm32"))]
+mod providers;
 mod refresh;
 pub(crate) mod secure_fs;
 mod service;
@@ -22,6 +25,12 @@ mod workspace;
 pub use aliases_cli::execute_aliases_command;
 pub use cli::execute_actions_command;
 pub use packs_cli::execute_packs_command;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use providers::{
+    compose_provider_action_snapshot, ProviderActionCompositionError,
+    ProviderActionCompositionErrorCode,
+};
 
 pub use native_import::{
     apply_native_alias_import, preview_native_alias_import_file,
