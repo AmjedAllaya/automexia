@@ -121,6 +121,7 @@ has passed.
 | `cargo xtask completion remove --provider ID --shell SHELL` | Remove only the fixed files for one managed artifact. |
 | `cargo xtask completion enable` / `disable` | Toggle managed artifacts globally; native shell behavior remains available. |
 | `cargo xtask storage` | Same storage report as `cargo storage`. |
+| `cargo xtask visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH` | Compare bounded same-size PNG evidence with the reviewed tolerance/mask policy, then atomically write a heatmap and path-free JSON report. The command fails when dimensions, masks, limits, or changed-pixel ratio violate policy. |
 | `cargo xtask check` | Locked metadata, formatting, repository contracts, workspace checks, Clippy, tests, dependency policy, build, and smoke without launch. |
 | `cargo xtask ci` | Complete CI gate. |
 | `cargo xtask qa --full [--bundle]` | Deep bounded evidence run; optional privacy-reviewed report bundle. |

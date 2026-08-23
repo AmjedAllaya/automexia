@@ -264,6 +264,71 @@ fn publish_native_resize_snapshot(
         .map_err(|error| error.error)
 }
 
+#[cfg(any(test, feature = "native-gui-test-hooks"))]
+const MAX_NATIVE_SNAPSHOT_PATHS: usize = 32;
+
+/// The native driver may request snapshots from more than one window. Keep the
+/// last committed generation per bounded target so a slower old render can
+/// never replace a newer complete snapshot.
+#[cfg(any(test, feature = "native-gui-test-hooks"))]
+#[derive(Default)]
+struct NativeSnapshotPublicationLedger {
+    latest_by_path: std::collections::BTreeMap<std::path::PathBuf, u64>,
+}
+
+#[cfg(any(test, feature = "native-gui-test-hooks"))]
+impl NativeSnapshotPublicationLedger {
+    fn publish_with(
+        &mut self,
+        path: &std::path::Path,
+        generation: u64,
+        publish: impl FnOnce() -> std::io::Result<()>,
+    ) -> std::io::Result<bool> {
+        if generation == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "native snapshot generation must be positive",
+            ));
+        }
+        if self
+            .latest_by_path
+            .get(path)
+            .is_some_and(|latest| generation <= *latest)
+        {
+            return Ok(false);
+        }
+        if !self.latest_by_path.contains_key(path)
+            && self.latest_by_path.len() >= MAX_NATIVE_SNAPSHOT_PATHS
+        {
+            return Err(std::io::Error::other(
+                "native snapshot target limit reached",
+            ));
+        }
+
+        publish()?;
+        self.latest_by_path.insert(path.to_path_buf(), generation);
+        Ok(true)
+    }
+}
+
+#[cfg(feature = "native-gui-test-hooks")]
+fn publish_native_resize_snapshot_generation(
+    path: &std::path::Path,
+    payload: &[u8],
+    generation: u64,
+) -> std::io::Result<bool> {
+    static LEDGER: std::sync::OnceLock<
+        std::sync::Mutex<NativeSnapshotPublicationLedger>,
+    > = std::sync::OnceLock::new();
+    let mut ledger = LEDGER
+        .get_or_init(|| std::sync::Mutex::new(NativeSnapshotPublicationLedger::default()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    ledger.publish_with(path, generation, || {
+        publish_native_resize_snapshot(path, payload)
+    })
+}
+
 #[cfg(feature = "native-gui-test-hooks")]
 fn native_test_control_checkpoint() -> String {
     std::env::var_os("AUTOMEXIA_NATIVE_TEST_CONTROL")
@@ -437,9 +502,11 @@ fn write_native_resize_snapshot(
     });
 
     let payload = snapshot.to_string();
-    if let Err(error) =
-        publish_native_resize_snapshot(std::path::Path::new(&path), payload.as_bytes())
-    {
+    if let Err(error) = publish_native_resize_snapshot_generation(
+        std::path::Path::new(&path),
+        payload.as_bytes(),
+        sequence,
+    ) {
         tracing::warn!("could not write native resize snapshot: {error}");
     }
 }
@@ -6813,6 +6880,43 @@ mod tests {
                 b"\x1b[13;28;13;1;0;1_\x1b[13;28;0;0;0;1_"
             );
         }
+    }
+
+    #[test]
+    fn native_snapshot_generation_rejects_stale_and_failed_publications() {
+        let path = std::path::PathBuf::from("renderer.json");
+        let mut ledger = NativeSnapshotPublicationLedger::default();
+
+        assert!(ledger.publish_with(&path, 2, || Ok(())).unwrap());
+        let stale_writer_called = std::cell::Cell::new(false);
+        assert!(!ledger
+            .publish_with(&path, 1, || {
+                stale_writer_called.set(true);
+                Ok(())
+            })
+            .unwrap());
+        assert!(!stale_writer_called.get());
+
+        let injected = ledger.publish_with(&path, 3, || {
+            Err(std::io::Error::other("injected publication failure"))
+        });
+        assert_eq!(injected.unwrap_err().kind(), std::io::ErrorKind::Other);
+        assert!(ledger.publish_with(&path, 3, || Ok(())).unwrap());
+        assert!(!ledger.publish_with(&path, 3, || Ok(())).unwrap());
+    }
+
+    #[test]
+    fn native_snapshot_generation_bounds_distinct_targets() {
+        let mut ledger = NativeSnapshotPublicationLedger::default();
+        for index in 0..MAX_NATIVE_SNAPSHOT_PATHS {
+            let path = std::path::PathBuf::from(format!("snapshot-{index}.json"));
+            assert!(ledger.publish_with(&path, 1, || Ok(())).unwrap());
+        }
+
+        let error = ledger
+            .publish_with(std::path::Path::new("overflow.json"), 1, || Ok(()))
+            .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
     }
 
     #[cfg(feature = "native-gui-test-hooks")]

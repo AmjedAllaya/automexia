@@ -58,7 +58,9 @@ Performance claims are not established by one development-host benchmark. The pr
 2. **Native interaction/resource evidence** for frame/resize/PTY/image lifecycle, handles/threads/private bytes, GPU/texture state, and teardown.
 3. **Comparable baseline history** across supported environments before an enforceable latency/memory ratchet is activated.
 
-The S2 performance ratchet remains a roadmap item until the required baseline history is complete. Local benchmark numbers are useful engineering observations, not universal release guarantees.
+The S2 source ratchet is implemented but remains in **collecting** state. `tools/ci/performance_assurance.py` strictly normalizes Criterion confidence bounds and the existing native Windows private-byte/working-set report, composes only exact commit/time/runner matches, and rejects symlinks, duplicate keys or identities, unsafe text, non-finite values, unknown release metrics, and oversized documents. The reviewed policy freezes 30-90 consecutive same-runner days, required claims, 5% latency, 10% memory, path-free reports, and exact HTTPS-reviewed waivers that expire within 30 days.
+
+Nightly retains normalized controlled evidence for 90 days. `build-baseline` creates an active file only from complete consecutive evidence plus an explicit maintainer acceptance. Tagged releases run `evaluate --require-active`, so the checked-in collecting template blocks publication until the elapsed baseline exists; local benchmark numbers remain observations, not universal guarantees.
 
 ## Build-artifact lifecycle
 

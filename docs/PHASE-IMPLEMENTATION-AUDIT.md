@@ -1,6 +1,6 @@
 # Phase implementation audit
 
-Audit date: 2026-08-22
+Audit date: 2026-08-23
 
 Audited source baseline: 3f7c00ed8b7d0dee37853654e2db08cd3b324572 plus the current M3 UX/evidence re-audit
 
@@ -83,8 +83,8 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Track | Phase | Implementation | Release evidence | Conclusion |
 |---|---|---|---|---|
 | Core | v0.4/S0 | **Fully implemented locally** | **Partial** | Identity, hostile-input bounds, atomic reload, and current terminal source gates are complete; stable release gates remain. |
-| Assurance | v0.4/S1 | **Partial** | **Partial** | Strong deterministic, Windows-native, QA, fuzz, resource, and workflow machinery exists; controlled Linux/macOS visual/GPU/accessibility evidence and the full baseline remain. |
-| Performance | S2 | **Not implemented** | **Not started** | The 30-day comparable baseline is incomplete, so the 5% latency/10% memory ratchet is inactive. |
+| Assurance | v0.4/S1 | **Partial** | **Partial** | Resize-queue properties, generation-aware atomic snapshots, a bounded reviewed visual comparator, Windows-native QA/resource evidence, and workflow machinery exist; controlled Linux/macOS GPU/visual/accessibility proof and approved golden matrices remain. |
+| Performance | S2 | **Partially implemented; collecting** | **External baseline pending** | Evidence normalization/composition, native memory metrics, baseline/waiver validation, 90-day retention, and a fail-closed release ratchet exist. Activation awaits 30 reviewed consecutive controlled-runner days. |
 | DevOps | D0 | **Partial** | **Partial** | ADR 0012 is accepted and active schema 5 ratchets immutable schemas 1/2/3/4 with exact M3-M5 route/tunnel, trust/status, lifecycle/receipt/reconnect, and native-manifest rules; protected approvals and real native execution remain. |
 | DevOps | D1 | **Fully implemented** | **Partial** | Four private provider-neutral crates and bounded contracts satisfy their source boundary. |
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
@@ -239,11 +239,14 @@ Implemented: renderer-neutral geometry/state, structured snapshots, contrast,
 hit-target/modal/cursor/footer/path/pane invariants, narrow-to-8K layout cases,
 and a topmost Windows client capture that waits for presentation, rejects
 blank/single-color output, restores z-order, and excludes live frames from
-portable QA.
+portable QA. The repository-owned comparator now bounds encoded/decoded size,
+dimensions, masks, output, and memory; applies the reviewed 2-channel/0.1%
+policy; and atomically writes a non-color-dependent JSON verdict plus heatmap.
 
-Missing: pinned expected/actual/diff goldens across theme/font/scale/layout/UI
-states, a reviewed tolerance baseline, Linux/macOS frames, and recorded human
-aesthetic review.
+Missing or external: approved expected/actual/diff golden matrices across
+viewport/theme/font/scale/UI states, Linux/macOS native frames, and recorded
+human aesthetic review. The comparator is source-complete tooling; it is not a
+claim that unrecorded frames were reviewed.
 
 ### S1.4 — accessibility
 
@@ -297,29 +300,37 @@ Remaining: retain complete bundles from every controlled release host.
 
 **Partially implemented.**
 
-Implemented: shrinking layout properties and persisted regressions, fixed-seed
-storms, finite Loom models, nightly sanitizers/Miri/fuzz ownership, global plus
+Implemented: shrinking layout properties and persisted regressions, a 512-case
+independent resize-queue model, generation-aware bounded atomic snapshot
+publication with stale/failure/target-limit tests, fixed-seed storms, finite
+Loom models, nightly sanitizers/Miri/fuzz ownership, global plus
 80%-changed-owned-line coverage policy, and mutation tests for platform,
 feature, productivity, release, documentation, and CI drift.
 
-Missing: pure resize-queue and atomic snapshot-replacement model expansion,
-long weekly fuzz/corpus trends, owned region/branch baseline, scoped
-cargo-mutants survivor triage, and governed cargo-vet adoption.
+Missing or external: long weekly fuzz/corpus trends, an owned region/branch
+baseline, scoped cargo-mutants survivor triage, and governed cargo-vet adoption.
 
 ### S1.8 and S2 — performance proof and enforcement
 
-**Measurement partial; S2 not implemented.**
+**Partially implemented; source enforcement complete and controlled baseline collecting.**
 
-- Eight assurance targets cover application/DevOps services, image preview,
-  Quick Action parsing/store, PTY I/O, event polling, OpenSSH inventory, and VT.
-- Local smoke proves harness execution; workflow policy distinguishes
-  compilation from actual execution.
-- Security/resource ceilings already apply where statistical baselines are not
-  sufficient.
+- Nine controlled Criterion targets cover application/DevOps services, image
+  preview, Quick Action parsing/store, connection planning, PTY I/O, event
+  polling, OpenSSH inventory, and VT. Each run uses a unique evidence target.
+- Strict bounded JSON normalizes classified Criterion estimates and the existing
+  native Windows private-bytes/working-set report, requires exact commit/time/
+  runner identity, and rejects duplicate, unknown, oversized, non-finite,
+  symlinked, or mismatched evidence.
+- A reviewed-policy digest freezes 5% latency, 10% memory, 30-90 consecutive
+  days, required claims, privacy limits, exact expiring waivers, and same-runner
+  comparability. The builder cannot activate incomplete/unreviewed history.
+- Nightly retains normalized evidence for 90 days. Tagged release preflight now
+  requires an active baseline and fails closed on an unwaived regression.
 
-Missing: a complete 30-day same-runner baseline for startup/input/prompt/
-context/listing/parser/renderer/resize/memory/workers/images/actions/PTY/build
-storage, retained comparisons, and active >5% latency or >10% memory waivers.
+External gate: the baseline fixture remains `collecting`. Thirty complete
+consecutive runs on the named Windows GPU/benchmark runner, controlled hardware
+metadata, and maintainer review/HTTPS acceptance are still required. No local
+or Linux-only run is reported as that missing evidence.
 
 ### v0.5 assurance maturation
 

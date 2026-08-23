@@ -1,4 +1,5 @@
 mod completion;
+mod visual_diff;
 
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -88,6 +89,9 @@ fn dispatch(args: Vec<String>) -> TaskResult {
             completion::dispatch(completion_args)
         }
         [command] if command == "storage" => storage_report(),
+        [command, visual_diff_args @ ..] if command == "visual-diff" => {
+            visual_diff::dispatch(visual_diff_args)
+        }
         [command] if command == "check" => check(),
         [command] if command == "ci" => ci(),
         [command, flag] if command == "qa" && flag == "--full" => qa(false),
@@ -168,7 +172,7 @@ fn dispatch(args: Vec<String>) -> TaskResult {
 }
 
 fn usage() -> String {
-    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|check|ci|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify all|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
+    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH|check|ci|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify all|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
 }
 
 fn root() -> PathBuf {
@@ -1246,6 +1250,41 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && release_workflow.contains("glslang-tools")
             && nightly_workflow.contains("glslang-tools"),
         "CI/release workflows do not preserve Linux shader prerequisites, QA self-tests, pinned Nextest/JUnit, Cargo doctests, and Loom coverage",
+    )?;
+
+    let performance_assurance = read(&root().join("tools/ci/performance_assurance.py"))?;
+    let performance_tests = read(&root().join("tools/ci/test_performance_assurance.py"))?;
+    let performance_policy =
+        read(&root().join("tests/assurance/performance-ratchet-policy-v1.json"))?;
+    let performance_baseline =
+        read(&root().join("tests/fixtures/performance/s2-baseline-v1.json"))?;
+    let visual_diff = read(&root().join("tools/xtask/src/visual_diff.rs"))?;
+    let visual_policy = read(&root().join("tests/assurance/visual-diff-policy-v1.json"))?;
+    require(
+        performance_assurance.contains("EXPECTED_THRESHOLDS")
+            && performance_assurance.contains("EXPECTED_POLICY_SHA256")
+            && performance_assurance.contains("def collect_native_resource(")
+            && performance_assurance.contains("def merge_candidate_evidence(")
+            && performance_assurance.contains("def build_baseline(")
+            && performance_assurance.contains("--require-active")
+            && performance_tests.contains("test_latency_and_memory_thresholds_fail_above_exact_limits")
+            && performance_tests.contains("test_reviewed_baseline_builder_requires_exact_complete_daily_evidence")
+            && performance_policy.contains("\"latency_percent\": 5.0")
+            && performance_policy.contains("\"memory_percent\": 10.0")
+            && performance_policy.contains("\"minimum_consecutive_days\": 30")
+            && performance_baseline.contains("\"status\": \"collecting\"")
+            && qa.contains("performance-assurance-mutations")
+            && qa.contains("run_dir / \"benchmark-target\"")
+            && ci.contains("python tools/ci/test_performance_assurance.py")
+            && nightly_workflow.contains("performance-controlled-windows")
+            && nightly_workflow.contains("retention-days: 90")
+            && release_workflow.contains("Enforce the active S2 latency and memory ratchet")
+            && release_workflow.contains("--require-active")
+            && visual_diff.contains("MAX_PIXELS: u64 = 40_000_000")
+            && visual_diff.contains("MAX_MASKS: usize = 32")
+            && visual_policy.contains("\"max_channel_delta\": 2")
+            && visual_policy.contains("\"max_changed_pixel_ratio\": 0.001"),
+        "S1/S2 visual, benchmark, baseline, waiver, nightly, or fail-closed release assurance drifted",
     )?;
 
     let codeql_workflow = read(&root().join(".github/workflows/codeql.yml"))?;

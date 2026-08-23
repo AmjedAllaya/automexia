@@ -9,8 +9,8 @@ A phase can be source-complete while release evidence is still partial. User-fac
 | Track | Phase | Implementation | Release evidence | Conclusion |
 |---|---|---|---|---|
 | Core | v0.4/S0 | **Fully implemented locally** | **Partial** | Identity, hostile-input bounds, atomic reload, and current terminal source gates are complete; stable release gates remain. |
-| Assurance | v0.4/S1 | **Partial** | **Partial** | Strong deterministic, Windows-native, QA, fuzz, resource, and workflow machinery exists; controlled Linux/macOS visual/GPU/accessibility evidence and the full baseline remain. |
-| Performance | S2 | **Not implemented** | **Not started** | The 30-day comparable baseline is incomplete, so the 5% latency/10% memory ratchet is inactive. |
+| Assurance | v0.4/S1 | **Partial** | **Partial** | Deterministic and Windows-native assurance now includes resize-queue properties, generation-aware atomic snapshots, and a bounded reviewed visual comparator; controlled Linux/macOS GPU/visual/accessibility evidence and approved golden matrices remain. |
+| Performance | S2 | **Partially implemented; collecting** | **External baseline pending** | Strict comparable evidence, native memory composition, baseline/waiver validation, 90-day retention, and fail-closed release enforcement exist; activation still requires 30 reviewed consecutive controlled-runner days. |
 | DevOps | D0 | **Partial** | **Partial** | ADR 0012 is accepted; schema 5 ratchets immutable schemas 1/2/3/4 with exact M3-M5 routes/tunnels, trust/status, tunnel lifecycle, receipt/reconnect, and native-manifest rules. Protected approvals and real native execution remain. |
 | DevOps | D1 | **Fully implemented** | **Partial** | Four private provider-neutral crates and bounded contracts satisfy their source boundary. |
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |

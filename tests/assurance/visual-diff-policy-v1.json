@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "max_channel_delta": 2,
+  "max_changed_pixel_ratio": 0.001,
+  "masks": []
+}

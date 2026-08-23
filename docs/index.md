@@ -26,6 +26,7 @@ This documentation is organized around **reader intent**, not implementation pha
 | Look up every config key/default | [Configuration reference](reference/configuration.md) |
 | Understand the technical design | [Architecture](developer/architecture.md) |
 | Run verification or understand release gates | [Testing and release](developer/testing-release.md) |
+| Review stabilization/S2 status and external evidence | [Stabilization roadmap](STABILIZATION-ROADMAP.md), [S1/S2 implementation audit](research/S1-S2-IMPLEMENTATION-AUDIT.md) |
 | See future work / decision history | [Roadmap](project/roadmap.md), [Decision index](project/decisions.md) |
 | Follow the detailed SSH and multi-cloud implementation phases | [SSH, connectivity, multi-environment, and multi-cloud plan](SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md), [provider audit](MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md) |
 
@@ -33,7 +34,7 @@ This documentation is organized around **reader intent**, not implementation pha
 
 Automexia v0.4 is a standalone hardware-accelerated terminal for Windows, Linux, and macOS. Its shipped product surface includes the VT/PTY terminal core, tabs and split panes, renderer-owned operational chrome, shell/context integration, icon-aware listings, local and protocol image rendering, TOML configuration with last-known-good reload, and non-destructive Rio migration.
 
-The repository also contains substantial v0.5 foundations. Native shell completion and the CP2/CP3 Quick Action/alias pipeline are implemented locally, but some stable-release claims still depend on hosted native, accessibility, and performance evidence. The v0.5 read-only Connection Hub is implemented locally with process/network authority deliberately disabled; native macOS/Linux and controlled accessibility evidence remain release-gated. Managed SSH, multi-cloud provider authentication, public extensions, and AI execution are **not** shipped v0.4 behavior.
+The repository also contains substantial v0.5 foundations. Native shell completion and the CP2/CP3 Quick Action/alias pipeline are implemented locally, while S1 visual/model tooling and the S2 release ratchet are source-complete at their boundaries. Stable release still depends on hosted native/accessibility evidence, approved visual matrices, and 30 consecutive controlled performance days. The v0.5 read-only Connection Hub is implemented locally with process/network authority deliberately disabled; native macOS/Linux and controlled accessibility evidence remain release-gated. Managed SSH, multi-cloud provider authentication, public extensions, and AI execution are **not** shipped v0.4 behavior.
 
 | Area | Product status | Where to read |
 |---|---|---|

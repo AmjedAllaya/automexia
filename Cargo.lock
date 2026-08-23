@@ -4342,6 +4342,7 @@ dependencies = [
  "libc",
  "memchr",
  "parking_lot",
+ "proptest",
  "raw-window-handle",
  "regex",
  "regex-automata",
@@ -6490,6 +6491,7 @@ name = "xtask"
 version = "0.4.0"
 dependencies = [
  "fs2",
+ "image",
  "process-wrap",
  "serde",
  "serde_json",

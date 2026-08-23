@@ -563,6 +563,31 @@
       }
     },
     {
+      "id": "stabilization-release-assurance-s1-s2",
+      "title": "S1 deterministic stabilization evidence and S2 fail-closed release performance ratchet",
+      "components": ["tools/ci", "tools/xtask", "rio-vt", "apps/automexia-terminal"],
+      "documentation": {
+        "guide": ["docs/TESTING.md#nightly-and-release-depth", "RELEASING.md"],
+        "reference": ["docs/STABILIZATION-ROADMAP.md#s2-enforcement"],
+        "explanation": ["docs/research/S1-S2-IMPLEMENTATION-AUDIT.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "external", "evidence": ["docs/STABILIZATION-ROADMAP.md#s1-accessibility-baseline"], "rationale": "The tooling adds no product interaction surface; controlled screen-reader, IME, scale, and native focus evidence remains a release prerequisite for affected product surfaces."},
+        "correctness": {"level": "pr", "evidence": ["rio-vt/src/performer/mod.rs", "apps/automexia-terminal/src/screen/mod.rs", "tools/ci/test_performance_assurance.py", "tools/xtask/src/visual_diff.rs"]},
+        "security": {"level": "pr", "evidence": ["tools/ci/performance_assurance.py", "tools/ci/test_performance_assurance.py", "tests/assurance/performance-ratchet-policy-v1.json"], "rationale": "Evidence ingestion is size-bounded, duplicate-key rejecting, path-free, exact-runner bound, and fail-closed for release enforcement; credential, host-path, and wildcard waiver material is rejected."},
+        "performance": {"level": "controlled", "evidence": ["tools/ci/performance_assurance.py", "tests/assurance/performance-ratchet-policy-v1.json", ".github/workflows/nightly.yml#performance-controlled-windows", ".github/workflows/release.yml#performance-assurance"], "rationale": "The exact 5% latency and 10% memory ratchet is executable and release blocking. The checked-in baseline remains collecting until 30 consecutive complete same-runner days exist, so active release evaluation intentionally fails closed."},
+        "resource_lifetime": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1", "tools/ci/performance_assurance.py", ".github/workflows/nightly.yml#performance-controlled-windows"], "rationale": "Native Windows resource deltas are normalized into bounded public metrics on a controlled runner; the first complete 30-day baseline and sustained native leak campaign remain external evidence."},
+        "storage_hygiene": {"level": "pr", "evidence": ["tools/ci/performance_assurance.py", "tools/xtask/src/visual_diff.rs", "tools/ci/test_performance_assurance.py"], "rationale": "Inputs and outputs are bounded, reports contain no host paths, and artifacts are atomically replaced with explicit retention in hosted workflows."},
+        "resilience": {"level": "pr", "evidence": ["rio-vt/src/performer/mod.rs", "apps/automexia-terminal/src/screen/mod.rs", "tools/ci/test_performance_assurance.py"], "rationale": "Property and state-model tests cover resize coalescing, barriers, shutdown, generation replacement, write failure, corrupt evidence, stale runners, missing days, and exact waiver behavior."},
+        "visual_quality": {"level": "controlled", "evidence": ["tools/xtask/src/visual_diff.rs", "tests/assurance/visual-diff-policy-v1.json"], "rationale": "A deterministic bounded pixel comparator emits both a heatmap and structured counts without relying on color alone; accepted native product goldens and human scale/theme review remain external."}
+      },
+      "platforms": {
+        "windows": {"level": "controlled", "evidence": [".github/workflows/nightly.yml#performance-controlled-windows", "tests/integration/resize-stress-windows.ps1"]},
+        "linux": {"level": "controlled", "evidence": [".github/workflows/nightly.yml#benchmarks-controlled", "tools/ci/performance_assurance.py"], "rationale": "Controlled Criterion collection is automated; Windows owns the release memory and GPU runner identity."},
+        "macos": {"level": "external", "evidence": ["docs/research/S1-S2-IMPLEMENTATION-AUDIT.md"], "rationale": "A controlled native macOS performance baseline, accessibility run, signing, and notarization evidence are not available locally."}
+      }
+    },
+    {
       "id": "ffi-wasm-embedding",
       "title": "Native C API and WebAssembly embedding surfaces",
       "components": ["librio", "librio-wasm"],

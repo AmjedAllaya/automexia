@@ -24,8 +24,8 @@ the audit's executive matrix so the two cannot drift.
 | Status | Feature / phase | Current scope |
 |---|---|---|
 | **Fully done** | v0.4/S0 | Core identity, hostile-input bounds, atomic reload, and current source gates; stable-release evidence remains external. |
-| **Partially done** | v0.4/S1 | Deterministic and Windows-native assurance exists; controlled Linux/macOS, visual, GPU, accessibility, and baseline evidence remains. |
-| **Not done** | S2 | The 30-day baseline and enforceable latency/memory ratchet are not active. |
+| **Partially done** | v0.4/S1 | Deterministic and Windows-native assurance now includes a shrinking resize queue model, generation-aware atomic snapshot publication, and a bounded reviewed visual-diff tool. Controlled Linux/macOS GPU/visual/accessibility runs and approved golden matrices remain external. |
+| **Partially done** | S2 | Strict evidence normalization/composition, a reviewed 30-day baseline builder, exact waivers, 90-day retention, and a fail-closed 5% latency/10% memory release ratchet are implemented. The baseline remains collecting until 30 controlled consecutive days are reviewed. |
 | **Partially done** | D0 | ADR 0012 is accepted; schema 5 freezes M3-M5 direct/routed/tunnel argv, trust/status, tunnel lifecycle, receipt/reconnect, and native-manifest rules while retaining immutable schemas 1/2/3/4. Protected approvals and real native execution remain. |
 | **Fully done** | D1 | Four private provider-neutral crates and bounded contracts satisfy the source boundary. |
 | **Fully done** | D2 | Generic status, immutable history, capsules, isolation, cancellation, and freshness are implemented. |

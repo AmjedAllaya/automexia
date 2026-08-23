@@ -586,12 +586,28 @@ def main() -> int:
     parser.add_argument("--full", action="store_true", required=True)
     parser.add_argument("--bundle", action="store_true")
     args = parser.parse_args()
-    run_id = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + f"-{os.getpid()}"
+    requested_run_id = os.environ.get("AUTOMEXIA_QA_RUN_LABEL", "")
+    if requested_run_id:
+        if len(requested_run_id) > 96 or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", requested_run_id) is None:
+            parser.error("AUTOMEXIA_QA_RUN_LABEL must be a bounded portable identifier")
+        run_id = requested_run_id
+    else:
+        run_id = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + f"-{os.getpid()}"
     run_dir = ROOT / "target" / "qa" / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
 
     commands: list[tuple[str, list[str], dict[str, str] | None]] = [
         ("qa-runner-self-tests", [sys.executable, "tools/ci/test_qa.py"], None),
+        (
+            "performance-assurance-policy",
+            [sys.executable, "tools/ci/performance_assurance.py", "check-policy"],
+            None,
+        ),
+        (
+            "performance-assurance-mutations",
+            [sys.executable, "tools/ci/test_performance_assurance.py"],
+            None,
+        ),
         ("rustfmt", ["cargo", "fmt", "--all", "--", "--check"], None),
         ("metadata", ["cargo", "metadata", "--locked", "--format-version", "1"], None),
         ("repository-contracts", ["cargo", "xtask", "verify", "all"], None),
@@ -851,7 +867,17 @@ def main() -> int:
             ),
         )
         for name, command in benchmark_commands:
-            steps.append(run_step(run_dir, next_index, name, command))
+            steps.append(
+                run_step(
+                    run_dir,
+                    next_index,
+                    name,
+                    command,
+                    env_add={
+                        "CARGO_TARGET_DIR": str(run_dir / "benchmark-target")
+                    },
+                )
+            )
             next_index += 1
     else:
         steps.append(

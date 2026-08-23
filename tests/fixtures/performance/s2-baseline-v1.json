@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "status": "collecting",
+  "policy_sha256": null,
+  "runner": null,
+  "days": [],
+  "accepted": null
+}

@@ -630,6 +630,71 @@ where
 mod tests {
     use super::*;
     use crate::event::WindowSize;
+    use proptest::prelude::*;
+
+    #[derive(Clone, Debug)]
+    enum ResizeQueueModelMessage {
+        Resize(u16, u16),
+        Input(u8),
+        Shutdown,
+    }
+
+    #[derive(Debug, Eq, PartialEq)]
+    enum ResizeQueueModelOutput {
+        Resize(u16, u16),
+        Input(u8),
+        Shutdown,
+    }
+
+    fn reference_resize_queue(
+        messages: &[ResizeQueueModelMessage],
+    ) -> Vec<ResizeQueueModelOutput> {
+        let mut output = Vec::new();
+        let mut pending_resize = None;
+        for message in messages {
+            match *message {
+                ResizeQueueModelMessage::Resize(cols, rows) => {
+                    pending_resize = Some((cols, rows));
+                }
+                ResizeQueueModelMessage::Input(byte) => {
+                    if let Some((cols, rows)) = pending_resize.take() {
+                        output.push(ResizeQueueModelOutput::Resize(cols, rows));
+                    }
+                    output.push(ResizeQueueModelOutput::Input(byte));
+                }
+                ResizeQueueModelMessage::Shutdown => {
+                    if let Some((cols, rows)) = pending_resize.take() {
+                        output.push(ResizeQueueModelOutput::Resize(cols, rows));
+                    }
+                    output.push(ResizeQueueModelOutput::Shutdown);
+                    break;
+                }
+            }
+        }
+        if let Some((cols, rows)) = pending_resize {
+            output.push(ResizeQueueModelOutput::Resize(cols, rows));
+        }
+        output
+    }
+
+    fn run_resize_queue_model(
+        messages: &[ResizeQueueModelMessage],
+    ) -> Vec<ResizeQueueModelOutput> {
+        coalesce_channel_messages(messages.iter().map(|message| match *message {
+            ResizeQueueModelMessage::Resize(cols, rows) => Msg::Resize(size(cols, rows)),
+            ResizeQueueModelMessage::Input(byte) => Msg::Input(Cow::Owned(vec![byte])),
+            ResizeQueueModelMessage::Shutdown => Msg::Shutdown,
+        }))
+        .into_iter()
+        .map(|message| match message {
+            Msg::Resize(window_size) => {
+                ResizeQueueModelOutput::Resize(window_size.cols, window_size.rows)
+            }
+            Msg::Input(input) => ResizeQueueModelOutput::Input(input[0]),
+            Msg::Shutdown => ResizeQueueModelOutput::Shutdown,
+        })
+        .collect()
+    }
 
     #[derive(Debug, PartialEq, Eq)]
     enum RecordedPtyEvent {
@@ -670,6 +735,39 @@ mod tests {
             cols,
             width: cols.saturating_mul(8),
             height: rows.saturating_mul(16),
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(512))]
+
+        #[test]
+        fn resize_queue_model_preserves_barriers_and_latest_resize(
+            messages in proptest::collection::vec(
+                prop_oneof![
+                    (1_u16..=1_000, 1_u16..=1_000)
+                        .prop_map(|(cols, rows)| ResizeQueueModelMessage::Resize(cols, rows)),
+                    any::<u8>().prop_map(ResizeQueueModelMessage::Input),
+                    Just(ResizeQueueModelMessage::Shutdown),
+                ],
+                0..=256,
+            ),
+        ) {
+            let expected = reference_resize_queue(&messages);
+            let actual = run_resize_queue_model(&messages);
+
+            prop_assert_eq!(&actual, &expected);
+            prop_assert!(actual.len() <= messages.len());
+            prop_assert!(actual.windows(2).all(|pair| !matches!(
+                pair,
+                [ResizeQueueModelOutput::Resize(_, _), ResizeQueueModelOutput::Resize(_, _)]
+            )));
+            if let Some(shutdown) = actual
+                .iter()
+                .position(|message| *message == ResizeQueueModelOutput::Shutdown)
+            {
+                prop_assert_eq!(shutdown + 1, actual.len());
+            }
         }
     }
 

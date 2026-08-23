@@ -900,14 +900,13 @@ base64, parser-transcode, and bounded Kitty temporary-file transport regressions
 instead of running the entire VT suite or calling native `simdutf` FFI. The
 optimized SIMD path remains enabled in production. The explicit Miri suite has
 a 30-minute job timeout; filesystem isolation is disabled only on the ephemeral
-hosted runner so the two bounded temporary-file cases can execute. Criterion
-cases exist for parser throughput, row rebuild, prompt layout, cache access,
-worker submission, cold/warm image quick look, PTY startup/clean exit, and
-sustained PTY output/clean exit. Hosted nightly compiles every declared target
-under a 45-minute hard job limit; a named self-hosted runner executes and
-retains every Criterion result under a 180-minute hard job limit when
-AUTOMEXIA_BENCHMARK_RUNNER=1. Run the commands below for local
-measurements. The controlled 30-day comparison baseline is not complete.
+hosted runner so the two bounded temporary-file cases can execute. Nine controlled Criterion targets cover parser/reflow/rendering, cache/worker,
+image, PTY, OpenSSH inventory, Quick Actions/store, and connection planning.
+Hosted nightly keeps compile-only proof separate. Controlled QA uses a unique
+per-run target; Linux retains classified latency, while the declared Windows
+GPU/benchmark runner composes the existing native private-byte/working-set
+report with Criterion. Normalized artifacts are retained for 90 days. The
+reviewed baseline is still collecting.
 
 The renderer-neutral application-service benchmarks are available with:
 
@@ -943,12 +942,21 @@ The renderer-neutral `row_rebuild_full_snapshot` and
 `prompt_layout_resize_reflow` cases cover full visible-row materialization and
 repeated narrow/wide semantic-prompt reflow.
 
-The performance roadmap includes startup, sustained PTY throughput,
-resize/reflow latency, idle/scrollback memory, and extension refresh latency.
-The complete 30-day controlled baseline has not yet been collected. Once the
-execution pipeline and baseline exist, results remain informational for 30 days;
-afterward, regressions above 5% latency or 10% memory need a recorded
-maintainer waiver.
+The S1/S2 policy and mutation gate is:
+
+```text
+python tools/ci/performance_assurance.py check-policy
+python tools/ci/test_performance_assurance.py
+```
+
+The bounded normalizer rejects symlinks, duplicate keys/metrics, unknown or
+non-finite values, mismatched run identity, and unclassified release metrics.
+`build-baseline` requires 30-90 consecutive complete same-runner days plus an
+HTTPS-linked maintainer acceptance. `evaluate --require-active` is already in
+tagged release preflight: above 5% latency or 10% memory fails unless one exact
+commit/baseline/metric waiver is reviewed, bounded, and unexpired. The checked-in
+baseline remains `collecting`, so release remains blocked pending elapsed
+controlled evidence.
 
 For a focused optimized measurement of the most common unchanged-frame fast
 path, run:
@@ -1003,33 +1011,13 @@ These tests prove table construction and pure dispatch contracts on any host;
 they do not replace native macOS/Linux keyboard-layout or controlled assistive-
 technology runs.
 
-Feature-shortcut completion evidence recorded on native Windows x64 on
-2026-08-21:
-
-- `cargo test -p automexia-terminal --bin automexia --locked` passed all 391
-  frontend tests.
-- `cargo fmt --all -- --check` and warning-denied workspace Clippy passed.
-- `cargo nextest run --workspace --locked --profile ci` passed 1,757 tests;
-  seven explicitly skipped cases remained skipped.
-- `cargo test --workspace --doc --locked` passed 64 documentation tests with
-  three explicitly ignored examples.
-- `python3 tools/ci/qa.py --full` passed repository, shell, architecture,
-  dependency, resize-stress, session-clone, concurrency, workspace, and
-  documentation gates. Its local report is under
-  `target/qa/20260821T180812Z-19980/report.html` and is not committed.
-- `cargo xtask test resize-stress --native-gui` passed on both native WGPU and
-  CPU renderers. The inspected 1750x1080 command-palette capture kept the new
-  `Ctrl+F4` and `Ctrl+Shift+F4` keycaps aligned and unclipped; WGPU/CPU pixels
-  agreed within the harness tolerance.
-- `cargo ready` passed its cold isolated all-target check, warning-denied
-  Clippy, unit/integration/documentation tests, dependency policy, persistent
-  application build, and `automexia 0.4.0` smoke check. The command removed its
-  7.76 GiB disposable verification target after success.
-
-Native Linux/BSD and macOS keyboard-layout checks, controlled assistive-
-technology runs, elevated Application Verifier/WPR work, and controlled
-benchmark campaigns remain external gates; the Windows run does not claim
-those results.
+Feature-shortcut completion evidence was recorded on native Windows x64 on
+2026-08-21: the frontend, format, warning-denied Clippy, Nextest, doctest, QA,
+native WGPU/CPU resize, and `cargo ready` gates passed on that audited tree.
+Detailed historical counts remain in version control rather than being treated
+as current S1/S2 results. Native Linux/macOS keyboard layouts, controlled
+assistive technology, elevated AppVerifier/WPR, and the 30-day benchmark
+campaign remain external.
 
 Nightly builds unsigned installers for every artifact target. The Windows x64
 MSI uses cargo-packager/WiX 3; ARM64 uses the pinned repository-owned WiX 5
