@@ -1076,14 +1076,20 @@ accessibility evidence remain D6.1-D6.5 work.
 
 ### D6.1-D6.5 - provider slices
 
-1. **D6.1 AWS:** IAM Identity Center/STS, profiles, SSM, and EKS.
-2. **D6.2 Azure:** Entra/MFA/workload identity, subscriptions, Bastion, and AKS.
-3. **D6.3 Google Cloud:** named configurations, Workforce/Workload Identity,
-   IAP/OS Login, and GKE.
-4. **D6.4 Kubernetes/OpenShift:** trusted kubeconfig sources, exec allowlists,
-   contexts/namespaces/projects, and visible login.
-5. **D6.5 organization adapters:** Teleport first; OpenBao public-key signing
-   only after its token-output/certificate-file contract passes security review.
+1. **D6.1 AWS — source-complete, nonactivated:** independent bounded public
+   profiles, exact IAM Identity Center PKCE/device and STS operations, strict
+   caller-identity output, exact SSM plugin/PTY/tree-cleanup plan, and EKS
+   dry-run intent pass locally. Product controls, D3 activation, M11 ingestion,
+   and controlled native provider evidence remain.
+2. **D6.2 Azure — not done:** Entra/MFA/workload identity, subscriptions,
+   Bastion, and AKS.
+3. **D6.3 Google Cloud — not done:** named configurations, Workforce/Workload
+   Identity, IAP/OS Login, and GKE.
+4. **D6.4 Kubernetes/OpenShift — not done:** trusted kubeconfig sources, exec
+   allowlists, contexts/namespaces/projects, and visible login.
+5. **D6.5 organization adapters — not done:** Teleport first; OpenBao only after
+   proposed ADR 0024 is accepted and its token-helper/certificate boundary
+   passes protected security review.
 
 Each slice is independently enabled, revoked, tested, and releasable. A provider
 does not wait for or inherit another provider's capability.

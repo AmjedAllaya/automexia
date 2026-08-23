@@ -231,13 +231,19 @@ ownership of their own authentication, browser or device flow, multifactor
 authentication, credentials, certificates, and caches. Automexia retains only a
 bounded public in-memory observation and opaque configuration references.
 
-There is deliberately no current D6.1-D6.5 provider adapter or login control.
-Continue to authenticate with the provider's official CLI in a shell and select
-the exact named profile/configuration/context explicitly. Do not expect the Hub
-to change a global Azure subscription, Google Cloud active configuration,
-Kubernetes current context, AWS default configuration, or kubeconfig. Later
-provider flows must return to a fresh Automexia review and can always be
-cancelled, revoked, disabled, or removed without affecting ordinary terminal use.
+D6.1/M8 now has an internal AWS source adapter, but still no active cloud-login
+button. It can parse exact granted public profile hints, construct review-bound
+IAM Identity Center PKCE/device and STS operations, describe an exact SSM plan,
+and produce a non-mutating EKS dry-run intent. Execution remains false behind
+the protected application runner, and no AWS process or network call happens on
+Hub open, search, startup, or typing.
+
+Continue to authenticate with the official CLI in a shell today. Do not expect
+the Hub to change an AWS default profile, Azure subscription, Google Cloud active
+configuration, Kubernetes current context, or kubeconfig. The later product AWS
+flow must return to a fresh review and can be cancelled, revoked, disabled, or
+removed without affecting ordinary terminal use. D6.2-D6.5 provider adapters and
+all real native/provider evidence remain separate work.
 ## Connect with system OpenSSH today
 
 The read-only Hub does not replace the shell. Use the system client normally:
