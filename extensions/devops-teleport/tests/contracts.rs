@@ -287,6 +287,31 @@ fn version_and_status_plans_are_local_exact_and_agent_isolated() {
         .iter()
         .any(|name| name == "SSH_AUTH_SOCK"));
     assert!(!status.execution_enabled());
+
+    let quick_action = build_provider_quick_action(&capsule(), 4, 200).unwrap();
+    assert_eq!(quick_action.binding().target_kind(), "cluster");
+    assert_eq!(quick_action.binding().exact_target(), "production");
+    assert_eq!(
+        quick_action.binding().execution(),
+        automexia_devops::actions::ExecutionMode::ExactLaunch
+    );
+    let automexia_devops::actions::ActionTemplate::TypedArgv {
+        executable_id,
+        arguments,
+    } = &quick_action.action().template
+    else {
+        panic!("provider action must retain typed argv");
+    };
+    assert_eq!(executable_id, TSH_EXECUTABLE_ID);
+    assert_eq!(
+        arguments,
+        &status
+            .arguments()
+            .iter()
+            .cloned()
+            .map(|value| automexia_devops::actions::ArgumentToken::Literal { value })
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]

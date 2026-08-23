@@ -8,6 +8,10 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
+use automexia_devops::actions::{
+    build_provider_action_candidate, ExecutionMode, ProviderActionCandidate,
+    ProviderActionSpec, RiskClass,
+};
 use automexia_devops::connections::{
     validate_provider_auth_operation, validate_provider_context, AuthState,
     EnvironmentRisk, OpaqueReference, ProviderAuthOperation, ProviderAuthOperationKind,
@@ -891,6 +895,41 @@ pub fn build_status_plan(
     })
 }
 
+/// Build one cached CP4 action from the exact Teleport capsule.
+pub fn build_provider_quick_action(
+    capsule: &ProviderCapsule,
+    generation: u64,
+    generated_at_ms: u64,
+) -> Result<ProviderActionCandidate, TeleportAdapterError> {
+    let context = teleport_context(capsule)?;
+    let cluster = scope(context, "cluster").ok_or_else(|| {
+        TeleportAdapterError::new(TeleportAdapterErrorCode::CapsuleMismatch, "cluster")
+    })?;
+    let plan = build_status_plan(capsule)?;
+    build_provider_action_candidate(
+        capsule,
+        context,
+        generation,
+        generated_at_ms,
+        ProviderActionSpec {
+            action_id: "provider.teleport.status".into(),
+            display_name: "Show Teleport status".into(),
+            description: "Inspect the exact cached Teleport cluster.".into(),
+            executable_id: TSH_EXECUTABLE_ID.into(),
+            arguments: plan.arguments().to_vec(),
+            target_kind: "cluster".into(),
+            exact_target: cluster.into(),
+            command_risk: RiskClass::ReadOnly,
+            execution: ExecutionMode::ExactLaunch,
+        },
+    )
+    .map_err(|_| {
+        TeleportAdapterError::new(
+            TeleportAdapterErrorCode::InvalidRequest,
+            "quick_action",
+        )
+    })
+}
 fn bounded_arguments(
     arguments: &[String],
 ) -> Result<Vec<BoundedText>, TeleportAdapterError> {

@@ -7,8 +7,9 @@ use automexia_devops_kubernetes::{
     KubeProviderRelation,
 };
 use automexia_devops_openshift::{
-    auth_state_for_failure, build_project_inspection, build_rsh, build_web_login,
-    openshift_versions_match, OpenShiftPublicFailure, MANIFEST,
+    auth_state_for_failure, build_project_inspection, build_provider_quick_action,
+    build_rsh, build_web_login, openshift_versions_match, OpenShiftPublicFailure,
+    MANIFEST,
 };
 use automexia_extension_api::Capability;
 
@@ -104,6 +105,30 @@ fn project_inspection_and_rsh_never_mutate_global_project() {
         ["--context", "production", "project", "--short"]
     );
     assert!(!inspection.execution_enabled());
+    let quick_action = build_provider_quick_action(&capsule(11), 4, 200).unwrap();
+    assert_eq!(quick_action.binding().target_kind(), "project");
+    assert_eq!(quick_action.binding().exact_target(), "payments");
+    assert_eq!(
+        quick_action.binding().execution(),
+        automexia_devops::actions::ExecutionMode::ExactLaunch
+    );
+    let automexia_devops::actions::ActionTemplate::TypedArgv {
+        executable_id,
+        arguments,
+    } = &quick_action.action().template
+    else {
+        panic!("provider action must retain typed argv");
+    };
+    assert_eq!(executable_id, automexia_devops_openshift::OC_EXECUTABLE_ID);
+    assert_eq!(
+        arguments,
+        &inspection
+            .arguments()
+            .iter()
+            .cloned()
+            .map(|value| automexia_devops::actions::ArgumentToken::Literal { value })
+            .collect::<Vec<_>>()
+    );
     let (transport, rsh) =
         build_rsh(&capsule(11), "deployment/api", Some("server")).unwrap();
     assert!(matches!(

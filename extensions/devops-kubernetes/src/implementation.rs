@@ -4,6 +4,10 @@ use std::fs::{Metadata, OpenOptions};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use automexia_devops::actions::{
+    build_provider_action_candidate, ExecutionMode, ProviderActionCandidate,
+    ProviderActionSpec, RiskClass,
+};
 use automexia_devops::connections::{
     validate_provider_capsule, validate_provider_context, AuthState, EnvironmentRisk,
     OpaqueReference, ProviderCapsule, ProviderContextFreshness, ProviderContextProvenance,
@@ -59,6 +63,7 @@ pub enum KubeAdapterErrorCode {
     ExecDenied,
     ExecGrantMismatch,
     InvalidGrant,
+    InvalidQuickAction,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1101,6 +1106,39 @@ pub fn build_context_inspection(capsule: &ProviderCapsule) -> Result<KubeCliPlan
     ))
 }
 
+/// Build one cached CP4 action from the exact Kubernetes capsule.
+pub fn build_provider_quick_action(
+    capsule: &ProviderCapsule,
+    generation: u64,
+    generated_at_ms: u64,
+) -> Result<ProviderActionCandidate, KubeAdapterError> {
+    let context = context_for_provider(capsule, ProviderKind::Kubernetes)?;
+    let exact_context = scope_value(context, "context")?;
+    let plan = build_context_inspection(capsule)?;
+    build_provider_action_candidate(
+        capsule,
+        context,
+        generation,
+        generated_at_ms,
+        ProviderActionSpec {
+            action_id: "provider.kubernetes.context".into(),
+            display_name: "Show Kubernetes context".into(),
+            description: "Inspect the exact cached Kubernetes context.".into(),
+            executable_id: KUBECTL_EXECUTABLE_ID.into(),
+            arguments: plan.arguments().to_vec(),
+            target_kind: "context".into(),
+            exact_target: exact_context.into(),
+            command_risk: RiskClass::ReadOnly,
+            execution: ExecutionMode::ExactLaunch,
+        },
+    )
+    .map_err(|_| {
+        KubeAdapterError::new(
+            KubeAdapterErrorCode::InvalidQuickAction,
+            "kubeconfig-provider-quick-action-invalid",
+        )
+    })
+}
 pub fn build_exec(
     capsule: &ProviderCapsule,
     workload: &str,

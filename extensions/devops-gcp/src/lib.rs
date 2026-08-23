@@ -9,6 +9,10 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+use automexia_devops::actions::{
+    build_provider_action_candidate, ExecutionMode, ProviderActionCandidate,
+    ProviderActionSpec, RiskClass,
+};
 use automexia_devops::connections::{
     validate_provider_auth_operation, AuthState, EnvironmentRisk, OpaqueReference,
     ProviderAuthOperation, ProviderAuthOperationKind, ProviderBrowserFlow,
@@ -570,6 +574,42 @@ pub fn build_project_observation(
     )
 }
 
+/// Build one cached, non-executing CP4 action from the exact Google Cloud capsule.
+pub fn build_provider_quick_action(
+    capsule: &ProviderCapsule,
+    generation: u64,
+    generated_at_ms: u64,
+) -> Result<ProviderActionCandidate, GcpAdapterError> {
+    let context = gcp_context(capsule)?;
+    let project = scope(context, "project").ok_or_else(|| {
+        GcpAdapterError::new(GcpAdapterErrorCode::CapsuleMismatch, "project")
+    })?;
+    let operation = build_project_observation(capsule, OperationId::new(1))?;
+    build_provider_action_candidate(
+        capsule,
+        context,
+        generation,
+        generated_at_ms,
+        ProviderActionSpec {
+            action_id: "provider.gcp.project".into(),
+            display_name: "Show Google Cloud project".into(),
+            description: "Inspect the exact cached Google Cloud project.".into(),
+            executable_id: operation.executable.as_str().into(),
+            arguments: operation
+                .arguments
+                .iter()
+                .map(|argument| argument.as_str().to_owned())
+                .collect(),
+            target_kind: "project".into(),
+            exact_target: project.into(),
+            command_risk: RiskClass::ReadOnly,
+            execution: ExecutionMode::Insert,
+        },
+    )
+    .map_err(|_| {
+        GcpAdapterError::new(GcpAdapterErrorCode::InvalidRequest, "quick_action")
+    })
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum GcpFederatedIdentityKind {
@@ -1158,6 +1198,43 @@ mod tests {
                 .unwrap_err()
                 .code(),
             GcpAdapterErrorCode::CapsuleMismatch
+        );
+    }
+
+    #[test]
+    fn provider_quick_action_reuses_exact_project_grammar_and_target() {
+        let capsule = capsule();
+        let operation =
+            build_project_observation(&capsule, OperationId::new(91)).unwrap();
+        let candidate = build_provider_quick_action(&capsule, 3, 200).unwrap();
+        assert_eq!(candidate.binding().exact_target(), "payments-prod");
+        assert_eq!(candidate.binding().target_kind(), "project");
+        assert_eq!(candidate.binding().execution(), ExecutionMode::Insert);
+        let automexia_devops::actions::ActionTemplate::TypedArgv {
+            executable_id,
+            arguments,
+        } = &candidate.action().template
+        else {
+            panic!("provider action must retain typed argv");
+        };
+        assert_eq!(executable_id, operation.executable.as_str());
+        assert_eq!(
+            arguments
+                .iter()
+                .map(|argument| match argument {
+                    automexia_devops::actions::ArgumentToken::Literal { value } => {
+                        value.as_str()
+                    }
+                    automexia_devops::actions::ArgumentToken::Placeholder { .. } => {
+                        panic!("provider action cannot contain placeholders")
+                    }
+                })
+                .collect::<Vec<_>>(),
+            operation
+                .arguments
+                .iter()
+                .map(BoundedText::as_str)
+                .collect::<Vec<_>>()
         );
     }
 
