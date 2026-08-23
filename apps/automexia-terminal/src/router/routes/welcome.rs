@@ -1,132 +1,334 @@
-use crate::layout::ContextDimension;
+use crate::renderer::responsive::{elide_end, Viewport};
+use crate::renderer::ui_theme::{
+    color_u8, UiTheme, BRAND_CYAN, BRAND_PURPLE, MODAL_SHADOW,
+};
+use rio_backend::config::colors::Colors;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
-use std::sync::Mutex;
-use std::time::Instant;
 
-static START_TIME: Mutex<Option<Instant>> = Mutex::new(None);
+const IDEAL_WIDTH: f32 = 560.0;
+const IDEAL_HEIGHT: f32 = 280.0;
+const MARGIN: f32 = 18.0;
+const PADDING: f32 = 24.0;
+const ACTION_HEIGHT: f32 = 42.0;
+const ORDER: u8 = 1;
+const TITLE: &str = "Welcome to Automexia";
+const SUBTITLE: &str = "Save time. Do more with less effort. Stay flexible.";
 
-/// Draw a single logo shape (3/4 circle) with a configurable mouth opening.
-/// `mouth_angle` is the half-angle of the mouth in degrees (0 = closed, 45 = wide open).
-fn draw_logo(
-    sugarloaf: &mut Sugarloaf,
-    cx: f32,
-    cy: f32,
-    radius: f32,
-    mouth_angle: f32,
-    depth: f32,
-    color: [f32; 4],
-) {
-    let segments = 60;
-    let mut points = Vec::with_capacity(segments + 3);
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Rect {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
 
-    // Arc spans from mouth_angle to (360 - mouth_angle)
-    let arc_span = 360.0 - 2.0 * mouth_angle;
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WelcomeLayout {
+    card: Rect,
+    action: Rect,
+    compact: bool,
+    tiny: bool,
+}
 
-    points.push((cx, cy));
-
-    for i in 0..=segments {
-        let angle = mouth_angle + (arc_span * i as f32 / segments as f32);
-        let radians = angle * std::f32::consts::PI / 180.0;
-        points.push((cx + radius * radians.cos(), cy + radius * radians.sin()));
+fn welcome_layout(dimensions: (f32, f32, f32)) -> WelcomeLayout {
+    let viewport = Viewport::from_physical(dimensions.0, dimensions.1, dimensions.2);
+    let margin = if viewport.width < 280.0 || viewport.height < 180.0 {
+        6.0
+    } else {
+        MARGIN
+    };
+    let width = IDEAL_WIDTH.min((viewport.width - margin * 2.0).max(1.0));
+    let height = IDEAL_HEIGHT.min((viewport.height - margin * 2.0).max(1.0));
+    let card = Rect {
+        x: ((viewport.width - width) * 0.5).max(0.0),
+        y: ((viewport.height - height) * 0.5).max(0.0),
+        width,
+        height,
+    };
+    let compact = width < 420.0 || height < 260.0;
+    let tiny = width < 250.0 || height < 145.0;
+    let inset = if tiny {
+        6.0
+    } else if compact {
+        14.0
+    } else {
+        PADDING
+    };
+    let action_height = ACTION_HEIGHT.min((height - inset * 2.0).max(24.0));
+    let action = Rect {
+        x: card.x + inset,
+        y: (card.y + height - inset - action_height).max(card.y),
+        width: (width - inset * 2.0).max(1.0),
+        height: action_height,
+    };
+    WelcomeLayout {
+        card,
+        action,
+        compact,
+        tiny,
     }
-
-    points.push((cx, cy));
-
-    sugarloaf.polygon(&points, depth, color);
 }
 
 #[inline]
-pub fn screen(sugarloaf: &mut Sugarloaf, context_dimension: &ContextDimension) {
-    let layout = sugarloaf.window_size();
-    let scale = context_dimension.dimension.scale;
+pub fn screen(sugarloaf: &mut Sugarloaf, colors: &Colors) {
+    let window = sugarloaf.window_size();
+    let scale = sugarloaf.scale_factor();
+    let dimensions = (window.width, window.height, scale);
+    let viewport = Viewport::from_physical(dimensions.0, dimensions.1, dimensions.2);
+    let layout = welcome_layout(dimensions);
+    let theme = UiTheme::resolve(colors.background.0, colors.foreground, colors.black);
 
-    // Black background
     sugarloaf.rect(
         None,
         0.0,
         0.0,
-        layout.width / scale,
-        layout.height,
-        [0.0, 0.0, 0.0, 1.0],
+        viewport.width,
+        viewport.height,
+        theme.background,
         0.0,
         0,
     );
 
-    let center_x = (layout.width / scale) / 2.0;
-    let center_y = (layout.height / scale) / 2.0;
+    rounded(
+        sugarloaf,
+        layout.card.x + 7.0,
+        layout.card.y + 9.0,
+        layout.card.width,
+        layout.card.height,
+        MODAL_SHADOW,
+        16.0,
+    );
+    rounded(
+        sugarloaf,
+        layout.card.x,
+        layout.card.y,
+        layout.card.width,
+        layout.card.height,
+        BRAND_PURPLE,
+        16.0,
+    );
+    rounded(
+        sugarloaf,
+        layout.card.x + 1.0,
+        layout.card.y + 1.0,
+        (layout.card.width - 2.0).max(1.0),
+        (layout.card.height - 2.0).max(1.0),
+        theme.background,
+        15.0,
+    );
 
-    // Compute mouth angle from time
-    let now = Instant::now();
-    let start = {
-        let mut guard = START_TIME.lock().unwrap();
-        *guard.get_or_insert(now)
-    };
-    let elapsed = now.duration_since(start).as_secs_f32();
-
-    // Every 3 seconds: quick blink (close and reopen over ~0.3s)
-    let cycle = elapsed % 3.0;
-    let mouth_angle = if cycle > 2.7 {
-        // Blink phase: 0.3s total
-        // First half closes (2.7 -> 2.85), second half opens (2.85 -> 3.0)
-        let blink_t = (cycle - 2.7) / 0.3;
-        if blink_t < 0.5 {
-            // Closing: 45° -> 0°
-            45.0 * (1.0 - blink_t * 2.0)
-        } else {
-            // Opening: 0° -> 45°
-            45.0 * (blink_t - 0.5) * 2.0
-        }
+    let inset = if layout.tiny {
+        6.0
+    } else if layout.compact {
+        14.0
     } else {
-        45.0 // Normal open mouth
+        PADDING
     };
+    let icon_size = if layout.tiny {
+        30.0
+    } else if layout.compact {
+        40.0
+    } else {
+        52.0
+    };
+    let icon_x = layout.card.x + (layout.card.width - icon_size) * 0.5;
+    let icon_y = layout.card.y + inset;
+    draw_terminal_mark(sugarloaf, icon_x, icon_y, icon_size, theme.background);
 
-    let white = [1.0, 1.0, 1.0, 1.0];
-    let radius = 40.0;
-    let gap = 2.0;
-
-    // Two logos side by side
-    draw_logo(
+    let title_size = if layout.tiny {
+        13.0
+    } else if layout.compact {
+        17.0
+    } else {
+        21.0
+    };
+    let title_y = icon_y + icon_size + if layout.tiny { 5.0 } else { 13.0 };
+    draw_centered(
         sugarloaf,
-        center_x - radius - gap,
-        center_y,
-        radius,
-        mouth_angle,
-        0.1,
-        white,
+        TITLE,
+        layout.card.x + inset,
+        title_y,
+        (layout.card.width - inset * 2.0).max(1.0),
+        title_size,
+        theme.text,
+        true,
     );
-    draw_logo(
+
+    if !layout.tiny {
+        let subtitle_y = title_y + title_size + 12.0;
+        draw_centered(
+            sugarloaf,
+            SUBTITLE,
+            layout.card.x + inset,
+            subtitle_y,
+            (layout.card.width - inset * 2.0).max(1.0),
+            if layout.compact { 11.5 } else { 12.5 },
+            theme.muted_text,
+            false,
+        );
+    }
+
+    rounded(
         sugarloaf,
-        center_x + radius + gap,
-        center_y,
-        radius,
-        mouth_angle,
-        0.1,
-        white,
+        layout.action.x,
+        layout.action.y,
+        layout.action.width,
+        layout.action.height,
+        theme.surface,
+        9.0,
     );
+    rounded(
+        sugarloaf,
+        layout.action.x,
+        layout.action.y,
+        layout.action.width,
+        2.0,
+        BRAND_CYAN,
+        1.0,
+    );
+    let action_label = if layout.tiny {
+        "Enter · continue"
+    } else if layout.compact {
+        "Enter · get started"
+    } else {
+        "Press Enter to get started"
+    };
+    draw_centered(
+        sugarloaf,
+        action_label,
+        layout.action.x + 8.0,
+        layout.action.y + (layout.action.height - 12.5) * 0.5,
+        (layout.action.width - 16.0).max(1.0),
+        12.5,
+        BRAND_CYAN,
+        true,
+    );
+}
 
-    let bottom_y = (layout.height / scale) - 50.0;
-    let ui = sugarloaf.text_mut();
-    ui.draw(
-        20.0,
-        bottom_y,
-        "press enter",
-        &DrawOpts {
-            font_size: 14.0,
-            color: [255, 255, 255, 255],
-            ..DrawOpts::default()
-        },
+fn draw_terminal_mark(
+    sugarloaf: &mut Sugarloaf,
+    x: f32,
+    y: f32,
+    size: f32,
+    background: [f32; 4],
+) {
+    rounded(sugarloaf, x, y, size, size, BRAND_PURPLE, 10.0);
+    rounded(
+        sugarloaf,
+        x + 2.0,
+        y + 2.0,
+        (size - 4.0).max(1.0),
+        (size - 4.0).max(1.0),
+        background,
+        8.0,
     );
+    let opts = DrawOpts {
+        font_size: (size * 0.38).max(10.0),
+        color: color_u8(BRAND_CYAN),
+        bold: true,
+        ..DrawOpts::default()
+    };
+    sugarloaf
+        .text_mut()
+        .draw(x + size * 0.19, y + size * 0.27, ">_", &opts);
+}
 
-    let path = rio_backend::config::config_file_path();
-    ui.draw(
-        20.0,
-        (layout.height / scale) - 30.0,
-        &path.display().to_string(),
-        &DrawOpts {
-            font_size: 14.0,
-            color: [128, 128, 128, 255],
-            ..DrawOpts::default()
-        },
+#[allow(clippy::too_many_arguments)]
+fn draw_centered(
+    sugarloaf: &mut Sugarloaf,
+    text: &str,
+    x: f32,
+    y: f32,
+    width: f32,
+    font_size: f32,
+    color: [f32; 4],
+    bold: bool,
+) {
+    let opts = DrawOpts {
+        font_size,
+        color: color_u8(color),
+        bold,
+        ..DrawOpts::default()
+    };
+    let visible = elide_end(sugarloaf, text, width, font_size);
+    let measured = sugarloaf.text_mut().measure(&visible, &opts);
+    sugarloaf.text_mut().draw(
+        x + ((width - measured) * 0.5).max(0.0),
+        y,
+        &visible,
+        &opts,
     );
+}
+
+fn rounded(
+    sugarloaf: &mut Sugarloaf,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    color: [f32; 4],
+    radius: f32,
+) {
+    sugarloaf.rounded_rect(None, x, y, width, height, color, 0.05, radius, ORDER);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn welcome_surface_fits_small_and_normal_windows() {
+        for dimensions in [
+            (180.0, 90.0, 1.0),
+            (320.0, 220.0, 1.0),
+            (1_200.0, 800.0, 2.0),
+        ] {
+            let viewport =
+                Viewport::from_physical(dimensions.0, dimensions.1, dimensions.2);
+            let layout = welcome_layout(dimensions);
+            assert!(layout.card.x >= 0.0 && layout.card.y >= 0.0);
+            assert!(layout.card.x + layout.card.width <= viewport.width);
+            assert!(layout.card.y + layout.card.height <= viewport.height);
+            assert!(layout.action.x >= layout.card.x);
+            assert!(layout.action.y >= layout.card.y);
+            assert!(
+                layout.action.x + layout.action.width
+                    <= layout.card.x + layout.card.width
+            );
+            assert!(
+                layout.action.y + layout.action.height
+                    <= layout.card.y + layout.card.height
+            );
+        }
+    }
+
+    #[test]
+    fn welcome_surface_is_dpi_invariant() {
+        assert_eq!(
+            welcome_layout((600.0, 400.0, 1.0)),
+            welcome_layout((1_200.0, 800.0, 2.0))
+        );
+    }
+
+    #[test]
+    fn normal_action_meets_minimum_target_height() {
+        let layout = welcome_layout((800.0, 600.0, 1.0));
+        assert!(layout.action.width >= 24.0);
+        assert!(layout.action.height >= 24.0);
+    }
+
+    #[test]
+    fn welcome_copy_is_product_specific_and_does_not_expose_a_path() {
+        assert!(TITLE.contains("Automexia"));
+        assert_eq!(
+            SUBTITLE,
+            "Save time. Do more with less effort. Stay flexible."
+        );
+        for text in [TITLE, SUBTITLE] {
+            assert!(!text.contains('/'));
+            assert!(!text.contains('\\'));
+            assert!(!text.contains(':'));
+        }
+    }
 }

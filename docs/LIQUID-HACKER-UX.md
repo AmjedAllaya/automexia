@@ -80,13 +80,30 @@ explicit `Quit` action exits all windows. Last-window confirmation remains
 available without interrupting intermediate window closes.
 
 
-Command palette, search, diagnostic and quit overlays fit to the logical
-viewport. The command palette reduces its visible result count with height,
-long labels are ellipsized on Unicode boundaries, and editable input keeps its
-tail visible. Split containers clamp negative available space and preserve the
-combined adjacent-panel size when a divider reaches a compact limit. These
-rules apply equally at 1× and HiDPI scale factors and do not upscale UI on very
-large displays; the terminal grid simply gains rows and columns.
+First-run, command palette, search, diagnostic, compatibility, tab-appearance,
+and quit surfaces fit to the logical viewport. The static first-run card uses
+the shared Automexia accents, one clear Enter action, a concise
+time/effort/flexibility promise, and no local configuration path. The command palette reduces its
+visible result count with height, long labels are ellipsized on Unicode
+boundaries, and editable input keeps its tail visible. The diagnostic assistant
+and redacted
+compatibility inspector are centered blue-black cards with a semantic status
+chip, visible close control, restrained cyan/blue actions, and an inert scrim.
+The tab appearance card uses 24 logical-pixel swatches, a check or clear icon in
+addition to color, a 256-byte control-free UTF-8 title limit, and visible
+Enter/Escape help. It cancels without applying a pending title if the viewport
+cannot contain the complete card.
+
+Modal input follows the same visual stack: quit confirmation, Connection Hub,
+command palette, assistant, then compatibility inspector. The visible owner
+captures pointer, keyboard, wheel, input-method, file-drop, resize, and terminal
+paths; a hidden lower-priority surface cannot intercept a higher one. Split
+containers clamp negative available space and preserve the combined
+adjacent-panel size when a divider reaches a compact limit. These rules apply
+equally at 1× and HiDPI scale factors and do not upscale UI on very large
+displays; the terminal grid simply gains rows and columns. The complete
+full/partial/external evidence ledger is the
+[UI branding roadmap](UI-BRANDING-ROADMAP.md).
 
 The tab-row command control is a DPI-independent three-line vector mark rather
 than a font-dependent chevron or tile grid. Its quiet blue-black well gains a

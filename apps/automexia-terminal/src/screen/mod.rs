@@ -3788,9 +3788,7 @@ impl Screen<'_> {
         match self.renderer.assistant.hit_test(
             mouse_x,
             mouse_y,
-            window_width,
-            window_size.height,
-            scale_factor,
+            (window_width, window_size.height, scale_factor),
         ) {
             Ok(Some(action)) => {
                 use crate::renderer::assistant::AssistantOverlayAction;
@@ -3818,7 +3816,36 @@ impl Screen<'_> {
         }
     }
 
-    fn open_docs_url() {
+    pub fn handle_compatibility_inspector_click(&mut self) -> bool {
+        if !self.renderer.compatibility_inspector.is_active() {
+            return false;
+        }
+
+        let scale = self.sugarloaf.scale_factor();
+        let size = self.sugarloaf.window_size();
+        let dimensions = (size.width, size.height, scale);
+        let mouse_x = self.mouse.x as f32 / scale;
+        let mouse_y = self.mouse.y as f32 / scale;
+        match self
+            .renderer
+            .compatibility_inspector
+            .hit_test(mouse_x, mouse_y, dimensions)
+        {
+            Ok(Some(
+                crate::renderer::compatibility_inspector::CompatibilityInspectorAction::Close,
+            ))
+            | Err(()) => {
+                self.renderer
+                    .compatibility_inspector
+                    .set_visibility("hide");
+                self.mark_dirty();
+                true
+            }
+            Ok(None) => true,
+        }
+    }
+
+    pub(crate) fn open_docs_url() {
         let url = "https://github.com/AmjedAllaya/automexia-terminal/tree/main/docs";
         #[cfg(target_os = "macos")]
         {
@@ -4195,6 +4222,32 @@ impl Screen<'_> {
 
         self.mark_dirty();
         true
+    }
+
+    pub fn handle_tab_appearance_picker_click(&mut self) -> bool {
+        if !self.renderer.navigation.is_enabled() {
+            return false;
+        }
+        let scale = self.sugarloaf.scale_factor();
+        let size = self.sugarloaf.window_size();
+        let num_tabs = self.context_manager.len();
+        let Some(island) = self.renderer.island.as_mut() else {
+            return false;
+        };
+        if !island.is_color_picker_open() {
+            return false;
+        }
+        let consumed = island.handle_color_picker_click(
+            self.mouse.x as f32,
+            self.mouse.y as f32,
+            (size.width, size.height, scale),
+            num_tabs,
+            &mut self.context_manager,
+        );
+        if consumed {
+            self.mark_dirty();
+        }
+        consumed
     }
 
     pub fn handle_island_click(
@@ -5255,7 +5308,7 @@ impl Screen<'_> {
     pub(crate) fn render_welcome(&mut self) {
         crate::router::routes::welcome::screen(
             &mut self.sugarloaf,
-            &self.context_manager.current().dimension,
+            &self.renderer.named_colors,
         );
         self.sugarloaf.render();
     }

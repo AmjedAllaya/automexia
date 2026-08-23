@@ -12,6 +12,7 @@ pub mod scrollbar;
 pub mod search;
 pub mod session_footer;
 pub mod trail_cursor;
+pub(crate) mod ui_theme;
 pub mod utils;
 
 use rio_backend::crosswords::grid::row::{Row, SemanticPrompt};
@@ -1274,11 +1275,6 @@ impl Renderer {
             );
         }
 
-        self.assistant.render(
-            sugarloaf,
-            (window_size.width, window_size.height, scale_factor),
-        );
-
         if self.devops_enabled {
             let (
                 session,
@@ -1631,9 +1627,15 @@ impl Renderer {
             self.connection_hub.render(sugarloaf, modal_dimensions);
         } else if self.command_palette.is_enabled() {
             self.command_palette.render(sugarloaf, modal_dimensions);
+        } else if self.assistant.is_active() {
+            self.assistant
+                .render(sugarloaf, modal_dimensions, &self.named_colors);
         } else {
-            self.compatibility_inspector
-                .render(sugarloaf, modal_dimensions);
+            self.compatibility_inspector.render(
+                sugarloaf,
+                modal_dimensions,
+                &self.named_colors,
+            );
         }
 
         // Render scrollbars for each panel

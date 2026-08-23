@@ -1475,6 +1475,76 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     return;
                 }
 
+                if route.window.screen.renderer.assistant.is_active()
+                    && !route.window.screen.renderer.command_palette.is_enabled()
+                {
+                    if state == ElementState::Pressed
+                        && button == MouseButton::Left
+                        && route.window.screen.handle_assistant_click()
+                    {
+                        if !route.window.screen.renderer.assistant.is_active() {
+                            route.assistant.clear();
+                        }
+                        route.request_redraw();
+                    }
+                    if state == ElementState::Released && button == MouseButton::Left {
+                        route.window.screen.mouse.left_button_state =
+                            ElementState::Released;
+                        route.window.screen.mouse.hint_click_latched = None;
+                        route.window.screen.mouse.image_preview_click_latched = false;
+                        route.window.screen.renderer.scrollbar.end_drag();
+                        route.window.screen.resize_state = None;
+                    }
+                    return;
+                }
+
+                if route
+                    .window
+                    .screen
+                    .renderer
+                    .compatibility_inspector
+                    .is_active()
+                    && !route.window.screen.renderer.command_palette.is_enabled()
+                {
+                    if state == ElementState::Pressed && button == MouseButton::Left {
+                        let _ =
+                            route.window.screen.handle_compatibility_inspector_click();
+                        route.request_redraw();
+                    }
+                    if state == ElementState::Released && button == MouseButton::Left {
+                        route.window.screen.mouse.left_button_state =
+                            ElementState::Released;
+                        route.window.screen.mouse.hint_click_latched = None;
+                        route.window.screen.mouse.image_preview_click_latched = false;
+                        route.window.screen.renderer.scrollbar.end_drag();
+                        route.window.screen.resize_state = None;
+                    }
+                    return;
+                }
+
+                let picker_open = route
+                    .window
+                    .screen
+                    .renderer
+                    .island
+                    .as_ref()
+                    .is_some_and(|island| island.is_color_picker_open());
+                if picker_open {
+                    if state == ElementState::Pressed && button == MouseButton::Left {
+                        let _ = route.window.screen.handle_tab_appearance_picker_click();
+                        route.request_redraw();
+                    }
+                    if state == ElementState::Released && button == MouseButton::Left {
+                        route.window.screen.mouse.left_button_state =
+                            ElementState::Released;
+                        route.window.screen.mouse.hint_click_latched = None;
+                        route.window.screen.mouse.image_preview_click_latched = false;
+                        route.window.screen.renderer.scrollbar.end_drag();
+                        route.window.screen.resize_state = None;
+                    }
+                    return;
+                }
+
                 if route.path != RoutePath::Terminal {
                     #[cfg(target_os = "macos")]
                     if state == ElementState::Pressed
@@ -1624,11 +1694,6 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                                         });
                                     return;
                                 }
-                            }
-
-                            if route.window.screen.handle_assistant_click() {
-                                route.request_redraw();
-                                return;
                             }
 
                             if route
@@ -1915,6 +1980,111 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 route.window.screen.mouse.y = y;
                 route.window.screen.mouse.raw_y = position.y;
 
+                if route.window.screen.renderer.confirm_quit.is_active() {
+                    let scale = route.window.screen.sugarloaf.scale_factor();
+                    let size = route.window.screen.sugarloaf.window_size();
+                    let mx = x as f32 / scale;
+                    let my = y as f32 / scale;
+                    if route.window.screen.renderer.confirm_quit.hover(
+                        mx,
+                        my,
+                        (size.width, size.height, scale),
+                    ) {
+                        route.request_overlay_redraw();
+                    }
+                    let cursor = if route
+                        .window
+                        .screen
+                        .renderer
+                        .confirm_quit
+                        .hovered_action()
+                        .is_some()
+                    {
+                        CursorIcon::Pointer
+                    } else {
+                        CursorIcon::Default
+                    };
+                    route.window.winit_window.set_cursor(cursor);
+                    return;
+                }
+
+                if route.window.screen.renderer.assistant.is_active()
+                    && !route.window.screen.renderer.command_palette.is_enabled()
+                {
+                    let scale = route.window.screen.sugarloaf.scale_factor();
+                    let win_size = route.window.screen.sugarloaf.window_size();
+                    let mx = x as f32 / scale;
+                    let my = y as f32 / scale;
+                    if route.window.screen.renderer.assistant.hover(
+                        mx,
+                        my,
+                        (win_size.width, win_size.height, scale),
+                    ) {
+                        route.request_overlay_redraw();
+                    }
+                    let cursor = if route
+                        .window
+                        .screen
+                        .renderer
+                        .assistant
+                        .hovered_button()
+                        .is_some()
+                    {
+                        CursorIcon::Pointer
+                    } else {
+                        CursorIcon::Default
+                    };
+                    route.window.winit_window.set_cursor(cursor);
+                    return;
+                }
+
+                if route
+                    .window
+                    .screen
+                    .renderer
+                    .compatibility_inspector
+                    .is_active()
+                    && !route.window.screen.renderer.command_palette.is_enabled()
+                {
+                    let scale = route.window.screen.sugarloaf.scale_factor();
+                    let size = route.window.screen.sugarloaf.window_size();
+                    let mx = x as f32 / scale;
+                    let my = y as f32 / scale;
+                    if route.window.screen.renderer.compatibility_inspector.hover(
+                        mx,
+                        my,
+                        (size.width, size.height, scale),
+                    ) {
+                        route.request_overlay_redraw();
+                    }
+                    let cursor = if route
+                        .window
+                        .screen
+                        .renderer
+                        .compatibility_inspector
+                        .hovered_action()
+                        .is_some()
+                    {
+                        CursorIcon::Pointer
+                    } else {
+                        CursorIcon::Default
+                    };
+                    route.window.winit_window.set_cursor(cursor);
+                    return;
+                }
+
+                if route
+                    .window
+                    .screen
+                    .renderer
+                    .island
+                    .as_ref()
+                    .is_some_and(|island| island.is_color_picker_open())
+                {
+                    route.window.winit_window.set_cursor(CursorIcon::Default);
+                    return;
+                }
+
                 if route.path != RoutePath::Terminal
                     || route.window.screen.renderer.confirm_quit.is_active()
                     || route.window.screen.connection_hub_is_active()
@@ -1938,38 +2108,6 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                             .set_cursor(CursorIcon::from(direction));
                         return;
                     }
-                }
-
-                // Handle assistant overlay hover
-                if route.window.screen.renderer.assistant.is_active() {
-                    let scale = route.window.screen.sugarloaf.scale_factor();
-                    let win_size = route.window.screen.sugarloaf.window_size();
-                    let win_w = win_size.width;
-                    let mx = x as f32 / scale;
-                    let my = y as f32 / scale;
-                    if route.window.screen.renderer.assistant.hover(
-                        mx,
-                        my,
-                        win_w,
-                        win_size.height,
-                        scale,
-                    ) {
-                        route.request_overlay_redraw();
-                    }
-
-                    if route
-                        .window
-                        .screen
-                        .renderer
-                        .assistant
-                        .hovered_button()
-                        .is_some()
-                    {
-                        route.window.winit_window.set_cursor(CursorIcon::Pointer);
-                    } else {
-                        route.window.winit_window.set_cursor(CursorIcon::Default);
-                    }
-                    return;
                 }
 
                 // Handle command palette hover
@@ -2262,6 +2400,20 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 if route.path != RoutePath::Terminal
                     || route.window.screen.renderer.confirm_quit.is_active()
                     || route.window.screen.connection_hub_is_active()
+                    || route.window.screen.renderer.assistant.is_active()
+                    || route
+                        .window
+                        .screen
+                        .renderer
+                        .compatibility_inspector
+                        .is_active()
+                    || route
+                        .window
+                        .screen
+                        .renderer
+                        .island
+                        .as_ref()
+                        .is_some_and(|island| island.is_color_picker_open())
                 {
                     return;
                 }
@@ -2364,7 +2516,21 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::Ime(ime) => {
-                if route.window.screen.renderer.assistant.is_active() {
+                if route.window.screen.renderer.assistant.is_active()
+                    || route
+                        .window
+                        .screen
+                        .renderer
+                        .compatibility_inspector
+                        .is_active()
+                    || route
+                        .window
+                        .screen
+                        .renderer
+                        .island
+                        .as_ref()
+                        .is_some_and(|island| island.is_color_picker_open())
+                {
                     return;
                 }
 
@@ -2501,7 +2667,21 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::DroppedFile(path) => {
-                if route.window.screen.renderer.assistant.is_active() {
+                if route.window.screen.renderer.assistant.is_active()
+                    || route
+                        .window
+                        .screen
+                        .renderer
+                        .compatibility_inspector
+                        .is_active()
+                    || route
+                        .window
+                        .screen
+                        .renderer
+                        .island
+                        .as_ref()
+                        .is_some_and(|island| island.is_color_picker_open())
+                {
                     return;
                 }
 
