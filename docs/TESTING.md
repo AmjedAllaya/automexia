@@ -2166,34 +2166,35 @@ No real AWS/Azure/Google Cloud/Kubernetes/OpenShift/Teleport/OpenBao CLI,
 browser/device/MFA flow, cloud network, credential cache, product login UI,
 screen reader, or Linux/macOS native runtime was exercised. Those exact
 provider-specific and native gates belong to D6.1-D6.5.
-## M8 AWS adapter source contracts
 
-M8 is source-complete locally and deliberately nonactivated. Run its focused
-contract with:
+## M8 AWS adapter source contracts
 
 ```text
 cargo test -p automexia-devops-aws --locked
 cargo clippy -p automexia-devops-aws --all-targets --all-features --locked -- -D warnings
-cargo fmt --all -- --check
 ```
 
-Nine Windows x86_64 tests pass. They prove the independent manifest is disabled
-and requests only exact process/network capabilities; exact granted config is
-capped at 1 MiB/128 profiles; credential-like values never enter Debug or JSON;
-duplicate, hostile, invalid, and oversized data fails closed; PKCE/device and
-STS operations bind exact capsule/session/revision/profile/region/browser/
-network/capability data; the 64 KiB caller identity decoder is strict and
-public-only; missing/expired/MFA/cancel/offline/denied/unsupported/error states
-remain non-ready; AWS CLI 2.22+ and Session Manager plugin 1.1.17+ floors are
-explicit; SSM review names plugin, PTY, tree cleanup, target and risk; and EKS is
-`--dry-run` only without a user kubeconfig path.
+Ten Windows x86_64 tests cover disabled least privilege; 1 MiB/128-profile
+hostile/duplicate/secret bounds; exact capsule-scoped SSO/STS; strict 64 KiB
+identity; AWS CLI 2.22+/plugin 1.1.17+ floors; SSM cleanup; and EKS dry-run. No
+AWS tool/network/cache/session/cluster/native provider fixture ran. D3 activation,
+M11 ingestion, accessibility/resources, packaging, and release remain external.
 
-No AWS CLI or plugin executable, browser/device/MFA flow, AWS network, STS call,
-credential cache, SSM process tree, EKS cluster, product provider UI, screen
-reader, packaging, signing, Linux, or macOS native fixture ran. D3 protected
-activation/attestation, M11 private kubeconfig ingestion, forced cleanup/resource
-checks, and controlled real-provider/native/accessibility evidence remain
-external gates.
+## M9 Azure adapter source contracts
+
+```text
+cargo test -p automexia-devops-azure --locked
+cargo clippy -p automexia-devops-azure --all-targets --all-features --locked -- -D warnings
+cargo test -p automexia-terminal azure_is_independently_registered_and_disabled --lib --locked
+```
+
+Eight Windows x86_64 tests cover disabled least privilege; 256 KiB/128-account/
+4,096-node/depth-32 bounds; secret/duplicate/hostile rejection; exact capsule-
+scoped broker/browser/device and subscription status without global mutation;
+AAD-only tree-cancelled Bastion; opaque AKS output; CLI floors, redaction, and a 473.69–478.86 µs 128-account Criterion target. No
+Azure tool/auth/network/cache/Bastion/AKS/PTY/filesystem/native provider fixture
+ran. D3 activation, M11 ingestion, accessibility/resources, packaging, and
+release remain external.
 
 ## CP3.3 native imports and trusted workspace task bridges
 

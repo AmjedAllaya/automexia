@@ -909,7 +909,7 @@ tests/fixtures/connection-hub/
 
 | Platform | Required D5/D6 evidence |
 |---|---|
-| Windows | Microsoft OpenSSH client, disabled/running agent, encrypted key prompt, Windows paths/Unicode, WAM/device flow, ConPTY cancellation/process-tree cleanup, Narrator/NVDA, AppVerifier/WPR, signed packaged build |
+| Windows | Microsoft OpenSSH client, disabled/running agent, encrypted key prompt, Windows paths/Unicode, WAM/browser/device flow, ConPTY cancellation/process-tree cleanup, Narrator/NVDA, AppVerifier/WPR, signed packaged build |
 | macOS | system/user OpenSSH, agent/keychain/hardware where available, browser callback, universal packaged app, VoiceOver, Instruments/leak/energy, signed/notarized build |
 | Linux | OpenSSH with representative desktop/agent sockets, Bash/Zsh/Fish, X11/Wayland, browser/device flow, AT-SPI/Orca, ASan/TSan/Valgrind-supported suites, DEB/RPM/tar |
 | Providers | Controlled least-privilege development/staging accounts plus explicitly isolated production-policy fixtures; real expiry/MFA/offline/denial without public logs |
@@ -1081,8 +1081,10 @@ accessibility evidence remain D6.1-D6.5 work.
    caller-identity output, exact SSM plugin/PTY/tree-cleanup plan, and EKS
    dry-run intent pass locally. Product controls, D3 activation, M11 ingestion,
    and controlled native provider evidence remain.
-2. **D6.2 Azure — not done:** Entra/MFA/workload identity, subscriptions,
-   Bastion, and AKS.
+2. **D6.2 Azure — source-complete, nonactivated:** bounded public account JSON,
+   exact tenant-bound broker/browser/device login and subscription status, AAD-only
+   Bastion, and opaque transient AKS intent pass locally. D3/M11 activation,
+   product UI, and controlled real Azure/native evidence remain.
 3. **D6.3 Google Cloud — not done:** named configurations, Workforce/Workload
    Identity, IAP/OS Login, and GKE.
 4. **D6.4 Kubernetes/OpenShift — not done:** trusted kubeconfig sources, exec
