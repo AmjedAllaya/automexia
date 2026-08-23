@@ -25,7 +25,8 @@ class DocumentationCoverageTests(unittest.TestCase):
         self.assertGreaterEqual(counts["pages"], 12)
         self.assertGreaterEqual(counts["config_keys"], 100)
         self.assertGreaterEqual(counts["binding_actions"], 60)
-        self.assertEqual(counts["cli_flags"], 6)
+        self.assertEqual(counts["cli_flags"], 17)
+        self.assertEqual(counts["cli_commands"], 5)
         self.assertGreaterEqual(counts["xtask_commands"], 20)
 
     def test_missing_config_key_is_rejected(self) -> None:
@@ -52,6 +53,38 @@ class DocumentationCoverageTests(unittest.TestCase):
             1,
         )
 
+    def test_top_level_clap_flags_are_included(self) -> None:
+        body = """
+        #[arg(long)]
+        pub list_actions: bool,
+        #[arg(long = "working-dir")]
+        pub working_directory: Option<PathBuf>,
+        #[command(subcommand)]
+        pub command: Option<CliCommand>,
+        #[command(flatten)]
+        pub terminal_options: TerminalOptions,
+        """
+        self.assertEqual(
+            COVERAGE.clap_long_flags(body),
+            {"--list-actions", "--working-dir"},
+        )
+
+    def test_application_subcommands_are_kebab_case(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "apps" / "automexia-terminal" / "src" / "cli.rs"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "pub enum CliCommand {\n"
+                "    ShellIntegration(ShellIntegrationCommand),\n"
+                "    QuickActions(QuickActionsCommand),\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                COVERAGE.application_cli_commands(root),
+                {"shell-integration", "quick-actions"},
+            )
 
     def test_canonical_page_requires_one_level_one_heading(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

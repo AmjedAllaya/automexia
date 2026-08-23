@@ -62,7 +62,7 @@ the first failure; investigate it and record the cause.
 - Publish state before waking the renderer. Expensive refreshes must be
   generation-aware, cancellable, and capable of a safe last-known-good result.
 - Respect the build/wrap/adopt boundary documented in
-  `docs/BUILD-WRAP-ADOPT-OWNERSHIP.md`.
+  `docs/BUILD-WRAP-ADOPT-ARCHITECTURE.md`.
 - Dependency, capability, unsafe-code, persistence, protocol, threading,
   security, and public-behavior changes require explicit review and normally an
   ADR.

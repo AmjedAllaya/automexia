@@ -20,6 +20,35 @@ automexia [OPTIONS] [COMMAND]
 | `-h, --help` | Print application help. |
 | `-V, --version` | Print the Automexia version. |
 
+## Ghostty compatibility inspection and migration
+
+Inspection exits before GUI initialization and never launches Ghostty:
+
+~~~text
+automexia --list-actions [--aliases] [--unavailable] [--json]
+automexia --list-keybinds [--profile automexia|ghostty|ghostty-1.3]
+  [--platform linux-bsd|macos|windows] [--origin ORIGIN]
+  [--effective] [--shadowing] [--explain TRIGGER_OR_ACTION] [--json]
+~~~
+
+The synthetic macOS Ghostty profile fails closed until its native fixture is
+reviewed. Windows output is labeled as Automexia's deterministic adaptation.
+Stable JSON includes profile identity, origins, policies, diagnostics, and
+registry statistics.
+
+Ghostty migration is dry-run by default and reads only bounded keybinding and
+include directives:
+
+~~~text
+automexia migrate ghostty [--input PATH] [--dry-run] [--json]
+automexia migrate ghostty [--input PATH] [--output PATH] --apply --confirm
+~~~
+
+Apply requires explicit confirmation, refuses an existing typed section,
+validates the complete result, creates a backup, and publishes atomically. It
+never evaluates Ghostty configuration as code or invokes a shell or Ghostty
+process. See [Ghostty keyboard compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md).
+
 Non-GUI shell maintenance commands are explicit:
 
 | Command | Mutation |

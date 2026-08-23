@@ -36,6 +36,15 @@ attestations. The SBOM input combines final signed packages with the tagged
 The workflow signs every Windows PowerShell/format resource before packaging,
 and both portable ZIPs plus the ARM64 MSI include the complete resource tree.
 
+Release builds do not discover or download new dependencies, tools, models, or
+managed runtimes. A separate controlled acquisition stage verifies the exact
+lockfile/source, digest, license, provenance, build scripts/procedural macros,
+native code, and redistribution terms, then publishes only reviewed inputs for
+offline consumption where the platform permits. Any managed binary or model
+must also have a documented update owner, emergency disable, rollback/removal,
+and rebuild path. A mismatch or unavailable verified input fails closed rather
+than falling back to an unpinned download.
+
 Publication requires successful clean install/upgrade/uninstall checks,
 signature/notarization verification, desktop/AppStream/icon/URL/terminfo checks,
 `automexia --version` for every portable archive, config migration preservation,

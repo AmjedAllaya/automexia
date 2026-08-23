@@ -66,6 +66,11 @@ generations, cancellation, cursor byte and grapheme, selection, exact span,
 quote/token context, cwd, mode, source revision, and reason. Replay tolerance is
 zero.
 
+This boundary does not claim to defend against a fully compromised process in
+the same user session that can inspect Automexia or editor-process memory. That
+is an operating-system account-compromise boundary; the bridge still minimizes
+exposure, lifetime, replay, cross-route publication, and accidental disclosure.
+
 Frames use a checked little-endian `u32` length followed by strict UTF-8 JSON.
 The length is rejected before payload allocation; compressed and unknown-field
 messages fail closed. Payloads are memory-only and are dropped after response.

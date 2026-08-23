@@ -1,4 +1,4 @@
-# Full Ghostty compatibility roadmap
+# Modern terminal compatibility and Ghostty migration roadmap
 
 ## Scope and status
 
@@ -7,6 +7,15 @@ keeps `automexia` as the implicit profile and provides explicit pinned
 `ghostty-1.3` and moving `ghostty` selectors. The local source/runtime contract
 is implemented through G4; broader release and lifecycle claims remain bounded
 by the status table below.
+
+The stable G0-G6 identifiers remain the machine-readable roadmap keys. Each
+item is also classified by intent:
+
+- **TC - terminal capability**: product behavior Automexia owns independently;
+- **GM - Ghostty migration**: explicit profile/import compatibility for users
+  moving from Ghostty;
+- **PS - persistent-session lifecycle**: Automexia-owned parking and restore
+  semantics; compatibility mappings do not create lifecycle authority.
 
 Only these status labels are used:
 
@@ -27,7 +36,13 @@ Only these status labels are used:
 | G5 — tooling and release assurance | **Partially done** | CLI/explain/JSON, dry-run migration, xtask generation/verify/test, generated docs, property/fuzz targets, Windows Criterion results | Native Linux/macOS/Windows layout/visual/AT/resource evidence, fixed fuzz campaign, QA bundle, and activated 30-day baseline |
 | G6 — high-lifecycle features | **Partially done** | Accepted redaction/lifecycle ADRs, renderer-owned inspector, and bounded parked-PTY undo/redo for a complete closed top-level tab | Individual split, pane-local-tab, and native-window closure history plus native lifecycle evidence |
 
-Full Ghostty compatibility remains a separate track and is not a v0.4 release
+G6 also still needs user-visible parked-session count, list, and clear controls.
+The implemented shortcut restores the newest eligible top-level tab, but it is
+not yet a complete session-management surface.
+
+Modern terminal capability, explicit Ghostty migration, and session lifecycle
+remain
+separate concerns. Exhaustive Ghostty parity is not a v0.4 release
 criterion. The [Ghostty keyboard compatibility guide](GHOSTTY-KEYBOARD-COMPATIBILITY.md)
 documents usable behavior, safe rollback, and deliberate deviations. Generated
 [action](generated/ghostty-1.3-actions.md) and
