@@ -72,7 +72,9 @@ production authorization. Protected approvals, attestation, actual status/SSH
 execution, controlled real F5.4 cleanup/resource/accessibility proof, and all
 D6.1/M8 AWS, D6.2/M9 Azure, D6.3/M10 Google Cloud, and D6.4/M11
 Kubernetes/OpenShift source contracts are complete locally and nonactivated;
-D6.5 and all product/native provider evidence remain planned or external.
+D6.5 Teleport source contracts are also complete locally and nonactivated;
+OpenBao remains planned behind ADR 0024, and all product/native provider evidence
+remains external.
 D6.0/M7's authority-free capsule/authentication framework is complete locally,
 while D6.1-D6.4 add no live provider/client login or command execution around
 the protected runner. Its reusable

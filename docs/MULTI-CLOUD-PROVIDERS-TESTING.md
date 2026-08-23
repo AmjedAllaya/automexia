@@ -86,3 +86,90 @@ allocation/permissions/deletion, real clients and controlled clusters, plugin
 execution, forced descendant cleanup, sustained resource/storage evidence,
 Linux/macOS native runs, accessibility, packaging, signing, and release evidence
 remain external.
+## M12 Teleport source contracts
+
+Run the deterministic M12 source gates with:
+
+```text
+cargo test -p automexia-devops-teleport --locked
+cargo clippy -p automexia-devops-teleport --all-targets --all-features --locked -- -D warnings
+cargo test -p automexia-terminal --locked automexia::builtins::tests::teleport_is_independently_registered_and_disabled
+cargo bench -p automexia-devops-teleport --bench status --locked -- --sample-size 100 --warm-up-time 5 --measurement-time 10
+cargo deny check advisories bans licenses sources
+```
+
+Eleven Windows x86_64 integration contracts cover the independent disabled
+least-privilege manifest; 256 KiB output, 4,096-node, depth-16, combined
+32-profile, 64-item, and 4 KiB public-field limits; malformed/hostile/
+unknown-sensitive/ambient status denial and benign unretained-field discard; duplicate profiles; normalized HTTPS proxies;
+strict current proxy/cluster/user selection; RFC 3339 current/expiring/expired
+state; exact reviewed Teleport 18.10+ version, local status, browser/no-browser
+login, logout, and SSH argv; `--add-keys-to-agent=no`; cleared SSH-agent and
+Teleport environment overrides; `--relogin=false`; `--request-mode=off`;
+process/network scope; output/deadline/tree-cancellation ceilings; explicit
+missing/expired/revoked/MFA/cancelled/offline/denied/unsupported/error states;
+capsule/session/revision/proxy drift; disable/uninstall; and debug/error
+redaction. Unretained traits, certificates, tokens, identity/cache/agent
+material, and inherited environment never enter the public model.
+
+The optimized benchmark parses and classifies a representative current profile.
+A 50-sample pre-limit run measured 17.500–17.775 µs with two high-side outliers.
+The first post-change 50-sample comparison measured 18.138–19.040 µs and
+Criterion flagged +3.9185% to +9.0589% (`p = 0`) with eleven high-side outliers.
+That signal was investigated with a longer 100-sample, 5-second warm-up,
+10-second measurement run: 18.359–18.945 µs, comparison interval -3.2458% to
++2.8032%, `p = 0.82`, and no statistically significant change, with nine
+high-side outliers (three mild, six severe). The noisy first signal remains
+recorded; this same-host microbenchmark is not a controlled release ratchet.
+
+The adapter pins `time` 0.3.55 with only `std` and `parsing` to decode Teleport
+RFC 3339 expiry. The feature set performs no I/O, clock lookup, formatting,
+locale, or credential work; callers supply comparison time. The crate is MIT OR
+Apache-2.0, the reviewed release includes the upstream RFC 2822
+stack-exhaustion fix, and locked `cargo deny` advisories, bans, licenses, and
+sources checks pass. A handwritten timestamp parser was rejected in favor of
+this bounded maintained primitive.
+
+No `tsh` executable, proxy/network, browser/MFA/hardware-key flow, `~/.tsh`
+profile/cache/certificate, SSH agent, access request, real SSH process/PTY,
+product control, Linux/macOS native host, accessibility, forced descendant
+cleanup, sustained resource/storage, packaging, signing, or release fixture ran.
+D3 activation/attestation and controlled Teleport/native/release evidence remain
+external. OpenBao has no implementation or test owner because proposed ADR 0024
+has not been accepted.
+### Full M12 repository gate (2026-08-23)
+
+The required post-change commands passed on Windows x86_64:
+
+```text
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo nextest run --workspace --locked --profile ci
+cargo test --workspace --doc --locked
+python3 tools/ci/qa.py --full
+cargo ready
+```
+
+The successful clean Nextest run executed 1,915 tests across 64 binaries: all
+1,915 passed and seven were profile-skipped. Workspace documentation tests
+included 46 passing Corcovado examples plus 18 passing and three intentionally
+ignored rio-window examples. Full QA passed repository contracts, shell tests,
+formats, CP5 research checks/benchmark, workspace Clippy/Nextest/doctests,
+resize stress, session clone, Loom readiness, dependency policy, and JUnit
+artifact generation. Its local report is under
+`target/qa/20260823T051537Z-24740/report.html`.
+
+The first Nextest attempt failed during linking because the workspace drive had
+about 112 KiB free, not because a test failed. Inspection found about 32 GiB of
+rebuildable Cargo artifacts and one generated Automexia process holding a
+runtime executable. Only that validated generated process was stopped; `cargo
+clean` removed 31,656 files/32.0 GiB. The same exact Nextest command then built
+from a clean target and passed. This initial infrastructure failure remains part
+of the evidence and is not counted as a passing test attempt.
+
+`cargo ready` also passed its cold isolated all-target check, warning-denied
+Clippy, unit/integration/documentation tests, dependency policy, persistent app
+build, and `automexia 0.4.0` smoke. The isolated verification artifacts were
+removed after the run. Controlled native OpenSSH, interactive Windows GPU,
+Application Verifier, WPR, named-hardware benchmarks, coverage, 30-day baseline,
+Linux/macOS GPU, and screen-reader evidence remain explicitly external.

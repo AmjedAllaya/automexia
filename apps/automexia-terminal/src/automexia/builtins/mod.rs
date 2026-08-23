@@ -6,6 +6,7 @@ pub mod devops;
 pub mod gcp;
 pub mod kubernetes;
 pub mod openshift;
+pub mod teleport;
 
 /// Trusted first-party catalog compiled into the application.
 ///
@@ -19,6 +20,7 @@ pub const MANIFESTS: &[ExtensionManifest] = &[
     gcp::MANIFEST,
     kubernetes::MANIFEST,
     openshift::MANIFEST,
+    teleport::MANIFEST,
     devops::MANIFEST,
 ];
 #[cfg(target_arch = "wasm32")]
@@ -106,6 +108,22 @@ mod tests {
             manifest.capabilities,
             &[
                 automexia_extension_api::Capability::FilesystemRead,
+                automexia_extension_api::Capability::ProcessSpawn,
+                automexia_extension_api::Capability::Network,
+            ]
+        );
+    }
+
+    #[test]
+    fn teleport_is_independently_registered_and_disabled() {
+        let manifest = MANIFESTS
+            .iter()
+            .find(|manifest| manifest.id == automexia_devops_teleport::ID)
+            .expect("Teleport manifest is registered");
+        assert!(!manifest.default_enabled);
+        assert_eq!(
+            manifest.capabilities,
+            &[
                 automexia_extension_api::Capability::ProcessSpawn,
                 automexia_extension_api::Capability::Network,
             ]
