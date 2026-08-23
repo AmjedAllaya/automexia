@@ -2089,6 +2089,83 @@ collection/generation behavior only. Proposed ADR 0023 acceptance, actual produc
 controller/renderer/CLI flows, real OpenSSH execution and forced cleanup, native
 Windows/macOS/Linux resources, controlled screen readers/visuals, and hosted
 release evidence remain external and must not be inferred from these tests.
+## M7 provider-neutral authentication and capsule isolation
+
+M7 is fully done at the authority-free local framework boundary. Run its focused
+evidence with:
+
+```text
+cargo test -p automexia-devops --locked --test provider_auth_m7
+cargo test -p automexia-extension-runtime --locked provider_context_rebind_requires_a_fresh_session
+cargo test -p automexia-ui-model --locked --test connection_hub
+python tools/ci/check_provider_auth_m7.py
+python tools/ci/test_provider_auth_m7.py
+python tools/ci/check_connection_hub_f2.py
+python tools/ci/test_connection_hub_f2.py
+python tools/ci/validate_repository.py
+cargo check --manifest-path fuzz/Cargo.toml --locked --bin connection_planning
+cargo bench -p automexia-devops --locked --bench connection_planning -- provider_auth_bind_and_read_64_capsules
+```
+
+The 12 M7 integration tests cover strict 16 MiB JSON ingress; provider/context
+bounds; unique capsule/session/revision identity; sibling and stale-generation
+rejection; rebind cancellation; 19 auth states; last-known-good offline/expiry;
+refresh/auth/browser/device/MFA transitions; cancel/revoke/disable/uninstall/
+shutdown; exact current `AllowOnce` review; external-browser and IP-literal
+loopback policy with real bracketed-IPv6 parsing; process/network-only
+capability scope; exact visible operation/session/argument/capability/isolation/
+browser/callback/risk binding; truthful initial freshness; atomic pinned
+configuration/provider/risk publication; secret flags and global-context
+mutation; receipt/audit/debug canaries; and 16 repeated maximum 64-capsule
+lifecycles. Extension-runtime
+coverage proves a provider-context rebind cannot reuse a session. Hub fixtures
+cover all 19 states with text recovery labels.
+
+The schema-1 M7 contract freezes 11 ceilings, 19 states, three isolation
+strategies, four browser flows, seven forbidden managed mutations, nine absent
+authorities, eight secret surfaces, source/test/fixture/fuzz/benchmark owners,
+and synchronized documentation. Six mutation cases reject contract drift,
+runtime process/network/filesystem authority, the removed passive WSL/provider
+probe, deleted isolation tests, duplicate keys, and linked evidence. One linked-
+file mutation case is skipped where Windows cannot create symbolic links.
+
+The connection-planning fuzz target now feeds arbitrary bounded bytes through
+the strict provider-capsule parser. A local Windows x86_64 Criterion run on
+2026-08-23 measured bind plus exact-session read of 64 one-provider capsules at
+92.648–96.272 µs over 100 samples; nine high-side outliers were reported. This
+proves the target and current fixed-capacity path, not a controlled regression,
+startup, network, login, or cross-platform release baseline.
+
+The final 2026-08-23 contributor gates passed: formatting; workspace Clippy with
+warnings denied; Nextest with 1,859 passed and seven skipped tests across 55
+binaries; 64 passed and three ignored documentation tests; and full QA. The QA
+report is `target/qa/20260823T020059Z-10904/report.html`. It records controlled
+benchmark baselines, long campaigns, screen readers, AppVerifier/WPR, hosted
+native GPU/platform runs, and real OpenSSH/provider release evidence as external
+rather than passed.
+
+The repository-target `cargo ready` preflight correctly refused to start with
+6.61 GiB free against its 12 GiB minimum. A disposable Windows temporary target
+passed the storage preflight. Its first run exposed an existing Windows Job
+Object lifecycle defect: `try_wait()` could consume the completion notification
+before a second blocking `wait()`, stalling the `xtask` process-capture test.
+The implementation now terminates the Job Object and joins both bounded output
+readers without that second wait. This follows Microsoft's
+[`TerminateJobObject`](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-terminatejobobject)
+contract that associated processes cannot postpone or handle termination. The
+four focused success/deadline/overflow/descendant/pipe-holder cases passed, the
+full `xtask` suite passed 43/43, and a fresh clean-target `cargo ready` then
+passed workspace checks, warning-denied Clippy, unit/integration/doc tests,
+dependency policy, the Windows application build, and version smoke. All
+disposable readiness artifacts were removed afterward.
+
+The pure framework owns no process, thread, PTY, socket, browser listener,
+filesystem, credential, token/certificate cache, provider configuration, or GPU
+resource. Lifecycle tests therefore prove collection cleanup and isolation only.
+No real AWS/Azure/Google Cloud/Kubernetes/OpenShift/Teleport/OpenBao CLI,
+browser/device/MFA flow, cloud network, credential cache, product login UI,
+screen reader, or Linux/macOS native runtime was exercised. Those exact
+provider-specific and native gates belong to D6.1-D6.5.
 ## CP3.3 native imports and trusted workspace task bridges
 
 CP3.3 is fully done at the local source boundary. Run the focused evidence with:

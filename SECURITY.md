@@ -64,3 +64,39 @@ OpenSSH configuration is user-owned and may cause OpenSSH to start helper
 processes. Production activation therefore requires controlled native proof that
 all owned descendants, PTYs, routes, listeners, and temporary resources are
 closed on exit, cancellation, failure, and application shutdown.
+
+## Provider-neutral authentication security boundary
+
+M7/D6.0 is implemented as an authority-free framework. It validates bounded
+public provider context, immutable session capsules, public authentication
+observations, exact operation/isolation/browser metadata, capability review,
+recovery, and redacted receipts/audits. It does not own a process, network
+socket, browser or callback listener, filesystem path, credential, token or
+certificate cache, provider configuration writer, PTY, renderer, clipboard,
+telemetry client, or AI integration.
+
+Every provider operation is bound to a nonzero operation, exact capsule ID,
+session, revision, concrete provider, reviewed executable, ordered arguments,
+capability list, isolation, browser flow/origins/callback, risk, and current
+`AllowOnce` decisions for process and applicable network resources. Other
+capability kinds, persistent grants, secret-bearing CLI flags, HTTP browser
+origins, malformed or non-IP loopback callbacks, stale generations,
+cross-session reads, cross-configuration publication, risk drift, and global CLI
+context mutation fail closed. Candidate observations are fully validated before
+atomic publication; rejection preserves the current operation for cancellation.
+Provider rebind cancels old work and requires a fresh session.
+
+Official provider CLIs retain authentication and secret custody. They own
+external browser/device/system-broker/MFA interaction, tokens, certificates,
+cookies, and provider caches. Automexia stores only bounded public observations
+in memory. Passive status and Hub/palette projection never start a provider
+tool. D6.1-D6.5 must add independently reviewed exact adapters and real native
+provider evidence before any product login or refresh can become available.
+
+The M7 machine contract rejects process/network/filesystem/unsafe primitives in
+the framework and rejects any return of the removed WSL `sh -c`/provider
+probe. Strict-ingress, exact-review, redaction-canary, 16×64 lifecycle,
+mutation, fuzz-registration, and benchmark evidence are documented in
+[Testing](docs/TESTING.md#m7-provider-neutral-authentication-and-capsule-isolation).
+The accepted ownership decision remains
+[ADR 0020](docs/adr/0020-hybrid-build-wrap-adopt-boundary.md).
