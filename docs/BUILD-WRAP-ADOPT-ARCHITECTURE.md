@@ -283,6 +283,14 @@ configuration reference. Browser metadata accepts HTTPS origins and exact HTTPS
 or IP-literal loopback callbacks only; the official CLI, not Automexia core,
 owns and closes any listener.
 
+M11 adopts `serde-saphyr` 1.1.0 only inside the Kubernetes extension, with
+deserialization enabled and serialization/includes disabled. Its MIT OR
+Apache-2.0 license, pure typed parser, duplicate-key errors, merge-key policy,
+and configurable resource budgets fit the 1 MiB untrusted kubeconfig boundary;
+`cargo deny` passes. The archived `serde_yaml` is not adopted, generic JSON
+values are avoided, and a handwritten YAML parser is rejected. The OpenShift
+package reuses this public kubeconfig contract but remains independently
+disabled and owns only exact `oc` plans.
 **Extensions build:** version-aware JSON/config parsers and normalization.
 Kubeconfig credential `exec` plugins must never run during passive indexing;
 launch uses an explicit deny/allow/allowlist decision.

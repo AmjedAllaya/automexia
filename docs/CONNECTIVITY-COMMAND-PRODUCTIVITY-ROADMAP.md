@@ -74,7 +74,7 @@ documentation, feature assurance, and a change fragment.
 | Read-only Connection Hub | D5.1 | Fully done locally; external evidence partial | App-scoped joined runtime, exact reviewed native selection, bounded modal/search/filter/grouping, CAS favorite/tag diffs, read-only recent/library data, disabled authority, tests, benchmark, and release-build evidence | Native macOS/Linux picker/permission plus controlled Narrator/NVDA, VoiceOver, and Orca evidence |
 | Managed OpenSSH | D5.2 | Partially done overall; F5.1-F5.3 source-complete nonactivated | Exact direct/routed/tunnel argv, typed endpoints, loopback defaults, strong tunnel review, full trust evidence, safe copy, guarded lifecycle, receipts, reconnect, and compact states pass locally | Protected activation/attestation, actual status execution, real OpenSSH/forced cleanup, native resources/accessibility, and F5.4 manifests |
 | Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, approval fingerprints, and private transactional Connection Library persistence/redacted transfer are implemented | Product editor, remote workspace lifecycle, and separately gated execution remain |
-| Multi-cloud framework and providers | D6.0-D6.5 | Partially done overall: D6.0 fully done locally; D6.1 source-complete nonactivated; D6.2-D6.5 not done | Provider-neutral capsules/review plus independent AWS public-profile, exact SSO/STS/SSM/EKS-dry-run source contracts and tests | D3 product activation, M11 EKS ingestion, remaining adapters, and real official-CLI/native evidence |
+| Multi-cloud framework and providers | D6.0-D6.5 | Partially done overall: D6.0 fully done locally; D6.1-D6.4 source-complete nonactivated; D6.5 not done | Provider-neutral capsules plus independent AWS, Azure, GCP, Kubernetes, and OpenShift bounded/exact source contracts, tests, and benchmarks | D3 product activation, Teleport/OpenBao gates, and real official-CLI/cluster/native evidence |
 | Native completion | CP1 | Fully done | shell integration, xtask completion manager, CP1 contract/tests | Hosted three-OS and longitudinal release evidence |
 | Quick Actions and persistence | CP2.0-CP2.2 | Fully done | automexia-devops model, application store/worker/UI/CLI tests | Hosted shell insertion, controlled accessibility, longitudinal evidence |
 | Aliases and DevOps packs | CP3.0-CP3.2 | Fully done | compiler, private generations, shell activation, packs, fuzz/bench/contracts | Hosted native and controlled baseline evidence |
@@ -647,24 +647,30 @@ process, network, authentication, credential DB, IAP, GKE, PTY, or file ran.
 
 ## F11 - implement D6.4 Kubernetes and OpenShift slice
 
-Status: Not done.
+Status: Partially done overall; source-complete and nonactivated.
 
-- [ ] Treat kubeconfig as code-capable untrusted input and require trusted exact
-  sources.
-- [ ] Parse bounded public cluster/context/namespace/project metadata and
-  preserve kubectl/oc merge and precedence semantics.
-- [ ] Deny exec credential plugins by default; add exact executable/digest/
-  argument/environment/interactivity allowlists and visible approval.
-- [ ] Keep ExecCredential token and client-key data memory-only and redacted.
-- [ ] Pin source set, cluster, context, user reference, namespace/project,
-  provider link, expiry, and provenance per capsule.
-- [ ] Add exact Kubernetes/OpenShift login, exec/rsh, and cloud-cluster context
-  flows with offline/expired/denied/plugin-failure states.
-- [ ] Test hostile kubeconfig, relative files, link swaps, merge collisions,
-  exec plugins, cross-pane isolation, cancellation, and uninstall.
+- [x] **Fully done locally:** exact absolute/private-transient grants, stable
+  bounded reads, source revisions, no links/reparse points, and no changed source.
+- [x] **Fully done locally:** typed 1 MiB YAML/JSON parsing, explicit structural
+  budgets, deterministic source order, public metadata only, and fail-closed
+  duplicate/merge collisions and credential paths.
+- [x] **Fully done locally:** exec plugins default to `DenyAll`; exact future
+  digest/argv/environment-name/interactivity/session/deadline/output/cancellation
+  review stays nonactivated and secret-bearing args/values are not retained.
+- [x] **Fully done locally:** capsules pin exact source-set/context/cluster/user/
+  namespace/project/provider/freshness/expiry/provenance/risk fields.
+- [x] **Fully done locally:** exact isolated `kubectl auth whoami`, context view,
+  exec, OpenShift private-output web login, project view, and rsh plans never
+  mutate shared current context/project.
+- [x] **Fully done locally:** 13 focused tests, two app registration tests,
+  warning-denied Clippy, dependency policy, and a 50-sample 900 KiB benchmark at
+  1.8280–1.8788 ms pass on Windows x86_64.
+- [ ] **Partially done/external:** D3/product activation, real clients/clusters/
+  exec plugins, native Linux/macOS, forced cleanup/resources, product UX,
+  accessibility, packaging, signing, and release fixtures remain.
 
-Exit: Kubernetes and OpenShift are independently safe and releasable.
-
+Exit is met for the independently disabled source packages only. No client,
+cluster, network, credential, browser, PTY, or user kubeconfig ran.
 ## F12 - implement D6.5 organization identity slices
 
 Status: Not done.

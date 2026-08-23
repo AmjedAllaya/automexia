@@ -516,8 +516,8 @@ compatibility remain the application/native gate.
 SSM is an immutable nonactivated plan that names both official tool identities,
 target, region/profile, production risk, interactive PTY, and process-tree
 cleanup. It cannot execute around the D3 runner. EKS emits `update-kubeconfig
---dry-run` only; M11 must validate and publish the returned code-capable
-kubeconfig into an exact private transient source. The adapter never names,
+--dry-run` only; D3 activation must pass the returned code-capable kubeconfig
+through M11 validation into an exact private transient source. The adapter never names,
 merges, or changes the user's kubeconfig/current context. Reverting or disabling
 the package removes only Automexia's AWS catalog authority and does not alter
 AWS CLI configuration, credentials, or sessions.
@@ -577,6 +577,50 @@ environment name; it cannot name or merge a user file. All execution stays false
 behind D3/M11. Disabling/reverting the package removes only its catalog entry and
 does not alter gcloud configuration, credentials, SSH state, or kubeconfig.
 
+### M11 Kubernetes and OpenShift source boundary
+
+`automexia-devops-kubernetes` is the only M11 kubeconfig source/merge owner.
+It is independently disabled and off startup, renderer, input, resize, PTY, and
+passive Hub paths. Explicit user-selected files use an absolute grant and the
+same stable regular-file identity/snapshot checks as other security-sensitive
+reads: links/reparse points, non-regular files, files above 1 MiB, replacement,
+and changes during or after review fail closed. Cloud-generated configuration
+enters through a separate opaque private-transient reference and never names a
+user file.
+
+The adapter adopts `serde-saphyr` 1.1.0 with deserialization only and no include
+feature. A typed schema plus duplicate-key errors, merge-key denial, one-document
+limit, and explicit byte/event/alias/anchor/depth/node/scalar/comment budgets
+precedes Automexia's 16-source and 256-item limits. Source order follows
+`KUBECONFIG` precedence for the first current context; any duplicate cluster,
+context, user, or source identifier fails as an ambiguous merge rather than
+silently selecting a different identity. Only cluster origin/TLS policy,
+context, user reference, namespace/project, provenance, revision, and
+freshness survive. Token, password, username, certificate/key data, exec
+environment values, paths, and full server paths never enter the public model.
+External credential paths, auth-provider blocks, proxy routes, non-loopback
+HTTP, controls/bidi, and secret-bearing exec flags fail closed.
+
+Exec plugins are `DenyAll`. M11 can produce a nonactivated review bound to exact
+executable identity and SHA-256, ordered argv, environment names, interactivity,
+session, capsule revision, deadline, output ceiling, and process-tree
+cancellation. It never stores an `ExecCredential` result and cannot run the
+plugin. A bounded version signal surfaces native Kubernetes credential-plugin
+policy only for the reviewed 1.35-1.36 client range; older clients remain under
+Automexia `DenyAll` and future versions require compatibility review. A provider capsule pins the exact source-set revision, context, cluster,
+user reference, namespace/project, server origin, TLS policy, provider relation,
+freshness/expiry, provenance, and risk. Production rejects insecure TLS.
+
+Immutable plans cover `kubectl auth whoami`, `kubectl config view --minify`, and
+`kubectl exec` with private `KUBECONFIG`. `automexia-devops-openshift` is a
+separate disabled package that depends on the shared public kubeconfig contract
+but owns only `oc`: web login must target a newly allocated private transient
+output, project inspection is read-only, and `rsh` pins context/project. Neither
+package emits `use-context` or a mutating `oc project` action, and all execution
+flags remain false behind D3. Reverting or disabling either registration does
+not edit kubeconfig or CLI state; real file allocation/cleanup, client/plugin/
+cluster execution, network, browser, PTY, and native release evidence remain
+external activation gates.
 ### Capability and process-launch contract
 
 The v0.4 capability enum is descriptive and local-read-only in practice. The

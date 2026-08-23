@@ -54,10 +54,18 @@ native host is available as assumed evidence.
 | M8 / D6.1 AWS | Partially done overall; source-complete and nonactivated | Independent bounded extension; granted public parser; exact capsule-bound SSO/STS/SSM/EKS-dry-run contracts; ten focused tests and app registration | D3 activation, M11 private kubeconfig ingestion, product UI, and controlled real AWS/native/resource/accessibility/release evidence |
 | M9 / D6.2 Azure | Partially done overall; source-complete and nonactivated | Independent bounded extension; public JSON parser; exact tenant login/account, AAD-only Bastion, opaque transient AKS contracts; eight focused tests and app registration | D3 activation, M11 private kubeconfig ingestion, product UI, and controlled real Azure/native/resource/accessibility/release evidence |
 | M10 / D6.3 Google Cloud | Partially done overall; source-complete and nonactivated | Independent bounded extension; named public parser; exact per-command user/project, opaque federation, scope-bound IAP, private-environment GKE; eight focused tests, app registration, benchmark | D3 activation, M11 private kubeconfig ingestion, product UI, and controlled real Google/native/resource/accessibility/release evidence |
-| M11 / D6.4 Kubernetes/OpenShift | Not done | Provider-neutral kinds and exec/rsh transport descriptors | Code-capable kubeconfig parser, merge/collision/source model, default-denied exec plugins, exact isolated kubectl/oc intents, tests, docs, native fixtures |
+| M11 / D6.4 Kubernetes/OpenShift | Partially done overall; source-complete and nonactivated | Independent packages; 1 MiB typed YAML/JSON parser; exact stable source grants/private transient ingestion; collision-denied merge; public-only metadata; default-denied exact exec review; capsule pinning; exact isolated kubectl/oc plans; 13 tests, app guards, benchmark | D3/product activation, real kubectl/oc/cloud/OpenShift fixtures, transient-file lifecycle, native cleanup/resources/accessibility/release |
 | M12.1 / D6.5 Teleport | Not done | Provider-neutral `Teleport` kind and SSH transport descriptor | Independent extension, bounded public status decoder, exact version/login/status/ssh builders, tests, docs, native fixtures |
 | M12.2 / D6.5 OpenBao | External prerequisite | Provider-neutral kind only | Accepted security ADR for token-helper/certificate-file custody, then a separate implementation and native evidence |
 
+M11 now adopts [`serde-saphyr` 1.1.0](https://docs.rs/serde-saphyr/1.1.0/serde_saphyr/) with deserialization only: MIT OR
+Apache-2.0, no filesystem include feature, typed Serde targets, duplicate-key
+errors, merge-key denial, and explicit byte/event/anchor/depth/document/node/
+scalar/comment budgets. Existing `serde_yaml` was rejected because it is
+archived; a handwritten YAML parser was rejected because kubeconfig is a mature,
+code-capable security format. `cargo deny` passes advisories, bans, licenses, and
+sources. The source packages own no startup, renderer, input, resize, PTY, or
+background scan path.
 M7 is fully implemented at its authority-free model boundary and is preserved.
 The application launch broker remains nonactivated; adapters therefore produce
 reviewable operations and connection intents but cannot silently execute them.

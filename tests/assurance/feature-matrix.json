@@ -810,6 +810,31 @@
         "linux": {"level": "pr", "evidence": ["extensions/devops-gcp/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M10 run did not execute natively on Linux."},
         "macos": {"level": "pr", "evidence": ["extensions/devops-gcp/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M10 run did not execute natively on macOS."}
       }
+    },
+    {
+      "id": "provider-kubernetes-openshift-m11-source",
+      "title": "Nonactivated bounded Kubernetes and OpenShift source contracts",
+      "components": ["extensions/devops-kubernetes", "extensions/devops-openshift", "automexia-devops", "automexia-extension-api", "apps/automexia-terminal"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#provider-authentication-framework-current-source-boundary"],
+        "reference": ["docs/CONNECTION-HUB.md#kubernetes", "docs/MULTI-CLOUD-PROVIDERS-TESTING.md#m11-kubernetes-and-openshift-source-contracts"],
+        "explanation": ["docs/ARCHITECTURE.md#m11-kubernetes-and-openshift-source-boundary", "docs/adr/0020-hybrid-build-wrap-adopt-boundary.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "M11 adds no active renderer or control; product UI and controlled native screen-reader evidence remain external."},
+        "correctness": {"level": "pr", "evidence": ["extensions/devops-kubernetes/tests/contracts.rs", "extensions/devops-openshift/tests/contracts.rs", "apps/automexia-terminal/src/automexia/builtins/mod.rs"], "rationale": "Thirteen focused contracts and two app guards cover stable exact and private-transient sources, typed YAML/JSON, merge/reference behavior, capsule pinning, exact isolated kubectl/oc plans, explicit failures, and independent disabled registration."},
+        "security": {"level": "pr", "evidence": ["extensions/devops-kubernetes/src/implementation.rs", "extensions/devops-openshift/src/implementation.rs"], "rationale": "Links/reparse points, source drift, oversized/hostile/ambiguous documents, external credential paths, proxy routes, insecure production TLS, auth-provider blocks, secret-bearing exec flags, cross-session grants, and shared context/project mutation fail closed; secret values are discarded."},
+        "performance": {"level": "pr", "evidence": ["extensions/devops-kubernetes/benches/kubeconfig.rs"], "rationale": "The 50-sample optimized 900 KiB Windows target measured 1.8280-1.8788 ms with eight high-side outliers. Parsing is explicit-only, bounded, and absent from startup/input/render/resize/PTY paths; controlled baselines remain external."},
+        "resource_lifetime": {"level": "pr", "evidence": ["extensions/devops-kubernetes/src/implementation.rs", "extensions/devops-openshift/src/implementation.rs"], "rationale": "Stable reads close their file handle on return and plans own no worker, child, socket, browser, listener, PTY, route, cache, credential, or GPU resource; all future processes require whole-tree cancellation and remain nonactivated."},
+        "storage_hygiene": {"level": "pr", "evidence": ["extensions/devops-kubernetes/src/implementation.rs"], "rationale": "The adapter reads only an exact granted regular file or caller-supplied private transient bytes, persists nothing, never edits user kubeconfig, and retains public metadata plus opaque references only. Private allocation, permissions, cleanup, and uninstall fixtures remain external."},
+        "resilience": {"level": "pr", "evidence": ["extensions/devops-kubernetes/tests/contracts.rs", "extensions/devops-openshift/tests/contracts.rs"], "rationale": "Malformed YAML/JSON, limits, source changes, missing references, collisions, denied/failed plugins, missing tools, expiry, MFA, cancellation, offline, access denial, unsupported versions, and generic errors are deterministic and non-ready."},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "No product pixels are added; hierarchy, responsive layout, focus, and visual review remain an external integration gate."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["extensions/devops-kubernetes/tests/contracts.rs", "extensions/devops-openshift/tests/contracts.rs", "extensions/devops-kubernetes/benches/kubeconfig.rs", "apps/automexia-terminal/src/automexia/builtins/mod.rs"], "rationale": "Focused tests, native regular-file checks, app registration, warning-denied Clippy, dependency policy, and benchmark ran locally on Windows x86_64 without kubectl, oc, plugin, cluster, browser, or network."},
+        "linux": {"level": "pr", "evidence": ["extensions/devops-kubernetes/src/implementation.rs", ".github/workflows/ci.yml#native"], "rationale": "Unix no-follow and symlink tests compile, but this M11 run did not execute natively on Linux."},
+        "macos": {"level": "pr", "evidence": ["extensions/devops-kubernetes/src/implementation.rs", ".github/workflows/ci.yml#native"], "rationale": "Unix no-follow and symlink tests compile, but this M11 run did not execute natively on macOS."}
+      }
     }
   ]
 }

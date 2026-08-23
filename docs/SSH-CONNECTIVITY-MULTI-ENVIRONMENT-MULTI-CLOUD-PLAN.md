@@ -130,7 +130,8 @@ native/release claim.
 | D6.1/M8 AWS | Partially done overall; source-complete nonactivated | Independent `automexia-devops-aws`; bounded public profiles; exact SSO/STS/SSM/EKS dry-run contracts; 10 focused tests | D3 product activation/attestation, M11 EKS ingestion, and controlled real official-tool/native/resource/accessibility/release evidence remain. |
 | D6.2/M9 Azure | Partially done overall; source-complete nonactivated | Independent `automexia-devops-azure`; bounded public account JSON; exact tenant-scoped login/account observation; AAD-only Bastion plan; opaque transient AKS intent; 8 focused tests | D3 product activation/attestation, M11 AKS ingestion, and controlled real Azure/native/resource/accessibility/release evidence remain. |
 | D6.3/M10 Google Cloud | Partially done overall; source-complete nonactivated | Independent `automexia-devops-gcp`; bounded named public config; exact per-command login/project observation; opaque federation; scope-bound IAP; private-environment GKE intent; 8 focused tests | D3 activation/attestation, M11 GKE ingestion, and controlled real Google/native/resource/accessibility/release evidence remain. |
-| D6.4-D6.5 Kubernetes/OpenShift, Teleport, OpenBao | Not done | Provider-neutral model variants only; OpenBao ADR 0024 is proposed and unaccepted | Implement every adapter independently; accept ADR 0024 before any OpenBao code. |
+| D6.4/M11 Kubernetes/OpenShift | Partially done overall; source-complete nonactivated | Independent Kubernetes/OpenShift packages; bounded exact-source YAML/JSON parsing and merge; default-denied exec review; exact isolated kubectl/oc plans; 13 tests and benchmark | D3/product activation, real client/cluster/native/resource/accessibility/release evidence. |
+| D6.5/M12 Teleport/OpenBao | Not done | Provider-neutral model variants only; OpenBao ADR 0024 is proposed and unaccepted | Implement Teleport independently; accept ADR 0024 before any OpenBao code. |
 | Provider-aware Quick Actions (CP4/F13) | Not done and blocked | CP2/CP3 typed/persistent/insert-only Quick Actions and static packs exist | Consume only F7+ cached public context; exact execution stays behind F4. |
 
 ### Important distinction: existing legacy DevOps status is not D6
@@ -888,34 +889,49 @@ GKE cluster, kubeconfig file, or provider PTY ran in this slice.
 
 ### M11 — F11 Kubernetes and OpenShift slice
 
-Status: Not done; depends on M7 and is a hard prerequisite for managed EKS/AKS/
-GKE context execution.
+Status: Partially done overall; source-complete and nonactivated. M7 remains the
+capsule authority and D3 remains the only future execution boundary.
 
-- [ ] Treat every kubeconfig source as code-capable untrusted input. Require
-  explicit exact source grants; reject oversized documents, relative/untrusted
-  credential paths, symlink/reparse races, merge collisions, duplicate identity
-  ambiguity, and source changes after review.
-- [ ] Implement bounded public parsing of cluster/context/user-reference/
-  namespace/project metadata while preserving `kubectl`/`oc` merge and
-  precedence semantics. Keep a public source/provenance/freshness label.
-- [ ] Deny `user.exec` credential plugins by default. A future enablement needs
-  exact executable identity/digest, ordered argv, allowed environment names,
-  interactivity policy, capability review, deadline/output/cancellation limits,
-  and a specific session/capsule grant. Keep `ExecCredential` and key data
-  memory-only and redacted.
-- [ ] Pin exact source set, cluster, context, user reference, namespace/project,
-  provider relation, freshness/expiry, provenance, and risk in each capsule.
-- [ ] Add reviewed exact `kubectl`/`oc` login, context inspection, `exec`/`rsh`,
-  and cloud-cluster workflows. Never make an implicit global `use-context` or
-  project change on behalf of a managed pane.
-- [ ] Test hostile YAML/JSON, controls/bidi, relative paths, symlink swaps,
-  KUBECONFIG merge ordering, exec-plugin rejection/approval, token redaction,
-  cross-pane isolation, cancellation, expiry/offline/denial/plugin failure,
-  cleanup, disable/uninstall, and real client fixtures where available.
+- [x] **Fully done locally:** treat every source as code-capable untrusted input.
+  The Kubernetes package accepts only exact absolute grants or private transient
+  references, uses stable bounded regular-file reads, rejects links/reparse
+  points, source drift, external credential paths, documents above 1 MiB,
+  depth/event/node/count excess, duplicate identities, and merge collisions.
+- [x] **Fully done locally:** parse typed YAML and JSON with duplicate-key and
+  merge-key denial; retain only public cluster origin, TLS policy, context,
+  user reference, namespace/project, source provenance, revision, and freshness.
+  Deterministic source order selects the first current context while any map-key
+  collision fails closed instead of creating ambiguous identity.
+- [x] **Fully done locally:** `user.exec` is `DenyAll`. Public review retains only
+  API version, executable, ordered arguments, environment names, and
+  interactivity. Environment values, tokens, passwords, certificates, and key
+  data are discarded; secret-bearing flags fail closed. A nonactivated exact
+  digest/argv/environment/interactivity/session/revision/deadline/output/tree-
+  cancellation review exists but cannot execute.
+- [x] **Fully done locally:** capsules pin source-set revision, context, cluster,
+  user reference, namespace/project, server origin, TLS policy, provider
+  relation (standalone/EKS/AKS/GKE/OpenShift/Teleport), freshness/expiry,
+  provenance, and risk. Production rejects insecure TLS.
+- [x] **Fully done locally:** immutable nonactivated plans cover `kubectl auth
+  whoami`, context inspection, `kubectl exec`, OpenShift web login into a newly
+  allocated private output, project inspection, and `oc rsh`. They use exact
+  argument arrays, private `KUBECONFIG`, whole-tree cancellation, and never run
+  global `use-context` or project mutation.
+- [x] **Fully done locally:** eight Kubernetes and five OpenShift tests cover
+  hostile YAML/JSON, controls/bidi, relative/linked/changed/oversized sources,
+  merge order/collisions, AWS/AKS/GKE transient inputs, exec denial/exact review,
+  redaction, session isolation, explicit expiry/offline/denial/plugin failure,
+  disable registration, and exact argv. Warning-denied Clippy, dependency policy,
+  and the 900 KiB Windows benchmark at 1.8280–1.8788 ms pass.
+- [ ] **Partially done/external:** protected D3 product activation, actual private
+  transient-file allocation/cleanup, real `kubectl`/`oc` and EKS/AKS/GKE/
+  OpenShift fixtures, plugin execution, forced child teardown, sustained
+  resource/storage evidence, Linux/macOS native clients, product UI,
+  accessibility, packaging, signing, and release evidence remain.
 
-Exit: Kubernetes/OpenShift has no ambient executable credential or global
-context authority and is independently releasable.
-
+Exit is met for the two independently disabled source packages, not product
+activation or release. No Kubernetes/OpenShift executable, plugin, network,
+credential, cluster, browser, PTY, or user kubeconfig ran in this slice.
 ### M12 — F12 organization identity: Teleport, then OpenBao
 
 Status: Not done; implement in two independently approved releases.

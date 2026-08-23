@@ -2177,8 +2177,8 @@ cargo clippy -p automexia-devops-aws --all-targets --all-features --locked -- -D
 Ten Windows x86_64 tests cover disabled least privilege; 1 MiB/128-profile
 hostile/duplicate/secret bounds; exact capsule-scoped SSO/STS; strict 64 KiB
 identity; AWS CLI 2.22+/plugin 1.1.17+ floors; SSM cleanup; and EKS dry-run. No
-AWS tool/network/cache/session/cluster/native provider fixture ran. D3 activation,
-M11 ingestion, accessibility/resources, packaging, and release remain external.
+AWS tool/network/cache/session/cluster/native provider fixture ran. D3 activation into
+M11 runtime ingestion, accessibility/resources, packaging, and release remain external.
 
 ## M9 Azure adapter source contracts
 
@@ -2193,7 +2193,7 @@ Eight Windows x86_64 tests cover disabled least privilege; 256 KiB/128-account/
 scoped broker/browser/device and subscription status without global mutation;
 AAD-only tree-cancelled Bastion; opaque AKS output; CLI floors, redaction, and a 473.69–478.86 µs 128-account Criterion target. No
 Azure tool/auth/network/cache/Bastion/AKS/PTY/filesystem/native provider fixture
-ran. D3 activation, M11 ingestion, accessibility/resources, packaging, and
+ran. D3 activation into M11 runtime ingestion, accessibility/resources, packaging, and
 release remain external.
 
 ## CP3.3 native imports and trusted workspace task bridges

@@ -1,0 +1,29 @@
+[package]
+name = "automexia-devops-kubernetes"
+description = "Bounded Kubernetes kubeconfig and reviewed CLI contracts for Automexia."
+publish = false
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+automexia-devops = { workspace = true }
+automexia-extension-api = { workspace = true }
+serde = { workspace = true }
+serde-saphyr = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+tempfile = { workspace = true }
+
+[[bench]]
+name = "kubeconfig"
+harness = false

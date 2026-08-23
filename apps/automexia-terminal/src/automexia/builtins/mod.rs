@@ -4,6 +4,8 @@ pub mod aws;
 pub mod azure;
 pub mod devops;
 pub mod gcp;
+pub mod kubernetes;
+pub mod openshift;
 
 /// Trusted first-party catalog compiled into the application.
 ///
@@ -15,6 +17,8 @@ pub const MANIFESTS: &[ExtensionManifest] = &[
     aws::MANIFEST,
     azure::MANIFEST,
     gcp::MANIFEST,
+    kubernetes::MANIFEST,
+    openshift::MANIFEST,
     devops::MANIFEST,
 ];
 #[cfg(target_arch = "wasm32")]
@@ -69,6 +73,39 @@ mod tests {
         assert_eq!(
             gcp.capabilities,
             &[
+                automexia_extension_api::Capability::ProcessSpawn,
+                automexia_extension_api::Capability::Network,
+            ]
+        );
+    }
+    #[test]
+    fn kubernetes_is_independently_registered_and_disabled() {
+        let manifest = MANIFESTS
+            .iter()
+            .find(|manifest| manifest.id == automexia_devops_kubernetes::ID)
+            .expect("Kubernetes manifest is registered");
+        assert!(!manifest.default_enabled);
+        assert_eq!(
+            manifest.capabilities,
+            &[
+                automexia_extension_api::Capability::FilesystemRead,
+                automexia_extension_api::Capability::ProcessSpawn,
+                automexia_extension_api::Capability::Network,
+            ]
+        );
+    }
+
+    #[test]
+    fn openshift_is_independently_registered_and_disabled() {
+        let manifest = MANIFESTS
+            .iter()
+            .find(|manifest| manifest.id == automexia_devops_openshift::ID)
+            .expect("OpenShift manifest is registered");
+        assert!(!manifest.default_enabled);
+        assert_eq!(
+            manifest.capabilities,
+            &[
+                automexia_extension_api::Capability::FilesystemRead,
                 automexia_extension_api::Capability::ProcessSpawn,
                 automexia_extension_api::Capability::Network,
             ]

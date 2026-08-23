@@ -96,7 +96,8 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Multi-cloud | D6.1/M8 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded AWS profile parser plus exact SSO/STS/SSM/EKS-dry-run contracts and ten focused tests pass. D3 activation, M11 EKS ingestion, product UI, and controlled native/provider/resource/accessibility evidence remain. |
 | Multi-cloud | D6.2/M9 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded Azure public-account parser plus exact tenant login/account, AAD-only Bastion, opaque transient AKS contracts, and eight focused tests pass. D3 activation, M11 AKS ingestion, product UI, and controlled native/provider/resource/accessibility evidence remain. |
 | Multi-cloud | D6.3/M10 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded named gcloud parser plus exact per-command user/project, opaque federation, scope-bound IAP, private-environment GKE contracts, eight focused tests, and near-limit benchmark pass. D3 activation, M11 GKE ingestion, product UI, and controlled native/provider evidence remain. |
-| Multi-cloud | D6.4-D6.5 | **Not implemented** | **Blocked** | Kubernetes/OpenShift, Teleport, and OpenBao adapters, product login UI, and controlled native/provider evidence remain independently gated; OpenBao additionally requires ADR 0024 acceptance. |
+| Multi-cloud | D6.4/M11 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded Kubernetes/OpenShift packages, trusted source/merge/exec/capsule/exact CLI contracts, 13 focused tests, app guards, dependency policy, and near-limit benchmark pass. D3/product activation and controlled real client/cluster/native/resource/accessibility evidence remain. |
+| Multi-cloud | D6.5/M12 | **Not implemented** | **Blocked** | Teleport remains planned; OpenBao requires ADR 0024 acceptance before code. Product UI and controlled native/provider evidence remain independently gated. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
 | Productivity | CP1 | **Fully implemented** | **Partial** | Shell-native completion and bounded explicit refresh exist; hosted native evidence remains. |
@@ -129,7 +130,7 @@ executable ledgers above as follows:
 | Phase 0: v0.4 security/stability | S0, S1, S2 | **Source gates complete; assurance partial; enforcement not started.** |
 | Phase 1: provider-neutral APIs | D1, D2 | **Fully implemented at source boundary.** |
 | Phase 2: production first-party SSH | D0, D3, D4, D5.0-D5.2 | **Partial foundation only; production SSH not implemented.** |
-| Phase 3: provider auth/capsules | D6.0-D6.4 | **Partially implemented overall: D6.0 is fully implemented locally; D6.1 is source-complete nonactivated; D6.2-D6.4 are not implemented.** |
+| Phase 3: provider auth/capsules | D6.0-D6.4 | **Partially implemented overall: D6.0 is fully implemented locally; D6.1-D6.4 are source-complete and nonactivated.** |
 | Phase 4: lazy inventory/infrastructure/enterprise adapters | Later D6/D6.5 work | **Not implemented.** |
 | Phase 5: third-party ecosystem/AI | D7 and CP6 | **Not implemented and deferred.** |
 
@@ -668,7 +669,7 @@ evidence remain. M6 activation stays false and CP3.3 local workspace tasks gain
 no remote/provider authority.
 ### D6.0-D6.5 — providers and multi-cloud
 
-**Partially implemented overall: D6.0/M7 is fully implemented locally; D6.1/M8 through D6.3/M10 are source-complete and nonactivated; D6.4-D6.5 are not implemented.**
+**Partially implemented overall: D6.0/M7 is fully implemented locally; D6.1/M8 through D6.4/M11 are source-complete and nonactivated; D6.5/M12 is not implemented.**
 
 D6.0 now owns one authority-free provider-neutral source boundary:
 
@@ -699,7 +700,7 @@ D6.1/M8 now has an independent disabled package. It parses at most 1 MiB and
 hints, constructs capsule-bound IAM Identity Center PKCE/device and regional STS
 operations, decodes only strict bounded public caller identity, names both AWS
 CLI and Session Manager plugin in a nonactivated PTY/tree-cleanup plan, and
-produces only EKS `--dry-run` output for later M11 ingestion. Ten focused tests
+produces only EKS `--dry-run` output for D3-owned runtime ingestion through M11. Ten focused tests
 plus locked warning-denied Clippy and formatting passed on Windows x86_64. No AWS
 process, network, login, SSM session, credential cache, or EKS cluster ran.
 
@@ -721,18 +722,27 @@ Eight focused tests, app registration, warning-denied Clippy, and a near-limit
 444.00–460.66 µs benchmark passed on Windows x86_64. No gcloud process,
 network, auth/federation, credential DB, IAP/SSH, GKE, PTY, or file ran.
 
-The remaining provider slices are still not implemented:
+D6.4/M11 now has independently disabled Kubernetes and OpenShift packages.
+Kubernetes performs stable exact regular-file review or private transient ingestion,
+typed 1 MiB YAML/JSON parsing with explicit structural budgets, deterministic
+source-order merge with collision denial, public-only metadata, default-denied
+exec review, production TLS checks, capsule pinning, and exact nonactivated
+`kubectl auth whoami`/context/exec plans. OpenShift reuses only that public
+kubeconfig model and owns private-output web login, project inspection, and rsh.
+Eight Kubernetes and five OpenShift tests, app guards, warning-denied Clippy,
+`cargo deny`, and a 50-sample 900 KiB 1.8280–1.8788 ms Windows benchmark
+passed. No real client, cluster, network, credential, plugin, browser, PTY, or
+user kubeconfig ran.
 
-1. D6.4 Kubernetes/OpenShift trusted sources, exec allowlists, and contexts.
-2. D6.5 independently enabled Teleport, then OpenBao after proposed ADR 0024 is accepted.
+The remaining provider slice is still not implemented:
 
-D6.1-D6.3 still need D3 product activation/attestation, M11 EKS/AKS/GKE
-ingestion, product review UI, controlled real-tool native tests, cleanup/
-resource/accessibility, and release evidence. D6.4-D6.5 still need independent
-operation construction, grants, parsing, lifecycle, exact CLI argv, offline/
-expired/denied behavior, redaction, product UI, controlled real-tool native
-tests, and multi-pane isolation. Direct SDK inventory remains a later, explicit,
-lazy authority.
+1. D6.5 independently enabled Teleport, then OpenBao after proposed ADR 0024 is accepted.
+
+D6.1-D6.4 still need D3 product activation/attestation, actual private
+transient-file allocation and cleanup, product review UI, controlled real-tool
+native tests, cleanup/resource/accessibility, and release evidence. D6.5 still
+needs independent Teleport implementation; OpenBao additionally needs accepted
+ADR 0024. Direct SDK inventory remains a later, explicit, lazy authority.
 
 ### D7 — public ecosystem, direct APIs, and AI
 
