@@ -138,28 +138,113 @@ jobs:
       - run: cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-devops -p automexia-devops-ssh --no-run --locked
 
   benchmarks-controlled:
-    name: Execute benchmarks on named controlled hardware
+    name: Execute latency benchmarks on named controlled Linux hardware
     if: vars.AUTOMEXIA_BENCHMARK_RUNNER == '1'
     runs-on: [self-hosted, Linux, X64, automexia-benchmark]
     timeout-minutes: 180
+    env:
+      AUTOMEXIA_QA_BENCHMARKS: '1'
+      AUTOMEXIA_QA_RUN_LABEL: s2-linux-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:
           tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
       - name: Execute and retain Criterion measurements
-        env:
-          AUTOMEXIA_QA_BENCHMARKS: '1'
         run: cargo xtask qa --full --bundle
+      - name: Normalize classified latency evidence
+        run: |
+          mkdir -p target/performance
+          measured_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          python tools/ci/performance_assurance.py collect-criterion \
+            --criterion-root "target/qa/${AUTOMEXIA_QA_RUN_LABEL}/benchmark-target/criterion" \
+            --output target/performance/candidate-linux.json \
+            --commit "$GITHUB_SHA" \
+            --measured-at-utc "$measured_at" \
+            --runner-class "${{ vars.AUTOMEXIA_PERFORMANCE_RUNNER_CLASS }}" \
+            --os linux \
+            --arch x86_64 \
+            --cpu "${{ vars.AUTOMEXIA_PERFORMANCE_CPU }}" \
+            --gpu "${{ vars.AUTOMEXIA_PERFORMANCE_GPU }}" \
+            --power-mode "${{ vars.AUTOMEXIA_PERFORMANCE_POWER_MODE }}" \
+            --toolchain "$(rustc --version)" \
+            --profile criterion-release-linux \
+            --require-classified
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: automexia-controlled-benchmark-evidence
+          name: automexia-controlled-linux-benchmark-evidence
           path: |
-            target/criterion/**
-            target/qa/*.zip
+            target/performance/candidate-linux.json
+            target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}/benchmark-target/criterion/**
+            target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}.zip
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
 
+  performance-controlled-windows:
+    name: Collect complete S2 latency and memory evidence
+    if: vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER == '1'
+    runs-on: [self-hosted, Windows, X64, automexia-gpu, automexia-benchmark]
+    timeout-minutes: 240
+    env:
+      AUTOMEXIA_QA_BENCHMARKS: '1'
+      AUTOMEXIA_QA_RUN_LABEL: s2-windows-${{ github.run_id }}-${{ github.run_attempt }}
+      AUTOMEXIA_NATIVE_RESOURCE_REPORT: ${{ github.workspace }}\target\performance\native-resource.json
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+        with:
+          tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
+      - name: Execute native GUI resource stress and controlled benchmarks
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path target/performance | Out-Null
+          cargo xtask test resize-stress --native-gui
+          if ($LASTEXITCODE -ne 0) { throw 'native resource assurance failed' }
+          cargo xtask qa --full --bundle
+          if ($LASTEXITCODE -ne 0) { throw 'controlled benchmark assurance failed' }
+      - name: Normalize, compose, and evaluate S2 evidence
+        shell: pwsh
+        run: |
+          $measuredAt = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+          $toolchain = (& rustc --version).Trim()
+          $runner = @(
+            '--runner-class', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER_CLASS }}',
+            '--os', 'windows',
+            '--arch', 'x86_64',
+            '--cpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_CPU }}',
+            '--gpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_GPU }}',
+            '--power-mode', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_POWER_MODE }}',
+            '--toolchain', $toolchain,
+            '--profile', 'criterion-release-native-gui'
+          )
+          & python tools/ci/performance_assurance.py collect-native-resource `
+            --report target/performance/native-resource.json `
+            --output target/performance/native-memory.json `
+            --commit $env:GITHUB_SHA `
+            --measured-at-utc $measuredAt @runner
+          if ($LASTEXITCODE -ne 0) { throw 'native memory normalization failed' }
+          & python tools/ci/performance_assurance.py collect-criterion `
+            --criterion-root "target/qa/$env:AUTOMEXIA_QA_RUN_LABEL/benchmark-target/criterion" `
+            --supplemental target/performance/native-memory.json `
+            --output target/performance/candidate-windows.json `
+            --commit $env:GITHUB_SHA `
+            --measured-at-utc $measuredAt `
+            --require-classified @runner
+          if ($LASTEXITCODE -ne 0) { throw 'performance evidence composition failed' }
+          & python tools/ci/performance_assurance.py evaluate `
+            --candidate target/performance/candidate-windows.json `
+            --output target/performance/comparison-windows.json
+          if ($LASTEXITCODE -ne 0) { throw 'performance comparison failed' }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: automexia-s2-windows-performance-evidence
+          path: |
+            target/performance/*.json
+            target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}/benchmark-target/criterion/**
+            target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}.zip
+          if-no-files-found: error
+          retention-days: 90
   unsigned-windows:
     name: Unsigned Windows ${{ matrix.target }}
     runs-on: windows-latest

@@ -88,6 +88,12 @@ class QaRunnerTests(unittest.TestCase):
             self.assertNotIn(str(QA.ROOT).replace("\\", "\\\\"), str(result["command"]))
             self.assertIn("log truncated at 2 MiB", payload)
 
+    def test_controlled_run_label_is_bounded_and_portable(self) -> None:
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        self.assertIn("AUTOMEXIA_QA_RUN_LABEL", source)
+        self.assertIn("[A-Za-z0-9][A-Za-z0-9._-]*", source)
+        self.assertIn("len(requested_run_id) > 96", source)
+
     def test_host_manifest_is_allowlisted_and_path_free(self) -> None:
         manifest = QA.collect_host_manifest()
         expected = {

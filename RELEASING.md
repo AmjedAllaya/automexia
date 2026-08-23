@@ -41,11 +41,18 @@ signature/notarization verification, desktop/AppStream/icon/URL/terminfo checks,
 `automexia --version` for every portable archive, config migration preservation,
 and the manual controlled-hardware GPU/PTY checklist in `docs/TESTING.md`.
 
-The tag workflow will not enter preflight unless both protected runner gates
-succeed: `AUTOMEXIA_NATIVE_GUI_RUNNER=1` drives real PowerShell/ConPTY clone and
-resize storms on the `automexia-gpu` runner, while
-`AUTOMEXIA_WSL_RUNNER=1` and `AUTOMEXIA_TEST_WSL_DISTRO` prove WSL distro,
-user, shell, directory, and PTY isolation on the `automexia-wsl` runner.
+The tag workflow will not enter preflight unless all three protected runner
+gates succeed: `AUTOMEXIA_NATIVE_GUI_RUNNER=1` drives real PowerShell/ConPTY
+clone and resize storms; `AUTOMEXIA_WSL_RUNNER=1` plus the configured distro
+proves WSL identity/isolation; and `AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER=1`
+runs the exact native-resource and nine-target Criterion workload on the named
+Windows GPU/benchmark runner. The performance job composes classified latency
+with native private-byte/working-set evidence and calls
+`evaluate --require-active`. Therefore the checked-in `collecting` S2 baseline
+intentionally blocks stable tags until 30 consecutive comparable days are
+reviewed and activated. Above 5% latency or 10% memory, only an exact
+commit/metric/baseline waiver with bounded reason, HTTPS review, approver, and
+unexpired at-most-30-day lifetime can pass.
 
 The final controlled Windows runner additionally carries the `defender` label.
 It verifies both signed MSI and ZIP architecture pairs, requires each portable

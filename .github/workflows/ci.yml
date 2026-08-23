@@ -75,6 +75,10 @@ jobs:
         run: python tools/ci/test_measure_completion_adapter.py
       - name: QA evidence runner contracts
         run: python tools/ci/test_qa.py
+      - name: Stabilization performance policy and mutation tests
+        run: |
+          python tools/ci/performance_assurance.py check-policy
+          python tools/ci/test_performance_assurance.py
       - name: Cross-platform workflow coverage regression tests
         run: |
           python tools/ci/check_platform_coverage.py
