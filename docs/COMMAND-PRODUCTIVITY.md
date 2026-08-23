@@ -970,10 +970,33 @@ Otherwise CP1 native completion remains the shipped solution.
 
 ### CP6 — ecosystem integration
 
-- Consider signed third-party action packs only with v0.6's manifest,
-  capability, provenance, revocation, and sandbox policy.
-- AI suggestions remain a separate opt-in capability with explicit data-flow
-  consent and are not treated as completion.
+Status: partially done at the proposal-only policy boundary. Proposed
+[ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md), the
+[schema-1 machine contract](../tests/fixtures/ecosystem/d7-cp6-ecosystem-contract-v1.json),
+15 mutation tests, and the
+[D7/CP6 execution audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md) are complete.
+No pack or AI runtime, public SDK, download, sandbox, provider request, tool
+call, or execution authority exists.
+
+- Signed third-party action packs may map only into existing typed CP2/CP3
+  actions after package digest, publisher, signature/provenance, compatibility,
+  current revocation, and exact capability/data-flow review. A pack never owns
+  execution; preview, collision, stale revision, production confirmation,
+  insert/copy, and final revalidation remain host-owned.
+- Optional AI is a separate opt-in and per-request consent flow. It may receive
+  only exact selected bounded text after redaction preview and provider/locality/
+  model/destination/purpose/retention/size/risk disclosure. Ambient terminal,
+  history, clipboard, files, environment, credentials, agents, provider caches,
+  capsules, connections, other panes, logs, telemetry, and support data remain
+  unavailable.
+- AI output is a bounded typed explanation or suggestion, independently risk
+  classified and offered as copy/insert without Enter. Tool calls, MCP
+  passthrough, background or typing-triggered requests, and automatic execution
+  are outside CP6.
+- Runtime work requires explicit ADR/contract acceptance followed by the package,
+  custom WIT/Wasmtime, distribution/revocation, privacy, UX, native,
+  accessibility, performance/resource, rollback, and release gates in the
+  execution audit. CP1-CP3 and private first-party extensions remain fallback.
 
 ## Verification matrix
 

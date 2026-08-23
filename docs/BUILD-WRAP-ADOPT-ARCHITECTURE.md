@@ -434,6 +434,16 @@ filesystem, provider cache, PTY, capsule, or production authority. Schema-valid
 JSON is not proof of command safety, and MCP transport authorization is not an
 Automexia capability grant.
 
+#### D7/CP6 proposal status
+
+Proposed [ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md) and the
+[D7/CP6 audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md) now freeze the
+non-activating package, sandbox, provenance/revocation, capability, AI, resource,
+lifecycle, rollback, and release contract. Acceptance and activation remain
+false. Wasmtime, signature/update libraries, a public SDK, downloads, component
+execution, and AI provider/tool calls are candidates or future work, not current
+dependencies or product behavior.
+
 ## Dependency introduction order
 
 | Gate | Core additions | Extension additions | Remains external or deferred |

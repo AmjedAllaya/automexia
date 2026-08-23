@@ -1124,13 +1124,27 @@ terminal latency or another pane.
 
 ### D7 — deferred ecosystem and AI gates
 
-Third-party downloads, a public SDK, direct arbitrary network, a native SSH
-engine, and AI command execution wait for the v0.6 sandbox, signing, revocation,
-quota, migration, and capability UX. AI extensions receive no ambient PTY
-environment, SSH agent, cloud cache, terminal history, capsule, connection, or
-production authority. Every tool call names a structured operation, exact
-environment/session, risk, and capability; read permission never implies
-command permission and destructive work requires policy plus explicit review.
+Status: partially done at the proposal-only policy boundary. Proposed ADR 0029,
+a digest-frozen schema-1 contract with nine threats, 28 ceilings, 12 evidence
+domains, ten external gates, 15 mutation tests, repository/full-QA wiring, and
+the D7.0-D7.5/CP6 execution audit are complete. Acceptance and runtime activation
+remain false, and no ecosystem dependency or crate may enter the workspace.
+
+Third-party downloads, a public SDK, package verification/store, custom WIT and
+Wasmtime sandbox, distribution/revocation, direct arbitrary network, native SSH
+engine, product UX, signed pack import, and AI provider/tool/command execution
+remain blocked. The proposed initial world has no default WASI, filesystem,
+network, process, PTY, terminal, environment, clipboard, credential, agent,
+provider-cache, capsule-secret, or connection import. Optional AI receives only
+explicit selected bounded text after per-request data-flow consent and can return
+only a typed copy/insert suggestion without Enter.
+
+Exit requires explicit ADR/contract acceptance, ADR 0003 protected approvals
+for every authority-bearing slice, focused dependency review, hostile package/
+component and supply-chain drills, native three-platform package/sandbox/cleanup,
+privacy/accessibility/performance/resource evidence, exact disable/uninstall/
+rollback, and the 30-day soak. Private first-party extensions and CP1-CP3 remain
+the safe fallback.
 
 ## Tooling decisions and non-goals
 

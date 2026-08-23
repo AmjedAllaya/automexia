@@ -2,11 +2,11 @@
 
 Audit date: 2026-08-23
 
-Audited source baseline: 3f7c00ed8b7d0dee37853654e2db08cd3b324572 plus the current M3 UX/evidence re-audit
+Audited source baseline: 5333b7e77854f8eb184a82968e23c1af464163f3 plus the current D7/CP6 proposal-policy changes
 
 Scope: every execution phase defined by the product, stabilization, DevOps/SSH,
-Connection Hub, command-productivity, persistent-alias, and Ghostty
-compatibility roadmaps.
+Connection Hub, command-productivity, persistent-alias, Ghostty compatibility,
+and D7/CP6 ecosystem roadmaps.
 
 ## Purpose
 
@@ -23,6 +23,7 @@ Authoritative design sources:
 - [Detailed SSH, connectivity, multi-environment, and multi-cloud plan](SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md)
 - [Stabilization roadmap](STABILIZATION-ROADMAP.md)
 - [Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md)
+- [D7/CP6 ecosystem implementation audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md)
 - [Readiness audit](READINESS-AUDIT.md)
 - [SSH, DevOps, and multi-cloud architecture](SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md)
 - [Connection Hub](CONNECTION-HUB.md)
@@ -98,7 +99,7 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Multi-cloud | D6.3/M10 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded named gcloud parser plus exact per-command user/project, opaque federation, scope-bound IAP, private-environment GKE contracts, eight focused tests, and near-limit benchmark pass. D3 activation, M11 GKE ingestion, product UI, and controlled native/provider evidence remain. |
 | Multi-cloud | D6.4/M11 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded Kubernetes/OpenShift packages, trusted source/merge/exec/capsule/exact CLI contracts, 13 focused tests, app guards, dependency policy, and near-limit benchmark pass. D3/product activation and controlled real client/cluster/native/resource/accessibility evidence remain. |
 | Multi-cloud | D6.5/M12 | **Partial overall; Teleport source-complete/nonactivated** | **Partial/blocked** | Teleport has a bounded exact adapter and focused evidence; D3 product UI/activation and controlled native/provider evidence remain. OpenBao is absent pending ADR 0024 acceptance. |
-| Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
+| Ecosystem | D7 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance** | Proposed ADR 0029, strict duplicate-key-rejecting schema-1 contract, nine threats, 28 ceilings, 15 mutation tests, nonactivation/dependency enforcement, and detailed D7.0-D7.5 audit exist. No ecosystem runtime, dependency, package parser/store, WIT, sandbox, downloader, public SDK, or product UI is authorized. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
 | Productivity | CP1 | **Fully implemented** | **Partial** | Shell-native completion and bounded explicit refresh exist; hosted native evidence remains. |
 | Productivity | CP2.0 | **Fully implemented** | **Partial** | Bounded typed Quick Action model and hostile corpus exist with no runtime authority. |
@@ -111,7 +112,7 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Productivity | CP4 | **Partially implemented overall; source-complete nonactivated** | **Partial/external** | Seven provider projections, bounded route snapshots, cached search, stale cancellation, final revalidation, redacted audit, compact accessible risk/state UX, production confirmation, fuzz/benchmark/mutation/policy evidence are complete locally. Product provider publication, exact execution, OpenBao, and real native/provider/accessibility/release evidence remain. |
 | Productivity | CP5.0 | **Fully implemented at research boundary** | **Complete locally** | Seven-shell API matrix, pure insertion prototype, locked matcher/dependency evidence, privacy review, and retain-CP1/defer-P2 decision are machine-gated; no runtime surface exists. |
 | Productivity | CP5.1-CP5.6 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance** | Proposed ADR 0025, schema-1 six-threat contract, 17 mutations/document tests, fixed ownership/limits/shell matrix, and detailed audit exist. No runtime code or UI is authorized; CP1 remains fallback. |
-| Productivity | CP6 | **Not implemented; deferred** | **Blocked by design** | Signed ecosystem packs and AI tools require v0.6 gates. |
+| Productivity | CP6 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance** | The D7/CP6 contract freezes capability-free signed action-pack mapping and selected-input-only AI explanation/suggestion consent, limits, privacy, no-tool/no-execution policy, rollback, and release gates. No pack or AI runtime exists. |
 | Compatibility | G0 | **Partially implemented** | **Partially done** | Exact Ghostty 1.3.1 Linux/BSD provenance/fixtures/checksums, deterministic Windows adaptation, ADR 0026, generation, verification, classic golden, and properties exist. Native macOS fixture and Linux/macOS release evidence remain. |
 | Compatibility | G1 | **Fully implemented locally** | **Partially done** | Pure typed registry, schemas, layers, direct/reverse indexed lookup, reserved sequence/table structures, classic bridge, palette derivation, and Windows latency evidence exist; external platform evidence remains. |
 | Compatibility | G2 | **Fully implemented locally** | **Partially done** | Explicit profiles, bind/unbind/priority layers, strict diagnostics, immutable atomic reload, global/palette transaction, and dry-run/confirmed migration are implemented; native release matrices remain. |
@@ -132,7 +133,7 @@ executable ledgers above as follows:
 | Phase 2: production first-party SSH | D0, D3, D4, D5.0-D5.2 | **Partial foundation only; production SSH not implemented.** |
 | Phase 3: provider auth/capsules | D6.0-D6.4 | **Partially implemented overall: D6.0 is fully implemented locally; D6.1-D6.4 are source-complete and nonactivated.** |
 | Phase 4: lazy inventory/infrastructure/enterprise adapters | Later D6/D6.5 work | **Not implemented.** |
-| Phase 5: third-party ecosystem/AI | D7 and CP6 | **Not implemented and deferred.** |
+| Phase 5: third-party ecosystem/AI | D7 and CP6 | **Partially implemented: the proposal-only security contract and automated nonactivation gate are complete; runtime and product activation remain deferred pending ADR 0029 acceptance and protected approvals.** |
 
 ## Core stabilization phases
 
@@ -763,11 +764,22 @@ evidence. OpenBao remains intentionally absent until ADR 0024 is accepted. Direc
 
 ### D7 — public ecosystem, direct APIs, and AI
 
-**Not implemented and deliberately deferred.** Public signing/revocation,
-compatibility, sandboxing, quotas, migration, capability UX,
-malicious-package/supply-chain tests, and exact data-flow controls must precede
-it. AI receives no ambient PTY/history/agent/credential/cloud/capsule/process/
-filesystem/network authority.
+**Partially implemented at the proposal-only policy boundary; runtime is not authorized.** Proposed ADR 0029, the strict schema-1 D7/CP6 contract, nine
+threats with hostile mutations/verification owners/residual risk, 28 explicit
+resource ceilings, 12 evidence domains, ten external gates, a 15-test mutation
+suite, repository/full-QA registration, and the detailed D7.0-D7.5 execution
+audit are complete. The checker also prevents a Wasmtime/signature/update
+dependency or ecosystem crate from entering the workspace before acceptance.
+
+No public SDK/download, package parser/store, signature or update verifier, WIT
+world, component host, Wasmtime/WASI dependency, filesystem/network/process/
+secret capability, product UX, action-pack import, AI provider request, AI tool
+call, or execution path exists. Explicit acceptance of ADR 0029 and its exact
+contract digest is required before source work; authority-bearing slices then
+still require ADR 0003's protected approvals, dependency review, malicious-
+package/supply-chain/native/accessibility/resource/privacy evidence, and release
+activation. Private first-party extensions remain the fallback and are not the
+public SDK.
 
 ## Command-productivity phases
 
@@ -1070,9 +1082,19 @@ accessibility, lifecycle, performance, or rollback gates.
 
 ### CP6 — ecosystem packs and AI
 
-**Not implemented and deferred.** Requires v0.6 sandbox, provenance,
-signature/revocation, quotas, malicious-package, privacy, and least-authority
-gates.
+**Partially implemented at the proposal-only policy boundary; runtime is not authorized.** The shared D7/CP6 schema-1 contract freezes signed immutable
+action-pack mapping into existing typed CP2/CP3 actions without execution
+authority. It also freezes separate opt-in, per-request AI consent that exposes
+the exact selected data, redactions, provider/locality/model/destination/
+purpose/retention/size/risk and accepts only a bounded typed explanation or
+suggestion for copy/insert without Enter. Ambient terminal/history/clipboard/
+file/environment/credential/agent/provider/capsule/connection data, tool calls,
+MCP passthrough, background/typing requests, and automatic execution remain
+forbidden.
+
+Pack manifest/import/runtime/update/removal, AI provider transport and product
+UI, malicious-package/prompt-injection/native/accessibility/performance/privacy
+evidence, and release activation remain missing pending ADR 0029 acceptance.
 
 ## Terminal-first remote operations projection
 
@@ -1235,8 +1257,11 @@ native/resource evidence remain.
 
 ### v0.6 ecosystem and AI
 
-**Not implemented and deferred.** D7/CP6 public SDK/distribution/sandbox/
-signing/revocation/quotas/policy/AI remain future work.
+**Partially implemented at the proposal-only policy boundary.** D7/CP6 now has
+ADR 0029, a digest-frozen machine contract, mutation/repository/QA enforcement,
+and a complete ordered implementation/evidence audit. Runtime SDK/distribution/
+package verification/sandbox/action-pack/AI/provider/UX/native release work is
+not authorized and remains blocked on explicit acceptance plus protected gates.
 
 ## Cross-cutting quality assessment
 

@@ -82,7 +82,7 @@ documentation, feature assurance, and a change fragment.
 | Provider-aware Quick Actions | CP4 | Partially done overall; source-complete nonactivated | Seven provider projections, route-scoped snapshots, cached search, final revalidation, compact accessible context, production confirmation, fuzz/benchmark/policy evidence | Product capsule publication, exact provider execution, OpenBao, and native provider/accessibility/release evidence |
 | Autocomplete research | CP5.0/P1 | Fully done | Shell/API matrix, pure bounded insertion prototype, locked matcher benchmark, dependency/privacy review, retain-CP1 decision | External low-end/Zsh/Fish/accessibility evidence applies only to a future P2 proposal |
 | Automexia suggestion surface | CP5.1-CP5.6/P2-P4 | Partially done (proposal only) | Proposed ADR 0025, six-threat schema-1 contract, 17 mutation/document tests, fixed ownership/limits/shell matrix, and execution audit | Explicit ADR/contract acceptance, then protocol, sources, ranking, UI, shell and release implementation |
-| Ecosystem packs and AI | CP6/D7 | Not done | Deferred specifications | Separate sandbox, provenance, privacy, quota, and revocation programs |
+| Ecosystem packs and AI | CP6/D7 | Partially done (proposal only) | Proposed ADR 0029, strict schema-1 contract, nine threat owners, 28 resource ceilings, 15 mutations, nonactivation/dependency enforcement, and D7.0-D7.5/CP6 execution audit | Explicit ADR/contract acceptance, then package verification/store, custom WIT/Wasmtime sandbox, signed distribution/revocation/SDK, capability UX, pack import, selected-input AI provider, native/privacy/accessibility/resource/release evidence |
 
 The workspace term has two separate meanings and must remain explicit:
 

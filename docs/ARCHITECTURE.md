@@ -1171,6 +1171,41 @@ adapters reuse the same exact-argv path. Direct SDK network, browser callback,
 sealed secret-handle, third-party process, and AI tool capabilities require
 their own reviewed schemas, quotas, threat models, and ADR changes.
 
+## Proposed D7/CP6 sandboxed ecosystem boundary
+
+D7/CP6 is partially implemented only as a non-activating policy contract.
+Proposed [ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md), its
+[schema-1 machine contract](../tests/fixtures/ecosystem/d7-cp6-ecosystem-contract-v1.json),
+and the [execution audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md) freeze
+ownership, threats, ceilings, lifecycle, rollback, and external evidence. They
+do not add a crate, dependency, package parser/store, WIT interface, component
+host, downloader, product surface, public SDK, AI provider, or runtime authority.
+
+After explicit acceptance, a private `automexia-ecosystem` domain crate may own
+strict renderer/PTY-independent manifest, compatibility, capability-diff,
+verification-receipt, and lifecycle models. A dedicated joined host may then
+adopt Wasmtime Component Model behind a disabled feature. It starts with an
+Automexia-owned WIT allowlist and no default WASI. Fuel, an emergency epoch/
+wall deadline, guest and host-transfer memory limits, table/instance/output/log/
+queue/concurrency limits, generation cancellation, crash quarantine, and joined
+teardown are mandatory. Runtime limiting is not delegated to linear-memory
+limits because host allocations also require Automexia ceilings.
+
+Verified immutable bundles remain separate from execution. Digest, publisher,
+signature, trusted root, timestamp, provenance, SBOM/licenses, compatibility,
+and current revocation state bind before review or extraction. Any code, signer,
+import, capability, scope, data-flow, quota, AI provider/locality, or risk change
+requires fresh review. Network distribution is a later explicit-refresh slice
+with role-separated, versioned, expiring metadata and rollback/freeze resistance.
+
+Guest and AI output is bounded untrusted typed data that re-enters host policy.
+It never writes to the PTY, presses Enter, launches a process, accesses a file/
+network/clipboard/credential/agent/provider/capsule/connection, or mints a grant.
+Optional AI receives only explicitly selected bounded input after per-request
+data-flow review and may return only copy/insert suggestions. Private first-party
+extensions and CP1-CP3 remain authoritative fallback until every protected and
+native release gate passes.
+
 ## Accessibility boundary
 
 The v0.4 keyboard/focus/contrast/scaling contract, custom-surface inventory,

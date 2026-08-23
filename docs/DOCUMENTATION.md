@@ -32,6 +32,11 @@ the claim.
   `docs/DEVOPS-ALIASES.md` owns the CP2/CP3 typed-action, pure projection,
   collision/completion, metadata, CP3.1 private transaction/publication, native
   activation/reload, rollback, and uninstall boundaries.
+- `docs/ECOSYSTEM-PLATFORM.md` owns the current no-runtime behavior, fixed
+  D7/CP6 package/sandbox/capability/AI safety boundary, planned review, and
+  recovery/fallback contract. The detailed ordered work and evidence ledger live
+  in `docs/research/D7-CP6-IMPLEMENTATION-AUDIT.md`; detailed evidence commands
+  and the future matrix live in `docs/ECOSYSTEM-PLATFORM-TESTING.md`.
 - `docs/TESTING.md` owns evidence levels and commands.
 - `docs/ROADMAP.md` owns release sequencing and the status-first feature/phase
   register.

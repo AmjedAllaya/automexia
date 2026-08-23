@@ -44,6 +44,9 @@ from check_command_productivity_cp50 import (
 from check_command_productivity_cp51 import (
     validate_repository as validate_command_productivity_cp51,
 )
+from check_ecosystem_d7_cp6 import (
+    validate_repository as validate_ecosystem_d7_cp6,
+)
 from check_session_launch_d0 import validate_repository as validate_session_launch_d0
 from check_provider_auth_m7 import validate_repository as validate_provider_auth_m7
 from check_provider_quick_actions_cp4 import (
@@ -336,6 +339,8 @@ def validate() -> None:
     counts["command productivity CP5.1 proposal"] = command_productivity_cp51_counts[
         "threats"
     ]
+    ecosystem_d7_cp6_counts = validate_ecosystem_d7_cp6()
+    counts["ecosystem D7/CP6 proposal"] = ecosystem_d7_cp6_counts["threats"]
     session_launch_d0_counts = validate_session_launch_d0()
     counts["session launch D0/D3"] = session_launch_d0_counts["scenarios"]
     provider_auth_m7_counts = validate_provider_auth_m7()

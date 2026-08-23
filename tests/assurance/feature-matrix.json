@@ -563,6 +563,31 @@
       }
     },
     {
+      "id": "ecosystem-d7-cp6-proposal",
+      "title": "Non-activating sandboxed signed ecosystem and selected-input AI proposal",
+      "components": ["tools/ci", "tests/fixtures/ecosystem", "docs"],
+      "documentation": {
+        "guide": ["docs/ECOSYSTEM-PLATFORM.md#current-behavior"],
+        "reference": ["docs/TESTING.md#d7cp6-ecosystem-proposal-and-future-runtime-gate"],
+        "explanation": ["docs/adr/0029-sandboxed-signed-ecosystem-boundary.md", "docs/research/D7-CP6-IMPLEMENTATION-AUDIT.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "The proposal adds no UI. It freezes redundant text/icon/color review, keyboard/focus/IME/reduced-motion behavior, renderer-neutral semantics, and controlled native screen-reader evidence as future gates."},
+        "correctness": {"level": "pr", "evidence": ["tools/ci/check_ecosystem_d7_cp6.py", "tools/ci/test_ecosystem_d7_cp6.py", "tests/fixtures/ecosystem/d7-cp6-ecosystem-contract-v1.json"], "rationale": "The strict checker and 15 mutation tests freeze schema, digest, ownership, package, sandbox, capability, provenance, distribution, lifecycle, AI, threat, limit, verification, and external-gate truth."},
+        "security": {"level": "pr", "evidence": ["docs/adr/0029-sandboxed-signed-ecosystem-boundary.md", "tests/fixtures/ecosystem/d7-cp6-ecosystem-contract-v1.json", "tools/ci/test_ecosystem_d7_cp6.py"], "rationale": "Nine threats have controls, hostile mutations, verification owners, and residual risk. Acceptance, activation, downloads, execution, provider/tool calls, dependencies, and ambient authority are hard-coded false."},
+        "performance": {"level": "not_applicable", "evidence": [], "rationale": "No runtime, component, worker, compiler, queue, cache, startup hook, provider, renderer, or binary dependency was added. Future fuel/deadline/latency/startup/binary/resource ceilings are frozen."},
+        "resource_lifetime": {"level": "not_applicable", "evidence": [], "rationale": "No product process, thread, task, component, handle, file, socket, cache, or selected-input buffer exists. Future cancellation, crash quarantine, joined shutdown, lifecycle cycles, and soak gates are explicit."},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "No bundle, grant, cache, selected input, receipt, or provider response is persisted. Future staging, atomic generations, quotas, exact uninstall, and native/user-state preservation are frozen."},
+        "resilience": {"level": "pr", "evidence": ["tools/ci/test_ecosystem_d7_cp6.py", "docs/research/D7-CP6-IMPLEMENTATION-AUDIT.md"], "rationale": "Mutations prevent weakening verification-before-extraction, current revocation, rollback/freeze defenses, stale rejection, kill/disable/uninstall, and private first-party plus CP1-CP3 fallback."},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "No product pixels exist. Compact review, failure/offline/quarantine states, tiny-to-8K, scaling, themes, localization, focus/modal/IME, and native visual proof remain future gates."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["tools/ci/test_ecosystem_d7_cp6.py"], "rationale": "The platform-neutral offline contract and mutations passed locally on Windows x86_64; no package, sandbox, provider, UI, or native lifecycle ran."},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#policy", "tools/ci/validate_repository.py"], "rationale": "The checker is reached by the Linux policy repository validator; native package/sandbox/filesystem/accessibility evidence remains external."},
+        "macos": {"level": "external", "evidence": ["docs/research/D7-CP6-IMPLEMENTATION-AUDIT.md"], "rationale": "No macOS runtime exists; signed/notarized package, filesystem containment, sandbox cleanup, VoiceOver, IME, performance, and uninstall evidence remain external."}
+      }
+    },
+    {
       "id": "contributor-automation-quality-policy",
       "title": "Single-command workflow, architecture, identity, coverage, QA evidence, and dependency policy",
       "components": ["tools/xtask"],

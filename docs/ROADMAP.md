@@ -40,7 +40,7 @@ the audit's executive matrix so the two cannot drift.
 | **Partially done** | D6.3/M10 | Google Cloud is source-complete and nonactivated: bounded named public configuration, exact per-command login/project observation, opaque federation, scope-bound IAP/OS Login, private-environment GKE intent, and focused tests/benchmark pass. D3/M11 activation and real provider/native evidence remain. |
 | **Partially done** | D6.4/M11 | Kubernetes/OpenShift are source-complete and nonactivated: independent packages, bounded stable exact-source YAML/JSON parsing/merge, default-denied exact exec review, capsule pinning, exact isolated kubectl/oc plans, focused tests, dependency policy, and benchmark pass. Product activation, real clients/clusters, native cleanup/resources/accessibility/release evidence remain. |
 | **Partially done** | D6.5/M12 | Teleport is source-complete and nonactivated with bounded public status plus exact reviewed version/login/status/ssh/logout plans. OpenBao remains unimplemented and blocked on proposed ADR 0024 acceptance. |
-| **Not done** | D7 | Public ecosystem, direct APIs, sandboxed extensions, and AI execution are deferred. |
+| **Partially done** | D7 | Proposed ADR 0029, a strict schema-1 policy contract, nine mutation-owned threats, 28 resource ceilings, and a detailed execution audit are complete without runtime authority. Public SDK/downloads, package verification, Wasmtime host, distribution/revocation, product UX, and native release evidence require explicit acceptance and protected implementation. |
 | **Fully done** | CP0 | Architecture, threat model, ceilings, fixtures, mutation tests, and nonactivation policy are complete. |
 | **Fully done** | CP1 | Native shell completion, diagnostics, explicit bounded refresh, precedence, and lifecycle are complete locally. |
 | **Fully done** | CP2.0 | The bounded typed Quick Action model and hostile corpus are complete at their pure boundary. |
@@ -53,7 +53,7 @@ the audit's executive matrix so the two cannot drift.
 | **Partially done** | CP4 | Seven provider-aware projections, immutable route-scoped cached snapshots, stale-generation rejection, final copy/insert revalidation, compact accessible context/risk states, production confirmation, fuzz/benchmark/policy evidence are source-complete and nonactivated. Product provider publication, exact provider execution, OpenBao, and real native/provider/accessibility/release evidence remain. |
 | **Fully done** | CP5.0 | Native API/version research, a bounded non-runtime editor-state prototype, 32/128/512 matcher evidence, dependency review, privacy delta, and a retain-CP1/defer-P2 decision are machine-gated. |
 | **Partially done** | CP5.1-CP5.6 | Proposed ADR 0025, its mutation-tested six-threat machine contract, fixed limits/owners/shell matrix, and execution audit are complete. Runtime still requires explicit acceptance; CP1 remains the fallback. |
-| **Not done** | CP6 | Signed ecosystem packs and AI tools are deferred to later gates. |
+| **Partially done** | CP6 | The non-activating D7/CP6 contract freezes signed-pack provenance/capability/revocation rules and selected-input-only AI consent with no tools or execution. Runtime pack import, provider transport, UX, privacy/native evidence, and release activation remain blocked on ADR 0029 acceptance. |
 | **Partially done** | G0 | Pinned Ghostty 1.3.1 Linux/BSD source/binary/checksum provenance, generated fixtures/references, deterministic Windows adaptation, accepted ADR 0026, classic golden, property tests, and offline verification are implemented. Native macOS fixture plus native Linux/macOS release evidence remain. |
 | **Fully done** | G1 | The pure private typed/compiled registry, schemas, origins, scopes, policies, direct/reverse indexes, sequence trie/table reservation, classic adapter, registry-derived palette, and latency evidence are implemented. |
 | **Fully done** | G2 | Explicit default/moving/pinned profiles, typed bind/unbind layers, strict diagnostics, immutable last-known-good publication, transactional hotkeys/palette, and dry-run/confirmed atomic migration are implemented. |
@@ -638,22 +638,26 @@ never treated as credential or authorization boundaries.
 
 ## v0.6 — sandboxed extension platform and AI tools
 
-Evaluate third-party extension distribution, a public SDK, package signatures
-and revocation, capability UX, quotas, and a Wasm or equivalent sandbox only
-after the first-party SSH and provider contracts are proven. First-party
+The proposal-only D7/CP6 boundary is partially done: ADR 0029, its strict
+digest-frozen machine contract, nine mutation-owned threats, 28 ceilings, and
+the complete execution audit exist without runtime authority. First-party
 DevOps delivery does not wait for this public ecosystem.
 
-Extension-platform work inherits the established QA profiles. Capability,
-sandbox, migration, and distribution changes require property/fuzz corpora,
-resource ceilings, mutation-tested policy code, accessibility semantics, and
-redacted QA evidence before a public SDK or third-party download path ships.
+After explicit acceptance, implementation proceeds through strict package
+models, verified local bundles, custom WIT/Wasmtime hosting, signed distribution/
+revocation/SDK, signed typed-action packs, selected-input AI suggestions, and
+product/native release assurance. Capability, sandbox, migration, and
+distribution changes require property/fuzz/malicious corpora, resource ceilings,
+mutation-tested policy, accessibility semantics, and redacted evidence before
+a public SDK or third-party download path ships.
 
-AI agent orchestration remains a separate extension family. An AI extension
-does not inherit a PTY environment, SSH agent, cloud cache, terminal history,
-capsule, or connection. Each tool call names the exact session/environment,
-structured operation, risk, and requested capability; read permission never
-implies command permission, staging permission never implies production
-permission, and destructive operations require policy plus explicit review.
+Optional AI remains a separate extension family. It receives only explicitly
+selected bounded text after per-request redaction and provider/locality/model/
+destination/purpose/retention/size/risk review. Ambient PTY/history/environment/
+agent/credential/provider/capsule/connection data, tools, MCP passthrough,
+background/typing requests, and automatic execution are outside this decision.
+Responses are typed explanations/suggestions for copy or insert without Enter;
+a future tool-execution design would require another ADR and threat model.
 
 ## Compatibility track
 

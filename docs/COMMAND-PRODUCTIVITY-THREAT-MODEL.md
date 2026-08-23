@@ -276,7 +276,10 @@ until the exact ADR and contract are explicitly accepted.
   reduce but do not eliminate local compromise.
 - CMD cannot provide feature parity with programmable shell editors.
 - Remote marketplace packs, automatic cloud sync, AI command generation, and
-  direct provider APIs remain outside CP0-CP4 and require new threat review.
+  direct provider APIs remain outside CP0-CP4. The proposal-only D7/CP6 threat
+  inventory is frozen separately by [ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md)
+  and its [machine contract](../tests/fixtures/ecosystem/d7-cp6-ecosystem-contract-v1.json);
+  runtime still requires acceptance and protected implementation.
 
 ## Mandatory review triggers
 

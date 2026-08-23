@@ -37,6 +37,8 @@ decision supersedes an old one instead of silently rewriting history.
 | [0027](../adr/0027-redacted-compatibility-inspector.md) | Redacted compatibility inspector | Expose only bounded public terminal/binding metadata in a renderer-owned modal and forbid output, paths, commands, clipboard, environment, and credentials. |
 | [0028](../adr/0028-bounded-parked-pty-topology-history.md) | Bounded parked-PTY topology history | Undo/redo only complete closed top-level tabs initially, preserving existing route ownership while bounding count, age, history lines, invalidation, and cleanup. |
 
+| [0029](../adr/0029-sandboxed-signed-ecosystem-boundary.md) | Sandboxed signed ecosystem boundary (proposed) | Require strict signed immutable bundles, custom-WIT least authority, bounded Wasmtime hosting, current revocation, explicit capability changes, selected-input-only AI, no tools/execution, and exact rollback before D7/CP6 source work. |
+
 ## When an ADR is required
 
 Add or supersede an ADR when a change affects dependency direction,

@@ -20,7 +20,7 @@ A phase can be source-complete while release evidence is still partial. User-fac
 | Multi-environment | M6/F6 | **Partial overall; review-only source contracts complete locally** | **Blocked** | Schema-2 reviewed persistence/migration/transfer, typed recipe lifecycle/no-hooks, narrow remote initialization, declarative restore, armed broadcast, and bounded tests pass. Proposed ADR 0023 acceptance, product activation/execution, and controlled native/resource/accessibility evidence remain. |
 | Multi-cloud | D6.0/M7 | **Fully implemented locally** | **Partial/external** | Strict provider-neutral schemas, immutable session capsules, 19-state lifecycle, exact allow-once review, isolation/redaction, passive-status migration, cached-only semantics, fuzz/mutation, bounded lifecycle, and a 64-capsule benchmark pass. Real provider CLI/native evidence remains external. |
 | Multi-cloud | D6.1-D6.5 | **Partial overall; M8-M11 and M12 Teleport source-complete/nonactivated** | **Partial/blocked** | AWS, Azure, Google Cloud, Kubernetes/OpenShift, and Teleport bounded exact adapters pass locally. D3 product activation and controlled provider/native evidence remain; OpenBao is absent pending ADR 0024 acceptance. |
-| Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
+| Ecosystem | D7 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance** | Proposed ADR 0029, a strict nine-threat/28-limit machine contract, 15 mutations, nonactivation/dependency gate, and detailed audit exist. Runtime SDK/download/package/sandbox/distribution/UI/native work is not authorized. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
 | Productivity | CP1 | **Fully implemented** | **Partial** | Shell-native completion and bounded explicit refresh exist; hosted native evidence remains. |
 | Productivity | CP2.0 | **Fully implemented** | **Partial** | Bounded typed Quick Action model and hostile corpus exist with no runtime authority. |
@@ -33,7 +33,7 @@ A phase can be source-complete while release evidence is still partial. User-fac
 | Productivity | CP4 | **Partially implemented overall; source-complete nonactivated** | **Partial/external** | Seven cached provider projections, route/session/generation isolation, final revalidation, compact accessible state/risk UX, production confirmation, fuzz/benchmark/policy evidence are complete locally. Product provider publication/execution, OpenBao, and real native/provider/accessibility/release evidence remain. |
 | Productivity | CP5.0 | **Fully implemented at research boundary** | **Complete locally** | Seven-shell API matrix, pure insertion prototype, locked matcher/dependency evidence, privacy review, and retain-CP1/defer-P2 decision are machine-gated; no runtime surface exists. |
 | Productivity | CP5.1-CP5.6 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance** | Proposed ADR 0025, schema-1 six-threat contract, 17 mutations/document tests, fixed ownership/limits/shell matrix, and detailed audit exist. No runtime code or UI is authorized; CP1 remains fallback. |
-| Productivity | CP6 | **Not implemented; deferred** | **Blocked by design** | Signed ecosystem packs and AI tools require v0.6 gates. |
+| Productivity | CP6 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance** | Signed action-pack policy and explicit selected-input AI consent/no-tool/no-execution rules are machine-frozen. No pack or AI runtime exists pending ADR 0029 acceptance and protected evidence. |
 | Compatibility | G0 | **Partially done** | **Partially done** | Exact Ghostty 1.3.1 Linux/BSD provenance/fixtures/checksums, deterministic Windows adaptation, ADR 0026, generation, verification, classic golden, and properties exist. Native macOS fixture and Linux/macOS release evidence remain. |
 | Compatibility | G1 | **Fully done** | **Partially done** | Pure typed registry, schemas, layers, direct/reverse indexed lookup, reserved sequence/table structures, classic bridge, palette derivation, and Windows latency evidence exist; external platform evidence remains. |
 | Compatibility | G2 | **Fully done** | **Partially done** | Explicit profiles, bind/unbind/priority layers, strict diagnostics, immutable atomic reload, global/palette transaction, and dry-run/confirmed migration are implemented; native release matrices remain. |
@@ -85,7 +85,7 @@ After the generic process/capability/session boundary is proven, deliver separat
 
 ### v0.6 and later — ecosystem, richer remote operations, AI
 
-Public extension distribution, sandboxing, signed third-party packs, direct provider APIs where truly needed, richer remote files/session memory/collaboration, and AI execution wait until the first-party boundaries are stable. These are not prerequisites for production SSH.
+The D7/CP6 proposal-only package/sandbox/provenance/revocation/capability/AI contract and execution audit are complete without activation. Public extension distribution, sandboxing, signed third-party packs, direct provider APIs where truly needed, richer remote files/session memory/collaboration, and AI runtime still wait for explicit protected acceptance and independently proven slices. These are not prerequisites for production SSH.
 
 ## Command-productivity sequence
 
@@ -95,7 +95,7 @@ Public extension distribution, sandboxing, signed third-party packs, direct prov
 - **CP3.0-CP3.3:** pure five-shell projection, opt-in aliases, reviewed packs, selected native import/trusted workspace bridges — complete locally with remaining release evidence.
 - **CP4:** provider/capsule-aware actions — source-complete and nonactivated; product capsule publication and execution remain gated.
 - **CP5:** optional app-owned suggestions — planned; native CP1 completion remains fallback.
-- **CP6:** signed ecosystem/AI action packs — deferred.
+- **CP6:** signed ecosystem/AI action packs — proposal and threat contract complete; runtime blocked on ADR 0029 acceptance.
 
 ## Ghostty compatibility track
 
