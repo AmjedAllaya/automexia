@@ -98,10 +98,14 @@ Once a selection exists, an Arrow without `Shift`, printable input, paste, or IM
 
 | Action | Windows/Linux/BSD | macOS |
 |---|---|---|
-| Search forward | `Ctrl+Shift+F` | `Cmd+F` |
-| Search backward | `Ctrl+Shift+B` | `Cmd+B` |
+| Find in selected pane | `Ctrl+F` | `Cmd+F` |
+| Find backward in selected pane | Use `Shift+Enter` while search is open | `Cmd+B` |
+| Search all visible panes | `Ctrl+Shift+F` | `Cmd+Shift+F` |
+| Search all visible panes backward | `Ctrl+Shift+B` | `Cmd+Shift+B` |
 | Scroll to history top / bottom | `Shift+Home` / `Shift+End` | Use registered action/palette if no preferred custom chord |
 | Scroll a page | `Shift+PageUp` / `Shift+PageDown` | Use registered action/palette if no preferred custom chord |
+
+`Ctrl+F` / `Cmd+F` replaces the selected pane's footer with a compact themed search surface; an exceptionally narrow pane uses the same safe bottom position while preserving pane scope. The global shortcut opens a bottom-centered `ALL PANES` surface above pane footers, safely away from top tab and window-close controls. Global search covers only the active local tab in every visible split of the selected workspace tab; hidden tabs are not activated. Both surfaces capture pointer input across their complete painted bounds and never send a command or implicit Enter to the shell.
 
 While search mode is open:
 

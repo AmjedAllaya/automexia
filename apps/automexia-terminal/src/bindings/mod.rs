@@ -239,6 +239,8 @@ impl From<String> for Action {
             }
             "searchforward" => Some(Action::SearchForward),
             "searchbackward" => Some(Action::SearchBackward),
+            "searchglobalforward" => Some(Action::SearchGlobalForward),
+            "searchglobalbackward" => Some(Action::SearchGlobalBackward),
             "searchconfirm" => Some(Action::Search(SearchAction::SearchConfirm)),
             "searchcancel" => Some(Action::Search(SearchAction::SearchCancel)),
             "searchclear" => Some(Action::Search(SearchAction::SearchClear)),
@@ -557,8 +559,14 @@ pub enum Action {
     /// Start a forward buffer search.
     SearchForward,
 
-    /// Start a backward buffer search.
+    /// Start a backward search in the selected pane.
     SearchBackward,
+
+    /// Start a forward search across every visible pane.
+    SearchGlobalForward,
+
+    /// Start a backward search across every visible pane.
+    SearchGlobalBackward,
 
     /// Split horizontally
     SplitRight,
@@ -1255,9 +1263,11 @@ fn automexia_macos_key_bindings(
         "l", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenFontBrowser;
         "t", ModifiersState::SUPER | ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::ToggleAppearanceTheme;
         "i", ModifiersState::SUPER | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::PreviewSelectedImage;
-        // Search
-        "f", ModifiersState::SUPER, ~BindingMode::SEARCH; Action::SearchForward;
-        "b", ModifiersState::SUPER, ~BindingMode::SEARCH; Action::SearchBackward;
+        // Search: local is the familiar Find chord; Shift expands the scope.
+        "f", ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchForward;
+        "f", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchGlobalForward;
+        "b", ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchBackward;
+        "b", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchGlobalBackward;
         "c", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchCancel;
         "u", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchClear;
         "w", ModifiersState::CONTROL,  +BindingMode::SEARCH; SearchAction::SearchDeleteWord;
@@ -1350,9 +1360,10 @@ fn automexia_windows_key_bindings(
         "l", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenFontBrowser;
         "i", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::PreviewSelectedImage;
         "a", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; Action::SelectAll;
-        // Search
-        "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchForward;
-        "b", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchBackward;
+        // Search: Ctrl+F is pane-local; Shift expands the scope.
+        "f", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchForward;
+        "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchGlobalForward;
+        "b", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchGlobalBackward;
         "c", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchCancel;
         "u", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchClear;
         "w", ModifiersState::CONTROL,  +BindingMode::SEARCH; SearchAction::SearchDeleteWord;
@@ -1447,8 +1458,10 @@ fn automexia_unix_key_bindings(
         "t", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::ToggleAppearanceTheme;
         "i", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::PreviewSelectedImage;
 
-        "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchForward;
-        "b", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchBackward;
+        // Search: Ctrl+F is pane-local; Shift expands the scope.
+        "f", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchForward;
+        "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchGlobalForward;
+        "b", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchGlobalBackward;
         "c", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchCancel;
         "u", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchClear;
         "w", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchDeleteWord;
@@ -1956,6 +1969,58 @@ mod tests {
         assert_eq!(
             Action::from("SelectNextLocalTab".to_string()),
             Action::SelectNextLocalTab
+        );
+        assert_eq!(
+            Action::from("SearchGlobalForward".to_string()),
+            Action::SearchGlobalForward
+        );
+        assert_eq!(
+            Action::from("SearchGlobalBackward".to_string()),
+            Action::SearchGlobalBackward
+        );
+    }
+
+    #[test]
+    fn local_and_global_search_defaults_are_memorable_and_scope_safe() {
+        let trigger = BindingKey::Keycode {
+            key: Key::Character("f".into()),
+            location: KeyLocation::Standard,
+        };
+        let assert_search_pair = |bindings: &[KeyBinding], local_mods, global_mods| {
+            let local = bindings
+                .iter()
+                .find(|binding| binding.trigger == trigger && binding.mods == local_mods);
+            let global = bindings.iter().find(|binding| {
+                binding.trigger == trigger && binding.mods == global_mods
+            });
+            assert_eq!(
+                local.map(|binding| &binding.action),
+                Some(&Action::SearchForward)
+            );
+            assert_eq!(
+                global.map(|binding| &binding.action),
+                Some(&Action::SearchGlobalForward)
+            );
+            for binding in [local.unwrap(), global.unwrap()] {
+                assert!(binding.notmode.contains(BindingMode::SEARCH));
+                assert!(binding.notmode.contains(BindingMode::VI));
+            }
+        };
+
+        assert_search_pair(
+            &automexia_windows_key_bindings(true, true),
+            ModifiersState::CONTROL,
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+        );
+        assert_search_pair(
+            &automexia_unix_key_bindings(true, true),
+            ModifiersState::CONTROL,
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+        );
+        assert_search_pair(
+            &automexia_macos_key_bindings(true, true, ConfigKeyboard::default()),
+            ModifiersState::SUPER,
+            ModifiersState::SUPER | ModifiersState::SHIFT,
         );
     }
 

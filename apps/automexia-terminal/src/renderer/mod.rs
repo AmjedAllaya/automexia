@@ -695,8 +695,12 @@ impl Renderer {
     }
 
     #[inline]
-    pub fn set_active_search(&mut self, active_search: Option<String>) {
-        self.search.set_active_search(active_search);
+    pub fn set_active_search(
+        &mut self,
+        active_search: Option<String>,
+        scope: search::SearchScope,
+    ) {
+        self.search.set_active_search(active_search, scope);
     }
 
     #[inline]
@@ -1275,11 +1279,6 @@ impl Renderer {
             (window_size.width, window_size.height, scale_factor),
         );
 
-        self.search.render(
-            sugarloaf,
-            (window_size.width, window_size.height, scale_factor),
-        );
-
         if self.devops_enabled {
             let (
                 session,
@@ -1601,11 +1600,29 @@ impl Renderer {
         // Every visible pane receives its own operational footer. Rendering
         // it after terminal/prompt overlays but before modal overlays keeps it
         // legible without ever entering PTY history or covering grid cells.
+        let suppressed_footer_route = self.search.pane_route();
         self.session_footer.render(
             sugarloaf,
             context_manager,
             self.named_colors.background.0,
+            suppressed_footer_route,
         );
+        let pane_footer = suppressed_footer_route.and_then(|route_id| {
+            session_footer::surface_for_route(context_manager, route_id, scale_factor)
+        });
+        if self.search.is_active() {
+            // Search is interactive chrome, not terminal content. Record it in
+            // the final overlay phase so terminal grids cannot obscure the
+            // footer surface. Later modal producers still paint above it.
+            sugarloaf.begin_modal_layer();
+            self.search.render(
+                sugarloaf,
+                (window_size.width, window_size.height, scale_factor),
+                pane_footer,
+                &self.named_colors,
+            );
+            sugarloaf.end_modal_layer();
+        }
 
         let modal_dimensions = (window_size.width, window_size.height, scale_factor);
         if self.confirm_quit.is_active() {
@@ -1692,6 +1709,9 @@ impl Renderer {
     /// Check if the renderer needs continuous redraw (for animations)
     #[inline]
     pub fn needs_redraw(&mut self) -> bool {
+        if self.search.needs_redraw() {
+            return true;
+        }
         if self.trail_cursor_enabled && self.trail_cursor.is_animating() {
             return true;
         }
@@ -1929,9 +1949,10 @@ mod prompt_visual_anchor_tests {
         let mut renderer = Renderer::new(&Config::default());
         renderer.command_palette.set_enabled(true);
         renderer.command_palette.set_query("git status".to_string());
-        renderer
-            .search
-            .set_active_search(Some("needle".to_string()));
+        renderer.search.set_active_search(
+            Some("needle".to_string()),
+            search::SearchScope::Pane { route_id: 0 },
+        );
         renderer.confirm_quit.set_active(true);
         renderer.is_window_focused = false;
         renderer.is_vi_mode_enabled = true;

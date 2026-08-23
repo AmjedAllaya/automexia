@@ -1585,6 +1585,17 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         let chrome_press = route.window.screen.take_chrome_press();
 
                         if let MouseButton::Left = button {
+                            // Search owns its complete surface before split
+                            // borders, terminal content, or window chrome.
+                            if route
+                                .window
+                                .screen
+                                .handle_search_click(&mut self.router.clipboard)
+                            {
+                                route.request_redraw();
+                                return;
+                            }
+
                             // Check if clicking on a panel border to start resize
                             {
                                 let mx = route.window.screen.mouse.x as f32;
@@ -1624,15 +1635,6 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                                 .window
                                 .screen
                                 .handle_palette_click(&mut self.router.clipboard)
-                            {
-                                route.request_redraw();
-                                return;
-                            }
-
-                            if route
-                                .window
-                                .screen
-                                .handle_search_click(&mut self.router.clipboard)
                             {
                                 route.request_redraw();
                                 return;
@@ -1990,38 +1992,6 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     return;
                 }
 
-                // Handle search overlay hover
-                if route.window.screen.renderer.search.is_active() {
-                    let scale = route.window.screen.sugarloaf.scale_factor();
-                    let win_w = route.window.screen.sugarloaf.window_size().width;
-                    let mx = x as f32 / scale;
-                    let my = y as f32 / scale;
-                    if route
-                        .window
-                        .screen
-                        .renderer
-                        .search
-                        .hover(mx, my, win_w, scale)
-                    {
-                        // UI-only change (hover highlight). `set_dirty`
-                        // passes `Renderer::run`'s per-context gate;
-                        // the inner damage match hits
-                        // `(None, None) => TerminalDamage::Noop` so
-                        // no rows rebuild. The search overlay itself
-                        // is drawn unconditionally after the per-context
-                        // loop in `Renderer::run`.
-                        route
-                            .window
-                            .screen
-                            .ctx_mut()
-                            .current_mut()
-                            .renderable_content
-                            .pending_update
-                            .set_dirty();
-                        route.request_redraw();
-                    }
-                }
-
                 if route.window.screen.mouse.left_button_state == ElementState::Pressed
                     && route
                         .window
@@ -2035,6 +2005,22 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     route.window.screen.handle_tab_drag_move(x as f32 / scale);
                     route.window.winit_window.set_cursor(CursorIcon::Default);
                     route.request_redraw();
+                    return;
+                }
+
+                let (over_search, search_hover_changed) =
+                    route.window.screen.update_search_hover(x, y);
+                if search_hover_changed {
+                    route.request_redraw();
+                }
+                if over_search {
+                    if route.window.screen.clear_close_button_hover() {
+                        route.request_redraw();
+                    }
+                    if route.window.screen.clear_chrome_action_hover() {
+                        route.request_redraw();
+                    }
+                    route.window.winit_window.set_cursor(CursorIcon::Default);
                     return;
                 }
 

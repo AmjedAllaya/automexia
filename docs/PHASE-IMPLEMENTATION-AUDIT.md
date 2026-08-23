@@ -117,7 +117,7 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Compatibility | G1 | **Fully implemented locally** | **Partially done** | Pure typed registry, schemas, layers, direct/reverse indexed lookup, reserved sequence/table structures, classic bridge, palette derivation, and Windows latency evidence exist; external platform evidence remains. |
 | Compatibility | G2 | **Fully implemented locally** | **Partially done** | Explicit profiles, bind/unbind/priority layers, strict diagnostics, immutable atomic reload, global/palette transaction, and dry-run/confirmed migration are implemented; native release matrices remain. |
 | Compatibility | G3 | **Fully implemented locally** | **Partially done** | Structured outcomes, fallthrough, exact sequences/cancellation, bounded tables/catch-all/chains, stable all-surface execution, per-route state, and shell ownership are implemented; native IME/layout evidence remains. |
-| Compatibility | G4 | **Fully implemented locally** | **Partially done** | Clear, selection/search, topology, zoom/equalize/resize, and bounded private export families are implemented; controlled native visual/resource checks remain. |
+| Compatibility | G4 | **Fully implemented locally** | **Partially done** | Clear, extended selection, branded pane-footer search, bottom-centered visible-pane search, topology, zoom/equalize/resize, and bounded private export families are implemented; controlled cross-platform visual/accessibility/resource checks remain. |
 | Compatibility | G5 | **Partially implemented** | **Partially done** | CLI/migration, xtask generation/verification/tests, generated references, property/fuzz targets, and Windows Criterion benchmarks exist. Native three-platform, visual, accessibility, resource, and 30-day evidence remains. |
 | Compatibility | G6 | **Partially implemented** | **Partially done** | ADRs 0027/0028, the redacted inspector, and bounded parked-PTY undo/redo for complete top-level tabs exist. Individual split/local-tab/native-window history and native lifecycle evidence remain. |
 
@@ -1192,10 +1192,14 @@ with deterministic/property/fuzz contracts.
 **Fully implemented at the local source boundary.**
 
 Ghostty-compatible configuration/raw input, exact primary clear behavior,
-separate Automexia clear variants, extended selection/search, window/tab/split
-semantics, inherited independent PTYs, geometric focus, logical resize,
-transactional zoom/equalize, and restrictive bounded screen export/cleanup are
-implemented and discoverable through the shared registry.
+separate Automexia clear variants, extended selection, pane-footer local search,
+bottom-centered visible-pane search, window/tab/split semantics, inherited
+independent PTYs, geometric focus, logical resize, transactional zoom/equalize,
+and restrictive bounded screen export/cleanup are implemented and discoverable
+through the shared registry. The two search scopes have distinct typed actions,
+deterministic visible-route traversal, 4 KiB query and existing scrollback
+bounds, full-surface pointer capture, responsive geometry snapshots, and
+feature-gated native state controls without query disclosure.
 
 ### G5 — tooling and release verification — Partially done
 

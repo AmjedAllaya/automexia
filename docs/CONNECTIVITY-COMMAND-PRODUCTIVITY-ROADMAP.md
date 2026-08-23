@@ -328,7 +328,7 @@ Exit: users can safely browse, diagnose, tag, and favorite reviewed D4 inventory
 without connection, authentication, provider, process, network, listener, or
 PTY authority. D5.2 remains disabled.
 
-### User-visible shortcut completion audit (2026-08-21)
+### User-visible shortcut completion audit (2026-08-23)
 
 Scope: every command-palette feature that previously had a blank or mismatched
 default. Internal/configuration-only actions remain intentionally outside this
@@ -340,16 +340,20 @@ table; a shortcut is not added merely to increase coverage.
 | Quick Actions | Palette route only; no typed/default binding | **Fully done locally** | `Ctrl+Shift+O` | `Cmd+Shift+O` |
 | Extensions marketplace | Palette route only; no typed/default binding | **Fully done locally** | `Ctrl+Shift+M` | `Cmd+Shift+M` |
 | Font browser | Palette route only; no typed/default binding | **Fully done locally** | `Ctrl+Shift+L` | `Cmd+Shift+L` |
-| Search backward | Working binding; palette label missing | **Fully done** | `Ctrl+Shift+B` | `Cmd+B` |
+| Pane-local terminal search | Top-right surface and implicit current-pane scope | **Fully done locally** | `Ctrl+F` | `Cmd+F` / `Cmd+B` |
+| Visible-pane workspace search | No distinct action or chrome-safe global surface | **Fully done locally** | `Ctrl+Shift+F` / `Ctrl+Shift+B` | `Cmd+Shift+F` / `Cmd+Shift+B` |
 | Appearance | Windows-only default; Linux/macOS incomplete | **Fully done locally** | `Alt+Shift+T` | `Cmd+Alt+Shift+T` |
 | Close tab / close surface / close other tabs | Actions existed; labels/defaults overlapped or were blank | **Fully done locally** | `Ctrl+F4` / `Ctrl+Shift+W` / `Ctrl+Shift+F4` | `Cmd+Shift+W` / `Cmd+W` / `Cmd+Alt+W` |
 
-The four launcher actions have stable configuration names and share their
-existing Screen-owned routes. They are inactive under Search, Vi, and
-alternate-screen ownership and never insert or execute PTY input. Host-
-independent tests build all three binding tables; active-platform palette
-completeness is tested on each native job. Native macOS/Linux keyboard-layout
-and controlled assistive-technology evidence remain external release gates.
+The four launcher actions and both search scopes have stable configuration
+names and share their existing Screen-owned routes. App launchers are inactive
+under Search, Vi, and alternate-screen ownership; global search launchers are
+also excluded in those modes and fail safe to pane scope if invoked through a
+user binding in Vi. Search never inserts or executes PTY input. Host-independent
+tests build all three binding tables; renderer-neutral tests lock footer/global
+geometry and full-surface hit capture. Native macOS/Linux keyboard-layout,
+visual/IME, and controlled assistive-technology evidence remain external
+release gates.
 
 ## F4 - activate D3 exact-argument process and PTY lifecycle
 

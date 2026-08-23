@@ -174,11 +174,19 @@ const SHORTCUT_PASTE: &str = "Ctrl+Shift+V";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SEARCH: &str = "Cmd+F";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_SEARCH: &str = "Ctrl+Shift+F";
+const SHORTCUT_SEARCH: &str = "Ctrl+F";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SEARCH_BACKWARD: &str = "Cmd+B";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_SEARCH_BACKWARD: &str = "Ctrl+Shift+B";
+const SHORTCUT_SEARCH_BACKWARD: &str = "Shift+Enter";
+#[cfg(target_os = "macos")]
+const SHORTCUT_SEARCH_GLOBAL: &str = "Cmd+Shift+F";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_SEARCH_GLOBAL: &str = "Ctrl+Shift+F";
+#[cfg(target_os = "macos")]
+const SHORTCUT_SEARCH_GLOBAL_BACKWARD: &str = "Cmd+Shift+B";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_SEARCH_GLOBAL_BACKWARD: &str = "Ctrl+Shift+B";
 #[cfg(target_os = "macos")]
 const SHORTCUT_FONT_UP: &str = "Cmd++";
 #[cfg(not(target_os = "macos"))]
@@ -265,6 +273,8 @@ pub enum PaletteAction {
     Paste,
     SearchForward,
     SearchBackward,
+    SearchGlobalForward,
+    SearchGlobalBackward,
     PreviewSelectedImage,
     ClearScreen,
     CloseCurrentSplitOrTab,
@@ -442,6 +452,10 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             icon: CommandIcon::Search,
             accent: BRAND_BLUE,
         },
+        SearchGlobalForward | SearchGlobalBackward => RowPresentation {
+            icon: CommandIcon::Search,
+            accent: BRAND_PURPLE,
+        },
         PreviewSelectedImage => RowPresentation {
             icon: CommandIcon::Image,
             accent: BRAND_CYAN,
@@ -500,8 +514,10 @@ fn palette_binding_target(
         ToggleFullscreen => Some(("toggle_fullscreen", None)),
         Copy => Some(("copy_to_clipboard", None)),
         Paste => Some(("paste_from_clipboard", None)),
-        SearchForward => Some(("start_search", None)),
-        SearchBackward => Some(("start_search", None)),
+        SearchForward => Some(("start_search", Some("pane"))),
+        SearchBackward => Some(("start_search", Some("pane"))),
+        SearchGlobalForward => Some(("start_search", Some("visible_panes"))),
+        SearchGlobalBackward => Some(("start_search", Some("visible_panes"))),
         ClearScreen => Some(("clear_screen", None)),
         CloseCurrentSplitOrTab => Some(("close_surface", None)),
         Quit => Some(("quit", None)),
@@ -680,14 +696,24 @@ const COMMANDS: &[Command] = &[
         action: PaletteAction::Paste,
     },
     Command {
-        title: "Search Forward",
+        title: "Find in Pane",
         shortcut: SHORTCUT_SEARCH,
         action: PaletteAction::SearchForward,
     },
     Command {
-        title: "Search Backward",
+        title: "Find Previous in Pane",
         shortcut: SHORTCUT_SEARCH_BACKWARD,
         action: PaletteAction::SearchBackward,
+    },
+    Command {
+        title: "Search All Visible Panes",
+        shortcut: SHORTCUT_SEARCH_GLOBAL,
+        action: PaletteAction::SearchGlobalForward,
+    },
+    Command {
+        title: "Search All Visible Panes Backward",
+        shortcut: SHORTCUT_SEARCH_GLOBAL_BACKWARD,
+        action: PaletteAction::SearchGlobalBackward,
     },
     Command {
         title: "Preview Selected Image",

@@ -1003,6 +1003,24 @@ exact machine contract are explicitly accepted.
   the active segment extends the focus accent.
   Panes below 112 logical pixels hide the footer and recover the space
   automatically when they grow.
+- Terminal search has one `Screen`-owned query, direction, scope, and match
+  state. `Ctrl+F` binds that state to the selected route and replaces only that
+  pane's footer. If that footer is too narrow for every control, presentation
+  falls back to the same bottom-centered renderer surface without changing the
+  pane owner; visible-workspace search always uses that surface above footer
+  chrome. Its bounded route order starts with the selected
+  route, then visits the active local tab of each visible split in deterministic
+  visual order. It never activates hidden pane-local or window-level tabs.
+  `ContextManager` seeds its selected route from the authoritative initial
+  context rather than a sentinel, so the first pane participates in footer
+  ownership immediately. `Renderer` owns only theme-aware geometry, painting,
+  cached hit regions, and hover state. The full painted surface consumes pointer
+  input before splitter, terminal, or window-chrome routing; a pane focus change
+  closes a pane-local
+  search instead of transferring it. Search input is capped at 4 KiB UTF-8,
+  reuses the existing bounded scrollback matcher, performs no filesystem,
+  network, process, persistence, clipboard, or PTY write, and publishes matches
+  only for the currently selected result route.
 - A top-level tab has a window-local layout root even though each context
   dimension becomes pane-local after layout. New tabs inherit the active
   grid's current window viewport before their first drawable generation; they
