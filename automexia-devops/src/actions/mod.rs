@@ -9,6 +9,7 @@ mod imports;
 mod model;
 mod packs;
 mod projection;
+mod provider;
 mod validation;
 
 use std::fmt;
@@ -52,6 +53,16 @@ pub use projection::{
     ProjectionRequest, ToolHealth, ToolIdentity, ToolInventory, ToolObservation,
     MAX_CMD_TYPED_BINDINGS, MAX_COLLISION_ENTRIES, MAX_GENERATED_FILE_BYTES,
     MAX_OBSERVATION_ENTRIES, PROJECTION_GENERATOR, PROJECTION_SCHEMA_VERSION,
+};
+pub use provider::{
+    build_provider_action_candidate, build_provider_action_snapshot,
+    environment_risk_label, freshness_label, provenance_label, provider_label,
+    provider_slug, revalidate_provider_action, ProviderActionAudit,
+    ProviderActionBinding, ProviderActionCandidate, ProviderActionDecision,
+    ProviderActionError, ProviderActionErrorCode, ProviderActionField,
+    ProviderActionReview, ProviderActionSnapshot, ProviderActionSpec,
+    MAX_PROVIDER_ACTIONS, MAX_PROVIDER_ACTIONS_PER_PROVIDER,
+    MAX_PROVIDER_PRESENTATION_FIELDS, PROVIDER_ACTION_SCHEMA_VERSION,
 };
 pub use validation::{
     ValidationCode, ValidationError, MAX_ACTIONS, MAX_ARGUMENTS_PER_ACTION,

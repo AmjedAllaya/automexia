@@ -320,6 +320,118 @@ fn quick_action_native_import_and_workspace_trust(criterion: &mut Criterion) {
         })
     });
 }
+fn provider_quick_action_snapshot_and_cached_search(criterion: &mut Criterion) {
+    use automexia_devops::{
+        actions::{
+            build_provider_action_candidate, build_provider_action_snapshot,
+            ProviderActionSpec,
+        },
+        connections::{
+            EnvironmentRisk, OpaqueReference, ProviderCapsule, ProviderContextFreshness,
+            ProviderContextProvenance, ProviderContextTemplate, ProviderKind,
+            ProviderProvenanceKind, ProviderScopeBinding, CONNECTION_SCHEMA_VERSION,
+        },
+    };
+
+    let context = ProviderContextTemplate {
+        provider: ProviderKind::Aws,
+        configuration_reference: OpaqueReference::new("benchmark.aws"),
+        public_identity: "benchmark@123456789012".into(),
+        scope: vec![
+            ProviderScopeBinding {
+                name: "profile".into(),
+                public_value: "benchmark".into(),
+            },
+            ProviderScopeBinding {
+                name: "account".into(),
+                public_value: "123456789012".into(),
+            },
+            ProviderScopeBinding {
+                name: "region".into(),
+                public_value: "eu-west-3".into(),
+            },
+        ],
+        provenance: ProviderContextProvenance {
+            kind: ProviderProvenanceKind::OfficialCliObservation,
+            source_reference: OpaqueReference::new("benchmark.source"),
+            source_revision: "benchmark-revision".into(),
+            observed_at_ms: 1_000,
+        },
+        freshness: ProviderContextFreshness::Current,
+        expires_at_ms: None,
+        risk: EnvironmentRisk::Production,
+    };
+    let capsule = ProviderCapsule {
+        schema_version: CONNECTION_SCHEMA_VERSION,
+        capsule_id: "benchmark-capsule".into(),
+        session_id: 7,
+        revision: 3,
+        contexts: vec![context],
+        created_at_ms: 900,
+    };
+    let candidates = (0..16)
+        .map(|index| {
+            build_provider_action_candidate(
+                &capsule,
+                &capsule.contexts[0],
+                4,
+                1_100,
+                ProviderActionSpec {
+                    action_id: format!("provider.aws.benchmark-{index:02}"),
+                    display_name: format!("AWS benchmark action {index}"),
+                    description: "Cached provider action benchmark".into(),
+                    executable_id: "aws".into(),
+                    arguments: vec![
+                        "sts".into(),
+                        "get-caller-identity".into(),
+                        "--profile".into(),
+                        "benchmark".into(),
+                    ],
+                    target_kind: "account".into(),
+                    exact_target: "123456789012".into(),
+                    command_risk: RiskClass::ReadOnly,
+                    execution: ExecutionMode::Insert,
+                },
+            )
+            .expect("benchmark provider action must remain valid")
+        })
+        .collect::<Vec<_>>();
+
+    criterion.bench_function("provider_quick_action_snapshot_build_16", |bencher| {
+        bencher.iter(|| {
+            black_box(
+                build_provider_action_snapshot(
+                    black_box(&capsule),
+                    4,
+                    1_100,
+                    black_box(candidates.clone()),
+                )
+                .expect("benchmark provider snapshot must remain valid"),
+            )
+        })
+    });
+
+    let snapshot = build_provider_action_snapshot(&capsule, 4, 1_100, candidates)
+        .expect("benchmark provider snapshot must remain valid");
+    let index = ActionIndex::build_with_provider_snapshot(Vec::new(), &snapshot)
+        .expect("benchmark provider index must remain valid");
+    let context = SearchContext {
+        session_id: 7,
+        capsule_revision: 3,
+        workspace_identity: None,
+        workspace_trusted: false,
+        shell: ShellKind::Bash,
+    };
+    criterion.bench_function("provider_quick_action_cached_search_16", |bencher| {
+        bencher.iter(|| {
+            black_box(
+                index
+                    .search(black_box("123456789012"), black_box(&context))
+                    .expect("benchmark provider search must remain valid"),
+            )
+        })
+    });
+}
 criterion_group!(
     benches,
     quick_action_parsing,
@@ -328,5 +440,6 @@ criterion_group!(
     quick_action_projection_compile,
     quick_action_pack_registry,
     quick_action_native_import_and_workspace_trust,
+    provider_quick_action_snapshot_and_cached_search,
 );
 criterion_main!(benches);
