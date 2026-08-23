@@ -59,6 +59,7 @@ class CommandProductivityPolicyTests(unittest.TestCase):
         self.assertGreater(counts["runtime_files"], 100)
         self.assertEqual(counts["cp2_pure_action_files"], 7)
         self.assertEqual(counts["cp4_pure_action_files"], 1)
+        self.assertEqual(counts["cp4_provider_action_files"], 6)
         self.assertEqual(counts["cp2_persistence_files"], 13)
 
     def test_versioned_hostile_mutation_corpus_is_rejected(self) -> None:
@@ -279,6 +280,19 @@ class CommandProductivityPolicyTests(unittest.TestCase):
                 POLICY.CommandProductivityError, "exact reviewed boundary"
             ):
                 POLICY.validate_pure_action_sources(root, files)
+
+    def test_cp4_provider_contributors_are_an_exact_reviewed_set(self) -> None:
+        self.assertEqual(
+            POLICY.CP4_PROVIDER_ACTION_FILES,
+            {
+                "extensions/devops-aws/src/lib.rs",
+                "extensions/devops-azure/src/lib.rs",
+                "extensions/devops-gcp/src/lib.rs",
+                "extensions/devops-kubernetes/src/implementation.rs",
+                "extensions/devops-openshift/src/implementation.rs",
+                "extensions/devops-teleport/src/lib.rs",
+            },
+        )
 
     def test_cp4_provider_projection_has_a_separate_pure_source_owner(self) -> None:
         self.assertEqual(

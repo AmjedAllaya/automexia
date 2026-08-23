@@ -56,8 +56,8 @@ pub use projection::{
 };
 pub use provider::{
     build_provider_action_candidate, build_provider_action_snapshot,
-    environment_risk_label, freshness_label, provenance_label, provider_label,
-    provider_slug, revalidate_provider_action, ProviderActionAudit,
+    build_ssh_provider_action, environment_risk_label, freshness_label, provenance_label,
+    provider_label, provider_slug, revalidate_provider_action, ProviderActionAudit,
     ProviderActionBinding, ProviderActionCandidate, ProviderActionDecision,
     ProviderActionError, ProviderActionErrorCode, ProviderActionField,
     ProviderActionReview, ProviderActionSnapshot, ProviderActionSpec,

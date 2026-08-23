@@ -180,6 +180,14 @@ CP2_PURE_ACTION_FILES = {
 CP4_PURE_ACTION_FILES = {
     "automexia-devops/src/actions/provider.rs",
 }
+CP4_PROVIDER_ACTION_FILES = {
+    "extensions/devops-aws/src/lib.rs",
+    "extensions/devops-azure/src/lib.rs",
+    "extensions/devops-gcp/src/lib.rs",
+    "extensions/devops-kubernetes/src/implementation.rs",
+    "extensions/devops-openshift/src/implementation.rs",
+    "extensions/devops-teleport/src/lib.rs",
+}
 PURE_ACTION_FILES = CP2_PURE_ACTION_FILES | CP4_PURE_ACTION_FILES
 CP2_PERSISTENCE_FILES = {
     "apps/automexia-terminal/src/automexia/quick_actions/cli.rs",
@@ -942,6 +950,7 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
         | persistence_files
         | CP2_PERSISTENCE_WIRING_FILES
         | CP2_ACTIVATION_WIRING_FILES
+        | CP4_PROVIDER_ACTION_FILES
     )
     for path in runtime_files:
         content = read_lower(path)
@@ -973,6 +982,7 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
         "cp1_allowed_shell_files": len(CP1_ALLOWED_SHELL_FILES),
         "cp2_pure_action_files": len(pure_action_files & CP2_PURE_ACTION_FILES),
         "cp4_pure_action_files": len(pure_action_files & CP4_PURE_ACTION_FILES),
+        "cp4_provider_action_files": len(CP4_PROVIDER_ACTION_FILES),
         "cp2_persistence_files": len(persistence_files),
         "interactive_files": len(interactive_files),
         "runtime_files": len(runtime_files),
@@ -1106,6 +1116,7 @@ def main() -> int:
         f"runtime_files={counts['runtime_files']}, "
         f"cp2_pure_action_files={counts['cp2_pure_action_files']}, "
         f"cp4_pure_action_files={counts['cp4_pure_action_files']}, "
+        f"cp4_provider_action_files={counts['cp4_provider_action_files']}, "
         f"cp2_persistence_files={counts['cp2_persistence_files']})"
     )
     return 0

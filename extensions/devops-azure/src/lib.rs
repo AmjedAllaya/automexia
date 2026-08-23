@@ -8,6 +8,10 @@
 use std::collections::HashSet;
 use std::fmt;
 
+use automexia_devops::actions::{
+    build_provider_action_candidate, ExecutionMode, ProviderActionCandidate,
+    ProviderActionSpec, RiskClass,
+};
 use automexia_devops::connections::{
     validate_provider_auth_operation, AuthState, EnvironmentRisk, OpaqueReference,
     ProviderAuthOperation, ProviderAuthOperationKind, ProviderBrowserFlow,
@@ -603,6 +607,42 @@ pub fn build_account_observation(
     )
 }
 
+/// Build one cached, non-executing CP4 action from the exact Azure capsule.
+pub fn build_provider_quick_action(
+    capsule: &ProviderCapsule,
+    generation: u64,
+    generated_at_ms: u64,
+) -> Result<ProviderActionCandidate, AzureAdapterError> {
+    let context = azure_context(capsule)?;
+    let subscription = scope(context, "subscription").ok_or_else(|| {
+        AzureAdapterError::new(AzureAdapterErrorCode::CapsuleMismatch, "subscription")
+    })?;
+    let operation = build_account_observation(capsule, OperationId::new(1))?;
+    build_provider_action_candidate(
+        capsule,
+        context,
+        generation,
+        generated_at_ms,
+        ProviderActionSpec {
+            action_id: "provider.azure.account".into(),
+            display_name: "Show Azure subscription".into(),
+            description: "Inspect the exact cached Azure subscription.".into(),
+            executable_id: operation.executable.as_str().into(),
+            arguments: operation
+                .arguments
+                .iter()
+                .map(|argument| argument.as_str().to_owned())
+                .collect(),
+            target_kind: "subscription".into(),
+            exact_target: subscription.into(),
+            command_risk: RiskClass::ReadOnly,
+            execution: ExecutionMode::Insert,
+        },
+    )
+    .map_err(|_| {
+        AzureAdapterError::new(AzureAdapterErrorCode::InvalidRequest, "quick_action")
+    })
+}
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AzureBastionPlan {
@@ -1039,6 +1079,43 @@ mod tests {
             .get()
             == 8
             && request.capsule_revision == 5));
+    }
+
+    #[test]
+    fn provider_quick_action_reuses_exact_account_grammar_and_subscription() {
+        let capsule = capsule();
+        let operation =
+            build_account_observation(&capsule, OperationId::new(91)).unwrap();
+        let candidate = build_provider_quick_action(&capsule, 3, 200).unwrap();
+        assert_eq!(candidate.binding().exact_target(), SUBSCRIPTION);
+        assert_eq!(candidate.binding().target_kind(), "subscription");
+        assert_eq!(candidate.binding().execution(), ExecutionMode::Insert);
+        let automexia_devops::actions::ActionTemplate::TypedArgv {
+            executable_id,
+            arguments,
+        } = &candidate.action().template
+        else {
+            panic!("provider action must retain typed argv");
+        };
+        assert_eq!(executable_id, operation.executable.as_str());
+        assert_eq!(
+            arguments
+                .iter()
+                .map(|argument| match argument {
+                    automexia_devops::actions::ArgumentToken::Literal { value } => {
+                        value.as_str()
+                    }
+                    automexia_devops::actions::ArgumentToken::Placeholder { .. } => {
+                        panic!("provider action cannot contain placeholders")
+                    }
+                })
+                .collect::<Vec<_>>(),
+            operation
+                .arguments
+                .iter()
+                .map(BoundedText::as_str)
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]

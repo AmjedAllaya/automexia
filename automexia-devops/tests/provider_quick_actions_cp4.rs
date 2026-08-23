@@ -1,8 +1,9 @@
 use automexia_devops::{
     actions::{
         build_provider_action_candidate, build_provider_action_snapshot,
-        revalidate_provider_action, ActionIndex, ExecutionMode, ProviderActionDecision,
-        ProviderActionErrorCode, ProviderActionSpec, RiskClass, SearchContext, ShellKind,
+        build_ssh_provider_action, revalidate_provider_action, ActionIndex,
+        ExecutionMode, ProviderActionDecision, ProviderActionErrorCode,
+        ProviderActionSpec, RiskClass, SearchContext, ShellKind,
     },
     connections::{
         EnvironmentRisk, OpaqueReference, ProviderCapsule, ProviderContextFreshness,
@@ -304,4 +305,64 @@ fn generations_hostile_targets_and_duplicate_contributions_are_rejected() {
     )
     .unwrap_err();
     assert_eq!(duplicate.code(), ProviderActionErrorCode::DuplicateAction);
+}
+#[test]
+fn ssh_target_is_exact_insert_without_enter_and_requires_one_cached_context() {
+    let ssh_context = ProviderContextTemplate {
+        provider: ProviderKind::Ssh,
+        configuration_reference: OpaqueReference::new("ssh.inventory.production"),
+        public_identity: "engineer".into(),
+        scope: vec![
+            ProviderScopeBinding {
+                name: "target".into(),
+                public_value: "production-bastion".into(),
+            },
+            ProviderScopeBinding {
+                name: "host".into(),
+                public_value: "bastion.example.invalid".into(),
+            },
+        ],
+        provenance: ProviderContextProvenance {
+            kind: ProviderProvenanceKind::ImportedPublicMetadata,
+            source_reference: OpaqueReference::new("grant.ssh.inventory"),
+            source_revision: "revision-9".into(),
+            observed_at_ms: 1_500,
+        },
+        freshness: ProviderContextFreshness::Current,
+        expires_at_ms: None,
+        risk: EnvironmentRisk::Production,
+    };
+    let ssh_capsule = ProviderCapsule {
+        schema_version: CONNECTION_SCHEMA_VERSION,
+        capsule_id: "capsule.ssh.production".into(),
+        session_id: 51,
+        revision: 8,
+        contexts: vec![ssh_context],
+        created_at_ms: 1_000,
+    };
+    let candidate = build_ssh_provider_action(&ssh_capsule, 4, GENERATED_AT_MS).unwrap();
+    assert_eq!(candidate.binding().target_kind(), "target");
+    assert_eq!(candidate.binding().exact_target(), "production-bastion");
+    assert_eq!(candidate.binding().execution(), ExecutionMode::Insert);
+    assert_eq!(
+        candidate.action().template,
+        automexia_devops::actions::ActionTemplate::TypedArgv {
+            executable_id: "ssh".into(),
+            arguments: vec![automexia_devops::actions::ArgumentToken::Literal {
+                value: "production-bastion".into(),
+            }],
+        }
+    );
+
+    let no_ssh = capsule(context(
+        ProviderContextFreshness::Current,
+        EnvironmentRisk::Development,
+        None,
+    ));
+    assert_eq!(
+        build_ssh_provider_action(&no_ssh, 4, GENERATED_AT_MS)
+            .unwrap_err()
+            .code(),
+        ProviderActionErrorCode::ContextMismatch
+    );
 }

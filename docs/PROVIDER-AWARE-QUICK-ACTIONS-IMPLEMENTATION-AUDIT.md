@@ -198,7 +198,23 @@ optimized benchmark profile) measured snapshot construction at
 comparative evidence rather than a release threshold or multi-platform claim;
 the run reported high outliers in 7/50 and 6/50 samples respectively.
 
-Provider contributions, application route publication, UI presentation and
-revalidation, policy/fuzz evidence, final documentation, and the full gate
-ladder remain in progress. No product or provider activation is claimed by this
-increment.
+Provider contribution sources are now fully implemented for the accepted
+provider set. AWS STS identity, Azure subscription, and Google Cloud project
+observations reuse their existing exact official-CLI operation vectors and are
+insert-only. Kubernetes context, OpenShift project, and Teleport status reuse
+their existing exact plans but remain broker-required so private kubeconfig,
+Teleport environment, and SSH-agent isolation cannot silently degrade to
+ambient shell state. The pure CP4 core owns the seventh SSH-target contribution
+as an exact `ssh <cached-target>` insertion; this preserves the independent SSH
+inventory crate and the accepted acyclic dependency graph.
+
+Complete locked suites passed for all six provider adapters and the SSH
+inventory crate; the focused CP4 core suite passes four contracts. Strict
+all-target/all-feature Clippy passed for the seven provider crates. The CP0
+ratchet now permits exactly six provider adapter source owners plus the one pure
+CP4 source, its 28 policy tests pass, and `cargo xtask verify architecture`
+confirms the dependency graph and capability boundaries.
+
+Application route publication, UI presentation and final revalidation,
+policy/fuzz evidence, final documentation, and the full gate ladder remain in
+progress. No product or provider activation is claimed by this increment.

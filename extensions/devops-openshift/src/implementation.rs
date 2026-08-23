@@ -1,5 +1,9 @@
 use std::fmt;
 
+use automexia_devops::actions::{
+    build_provider_action_candidate, ExecutionMode, ProviderActionCandidate,
+    ProviderActionSpec, RiskClass,
+};
 use automexia_devops::connections::{
     AuthState, OpaqueReference, ProviderCapsule, ProviderKind, TransportDescriptor,
     CONNECTION_SCHEMA_VERSION, MAX_IDENTIFIER_BYTES,
@@ -29,6 +33,7 @@ pub enum OpenShiftAdapterErrorCode {
     CapsuleMismatch,
     UnsafeTarget,
     InvalidVersion,
+    InvalidQuickAction,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -178,6 +183,39 @@ pub fn build_project_inspection(
     ))
 }
 
+/// Build one cached CP4 action from the exact OpenShift capsule.
+pub fn build_provider_quick_action(
+    capsule: &ProviderCapsule,
+    generation: u64,
+    generated_at_ms: u64,
+) -> Result<ProviderActionCandidate, OpenShiftAdapterError> {
+    let context = context_for_provider(capsule, ProviderKind::OpenShift)?;
+    let project = scope_value(context, "project")?;
+    let plan = build_project_inspection(capsule)?;
+    build_provider_action_candidate(
+        capsule,
+        context,
+        generation,
+        generated_at_ms,
+        ProviderActionSpec {
+            action_id: "provider.openshift.project".into(),
+            display_name: "Show OpenShift project".into(),
+            description: "Inspect the exact cached OpenShift project.".into(),
+            executable_id: OC_EXECUTABLE_ID.into(),
+            arguments: plan.arguments().to_vec(),
+            target_kind: "project".into(),
+            exact_target: project.into(),
+            command_risk: RiskClass::ReadOnly,
+            execution: ExecutionMode::ExactLaunch,
+        },
+    )
+    .map_err(|_| {
+        OpenShiftAdapterError::new(
+            OpenShiftAdapterErrorCode::InvalidQuickAction,
+            "openshift-provider-quick-action-invalid",
+        )
+    })
+}
 pub fn build_rsh(
     capsule: &ProviderCapsule,
     workload: &str,

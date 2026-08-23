@@ -6,12 +6,12 @@ use automexia_devops::connections::{
 };
 use automexia_devops_kubernetes::{
     auth_state_for_failure, build_authentication_check, build_context_inspection,
-    build_context_template, build_exec, kubectl_compatibility,
-    kubectl_supports_native_exec_policy, merge_sources, parse_private_transient_source,
-    revalidate_reviewed_source, review_exec_plugin, review_granted_source,
-    ExactExecPluginGrant, ExecPluginPolicy, KubeAdapterErrorCode,
+    build_context_template, build_exec, build_provider_quick_action,
+    kubectl_compatibility, kubectl_supports_native_exec_policy, merge_sources,
+    parse_private_transient_source, revalidate_reviewed_source, review_exec_plugin,
+    review_granted_source, ExactExecPluginGrant, ExecPluginPolicy, KubeAdapterErrorCode,
     KubeClientCompatibility, KubeProviderRelation, KubePublicFailure,
-    KubeconfigSourceGrant, MANIFEST, MAX_KUBECONFIG_BYTES,
+    KubeconfigSourceGrant, KUBECTL_EXECUTABLE_ID, MANIFEST, MAX_KUBECONFIG_BYTES,
 };
 use automexia_extension_api::Capability;
 
@@ -328,6 +328,30 @@ fn capsule_pins_public_context_and_non_mutating_exact_cli_plans() {
     );
     assert!(!inspection.execution_enabled());
     assert_eq!(inspection.private_environment_name(), "KUBECONFIG");
+    let quick_action = build_provider_quick_action(&capsule, 4, 200).unwrap();
+    assert_eq!(quick_action.binding().target_kind(), "context");
+    assert_eq!(quick_action.binding().exact_target(), "prod");
+    assert_eq!(
+        quick_action.binding().execution(),
+        automexia_devops::actions::ExecutionMode::ExactLaunch
+    );
+    let automexia_devops::actions::ActionTemplate::TypedArgv {
+        executable_id,
+        arguments,
+    } = &quick_action.action().template
+    else {
+        panic!("provider action must retain typed argv");
+    };
+    assert_eq!(executable_id, KUBECTL_EXECUTABLE_ID);
+    assert_eq!(
+        arguments,
+        &inspection
+            .arguments()
+            .iter()
+            .cloned()
+            .map(|value| automexia_devops::actions::ArgumentToken::Literal { value })
+            .collect::<Vec<_>>()
+    );
     let (transport, exec) =
         build_exec(&capsule, "deployment/api", Some("server"), "sh").unwrap();
     assert!(matches!(

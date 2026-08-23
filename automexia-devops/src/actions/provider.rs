@@ -563,6 +563,55 @@ pub fn build_provider_action_candidate(
     Ok(ProviderActionCandidate { action, binding })
 }
 
+/// Build an insert-without-Enter action for one exact cached SSH target.
+pub fn build_ssh_provider_action(
+    capsule: &ProviderCapsule,
+    generation: u64,
+    generated_at_ms: u64,
+) -> Result<ProviderActionCandidate, ProviderActionError> {
+    let mut contexts = capsule
+        .contexts
+        .iter()
+        .filter(|context| context.provider == ProviderKind::Ssh);
+    let context = contexts.next().ok_or_else(|| {
+        ProviderActionError::new(ProviderActionErrorCode::ContextMismatch, "ssh.context")
+    })?;
+    if contexts.next().is_some() {
+        return Err(ProviderActionError::new(
+            ProviderActionErrorCode::ContextMismatch,
+            "ssh.context",
+        ));
+    }
+    let target = context
+        .scope
+        .iter()
+        .find(|binding| binding.name == "target")
+        .map(|binding| binding.public_value.as_str())
+        .ok_or_else(|| {
+            ProviderActionError::new(
+                ProviderActionErrorCode::ContextMismatch,
+                "ssh.target",
+            )
+        })?;
+    build_provider_action_candidate(
+        capsule,
+        context,
+        generation,
+        generated_at_ms,
+        ProviderActionSpec {
+            action_id: "provider.ssh.target".into(),
+            display_name: "Connect to SSH target".into(),
+            description: "Insert the exact cached OpenSSH target without running it."
+                .into(),
+            executable_id: "ssh".into(),
+            arguments: vec![target.into()],
+            target_kind: "target".into(),
+            exact_target: target.into(),
+            command_risk: RiskClass::ReadOnly,
+            execution: ExecutionMode::Insert,
+        },
+    )
+}
 pub fn build_provider_action_snapshot(
     capsule: &ProviderCapsule,
     generation: u64,

@@ -8,6 +8,10 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
+use automexia_devops::actions::{
+    build_provider_action_candidate, ExecutionMode, ProviderActionCandidate,
+    ProviderActionSpec, RiskClass,
+};
 use automexia_devops::connections::{
     validate_provider_auth_operation, AuthState, EnvironmentRisk, OpaqueReference,
     ProviderAuthOperation, ProviderAuthOperationKind, ProviderBrowserFlow,
@@ -539,6 +543,45 @@ pub fn build_sts_identity_observation(
     )
 }
 
+/// Build one cached, non-executing CP4 action from the exact AWS capsule.
+pub fn build_provider_quick_action(
+    capsule: &ProviderCapsule,
+    generation: u64,
+    generated_at_ms: u64,
+) -> Result<ProviderActionCandidate, AwsAdapterError> {
+    let context = aws_context(capsule)?;
+    let operation = build_sts_identity_observation(capsule, OperationId::new(1))?;
+    let (target_kind, exact_target) = scope(context, "account")
+        .map(|account| ("account", account))
+        .or_else(|| scope(context, "profile").map(|profile| ("profile", profile)))
+        .ok_or_else(|| {
+            AwsAdapterError::new(AwsAdapterErrorCode::CapsuleMismatch, "target")
+        })?;
+    build_provider_action_candidate(
+        capsule,
+        context,
+        generation,
+        generated_at_ms,
+        ProviderActionSpec {
+            action_id: "provider.aws.caller-identity".into(),
+            display_name: "Show AWS caller identity".into(),
+            description: "Inspect the exact cached AWS profile and account.".into(),
+            executable_id: operation.executable.as_str().into(),
+            arguments: operation
+                .arguments
+                .iter()
+                .map(|argument| argument.as_str().to_owned())
+                .collect(),
+            target_kind: target_kind.into(),
+            exact_target: exact_target.into(),
+            command_risk: RiskClass::ReadOnly,
+            execution: ExecutionMode::Insert,
+        },
+    )
+    .map_err(|_| {
+        AwsAdapterError::new(AwsAdapterErrorCode::InvalidRequest, "quick_action")
+    })
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase", deny_unknown_fields)]
 pub struct AwsCallerIdentity {
@@ -960,6 +1003,46 @@ mod tests {
             .all(
                 |request| request.session_id.get() == 7 && request.capsule_revision == 4
             ));
+    }
+
+    #[test]
+    fn provider_quick_action_reuses_exact_sts_grammar_and_public_account() {
+        let capsule = capsule();
+        let operation =
+            build_sts_identity_observation(&capsule, OperationId::new(91)).unwrap();
+        let candidate = build_provider_quick_action(&capsule, 3, 200).unwrap();
+        assert_eq!(candidate.binding().exact_target(), "123456789012");
+        assert_eq!(candidate.binding().target_kind(), "account");
+        assert_eq!(
+            candidate.binding().execution(),
+            automexia_devops::actions::ExecutionMode::Insert
+        );
+        let automexia_devops::actions::ActionTemplate::TypedArgv {
+            executable_id,
+            arguments,
+        } = &candidate.action().template
+        else {
+            panic!("provider action must retain typed argv");
+        };
+        assert_eq!(executable_id, operation.executable.as_str());
+        assert_eq!(
+            arguments
+                .iter()
+                .map(|argument| match argument {
+                    automexia_devops::actions::ArgumentToken::Literal { value } => {
+                        value.as_str()
+                    }
+                    automexia_devops::actions::ArgumentToken::Placeholder { .. } => {
+                        panic!("provider action cannot contain placeholders")
+                    }
+                })
+                .collect::<Vec<_>>(),
+            operation
+                .arguments
+                .iter()
+                .map(BoundedText::as_str)
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
