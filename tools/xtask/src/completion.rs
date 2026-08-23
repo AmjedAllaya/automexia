@@ -1048,10 +1048,12 @@ fn run_bounded(
             Ok(Some(status)) => {
                 // A provider leader can exit while a helper still owns the inherited
                 // output pipes. Terminate the remaining process group/Job Object
-                // and synchronously reap it before joining readers so refresh cannot
-                // publish while provider descendants are still alive.
+                // before joining readers so refresh cannot publish while provider
+                // descendants still own an inherited pipe. Do not call `wait()`
+                // after `try_wait()` here: the Windows Job Object wrapper's poll can
+                // consume its active-process-zero completion packet, making a second
+                // blocking wait wait forever for an event that already arrived.
                 let _ = child.start_kill();
-                let _ = child.wait();
                 break status;
             }
             Ok(None) if started.elapsed() < deadline => thread::sleep(POLL_INTERVAL),
