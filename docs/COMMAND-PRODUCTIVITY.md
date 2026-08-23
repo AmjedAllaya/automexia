@@ -668,11 +668,12 @@ actually run.
 
 ### CP5 — Shell Completion and Suggestions
 
-Status: CP5.0 research is fully done at its non-activating boundary. CP5.1-
-CP5.6 remain planned and are not authorized until their bridge ADR, threat-
-model amendment, machine-readable contract, and native-shell feasibility
-evidence are accepted. CP5 remains optional and is not a v0.5.0 blocker. The
-CP1 native experience remains the default and complete fallback.
+Status: CP5.0 research is fully done. CP5.1-CP5.6 are partially done at the
+proposal-only boundary: ADR 0025, the six-threat machine contract, mutations,
+limits, ownership, shell matrix, and execution audit exist. Runtime code and
+activation remain forbidden until the exact proposal is explicitly accepted.
+CP5 remains optional and is not a v0.5.0 blocker. CP1 remains the default and
+complete fallback.
 
 #### CP5.0 — research, baselines, and dependency decision
 
@@ -723,6 +724,20 @@ manifest, root lockfile, runtime, and release binaries. Reedline remains a UX
 reference, while Carapace remains an explicitly installed external adapter
 candidate. No profile, keybinding, shell process, editor transport, history,
 terminal-grid inference, cache, worker, or product UI was introduced.
+
+##### CP5.1-CP5.6 proposal decision
+
+The acceptance-ready boundary is now frozen by proposed
+[ADR 0025](adr/0025-authenticated-native-editor-suggestion-bridge.md), the
+schema-1
+[`cp51-bridge-threat-contract-v1.json`](../tests/fixtures/command-productivity/cp51-bridge-threat-contract-v1.json),
+and the [implementation audit](research/CP51-CP56-IMPLEMENTATION-AUDIT.md).
+Six stable threats cover endpoint/replay, privacy, stale replacement, candidate
+spoofing, input/occlusion, and resource amplification. Seventeen mutation and
+document tests prevent authority, transport, peer, replay, privacy, span,
+source, ranking, keyboard, Fish `Ctrl+Space`, fallback, limit, lifecycle, and
+release-gate downgrades. The contract deliberately states `accepted: false`
+and `runtime_activation: false`; it adds no runtime or user-facing behavior.
 
 #### CP5.1 — versioned editor bridge and ownership
 

@@ -211,6 +211,16 @@ This checklist is not activation authority. CP5 remains forbidden until each
 item has a stable ID, control set, hostile mutation, verification owner, and
 residual-risk entry in the next machine contract.
 
+The proposal prerequisite is now complete: schema 1 of
+[`cp51-bridge-threat-contract-v1.json`](../tests/fixtures/command-productivity/cp51-bridge-threat-contract-v1.json)
+assigns CP5-T17 through CP5-T22, freezes every required control and hostile
+mutation, names PR/native/release verification owners, records residual risk,
+and is mutation-tested by `tools/ci/test_command_productivity_cp51.py`.
+[ADR 0025](adr/0025-authenticated-native-editor-suggestion-bridge.md) remains
+Proposed. The contract deliberately records `accepted: false` and
+`runtime_activation: false`; no CP5 production or activation authority exists
+until the exact ADR and contract are explicitly accepted.
+
 ## Security invariants
 
 1. CP0 and CP1 grant no new process/network/secret/clipboard/terminal-output

@@ -81,7 +81,7 @@ documentation, feature assurance, and a change fragment.
 | Trusted local workspace tasks | CP3.3 | Fully done | native imports, workspace store/trust/runtime/CLI tests and ADR 0021 | Hosted native/accessibility and longitudinal evidence |
 | Provider-aware Quick Actions | CP4 | Partially done overall; source-complete nonactivated | Seven provider projections, route-scoped snapshots, cached search, final revalidation, compact accessible context, production confirmation, fuzz/benchmark/policy evidence | Product capsule publication, exact provider execution, OpenBao, and native provider/accessibility/release evidence |
 | Autocomplete research | CP5.0/P1 | Fully done | Shell/API matrix, pure bounded insertion prototype, locked matcher benchmark, dependency/privacy review, retain-CP1 decision | External low-end/Zsh/Fish/accessibility evidence applies only to a future P2 proposal |
-| Automexia suggestion surface | CP5.1-CP5.6/P2-P4 | Not done | Detailed bridge/source/ranking/UI plan only | Separate accepted ADR, protocol, sources, ranking, UI, shell and release gates |
+| Automexia suggestion surface | CP5.1-CP5.6/P2-P4 | Partially done (proposal only) | Proposed ADR 0025, six-threat schema-1 contract, 17 mutation/document tests, fixed ownership/limits/shell matrix, and execution audit | Explicit ADR/contract acceptance, then protocol, sources, ranking, UI, shell and release implementation |
 | Ecosystem packs and AI | CP6/D7 | Not done | Deferred specifications | Separate sandbox, provenance, privacy, quota, and revocation programs |
 
 The workspace term has two separate meanings and must remain explicit:
@@ -142,7 +142,7 @@ Primary connectivity chain:
 Autocomplete lane:
 
 1. P1/CP5.0 research is fully done and retains CP1 as the complete solution.
-2. P2/CP5.1 is deferred; a new proposal needs safe-bridge evidence and a separate accepted ADR.
+2. P2/CP5.1 is partially done at the proposal-only boundary; ADR 0025 and the safe-bridge contract await explicit acceptance before runtime work.
 3. P3/CP5.2-CP5.3 adds local-only sources and deterministic ranking.
 4. P4/CP5.4-CP5.6 adds the optional UI, shell activation, and release gate.
 
@@ -756,10 +756,15 @@ mutation was added.
 
 ## P2 - execute CP5.1 editor bridge
 
-Status: Not done; deferred by P1's retain-CP1 decision and blocked on a separate
-accepted ADR before any runtime implementation.
+Status: Partially done at the proposal-only boundary. Proposed ADR 0025, the
+schema-1 six-threat contract, 17 mutation/document tests, fixed limits, shell
+matrix, ownership, and implementation audit are complete. Runtime remains
+blocked on explicit acceptance of the exact ADR and contract.
 
-- [ ] Specify a private Windows named pipe and mode-0600 Unix socket protocol;
+- [x] Freeze the proposed transport, peer/capability/replay, privacy, span,
+  source/ranking, pane UI, shell/fallback, lifecycle, limit, verification, and
+  rollback contract without granting runtime authority.
+- [ ] Implement the private Windows named pipe and mode-0600 Unix socket protocol;
   never TCP, OSC, terminal output, or implicit port forwarding.
 - [ ] Bind schema, peer, app/window/tab/pane/session, shell/editor, prompt,
   buffer generation, cursor, replacement span, capability, and cancellation.
@@ -906,6 +911,7 @@ and route publication are implemented but nonactivated. F5.2 explicit routes/hos
 and nonactivated. The next M5 action is to execute and validate F5.4's private
 real OpenSSH evidence manifests on controlled Windows, macOS, and Linux runners;
 source work may proceed to F6 while those external F4/M5 gates are collected.
-P1 autocomplete research is now **Fully done** with CP1 retained and P2
-deferred. P2-P4 remain **Not done**; no later phase may be marked started until
-its separate ADR, dependencies, and evidence pass.
+P1 autocomplete research is **Fully done** with CP1 retained. P2 is **Partially
+done at the proposal-only boundary**: ADR 0025 and its machine threat contract
+await explicit acceptance. P2 runtime plus P3-P4 remain **Not done**; no runtime
+phase may start until that exact authority gate passes.

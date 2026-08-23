@@ -14,7 +14,7 @@ This page is the canonical product guide for shell integration, completion, Quic
 | Static first-party DevOps action packs | **Implemented locally** | Packs are disabled by default and collision-checked. |
 | Selected native alias import and trusted workspace task bridges | **Implemented locally** | Import/trust is explicit, bounded, revocable, and insertion-only. |
 | Provider/capsule-aware actions | **Planned** | Requires managed session/provider context. |
-| App-owned inline suggestion UI | **Planned** | Native completion remains the fallback. |
+| App-owned inline suggestion UI | **Proposal complete; runtime not authorized** | ADR 0025 and its machine threat contract await explicit acceptance; native completion remains the fallback. |
 | Ecosystem/AI action packs | **Deferred** | Requires later signing/sandbox/security gates. |
 
 ## Design principle

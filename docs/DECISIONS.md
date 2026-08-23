@@ -31,6 +31,8 @@ decision supersedes an old one instead of silently rewriting history.
 | [0021](adr/0021-trusted-workspace-task-bridges.md) | Trusted workspace task bridges | Import only explicitly supplied native aliases, and expose only explicit task names through exact, receipt-bound workspace trust with revocation-aware authorization. |
 | [0022](adr/0022-read-only-connection-hub-activation.md) | Read-only Connection Hub activation | One app-owned joined runtime, explicit memory-only file grants, native selection, D4 CAS, and a capability-free modal activate inventory without connection authority. |
 | [0023](adr/0023-typed-automation-and-declarative-workspaces.md) | Typed automation and declarative workspaces (proposed) | Bind recipes, profiles, layouts, restore, and armed broadcast to immutable review-only generations without adding process, PTY, network, credential, or arbitrary remote-code authority. |
+| [0024](adr/0024-openbao-token-helper-and-ssh-certificate-boundary.md) | OpenBao token-helper and SSH-certificate boundary (proposed) | Keep token custody external and require separately reviewed transient public-certificate ownership before an OpenBao adapter exists. |
+| [0025](adr/0025-authenticated-native-editor-suggestion-bridge.md) | Authenticated native-editor suggestion bridge (proposed) | Require private peer-checked local transport, per-route capabilities, native-editor insertion, bounded local sources, collision-safe UI, and CP1 fallback before CP5 code is authorized. |
 
 ## When an ADR is required
 

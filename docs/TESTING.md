@@ -1885,11 +1885,15 @@ interaction, controlled screen readers, and low-end hardware replication are
 reported as external, not passing. See
 [CP5.0 native autocomplete research](research/CP5-AUTOCOMPLETE-RESEARCH.md).
 
-## Planned CP5.1-CP5.6 Shell Completion and Suggestions gate
+## CP5.1-CP5.6 proposal and future runtime gate
 
-CP5.1-CP5.6 have no runtime test command because implementation is forbidden
-until a separate bridge ADR, threat amendment, compatibility version, and
-machine contract are accepted. When activated, PR and nightly ownership cover:
+Proposal checks:
+
+    python tools/ci/check_command_productivity_cp51.py
+    python tools/ci/test_command_productivity_cp51.py
+
+They freeze ADR 0025's threats, false authority, limits, rollback, and external
+gates. No runtime exists. After explicit acceptance, PR/nightly must cover:
 
 | Layer | PR evidence | Nightly/release evidence |
 |---|---|---|

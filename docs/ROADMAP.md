@@ -51,7 +51,7 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | CP3.3 | Explicit selected PowerShell/Bash/Zsh/Fish/CMD/Git alias import and exact just/Task/mise workspace bridges are dry-run/CAS managed, bounded, insert-only, path-free digest/revision trusted, revocable, removal-safe, runtime-authorized, fuzzed, benchmarked, and mutation-gated. |
 | **Partially done** | CP4 | Seven provider-aware projections, immutable route-scoped cached snapshots, stale-generation rejection, final copy/insert revalidation, compact accessible context/risk states, production confirmation, fuzz/benchmark/policy evidence are source-complete and nonactivated. Product provider publication, exact provider execution, OpenBao, and real native/provider/accessibility/release evidence remain. |
 | **Fully done** | CP5.0 | Native API/version research, a bounded non-runtime editor-state prototype, 32/128/512 matcher evidence, dependency review, privacy delta, and a retain-CP1/defer-P2 decision are machine-gated. |
-| **Not done** | CP5.1-CP5.6 | The optional bridge, sources, ranking, suggestion UI, shell activation, and release program require a separate accepted ADR; CP1 remains the complete fallback. |
+| **Partially done** | CP5.1-CP5.6 | Proposed ADR 0025, its mutation-tested six-threat machine contract, fixed limits/owners/shell matrix, and execution audit are complete. Runtime still requires explicit acceptance; CP1 remains the fallback. |
 | **Not done** | CP6 | Signed ecosystem packs and AI tools are deferred to later gates. |
 | **Partially done** | G0 | Shared safety prerequisites exist; fixtures, generation, checksums, and the replacement ADR remain. |
 | **Not done** | G1 | No private typed/compiled keybinding registry exists. |

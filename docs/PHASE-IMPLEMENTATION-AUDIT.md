@@ -110,7 +110,7 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Productivity | CP3.3 | **Fully implemented locally** | **Partial** | Six explicit native inventory formats, exact just/Task/mise bridges, bounded dry-run/CAS import/workspace/trust/revocation/removal, path-free digest/revision receipts, background cache authorization, final insertion recheck, tests, mutation, fuzz, benchmark, ADR, CLI, and docs are complete; hosted native/accessibility and 30-day evidence remain. |
 | Productivity | CP4 | **Partially implemented overall; source-complete nonactivated** | **Partial/external** | Seven provider projections, bounded route snapshots, cached search, stale cancellation, final revalidation, redacted audit, compact accessible risk/state UX, production confirmation, fuzz/benchmark/mutation/policy evidence are complete locally. Product provider publication, exact execution, OpenBao, and real native/provider/accessibility/release evidence remain. |
 | Productivity | CP5.0 | **Fully implemented at research boundary** | **Complete locally** | Seven-shell API matrix, pure insertion prototype, locked matcher/dependency evidence, privacy review, and retain-CP1/defer-P2 decision are machine-gated; no runtime surface exists. |
-| Productivity | CP5.1-CP5.6 | **Not implemented** | **Not started** | A separate accepted bridge ADR plus protocol, sources, ranking, UI, shell activation, and release proof are required; CP1 remains fallback. |
+| Productivity | CP5.1-CP5.6 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance** | Proposed ADR 0025, schema-1 six-threat contract, 17 mutations/document tests, fixed ownership/limits/shell matrix, and detailed audit exist. No runtime code or UI is authorized; CP1 remains fallback. |
 | Productivity | CP6 | **Not implemented; deferred** | **Blocked by design** | Signed ecosystem packs and AI tools require v0.6 gates. |
 | Compatibility | G0 | **Partial** | **Partial** | Shared safety prerequisites pass; versioned Ghostty fixtures, generation, checksums, and replacement ADR are absent. |
 | Compatibility | G1 | **Not implemented** | **Not started** | No private typed/compiled keybinding registry exists. |
@@ -1035,7 +1035,7 @@ keybinding, process, PTY, history source, worker, cache, or product UI exists.
 
 ### CP5.1-CP5.6 — optional suggestion UI
 
-**Not implemented; detailed specification exists.**
+**Partially implemented at the proposal-only boundary; runtime is not authorized.**
 
 | Phase | Required work |
 |---|---|
@@ -1045,6 +1045,13 @@ keybinding, process, PTY, history source, worker, cache, or product UI exists.
 | CP5.4 | Pane-owned accessible listbox avoiding cursor/IME/footer/tabs/siblings/modals; type/source/freshness/risk; tiny-to-8K and 100-300% goldens; impossible-size fallback. |
 | CP5.5 | Version-gated opt-in shell adapters, truthful CMD fallback, and preservation of profiles, bindings, completers, predictors, history, and native UI. |
 | CP5.6 | Preview flag, kill switch, LKG/reset/disable/uninstall, three-OS native, fuzz/leak/resize/multi-pane/accessibility, and 30-day baseline. |
+
+Proposed ADR 0025, the schema-1 CP5-T17 through CP5-T22 contract, fixed 15-limit
+budget, seven-shell/fallback matrix, six source priorities, deterministic rank,
+17 mutation/document tests, CI wiring, and the detailed execution audit are now
+complete. The contract records `accepted: false` and
+`runtime_activation: false`; every Rust/runtime/UI/shell row above remains
+missing until explicit acceptance.
 
 CP1 remains the fallback. A popup alone cannot satisfy privacy, insertion,
 accessibility, lifecycle, performance, or rollback gates.
@@ -1303,9 +1310,9 @@ At this audited baseline, the focused order is:
 5. Preserve the complete local D6.0 boundary and implement each D6.1-D6.5 provider independently through official
    CLI/auth authorities and isolated immutable capsules.
 6. Preserve the source-complete nonactivated CP4 boundary; activate publication or exact provider execution only after D3/D5/D6 expose approved product context and native evidence.
-7. Preserve the fully completed CP5.0 retain-CP1 decision. CP5.1-CP5.6 remain
-   not started and may proceed only after a new proposal's separate bridge ADR
-   and gates pass.
+7. Preserve the fully completed CP5.0 retain-CP1 decision and the proposal-only
+   CP5.1-CP5.6 contract. Runtime remains not started and may proceed only after
+   explicit acceptance of ADR 0025 and its exact machine contract.
 8. Keep v0.4 external release evidence and G0-G6 compatibility work as
    independent evidence tracks; defer D7/CP6/G6 until their protected designs
    pass.
