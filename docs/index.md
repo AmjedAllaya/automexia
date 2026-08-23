@@ -48,7 +48,8 @@ The repository also contains substantial v0.5 foundations. Native shell completi
 | Recipes and multi-environment workspace review (M6) | **Implemented internally; product activation/execution disabled** | [Connection automation](SSH-CONNECTION-AUTOMATION.md#m6-review-only-implementation), [M6 roadmap](project/roadmap.md) |
 | Managed OpenSSH sessions | **Planned** | [Remote connections](guide/remote-connections.md), [Roadmap](project/roadmap.md) |
 | AWS provider source contracts | **Implemented internally, not activated** | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md), [M8 testing](TESTING.md#m8-aws-adapter-source-contracts) |
-| Azure, Google Cloud, Kubernetes/OpenShift, Teleport, and OpenBao adapters | **Planned / separately gated** | [Provider audit](MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md), [Roadmap](project/roadmap.md) |
+| Azure provider source contracts | **Implemented internally, not activated** | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md), [M9 testing](TESTING.md#m9-azure-adapter-source-contracts) |
+| Google Cloud, Kubernetes/OpenShift, Teleport, and OpenBao adapters | **Planned / separately gated** | [Provider audit](MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md), [Roadmap](project/roadmap.md) |
 | Public extension SDK / sandbox / AI execution | **Deferred** | [Roadmap](project/roadmap.md) |
 
 ## Documentation model

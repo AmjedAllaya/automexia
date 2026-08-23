@@ -601,19 +601,28 @@ network, browser/device flow, credential cache, SSM session, or EKS cluster ran.
 
 ## F9 - implement D6.2 Azure slice
 
-Status: Not done.
+Status: Partially done overall; source-complete and nonactivated locally.
 
-- [ ] Parse bounded public Azure CLI configuration, tenants, subscriptions, and
-  selected account metadata without reading tokens.
-- [ ] Use visible az login with WAM/browser/device behavior owned by Azure CLI.
-- [ ] Distinguish user MFA from service-principal/managed/workload identity.
-- [ ] Pin tenant, subscription, cloud, account kind, expiry, and provenance.
-- [ ] Add exact Bastion native-client and AKS context flows.
-- [ ] Test subscription selection, tenant changes, MFA, cancellation, offline,
-  conditional-access failure, isolation, and uninstall.
+- [x] Parse bounded exact granted public Azure account JSON with byte, account,
+  node, depth, field, duplicate, hostile-text, and secret-key limits.
+- [x] Preserve Azure CLI-owned WAM/browser/device/MFA behavior through exact tenant-bound
+  reviewed login operations; expose public user/workload identity kind without
+  accepting passwords, client secrets, tokens, certificates, or caches.
+- [x] Pin tenant, subscription, cloud, public identity/state, freshness,
+  provenance, risk, executable, argv, endpoint, browser policy, timeout, and
+  session/capsule revision. Use `--subscription`; never `az account set`.
+- [x] Add immutable AAD-only Bastion and opaque-private-file AKS intents with
+  execution disabled, explicit PTY/child-tree cleanup, and no user kubeconfig.
+- [x] Pass eight focused tests, app registration, warning-denied Clippy,
+  formatting, architecture/identity, and repository/phase policy checks on
+  Windows x86_64; the 128-account Criterion target measured 473.69–478.86 µs.
+- [ ] Activate only through the separately protected D3 runner and M11
+  transient kubeconfig owner; add product UI and fresh one-time review.
+- [ ] Run controlled Azure CLI 2.61+ WAM/browser/device/MFA/conditional-access,
+  Bastion 2.32+, AKS, native cleanup/resources/accessibility, and release proof.
 
-Exit: Azure is independently enabled, revocable, tested, and releasable.
-
+Exit is complete only for the independently disabled source adapter. No Azure
+process, network, authentication, cache, Bastion, AKS, PTY, or filesystem ran.
 ## F10 - implement D6.3 Google Cloud slice
 
 Status: Not done.

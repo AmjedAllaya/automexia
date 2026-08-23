@@ -4,6 +4,7 @@ members = [
     "automexia-extension-runtime",
     "automexia-devops",
     "extensions/devops-aws",
+    "extensions/devops-azure",
     "extensions/devops-ssh",
     "automexia-image",
     "automexia-ui-model",
@@ -57,6 +58,7 @@ automexia-extension-api = { path = "automexia-extension-api", version = "0.4.0" 
 automexia-extension-runtime = { path = "automexia-extension-runtime", version = "0.4.0" }
 automexia-devops = { path = "automexia-devops", version = "0.4.0" }
 automexia-devops-aws = { path = "extensions/devops-aws", version = "0.4.0" }
+automexia-devops-azure = { path = "extensions/devops-azure", version = "0.4.0" }
 automexia-devops-ssh = { path = "extensions/devops-ssh", version = "0.4.0" }
 automexia-image = { path = "automexia-image", version = "0.4.0" }
 automexia-ui-model = { path = "automexia-ui-model", version = "0.4.0" }

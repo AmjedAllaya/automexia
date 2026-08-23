@@ -375,6 +375,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "automexia-devops-azure"
+version = "0.4.0"
+dependencies = [
+ "automexia-devops",
+ "automexia-extension-api",
+ "criterion",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "automexia-devops-ssh"
 version = "0.4.0"
 dependencies = [
@@ -423,6 +434,7 @@ dependencies = [
  "ahash",
  "automexia-devops",
  "automexia-devops-aws",
+ "automexia-devops-azure",
  "automexia-devops-ssh",
  "automexia-extension-api",
  "automexia-extension-runtime",

@@ -522,6 +522,33 @@ merges, or changes the user's kubeconfig/current context. Reverting or disabling
 the package removes only Automexia's AWS catalog authority and does not alter
 AWS CLI configuration, credentials, or sessions.
 
+### M9 Azure adapter source boundary
+
+`extensions/devops-azure` is the independent, disabled D6.2 owner. It depends
+only on M7, the extension API, and existing `serde_json`; it adds no Azure SDK,
+filesystem, process, network, token-cache, PTY, browser, background task, or
+persistence owner. An exact supplied JSON document is capped at 256 KiB, 128
+accounts, 4,096 nodes, depth 32, and 4 KiB public fields. Only subscription,
+tenant, cloud, state/default flag, public identity, and identity kind survive.
+Duplicate subscriptions, malformed/hostile text, excessive complexity, and keys
+that name tokens, client secrets, passwords, private keys, or certificates fail
+closed. Caller-created public account values are revalidated at context ingress.
+
+Login operations bind exact tenant, session/capsule/revision, official `az`
+identity, ordered arguments, Microsoft login origin, system-broker, browser, or device
+policy, timeout, risk, and exact process/network scopes. Status uses `az account
+show --subscription ... --output json`; the adapter contains no `az account set`
+or ambient `AZURE_CONFIG_DIR` mutation. Public identity kind stays visible so a
+human Entra/MFA flow is not presented as password-bearing automation.
+
+Bastion is an immutable AAD-only review plan bound to a target resource ID under
+the capsule subscription. It records that Azure CLI may start a child SSH
+process, requires an interactive PTY and whole-tree cancellation, and keeps
+execution false behind D3. AKS splits exact arguments around an opaque private
+output reference; M11 alone may resolve that reference to a newly allocated,
+private, validated, lifecycle-owned transient file. No user kubeconfig or
+current context is named. Disabling/reverting the package removes only the
+Automexia catalog entry and does not alter Azure CLI state.
 ### Capability and process-launch contract
 
 The v0.4 capability enum is descriptive and local-read-only in practice. The

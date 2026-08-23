@@ -128,7 +128,8 @@ native/release claim.
 | F6 recipes and remote declarative workspaces | Partially done; review-only source contracts complete locally | Library schema 2/editor/migration previews, exact dependent fingerprints, pure recipe review/lifecycle, typed remote initialization, declarative workspaces/restore, armed broadcast, semantic projections, fuzz, mutation, and benchmarks pass | Proposed ADR 0023 acceptance, product editor/controller/renderer wiring, managed execution adapters, and controlled native/resource/accessibility evidence remain. |
 | D6.0/M7 provider-neutral authentication and capsule orchestration | Fully done locally | Bounded strict schemas, immutable provider contexts, 19-state lifecycle, generation/session isolation, exact allow-once review, redacted receipts/audits, passive-status migration, fuzz/mutation/benchmark evidence | Provider-specific operation builders and real official-CLI/native evidence belong to D6.1-D6.5 and remain not done/external. |
 | D6.1/M8 AWS | Partially done overall; source-complete nonactivated | Independent `automexia-devops-aws`; bounded public profiles; exact SSO/STS/SSM/EKS dry-run contracts; 10 focused tests | D3 product activation/attestation, M11 EKS ingestion, and controlled real official-tool/native/resource/accessibility/release evidence remain. |
-| D6.2-D6.5 Azure, Google Cloud, Kubernetes/OpenShift, Teleport, OpenBao | Not done | Provider-neutral model variants only; OpenBao ADR 0024 is proposed and unaccepted | Implement every adapter independently; accept ADR 0024 before any OpenBao code. |
+| D6.2/M9 Azure | Partially done overall; source-complete nonactivated | Independent `automexia-devops-azure`; bounded public account JSON; exact tenant-scoped login/account observation; AAD-only Bastion plan; opaque transient AKS intent; 8 focused tests | D3 product activation/attestation, M11 AKS ingestion, and controlled real Azure/native/resource/accessibility/release evidence remain. |
+| D6.3-D6.5 Google Cloud, Kubernetes/OpenShift, Teleport, OpenBao | Not done | Provider-neutral model variants only; OpenBao ADR 0024 is proposed and unaccepted | Implement every adapter independently; accept ADR 0024 before any OpenBao code. |
 | Provider-aware Quick Actions (CP4/F13) | Not done and blocked | CP2/CP3 typed/persistent/insert-only Quick Actions and static packs exist | Consume only F7+ cached public context; exact execution stays behind F4. |
 
 ### Important distinction: existing legacy DevOps status is not D6
@@ -799,28 +800,50 @@ network, credential cache, Session Manager session, or EKS cluster ran in this
 slice.
 ### M9 — F9 Azure slice
 
-Status: Not done; depends on M7, with AKS execution also depending on M11.
+Status: Partially done overall; source-complete and nonactivated on Windows
+x86_64, with product activation, AKS ingestion, and external evidence remaining.
 
-- [ ] Create an independently enabled Azure extension that reads only bounded
-  public configuration, tenants, subscriptions, cloud, and selected-account
-  metadata from an exact user-granted source; it must not read tokens.
-- [ ] Use visible `az login` through M2, preserving Azure CLI WAM/browser/device
-  and MFA behavior. Distinguish user MFA from service principal, managed, and
-  workload identity in public state and recovery guidance.
-- [ ] Pin tenant, subscription, cloud, public account kind/reference, freshness,
-  expiry, provenance, and risk per capsule. Never run `az account set` as a
-  managed switch.
-- [ ] Add reviewed Azure Bastion native-client requests with exact resource and
-  authentication type. Treat AKS credential/context generation as M11 work;
-  avoid the CLI’s default merge into the user kubeconfig and require a reviewed
-  isolated file/intent path.
-- [ ] Test subscription/tenant changes, WAM/browser/device behavior, MFA,
-  conditional-access failure, cancellation, offline, isolation, redaction,
-  uninstall, fake CLI argv, and native Bastion availability.
+- [x] **Fully done locally:** add independent `automexia-devops-azure`, disabled
+  by default with only exact process/network capability declarations and a
+  separately registered built-in manifest.
+- [x] **Fully done locally:** parse at most 256 KiB, 128 public Azure account
+  records, 4,096 JSON nodes, depth 32, and 4 KiB public fields from exact
+  caller-supplied `az account list --output json` bytes. Normalize GUIDs, reject
+  duplicates/hostile text/secret-token keys, and retain only subscription,
+  tenant, cloud, state, default flag, public identity, and identity kind.
+- [x] **Fully done locally:** construct exact capsule/session/revision-bound
+  `az login --tenant ... --output none` system-broker, browser, and device-code operations
+  plus `az account show --subscription ... --output json`. No operation uses
+  hidden `az account set`, shell evaluation, inherited environment isolation,
+  password/client-secret flags, or token/cache reads.
+- [x] **Fully done locally:** pin tenant, subscription, cloud, public identity,
+  state, provenance, freshness, risk, exact executable/argv, Microsoft endpoint,
+  browser policy, timeout, and one-time process/network capability scopes.
+  Missing/expired/MFA/cancel/offline/denied/unsupported/error stay non-ready.
+- [x] **Fully done locally:** build an immutable AAD-only `az network bastion
+  ssh` plan bound to the capsule subscription and target resource ID. It records
+  interactive PTY, official-CLI child-SSH possibility, whole-tree cancellation,
+  risk, and `execution_enabled = false`.
+- [x] **Fully done locally:** build AKS credentials as an opaque private-output
+  intent split around `--file`; only M11 may resolve the private transient path.
+  No user kubeconfig/current context/path is named or mutated.
+- [x] **Fully done locally:** eight parser/secret/complexity/argv/capability/
+  isolation/Bastion/AKS/version/failure/redaction tests, app registration,
+  warning-denied Clippy, formatting, architecture/identity, and repository
+  policy gates pass on Windows x86_64. The 128-account Criterion target measured
+  473.69–478.86 µs over 100 samples; eight high-side outliers were reported.
+- [ ] **Partially done/external:** connect the source contract to the protected
+  D3 product review/runner only after activation/attestation authority exists;
+  M11 must allocate, validate, publish, revoke, and clean the AKS transient file.
+- [ ] **External prerequisite:** run controlled real Azure CLI 2.61+ WAM/browser/device/
+  MFA/conditional-access/cancel/offline cases, Azure Bastion native client (CLI
+  floor 2.32+), AKS, Windows/macOS/Linux process-tree/resource/accessibility,
+  packaging, signing, and release fixtures.
 
-Exit: Azure is independently enabled and never converts a global CLI selection
-into hidden per-pane authority.
-
+Exit is met for the independent Azure source contract, not for product
+activation or release. No Azure CLI, WAM/browser/device flow, Microsoft network,
+token cache, Bastion connection, AKS cluster, PTY, or provider filesystem ran in
+this slice.
 ### M10 — F10 Google Cloud slice
 
 Status: Not done; depends on M7, with GKE execution also depending on M11.

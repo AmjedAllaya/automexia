@@ -94,7 +94,8 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Multi-environment | M6/F6 | **Partial overall; review-only source contracts complete locally** | **Blocked** | Schema-2 reviewed library editing/migration/transfer, exact dependent fingerprints, typed recipe lifecycle/no-hooks, narrow remote initialization, declarative restore, armed broadcast, semantic UI models, fuzz/mutation, and bounded benchmarks pass. Proposed ADR 0023 acceptance, product activation/execution, and controlled native/resource/accessibility evidence remain. |
 | Multi-cloud | D6.0/M7 | **Fully implemented locally** | **Partial/external** | Strict provider-neutral schemas, immutable session capsules, 19-state lifecycle, exact allow-once review, isolation/redaction, passive-status migration, cached-only semantics, fuzz/mutation, 16×64 lifecycle, and a 64-capsule benchmark pass. No real provider CLI, cloud network, credential cache, browser/device flow, or Linux/macOS native provider evidence ran. |
 | Multi-cloud | D6.1/M8 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded AWS profile parser plus exact SSO/STS/SSM/EKS-dry-run contracts and ten focused tests pass. D3 activation, M11 EKS ingestion, product UI, and controlled native/provider/resource/accessibility evidence remain. |
-| Multi-cloud | D6.2-D6.5 | **Not implemented** | **Blocked** | Azure, Google Cloud, Kubernetes/OpenShift, Teleport, and OpenBao adapters, product login UI, and controlled native/provider evidence remain independently gated; OpenBao additionally requires ADR 0024 acceptance. |
+| Multi-cloud | D6.2/M9 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded Azure public-account parser plus exact tenant login/account, AAD-only Bastion, opaque transient AKS contracts, and eight focused tests pass. D3 activation, M11 AKS ingestion, product UI, and controlled native/provider/resource/accessibility evidence remain. |
+| Multi-cloud | D6.3-D6.5 | **Not implemented** | **Blocked** | Google Cloud, Kubernetes/OpenShift, Teleport, and OpenBao adapters, product login UI, and controlled native/provider evidence remain independently gated; OpenBao additionally requires ADR 0024 acceptance. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
 | Productivity | CP1 | **Fully implemented** | **Partial** | Shell-native completion and bounded explicit refresh exist; hosted native evidence remains. |
@@ -666,7 +667,7 @@ evidence remain. M6 activation stays false and CP3.3 local workspace tasks gain
 no remote/provider authority.
 ### D6.0-D6.5 — providers and multi-cloud
 
-**Partially implemented overall: D6.0/M7 is fully implemented locally; D6.1/M8 is source-complete and nonactivated; D6.2-D6.5 are not implemented.**
+**Partially implemented overall: D6.0/M7 is fully implemented locally; D6.1/M8 and D6.2/M9 are source-complete and nonactivated; D6.3-D6.5 are not implemented.**
 
 D6.0 now owns one authority-free provider-neutral source boundary:
 
@@ -697,23 +698,32 @@ D6.1/M8 now has an independent disabled package. It parses at most 1 MiB and
 hints, constructs capsule-bound IAM Identity Center PKCE/device and regional STS
 operations, decodes only strict bounded public caller identity, names both AWS
 CLI and Session Manager plugin in a nonactivated PTY/tree-cleanup plan, and
-produces only EKS `--dry-run` output for later M11 ingestion. Nine focused tests
+produces only EKS `--dry-run` output for later M11 ingestion. Ten focused tests
 plus locked warning-denied Clippy and formatting passed on Windows x86_64. No AWS
 process, network, login, SSM session, credential cache, or EKS cluster ran.
 
+D6.2/M9 now also has an independent disabled package. It parses only bounded
+public `az account` JSON, rejects secret-bearing/hostile/duplicate/over-complex
+records, constructs exact tenant-bound WAM/browser/device login and subscription status
+operations without `az account set`, binds AAD-only Bastion to the capsule
+subscription, and leaves AKS output behind an opaque M11 transient-file intent.
+Eight focused tests plus app registration, locked warning-denied Clippy, and
+formatting passed on Windows x86_64. No Azure process, network, authentication,
+cache, Bastion connection, AKS cluster, PTY, or filesystem ran.
+
 The remaining provider slices are still not implemented:
 
-1. D6.2 Azure Entra/MFA/workload identity, subscriptions, Bastion, and AKS.
-2. D6.3 Google configurations/federation, IAP/OS Login, and GKE.
-3. D6.4 Kubernetes/OpenShift trusted sources, exec allowlists, and contexts.
-4. D6.5 independently enabled Teleport, then OpenBao after proposed ADR 0024 is accepted.
+1. D6.3 Google configurations/federation, IAP/OS Login, and GKE.
+2. D6.4 Kubernetes/OpenShift trusted sources, exec allowlists, and contexts.
+3. D6.5 independently enabled Teleport, then OpenBao after proposed ADR 0024 is accepted.
 
-D6.1 still needs D3 product activation/attestation, M11 EKS ingestion, product
-review UI, controlled real-tool native tests, cleanup/resource/accessibility,
-and release evidence. D6.2-D6.5 still need independent operation construction,
-grants, parsing, lifecycle, exact CLI argv, offline/expired/denied behavior,
-redaction, product UI, controlled real-tool native tests, and multi-pane
-isolation. Direct SDK inventory remains a later, explicit, lazy authority.
+D6.1-D6.2 still need D3 product activation/attestation, M11 EKS/AKS ingestion,
+product review UI, controlled real-tool native tests, cleanup/resource/
+accessibility, and release evidence. D6.3-D6.5 still need independent operation
+construction, grants, parsing, lifecycle, exact CLI argv, offline/expired/denied
+behavior, redaction, product UI, controlled real-tool native tests, and
+multi-pane isolation. Direct SDK inventory remains a later, explicit, lazy
+authority.
 
 ### D7 — public ecosystem, direct APIs, and AI
 

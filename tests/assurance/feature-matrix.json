@@ -748,7 +748,7 @@
       },
       "quality": {
         "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "M8 adds no active renderer or control; provider product UI and controlled native screen-reader evidence remain external."},
-        "correctness": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs"], "rationale": "Nine focused tests cover bounded public parsing, exact IAM Identity Center/STS operations, strict public STS evidence, SSM planning, EKS dry-run, and compatibility floors."},
+        "correctness": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs"], "rationale": "Ten focused tests cover bounded public parsing and caller revalidation, exact IAM Identity Center/STS operations, strict public STS evidence, SSM planning, EKS dry-run, and bounded compatibility floors."},
         "security": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs", "automexia-devops/src/connections/provider_auth.rs"], "rationale": "Credential canaries never enter public models, exact capability review is capsule-bound, global profile mutation is absent, and the independent adapter owns no process, network, filesystem, credential, PTY, or cache."},
         "performance": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs"], "rationale": "Parsing is synchronous, linear, capped at 1 MiB and 128 profiles, and never runs on startup, renderer, input, resize, PTY, or keystroke paths; controlled native latency remains external."},
         "resource_lifetime": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs"], "rationale": "Pure functions retain only returned bounded values and own no worker, process, socket, listener, handle, file, PTY, route, cache, or GPU resource."},
@@ -761,6 +761,30 @@
         "linux": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M8 run did not execute natively on Linux."},
         "macos": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M8 run did not execute natively on macOS."}
       }
-    }
+    },
+    {
+      "id": "provider-azure-m9-source",
+      "title": "Nonactivated bounded Azure official-CLI adapter contracts",
+      "components": ["extensions/devops-azure", "automexia-devops", "automexia-extension-api", "apps/automexia-terminal"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#provider-authentication-framework-current-source-boundary"],
+        "reference": ["docs/CONNECTION-HUB.md#azure", "docs/TESTING.md#m9-azure-adapter-source-contracts"],
+        "explanation": ["docs/ARCHITECTURE.md#m9-azure-adapter-source-boundary", "docs/adr/0020-hybrid-build-wrap-adopt-boundary.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "M9 adds no active renderer or control; provider product UI and controlled native screen-reader evidence remain external."},
+        "correctness": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs", "apps/automexia-terminal/src/automexia/builtins/mod.rs"], "rationale": "Eight focused tests cover bounded public JSON, caller revalidation, exact tenant login/account operations, AAD-only Bastion, opaque transient AKS intent, and compatibility floors; the app test freezes independent disabled registration."},
+        "security": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs", "automexia-devops/src/connections/provider_auth.rs"], "rationale": "Token/secret/certificate keys, hostile and over-complex JSON, duplicate subscriptions, target subscription drift, global account mutation, and user kubeconfig paths fail closed; the adapter owns no process, network, filesystem, credential, PTY, browser, or cache."},
+        "performance": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs", "extensions/devops-azure/benches/provider.rs"], "rationale": "The local Windows 128-account Criterion target measured 473.69-478.86 microseconds over 100 samples with eight high-side outliers. Parsing stays within 256 KiB, 128 accounts, 4,096 nodes, depth 32, and 4 KiB public fields and is off startup/input/render/PTY paths; controlled baseline evidence remains external."},
+        "resource_lifetime": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs"], "rationale": "Pure functions retain only returned bounded values and own no worker, process, child, socket, listener, handle, file, PTY, route, cache, browser, or GPU resource; nonactivated plans require future whole-tree cancellation."},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "The adapter performs no I/O or persistence and never reads or writes Azure configuration, token caches, certificates, kubeconfig, or Automexia state; AKS holds only an opaque future transient-output reference."},
+        "resilience": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs"], "rationale": "Malformed, duplicate, hostile, oversized, secret-bearing, unsupported-version, subscription-mismatched, missing, expired, MFA, cancelled, offline, and denied cases fail closed or remain explicitly non-ready."},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "No product pixels are added; exact product hierarchy, responsive layout, focus, and visual review remain an external integration gate."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs", "apps/automexia-terminal/src/automexia/builtins/mod.rs"], "rationale": "Focused tests, app registration, and warning-denied Clippy passed locally on Windows x86_64 without running Azure tools, WAM, or network."},
+        "linux": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M9 run did not execute natively on Linux."},
+        "macos": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M9 run did not execute natively on macOS."}
+      }}
   ]
 }
