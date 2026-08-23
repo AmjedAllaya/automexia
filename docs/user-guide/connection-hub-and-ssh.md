@@ -215,6 +215,29 @@ session. Do not assume a saved workspace reconnects, resumes a recipe, restores 
 tunnel, or carries credentials. Schema-1 Connection Libraries are previewed in
 memory and only advance after a reviewed CAS; imported workspace topology loses
 its connection bindings and must be rebound locally.
+## Provider authentication framework (current source boundary)
+
+M7/D6.0 is complete as an internal provider-neutral framework, not as a current
+cloud-login button. Automexia can validate and isolate a public provider context,
+project it as available/refreshing/browser/device/MFA/ready/expired/offline/
+denied/cancelled/stale/error, and require an exact visible one-time capability
+review before a later adapter may ask the existing runner to start an official
+CLI. Opening or filtering the Hub never performs a provider refresh or login.
+
+The framework stores no token, password, client secret, browser/device code,
+certificate, cookie, inherited environment, or provider cache. AWS CLI, Azure
+CLI, Google Cloud CLI, `kubectl`/`oc`, and later organization tools keep
+ownership of their own authentication, browser or device flow, multifactor
+authentication, credentials, certificates, and caches. Automexia retains only a
+bounded public in-memory observation and opaque configuration references.
+
+There is deliberately no current D6.1-D6.5 provider adapter or login control.
+Continue to authenticate with the provider's official CLI in a shell and select
+the exact named profile/configuration/context explicitly. Do not expect the Hub
+to change a global Azure subscription, Google Cloud active configuration,
+Kubernetes current context, AWS default configuration, or kubeconfig. Later
+provider flows must return to a fresh Automexia review and can always be
+cancelled, revoked, disabled, or removed without affecting ordinary terminal use.
 ## Connect with system OpenSSH today
 
 The read-only Hub does not replace the shell. Use the system client normally:
@@ -247,6 +270,8 @@ receipt store uses `connections/managed-receipts.v1.json` plus one validated
 previous generation. Raw selected paths, typed literal hosts, destinations,
 keys, passphrases, tokens, provider credentials, search text, terminal history,
 environment, process IDs, and executable identity are not stored in receipts.
+M7 provider-auth observations are memory-only public records; current builds
+create no Automexia-owned provider-auth file, token cache, or browser state.
 Each owned store is bounded, user-private, atomically replaced, and recoverable
 only from its validated previous generation. No receipt file is written in
 current builds because managed launch cannot start.
@@ -265,10 +290,11 @@ observations, actual bounded public status execution, independent native PTYs,
 tunnels, real OpenSSH/forced-cleanup/resource/accessibility evidence, and the
 protected release gate. Typed user/port/config jumps, full host-trust explanation,
 safe copy recovery, cancellation/reconnect/receipts source, and public identity
-status parsing are complete locally but nonactivated. D6 separately owns AWS,
-Azure, Google Cloud, Kubernetes,
-OpenShift, Teleport, and OpenBao adapters. There is no current Hub remote-file
-browser, credential vault, automatic provider login, or cloud refresh.
+status parsing are complete locally but nonactivated. D6.0's provider-neutral capsule/authentication framework is complete locally,
+but D6.1-D6.5 separately own AWS, Azure, Google Cloud, Kubernetes, OpenShift,
+Teleport, and OpenBao adapters. There is no current Hub remote-file browser,
+credential vault, automatic provider login, cloud refresh, or provider command
+execution.
 
 See [Remote sessions and WSL](remote-and-wsl.md), [OpenSSH inventory](../SSH-INVENTORY.md),
 and the [connectivity roadmap](../SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md).

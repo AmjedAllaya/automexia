@@ -126,32 +126,32 @@ native/release claim.
 | F3 Connection Library | Fully done locally | `ConnectionLibraryStore` has 16 MiB private documents, CAS, recovery, transfer redaction, fresh import IDs, read-only/disk-full and link tests | Product editor/manager belongs to F6; macOS/Linux native permission and controlled screen-reader evidence remain. |
 | F5 managed OpenSSH | Partially done overall; F5.1-F5.3 source-complete nonactivated | Exact direct/routed/tunnel argv; typed host/user/port/endpoints; loopback defaults; strong per-use tunnel review; full trust evidence; guarded lifecycle; receipts; reconnect; and compact tunnel state pass locally | Protected activation/attestation, actual status execution, real OpenSSH/forced cleanup, native resources/accessibility, and validated F5.4 real manifests remain. |
 | F6 recipes and remote declarative workspaces | Partially done; review-only source contracts complete locally | Library schema 2/editor/migration previews, exact dependent fingerprints, pure recipe review/lifecycle, typed remote initialization, declarative workspaces/restore, armed broadcast, semantic projections, fuzz, mutation, and benchmarks pass | Proposed ADR 0023 acceptance, product editor/controller/renderer wiring, managed execution adapters, and controlled native/resource/accessibility evidence remain. |
-| D6 provider-neutral authentication and capsule orchestration | Not done | Public provider/transport model variants and legacy display context exist | No visible official-CLI auth, isolated session pinning, cache/provenance/revocation, or provider adapter. |
+| D6.0/M7 provider-neutral authentication and capsule orchestration | Fully done locally | Bounded strict schemas, immutable provider contexts, 19-state lifecycle, generation/session isolation, exact allow-once review, redacted receipts/audits, passive-status migration, fuzz/mutation/benchmark evidence | Provider-specific operation builders and real official-CLI/native evidence belong to D6.1-D6.5 and remain not done/external. |
 | AWS, Azure, Google Cloud, Kubernetes/OpenShift, Teleport, OpenBao | Not done | No corresponding extension directory or application adapter exists; there are only typed model variants and insert-only Quick Action packs | Implement and release each adapter independently after F4/F7 prerequisites. |
 | Provider-aware Quick Actions (CP4/F13) | Not done and blocked | CP2/CP3 typed/persistent/insert-only Quick Actions and static packs exist | Consume only F7+ cached public context; exact execution stays behind F4. |
 
 ### Important distinction: existing legacy DevOps status is not D6
 
-`automexia-devops::context` and the application DevOps runtime currently derive
-best-effort labels from local files/environment and, for Windows WSL sessions,
-a fixed short-lived probe that can invoke installed CLIs. It provides passive
-status display, not verified authentication, provider isolation, capability
-review, or a session-pinned capsule. Do not build new provider functionality on
-that ambient mechanism and do not call it evidence for D6.
+`automexia-devops::context` and the application DevOps runtime now derive only
+bounded public status from local files and already-supplied session metadata.
+The previous Windows WSL `sh -c`/provider-CLI probe was removed. This legacy
+surface remains passive display, not verified authentication, provider
+isolation, capability review, or an authoritative managed-pane selection.
+D6.0 provider work uses immutable capsule observations instead.
 
-Before F7 enables any provider adapter, characterize every caller and make the
-following migration explicit:
+The M7 legacy migration is complete at the local source boundary:
 
-- [ ] Keep only bounded, local, public, non-secret information needed for the
-  legacy status surface, or replace it with an explicit cached observation.
-- [ ] Remove/provider-gate any automatic CLI invocation and any `sh -c` WSL
-  probe from provider discovery. Provider commands must move behind the F4
-  runner and a visible, reviewed explicit refresh.
-- [ ] Stop treating process environment or a global CLI “active” selection as
-  authoritative context for a managed pane; use an immutable capsule snapshot.
-- [ ] Add regression tests proving status refresh, Hub open, filtering, and
-  keystrokes never launch `aws`, `az`, `gcloud`, `kubectl`, `oc`, `tsh`, or
-  another provider tool.
+- [x] **Fully done locally** - Keep only bounded, local, public, non-secret
+  information needed for the legacy status surface.
+- [x] **Fully done locally** - Remove automatic CLI invocation and the `sh -c`
+  WSL probe from passive provider discovery. Later provider commands must use
+  the existing reviewed runner boundary and an explicit refresh.
+- [x] **Fully done locally** - Treat process environment and global CLI
+  “active” selection as display hints only; immutable capsule context is the
+  managed-session authority.
+- [x] **Fully done locally** - Regression and policy tests prove passive status,
+  Hub/filter/model projection, and keystroke paths contain no provider-process
+  launch authority.
 
 ## 4. Ordered delivery plan
 
@@ -698,33 +698,56 @@ code or automatic persistent change, but no M6 product action can execute.
 
 ### M7 — F7/D6.0 provider-neutral auth and capsule orchestration
 
-Status: Not done; depends on M2 and must include the legacy-context migration.
+Status: **Fully done locally** at the provider-neutral framework boundary.
+D6.1-D6.5 provider adapters and controlled real official-CLI/native evidence
+remain separate not-done/external gates.
 
-- [ ] Freeze public, bounded schemas for provider identity, authentication
-  observation, immutable capsule template, freshness, provenance, risk,
-  capability request, operation, recovery action, receipt, and redacted audit.
-- [ ] Create each new session with a unique capsule ID/revision and public pinned
-  context. Rebind cancels old work; no pane/window/session can mutate or read a
-  sibling capsule.
-- [ ] Model states at least as missing, available, refreshing, authenticating,
-  MFA/browser/device pending, ready, expired, offline, denied, unsupported,
-  cancelled, stale, and error. Keep last-known-good public context truthful.
-- [ ] Start an official CLI login only after visible M2 capability review. The
-  official CLI owns browser, device code, WAM, MFA, tokens, certificates, and
-  cache; Automexia exposes only bounded public observation and recovery.
-- [ ] Add explicit refresh, expiry, cancellation, revocation, disable/uninstall,
-  and offline behavior. Opening/searching a Hub or palette must consume cached
-  public data only.
-- [ ] Add fake CLI contracts and redaction canaries for persistence, logs,
-  diagnostics, snapshots, QA bundles, clipboard, telemetry, and AI surfaces.
-- [ ] Establish provider configuration isolation rules before coding any adapter:
-  never use `az account set`, `gcloud config set`, `kubectl config use-context`,
-  or a default-writing kubeconfig command as an Automexia-managed context switch.
-  Pass exact scoped flags/config references or use a reviewed private transient
-  file only when the relevant provider and Kubernetes boundaries approve it.
+- [x] **Fully done locally** - Freeze strict, bounded schemas for provider
+  identity/context, authentication observation, immutable capsule template,
+  freshness, provenance, risk, capability request, exact operation, isolation,
+  browser policy, recovery action, receipt, and redacted audit. Every public
+  document ingress rejects unknown fields, malformed semantics, hostile text,
+  and documents above 16 MiB.
+- [x] **Fully done locally** - Bind each session to one unique nonzero capsule
+  ID/revision and public pinned provider context. Rebind creates a fresh
+  capsule/session, cancels active work, and rejects sibling/cross-session reads
+  and stale generation publication.
+- [x] **Fully done locally** - Model 19 truthful states including available,
+  refreshing, authenticating, MFA/browser/device pending, ready, expired,
+  offline, denied, unsupported, cancelled, stale, and error. Offline, expiry,
+  and failed refresh keep bounded last-known-good public context.
+- [x] **Fully done locally** - Require an exact visible M2 review and current
+  `AllowOnce` decisions for the executable, operation, session, capsule
+  revision, process, and applicable network request. The review binds ordered
+  arguments, the exact process/network-only capability list, isolation,
+  browser flow/origins/callback, and risk. M7 itself cannot launch a process,
+  open a network/browser callback, or access credentials; later adapters may
+  request an official CLI flow through the existing runner only. The CLI
+  continues to own browser/device/WAM/MFA, tokens, certificates, and provider
+  caches.
+- [x] **Fully done locally** - Implement explicit begin-refresh,
+  begin-authentication, publish, expiry, cancellation, revocation,
+  disable/uninstall, rebind, and shutdown behavior with fixed capacity,
+  generation rejection, truthful initial freshness, recovery actions, and
+  cached-only UI projections. Publication fully validates a candidate and
+  atomically accepts only the capsule-pinned configuration/provider/risk tuple.
+- [x] **Fully done locally** - Add fake exact-argv/capability review contracts
+  and canaries proving public observation, receipt, audit, debug, snapshots,
+  QA/policy inputs, clipboard/telemetry/AI-facing serializations contain no
+  token, browser code, secret flag, origin, or command argument.
+- [x] **Fully done locally** - Reject Automexia-managed global context mutation,
+  including `az account set`, `gcloud config set`, configuration activation,
+  `gcloud init`, `kubectl`/`oc config use-context`, kubeconfig setters, and
+  `aws configure set`. Accept only exact arguments, scoped public environment
+  names, or a reviewed private transient configuration reference.
 
-Exit: two concurrent provider sessions cannot contaminate identity, config,
-cache, result, capability, or process authority.
+Exit is proven at the pure local boundary by two-session isolation, exact
+capability binding, stale-result rejection, 16 repeated maximum 64-capsule
+lifecycle cycles, a mutation-enforced authority-free source contract, fuzz
+registration, and a 64-capsule Criterion target. No real provider CLI,
+browser/device login, cloud network, credential cache, provider configuration
+write, or native provider adapter ran in M7; those claims begin only in the
+independently gated D6.1-D6.5 slices.
 
 ### M8 — F8 AWS slice
 

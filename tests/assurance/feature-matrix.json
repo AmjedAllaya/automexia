@@ -686,7 +686,33 @@
         "linux": {"level": "pr", "evidence": ["automexia-devops/tests/connection_automation_m6.rs", "automexia-devops/tests/workspace_automation_m6.rs", "apps/automexia-terminal/tests/connection_library.rs", ".github/workflows/ci.yml#native"], "rationale": "Pure contracts are platform-neutral and Unix link tests are owned, but this M6 run did not execute natively on Linux."},
         "macos": {"level": "pr", "evidence": ["automexia-devops/tests/connection_automation_m6.rs", "automexia-devops/tests/workspace_automation_m6.rs", "apps/automexia-terminal/tests/connection_library.rs", ".github/workflows/ci.yml#native"], "rationale": "Pure contracts are platform-neutral and Unix link tests are owned, but this M6 run did not execute natively on macOS."}
       }
-    },    {
+    },
+    {
+      "id": "provider-auth-m7-capsules",
+      "title": "Provider-neutral authentication capsules, isolation, and reviewed official-CLI requests",
+      "components": ["automexia-devops", "automexia-extension-runtime", "automexia-ui-model", "tools/ci"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#provider-authentication-framework-current-source-boundary"],
+        "reference": ["docs/CONNECTION-HUB.md#d60-provider-neutral-capsule-and-authentication-framework", "docs/TESTING.md#m7-provider-neutral-authentication-and-capsule-isolation"],
+        "explanation": ["docs/ARCHITECTURE.md#m7-provider-neutral-authentication-capsule-boundary", "docs/adr/0020-hybrid-build-wrap-adopt-boundary.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_hub.rs"], "rationale": "All 19 states expose textual status and recovery alongside semantic UI data; provider-specific controls and controlled native screen readers remain D6.1-D6.5 evidence."},
+        "correctness": {"level": "pr", "evidence": ["automexia-devops/src/connections/provider_auth.rs", "automexia-devops/tests/provider_auth_m7.rs", "automexia-extension-runtime/src/lib.rs", "tools/ci/check_provider_auth_m7.py"]},
+        "security": {"level": "nightly", "evidence": ["automexia-devops/src/connections/provider_auth.rs", "automexia-devops/tests/provider_auth_m7.rs", "tools/ci/check_provider_auth_m7.py", "tools/ci/test_provider_auth_m7.py", "fuzz/fuzz_targets/connection_planning.rs", ".github/workflows/nightly.yml#fuzz"], "rationale": "Exact allow-once review, strict ingress, generation/session isolation, global-mutation denial, and secret canaries pass; the framework has no process, network, filesystem, browser, credential, provider-write, PTY, or renderer authority."},
+        "performance": {"level": "controlled", "evidence": ["automexia-devops/benches/connection_planning.rs", "docs/TESTING.md#m7-provider-neutral-authentication-and-capsule-isolation", ".github/workflows/nightly.yml#benchmarks-controlled"], "rationale": "A local 64-capsule pure-model target runs in microseconds; named-hardware longitudinal and real-provider latency remain controlled/external evidence."},
+        "resource_lifetime": {"level": "pr", "evidence": ["automexia-devops/src/connections/provider_auth.rs", "automexia-devops/tests/provider_auth_m7.rs"], "rationale": "The store is capped at 64 capsules and 16 repeated maximum-capacity bind/auth/shutdown cycles release all public session state; no process, thread, socket, listener, file, PTY, credential, or GPU resource is owned."},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "M7 stores public observations in memory only and creates no Automexia provider-auth, token-cache, browser, credential, or provider-configuration file."},
+        "resilience": {"level": "pr", "evidence": ["automexia-devops/src/connections/provider_auth.rs", "automexia-devops/src/connections/state.rs", "automexia-devops/tests/provider_auth_m7.rs", "automexia-extension-runtime/src/lib.rs"], "rationale": "Refresh, browser/device/MFA waits, offline, expiry, cancellation, revocation, disable/uninstall, rebind, stale generation, and shutdown are deterministic and last-known-good aware."},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "tests/fixtures/connection-hub/provider-observations/all-auth-states-v1.json"], "rationale": "Renderer-neutral labels and actions cover every state without activating a new product surface; native pixels and provider controls remain later evidence."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["automexia-devops/tests/provider_auth_m7.rs", "automexia-extension-runtime/src/lib.rs", "automexia-ui-model/tests/connection_hub.rs"], "rationale": "Focused pure-model tests and the Criterion target ran locally on Windows x86_64; no provider CLI or network ran."},
+        "linux": {"level": "pr", "evidence": ["automexia-devops/tests/provider_auth_m7.rs", ".github/workflows/ci.yml#native"], "rationale": "The contract is platform-neutral and CI owns Linux execution, but this M7 run did not execute natively on Linux."},
+        "macos": {"level": "pr", "evidence": ["automexia-devops/tests/provider_auth_m7.rs", ".github/workflows/ci.yml#native"], "rationale": "The contract is platform-neutral and CI owns macOS execution, but this M7 run did not execute natively on macOS."}
+      }
+    },
+    {
       "id": "direct-openssh-m3-review",
       "title": "Nonactivated reviewed OpenSSH routes, typed tunnels, full trust evidence, lifecycle, receipts, and guarded PTY route",
       "components": ["apps/automexia-terminal", "automexia-devops", "extensions/devops-ssh", "automexia-ui-model", "teletypewriter"],

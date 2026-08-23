@@ -440,6 +440,59 @@ fonts, escape sequences, hit targets, or unbounded text. Provider-specific
 color mapping leaves the renderer during the v0.5 adapter migration; semantic
 roles remain stable and core/theme policy chooses the final accessible color.
 
+### M7 provider-neutral authentication capsule boundary
+
+M7 implements the accepted [hybrid build/wrap/adopt decision](adr/0020-hybrid-build-wrap-adopt-boundary.md)
+without adding a provider SDK, browser server, credential store, launcher, or
+persistence owner. `automexia-devops::connections::provider_auth` is the
+single pure owner of provider-context/capsule validation, public authentication
+observation, exact operation/isolation/browser policy, visible-review digest,
+recovery, receipt/audit redaction, and bounded session lifecycle.
+`EnvironmentCapsuleTemplate` remains the existing connection-level owner and
+now embeds validated public provider contexts; the extension runtime treats any
+provider-context change as a rebind requiring a fresh session.
+
+Ingress is strict and bounded: 16 MiB per public document, 64 capsules, 16
+providers per capsule, 32 public scope fields, 16 browser origins, eight
+capability requests, 128 exact arguments, 16 public environment names, five
+minutes per requested operation, and seven days per freshness window. IDs,
+public text, origins, IP-literal loopback callbacks, opaque references,
+timestamps, context/provider agreement, and BLAKE3 review digests are validated.
+Control and bidirectional format characters, duplicate/unknown fields, secret
+flags, malformed bracketed IPv6 authorities, capabilities outside the exact
+process and applicable network scope, and global provider-context mutation fail
+closed. Publication validates a complete candidate snapshot and accepts only
+the capsule-pinned configuration reference, provider, and risk classification;
+a rejected result leaves the current operation available for cancellation.
+
+`ProviderAuthCapsuleStore` owns public observations in memory only. Every
+lookup and transition binds capsule ID, session, revision, provider, and
+generation. Rebind cancels old operations before installing the fresh capsule;
+late results and sibling reads are rejected. Refresh, authentication,
+MFA/browser/device waits, ready, expiry, offline, denial, unsupported,
+cancellation, stale/error, revocation, provider disable/uninstall, and shutdown
+are explicit. Last-known-good public context survives degraded states but never
+becomes proof that provider credentials remain valid.
+
+An adapter may construct an official-CLI request only in D6.1-D6.5. M7 review
+shows and binds the operation/session, ordered arguments, exact capability
+requests, isolation, browser flow/origins/callback, and risk. Authorization
+requires exact current `AllowOnce` decisions for the reviewed executable,
+operation, session, capsule revision, process, and applicable network resource.
+The approved value exposes only typed executable/argument access to the existing
+D3 runner seam. M7 cannot spawn, connect, listen for callbacks, read/write a
+provider file, acquire credentials, touch a token/certificate cache, own a PTY,
+or render. The official CLI owns external browser/device/system-broker/MFA
+behavior and closes any callback listener it creates.
+
+Passive DevOps status now reads only bounded public local files and supplied
+session metadata. It no longer starts WSL `sh -c` or provider CLIs. Hub and
+palette projections consume cached records and expose text/icon/color recovery
+states without performing refresh work on startup, input, PTY, resize, or
+renderer paths. Provider-specific parsing, exact argv construction, product
+controls, real-tool lifecycle, and native accessibility remain independent
+D6.1-D6.5 owners.
+
 ### Capability and process-launch contract
 
 The v0.4 capability enum is descriptive and local-read-only in practice. The

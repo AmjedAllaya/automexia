@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "phase": "M7/D6.0",
+  "status": "implemented-framework-provider-adapters-separate",
+  "limits": {
+    "capsules": 64,
+    "provider_contexts_per_capsule": 16,
+    "scope_bindings_per_context": 32,
+    "browser_origins": 16,
+    "capability_requests": 8,
+    "arguments": 128,
+    "public_environment_names": 16,
+    "operation_timeout_ms": 300000,
+    "stale_after_ms": 604800000,
+    "document_bytes": 16777216,
+    "public_text_bytes": 4096
+  },
+  "authentication_states": [
+    "unknown",
+    "checking",
+    "available",
+    "refreshing",
+    "authenticating",
+    "mfa-required",
+    "mfa-pending",
+    "browser-pending",
+    "device-code-pending",
+    "ready",
+    "expired",
+    "locked",
+    "missing",
+    "offline",
+    "denied",
+    "unsupported",
+    "cancelled",
+    "stale",
+    "error"
+  ],
+  "isolation_strategies": [
+    "exact-arguments",
+    "scoped-environment",
+    "private-transient-config"
+  ],
+  "browser_flows": [
+    "none",
+    "external-browser",
+    "device-code",
+    "system-broker"
+  ],
+  "forbidden_managed_mutations": [
+    "az account set",
+    "gcloud config set",
+    "gcloud config configurations activate",
+    "gcloud init",
+    "kubectl config use-context",
+    "oc config use-context",
+    "aws configure set"
+  ],
+  "authorities": {
+    "process": false,
+    "network": false,
+    "browser": false,
+    "credential": false,
+    "token_cache": false,
+    "certificate": false,
+    "provider_config_write": false,
+    "pty": false,
+    "renderer": false
+  },
+  "secret_surfaces": [
+    "persistence",
+    "logs",
+    "diagnostics",
+    "snapshots",
+    "qa-bundles",
+    "clipboard",
+    "telemetry",
+    "ai"
+  ],
+  "source_files": [
+    "automexia-devops/src/connections/provider_auth.rs",
+    "automexia-devops/src/connections/model.rs",
+    "automexia-devops/src/connections/state.rs",
+    "automexia-devops/src/connections/validation.rs",
+    "automexia-extension-runtime/src/lib.rs",
+    "automexia-devops/src/context.rs",
+    "automexia-ui-model/src/connection_hub.rs"
+  ],
+  "test_files": [
+    "automexia-devops/tests/provider_auth_m7.rs",
+    "automexia-devops/tests/connection_state_matrix.rs",
+    "automexia-ui-model/tests/connection_hub.rs",
+    "tools/ci/test_provider_auth_m7.py"
+  ],
+  "fixture_files": [
+    "tests/fixtures/connection-hub/provider-observations/all-auth-states-v1.json"
+  ],
+  "fuzz_target": "fuzz/fuzz_targets/connection_planning.rs",
+  "benchmark": "automexia-devops/benches/connection_planning.rs",
+  "documents": [
+    "docs/user-guide/connection-hub-and-ssh.md",
+    "docs/CONNECTION-HUB.md",
+    "docs/ARCHITECTURE.md",
+    "docs/BUILD-WRAP-ADOPT-ARCHITECTURE.md",
+    "docs/FEATURES.md",
+    "docs/ROADMAP.md",
+    "docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md",
+    "docs/SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md",
+    "docs/PHASE-IMPLEMENTATION-AUDIT.md",
+    "docs/TESTING.md",
+    "docs/adr/0020-hybrid-build-wrap-adopt-boundary.md",
+    "SECURITY.md"
+  ]
+}

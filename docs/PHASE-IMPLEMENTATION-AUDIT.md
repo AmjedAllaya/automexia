@@ -92,7 +92,8 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | DevOps | D4 | **Fully implemented; read-only product adapter active** | **Partial** | Bounded OpenSSH inventory/persistence is connected only to D5.1 reviewed browsing; it retains no process/network/launch authority. |
 | SSH UX | D5.0-D5.2 | **Partial overall; D5.1 and nonactivated F5.1-F5.3 source complete locally** | **Partial/blocked** | Typed direct/config-jump/tunnel argv, loopback defaults, strong tunnel review, complete trust evidence, guarded lifecycle, receipts, reconnect, and compact tunnel states pass locally. Protected activation/attestation, actual status/SSH execution, forced cleanup, and controlled real native F5.4 evidence remain. |
 | Multi-environment | M6/F6 | **Partial overall; review-only source contracts complete locally** | **Blocked** | Schema-2 reviewed library editing/migration/transfer, exact dependent fingerprints, typed recipe lifecycle/no-hooks, narrow remote initialization, declarative restore, armed broadcast, semantic UI models, fuzz/mutation, and bounded benchmarks pass. Proposed ADR 0023 acceptance, product activation/execution, and controlled native/resource/accessibility evidence remain. |
-| Multi-cloud | D6.0-D6.5 | **Not implemented** | **Blocked** | Provider auth, capsules, transports, and provider slices are planned only. |
+| Multi-cloud | D6.0/M7 | **Fully implemented locally** | **Partial/external** | Strict provider-neutral schemas, immutable session capsules, 19-state lifecycle, exact allow-once review, isolation/redaction, passive-status migration, cached-only semantics, fuzz/mutation, 16×64 lifecycle, and a 64-capsule benchmark pass. No real provider CLI, cloud network, credential cache, browser/device flow, or Linux/macOS native provider evidence ran. |
+| Multi-cloud | D6.1-D6.5 | **Not implemented** | **Blocked** | AWS, Azure, Google Cloud, Kubernetes/OpenShift, Teleport, and OpenBao adapters, transports, product login UI, and controlled native/provider evidence remain independently gated. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
 | Productivity | CP1 | **Fully implemented** | **Partial** | Shell-native completion and bounded explicit refresh exist; hosted native evidence remains. |
@@ -125,7 +126,7 @@ executable ledgers above as follows:
 | Phase 0: v0.4 security/stability | S0, S1, S2 | **Source gates complete; assurance partial; enforcement not started.** |
 | Phase 1: provider-neutral APIs | D1, D2 | **Fully implemented at source boundary.** |
 | Phase 2: production first-party SSH | D0, D3, D4, D5.0-D5.2 | **Partial foundation only; production SSH not implemented.** |
-| Phase 3: provider auth/capsules | D6.0-D6.4 | **Not implemented.** |
+| Phase 3: provider auth/capsules | D6.0-D6.4 | **Partially implemented overall: D6.0 is fully implemented locally; D6.1-D6.4 are not implemented.** |
 | Phase 4: lazy inventory/infrastructure/enterprise adapters | Later D6/D6.5 work | **Not implemented.** |
 | Phase 5: third-party ecosystem/AI | D7 and CP6 | **Not implemented and deferred.** |
 
@@ -664,18 +665,46 @@ evidence remain. M6 activation stays false and CP3.3 local workspace tasks gain
 no remote/provider authority.
 ### D6.0-D6.5 — providers and multi-cloud
 
-**Not implemented.**
+**Partially implemented overall: D6.0/M7 is fully implemented locally; D6.1-D6.5 are not implemented.**
 
-1. D6.0 provider-neutral capsules and auth state machine.
-2. D6.1 AWS IAM Identity Center/STS, profiles, SSM, and EKS.
-3. D6.2 Azure Entra/MFA/workload identity, subscriptions, Bastion, and AKS.
-4. D6.3 Google configurations/federation, IAP/OS Login, and GKE.
-5. D6.4 Kubernetes/OpenShift trusted sources, exec allowlists, and contexts.
-6. D6.5 independently enabled Teleport, then reviewed OpenBao signing.
+D6.0 now owns one authority-free provider-neutral source boundary:
 
-Each needs independent grants/cache/cancellation/revocation, exact CLI argv,
-offline/expired/denied states, redaction, native tests, and multi-pane
-isolation. Direct SDK inventory is later, explicit, lazy authority.
+- `provider_auth.rs` freezes strict bounded context, capsule, observation,
+  exact operation/isolation/browser policy, review, receipt, and audit records;
+  public JSON ingress rejects unknown fields, hostile values, malformed
+  semantics, and documents above 16 MiB.
+- `ProviderAuthCapsuleStore` owns at most 64 public-only capsules and binds
+  every read/write to capsule ID, session, revision, provider, and generation.
+  Rebind cancels active work and stale publication fails closed.
+- The reducer and Hub model cover 19 states, truthful last-known-good context,
+  refresh/auth/browser/device/MFA waits, expiry/offline/denial/cancel/error, and
+  explicit recovery. Passive Hub/status paths cannot launch provider tools.
+- Exact official-CLI operation requests require current visible `AllowOnce`
+  process and applicable network decisions. The M7 module has no process,
+  network, filesystem, browser, credential, token-cache, certificate, PTY,
+  renderer, or provider-config-write authority.
+- Global CLI context mutations and secret-bearing flags fail closed. Official
+  CLIs remain the owners of browser/device/WAM/MFA, tokens, certificates, and
+  caches; M7 stores only bounded public observations in memory.
+- Twelve focused tests, six policy mutation cases, the registered fuzz entry,
+  16 repeated maximum 64-capsule lifecycles, and a Windows x86_64 Criterion run
+  at 94.317–97.215 µs provide local source evidence. The benchmark is not a
+  controlled release ratchet.
+
+The remaining provider slices are still not implemented:
+
+1. D6.1 AWS IAM Identity Center/STS, profiles, SSM, and EKS.
+2. D6.2 Azure Entra/MFA/workload identity, subscriptions, Bastion, and AKS.
+3. D6.3 Google configurations/federation, IAP/OS Login, and GKE.
+4. D6.4 Kubernetes/OpenShift trusted sources, exec allowlists, and contexts.
+5. D6.5 independently enabled Teleport, then reviewed OpenBao signing.
+
+Each adapter still needs independent operation construction, grants, output
+parsing, cache/cancellation/revocation, exact CLI argv, offline/expired/denied
+behavior, redaction, product UI, controlled real-tool native tests, and
+multi-pane isolation. Direct SDK inventory remains a later, explicit, lazy
+authority. This M7 run launched no provider CLI, browser/device flow, cloud
+network, or credential cache and did not execute natively on Linux or macOS.
 
 ### D7 — public ecosystem, direct APIs, and AI
 
@@ -992,7 +1021,7 @@ Planned work, with no shipped-command claim:
 | Identity references, agent/certificate/hardware public state, known-host explanation, routes/jumps/proxies/tunnels | D5.2 | M4 references/status/trust and M5 exact local/remote/dynamic tunnels, loopback defaults, strong review, and lifecycle are fully implemented locally and nonactivated; actual status execution, broader proxies, protected activation, and real F5.4 native evidence remain |
 | Quick Actions, aliases, lifecycle hooks, reviewed multi-target execution | CP2.2-CP4/D5E | CP2/CP3 actions are local/insert-only; M6 typed recipe lifecycle and armed broadcast review are source-complete, but multi-target execution remains disabled |
 | Declarative workspace persistence/restoration and visibly armed broadcast | M6/F6 | Review-only schema-2 persistence, restore, armed broadcast, semantic projection, and bounded tests are complete locally; product controller/renderer/execution and native evidence remain |
-| Per-pane multi-cloud/context commands and typed import/reconcile adapters | D6.0-D6.5/CP4 | Not implemented |
+| Per-pane multi-cloud/context commands and typed import/reconcile adapters | D6.0-D6.5/CP4 | Partially implemented: D6.0 immutable provider-context/capsule/auth lifecycle and review contracts are complete locally; all provider commands, import/reconcile adapters, product flows, and CP4 remain not implemented |
 | Structured files/SFTP, bounded logs/bookmarks, team state/policy, shared sessions | D7 protected slices | Not implemented |
 | Mosh, Telnet, serial, public ecosystem packs, optional editor popup, AI explain/suggest | D7/CP5-CP6 | Not implemented/deferred |
 
@@ -1205,7 +1234,7 @@ At this audited baseline, the focused order is:
 
 4. Complete connection profiles, typed recipes, and declarative remote
    workspaces before adding provider execution.
-5. Implement D6.0 and each D6.1-D6.5 provider independently through official
+5. Preserve the complete local D6.0 boundary and implement each D6.1-D6.5 provider independently through official
    CLI/auth authorities and isolated immutable capsules.
 6. Implement CP4 only after D3/D5/D6 expose bounded cached public context.
 7. Preserve the fully completed CP5.0 retain-CP1 decision. CP5.1-CP5.6 remain

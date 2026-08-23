@@ -1034,14 +1034,45 @@ target. This exit does not activate D5.2.
 Exit remains unavailable as a shipped connection until the protected and native
 D5 matrix passes on Windows, macOS, Linux, and separately gated WSL; disabled
 managed SSH and ordinary manual SSH must remain unchanged.
+
 ### D6.0 - provider-neutral capsule and authentication framework
 
-- Activate immutable provider capsules, auth observations/state transitions,
-  visible official CLI login, approved browser origins/callbacks, provider
-  isolation, and public status contributions.
+- [x] **Fully done locally** - `automexia-devops::connections::provider_auth`
+  owns strict bounded public context, immutable capsule, observation, operation,
+  isolation, browser-policy, review, recovery, receipt, and redacted-audit
+  contracts. The store admits at most 64 capsules and 16 provider contexts per
+  capsule; public documents are capped at 16 MiB.
+- [x] **Fully done locally** - Capsule ID/session/revision/provider/generation
+  are required on every cached read and mutation. A provider-context rebind
+  requires a fresh session, cancels old work, and rejects stale or sibling
+  publication.
+- [x] **Fully done locally** - The Hub projection names available, refreshing,
+  MFA/browser/device waits, ready, expired, offline, denied, unsupported,
+  cancelled, stale, and error states with textual recovery actions. It consumes
+  only caller-supplied cached public observations and performs no process,
+  network, filesystem, credential, or browser work.
+- [x] **Fully done locally** - Official-CLI requests can pass only after exact
+  visible review of operation/session, ordered arguments, exact process/network
+  capabilities, isolation, browser policy/callback, and risk, plus current
+  `AllowOnce` decisions bound to executable, operation, session, capsule
+  revision, process, and applicable network scope. M7 provides no executable
+  adapter and cannot itself start that request.
+- [x] **Fully done locally** - Exact-argument, scoped-public-environment, and
+  private-transient-config isolation are frozen. Global context writers and
+  secret CLI flags fail closed.
+- [x] **Fully done locally** - Refresh, authentication waits, last-known-good,
+  expiry, offline, cancellation, revocation, disable/uninstall, rebind, and
+  shutdown are deterministic and bounded. Initial freshness is preserved, and
+  publication validates the complete candidate before atomically accepting only
+  the capsule-pinned configuration/provider/risk tuple.
 
-Exit: two simultaneous providers cannot cross-contaminate environment, caches,
-operations, status, logs, or UI; all cancellation/offline/expiry states pass.
+Exit is met at the local provider-neutral model boundary by the M7 contract,
+twelve focused tests, mutation/fuzz registration, repeated maximum-capacity
+lifecycle coverage, and a 64-capsule benchmark. No real AWS/Azure/Google Cloud/
+Kubernetes/OpenShift/Teleport/OpenBao CLI, browser/device flow, network,
+credential cache, or provider configuration ran. Provider-specific operation
+builders, product login controls, real-tool native tests, and controlled
+accessibility evidence remain D6.1-D6.5 work.
 
 ### D6.1-D6.5 - provider slices
 

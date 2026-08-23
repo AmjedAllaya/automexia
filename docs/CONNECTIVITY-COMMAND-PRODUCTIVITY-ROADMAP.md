@@ -74,7 +74,7 @@ documentation, feature assurance, and a change fragment.
 | Read-only Connection Hub | D5.1 | Fully done locally; external evidence partial | App-scoped joined runtime, exact reviewed native selection, bounded modal/search/filter/grouping, CAS favorite/tag diffs, read-only recent/library data, disabled authority, tests, benchmark, and release-build evidence | Native macOS/Linux picker/permission plus controlled Narrator/NVDA, VoiceOver, and Orca evidence |
 | Managed OpenSSH | D5.2 | Partially done overall; F5.1-F5.3 source-complete nonactivated | Exact direct/routed/tunnel argv, typed endpoints, loopback defaults, strong tunnel review, full trust evidence, safe copy, guarded lifecycle, receipts, reconnect, and compact states pass locally | Protected activation/attestation, actual status execution, real OpenSSH/forced cleanup, native resources/accessibility, and F5.4 manifests |
 | Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, approval fingerprints, and private transactional Connection Library persistence/redacted transfer are implemented | Product editor, remote workspace lifecycle, and separately gated execution remain |
-| Multi-cloud framework and providers | D6.0-D6.5 | Not done | Provider-neutral D1/D2 types only | Auth state machine, exact official CLI adapters, isolation, provider-by-provider gates |
+| Multi-cloud framework and providers | D6.0-D6.5 | Partially done overall: D6.0 fully done locally; D6.1-D6.5 not done | Bounded provider-auth capsules, 19-state lifecycle, exact review/isolation, tests, fuzz/mutation, and benchmark | Exact provider adapters, product login controls, real official-CLI/native evidence, provider-by-provider gates |
 | Native completion | CP1 | Fully done | shell integration, xtask completion manager, CP1 contract/tests | Hosted three-OS and longitudinal release evidence |
 | Quick Actions and persistence | CP2.0-CP2.2 | Fully done | automexia-devops model, application store/worker/UI/CLI tests | Hosted shell insertion, controlled accessibility, longitudinal evidence |
 | Aliases and DevOps packs | CP3.0-CP3.2 | Fully done | compiler, private generations, shell activation, packs, fuzz/bench/contracts | Hosted native and controlled baseline evidence |
@@ -549,23 +549,31 @@ custom code and every M6 execution path remain disabled.
 
 ## F7 - implement D6.0 provider-neutral auth and capsule orchestration
 
-Status: Not done.
+Status: **Fully done locally** at the authority-free D6.0 framework boundary;
+D6.1-D6.5 adapters, product controls, and real official-CLI/native evidence are
+not done or external.
 
-- [ ] Freeze public provider identity, auth observation, capsule template,
-  freshness, provenance, risk, operation, recovery, and receipt schemas.
-- [ ] Start visible official CLI login only after exact capability review.
-- [ ] Keep browser/device/MFA/token caches owned by official tools and expose
-  public state only.
-- [ ] Pin provider context per new session without mutating another pane's
-  global account, subscription, project, configuration, kube context, or
-  namespace.
-- [ ] Add explicit refresh, last-known-good cache, expiry/offline/denied states,
-  cancellation, revocation, and cross-provider isolation.
-- [ ] Add fake CLI contracts and canary tests proving tokens, credentials,
-  environments, private paths, and raw auth output never reach persistence,
-  logs, UI snapshots, QA bundles, clipboard, telemetry, or AI.
+- [x] **Fully done locally:** strict bounded public provider identity, auth
+  observation, immutable capsule, freshness, provenance, risk, operation,
+  isolation/browser policy, recovery, receipt, and redacted audit schemas.
+- [x] **Fully done locally:** later official-CLI operations require exact
+  visible review plus current process/network `AllowOnce` decisions. M7 owns no
+  adapter, login control, process, network, browser callback, or credential.
+- [x] **Fully done locally:** browser/device/system-broker/MFA and token/cache
+  custody remains with official tools; M7 exposes bounded public state only.
+- [x] **Fully done locally:** each fresh session pins provider configuration and
+  risk without mutating another pane's account, subscription, project,
+  configuration, kube context, namespace, or other global provider state.
+- [x] **Fully done locally:** explicit refresh/authentication, last-known-good,
+  expiry/offline/denied, cancellation, revocation, disable/uninstall, rebind,
+  shutdown, generation rejection, and cross-provider isolation are bounded.
+- [x] **Fully done locally:** fake exact-argv/capability contracts, strict
+  ingress, redaction canaries, 16×64 lifecycle coverage, fuzz/mutation, and the
+  64-capsule benchmark prove the local boundary.
 
-Exit: two simultaneous providers cannot contaminate any state or authority.
+Exit is met locally for two simultaneous provider-neutral contexts without
+cross-session state or authority. Provider-specific execution and native login
+evidence begin only in independently gated D6.1-D6.5.
 
 ## F8 - implement D6.1 AWS slice
 

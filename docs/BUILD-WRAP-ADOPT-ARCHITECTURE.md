@@ -265,6 +265,24 @@ subscription, project, context, and namespace selection; public expiry/status;
 explicit refresh; last-known-good snapshots; provenance/freshness/risk labels;
 session isolation; and bounded provider-neutral inventory records.
 
+M7 now implements that core boundary without a new dependency: strict public
+context/capsule/observation/operation/receipt/audit schemas, 19 authentication
+states, exact one-time capability review, external-browser/device/system-broker
+metadata, three isolation strategies, generation-safe rebind/cancel/shutdown,
+and memory-only public status. It deliberately adopts no OAuth library, cloud
+SDK, embedded browser, credential store, or provider configuration writer.
+Official CLIs remain the authentication/custody authorities, while D6.1-D6.5
+extensions will contribute exact provider-specific operations later.
+
+The isolation policy rejects Automexia-managed global selection such as
+`az account set`, `gcloud config set`/configuration activation,
+`kubectl`/`oc config use-context`, kubeconfig setters, and
+`aws configure set`. A later adapter must use reviewed exact arguments,
+bounded public scoped environment names, or an approved private transient
+configuration reference. Browser metadata accepts HTTPS origins and exact HTTPS
+or IP-literal loopback callbacks only; the official CLI, not Automexia core,
+owns and closes any listener.
+
 **Extensions build:** version-aware JSON/config parsers and normalization.
 Kubeconfig credential `exec` plugins must never run during passive indexing;
 launch uses an explicit deny/allow/allowlist decision.
@@ -488,8 +506,13 @@ A feature review must answer all of these before implementation:
   [AWS Session Manager plugin](https://github.com/aws/session-manager-plugin),
   [Azure CLI authentication](https://learn.microsoft.com/en-us/cli/azure/authenticate-azure-cli),
   [Azure Bastion CLI](https://learn.microsoft.com/en-us/cli/azure/network/bastion),
+  [Google Cloud CLI configurations](https://cloud.google.com/sdk/docs/configurations),
   [GCP IAP SSH](https://docs.cloud.google.com/compute/docs/connect/ssh-using-iap),
+  [Kubernetes kubeconfig security](https://kubernetes.io/docs/concepts/configuration/organize-cluster-access-kubeconfig/),
+  [`kubectl config use-context`](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_config/kubectl_config_use-context/),
   and [Kubernetes credential-plugin policy](https://kubernetes.io/docs/reference/kubectl/kuberc/)
+- Native-app authentication:
+  [OAuth 2.0 for native apps (RFC 8252)](https://www.rfc-editor.org/rfc/rfc8252)
 - Optional provider SDK candidates:
   [AWS SDK for Rust](https://docs.aws.amazon.com/sdk-for-rust/),
   [Google Cloud Rust libraries](https://docs.cloud.google.com/rust/docs/reference),
