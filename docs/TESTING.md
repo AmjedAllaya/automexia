@@ -2166,6 +2166,35 @@ No real AWS/Azure/Google Cloud/Kubernetes/OpenShift/Teleport/OpenBao CLI,
 browser/device/MFA flow, cloud network, credential cache, product login UI,
 screen reader, or Linux/macOS native runtime was exercised. Those exact
 provider-specific and native gates belong to D6.1-D6.5.
+## M8 AWS adapter source contracts
+
+M8 is source-complete locally and deliberately nonactivated. Run its focused
+contract with:
+
+```text
+cargo test -p automexia-devops-aws --locked
+cargo clippy -p automexia-devops-aws --all-targets --all-features --locked -- -D warnings
+cargo fmt --all -- --check
+```
+
+Nine Windows x86_64 tests pass. They prove the independent manifest is disabled
+and requests only exact process/network capabilities; exact granted config is
+capped at 1 MiB/128 profiles; credential-like values never enter Debug or JSON;
+duplicate, hostile, invalid, and oversized data fails closed; PKCE/device and
+STS operations bind exact capsule/session/revision/profile/region/browser/
+network/capability data; the 64 KiB caller identity decoder is strict and
+public-only; missing/expired/MFA/cancel/offline/denied/unsupported/error states
+remain non-ready; AWS CLI 2.22+ and Session Manager plugin 1.1.17+ floors are
+explicit; SSM review names plugin, PTY, tree cleanup, target and risk; and EKS is
+`--dry-run` only without a user kubeconfig path.
+
+No AWS CLI or plugin executable, browser/device/MFA flow, AWS network, STS call,
+credential cache, SSM process tree, EKS cluster, product provider UI, screen
+reader, packaging, signing, Linux, or macOS native fixture ran. D3 protected
+activation/attestation, M11 private kubeconfig ingestion, forced cleanup/resource
+checks, and controlled real-provider/native/accessibility evidence remain
+external gates.
+
 ## CP3.3 native imports and trusted workspace task bridges
 
 CP3.3 is fully done at the local source boundary. Run the focused evidence with:

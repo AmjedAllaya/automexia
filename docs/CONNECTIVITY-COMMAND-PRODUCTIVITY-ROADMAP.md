@@ -74,7 +74,7 @@ documentation, feature assurance, and a change fragment.
 | Read-only Connection Hub | D5.1 | Fully done locally; external evidence partial | App-scoped joined runtime, exact reviewed native selection, bounded modal/search/filter/grouping, CAS favorite/tag diffs, read-only recent/library data, disabled authority, tests, benchmark, and release-build evidence | Native macOS/Linux picker/permission plus controlled Narrator/NVDA, VoiceOver, and Orca evidence |
 | Managed OpenSSH | D5.2 | Partially done overall; F5.1-F5.3 source-complete nonactivated | Exact direct/routed/tunnel argv, typed endpoints, loopback defaults, strong tunnel review, full trust evidence, safe copy, guarded lifecycle, receipts, reconnect, and compact states pass locally | Protected activation/attestation, actual status execution, real OpenSSH/forced cleanup, native resources/accessibility, and F5.4 manifests |
 | Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, approval fingerprints, and private transactional Connection Library persistence/redacted transfer are implemented | Product editor, remote workspace lifecycle, and separately gated execution remain |
-| Multi-cloud framework and providers | D6.0-D6.5 | Partially done overall: D6.0 fully done locally; D6.1-D6.5 not done | Bounded provider-auth capsules, 19-state lifecycle, exact review/isolation, tests, fuzz/mutation, and benchmark | Exact provider adapters, product login controls, real official-CLI/native evidence, provider-by-provider gates |
+| Multi-cloud framework and providers | D6.0-D6.5 | Partially done overall: D6.0 fully done locally; D6.1 source-complete nonactivated; D6.2-D6.5 not done | Provider-neutral capsules/review plus independent AWS public-profile, exact SSO/STS/SSM/EKS-dry-run source contracts and tests | D3 product activation, M11 EKS ingestion, remaining adapters, and real official-CLI/native evidence |
 | Native completion | CP1 | Fully done | shell integration, xtask completion manager, CP1 contract/tests | Hosted three-OS and longitudinal release evidence |
 | Quick Actions and persistence | CP2.0-CP2.2 | Fully done | automexia-devops model, application store/worker/UI/CLI tests | Hosted shell insertion, controlled accessibility, longitudinal evidence |
 | Aliases and DevOps packs | CP3.0-CP3.2 | Fully done | compiler, private generations, shell activation, packs, fuzz/bench/contracts | Hosted native and controlled baseline evidence |
@@ -577,17 +577,27 @@ evidence begin only in independently gated D6.1-D6.5.
 
 ## F8 - implement D6.1 AWS slice
 
-Status: Not done.
+Status: **Partially done overall; source-complete locally and nonactivated.**
 
-- [ ] Parse bounded named profiles and public region/account/role metadata.
-- [ ] Use visible AWS CLI IAM Identity Center login and STS identity checks;
-  never parse or persist cached credentials.
-- [ ] Pin profile, region, account, role, expiry, and provenance in the capsule.
-- [ ] Add exact official-CLI SSM Session Manager and EKS context flows.
-- [ ] Test PKCE/device flow selection, missing/expired/denied/MFA/cancelled/
-  offline states, profile precedence, production risk, isolation, and uninstall.
+- [x] **Fully done locally:** independent disabled extension; bounded exact-byte
+  named-profile parser; public region/account/role/source fields only; duplicate,
+  hostile, invalid, and oversized input denial; no credential/cache retention.
+- [x] **Fully done locally:** exact M7 IAM Identity Center PKCE/device login and
+  regional STS identity operations, strict public STS decoder, capsule-pinned
+  profile/region/account/role/provenance/freshness/risk, and truthful failures.
+- [x] **Fully done locally:** exact nonactivated SSM plan names AWS CLI, Session
+  Manager plugin, target, risk, PTY and process-tree cleanup; EKS is `--dry-run`
+  only for M11 private transient ingestion and never names user kubeconfig.
+- [x] **Fully done locally:** ten unit/security/argv/redaction/version/isolation/
+  disable tests, locked focused test, warning-denied Clippy, and formatting pass
+  on Windows x86_64.
+- [ ] **External/blocked:** D3 product review/runner activation and executable
+  attestation, M11 EKS ingestion, real IAM Identity Center/STS/SSM/EKS fixtures,
+  three native OSes, forced cleanup/resources, accessibility, packaging, and
+  release evidence.
 
-Exit: AWS is independently enabled, revocable, tested, and releasable.
+Exit is complete only at the independent source boundary. No AWS process,
+network, browser/device flow, credential cache, SSM session, or EKS cluster ran.
 
 ## F9 - implement D6.2 Azure slice
 

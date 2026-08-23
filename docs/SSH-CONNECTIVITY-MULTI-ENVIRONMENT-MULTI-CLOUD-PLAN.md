@@ -127,7 +127,8 @@ native/release claim.
 | F5 managed OpenSSH | Partially done overall; F5.1-F5.3 source-complete nonactivated | Exact direct/routed/tunnel argv; typed host/user/port/endpoints; loopback defaults; strong per-use tunnel review; full trust evidence; guarded lifecycle; receipts; reconnect; and compact tunnel state pass locally | Protected activation/attestation, actual status execution, real OpenSSH/forced cleanup, native resources/accessibility, and validated F5.4 real manifests remain. |
 | F6 recipes and remote declarative workspaces | Partially done; review-only source contracts complete locally | Library schema 2/editor/migration previews, exact dependent fingerprints, pure recipe review/lifecycle, typed remote initialization, declarative workspaces/restore, armed broadcast, semantic projections, fuzz, mutation, and benchmarks pass | Proposed ADR 0023 acceptance, product editor/controller/renderer wiring, managed execution adapters, and controlled native/resource/accessibility evidence remain. |
 | D6.0/M7 provider-neutral authentication and capsule orchestration | Fully done locally | Bounded strict schemas, immutable provider contexts, 19-state lifecycle, generation/session isolation, exact allow-once review, redacted receipts/audits, passive-status migration, fuzz/mutation/benchmark evidence | Provider-specific operation builders and real official-CLI/native evidence belong to D6.1-D6.5 and remain not done/external. |
-| AWS, Azure, Google Cloud, Kubernetes/OpenShift, Teleport, OpenBao | Not done | No corresponding extension directory or application adapter exists; there are only typed model variants and insert-only Quick Action packs | Implement and release each adapter independently after F4/F7 prerequisites. |
+| D6.1/M8 AWS | Partially done overall; source-complete nonactivated | Independent `automexia-devops-aws`; bounded public profiles; exact SSO/STS/SSM/EKS dry-run contracts; 10 focused tests | D3 product activation/attestation, M11 EKS ingestion, and controlled real official-tool/native/resource/accessibility/release evidence remain. |
+| D6.2-D6.5 Azure, Google Cloud, Kubernetes/OpenShift, Teleport, OpenBao | Not done | Provider-neutral model variants only; OpenBao ADR 0024 is proposed and unaccepted | Implement every adapter independently; accept ADR 0024 before any OpenBao code. |
 | Provider-aware Quick Actions (CP4/F13) | Not done and blocked | CP2/CP3 typed/persistent/insert-only Quick Actions and static packs exist | Consume only F7+ cached public context; exact execution stays behind F4. |
 
 ### Important distinction: existing legacy DevOps status is not D6
@@ -751,27 +752,51 @@ independently gated D6.1-D6.5 slices.
 
 ### M8 — F8 AWS slice
 
-Status: Not done; depends on M7, with Kubernetes execution also depending on M11.
+Status: **Partially done overall; source-complete locally and nonactivated.**
+Kubernetes output ingestion still depends on M11, and real official-tool/native
+release evidence remains external.
 
-- [ ] Create an independently enabled AWS extension that parses only bounded
-  named profiles and public region/account/role hints from an exact user-granted
-  configuration source. Do not parse or persist SSO/token/credential cache data.
-- [ ] Implement visible AWS CLI IAM Identity Center login and a reviewed STS
-  identity observation through M2. Pin profile, region, public account/role,
-  expiry/freshness, provenance, and risk in the capsule.
-- [ ] Add an exact reviewed SSM Session Manager flow, including plugin/tool
-  identity, interactive PTY ownership, cancellation, child-tree cleanup, and
-  public target/risk review.
-- [ ] Treat EKS as an intent provider until M11 owns trusted kubeconfig/exec
-  semantics. Never invoke a default-merging `update-kubeconfig` against the
-  user’s config; require a reviewed non-mutating/isolated workflow.
-- [ ] Test profile precedence, PKCE/device selection, missing/expired/denied/MFA/
-  cancelled/offline states, production risk, session isolation, redaction,
-  revocation, disable/uninstall, fake CLI argv, and native optional tools.
+- [x] **Fully done locally** - `automexia-devops-aws` is an independent,
+  disabled-by-default extension with exact process/network capabilities. Its
+  1 MiB parser reads only named profile plus public region/account/role/source
+  hints from supplied granted bytes. Credential, token, `credential_process`,
+  web-identity file, SSO cache, unknown, and endpoint fields are never retained;
+  duplicate profiles, hostile text, invalid UTF-8, oversize input, and more than
+  128 profiles fail closed.
+- [x] **Fully done locally** - Exact M7 operations cover AWS CLI IAM Identity
+  Center PKCE and deliberate device-code login plus regional STS
+  `get-caller-identity`. Profile, region, account/role, provenance, freshness,
+  risk, configuration reference, browser origin, executable, ordered arguments,
+  network host, session, capsule, revision, timeout, and allow-once capabilities
+  are bound. The strict 64 KiB STS decoder accepts only public caller identity
+  and never serializes credential material.
+- [x] **Fully done locally** - The exact SSM plan names `aws`,
+  `session-manager-plugin`, target, profile, region, production risk,
+  interactive PTY ownership, process-tree cancellation, and the corresponding
+  provider-neutral transport. Source execution remains false so it cannot
+  bypass D3 protected activation, actual executable attestation, or application
+  cleanup ownership.
+- [x] **Fully done locally** - EKS produces only a reviewed `--dry-run` intent
+  for M11 private transient ingestion. It never names or merges the user
+  kubeconfig and never changes current context.
+- [x] **Fully done locally** - Nine deterministic tests cover public profile
+  extraction, credential canaries, duplicate/oversize rejection, PKCE/device
+  selection, exact STS args/capabilities, strict output, explicit AWS CLI 2.22+
+  PKCE and Session Manager plugin 1.1.17+ floors, truthful failure states,
+  production risk, capsule isolation, SSM plugin/PTY/tree cleanup, EKS no-write,
+  redacted debug/JSON, and disabled least-privilege manifest. Locked tests,
+  warning-denied Clippy, and formatting pass on Windows x86_64.
+- [ ] **External/blocked** - Wire the product provider controller/review UI to
+  the protected application runner after D3 activation, bind native executable
+  identity and real descendant cleanup, ingest EKS output through completed M11,
+  and run controlled IAM Identity Center PKCE/device/MFA, STS, SSM, EKS,
+  offline/denied/cancel/revoke/uninstall, Windows/macOS/Linux, resource,
+  accessibility, packaging, signing, and release fixtures.
 
-Exit: AWS can be enabled/revoked/released independently and uses no ambient
-credential or global-profile mutation.
-
+Exit is met for the capability-free AWS source contract and independent package,
+not for product activation or release. No AWS CLI, browser/device login, AWS
+network, credential cache, Session Manager session, or EKS cluster ran in this
+slice.
 ### M9 — F9 Azure slice
 
 Status: Not done; depends on M7, with AKS execution also depending on M11.

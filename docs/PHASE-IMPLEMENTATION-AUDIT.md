@@ -93,7 +93,8 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | SSH UX | D5.0-D5.2 | **Partial overall; D5.1 and nonactivated F5.1-F5.3 source complete locally** | **Partial/blocked** | Typed direct/config-jump/tunnel argv, loopback defaults, strong tunnel review, complete trust evidence, guarded lifecycle, receipts, reconnect, and compact tunnel states pass locally. Protected activation/attestation, actual status/SSH execution, forced cleanup, and controlled real native F5.4 evidence remain. |
 | Multi-environment | M6/F6 | **Partial overall; review-only source contracts complete locally** | **Blocked** | Schema-2 reviewed library editing/migration/transfer, exact dependent fingerprints, typed recipe lifecycle/no-hooks, narrow remote initialization, declarative restore, armed broadcast, semantic UI models, fuzz/mutation, and bounded benchmarks pass. Proposed ADR 0023 acceptance, product activation/execution, and controlled native/resource/accessibility evidence remain. |
 | Multi-cloud | D6.0/M7 | **Fully implemented locally** | **Partial/external** | Strict provider-neutral schemas, immutable session capsules, 19-state lifecycle, exact allow-once review, isolation/redaction, passive-status migration, cached-only semantics, fuzz/mutation, 16×64 lifecycle, and a 64-capsule benchmark pass. No real provider CLI, cloud network, credential cache, browser/device flow, or Linux/macOS native provider evidence ran. |
-| Multi-cloud | D6.1-D6.5 | **Not implemented** | **Blocked** | AWS, Azure, Google Cloud, Kubernetes/OpenShift, Teleport, and OpenBao adapters, transports, product login UI, and controlled native/provider evidence remain independently gated. |
+| Multi-cloud | D6.1/M8 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded AWS profile parser plus exact SSO/STS/SSM/EKS-dry-run contracts and ten focused tests pass. D3 activation, M11 EKS ingestion, product UI, and controlled native/provider/resource/accessibility evidence remain. |
+| Multi-cloud | D6.2-D6.5 | **Not implemented** | **Blocked** | Azure, Google Cloud, Kubernetes/OpenShift, Teleport, and OpenBao adapters, product login UI, and controlled native/provider evidence remain independently gated; OpenBao additionally requires ADR 0024 acceptance. |
 | Ecosystem | D7 | **Not implemented; deferred** | **Blocked by design** | Public SDK/downloads, sandboxing, direct APIs, and AI execution wait for v0.6 gates. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
 | Productivity | CP1 | **Fully implemented** | **Partial** | Shell-native completion and bounded explicit refresh exist; hosted native evidence remains. |
@@ -126,7 +127,7 @@ executable ledgers above as follows:
 | Phase 0: v0.4 security/stability | S0, S1, S2 | **Source gates complete; assurance partial; enforcement not started.** |
 | Phase 1: provider-neutral APIs | D1, D2 | **Fully implemented at source boundary.** |
 | Phase 2: production first-party SSH | D0, D3, D4, D5.0-D5.2 | **Partial foundation only; production SSH not implemented.** |
-| Phase 3: provider auth/capsules | D6.0-D6.4 | **Partially implemented overall: D6.0 is fully implemented locally; D6.1-D6.4 are not implemented.** |
+| Phase 3: provider auth/capsules | D6.0-D6.4 | **Partially implemented overall: D6.0 is fully implemented locally; D6.1 is source-complete nonactivated; D6.2-D6.4 are not implemented.** |
 | Phase 4: lazy inventory/infrastructure/enterprise adapters | Later D6/D6.5 work | **Not implemented.** |
 | Phase 5: third-party ecosystem/AI | D7 and CP6 | **Not implemented and deferred.** |
 
@@ -665,7 +666,7 @@ evidence remain. M6 activation stays false and CP3.3 local workspace tasks gain
 no remote/provider authority.
 ### D6.0-D6.5 — providers and multi-cloud
 
-**Partially implemented overall: D6.0/M7 is fully implemented locally; D6.1-D6.5 are not implemented.**
+**Partially implemented overall: D6.0/M7 is fully implemented locally; D6.1/M8 is source-complete and nonactivated; D6.2-D6.5 are not implemented.**
 
 D6.0 now owns one authority-free provider-neutral source boundary:
 
@@ -691,20 +692,28 @@ D6.0 now owns one authority-free provider-neutral source boundary:
   at 94.317–97.215 µs provide local source evidence. The benchmark is not a
   controlled release ratchet.
 
+D6.1/M8 now has an independent disabled package. It parses at most 1 MiB and
+128 exact granted AWS profiles, retains only public region/account/role/source
+hints, constructs capsule-bound IAM Identity Center PKCE/device and regional STS
+operations, decodes only strict bounded public caller identity, names both AWS
+CLI and Session Manager plugin in a nonactivated PTY/tree-cleanup plan, and
+produces only EKS `--dry-run` output for later M11 ingestion. Nine focused tests
+plus locked warning-denied Clippy and formatting passed on Windows x86_64. No AWS
+process, network, login, SSM session, credential cache, or EKS cluster ran.
+
 The remaining provider slices are still not implemented:
 
-1. D6.1 AWS IAM Identity Center/STS, profiles, SSM, and EKS.
-2. D6.2 Azure Entra/MFA/workload identity, subscriptions, Bastion, and AKS.
-3. D6.3 Google configurations/federation, IAP/OS Login, and GKE.
-4. D6.4 Kubernetes/OpenShift trusted sources, exec allowlists, and contexts.
-5. D6.5 independently enabled Teleport, then reviewed OpenBao signing.
+1. D6.2 Azure Entra/MFA/workload identity, subscriptions, Bastion, and AKS.
+2. D6.3 Google configurations/federation, IAP/OS Login, and GKE.
+3. D6.4 Kubernetes/OpenShift trusted sources, exec allowlists, and contexts.
+4. D6.5 independently enabled Teleport, then OpenBao after proposed ADR 0024 is accepted.
 
-Each adapter still needs independent operation construction, grants, output
-parsing, cache/cancellation/revocation, exact CLI argv, offline/expired/denied
-behavior, redaction, product UI, controlled real-tool native tests, and
-multi-pane isolation. Direct SDK inventory remains a later, explicit, lazy
-authority. This M7 run launched no provider CLI, browser/device flow, cloud
-network, or credential cache and did not execute natively on Linux or macOS.
+D6.1 still needs D3 product activation/attestation, M11 EKS ingestion, product
+review UI, controlled real-tool native tests, cleanup/resource/accessibility,
+and release evidence. D6.2-D6.5 still need independent operation construction,
+grants, parsing, lifecycle, exact CLI argv, offline/expired/denied behavior,
+redaction, product UI, controlled real-tool native tests, and multi-pane
+isolation. Direct SDK inventory remains a later, explicit, lazy authority.
 
 ### D7 — public ecosystem, direct APIs, and AI
 

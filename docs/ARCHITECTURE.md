@@ -493,6 +493,35 @@ renderer paths. Provider-specific parsing, exact argv construction, product
 controls, real-tool lifecycle, and native accessibility remain independent
 D6.1-D6.5 owners.
 
+### M8 AWS adapter source boundary
+
+`extensions/devops-aws` is the independently disabled D6.1 owner. It depends on
+the provider-neutral M7 contracts and the dependency-free `configparser` parser;
+it contains no SDK, filesystem, process, network, PTY, cache, background task,
+or persistence owner. Supplied exact configuration bytes are capped at 1 MiB and
+128 profiles. Only profile name, region, account, role, source-profile, and SSO
+session references cross the boundary. Credential/cache/unknown values are
+ignored, while duplicate profiles, hostile formatting, invalid UTF-8, and
+oversized public fields fail closed.
+
+IAM Identity Center PKCE/device login and regional STS observation are exact M7
+operations. The configuration reference, capsule/session/revision, profile,
+region, provider, browser origin, executable, ordered argv, process/network
+capabilities, timeout, provenance, freshness, and risk are review-bound. STS
+output has a separate strict 64 KiB public-only decoder. AWS CLI 2.22.0 is the
+minimum recorded PKCE behavior and Session Manager plugin 1.1.17.0 is the
+minimum supported plugin floor; actual executable attestation and release
+compatibility remain the application/native gate.
+
+SSM is an immutable nonactivated plan that names both official tool identities,
+target, region/profile, production risk, interactive PTY, and process-tree
+cleanup. It cannot execute around the D3 runner. EKS emits `update-kubeconfig
+--dry-run` only; M11 must validate and publish the returned code-capable
+kubeconfig into an exact private transient source. The adapter never names,
+merges, or changes the user's kubeconfig/current context. Reverting or disabling
+the package removes only Automexia's AWS catalog authority and does not alter
+AWS CLI configuration, credentials, or sessions.
+
 ### Capability and process-launch contract
 
 The v0.4 capability enum is descriptive and local-read-only in practice. The

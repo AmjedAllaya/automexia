@@ -736,6 +736,31 @@
         "linux": {"level": "pr", "evidence": ["automexia-devops/tests/direct_openssh_review.rs", "automexia-ui-model/tests/direct_openssh_review.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral; this change did not execute on Linux and hosted native evidence remains required."},
         "macos": {"level": "pr", "evidence": ["automexia-devops/tests/direct_openssh_review.rs", "automexia-ui-model/tests/direct_openssh_review.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral; this change did not execute on macOS and hosted native evidence remains required."}
       }
+    },
+    {
+      "id": "provider-aws-m8-source",
+      "title": "Nonactivated bounded AWS official-CLI adapter contracts",
+      "components": ["extensions/devops-aws", "automexia-devops", "automexia-extension-api"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#provider-authentication-framework-current-source-boundary"],
+        "reference": ["docs/CONNECTION-HUB.md#aws", "docs/TESTING.md#m8-aws-adapter-source-contracts"],
+        "explanation": ["docs/ARCHITECTURE.md#m8-aws-adapter-source-boundary", "docs/adr/0020-hybrid-build-wrap-adopt-boundary.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "M8 adds no active renderer or control; provider product UI and controlled native screen-reader evidence remain external."},
+        "correctness": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs"], "rationale": "Nine focused tests cover bounded public parsing, exact IAM Identity Center/STS operations, strict public STS evidence, SSM planning, EKS dry-run, and compatibility floors."},
+        "security": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs", "automexia-devops/src/connections/provider_auth.rs"], "rationale": "Credential canaries never enter public models, exact capability review is capsule-bound, global profile mutation is absent, and the independent adapter owns no process, network, filesystem, credential, PTY, or cache."},
+        "performance": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs"], "rationale": "Parsing is synchronous, linear, capped at 1 MiB and 128 profiles, and never runs on startup, renderer, input, resize, PTY, or keystroke paths; controlled native latency remains external."},
+        "resource_lifetime": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs"], "rationale": "Pure functions retain only returned bounded values and own no worker, process, socket, listener, handle, file, PTY, route, cache, or GPU resource."},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "The adapter performs no I/O or persistence and never reads or writes AWS configuration, credentials, token caches, kubeconfig, or Automexia state."},
+        "resilience": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs"], "rationale": "Malformed, duplicate, invalid UTF-8, hostile, oversized, secret-bearing, unsupported-version, missing, expired, MFA, cancelled, offline, and denied cases fail closed or remain explicitly non-ready."},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "No product pixels are added; exact product hierarchy, responsive layout, and visual review remain an external integration gate."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs"], "rationale": "Focused tests and warning-denied Clippy passed locally on Windows x86_64 without running AWS tools or network."},
+        "linux": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M8 run did not execute natively on Linux."},
+        "macos": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M8 run did not execute natively on macOS."}
+      }
     }
   ]
 }

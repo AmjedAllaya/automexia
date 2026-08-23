@@ -47,11 +47,11 @@ native host is available as assumed evidence.
   tool, MFA, browser, cloud network, accessibility, and release evidence is
   reported as external until it actually runs.
 
-## Evidence ledger before implementation
+## Current evidence ledger
 
-| Slice | Initial status | Existing evidence | Missing exit evidence |
+| Slice | Current status | Existing evidence | Missing exit evidence |
 |---|---|---|---|
-| M8 / D6.1 AWS | Not done | Provider-neutral `Aws` kind, SSM transport descriptor, M7 review/capsule framework | Independent extension, granted public config parser, exact SSO/STS/SSM/EKS-isolated builders, tests, docs, native fixtures |
+| M8 / D6.1 AWS | Partially done overall; source-complete and nonactivated | Independent bounded extension; granted public parser; exact capsule-bound SSO/STS/SSM/EKS-dry-run contracts; ten focused tests and app registration | D3 activation, M11 private kubeconfig ingestion, product UI, and controlled real AWS/native/resource/accessibility/release evidence |
 | M9 / D6.2 Azure | Not done | Provider-neutral `Azure` kind, Bastion transport descriptor, M7 framework | Independent extension, public JSON parser, exact login/account/Bastion/AKS-isolated builders, tests, docs, native fixtures |
 | M10 / D6.3 Google Cloud | Not done | Provider-neutral `Gcp` kind, IAP transport descriptor, M7 framework | Independent extension, granted configuration parser, scoped login/status/IAP/GKE-isolated builders, tests, docs, native fixtures |
 | M11 / D6.4 Kubernetes/OpenShift | Not done | Provider-neutral kinds and exec/rsh transport descriptors | Code-capable kubeconfig parser, merge/collision/source model, default-denied exec plugins, exact isolated kubectl/oc intents, tests, docs, native fixtures |
