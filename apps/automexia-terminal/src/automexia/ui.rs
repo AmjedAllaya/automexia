@@ -35,12 +35,20 @@ pub struct PromptAnchor {
 /// renderer-neutral projection and decides how to present it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CommandResultAnchor {
+    /// Stable semantic prompt identity; preferred across resize/reflow.
+    pub generation: Option<u64>,
+    /// Absolute source-row fallback for integrations without stable identities.
+    pub key: u64,
     pub x: f32,
     pub y: f32,
     pub width: f32,
     pub height: f32,
+    /// First row below the owned editable prompt, when it can be proven from
+    /// semantic metadata. None prevents decorating uncertain terminal text.
+    pub output_top: Option<f32>,
     /// True when completion is painted on the following prompt's reserved row,
-    /// making that row the visual boundary after the command output.
+    /// making that row the visual boundary after the command output. In this
+    /// state y is also the exclusive lower bound of the result region.
     pub separates_next_prompt: bool,
     pub exit_code: i32,
     pub elapsed_ms: u64,

@@ -160,12 +160,20 @@ owns context/path semantic rows; PSReadLine, Readline, or ZLE owns only the
 lambda, editable input, and cursor. This split is why completed prompts can be
 reflowed during resize without asking a shell editor to reconstruct scrollback.
 
-When a command completes and the following prompt is visible, its compact exit
-state and duration move to the top of that prompt's reserved context row. A
-thin success/error rule on the same row separates the completed output above
-from the next editable command below. The treatment reuses existing prompt
-space, does not add a terminal row or write decoration bytes to the PTY, and
-keeps a final result on its original prompt when no following boundary exists.
+When a command completes and the following prompt is visible, Automexia groups
+the proven output rows into a quiet result surface. A success/error-tinted band,
+one- or two-pixel left accent, four- to eight-pixel visual breathing gutter, end
+rule, and compact exit state plus duration separate the result from the next
+editable command without relying on color alone. A newly completed live result
+lightens once and eases out through opacity over 180 milliseconds; it never
+blinks, moves, repeats, or restarts while viewing scrollback.
+
+The renderer applies that treatment only when semantic prompt ownership proves
+both output limits and the following prompt. Uncertain or empty bounds fail
+closed to the compact status treatment. No terminal row is inserted, no PTY
+byte is written, and selection, copy, search, history, reflow, shell input, and
+the shell-owned cursor remain unchanged. A final result stays on its original
+prompt when no following boundary exists.
 
 Metadata is advisory and validated. An absolute, control-free OSC 7 directory
 can update a pane's launch descriptor; malformed or relative values cannot.

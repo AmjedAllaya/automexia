@@ -56,7 +56,7 @@ They retain their terminal/application or native-platform authority.
 | **Fully done** | U7 modal input composition | `application.rs`, `router/mod.rs`, and `screen/mod.rs` prioritize the visible modal owner before resize, chrome, pane, PTY, wheel, input-method, and file-drop paths; hidden surfaces do not intercept a higher-priority command palette | None for source implementation |
 | **Fully done** | U8 first-run welcome | `router/routes/welcome.rs` replaces the legacy black-and-white animation with a static responsive Automexia card, shared theme-aware accents, one clear Enter action, bounded copy, and no local configuration-path disclosure; layout/DPI/target/privacy tests own the contract | None for source implementation |
 | **Fully done** | U9 branded window caption controls | renderer/island.rs retains right-edge layout and 40–46 pixel hit targets while rendering three separated rounded cards without a shared border, with distinct cyan/purple/coral rails and glyphs, rest/hover/held/inactive states, native maximize/restore state, and same-control release activation with drag-away/focus-loss cancellation; application and screen owners only snapshot native state and route events | None for source implementation |
-| **Fully done** | U9.1 command-result boundary | `automexia/ui.rs`, `renderer/mod.rs`, and `renderer/devops_status.rs` move a completed command's compact exit state and duration to the following prompt's reserved row and paint one bounded semantic divider there; focused tests prove placement, final-result fallback, and geometry without adding terminal rows or PTY bytes | Manual multi-theme and assistive-technology evidence remains under U10 |
+| **Fully done** | U9.1 command-result boundary and surface | `automexia/ui.rs`, `renderer/mod.rs`, and `renderer/devops_status.rs` prove semantic output limits, group them with a quiet success/error tint, slim accent, 4–8 pixel visual breathing gutter, end rule, persistent icon/duration, and one 180 ms opacity-only lightening for a newly completed live result. The cue is idempotent, scroll-safe, bounded, and renderer-only; focused tests and native Windows WGPU/CPU geometry plus pixel evidence prove it adds no terminal rows or PTY bytes. | Native multi-theme, high-contrast, Linux/macOS renderer, and assistive-technology evidence remains under U10 |
 | **Fully done** | U9.2 pointer-owned pane scrolling | `application.rs`, `screen/mod.rs`, `layout/mod.rs`, and `mouse/mod.rs` activate the exact pane under the pointer before delivering the initiating wheel/trackpad event, preserve wheel-focused selection, reset cross-pane fractional accumulation, and retain passive hover; focused tests cover hit-test boundaries and focus policy | Manual cross-platform mouse/trackpad interaction remains part of U10 native evidence |
 | **Fully done** | U9.3 Windows Ctrl+V paste | `bindings/mod.rs` maps both `Ctrl+V` and `Ctrl+Shift+V` to the existing safe Paste action for every Windows-hosted child session, including WSL and SSH; explicit `ReceiveChar` configuration restores application ownership, while Linux/BSD and macOS defaults remain unchanged | Manual physical clipboard validation in native WSL and terminal applications remains part of U10 native evidence |
 | **Fully done** | U9.4 continuous pane/workspace search | `bindings/mod.rs` keeps local/global search shortcuts active during Search; `screen/mod.rs` owns query-preserving, pane-isolated scope transitions and bounded visible-match counts; `renderer/search.rs` owns one responsive surface with clickable/keyboard scope choices, focus state, result status, and privacy-safe announcements. Focused tests cover both directions, idempotence, pointer targets, PTY isolation, checked/focused semantics, and tiny/HiDPI/ultrawide geometry; native Windows WGPU and CPU runs validate the real split-pane card. | Native Narrator/NVDA, VoiceOver, and Orca delivery remains part of U10 and the accepted v0.5 platform adapter. |
@@ -108,10 +108,18 @@ minimum target guidance:
 - [Understanding Success Criterion 2.5.8: Target Size (Minimum)](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html)
 - [Visual Studio Code: Basic editing, Find and Search](https://code.visualstudio.com/docs/editing/codebasics)
 - [WAI-ARIA Authoring Practices: radio group pattern](https://www.w3.org/WAI/ARIA/apg/patterns/radio/)
+- [WCAG: Animation from Interactions](https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions)
+- [WCAG: Pause, Stop, Hide](https://www.w3.org/WAI/WCAG22/Understanding/pause-stop-hide.html)
+- [Microsoft: Animation and timing guidance](https://learn.microsoft.com/en-us/windows/win32/uxguide/vis-animations)
 
 Continuous search keeps the familiar local Find versus broader Search shortcut
 distinction while avoiding a second modal owner. Its two scope choices use the
 radio-group checked-state and arrow-key model in renderer-neutral form.
+
+The completed-output cue follows the frequent-interaction guidance by changing
+opacity for 180 milliseconds without moving or resizing content. It is a single
+notification rather than a repeating blink, shuts its redraw timer down at the
+end, and leaves persistent icon, rule, accent, and whitespace cues afterward.
 
 The current v0.4 renderer does not yet expose a complete native accessibility
 tree; [the accessibility baseline](ACCESSIBILITY.md) keeps that limitation and
@@ -130,8 +138,14 @@ Focused Windows x86_64 source evidence completed on 2026-08-24:
 - scrollbar geometry, fade, lifecycle, and brand-role tests: 13 passed;
 - custom caption-control layout, semantic role, hit-target, maximize/restore,
   held-state, focus-loss, release-cancellation, and independent-card snapshot tests: 53 passed;
-- command-result following-prompt placement, truthful final-result fallback,
-  and bounded divider geometry tests: 3 passed;
+- command-result following-prompt placement, truthful output bounds, final-result
+  fallback, surface/accent/gutter geometry, one-shot idempotence, scrollback
+  suppression, and resize/reflow replay suppression tests: 9 passed;
+- native Windows command-result WGPU and CPU runs passed the complete interaction
+  stress suite; each measured an 18.4-pixel surface, 2-pixel accent, 8.7-pixel
+  gutter, generation `2`, and a 1,581×36 physical-pixel region with 14,238
+  samples, 41 color buckets, and luminance spread `212`; both safe captures were
+  visually inspected and retained identical semantic geometry;
 - pointer-owned pane selection, selection preservation, and cross-pane wheel
   accumulator isolation tests: 3 passed;
 - Windows `Ctrl+V`/legacy paste binding and explicit terminal-input override

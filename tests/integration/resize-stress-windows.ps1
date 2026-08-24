@@ -6,6 +6,7 @@ param(
     [string]$FrameCapture,
     [string]$TypographyCapture,
     [string]$SearchCapture,
+    [string]$ResultCapture,
     [string]$ModalCaptureDirectory,
     [ValidateRange(32, 4096)]
     [int64]$MaximumHandleGrowth = 384,
@@ -945,13 +946,105 @@ $rendererConfig
         throw 'The native driver did not observe the history seed control input'
     }
     $historyDeadline = [DateTime]::UtcNow.AddSeconds(10)
-    while ([int64]$historyReady.latest_prompt_id -le [int64]$initial.latest_prompt_id -and
+    while (([int64]$historyReady.latest_prompt_id -le [int64]$initial.latest_prompt_id -or
+            [int64]$historyReady.command_result_pulse_generation -le
+                [int64]$initial.command_result_pulse_generation -or
+            $null -eq $historyReady.command_result_surface) -and
            [DateTime]::UtcNow -lt $historyDeadline) {
         $historyReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyReady.sequence)
     }
-    if ([int64]$historyReady.latest_prompt_id -le [int64]$initial.latest_prompt_id) {
+    if ([int64]$historyReady.latest_prompt_id -le [int64]$initial.latest_prompt_id -or
+        [int64]$historyReady.command_result_pulse_generation -le
+            [int64]$initial.command_result_pulse_generation) {
         Write-Host ($historyReady | ConvertTo-Json -Depth 8)
-        throw 'PowerShell did not complete the history seed command'
+        throw 'PowerShell completion did not publish a new prompt and one-shot result glow'
+    }
+
+    $resultSurface = @($historyReady.command_result_surface)
+    $resultAccent = @($historyReady.command_result_accent)
+    $resultDivider = @($historyReady.command_result_divider)
+    if ($resultSurface.Count -ne 4 -or
+        $resultAccent.Count -ne 4 -or
+        $resultDivider.Count -ne 4) {
+        Write-Host ($historyReady | ConvertTo-Json -Depth 8)
+        throw 'Completed output did not publish surface, accent, and divider geometry'
+    }
+    $resultSurfaceBottom =
+        [double]$resultSurface[1] + [double]$resultSurface[3]
+    $resultGutter = [double]$resultDivider[1] - $resultSurfaceBottom
+    if ([double]$resultSurface[2] -lt 4.0 -or
+        [double]$resultSurface[3] -lt 1.0 -or
+        [Math]::Abs([double]$resultAccent[0] - [double]$resultSurface[0]) -gt 0.01 -or
+        [Math]::Abs([double]$resultAccent[1] - [double]$resultSurface[1]) -gt 0.01 -or
+        [Math]::Abs([double]$resultAccent[3] - [double]$resultSurface[3]) -gt 0.01 -or
+        [double]$resultAccent[2] -lt 1.0 -or
+        [double]$resultAccent[2] -gt 2.0 -or
+        [double]$resultDivider[2] -lt [double]$resultSurface[2] -or
+        $resultGutter -lt 4.0 -or
+        $resultGutter -gt 10.0) {
+        Write-Host ($historyReady | ConvertTo-Json -Depth 8)
+        throw "Command-result surface geometry is clipped or lacks its breathing gutter: gutter=$resultGutter"
+    }
+
+    $resultFramePath = if ([string]::IsNullOrWhiteSpace($ResultCapture)) {
+        $null
+    } else {
+        [IO.Path]::GetFullPath($ResultCapture)
+    }
+    if ($null -ne $resultFramePath) {
+        $resultFrameDirectory = [IO.Path]::GetDirectoryName($resultFramePath)
+        if (-not [string]::IsNullOrWhiteSpace($resultFrameDirectory)) {
+            New-Item -ItemType Directory -Force -Path $resultFrameDirectory | Out-Null
+        }
+    }
+    $resultScale = [double]$historyReady.scale_factor
+    $resultRegionX =
+        [int][Math]::Floor([double]$resultSurface[0] * $resultScale)
+    $resultRegionY =
+        [int][Math]::Floor([double]$resultSurface[1] * $resultScale)
+    $resultRegionWidth = [int][Math]::Ceiling(
+        (([double]$resultDivider[0] + [double]$resultDivider[2]) -
+         [double]$resultSurface[0]) * $resultScale)
+    $resultRegionHeight = [int][Math]::Ceiling(
+        (([double]$resultDivider[1] + [double]$resultDivider[3]) -
+         [double]$resultSurface[1]) * $resultScale)
+    if ($resultRegionWidth -lt 8 -or $resultRegionHeight -lt 8) {
+        throw "Command-result painted region is unusable: $resultRegionWidth x $resultRegionHeight"
+    }
+    $script:testStage = 'command-result composited surface'
+    $resultCaptureDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    $resultCaptureAttempts = 0
+    $resultPixelsValid = $false
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not expose Automexia for command-result capture (Win32 error $code)"
+    }
+    try {
+        do {
+            $resultCaptureAttempts++
+            Start-Sleep -Milliseconds 50
+            $resultFrame = [AutomexiaResizeDriver]::CaptureClientFrame(
+                $window, $resultFramePath)
+            $resultPixels =
+                [AutomexiaResizeDriver]::CapturePhysicalClientRegionStats(
+                    $window,
+                    $resultRegionX,
+                    $resultRegionY,
+                    $resultRegionWidth,
+                    $resultRegionHeight)
+            $resultPixelsValid = (
+                $resultFrame.Width -ge 100 -and
+                $resultFrame.Height -ge 100 -and
+                $resultPixels.SampleCount -ge 32 -and
+                $resultPixels.DistinctColorBuckets -ge 4 -and
+                $resultPixels.LuminanceSpread -ge 32)
+        } while (-not $resultPixelsValid -and
+                 [DateTime]::UtcNow -lt $resultCaptureDeadline)
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+    }
+    if (-not $resultPixelsValid) {
+        throw "Command-result pixels did not settle after $resultCaptureAttempts attempts: samples=$($resultPixels.SampleCount), buckets=$($resultPixels.DistinctColorBuckets), spread=$($resultPixels.LuminanceSpread)"
     }
 
     # Establish whether latency is in generic frontend -> PTY delivery or in a
@@ -2531,6 +2624,24 @@ $rendererConfig
                     $null
                 } else {
                     [IO.Path]::GetFileName($searchFramePath)
+                }
+            }
+            command_result_surface = [ordered]@{
+                renderer = if ($UseCpuRenderer) { 'cpu' } else { 'wgpu' }
+                pulse_generation = [int64]$historyReady.command_result_pulse_generation
+                surface = $resultSurface
+                accent = $resultAccent
+                divider = $resultDivider
+                breathing_gutter = $resultGutter
+                attempts = $resultCaptureAttempts
+                region_size = @($resultRegionWidth, $resultRegionHeight)
+                region_sample_count = $resultPixels.SampleCount
+                region_distinct_color_buckets = $resultPixels.DistinctColorBuckets
+                region_luminance_spread = $resultPixels.LuminanceSpread
+                artifact = if ($null -eq $resultFramePath) {
+                    $null
+                } else {
+                    [IO.Path]::GetFileName($resultFramePath)
                 }
             }
             modal_composition = [ordered]@{
