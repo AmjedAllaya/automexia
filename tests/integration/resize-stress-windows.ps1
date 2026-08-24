@@ -5,6 +5,7 @@ param(
     [string]$ResourceReport,
     [string]$FrameCapture,
     [string]$TypographyCapture,
+    [string]$SearchCapture,
     [string]$ModalCaptureDirectory,
     [ValidateRange(32, 4096)]
     [int64]$MaximumHandleGrowth = 384,
@@ -274,6 +275,21 @@ public static class AutomexiaResizeDriver {
                 DominantColorBucket = dominantColorBucket,
                 LuminanceSpread = maximumLuminance - minimumLuminance,
             };
+        }
+    }
+
+    public static FrameStats CapturePhysicalClientRegionStats(
+        IntPtr hWnd, int x, int y, int width, int height) {
+        IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        if (previous == IntPtr.Zero) {
+            throw new System.ComponentModel.Win32Exception(
+                Marshal.GetLastWin32Error(),
+                "Could not enter per-monitor DPI awareness for region capture");
+        }
+        try {
+            return CaptureClientRegionStats(hWnd, x, y, width, height);
+        } finally {
+            SetThreadDpiAwarenessContext(previous);
         }
     }
 
@@ -2067,6 +2083,221 @@ $rendererConfig
         }
     }
 
+    # Pane and workspace search are one continuous session. Feature-gated
+    # controls exercise the same screen methods as the typed actions while the
+    # Rust binding tests own the physical Ctrl/Cmd chords. The snapshot exposes
+    # only query byte length, semantic status, and announcement generation; it
+    # never serializes the query or terminal contents.
+    $script:testStage = 'continuous scoped search session'
+    $openPaneSearch = 'open-pane-search:scope-session'
+    Send-AutomexiaTestControl $openPaneSearch
+    $paneSearch = Read-AutomexiaSnapshot -AfterSequence ([int64]$imageLifecycleFinal.sequence)
+    $paneSearchDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$paneSearch.last_control -ne $openPaneSearch -or
+            -not [bool]$paneSearch.search_active -or
+            [string]$paneSearch.search_scope -ne 'pane' -or
+            [string]$paneSearch.search_focus -ne 'query') -and
+           [DateTime]::UtcNow -lt $paneSearchDeadline) {
+        $paneSearch = Read-AutomexiaSnapshot -AfterSequence ([int64]$paneSearch.sequence)
+    }
+    if ([string]$paneSearch.last_control -ne $openPaneSearch -or
+        -not [bool]$paneSearch.search_active -or
+        [string]$paneSearch.search_scope -ne 'pane' -or
+        [string]$paneSearch.search_focus -ne 'query' -or
+        [int]$paneSearch.search_query_bytes -ne 0) {
+        Write-Host ($paneSearch | ConvertTo-Json -Depth 8)
+        throw 'Pane search did not open as a focused empty continuous session'
+    }
+
+    $query = 'automexia-scope-retained-42'
+    $queryHex = -join (
+        [Text.Encoding]::UTF8.GetBytes($query) |
+            ForEach-Object { $_.ToString('x2') })
+    $setQueryControl = "set-search-query-hex:scope-query:$queryHex"
+    $cursorColumnBeforeSearch = [int]$paneSearch.cursor_column
+    $cursorRowBeforeSearch = [int]$paneSearch.cursor_row
+    Send-AutomexiaTestControl $setQueryControl
+    $querySearch = Read-AutomexiaSnapshot -AfterSequence ([int64]$paneSearch.sequence)
+    $queryDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$querySearch.last_control -ne $setQueryControl -or
+            [int]$querySearch.search_query_bytes -ne
+                [Text.Encoding]::UTF8.GetByteCount($query) -or
+            [string]::IsNullOrWhiteSpace(
+                [string]$querySearch.search_result_status)) -and
+           [DateTime]::UtcNow -lt $queryDeadline) {
+        $querySearch = Read-AutomexiaSnapshot -AfterSequence ([int64]$querySearch.sequence)
+    }
+    if ([string]$querySearch.last_control -ne $setQueryControl -or
+        [int]$querySearch.search_query_bytes -ne
+            [Text.Encoding]::UTF8.GetByteCount($query) -or
+        [int]$querySearch.cursor_column -ne $cursorColumnBeforeSearch -or
+        [int]$querySearch.cursor_row -ne $cursorRowBeforeSearch) {
+        Write-Host ($querySearch | ConvertTo-Json -Depth 8)
+        throw 'Search query input was not retained exclusively by the search session'
+    }
+
+    $paneAnnouncementGeneration =
+        [int64]$querySearch.search_announcement_generation
+    $openWorkspaceSearch = 'open-workspace-search:scope-expand'
+    Send-AutomexiaTestControl $openWorkspaceSearch
+    $workspaceSearch = Read-AutomexiaSnapshot -AfterSequence ([int64]$querySearch.sequence)
+    $workspaceDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$workspaceSearch.last_control -ne $openWorkspaceSearch -or
+            [string]$workspaceSearch.search_scope -ne 'workspace' -or
+            [string]$workspaceSearch.search_focus -ne 'query' -or
+            [int]$workspaceSearch.search_query_bytes -ne
+                [Text.Encoding]::UTF8.GetByteCount($query)) -and
+           [DateTime]::UtcNow -lt $workspaceDeadline) {
+        $workspaceSearch = Read-AutomexiaSnapshot -AfterSequence ([int64]$workspaceSearch.sequence)
+    }
+    if ([string]$workspaceSearch.last_control -ne $openWorkspaceSearch -or
+        [string]$workspaceSearch.search_scope -ne 'workspace' -or
+        [string]$workspaceSearch.search_focus -ne 'query' -or
+        [int]$workspaceSearch.search_query_bytes -ne
+            [Text.Encoding]::UTF8.GetByteCount($query) -or
+        [int64]$workspaceSearch.search_announcement_generation -le
+            $paneAnnouncementGeneration -or
+        [string]$workspaceSearch.search_live_announcement -notlike
+            '*all visible panes*') {
+        Write-Host ($workspaceSearch | ConvertTo-Json -Depth 8)
+        throw 'Pane-to-workspace search switching lost query, focus, count, or announcement state'
+    }
+
+    $focusScopeControl = 'focus-search-scope:scope-keyboard'
+    Send-AutomexiaTestControl $focusScopeControl
+    $scopeFocused = Read-AutomexiaSnapshot -AfterSequence ([int64]$workspaceSearch.sequence)
+    $focusDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$scopeFocused.last_control -ne $focusScopeControl -or
+            [string]$scopeFocused.search_focus -ne 'scope') -and
+           [DateTime]::UtcNow -lt $focusDeadline) {
+        $scopeFocused = Read-AutomexiaSnapshot -AfterSequence ([int64]$scopeFocused.sequence)
+    }
+    if ([string]$scopeFocused.search_focus -ne 'scope') {
+        Write-Host ($scopeFocused | ConvertTo-Json -Depth 8)
+        throw 'Search scope control did not receive keyboard focus'
+    }
+
+    $workspaceGeneration =
+        [int64]$scopeFocused.search_announcement_generation
+    $refocusWorkspace = 'open-workspace-search:scope-refocus'
+    Send-AutomexiaTestControl $refocusWorkspace
+    $workspaceRefocused = Read-AutomexiaSnapshot -AfterSequence ([int64]$scopeFocused.sequence)
+    $refocusDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$workspaceRefocused.last_control -ne $refocusWorkspace -or
+            [string]$workspaceRefocused.search_focus -ne 'query') -and
+           [DateTime]::UtcNow -lt $refocusDeadline) {
+        $workspaceRefocused = Read-AutomexiaSnapshot -AfterSequence ([int64]$workspaceRefocused.sequence)
+    }
+    if ([string]$workspaceRefocused.search_scope -ne 'workspace' -or
+        [string]$workspaceRefocused.search_focus -ne 'query' -or
+        [int]$workspaceRefocused.search_query_bytes -ne
+            [Text.Encoding]::UTF8.GetByteCount($query) -or
+        [int64]$workspaceRefocused.search_announcement_generation -ne
+            $workspaceGeneration) {
+        Write-Host ($workspaceRefocused | ConvertTo-Json -Depth 8)
+        throw 'The already-active workspace shortcut was not an idempotent query refocus'
+    }
+
+    $returnPaneSearch = 'open-pane-search:scope-contract'
+    Send-AutomexiaTestControl $returnPaneSearch
+    $paneReturned = Read-AutomexiaSnapshot -AfterSequence ([int64]$workspaceRefocused.sequence)
+    $returnDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$paneReturned.last_control -ne $returnPaneSearch -or
+            [string]$paneReturned.search_scope -ne 'pane' -or
+            [string]$paneReturned.search_focus -ne 'query') -and
+           [DateTime]::UtcNow -lt $returnDeadline) {
+        $paneReturned = Read-AutomexiaSnapshot -AfterSequence ([int64]$paneReturned.sequence)
+    }
+    if ([string]$paneReturned.search_scope -ne 'pane' -or
+        [int]$paneReturned.search_query_bytes -ne
+            [Text.Encoding]::UTF8.GetByteCount($query) -or
+        [int64]$paneReturned.search_announcement_generation -le
+            $workspaceGeneration -or
+        [string]$paneReturned.search_live_announcement -notlike
+            '*current pane*') {
+        Write-Host ($paneReturned | ConvertTo-Json -Depth 8)
+        throw 'Workspace-to-pane search switching lost ownership, query, focus, or announcement state'
+    }
+
+    # Capture the real pane-footer composition while this continuous session is
+    # still active. This complements renderer-neutral geometry assertions with
+    # a native compositing check and an optional human-review artifact.
+    $searchFramePath = if ([string]::IsNullOrWhiteSpace($SearchCapture)) {
+        $null
+    } else {
+        [IO.Path]::GetFullPath($SearchCapture)
+    }
+    if ($null -ne $searchFramePath) {
+        $searchFrameDirectory = [IO.Path]::GetDirectoryName($searchFramePath)
+        if (-not [string]::IsNullOrWhiteSpace($searchFrameDirectory)) {
+            New-Item -ItemType Directory -Force -Path $searchFrameDirectory | Out-Null
+        }
+    }
+    $searchPresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$paneReturned.sequence)
+    $searchRect = @($searchPresented.search_surface)
+    if ($searchRect.Count -ne 4) {
+        Write-Host ($searchPresented | ConvertTo-Json -Depth 8)
+        throw 'Scoped search did not publish its painted surface rectangle'
+    }
+    $searchScale = [double]$searchPresented.scale_factor
+    $searchX = [int][Math]::Floor([double]$searchRect[0] * $searchScale)
+    $searchY = [int][Math]::Floor([double]$searchRect[1] * $searchScale)
+    $searchWidth = [int][Math]::Ceiling([double]$searchRect[2] * $searchScale)
+    $searchHeight = [int][Math]::Ceiling([double]$searchRect[3] * $searchScale)
+    if ($searchWidth -lt 100 -or $searchHeight -lt 20) {
+        throw "Scoped search published an unusable surface: $searchWidth x $searchHeight"
+    }
+
+    $searchFrameDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    $searchFrameAttempts = 0
+    $searchFrameValid = $false
+    $searchSurfaceValid = $false
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not expose Automexia for scoped-search capture (Win32 error $code)"
+    }
+    try {
+        do {
+            $searchFrameAttempts++
+            Start-Sleep -Milliseconds 100
+            $searchFrame = [AutomexiaResizeDriver]::CaptureClientFrame(
+                $window, $searchFramePath)
+            $searchSurfacePixels =
+                [AutomexiaResizeDriver]::CapturePhysicalClientRegionStats(
+                    $window, $searchX, $searchY, $searchWidth, $searchHeight)
+            $searchFrameValid = (
+                $searchFrame.Width -ge 100 -and
+                $searchFrame.Height -ge 100 -and
+                $searchFrame.SampleCount -ge 100 -and
+                $searchFrame.DistinctColorBuckets -ge 8 -and
+                $searchFrame.LuminanceSpread -ge 32)
+            $searchSurfaceValid = (
+                $searchSurfacePixels.SampleCount -ge 32 -and
+                $searchSurfacePixels.DistinctColorBuckets -ge 6 -and
+                $searchSurfacePixels.LuminanceSpread -ge 32)
+        } while ((-not $searchFrameValid -or -not $searchSurfaceValid) -and
+                 [DateTime]::UtcNow -lt $searchFrameDeadline)
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+    }
+    if (-not $searchFrameValid -or -not $searchSurfaceValid) {
+        throw "Scoped-search frame did not settle after $searchFrameAttempts attempts: frame=$($searchFrame.Width)x$($searchFrame.Height), frame-buckets=$($searchFrame.DistinctColorBuckets), surface-buckets=$($searchSurfacePixels.DistinctColorBuckets), surface-spread=$($searchSurfacePixels.LuminanceSpread)"
+    }
+
+    $closeSearchControl = 'close-search:scope-session'
+    Send-AutomexiaTestControl $closeSearchControl
+    $searchClosed = Read-AutomexiaSnapshot -AfterSequence ([int64]$paneReturned.sequence)
+    $closeSearchDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$searchClosed.last_control -ne $closeSearchControl -or
+            [bool]$searchClosed.search_active) -and
+           [DateTime]::UtcNow -lt $closeSearchDeadline) {
+        $searchClosed = Read-AutomexiaSnapshot -AfterSequence ([int64]$searchClosed.sequence)
+    }
+    if ([bool]$searchClosed.search_active) {
+        Write-Host ($searchClosed | ConvertTo-Json -Depth 8)
+        throw 'Search teardown left an input-owning session active'
+    }
+
     # Both command surfaces are true modals: exactly one may be active, the
     # feature-gated snapshot must acknowledge it, and a real composited client
     # capture must remain visibly nonblank. Sugarloaf unit tests separately
@@ -2284,6 +2515,23 @@ $rendererConfig
                 attempts = $frameAttempts
                 settle_milliseconds = $frameStopwatch.ElapsedMilliseconds
                 artifact = if ($null -eq $framePath) { $null } else { [IO.Path]::GetFileName($framePath) }
+            }
+            scoped_search_frame = [ordered]@{
+                renderer = if ($UseCpuRenderer) { 'cpu' } else { 'wgpu' }
+                width = $searchFrame.Width
+                height = $searchFrame.Height
+                sample_count = $searchFrame.SampleCount
+                distinct_color_buckets = $searchFrame.DistinctColorBuckets
+                luminance_spread = $searchFrame.LuminanceSpread
+                attempts = $searchFrameAttempts
+                surface_sample_count = $searchSurfacePixels.SampleCount
+                surface_distinct_color_buckets = $searchSurfacePixels.DistinctColorBuckets
+                surface_luminance_spread = $searchSurfacePixels.LuminanceSpread
+                artifact = if ($null -eq $searchFramePath) {
+                    $null
+                } else {
+                    [IO.Path]::GetFileName($searchFramePath)
+                }
             }
             modal_composition = [ordered]@{
                 renderer = if ($UseCpuRenderer) { 'cpu' } else { 'wgpu' }

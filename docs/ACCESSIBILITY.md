@@ -28,7 +28,7 @@ a separate Automexia text/document milestone.
 | Window caption controls | Separated minimize, maximize/restore, and close cards have distinct shapes and no shared border; cyan/purple/coral accents are redundant | 40–46 pixel pointer targets latch on press, activate on release over the same control, and cancel on drag-away or focus loss; existing window shortcuts remain available | Native caption-button names and state announcements require the v0.5 platform adapter |
 | Split panes | Exactly one active pane with a visible outline | `Alt`+Arrow (`Cmd`+`Alt`+Arrow on macOS) geometric focus plus next/previous cycling | Native screen-reader focus announcements require the v0.5 adapter |
 | Command palette | Search input, selected command, visible shortcut, category label | Open, filter, move, activate, and dismiss without a pointer | Platform role announcements require the v0.5 adapter |
-| Pane and workspace search | Scope icon and label, editable query, result position, previous/next, and visible close | Ctrl/Cmd+F searches one pane; Ctrl/Cmd+Shift+F searches visible panes; arrows/Enter/Escape operate without a pointer | Platform role and live-result announcements require the v0.5 adapter |
+| Pane and workspace search | One continuous surface with labeled query, mutually exclusive `PANE` / `ALL PANES` checked states, bounded visible-result status, previous/next, and close | Scope shortcuts switch in place; Tab enters/leaves the scope group; arrows select; Space/Enter keeps selection; click returns query focus; Escape closes | Renderer-neutral roles, checked/focused state, and privacy-safe scope announcements are implemented; native screen-reader delivery requires the v0.5 adapter |
 | First-run welcome | Automexia title, concise time/effort/flexibility value statement, and one visible Enter instruction; no local path is rendered | Enter creates starter settings and continues; no pointer-only action or background animation | Platform heading/action announcements require the v0.5 adapter |
 | Diagnostic assistant | Error/warning text, severity label, visible close, and troubleshooting action | Escape or Enter dismisses; D opens the fixed guide; all terminal input behind the scrim is inert | Platform dialog/action announcements require the v0.5 adapter |
 | Compatibility inspector | Explicit REDACTED label, public snapshot fields, diagnostic empty state, and visible close | Escape dismisses; all terminal input behind the scrim is inert | Platform dialog/list announcements require the v0.5 adapter |
@@ -40,6 +40,22 @@ a separate Automexia text/document milestone.
 | Session footer | Passive pane/tab/grid/line-ending/clock status | No action is hidden in the footer | It is intentionally omitted when a pane cannot spare terminal rows |
 | Terminal grid | Shell output, selection, cursor, and input remain authoritative | Standard terminal and configured shell bindings | Full text-range exposure requires the v0.5 accessibility model |
 | Image quick look | Filename, dimensions, and size remain visible as text; preview never conveys required terminal state | Hover previews; click pins; arrows browse visible image paths; `Ctrl+Alt+I`/`Cmd+Alt+I` previews selection; `Esc` dismisses | Native screen-reader announcement of the preview card requires the v0.5 adapter |
+
+## Search scope semantics
+
+The renderer-neutral search model exposes a `Search scope` group with `Current
+pane` and `All visible panes` options, exactly one checked option, explicit
+query/scope focus, a nonvisual result status, and a generation-numbered live
+announcement after opening or a real scope change. Repeating the active scope
+shortcut does not emit a duplicate announcement. The announcement contains
+scope and bounded result status but never the query or terminal contents.
+
+This interaction follows the mutually exclusive selection and arrow-key model
+in the [W3C Radio Group Pattern](https://www.w3.org/WAI/ARIA/apg/patterns/radio/).
+The current v0.4 contract stops at renderer-neutral semantics, as required by
+[ADR 0013](adr/0013-renderer-independent-accessibility-model.md); the accepted
+v0.5 platform adapter remains responsible for UI Automation, VoiceOver, and
+AT-SPI delivery.
 
 ## Automated v0.4 contract
 

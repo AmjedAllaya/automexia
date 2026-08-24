@@ -727,8 +727,9 @@ impl Renderer {
         &mut self,
         active_search: Option<String>,
         scope: search::SearchScope,
+        results: search::SearchResultSummary,
     ) {
-        self.search.set_active_search(active_search, scope);
+        self.search.set_active_search(active_search, scope, results);
     }
 
     #[inline]
@@ -1987,6 +1988,10 @@ mod prompt_visual_anchor_tests {
         renderer.search.set_active_search(
             Some("needle".to_string()),
             search::SearchScope::Pane { route_id: 0 },
+            search::SearchResultSummary::Matches {
+                visible: 1,
+                limited: false,
+            },
         );
         renderer.confirm_quit.set_active(true);
         renderer.is_window_focused = false;

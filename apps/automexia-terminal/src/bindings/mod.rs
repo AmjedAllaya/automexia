@@ -1264,10 +1264,10 @@ fn automexia_macos_key_bindings(
         "t", ModifiersState::SUPER | ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::ToggleAppearanceTheme;
         "i", ModifiersState::SUPER | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::PreviewSelectedImage;
         // Search: local is the familiar Find chord; Shift expands the scope.
-        "f", ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchForward;
-        "f", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchGlobalForward;
-        "b", ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchBackward;
-        "b", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchGlobalBackward;
+        "f", ModifiersState::SUPER, ~BindingMode::VI; Action::SearchForward;
+        "f", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::VI; Action::SearchGlobalForward;
+        "b", ModifiersState::SUPER, ~BindingMode::VI; Action::SearchBackward;
+        "b", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::VI; Action::SearchGlobalBackward;
         "c", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchCancel;
         "u", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchClear;
         "w", ModifiersState::CONTROL,  +BindingMode::SEARCH; SearchAction::SearchDeleteWord;
@@ -1362,9 +1362,9 @@ fn automexia_windows_key_bindings(
         "i", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::PreviewSelectedImage;
         "a", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; Action::SelectAll;
         // Search: Ctrl+F is pane-local; Shift expands the scope.
-        "f", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchForward;
-        "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchGlobalForward;
-        "b", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchGlobalBackward;
+        "f", ModifiersState::CONTROL, ~BindingMode::VI; Action::SearchForward;
+        "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::SearchGlobalForward;
+        "b", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::SearchGlobalBackward;
         "c", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchCancel;
         "u", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchClear;
         "w", ModifiersState::CONTROL,  +BindingMode::SEARCH; SearchAction::SearchDeleteWord;
@@ -1460,9 +1460,9 @@ fn automexia_unix_key_bindings(
         "i", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::PreviewSelectedImage;
 
         // Search: Ctrl+F is pane-local; Shift expands the scope.
-        "f", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchForward;
-        "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchGlobalForward;
-        "b", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SearchGlobalBackward;
+        "f", ModifiersState::CONTROL, ~BindingMode::VI; Action::SearchForward;
+        "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::SearchGlobalForward;
+        "b", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::SearchGlobalBackward;
         "c", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchCancel;
         "u", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchClear;
         "w", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchDeleteWord;
@@ -2003,7 +2003,10 @@ mod tests {
                 Some(&Action::SearchGlobalForward)
             );
             for binding in [local.unwrap(), global.unwrap()] {
-                assert!(binding.notmode.contains(BindingMode::SEARCH));
+                assert!(
+                    !binding.notmode.contains(BindingMode::SEARCH),
+                    "search shortcuts must remain active so they can switch scope in place"
+                );
                 assert!(binding.notmode.contains(BindingMode::VI));
             }
         };

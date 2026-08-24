@@ -97,7 +97,7 @@
         "explanation": ["docs/adr/0004-native-persistent-operational-chrome.md", "docs/adr/0013-renderer-independent-accessibility-model.md"]
       },
       "quality": {
-        "accessibility": {"level": "external", "evidence": ["docs/ACCESSIBILITY.md"]},
+        "accessibility": {"level": "external", "evidence": ["apps/automexia-terminal/src/renderer/search.rs", "apps/automexia-terminal/src/screen/mod.rs", "tests/integration/resize-stress-windows.ps1", "docs/ACCESSIBILITY.md"], "rationale": "Renderer-neutral search roles, checked/focused scope state, bounded result status, privacy-safe announcements, and Windows WGPU/CPU interaction and pixel evidence are controlled; native UI Automation, VoiceOver, and AT-SPI delivery remains an external v0.5 gate."},
         "correctness": {"level": "pr", "evidence": ["sugarloaf/tests/wgsl_validation.rs", "sugarloaf/src/font/cjk_metrics_tests.rs", "apps/automexia-terminal/src/layout/compute_tests.rs", "apps/automexia-terminal/src/router/routes/welcome.rs", "apps/automexia-terminal/src/renderer/ui_theme.rs", "apps/automexia-terminal/src/renderer/assistant.rs", "apps/automexia-terminal/src/renderer/compatibility_inspector.rs", "apps/automexia-terminal/src/renderer/confirm_quit.rs", "apps/automexia-terminal/src/renderer/island.rs", "apps/automexia-terminal/src/renderer/search.rs", "apps/automexia-terminal/src/renderer/scrollbar.rs"]},
         "security": {"level": "nightly", "evidence": ["sugarloaf/tests/wgsl_validation.rs", ".github/workflows/codeql.yml"]},
         "performance": {"level": "controlled", "evidence": ["apps/automexia-terminal/benches/automexia_services.rs", ".github/workflows/nightly.yml#benchmarks-controlled"]},

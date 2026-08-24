@@ -345,18 +345,25 @@ table; a shortcut is not added merely to increase coverage.
 | Quick Actions | Palette route only; no typed/default binding | **Fully done locally** | `Ctrl+Shift+O` | `Cmd+Shift+O` |
 | Extensions marketplace | Palette route only; no typed/default binding | **Fully done locally** | `Ctrl+Shift+M` | `Cmd+Shift+M` |
 | Font browser | Palette route only; no typed/default binding | **Fully done locally** | `Ctrl+Shift+L` | `Cmd+Shift+L` |
-| Pane-local terminal search | Top-right surface and implicit current-pane scope | **Fully done locally** | `Ctrl+F` | `Cmd+F` / `Cmd+B` |
-| Visible-pane workspace search | No distinct action or chrome-safe global surface | **Fully done locally** | `Ctrl+Shift+F` / `Ctrl+Shift+B` | `Cmd+Shift+F` / `Cmd+Shift+B` |
+| Pane-local terminal search | Separate pane opening with a display-only scope chip | **Fully done locally — one live scope session** | `Ctrl+F` | `Cmd+F` / `Cmd+B` |
+| Visible-pane workspace search | Separate global opening with no in-place scope switch | **Fully done locally — one live scope session** | `Ctrl+Shift+F` / `Ctrl+Shift+B` | `Cmd+Shift+F` / `Cmd+Shift+B` |
 | Appearance | Windows-only default; Linux/macOS incomplete | **Fully done locally** | `Alt+Shift+T` | `Cmd+Alt+Shift+T` |
 | Close tab / close surface / close other tabs | Actions existed; labels/defaults overlapped or were blank | **Fully done locally** | `Ctrl+F4` / `Ctrl+Shift+W` / `Ctrl+Shift+F4` | `Cmd+Shift+W` / `Cmd+W` / `Cmd+Alt+W` |
 
 The four launcher actions and both search scopes have stable configuration
-names and share their existing Screen-owned routes. App launchers are inactive
-under Search, Vi, and alternate-screen ownership; global search launchers are
-also excluded in those modes and fail safe to pane scope if invoked through a
-user binding in Vi. Search never inserts or executes PTY input. Host-independent
-tests build all three binding tables; renderer-neutral tests lock footer/global
-geometry and full-surface hit capture. Native macOS/Linux keyboard-layout,
+names and share their existing Screen-owned routes. App launchers remain
+inactive under Search, Vi, and alternate-screen ownership. Local/global search
+shortcuts deliberately remain active under Search so they switch the same
+session in place; Vi continues to exclude those launchers and normalizes an
+explicit custom invocation to pane scope.
+
+Scope changes retain the bounded query and query focus, recalculate matches,
+move the same responsive surface, update a visible-viewport result count capped
+at `999+`, and publish a privacy-safe renderer-neutral announcement. Repeating
+the active scope shortcut only refocuses the query. Pointer and keyboard scope
+selection never inserts or executes PTY input. Host-independent binding tests,
+renderer-neutral geometry/semantics tests, and native Windows WGPU/CPU
+split-pane runs own local evidence. Native macOS/Linux keyboard-layout,
 visual/IME, and controlled assistive-technology evidence remain external
 release gates.
 

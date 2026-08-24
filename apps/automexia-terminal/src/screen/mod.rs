@@ -32,10 +32,12 @@ use crate::hints::HintState;
 use crate::layout::ContextDimension;
 use crate::mouse::{calculate_mouse_position, Mouse};
 use crate::renderer::island::{self, ChromeAction, LocalTabAction, TabStripLayout};
-use crate::renderer::search::SearchScope;
+use crate::renderer::search::{
+    SearchFocusTarget, SearchResultSummary, SearchScope, SearchScopeKind,
+};
 use crate::renderer::session_footer;
 use crate::renderer::{utils::padding_top_from_config, Renderer};
-use crate::screen::hint::HintMatches;
+use crate::screen::hint::{visible_regex_match_iter, HintMatches};
 use crate::selection::{Anchor, Selection, SelectionMotion, SelectionType};
 use core::fmt::Debug;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -96,6 +98,68 @@ fn search_match_wrapped(
 
 fn search_query_accepts_char(current_bytes: usize, character: char) -> bool {
     current_bytes.saturating_add(character.len_utf8()) <= MAX_SEARCH_QUERY_BYTES
+}
+
+const MAX_VISIBLE_SEARCH_RESULT_COUNT: usize = 999;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ActiveSearchScopeTransition {
+    Refocused,
+    Switched(SearchScope),
+}
+
+fn transition_active_search_scope(
+    state: &mut SearchState,
+    current_scope: SearchScope,
+    requested_scope: SearchScope,
+) -> ActiveSearchScopeTransition {
+    if current_scope == requested_scope {
+        return ActiveSearchScopeTransition::Refocused;
+    }
+
+    state.focused_match = None;
+    state.display_offset_delta = 0;
+    ActiveSearchScopeTransition::Switched(requested_scope)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SearchControlAction {
+    FocusQuery,
+    FocusScope,
+    SelectPreviousScope,
+    SelectNextScope,
+    KeepScope,
+}
+
+fn search_scope_key_action(
+    focus: SearchFocusTarget,
+    key: &Key,
+    mods: ModifiersState,
+) -> Option<SearchControlAction> {
+    if matches!(key, Key::Named(NamedKey::Tab))
+        && (mods.is_empty() || mods == ModifiersState::SHIFT)
+    {
+        return Some(match focus {
+            SearchFocusTarget::Query => SearchControlAction::FocusScope,
+            SearchFocusTarget::Scope => SearchControlAction::FocusQuery,
+        });
+    }
+    if focus != SearchFocusTarget::Scope || !mods.is_empty() {
+        return None;
+    }
+
+    match key {
+        Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowUp) => {
+            Some(SearchControlAction::SelectPreviousScope)
+        }
+        Key::Named(NamedKey::ArrowRight | NamedKey::ArrowDown) => {
+            Some(SearchControlAction::SelectNextScope)
+        }
+        Key::Named(NamedKey::Space | NamedKey::Enter) => {
+            Some(SearchControlAction::KeepScope)
+        }
+        _ => None,
+    }
 }
 
 fn adjacent_preview_index(len: usize, current: Option<usize>, direction: isize) -> usize {
@@ -414,6 +478,12 @@ struct NativeWindowSnapshot {
     confirm_quit_active: bool,
     search_active: bool,
     search_scope: Option<&'static str>,
+    search_focus: Option<&'static str>,
+    search_query_bytes: Option<usize>,
+    search_result_status: Option<String>,
+    search_live_announcement: Option<String>,
+    search_announcement_generation: Option<u64>,
+    search_surface: Option<[f32; 4]>,
 }
 
 #[cfg(feature = "native-gui-test-hooks")]
@@ -547,6 +617,14 @@ fn write_native_resize_snapshot(
     });
     snapshot["search_active"] = serde_json::json!(window.search_active);
     snapshot["search_scope"] = serde_json::json!(window.search_scope);
+    snapshot["search_focus"] = serde_json::json!(window.search_focus);
+    snapshot["search_query_bytes"] = serde_json::json!(window.search_query_bytes);
+    snapshot["search_result_status"] = serde_json::json!(window.search_result_status);
+    snapshot["search_live_announcement"] =
+        serde_json::json!(window.search_live_announcement);
+    snapshot["search_announcement_generation"] =
+        serde_json::json!(window.search_announcement_generation);
+    snapshot["search_surface"] = serde_json::json!(window.search_surface);
 
     let payload = snapshot.to_string();
     if let Err(error) = publish_native_resize_snapshot_generation(
@@ -623,6 +701,7 @@ pub struct Screen<'screen> {
     pub touchpurpose: TouchPurpose,
     pub search_state: SearchState,
     search_scope: SearchScope,
+    search_results: SearchResultSummary,
     pub hint_state: HintState,
     image_preview: crate::image_preview::ImagePreview,
     action_surface: action_surface::Controller,
@@ -877,6 +956,7 @@ impl Screen<'_> {
         Ok(Screen {
             search_state: SearchState::default(),
             search_scope: SearchScope::Pane { route_id: 0 },
+            search_results: SearchResultSummary::EmptyQuery,
             hint_state: HintState::new(config.hints.alphabet.clone()),
             image_preview: crate::image_preview::ImagePreview::default(),
             action_surface,
@@ -1766,6 +1846,10 @@ impl Screen<'_> {
             }
             self.update_hint_state();
             self.mark_dirty();
+            return;
+        }
+
+        if self.handle_search_control_key(key, mods) {
             return;
         }
 
@@ -3001,7 +3085,10 @@ impl Screen<'_> {
         // around.
         let focused_match = match &self.search_state.focused_match {
             Some(focused_match) => focused_match,
-            None => return,
+            None => {
+                self.search_results = self.recalculate_visible_search_results();
+                return;
+            }
         };
 
         // Set new origin to the left/right of the match, depending on search direction.
@@ -3022,6 +3109,7 @@ impl Screen<'_> {
         terminal.scroll_display(Scroll::Delta(-self.search_state.display_offset_delta));
         drop(terminal);
         self.search_state.origin = new_origin;
+        self.search_results = self.recalculate_visible_search_results();
     }
 
     /// Whether we should send `ESC` due to `Alt` being pressed.
@@ -3775,6 +3863,12 @@ impl Screen<'_> {
             Ok(Some(action)) => {
                 use crate::renderer::search::SearchOverlayAction;
                 match action {
+                    SearchOverlayAction::SelectScope(kind) => {
+                        self.switch_active_search_scope(
+                            self.search_scope_for_kind(kind),
+                            SearchFocusTarget::Query,
+                        );
+                    }
                     SearchOverlayAction::Next => {
                         self.advance_search_origin(self.search_state.direction);
                     }
@@ -4700,6 +4794,27 @@ impl Screen<'_> {
     }
 
     #[inline]
+    fn search_scope_for_kind(&self, kind: SearchScopeKind) -> SearchScope {
+        match kind {
+            SearchScopeKind::Pane => SearchScope::Pane {
+                route_id: self.context_manager.current_route(),
+            },
+            SearchScopeKind::Workspace => SearchScope::Workspace,
+        }
+    }
+
+    #[inline]
+    fn normalized_search_scope(&self, requested: SearchScope) -> SearchScope {
+        if self.get_mode().contains(Mode::VI) {
+            SearchScope::Pane {
+                route_id: self.context_manager.current_route(),
+            }
+        } else {
+            requested
+        }
+    }
+
+    #[inline]
     fn start_search(&mut self, direction: Direction) {
         let scope = SearchScope::Pane {
             route_id: self.context_manager.current_route(),
@@ -4712,19 +4827,31 @@ impl Screen<'_> {
         self.start_search_in_scope(direction, SearchScope::Workspace);
     }
 
-    fn start_search_in_scope(&mut self, direction: Direction, scope: SearchScope) {
-        // Vi search always belongs to its selected pane; the global launcher is
-        // excluded in Vi mode, and this fail-safe preserves that invariant for
-        // user-defined bindings.
-        self.search_scope = if self.get_mode().contains(Mode::VI) {
-            SearchScope::Pane {
-                route_id: self.context_manager.current_route(),
+    fn start_search_in_scope(&mut self, direction: Direction, requested: SearchScope) {
+        let requested = self.normalized_search_scope(requested);
+        if self.search_active() {
+            match transition_active_search_scope(
+                &mut self.search_state,
+                self.search_scope,
+                requested,
+            ) {
+                ActiveSearchScopeTransition::Refocused => {}
+                ActiveSearchScopeTransition::Switched(scope) => {
+                    self.search_scope = scope;
+                    self.search_state.direction = direction;
+                    self.reset_search_origin(direction);
+                    self.update_search();
+                }
             }
-        } else {
-            scope
-        };
+            self.renderer.search.refocus_query();
+            self.sync_search_overlay();
+            self.mark_dirty();
+            return;
+        }
 
-        // Only create new history entry if the previous regex wasn't empty.
+        self.search_scope = requested;
+
+        // Only create a new history entry if the previous regex wasn't empty.
         if self
             .search_state
             .history
@@ -4738,36 +4865,110 @@ impl Screen<'_> {
         self.search_state.history_index = Some(0);
         self.search_state.direction = direction;
         self.search_state.focused_match = None;
+        self.search_results = SearchResultSummary::EmptyQuery;
+        self.reset_search_origin(direction);
+        self.renderer.search.refocus_query();
+        self.sync_search_overlay();
+        self.mark_dirty();
+    }
 
-        // Store original search position as origin and reset location.
+    fn reset_search_origin(&mut self, direction: Direction) {
         if self.get_mode().contains(Mode::VI) {
             let terminal = self.context_manager.current().terminal.lock();
             self.search_state.origin = terminal.vi_mode_cursor.pos;
             self.search_state.display_offset_delta = 0;
 
-            // Adjust origin for content moving upward on search start.
             if terminal.grid.cursor.pos.row + 1 == terminal.screen_lines() {
                 self.search_state.origin.row -= 1;
             }
             drop(terminal);
-        } else {
-            let terminal = self.context_manager.current().terminal.lock();
-            let viewport_top = Line(-(terminal.grid.display_offset() as i32)) - 1;
-            let viewport_bottom = viewport_top + terminal.bottommost_line();
-            let last_column = terminal.last_column();
-            self.search_state.origin = match direction {
-                Direction::Right => Pos::new(viewport_top, Column(0)),
-                Direction::Left => Pos::new(viewport_bottom, last_column),
-            };
-            drop(terminal);
+            return;
         }
 
-        // Enable IME so we can input into the search bar with it if we were in Vi mode.
-        // self.window().set_ime_allowed(true);
+        let terminal = self.context_manager.current().terminal.lock();
+        let viewport_top = Line(-(terminal.grid.display_offset() as i32)) - 1;
+        let viewport_bottom = viewport_top + terminal.bottommost_line();
+        let last_column = terminal.last_column();
+        self.search_state.origin = match direction {
+            Direction::Right => Pos::new(viewport_top, Column(0)),
+            Direction::Left => Pos::new(viewport_bottom, last_column),
+        };
+        self.search_state.display_offset_delta = 0;
+        drop(terminal);
+    }
 
+    fn switch_active_search_scope(
+        &mut self,
+        requested: SearchScope,
+        focus: SearchFocusTarget,
+    ) {
+        let requested = self.normalized_search_scope(requested);
+        if let ActiveSearchScopeTransition::Switched(scope) =
+            transition_active_search_scope(
+                &mut self.search_state,
+                self.search_scope,
+                requested,
+            )
+        {
+            self.search_scope = scope;
+            self.reset_search_origin(self.search_state.direction);
+            self.update_search();
+        }
+
+        match focus {
+            SearchFocusTarget::Query => self.renderer.search.refocus_query(),
+            SearchFocusTarget::Scope => self.renderer.search.focus_scope(),
+        }
+        self.sync_search_overlay();
         self.mark_dirty();
     }
 
+    fn handle_search_control_key(
+        &mut self,
+        key: &rio_window::event::KeyEvent,
+        mods: ModifiersState,
+    ) -> bool {
+        if !self.search_active() {
+            return false;
+        }
+        let Some(action) = search_scope_key_action(
+            self.renderer.search.focus_target(),
+            &key.logical_key,
+            mods,
+        ) else {
+            return false;
+        };
+
+        match action {
+            SearchControlAction::FocusQuery => self.renderer.search.refocus_query(),
+            SearchControlAction::FocusScope => self.renderer.search.focus_scope(),
+            SearchControlAction::SelectPreviousScope
+            | SearchControlAction::SelectNextScope => {
+                let next = match self.search_scope.kind() {
+                    SearchScopeKind::Pane => SearchScopeKind::Workspace,
+                    SearchScopeKind::Workspace => SearchScopeKind::Pane,
+                };
+                self.renderer.search.focus_scope();
+                self.switch_active_search_scope(
+                    self.search_scope_for_kind(next),
+                    SearchFocusTarget::Scope,
+                );
+            }
+            SearchControlAction::KeepScope => {}
+        }
+        self.mark_dirty();
+        true
+    }
+
+    fn sync_search_overlay(&mut self) {
+        let query = self
+            .search_state
+            .history_index
+            .and_then(|index| self.search_state.history.get(index))
+            .cloned();
+        self.renderer
+            .set_active_search(query, self.search_scope, self.search_results);
+    }
     #[inline]
     fn confirm_search(&mut self, clipboard: &mut Clipboard) {
         // Just cancel search when not in vi mode.
@@ -4810,6 +5011,7 @@ impl Screen<'_> {
         // self.window().set_ime_allowed(!vi_mode);
 
         self.search_state.history_index = None;
+        self.search_results = SearchResultSummary::EmptyQuery;
 
         // Clear focused match.
         self.search_state.focused_match = None;
@@ -4858,24 +5060,75 @@ impl Screen<'_> {
     }
 
     fn update_search(&mut self) {
-        let regex = match self.search_state.regex() {
-            Some(regex) => regex,
-            None => return,
+        let Some(regex) = self.search_state.regex() else {
+            self.search_results = SearchResultSummary::EmptyQuery;
+            return;
         };
 
         if regex.is_empty() {
-            // Stop search if there's nothing to search for.
             self.search_reset_state();
             self.search_state.dfas = None;
-        } else {
-            // Create search dfas for the new regex string.
-            self.search_state.dfas = RegexSearch::new(regex).ok();
-
-            // Update search highlighting.
-            self.goto_match(MAX_SEARCH_WHILE_TYPING);
+            self.search_results = SearchResultSummary::EmptyQuery;
+            return;
         }
+
+        self.search_state.dfas = RegexSearch::new(regex).ok();
+        if self.search_state.dfas.is_none() {
+            self.search_state.focused_match = None;
+            self.search_results = SearchResultSummary::InvalidPattern;
+            return;
+        }
+
+        self.goto_match(MAX_SEARCH_WHILE_TYPING);
+        self.search_results = self.recalculate_visible_search_results();
     }
 
+    fn recalculate_visible_search_results(&mut self) -> SearchResultSummary {
+        let Some(base_dfas) = self.search_state.dfas.as_ref() else {
+            return if self
+                .search_state
+                .regex()
+                .is_some_and(|query| !query.is_empty())
+            {
+                SearchResultSummary::InvalidPattern
+            } else {
+                SearchResultSummary::EmptyQuery
+            };
+        };
+
+        let routes = match self.search_scope {
+            SearchScope::Pane { route_id } => vec![route_id],
+            SearchScope::Workspace => {
+                self.context_manager.visible_route_ids_in_search_order()
+            }
+        };
+        let mut visible = 0_usize;
+        for route_id in routes {
+            let Some(context) = self.context_manager.get_by_route_id(route_id) else {
+                continue;
+            };
+            let terminal = context.terminal.lock();
+            let mut route_dfas = base_dfas.clone();
+            let remaining = MAX_VISIBLE_SEARCH_RESULT_COUNT.saturating_sub(visible);
+            let route_count = visible_regex_match_iter(&terminal, &mut route_dfas)
+                .take(remaining.saturating_add(1))
+                .count();
+            drop(terminal);
+
+            if route_count > remaining {
+                return SearchResultSummary::Matches {
+                    visible: MAX_VISIBLE_SEARCH_RESULT_COUNT,
+                    limited: true,
+                };
+            }
+            visible = visible.saturating_add(route_count);
+        }
+
+        SearchResultSummary::Matches {
+            visible,
+            limited: false,
+        }
+    }
     /// Reset terminal to the state before search was started.
     fn search_reset_state(&mut self) {
         // Unschedule pending timers.
@@ -5601,14 +5854,13 @@ impl Screen<'_> {
             is_search_active = false;
         }
         if is_search_active {
-            if let Some(history_index) = self.search_state.history_index {
-                self.renderer.set_active_search(
-                    self.search_state.history.get(history_index).cloned(),
-                    self.search_scope,
-                );
-            }
+            self.sync_search_overlay();
         } else {
-            self.renderer.set_active_search(None, self.search_scope);
+            self.renderer.set_active_search(
+                None,
+                self.search_scope,
+                SearchResultSummary::EmptyQuery,
+            );
         }
 
         if is_search_active {
@@ -5674,6 +5926,23 @@ impl Screen<'_> {
                 "mouse_mode": self.mouse_mode(),
                 "preview_pointer_allowed": self.image_preview_pointer_allowed(),
             });
+            let search_accessibility = self.renderer.search.accessibility_snapshot();
+            let search_focus =
+                search_accessibility
+                    .as_ref()
+                    .map(|snapshot| match snapshot.focus {
+                        SearchFocusTarget::Query => "query",
+                        SearchFocusTarget::Scope => "scope",
+                    });
+            let search_result_status = search_accessibility
+                .as_ref()
+                .map(|snapshot| snapshot.result_status.clone());
+            let search_live_announcement = search_accessibility
+                .as_ref()
+                .and_then(|snapshot| snapshot.live_announcement.map(str::to_owned));
+            let search_announcement_generation = search_accessibility
+                .as_ref()
+                .map(|snapshot| snapshot.announcement_generation);
             write_native_resize_snapshot(
                 &self.context_manager.current().renderable_content,
                 panels,
@@ -5698,6 +5967,12 @@ impl Screen<'_> {
                             SearchScope::Workspace => "workspace",
                         },
                     ),
+                    search_focus,
+                    search_query_bytes: self.renderer.search.active_query().map(str::len),
+                    search_result_status,
+                    search_live_announcement,
+                    search_announcement_generation,
+                    search_surface: self.renderer.search.native_surface_rect(),
                 },
                 &self.native_test_last_control,
                 self.image_preview.native_test_state(&self.sugarloaf),
@@ -6498,6 +6773,34 @@ impl Screen<'_> {
                 self.start_workspace_search(Direction::Right);
                 self.mark_dirty();
             }
+            "set-search-query-hex" => {
+                let payload = fields.next().unwrap_or_default();
+                if self.search_active()
+                    && payload.len() <= MAX_SEARCH_QUERY_BYTES.saturating_mul(2)
+                {
+                    if let Some(bytes) = decode_native_test_hex(payload) {
+                        if let Ok(query) = std::str::from_utf8(&bytes) {
+                            for character in query.chars() {
+                                self.search_input(character);
+                            }
+                            self.sync_search_overlay();
+                            self.mark_dirty();
+                        }
+                    }
+                }
+            }
+            "focus-search-scope" => {
+                if self.search_active() {
+                    self.renderer.search.focus_scope();
+                    self.mark_dirty();
+                }
+            }
+            "close-search" => {
+                if self.search_active() {
+                    self.search_state.dfas = None;
+                    self.exit_search();
+                }
+            }
             "confirm-quit" => {
                 self.renderer.command_palette.set_enabled(false);
                 self.renderer.confirm_quit.set_active(true);
@@ -7217,6 +7520,89 @@ mod tests {
         );
         assert_eq!(visible_search_route_order(vec![11, 22], 9_999), [11, 22]);
         assert!(visible_search_route_order(Vec::new(), 11).is_empty());
+    }
+    #[test]
+    fn active_search_switches_both_directions_without_replacing_the_query() {
+        let mut state = SearchState::default();
+        state.history.push_front("retained query".to_string());
+        state.history_index = Some(0);
+        state.focused_match =
+            Some(Pos::new(Line(2), Column(3))..=Pos::new(Line(2), Column(8)));
+
+        let to_workspace = transition_active_search_scope(
+            &mut state,
+            SearchScope::Pane { route_id: 11 },
+            SearchScope::Workspace,
+        );
+        assert_eq!(
+            to_workspace,
+            ActiveSearchScopeTransition::Switched(SearchScope::Workspace)
+        );
+        assert_eq!(state.regex().map(String::as_str), Some("retained query"));
+        assert!(state.focused_match.is_none());
+
+        let to_pane = transition_active_search_scope(
+            &mut state,
+            SearchScope::Workspace,
+            SearchScope::Pane { route_id: 42 },
+        );
+        assert_eq!(
+            to_pane,
+            ActiveSearchScopeTransition::Switched(SearchScope::Pane { route_id: 42 })
+        );
+        assert_eq!(state.regex().map(String::as_str), Some("retained query"));
+    }
+
+    #[test]
+    fn active_search_same_scope_only_refocuses_and_keeps_match_state() {
+        let mut state = SearchState::default();
+        state.history.push_front("needle".to_string());
+        state.history_index = Some(0);
+        state.focused_match =
+            Some(Pos::new(Line(2), Column(3))..=Pos::new(Line(2), Column(8)));
+        let scope = SearchScope::Pane { route_id: 7 };
+
+        assert_eq!(
+            transition_active_search_scope(&mut state, scope, scope),
+            ActiveSearchScopeTransition::Refocused
+        );
+        assert_eq!(state.regex().map(String::as_str), Some("needle"));
+        assert!(state.focused_match.is_some());
+    }
+
+    #[test]
+    fn scope_focus_keys_are_consumed_before_pty_input() {
+        for key in [
+            NamedKey::ArrowLeft,
+            NamedKey::ArrowRight,
+            NamedKey::ArrowUp,
+            NamedKey::ArrowDown,
+            NamedKey::Space,
+            NamedKey::Enter,
+        ] {
+            assert!(search_scope_key_action(
+                SearchFocusTarget::Scope,
+                &Key::Named(key),
+                ModifiersState::empty(),
+            )
+            .is_some());
+        }
+        assert_eq!(
+            search_scope_key_action(
+                SearchFocusTarget::Query,
+                &Key::Named(NamedKey::Tab),
+                ModifiersState::empty(),
+            ),
+            Some(SearchControlAction::FocusScope)
+        );
+        assert_eq!(
+            search_scope_key_action(
+                SearchFocusTarget::Scope,
+                &Key::Named(NamedKey::Tab),
+                ModifiersState::SHIFT,
+            ),
+            Some(SearchControlAction::FocusQuery)
+        );
     }
 
     #[test]
