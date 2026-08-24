@@ -94,6 +94,14 @@ class QaRunnerTests(unittest.TestCase):
         self.assertIn("[A-Za-z0-9][A-Za-z0-9._-]*", source)
         self.assertIn("len(requested_run_id) > 96", source)
 
+    def test_s1_assurance_is_always_tested_and_controlled_evidence_is_optional(self) -> None:
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        self.assertIn('"s1-assurance-policy"', source)
+        self.assertIn('"s1-assurance-mutations"', source)
+        self.assertIn('"AUTOMEXIA_QA_S1_EVIDENCE"', source)
+        self.assertIn('"--require-complete"', source)
+        self.assertIn('"s1-release-assurance-evidence"', source)
+
     def test_host_manifest_is_allowlisted_and_path_free(self) -> None:
         manifest = QA.collect_host_manifest()
         expected = {

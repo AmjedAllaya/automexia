@@ -239,7 +239,34 @@ def validate_release(workflow: dict[str, Any]) -> None:
                 f"release job {job_name} must not receive contents: write",
             )
 
+    assurance = job(workflow, "s1-assurance", "release.yml")
+    assurance_commands = commands(assurance)
+    for fragment in (
+        "s1_assurance.py validate",
+        "--expected-commit $env:GITHUB_SHA",
+        "--require-complete",
+    ):
+        require(
+            fragment in assurance_commands,
+            f"release S1 assurance is missing {fragment!r}",
+        )
+    require(
+        "self-hosted"
+        in {str(label).lower() for label in assurance.get("runs-on", [])},
+        "release S1 assurance must use a controlled self-hosted runner",
+    )
+
     preflight = job(workflow, "preflight", "release.yml")
+    preflight_needs = {str(item) for item in preflight.get("needs", [])}
+    require(
+        "s1-assurance" in preflight_needs,
+        "release preflight must depend on complete S1 assurance",
+    )
+    preflight_condition = str(preflight.get("if", ""))
+    require(
+        "needs.s1-assurance.result == 'success'" in preflight_condition,
+        "release preflight must fail closed unless S1 assurance succeeds",
+    )
     preflight_environment = preflight.get("env", {})
     for name in (
         "AUTOMEXIA_WINDOWS_CERTIFICATE",
@@ -469,6 +496,32 @@ def validate_release(workflow: dict[str, Any]) -> None:
     )
 
 
+def validate_s1_assurance(workflow: dict[str, Any]) -> None:
+    require(
+        workflow.get("permissions") == {"contents": "read"},
+        "S1 assurance workflow must be read-only",
+    )
+    validate = job(workflow, "validate", "s1-assurance.yml")
+    require(
+        "self-hosted"
+        in {str(label).lower() for label in validate.get("runs-on", [])},
+        "S1 assurance must use a controlled self-hosted runner",
+    )
+    source = commands(validate)
+    for fragment, message in (
+        ("s1_assurance.py check-policy", "reviewed policy"),
+        ("test_s1_assurance.py", "mutation tests"),
+        ("s1_assurance.py validate", "manifest validator"),
+        ("--expected-commit $env:GITHUB_SHA", "source binding"),
+        ("--require-complete", "complete matrix"),
+    ):
+        require(fragment in source, f"S1 assurance is missing {message}")
+    require(
+        "AUTOMEXIA_S1_ASSURANCE_EVIDENCE" in str(validate.get("env", {})),
+        "S1 assurance must consume the controlled evidence path",
+    )
+
+
 def validate_macos_runtime_contract(source: str) -> None:
     """Keep the supported macOS deployment floor independent of hard linking."""
     require(
@@ -520,6 +573,7 @@ def validate_repository_workflows() -> None:
     validate_ci(load_workflow("ci.yml"))
     validate_nightly(load_workflow("nightly.yml"))
     validate_release(load_workflow("release.yml"))
+    validate_s1_assurance(load_workflow("s1-assurance.yml"))
     validate_macos_runtime_contract(MACOS_BUILD_SCRIPT.read_text(encoding="utf-8"))
     validate_windows_release_trust_contract(
         WINDOWS_RELEASE_TRUST_SCRIPT.read_text(encoding="utf-8")

@@ -101,6 +101,13 @@ class RepositoryProtectionTests(unittest.TestCase):
         ):
             PROTECTION.validate_policy(altered)
 
+    def test_s1_controlled_workflow_is_registered_without_claiming_default_branch_evidence(self) -> None:
+        self.assertEqual(
+            PROTECTION.EXPECTED_WORKFLOWS["s1-assurance.yml"],
+            "S1 controlled assurance",
+        )
+        self.assertNotIn("s1-assurance.yml", PROTECTION.EXPECTED_DEFAULT_BRANCH_EVIDENCE_WORKFLOWS)
+
     def test_action_policy_requires_sha_pinning_and_an_exact_allowlist(self) -> None:
         for field, value in (
             ("sha_pinning_required", False),

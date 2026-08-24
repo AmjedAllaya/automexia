@@ -97,7 +97,7 @@ protected commit passes and the authenticated audit returns no external result.
 | Track | Phase | Implementation | Release evidence | Conclusion |
 |---|---|---|---|---|
 | Core | v0.4/S0 | **Fully implemented locally** | **Partial** | Identity, hostile-input bounds, atomic reload, and current terminal source gates are complete; stable release gates remain. |
-| Assurance | v0.4/S1 | **Partial** | **Partial** | Resize-queue properties, generation-aware atomic snapshots, a bounded reviewed visual comparator, Windows-native QA/resource evidence, and workflow machinery exist; controlled Linux/macOS GPU/visual/accessibility proof and approved golden matrices remain. |
+| Assurance | v0.4/S1 | **Source fully implemented; release evidence partial/external** | **Partial/external** | A versioned 24-suite policy, strict commit-bound validator, deterministic test-only visual fixture, bounded comparator, Windows-native WGPU/CPU QA/resource evidence, separate AppVerifier Basics/low-resource phases, mutation coverage, controlled workflow, and fail-closed release dependency exist. Elevated/named-hardware, Linux/macOS native, assistive-technology, exact visual-matrix, and independent human-review evidence remains external. |
 | Performance | S2 | **Partially implemented; collecting** | **External baseline pending** | Evidence normalization/composition, native memory metrics, baseline/waiver validation, 90-day retention, and a fail-closed release ratchet exist. Activation awaits 30 reviewed consecutive controlled-runner days. |
 | DevOps | D0 | **Partial** | **Partial** | ADR 0012 is accepted and active schema 5 ratchets immutable schemas 1/2/3/4 with exact M3-M5 route/tunnel, trust/status, lifecycle/receipt/reconnect, and native-manifest rules; protected approvals and real native execution remain. |
 | DevOps | D1 | **Fully implemented** | **Partial** | Four private provider-neutral crates and bounded contracts satisfy their source boundary. |
@@ -206,7 +206,7 @@ degradation, and never silently retry into a false pass.
 
 ### S1.1 — native prompt, resize, session, and input assurance
 
-**Partially implemented.**
+**Source fully implemented; multi-platform native evidence partial/external.**
 
 Implemented:
 
@@ -229,14 +229,15 @@ Missing or external:
 
 ### S1.2 — resource lifetime and hardware evidence
 
-**Partially implemented.**
+**Source fully implemented; controlled hardware evidence partial/external.**
 
 Implemented:
 
 - Windows ceilings for handles, threads, private bytes, working set,
   descendants, PTYs, routes, image resources, and teardown;
-- safe exact-binary Application Verifier/WPR wrappers with finally cleanup and
-  private ETL exclusion;
+- safe exact-binary Application Verifier/WPR wrappers with finally cleanup,
+  separate Basics and bounded low-resource phases, verifier error/stop and log
+  size rejection, redacted reports, and private ETL exclusion;
 - worker restart/saturation/shutdown, PTY lifecycle, image WGPU/CPU
   open/dismiss, cache eviction, file release, and no-sidecar tests;
 - separate ASan, TSan, Miri, Loom, fuzz, and native responsibilities.
@@ -249,7 +250,7 @@ Missing:
 
 ### S1.3 — visual quality and frame regression
 
-**Partially implemented.**
+**Source fully implemented; approved native visual evidence partial/external.**
 
 Implemented: renderer-neutral geometry/state, structured snapshots, contrast,
 hit-target/modal/cursor/footer/path/pane invariants, narrow-to-8K layout cases,
@@ -258,6 +259,9 @@ blank/single-color output, restores z-order, and excludes live frames from
 portable QA. The repository-owned comparator now bounds encoded/decoded size,
 dimensions, masks, output, and memory; applies the reviewed 2-channel/0.1%
 policy; and atomically writes a non-color-dependent JSON verdict plus heatmap.
+The exact test-only `s1-standard-v1` fixture freezes public content, clock, and
+motion, while the versioned policy enumerates 560 theme/scale/viewport/surface
+cases and requires independent HTTPS human review.
 
 Missing or external: approved expected/actual/diff golden matrices across
 viewport/theme/font/scale/UI states, Linux/macOS native frames, and recorded
@@ -266,14 +270,16 @@ claim that unrecorded frames were reviewed.
 
 ### S1.4 — accessibility
 
-**Partially implemented.**
+**v0.4 source policy fully implemented; assistive-technology evidence external.**
 
 Implemented: keyboard operation, focus visibility/order, non-color identity,
 contrast, hidden targets, scaling, labels, reduced-motion requirements,
-inventory/manual matrix, generic status summaries, and ADR 0013.
+inventory/manual matrix, generic status summaries, exact Narrator/NVDA/
+VoiceOver/Orca environment coverage, strict evidence validation, independent
+HTTPS review, and ADR 0013.
 
-Missing: recorded Narrator/NVDA, VoiceOver, and Orca evidence plus the v0.5
-AccessKit semantic tree and controlled 200% scale checks for future UI.
+External: recorded Narrator/NVDA, VoiceOver, and Orca evidence. The v0.5
+AccessKit semantic tree remains a deliberately separate maturation phase.
 
 ### S1.5 — context freshness and provider recovery
 

@@ -177,6 +177,10 @@ no desktop hotkey API offers a true atomic transaction.
 - Preserve the final PTY/grid size, prompt generation, context, complete path,
   cursor validity, route isolation, and recovery after the viewport grows.
 
+Current status: **source implementation fully done; external matrix partially
+done.** Deterministic and Windows-native owners are implemented. Linux X11,
+Linux Wayland, and macOS controlled execution remain external.
+
 ### S1 — native resource and hardware evidence
 
 1. Extend the controlled Windows driver to record the process tree, handle
@@ -201,6 +205,11 @@ Exit gate: native lifecycle tests leave no child process or material resource
 growth, Application Verifier reports no enabled-layer failure, and every
 published performance result identifies the hardware/software environment.
 
+Current status: **source implementation fully done; external matrix partially
+done.** The Windows harness, separate bounded verifier phases, WPR wrapper,
+exact hardware/environment schema, and fail-closed validator exist. Named GPU,
+RDP, elevated, Linux, and macOS results must still be collected.
+
 ### S1 — visual acceptance
 
 - Capture an approved screenshot matrix for default dark/light appearances on
@@ -210,6 +219,10 @@ published performance result identifies the hardware/software environment.
 - File objective defects separately from aesthetic preferences. Automated tests
   remain authoritative for geometry, contrast, hit targets, and containment;
   maintainers own the aesthetic release decision.
+
+Current status: **source implementation fully done; review evidence not done.**
+The exact cross-product and review contract is enforced; actual approved native
+captures remain an external human/controlled-host gate.
 
 ### S1 — rendered-frame regression automation
 
@@ -243,6 +256,10 @@ Exit gate: moving, clipping, overlapping, or incorrectly scaling a painted UI
 element produces a focused state or image diff, including the previously
 observed case where a logically valid pane footer was painted above the bottom.
 
+Current status: **source implementation fully done; native matrix partially
+done.** `visual-test-hooks` freezes clock/animation/facts and reuses the actual
+renderer readiness/capture path; non-Windows captures and approval remain.
+
 ### S1 — accessibility baseline
 
 1. Inventory every custom-rendered interactive element and document its label,
@@ -262,6 +279,11 @@ observed case where a logically valid pane footer was painted above the bottom.
 Exit gate for v0.4: all functionality remains keyboard-operable, focus and
 contrast/scaling contracts pass, and known screen-reader limitations are
 published with native smoke evidence. Full accessibility remains a v0.5 gate.
+
+Current status: **v0.4 automated/source boundary fully done; native smoke not
+done.** The release policy requires Narrator, NVDA, VoiceOver, and Orca on X11
+and Wayland with independent review. ADR 0013's complete semantic tree remains
+deliberately deferred to v0.5.
 
 ### S1 — context freshness
 

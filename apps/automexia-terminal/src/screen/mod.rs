@@ -634,6 +634,16 @@ fn write_native_resize_snapshot(
     snapshot["command_result_divider"] = serde_json::json!(window.command_result_divider);
     snapshot["command_result_pulse_generation"] =
         serde_json::json!(window.command_result_pulse_generation);
+    #[cfg(feature = "visual-test-hooks")]
+    {
+        snapshot["visual_test_fixture"] =
+            serde_json::json!(crate::automexia::visual_test_hooks::fixture_active()
+                .then_some(crate::automexia::visual_test_hooks::FIXTURE_ID));
+        snapshot["visual_test_clock"] =
+            serde_json::json!(crate::automexia::visual_test_hooks::frozen_clock_label());
+        snapshot["visual_test_animations_enabled"] =
+            serde_json::json!(crate::automexia::visual_test_hooks::animations_enabled());
+    }
 
     let payload = snapshot.to_string();
     if let Err(error) = publish_native_resize_snapshot_generation(

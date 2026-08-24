@@ -255,6 +255,16 @@ struct DevOpsPaneRenderState {
 
 const MAX_LEGACY_PROMPT_SCAN_ROWS: usize = 8;
 
+#[inline]
+fn result_animation_enabled(requested: bool) -> bool {
+    #[cfg(feature = "visual-test-hooks")]
+    {
+        return requested && crate::automexia::visual_test_hooks::animations_enabled();
+    }
+    #[cfg(not(feature = "visual-test-hooks"))]
+    requested
+}
+
 /// Locate the first output row without inspecting terminal text beyond the
 /// narrow legacy lambda fallback. Managed prompts use their semantic identity;
 /// their contiguous block is already bounded by the pane's visible snapshot,
@@ -1580,7 +1590,7 @@ impl Renderer {
                 sugarloaf,
                 self.named_colors,
                 &command_results,
-                allow_result_animation,
+                result_animation_enabled(allow_result_animation),
             );
             // Completion directly wakes this route. De-duplicated timers remain
             // as a fallback for worker pressure and poll changing local
@@ -1653,7 +1663,7 @@ impl Renderer {
                     sugarloaf,
                     self.named_colors,
                     &pane.command_results,
-                    pane.allow_result_animation,
+                    result_animation_enabled(pane.allow_result_animation),
                 );
             }
             if inactive_refresh_pending {

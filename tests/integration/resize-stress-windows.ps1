@@ -565,6 +565,7 @@ $configRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
 $previousSnapshot = $env:AUTOMEXIA_RESIZE_SNAPSHOT
 $previousControl = $env:AUTOMEXIA_NATIVE_TEST_CONTROL
 $previousConfigHome = $env:AUTOMEXIA_CONFIG_HOME
+$previousVisualFixture = $env:AUTOMEXIA_VISUAL_TEST_FIXTURE
 $process = $null
 $window = [IntPtr]::Zero
 $lastSnapshot = $null
@@ -688,6 +689,7 @@ $rendererConfig
     $env:AUTOMEXIA_RESIZE_SNAPSHOT = $snapshotPath
     $env:AUTOMEXIA_NATIVE_TEST_CONTROL = $controlPath
     $env:AUTOMEXIA_CONFIG_HOME = $configRoot
+    $env:AUTOMEXIA_VISUAL_TEST_FIXTURE = 's1-standard-v1'
     $process = Start-Process -FilePath $Binary -WorkingDirectory $root -PassThru
 
     # Process.MainWindowHandle can transiently select Winit's internal event
@@ -732,8 +734,16 @@ $rendererConfig
         Write-Host ($initial | ConvertTo-Json -Depth 4)
         throw 'PowerShell did not publish one complete prompt automatically after startup'
     }
+    if ([string]$initial.visual_test_fixture -ne 's1-standard-v1' -or
+        [string]$initial.visual_test_clock -ne '12:34' -or
+        [bool]$initial.visual_test_animations_enabled) {
+        Write-Host ($initial | ConvertTo-Json -Depth 4)
+        throw 'The deterministic S1 visual fixture did not freeze clock and animation state'
+    }
 
     $initialPanel = Get-ActiveAutomexiaPanel $initial
+    $expectedContextSegmentsJson =
+        @($initialPanel.context_segments) | ConvertTo-Json -Compress
     if ($null -eq $initialPanel -or [int]$initial.panel_count -ne 1) {
         throw 'The initial native session snapshot is incomplete'
     }
@@ -945,19 +955,30 @@ $rendererConfig
         Write-Host ($historyReady | ConvertTo-Json -Depth 8)
         throw 'The native driver did not observe the history seed control input'
     }
+    $visualAnimationsEnabled = [bool]$historyReady.visual_test_animations_enabled
     $historyDeadline = [DateTime]::UtcNow.AddSeconds(10)
     while (([int64]$historyReady.latest_prompt_id -le [int64]$initial.latest_prompt_id -or
-            [int64]$historyReady.command_result_pulse_generation -le
-                [int64]$initial.command_result_pulse_generation -or
+            ($visualAnimationsEnabled -and
+                [int64]$historyReady.command_result_pulse_generation -le
+                    [int64]$initial.command_result_pulse_generation) -or
             $null -eq $historyReady.command_result_surface) -and
            [DateTime]::UtcNow -lt $historyDeadline) {
         $historyReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyReady.sequence)
     }
     if ([int64]$historyReady.latest_prompt_id -le [int64]$initial.latest_prompt_id -or
+        $null -eq $historyReady.command_result_surface) {
+        Write-Host ($historyReady | ConvertTo-Json -Depth 8)
+        throw 'PowerShell completion did not publish a new prompt and result surface'
+    }
+    if ($visualAnimationsEnabled -and
         [int64]$historyReady.command_result_pulse_generation -le
             [int64]$initial.command_result_pulse_generation) {
-        Write-Host ($historyReady | ConvertTo-Json -Depth 8)
-        throw 'PowerShell completion did not publish a new prompt and one-shot result glow'
+        throw 'PowerShell completion did not publish the one-shot result glow'
+    }
+    if (-not $visualAnimationsEnabled -and
+        [int64]$historyReady.command_result_pulse_generation -ne
+            [int64]$initial.command_result_pulse_generation) {
+        throw 'The deterministic visual fixture unexpectedly published an animation pulse'
     }
 
     $resultSurface = @($historyReady.command_result_surface)
@@ -1365,8 +1386,9 @@ $rendererConfig
             (Get-ActiveAutomexiaPanel $cmdReady).shell_name -ne 'CMD' -or
             -not [bool](Get-ActiveAutomexiaPanel $cmdReady).shell_integration -or
             -not [bool](Get-ActiveAutomexiaPanel $cmdReady).shell_prompt_active -or
-            -not (@((Get-ActiveAutomexiaPanel $cmdReady).context_segments) -contains [Environment]::UserName) -or
-            [int]@((Get-ActiveAutomexiaPanel $cmdReady).context_segments).Count -lt 3 -or
+            (@((Get-ActiveAutomexiaPanel $cmdReady).context_segments) |
+                ConvertTo-Json -Compress) -ne $expectedContextSegmentsJson -or
+            (Get-ActiveAutomexiaPanel $cmdReady).shell_user -ne [Environment]::UserName -or
             -not [bool]$cmdReady.full_path_visible) -and
            [DateTime]::UtcNow -lt $cmdDeadline) {
         $cmdReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$cmdReady.sequence)
@@ -1376,10 +1398,10 @@ $rendererConfig
         $cmdPanel.shell_name -ne 'CMD' -or
         -not [bool]$cmdPanel.shell_integration -or
         -not [bool]$cmdPanel.shell_prompt_active -or
-        -not (@($cmdPanel.context_segments) -contains [Environment]::UserName) -or
-        [int]@($cmdPanel.context_segments).Count -lt 3 -or
+        (@($cmdPanel.context_segments) | ConvertTo-Json -Compress) -ne
+            $expectedContextSegmentsJson -or
         -not [bool]$cmdReady.full_path_visible -or
-        [string]::IsNullOrWhiteSpace([string]$cmdPanel.shell_user) -or
+        $cmdPanel.shell_user -ne [Environment]::UserName -or
         [IO.Path]::GetFileName([string]$cmdPanel.shell_path) -ine 'cmd.exe' -or
         -not ([string]$cmdPanel.cursor_line_text).Contains([char]0x03BB)) {
         Write-Host ($cmdReady | ConvertTo-Json -Depth 10)
@@ -1438,14 +1460,16 @@ $rendererConfig
     $cloneDeadline = [DateTime]::UtcNow.AddSeconds(15)
     while (([int]$rightClone.panel_count -ne 2 -or
             $null -eq (Get-ActiveAutomexiaPanel $rightClone).shell_user -or
+            -not [bool](Get-ActiveAutomexiaPanel $rightClone).shell_prompt_active -or
             -not [bool]$rightClone.full_path_visible) -and
            [DateTime]::UtcNow -lt $cloneDeadline) {
         $rightClone = Read-AutomexiaSnapshot -AfterSequence ([int64]$rightClone.sequence)
     }
     $rightPanel = Get-ActiveAutomexiaPanel $rightClone
-    if ([int]$rightClone.panel_count -ne 2 -or $null -eq $rightPanel) {
+    if ([int]$rightClone.panel_count -ne 2 -or $null -eq $rightPanel -or
+        -not [bool]$rightPanel.shell_prompt_active) {
         Write-Host ($rightClone | ConvertTo-Json -Depth 8)
-        throw 'The clone-right action did not create an independent right split'
+        throw 'The clone-right action did not create a prompt-ready independent right split'
     }
     if ([int64]$rightPanel.route_id -eq [int64]$initialPanel.route_id -or
         [int64]$rightPanel.shell_pid -eq [int64]$initialPanel.shell_pid -or
@@ -2087,47 +2111,24 @@ $rendererConfig
     $imageResourceBaseline = Get-AutomexiaResourceSample $process
     $imageLifecycleFinal = $dismissed
     for ($cycle = 1; $cycle -le $ImagePreviewLifecycleCycles; $cycle++) {
-        if (-not [AutomexiaResizeDriver]::MovePointerToClient(
-            $window, $messagePreviewX, $messagePreHoverY) -or
-            -not [AutomexiaResizeDriver]::PostMessage(
-            $window, 0x0200, [IntPtr]::Zero, $preHoverLParam)) {
-            throw "Could not deliver preview lifecycle pre-hover for cycle $cycle"
-        }
-        $cyclePreHover =
-            Read-AutomexiaSnapshot -AfterSequence ([int64]$imageLifecycleFinal.sequence)
-        # Winit and Windows may coalesce adjacent WM_MOUSEMOVE messages. Wait
-        # until the application has consumed the off-target transition before
-        # posting the return hover; otherwise the repeated cycle can legally
-        # collapse into the unchanged cell and never re-arm the preview.
-        $cyclePreHoverDeadline = [DateTime]::UtcNow.AddSeconds(5)
-        while (([Math]::Abs([double]$cyclePreHover.pointer.x - $previewX) -gt 1.0 -or
-                [Math]::Abs([double]$cyclePreHover.pointer.y - $preHoverY) -gt 1.0) -and
-               [DateTime]::UtcNow -lt $cyclePreHoverDeadline) {
-            $cyclePreHover =
-                Read-AutomexiaSnapshot -AfterSequence ([int64]$cyclePreHover.sequence)
-        }
-        if ([Math]::Abs([double]$cyclePreHover.pointer.x - $previewX) -gt 1.0 -or
-            [Math]::Abs([double]$cyclePreHover.pointer.y - $preHoverY) -gt 1.0) {
-            Write-Host ($cyclePreHover | ConvertTo-Json -Depth 10)
-            throw "Preview lifecycle pre-hover did not settle for cycle $cycle"
-        }
-        if (-not [AutomexiaResizeDriver]::MovePointerToClient(
-            $window, $messagePreviewX, $messagePreviewY) -or
-            -not [AutomexiaResizeDriver]::PostMessage(
-            $window, 0x0200, [IntPtr]::Zero, $mouseLParam)) {
-            throw "Could not deliver preview lifecycle hover for cycle $cycle"
-        }
+        # The real pointer hover/click/arrow path above proves user input. The
+        # repeated leak soak uses the feature-gated control so Windows cannot
+        # coalesce adjacent WM_MOUSEMOVE pairs and hide a resource result.
+        $cycleControl = "preview-image:${cycle}:$previewAssetSmall"
+        Send-AutomexiaTestControl $cycleControl
         $cycleVisible =
-            Read-AutomexiaSnapshot -AfterSequence ([int64]$cyclePreHover.sequence)
+            Read-AutomexiaSnapshot -AfterSequence ([int64]$imageLifecycleFinal.sequence)
         $cycleVisibleDeadline = [DateTime]::UtcNow.AddSeconds(5)
-        while ((-not (Test-AutomexiaImageResources $cycleVisible $true ([bool]$UseCpuRenderer) $expectedPreviewCacheEntries $expectedPreviewCacheBytes) -or
+        while (([string]$cycleVisible.last_control -ne $cycleControl -or
+                -not (Test-AutomexiaImageResources $cycleVisible $true ([bool]$UseCpuRenderer) $expectedPreviewCacheEntries $expectedPreviewCacheBytes) -or
                 [int]$cycleVisible.image_preview.decoded_dimensions[0] -ne 64 -or
                 [int]$cycleVisible.image_preview.decoded_dimensions[1] -ne 64) -and
                [DateTime]::UtcNow -lt $cycleVisibleDeadline) {
             $cycleVisible =
                 Read-AutomexiaSnapshot -AfterSequence ([int64]$cycleVisible.sequence)
         }
-        if (-not (Test-AutomexiaImageResources $cycleVisible $true ([bool]$UseCpuRenderer) $expectedPreviewCacheEntries $expectedPreviewCacheBytes) -or
+        if ([string]$cycleVisible.last_control -ne $cycleControl -or
+            -not (Test-AutomexiaImageResources $cycleVisible $true ([bool]$UseCpuRenderer) $expectedPreviewCacheEntries $expectedPreviewCacheBytes) -or
             [int]$cycleVisible.image_preview.decoded_dimensions[0] -ne 64 -or
             [int]$cycleVisible.image_preview.decoded_dimensions[1] -ne 64) {
             Write-Host ($cycleVisible | ConvertTo-Json -Depth 10)
@@ -2723,6 +2724,11 @@ $rendererConfig
         Remove-Item Env:AUTOMEXIA_CONFIG_HOME -ErrorAction SilentlyContinue
     } else {
         $env:AUTOMEXIA_CONFIG_HOME = $previousConfigHome
+    }
+    if ($null -eq $previousVisualFixture) {
+        Remove-Item Env:AUTOMEXIA_VISUAL_TEST_FIXTURE -ErrorAction SilentlyContinue
+    } else {
+        $env:AUTOMEXIA_VISUAL_TEST_FIXTURE = $previousVisualFixture
     }
     Remove-Item -LiteralPath $snapshotPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $controlPath -Force -ErrorAction SilentlyContinue

@@ -50,7 +50,7 @@ signature/notarization verification, desktop/AppStream/icon/URL/terminfo checks,
 `automexia --version` for every portable archive, config migration preservation,
 and the manual controlled-hardware GPU/PTY checklist in `docs/TESTING.md`.
 
-The tag workflow will not enter preflight unless all three protected runner
+The tag workflow will not enter preflight unless all four protected runner
 gates succeed: `AUTOMEXIA_NATIVE_GUI_RUNNER=1` drives real PowerShell/ConPTY
 clone and resize storms; `AUTOMEXIA_WSL_RUNNER=1` plus the configured distro
 proves WSL identity/isolation; and `AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER=1`
@@ -62,6 +62,15 @@ intentionally blocks stable tags until 30 consecutive comparable days are
 reviewed and activated. Above 5% latency or 10% memory, only an exact
 commit/metric/baseline waiver with bounded reason, HTTPS review, approver, and
 unexpired at-most-30-day lifetime can pass.
+
+The fourth gate is S1. `AUTOMEXIA_S1_ASSURANCE_RUNNER=1` selects the controlled
+`automexia-assurance` runner and `AUTOMEXIA_S1_ASSURANCE_EVIDENCE` names its
+private redacted manifest. The job requires all 24 current-commit native,
+resource, visual, and accessibility suites plus independent review before
+preflight. Missing runner configuration, missing/stale/synthetic evidence,
+review gaps, or commit drift fail closed. Only the bounded summary is uploaded.
+The full contract is in
+`docs/research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AUDIT.md`.
 
 The final controlled Windows runner additionally carries the `defender` label.
 It verifies both signed MSI and ZIP architecture pairs, requires each portable

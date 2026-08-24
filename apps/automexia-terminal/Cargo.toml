@@ -151,6 +151,7 @@ features = ["wgpu"]
 [features]
 default = ["wayland", "x11"]
 native-gui-test-hooks = ["rio-backend/native-gui-test-hooks", "sugarloaf/native-gui-test-hooks"]
+visual-test-hooks = ["native-gui-test-hooks"]
 audio = ["cpal"]
 x11 = [
     "rio-backend/x11",
