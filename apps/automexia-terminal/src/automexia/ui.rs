@@ -39,6 +39,9 @@ pub struct CommandResultAnchor {
     pub y: f32,
     pub width: f32,
     pub height: f32,
+    /// True when completion is painted on the following prompt's reserved row,
+    /// making that row the visual boundary after the command output.
+    pub separates_next_prompt: bool,
     pub exit_code: i32,
     pub elapsed_ms: u64,
 }
