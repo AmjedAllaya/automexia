@@ -97,6 +97,10 @@ Practical rules:
 - Do not assume a persistent alias/profile installed on Windows automatically exists in WSL, or vice versa.
 - Automexia session context can identify the actual WSL distribution/user/directory when the integration is active.
 - Normal Automexia launch does not start WSL merely to provision profile files.
+- With the Automexia Windows profile, `Ctrl+V` and `Ctrl+Shift+V` paste into the selected WSL pane through
+  Automexia's normal filtered/bracketed clipboard path. If a WSL application
+  needs the original `Ctrl+V` control input, bind that chord to
+  `ReceiveChar` as documented in [Shortcuts](shortcuts.md#clipboard-and-selection).
 
 For Automexia's own source-development workflow, [Troubleshooting](../guide/troubleshooting.md#windows-and-wsl-development-workflow) contains the supported dual-native layout and safeguards.
 

@@ -41,7 +41,9 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | Shortcut | Action |
 |---|---|
 | `Ctrl+C` | Copy a non-empty terminal selection; with no selection, send the shell/application interrupt unchanged. |
-| `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste. |
+| `Ctrl+Shift+C` | Copy on Windows/Linux/BSD. |
+| `Ctrl+V` / `Ctrl+Shift+V` | Paste with the Automexia Windows profile in local, WSL, SSH, and other sessions. |
+| `Ctrl+Shift+V` | Paste on Linux/BSD. |
 | `Shift+Insert` | Paste the primary selection when the platform provides one. |
 | `Shift+Arrow` | Start at the terminal insertion cursor, then extend/reverse selection by one cell or row. |
 | `Ctrl+Shift+Left/Right` | Extend/reverse selection by a Unicode word boundary. |
@@ -64,6 +66,16 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `Ctrl+,` (Windows) / `Ctrl+Shift+,` (Linux/BSD) | Open the configuration file in the configured editor. |
 | `Ctrl+Alt+Space` | Toggle the quake window on Windows. |
 | `Alt+Shift+T` | Toggle light/dark appearance on Windows and Linux/BSD. |
+
+Automexia's Windows `Ctrl+V` is a host shortcut, so the clipboard reaches the selected
+pane through the same bracketed-paste and control-filtering path for every child
+session without synthesizing an extra Enter. To let a terminal application receive the
+original control character instead, add:
+
+```toml
+[bindings]
+keys = [{ key = "V", with = "control", action = "ReceiveChar" }]
+```
 
 ## macOS defaults
 

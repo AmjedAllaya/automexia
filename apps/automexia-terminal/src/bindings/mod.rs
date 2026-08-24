@@ -1347,6 +1347,7 @@ fn automexia_windows_key_bindings(
         Key::Named(Insert), ModifiersState::SHIFT, ~BindingMode::VI; Action::PasteSelection;
         "c", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::Copy;
         "c", ModifiersState::CONTROL | ModifiersState::SHIFT, +BindingMode::VI; Action::ClearSelection;
+        "v", ModifiersState::CONTROL, ~BindingMode::VI; Action::Paste;
         "v", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::Paste;
         "0", ModifiersState::CONTROL; Action::ResetFontSize;
         "=", ModifiersState::CONTROL; Action::IncreaseFontSize;
@@ -2377,6 +2378,46 @@ mod tests {
         assert!(binding.notmode.contains(BindingMode::SEARCH));
         assert!(binding.notmode.contains(BindingMode::VI));
         assert!(binding.notmode.contains(BindingMode::ALT_SCREEN));
+    }
+
+    #[test]
+    fn windows_ctrl_v_pastes_and_user_can_restore_terminal_input() {
+        let bindings = automexia_windows_key_bindings(true, true);
+        for modifiers in [
+            ModifiersState::CONTROL,
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+        ] {
+            assert_action_binding(
+                &bindings,
+                Key::Character("v".into()),
+                modifiers,
+                Action::Paste,
+            );
+        }
+
+        let overridden = config_key_bindings(
+            vec![ConfigKeyBinding {
+                key: "v".into(),
+                action: "receivechar".into(),
+                with: "control".into(),
+                esc: String::new(),
+                mode: String::new(),
+            }],
+            bindings,
+        );
+        let ctrl_v_trigger = BindingKey::Keycode {
+            key: Key::Character("v".into()),
+            location: KeyLocation::Standard,
+        };
+        let ctrl_v_bindings: Vec<_> = overridden
+            .iter()
+            .filter(|binding| {
+                binding.trigger == ctrl_v_trigger
+                    && binding.mods == ModifiersState::CONTROL
+            })
+            .collect();
+        assert_eq!(ctrl_v_bindings.len(), 1);
+        assert_eq!(ctrl_v_bindings[0].action, Action::ReceiveChar);
     }
 
     #[test]

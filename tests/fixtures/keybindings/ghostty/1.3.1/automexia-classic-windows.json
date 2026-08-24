@@ -948,6 +948,16 @@
       "origin": "built_in_or_legacy_user",
       "platform": "Windows",
       "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"v\"), location: Standard }"
+    },
+    {
+      "action": "Paste",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
       "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"v\"), location: Standard }"
     },
     {
@@ -1074,17 +1084,27 @@
       "action": "SearchForward",
       "effective": true,
       "mode": "BindingMode(0x0)",
-      "not_mode": "BindingMode(SEARCH)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"f\"), location: Standard }"
+    },
+    {
+      "action": "SearchGlobalForward",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
       "origin": "built_in_or_legacy_user",
       "platform": "Windows",
       "profile": "automexia",
       "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"f\"), location: Standard }"
     },
     {
-      "action": "SearchBackward",
+      "action": "SearchGlobalBackward",
       "effective": true,
       "mode": "BindingMode(0x0)",
-      "not_mode": "BindingMode(SEARCH)",
+      "not_mode": "BindingMode(VI | SEARCH)",
       "origin": "built_in_or_legacy_user",
       "platform": "Windows",
       "profile": "automexia",
