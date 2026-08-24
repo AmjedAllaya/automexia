@@ -122,18 +122,35 @@ Once a selection exists, an Arrow without `Shift`, printable input, paste, or IM
 | Scroll to history top / bottom | `Shift+Home` / `Shift+End` | Use registered action/palette if no preferred custom chord |
 | Scroll a page | `Shift+PageUp` / `Shift+PageDown` | Use registered action/palette if no preferred custom chord |
 
-`Ctrl+F` / `Cmd+F` replaces the selected pane's footer with a compact themed search surface; an exceptionally narrow pane uses the same safe bottom position while preserving pane scope. The global shortcut opens a bottom-centered `ALL PANES` surface above pane footers, safely away from top tab and window-close controls. Global search covers only the active local tab in every visible split of the selected workspace tab; hidden tabs are not activated. Both surfaces capture pointer input across their complete painted bounds and never send a command or implicit Enter to the shell.
+`Ctrl+F` / `Cmd+F` and `Ctrl+Shift+F` / `Cmd+Shift+F` switch one
+continuous search session between the current pane and all visible panes. The
+query and query focus stay in place, matches are recalculated, and the same
+surface moves between the selected pane's footer and the safe bottom-centered
+workspace position. Repeating the active scope shortcut only refocuses the
+query. An exceptionally narrow pane uses the safe position without changing
+its pane ownership. All-pane search covers only the active local tab in every
+visible split; hidden tabs are not activated.
+
+`PANE` and `ALL PANES` are clickable, mutually exclusive choices. Pointer
+selection returns focus to the query. The result badge counts visible matches
+across the current scope and caps display work at `999+`; next/previous
+navigation can continue through scrollback. The complete surface captures
+pointer and keyboard input, so no search interaction falls through to window
+controls or sends bytes or an implicit Enter to the shell.
 
 While search mode is open:
 
 | Key | Result |
 |---|---|
-| `Enter` / `Shift+Enter` | Next / previous match |
+| `Enter` / `Shift+Enter` with query focused | Next / previous match |
+| `Tab` / `Shift+Tab` | Move between query and scope focus |
+| Any arrow with scope focused | Switch `PANE` / `ALL PANES` |
+| `Space` / `Enter` with scope focused | Keep the selected scope |
 | `Esc` or `Ctrl+C` | Cancel |
 | `Ctrl+U` | Clear the query |
 | `Ctrl+W` | Delete the previous query word |
-| `Ctrl+P` or Up | Previous search query |
-| `Ctrl+N` or Down | Next search query |
+| `Ctrl+P` or Up with query focused | Previous search query |
+| `Ctrl+N` or Down with query focused | Next search query |
 
 ## Font and view
 

@@ -59,6 +59,7 @@ They retain their terminal/application or native-platform authority.
 | **Fully done** | U9.1 command-result boundary | `automexia/ui.rs`, `renderer/mod.rs`, and `renderer/devops_status.rs` move a completed command's compact exit state and duration to the following prompt's reserved row and paint one bounded semantic divider there; focused tests prove placement, final-result fallback, and geometry without adding terminal rows or PTY bytes | Manual multi-theme and assistive-technology evidence remains under U10 |
 | **Fully done** | U9.2 pointer-owned pane scrolling | `application.rs`, `screen/mod.rs`, `layout/mod.rs`, and `mouse/mod.rs` activate the exact pane under the pointer before delivering the initiating wheel/trackpad event, preserve wheel-focused selection, reset cross-pane fractional accumulation, and retain passive hover; focused tests cover hit-test boundaries and focus policy | Manual cross-platform mouse/trackpad interaction remains part of U10 native evidence |
 | **Fully done** | U9.3 Windows Ctrl+V paste | `bindings/mod.rs` maps both `Ctrl+V` and `Ctrl+Shift+V` to the existing safe Paste action for every Windows-hosted child session, including WSL and SSH; explicit `ReceiveChar` configuration restores application ownership, while Linux/BSD and macOS defaults remain unchanged | Manual physical clipboard validation in native WSL and terminal applications remains part of U10 native evidence |
+| **Fully done** | U9.4 continuous pane/workspace search | `bindings/mod.rs` keeps local/global search shortcuts active during Search; `screen/mod.rs` owns query-preserving, pane-isolated scope transitions and bounded visible-match counts; `renderer/search.rs` owns one responsive surface with clickable/keyboard scope choices, focus state, result status, and privacy-safe announcements. Focused tests cover both directions, idempotence, pointer targets, PTY isolation, checked/focused semantics, and tiny/HiDPI/ultrawide geometry; native Windows WGPU and CPU runs validate the real split-pane card. | Native Narrator/NVDA, VoiceOver, and Orca delivery remains part of U10 and the accepted v0.5 platform adapter. |
 | **Partially done** | U10 native visual and assistive-technology release evidence | Renderer-neutral layout, contrast, hit-test, hostile-input, redaction, and strict-lint evidence is automated | Record safe screenshots on supported WGPU/CPU backends at tiny, normal, split, 100–300% scale, light/dark custom themes, and complete Narrator/NVDA, VoiceOver, and Orca smoke evidence on the supported native operating systems |
 
 There are no remaining **Not done** source items in this renderer-owned branding
@@ -105,6 +106,12 @@ minimum target guidance:
 - [WAI-ARIA Authoring Practices: modal dialog pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/)
 - [Web Content Accessibility Guidelines 2.2](https://www.w3.org/TR/WCAG22/)
 - [Understanding Success Criterion 2.5.8: Target Size (Minimum)](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html)
+- [Visual Studio Code: Basic editing, Find and Search](https://code.visualstudio.com/docs/editing/codebasics)
+- [WAI-ARIA Authoring Practices: radio group pattern](https://www.w3.org/WAI/ARIA/apg/patterns/radio/)
+
+Continuous search keeps the familiar local Find versus broader Search shortcut
+distinction while avoiding a second modal owner. Its two scope choices use the
+radio-group checked-state and arrow-key model in renderer-neutral form.
 
 The current v0.4 renderer does not yet expose a complete native accessibility
 tree; [the accessibility baseline](ACCESSIBILITY.md) keeps that limitation and
@@ -129,6 +136,12 @@ Focused Windows x86_64 source evidence completed on 2026-08-24:
   accumulator isolation tests: 3 passed;
 - Windows `Ctrl+V`/legacy paste binding and explicit terminal-input override
   test: 1 passed;
+- continuous scoped-search unit/native evidence: 19 binary search contracts plus
+  filtered worker/controller boundaries passed; the 1750×1080, 125%-scale,
+  four-pane WGPU and CPU runs retained the query through both scope directions,
+  kept the already-active scope idempotent, left the PTY cursor unchanged,
+  closed cleanly, and measured the painted search region at 8,400 samples, 67
+  color buckets, and a luminance spread of 216 on both renderers;
 - native Windows WGPU/CPU resize and compositing gate: 19 deterministic resize
   tests plus both real-GUI passes completed; inspected 1750×1080 title-bar crops
   were byte-identical across backends and showed three separate cards without a

@@ -51,8 +51,8 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `Ctrl+0`, `Ctrl+=` or `Ctrl++`, `Ctrl+-` | Reset, increase, or decrease pane font size. |
 | `Shift+Home/End` | Scroll to history top / bottom outside the alternate screen. |
 | `Shift+PageUp/PageDown` | Scroll one page up / down outside the alternate screen. |
-| `Ctrl+F` | Find forward in the selected pane. |
-| `Ctrl+Shift+F` / `Ctrl+Shift+B` | Search forward / backward across all visible panes in the selected workspace tab. |
+| `Ctrl+F` | Select or refocus the current-pane scope in the active search session. |
+| `Ctrl+Shift+F` / `Ctrl+Shift+B` | Select or refocus the all-visible-panes scope in the active search session. |
 | `Ctrl+Shift+Space` | Toggle Vi mode on Windows. |
 | `Alt+Shift+Space` | Toggle Vi mode on Linux/BSD and all platforms through the common binding. |
 | `Ctrl+Shift+K` | Clear history on Windows. |
@@ -99,8 +99,8 @@ keys = [{ key = "V", with = "control", action = "ReceiveChar" }]
 | `Cmd+C` / `Cmd+V` | Copy / paste. `Ctrl+C` remains selection-aware as described above. |
 | `Cmd+A` | Select all. |
 | `Cmd+0`, `Cmd+=` or `Cmd++`, `Cmd+-` | Reset, increase, or decrease font size. |
-| `Cmd+F` / `Cmd+B` | Find forward / backward in the selected pane. |
-| `Cmd+Shift+F` / `Cmd+Shift+B` | Search forward / backward across all visible panes in the selected workspace tab. |
+| `Cmd+F` / `Cmd+B` | Select or refocus the current-pane scope in the active search session. |
+| `Cmd+Shift+F` / `Cmd+Shift+B` | Select or refocus the all-visible-panes scope in the active search session. |
 | `Cmd+K` | Clear visible screen and then history. |
 | `Ctrl+Cmd+F` | Toggle fullscreen. |
 | `Cmd+Alt+I` | Preview selected image. |
@@ -145,18 +145,38 @@ owners.
 
 ## Search mode
 
-Pane search replaces only the selected pane's footer, keeping its scope and result ownership visible without covering terminal text or window controls. If an exceptionally narrow pane cannot contain the controls, the same pane-scoped surface falls back to the safe bottom position. Workspace search uses a bottom-centered surface above the footer; it searches the active local tab in every currently visible split of the selected workspace tab. Hidden pane-local tabs and other window-level tabs are deliberately excluded.
+Pane and workspace search are two scopes of one continuous session. `Ctrl+F` /
+`Cmd+F` immediately selects the current pane; `Ctrl+Shift+F` / `Cmd+Shift+F`
+immediately expands to the active local tab in every visible split. Switching
+keeps the query and query focus, recompiles the match set, and moves the same
+surface between the pane footer and the safe bottom-centered workspace position.
+Repeating the shortcut for the active scope only refocuses the query. Hidden
+pane-local tabs and other window-level tabs remain deliberately excluded.
 
-The surface shows a redundant scope label (`PANE` or `ALL PANES`), themed search icon, placeholder, previous/next controls, and a distinct close control. Its entire painted rectangle consumes pointer input, so clicks cannot fall through to a terminal, splitter, tab, or window-close control behind it. Moving focus to another pane closes a pane-local search instead of silently retargeting it. Queries are limited to 4 KiB of UTF-8 input; invalid regular expressions remain non-matching and never reach the PTY.
+The `PANE` and `ALL PANES` controls are separate, mutually exclusive choices.
+They are clickable, and `Tab` / `Shift+Tab` moves between the query and scope
+group. With the scope group focused, any arrow key selects the other scope;
+`Space` or `Enter` keeps the selected scope. A pointer selection returns focus
+to the query. `Esc` still closes the session. Moving focus to another pane
+closes a pane-local search instead of silently changing its pane owner.
+
+The result badge reports matches in the visible viewport of the routes in
+scope, capped at `999+`; previous/next navigation still uses the terminal
+search engine beyond the viewport. Invalid patterns receive an explicit status.
+The complete painted surface consumes pointer input, and query/control input is
+limited to 4 KiB of UTF-8 and never reaches the PTY.
 
 | Shortcut | Result |
 |---|---|
-| `Enter` / `Shift+Enter` | Next / previous result; in Vi search, confirm. |
+| `Enter` / `Shift+Enter` | Next / previous result when the query is focused; in Vi search, confirm. |
+| `Tab` / `Shift+Tab` | Move focus between the query and scope choices. |
+| Arrow key with scope focused | Switch between `PANE` and `ALL PANES`. |
+| `Space` / `Enter` with scope focused | Keep the selected scope. |
 | `Esc` or `Ctrl+C` | Cancel. |
 | `Ctrl+U` | Clear query. |
 | `Ctrl+W` | Delete the previous query word. |
-| `Ctrl+P` or Up | Previous query from search history. |
-| `Ctrl+N` or Down | Next query from search history. |
+| `Ctrl+P` or Up with query focused | Previous query from search history. |
+| `Ctrl+N` or Down with query focused | Next query from search history. |
 
 ## Mouse input
 
