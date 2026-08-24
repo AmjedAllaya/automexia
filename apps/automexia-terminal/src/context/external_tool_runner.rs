@@ -5,10 +5,14 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex, MutexGuard, Weak,
+};
 
 use crate::automexia::connections::{
-    ManagedReceiptPersistenceState, ManagedReceiptRecord, ManagedReceiptSink,
+    CurrentDirectOpenSshReview, ManagedReceiptPersistenceState, ManagedReceiptRecord,
+    ManagedReceiptSink,
 };
 use automexia_devops::connections::{
     validate_connection_receipt, ConnectionReceipt, DirectOpenSshDestinationKind,
@@ -20,6 +24,7 @@ use automexia_extension_api::{
     ExecutableId, ExtensionId, LaunchKind, LaunchRequest, OperationId, ResourceScope,
     SessionId,
 };
+use automexia_extension_runtime::{BoundedWorker, CompletionWake, RefreshSubmission};
 
 use super::launch::SessionLaunchDescriptor;
 use super::launch_broker::{
@@ -178,6 +183,8 @@ pub enum RunnerErrorCode {
     SafeDefaultUnavailable,
     NotPublished,
     StaleLease,
+    ReviewBusy,
+    ReviewUnavailable,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -203,6 +210,10 @@ impl fmt::Display for RunnerError {
             RunnerErrorCode::InvalidRoute => "the managed route is invalid",
             RunnerErrorCode::NotPublished => "the managed route was not published",
             RunnerErrorCode::StaleLease => "the external-tool lease is stale",
+            RunnerErrorCode::ReviewBusy => "the executable review worker is busy",
+            RunnerErrorCode::ReviewUnavailable => {
+                "the executable review worker is unavailable"
+            }
         })
     }
 }
@@ -407,9 +418,152 @@ impl Drop for RunnerState {
     }
 }
 
+struct OpenSshReviewRequest {
+    request_id: u64,
+    preparation: automexia_devops::connections::DirectOpenSshPreparation,
+    observed_at_ms: u64,
+    wake: CompletionWake,
+}
+
+struct OpenSshReviewCompletion {
+    request_id: u64,
+    result: Result<CurrentDirectOpenSshReview, RunnerError>,
+}
+
+struct OpenSshReviewRuntime {
+    worker: BoundedWorker<OpenSshReviewRequest>,
+    latest_requested: Arc<AtomicU64>,
+    completion: Arc<Mutex<Option<OpenSshReviewCompletion>>>,
+    next_request: AtomicU64,
+}
+
+impl OpenSshReviewRuntime {
+    fn new(state: Weak<Mutex<RunnerState>>) -> Self {
+        let latest_requested = Arc::new(AtomicU64::new(0));
+        let completion = Arc::new(Mutex::new(None));
+        let handler_latest = Arc::clone(&latest_requested);
+        let handler_completion = Arc::clone(&completion);
+        let worker = BoundedWorker::new(
+            "automexia-openssh-review",
+            1,
+            move |request: OpenSshReviewRequest| {
+                let result = state
+                    .upgrade()
+                    .ok_or_else(review_unavailable)
+                    .and_then(|state| {
+                        state
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .broker
+                            .observe_openssh_executable()
+                            .map_err(|code| RunnerError {
+                                code: RunnerErrorCode::LaunchDenied(code),
+                                audit: None,
+                            })
+                    })
+                    .and_then(|executable| {
+                        CurrentDirectOpenSshReview::new(
+                            request.preparation,
+                            executable,
+                            request.request_id,
+                            request.observed_at_ms,
+                        )
+                        .map_err(|_| invalid_request())
+                    });
+                if handler_latest.load(Ordering::Acquire) != request.request_id {
+                    return;
+                }
+                *handler_completion
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+                    Some(OpenSshReviewCompletion {
+                        request_id: request.request_id,
+                        result,
+                    });
+                request.wake.wake();
+            },
+        );
+        Self {
+            worker,
+            latest_requested,
+            completion,
+            next_request: AtomicU64::new(1),
+        }
+    }
+
+    fn submit(
+        &self,
+        preparation: automexia_devops::connections::DirectOpenSshPreparation,
+        observed_at_ms: u64,
+        wake: CompletionWake,
+    ) -> Result<u64, RunnerError> {
+        let request_id = self.next_request.fetch_add(1, Ordering::Relaxed);
+        if request_id == 0 {
+            return Err(review_unavailable());
+        }
+        let request = OpenSshReviewRequest {
+            request_id,
+            preparation,
+            observed_at_ms,
+            wake,
+        };
+        match self.worker.try_submit_then(request, || {
+            self.latest_requested.store(request_id, Ordering::Release);
+        }) {
+            RefreshSubmission::Queued => Ok(request_id),
+            RefreshSubmission::Busy => Err(RunnerError {
+                code: RunnerErrorCode::ReviewBusy,
+                audit: None,
+            }),
+            RefreshSubmission::Rejected | RefreshSubmission::Unavailable => {
+                Err(review_unavailable())
+            }
+        }
+    }
+
+    fn take(
+        &self,
+        request_id: u64,
+    ) -> Option<Result<CurrentDirectOpenSshReview, RunnerError>> {
+        let mut completion = self
+            .completion
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        (completion.as_ref().map(|item| item.request_id) == Some(request_id)).then(|| {
+            completion
+                .take()
+                .expect("matching review completion")
+                .result
+        })
+    }
+
+    fn cancel(&self, request_id: u64) {
+        let _ = self.latest_requested.compare_exchange(
+            request_id,
+            0,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        );
+        let mut completion = self
+            .completion
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if completion.as_ref().map(|item| item.request_id) == Some(request_id) {
+            *completion = None;
+        }
+    }
+}
+
+impl Drop for OpenSshReviewRuntime {
+    fn drop(&mut self) {
+        self.worker.shutdown();
+    }
+}
+
 #[derive(Clone)]
 pub struct ExternalToolRunner {
     state: Arc<Mutex<RunnerState>>,
+    reviews: Arc<OpenSshReviewRuntime>,
 }
 
 impl fmt::Debug for ExternalToolRunner {
@@ -455,17 +609,17 @@ impl ExternalToolRunner {
         broker: CapabilityBroker,
         safe_default_working_directory: Option<PathBuf>,
     ) -> Self {
-        Self {
-            state: Arc::new(Mutex::new(RunnerState {
-                broker,
-                active: BTreeMap::new(),
-                audits: VecDeque::with_capacity(MAX_RUNNER_AUDIT_RECORDS),
-                receipts: VecDeque::with_capacity(MAX_RUNNER_RECEIPTS),
-                reconnect_candidates: VecDeque::with_capacity(MAX_RECONNECT_CANDIDATES),
-                receipt_sink: None,
-                safe_default_working_directory,
-            })),
-        }
+        let state = Arc::new(Mutex::new(RunnerState {
+            broker,
+            active: BTreeMap::new(),
+            audits: VecDeque::with_capacity(MAX_RUNNER_AUDIT_RECORDS),
+            receipts: VecDeque::with_capacity(MAX_RUNNER_RECEIPTS),
+            reconnect_candidates: VecDeque::with_capacity(MAX_RECONNECT_CANDIDATES),
+            receipt_sink: None,
+            safe_default_working_directory,
+        }));
+        let reviews = Arc::new(OpenSshReviewRuntime::new(Arc::downgrade(&state)));
+        Self { state, reviews }
     }
 
     pub fn attach_receipt_sink(&self, sink: Arc<dyn ManagedReceiptSink>) -> bool {
@@ -492,6 +646,34 @@ impl ExternalToolRunner {
                 code: RunnerErrorCode::LaunchDenied(code),
                 audit: None,
             })
+    }
+
+    /// Queue exact executable observation and pure review composition away
+    /// from input, renderer, PTY, resize, and startup hot paths.
+    pub(crate) fn request_openssh_review(
+        &self,
+        preparation: automexia_devops::connections::DirectOpenSshPreparation,
+        observed_at_ms: u64,
+        wake: CompletionWake,
+    ) -> Result<u64, RunnerError> {
+        if let Some(code) = self.lock().broker.activation_denial() {
+            return Err(RunnerError {
+                code: RunnerErrorCode::LaunchDenied(code),
+                audit: None,
+            });
+        }
+        self.reviews.submit(preparation, observed_at_ms, wake)
+    }
+
+    pub(crate) fn take_openssh_review(
+        &self,
+        request_id: u64,
+    ) -> Option<Result<CurrentDirectOpenSshReview, RunnerError>> {
+        self.reviews.take(request_id)
+    }
+
+    pub(crate) fn cancel_openssh_review(&self, request_id: u64) {
+        self.reviews.cancel(request_id);
     }
     pub fn register_session(
         &self,
@@ -903,6 +1085,13 @@ fn notification_for(
         },
     }
 }
+fn review_unavailable() -> RunnerError {
+    RunnerError {
+        code: RunnerErrorCode::ReviewUnavailable,
+        audit: None,
+    }
+}
+
 fn invalid_request() -> RunnerError {
     RunnerError {
         code: RunnerErrorCode::InvalidRequest,
@@ -943,6 +1132,163 @@ pub(crate) fn current_time_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod openssh_review_worker_tests {
+    use std::fs;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    use automexia_devops::connections::{
+        prepare_direct_openssh, ConnectionProfileV1, ConnectionSource,
+        DestinationSurface, EnvironmentCapsuleTemplate, EnvironmentClassification,
+        EnvironmentKind, EnvironmentRisk, IdentityKind, IdentityReference,
+        OpaqueReference, ProviderKind, SourceKind, TransportDescriptor,
+        CONNECTION_SCHEMA_VERSION,
+    };
+
+    use super::*;
+    use crate::context::launch_broker::OpenSshExecutable;
+
+    fn preparation() -> automexia_devops::connections::DirectOpenSshPreparation {
+        prepare_direct_openssh(&ConnectionProfileV1 {
+            schema_version: CONNECTION_SCHEMA_VERSION,
+            id: "worker-profile".into(),
+            revision: 1,
+            display_name: "Worker fixture".into(),
+            description: "Synthetic public fixture".into(),
+            tags: Vec::new(),
+            favorite: false,
+            environment: EnvironmentClassification {
+                kind: EnvironmentKind::Custom,
+                label: "Unclassified".into(),
+                risk: EnvironmentRisk::Production,
+            },
+            provider: ProviderKind::Ssh,
+            transport: TransportDescriptor::OpenSshExplicit {
+                host: "host.example.invalid".into(),
+                port: None,
+                user: None,
+                proxy_jump: Vec::new(),
+            },
+            public_target: "host.example.invalid".into(),
+            jump_profile_references: Vec::new(),
+            identity: IdentityReference {
+                kind: IdentityKind::Agent,
+                reference: OpaqueReference::new("worker-identity"),
+                public_label: "OpenSSH agent or default identity".into(),
+                owner: "open-ssh".into(),
+            },
+            capsule: EnvironmentCapsuleTemplate {
+                revision: 1,
+                public_environment: Vec::new(),
+                context_references: Vec::new(),
+                provider_contexts: Vec::new(),
+            },
+            recipe_references: Vec::new(),
+            tunnels: Vec::new(),
+            destination_preference: DestinationSurface::PaneTab,
+            source: ConnectionSource {
+                kind: SourceKind::User,
+                reference: OpaqueReference::new("worker-source"),
+                revision: "worker-source-v1".into(),
+            },
+            approval_fingerprint: None,
+            created_at_ms: 0,
+            updated_at_ms: 0,
+            last_used_at_ms: None,
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn production_gate_denies_before_review_worker_submission() {
+        let runner = ExternalToolRunner::pending_security_review();
+        let (wake_sender, wake_receiver) = mpsc::channel();
+        let error = runner
+            .request_openssh_review(
+                preparation(),
+                1_700_000_000_000,
+                Box::new(move || {
+                    let _ = wake_sender.send(());
+                }),
+            )
+            .unwrap_err();
+        assert_eq!(
+            error.code,
+            RunnerErrorCode::LaunchDenied(LaunchDenialCode::PendingSecurityReview)
+        );
+        assert_eq!(
+            wake_receiver.try_recv(),
+            Err(mpsc::TryRecvError::Disconnected)
+        );
+    }
+
+    #[test]
+    fn activated_review_worker_publishes_exact_identity_before_wake() {
+        const NOW_MS: u64 = 1_700_000_000_000;
+        let temporary = tempfile::tempdir().unwrap();
+        let executable = temporary.path().join(if cfg!(target_os = "windows") {
+            "ssh.exe"
+        } else {
+            "ssh"
+        });
+        fs::write(&executable, b"automexia-review-worker-fixture").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let broker = CapabilityBroker::review_harness(
+            ExecutablePolicy::default()
+                .with_configured_path(OpenSshExecutable::Ssh, executable)
+                .unwrap(),
+            ReviewedPackagePolicy::linked_first_party().unwrap(),
+        );
+        let runner =
+            ExternalToolRunner::review_harness(broker, temporary.path().to_path_buf());
+        let prepared = preparation();
+        let (wake_sender, wake_receiver) = mpsc::channel();
+        let request = runner
+            .request_openssh_review(
+                prepared,
+                NOW_MS,
+                Box::new(move || wake_sender.send(()).unwrap()),
+            )
+            .unwrap();
+        wake_receiver.recv_timeout(Duration::from_secs(2)).unwrap();
+        let reviewed = runner.take_openssh_review(request).unwrap().unwrap();
+        assert_eq!(reviewed.review().executable_identity.executable_id, "ssh");
+        assert!(reviewed.bind(NOW_MS + 1).is_ok());
+        assert!(runner.take_openssh_review(request).is_none());
+    }
+
+    #[test]
+    fn cancelled_review_clears_the_exact_published_completion() {
+        const NOW_MS: u64 = 1_700_000_000_000;
+        let runner = ExternalToolRunner::pending_security_review();
+        let reviewed = CurrentDirectOpenSshReview::new(
+            preparation(),
+            automexia_devops::connections::ResolvedExecutable {
+                executable_id: "ssh".into(),
+                identity_digest: "e".repeat(64),
+            },
+            77,
+            NOW_MS,
+        )
+        .unwrap();
+        runner.reviews.latest_requested.store(77, Ordering::Release);
+        *runner.reviews.completion.lock().unwrap() = Some(OpenSshReviewCompletion {
+            request_id: 77,
+            result: Ok(reviewed),
+        });
+
+        runner.cancel_openssh_review(77);
+        runner.cancel_openssh_review(77);
+        assert_eq!(runner.reviews.latest_requested.load(Ordering::Acquire), 0);
+        assert!(runner.take_openssh_review(77).is_none());
+    }
 }
 
 #[cfg(test)]

@@ -120,6 +120,17 @@ pub enum ChildEvent {
     Exited(Option<i32>),
 }
 
+/// Confirmed terminal state for an application-owned exact-launch process tree.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ManagedPtyShutdown {
+    /// The PTY was not created through the guarded exact-launch seam.
+    NotManaged,
+    /// The owned tree exited within the graceful cancellation interval.
+    Graceful,
+    /// The owned tree required the platform containment primitive's force phase.
+    Forced,
+}
+
 pub trait EventedPty: ProcessReadWrite {
     fn child_event_token(&self) -> corcovado::Token;
 
@@ -127,6 +138,9 @@ pub trait EventedPty: ProcessReadWrite {
     ///
     /// Returns `Some(event)` on success, or `None` if there are no events to retrieve.
     fn next_child_event(&mut self) -> Option<ChildEvent>;
+
+    /// Gracefully stop, then forcibly contain, one guarded exact-launch tree.
+    fn shutdown_owned_process_tree(&mut self) -> io::Result<ManagedPtyShutdown>;
 }
 
 #[derive(Debug, Clone)]

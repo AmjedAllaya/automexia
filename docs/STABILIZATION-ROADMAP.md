@@ -903,15 +903,16 @@ contains the boundary but no successful managed-launch authorization.
 | D3.4 exact argv and publication | Fully done locally; nonactivated | One validated destination becomes one native argument with no shell evaluation or implicit Enter. `ContextManager` alone consumes the guarded executable, creates the PTY, inserts one exact route, then marks it published; every scope/create/publish failure cancels and revokes. |
 | D3.5 trusted environment | Fully done locally | Extension inheritance and secret references are denied. The runner copies only a fixed bounded core allowlist, rejects control/oversized values, excludes `PATH`, and never exposes values through diagnostics, debug, or audit. |
 | D3.6 working directory | Fully done locally; native proof external | The runner captures one trusted process-start cwd, requires it to be absolute, and the broker canonicalizes/revalidates it immediately before descriptor conversion. No shell, remote target, session, or caller fallback exists. |
-| D3.7 process/PTY/route/tunnel lifecycle | Partially done | Exact completion/cancellation/revocation, stale-lease isolation, route=session publication, failed-publication rollback, route close, and application shutdown are owned. The active ceiling is 50. Graceful-then-forced descendant-tree behavior, tunnel listeners, and native leak/resource proof remain external or later-phase work. |
+| D3.7 process/PTY/route/tunnel lifecycle | Fully done locally; nonactivated, native proof external | Exact completion/cancellation/revocation, stale-lease isolation, route=session publication, failed-publication rollback, route close, and application shutdown are owned. The active ceiling is 50. Windows performs bounded Job Object termination; Unix retains the waitable leader while signalling the owned process group; PTY workers are joined with a deadline. Real OpenSSH descendant/listener and native leak/resource proof remain external. |
 | D3.8 redacted audit model | Fully done locally; durable/native evidence external | The runner keeps a 256-record FIFO with public identity/decision/operation/session/time/duration/result data only. Destinations, argv, cwd/path, environment, terminal content, usernames, PIDs, secrets, and agent data are absent. Durable receipt ownership belongs to F5. |
 
 Phase 2 result: D3's source-local application boundary is implemented but
 nonactivated. The exit gate remains blocked on ADR 0003's two independent
 exact-head approvals and server enforcement, real package-loader attestation
 and revocation binding, execution of the Windows/macOS/Linux/WSL fixture matrix,
-graceful/forced descendant cleanup proof, D4-to-D5 production activation, and
-controlled process/PTY/renderer/accessibility/resource results. See the
+native proof of the implemented graceful/forced descendant cleanup,
+D4-to-D5 production activation, and controlled process/PTY/renderer/
+accessibility/resource results. See the
 [exact broker contract](SESSION-LAUNCH-BROKER.md).
 
 ### D4 — safe OpenSSH inventory and persistence

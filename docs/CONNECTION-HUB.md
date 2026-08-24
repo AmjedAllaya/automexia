@@ -1019,9 +1019,12 @@ target. This exit does not activate D5.2.
   credential, path, environment, PID, or executable identity. Rebuild reconnect
   only from current inventory and exact source revision, then require fresh
   executable/host-trust review and approval.
+- [x] **Fully done locally; nonactivated** - A bounded current-executable worker
+  publishes before wake; the controller rejects stale preparation/generation/
+  freshness state and requires a second explicit approval before guarded spawn.
 - [ ] **Partially done / externally blocked** - ADR 0003 approvals/enforcement,
-  real package attestation/revocation, controller use of a current attested
-  observation, native OpenSSH prompts, forced descendant cleanup, 1/10/50
+  real package attestation/revocation, native OpenSSH prompt/descendant proof,
+  1/10/50
   resources, controlled accessibility, and production activation remain.
 - [x] **Fully done locally; nonactivated** - F5.3 exact typed local/remote/
   dynamic tunnels, loopback defaults, strong Allow-once review, bounded owner

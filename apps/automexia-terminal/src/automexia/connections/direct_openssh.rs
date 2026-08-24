@@ -3,17 +3,149 @@
 //! This adapter performs no I/O and owns no process, PTY, network, provider,
 //! authentication, credential, or renderer authority.
 
+use std::fmt;
+
 use automexia_devops::connections::{
-    prepare_direct_openssh, ConnectionModelErrorCode, ConnectionProfileV1,
-    ConnectionSource, DestinationSurface, DirectOpenSshPreparation,
-    EnvironmentCapsuleTemplate, EnvironmentClassification, EnvironmentKind,
-    EnvironmentRisk, IdentityKind, IdentityReference, OpaqueReference, ProviderKind,
-    SourceKind as ModelSourceKind, TransportDescriptor, CONNECTION_SCHEMA_VERSION,
+    prepare_direct_openssh, resolve_connection_plan, review_direct_openssh, AuthState,
+    ConnectionModelErrorCode, ConnectionObservation, ConnectionProfileV1,
+    ConnectionSource, DestinationSurface, DirectOpenSshLaunchBinding,
+    DirectOpenSshPreparation, DirectOpenSshReview, EnvironmentCapsuleTemplate,
+    EnvironmentClassification, EnvironmentKind, EnvironmentRisk, HostTrustState,
+    IdentityKind, IdentityReference, OpaqueReference, PlanContext, ProviderKind,
+    ResolvedConnectionPlan, ResolvedExecutable, SourceKind as ModelSourceKind, ToolState,
+    TransportDescriptor, TransportState, CONNECTION_SCHEMA_VERSION,
     MAX_DIRECT_OPENSSH_DESTINATION_BYTES,
 };
 use automexia_devops_ssh::{
     ConnectionMetadata, ConnectionRecord, IdentityHint, SourceKind,
 };
+
+const DIRECT_OPENSSH_OBSERVATION_FRESHNESS_MS: u64 = 30_000;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[doc(hidden)]
+pub enum CurrentDirectOpenSshReviewError {
+    InvalidReview,
+    Stale,
+}
+
+/// The one application-owned, current M3 review. It binds the pure connection
+/// preparation to the exact executable identity observed by the capability
+/// broker and to a bounded freshness generation. It owns no process, PTY,
+/// network, credential, filesystem, or renderer authority.
+#[derive(Clone, PartialEq, Eq)]
+#[doc(hidden)]
+pub struct CurrentDirectOpenSshReview {
+    preparation: DirectOpenSshPreparation,
+    plan: ResolvedConnectionPlan,
+    observation: ConnectionObservation,
+    host_trust: HostTrustState,
+    executable: ResolvedExecutable,
+    review: DirectOpenSshReview,
+}
+
+impl fmt::Debug for CurrentDirectOpenSshReview {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CurrentDirectOpenSshReview")
+            .field("generation", &self.observation.generation)
+            .field("executable_id", &self.executable.executable_id)
+            .field("connection", &"<opaque>")
+            .field("source_revision", &"<opaque>")
+            .field("executable_identity", &"<fingerprint>")
+            .field("review", &self.review)
+            .finish()
+    }
+}
+
+impl CurrentDirectOpenSshReview {
+    pub fn new(
+        preparation: DirectOpenSshPreparation,
+        executable: ResolvedExecutable,
+        generation: u64,
+        observed_at_ms: u64,
+    ) -> Result<Self, CurrentDirectOpenSshReviewError> {
+        if generation == 0 || executable.executable_id != "ssh" {
+            return Err(CurrentDirectOpenSshReviewError::InvalidReview);
+        }
+        let plan = resolve_connection_plan(
+            preparation.profile(),
+            &[],
+            &PlanContext {
+                executable_identities: vec![executable.clone()],
+                requested_capabilities: vec!["session.launch".into()],
+                ..PlanContext::default()
+            },
+        )
+        .map_err(|_| CurrentDirectOpenSshReviewError::InvalidReview)?;
+        let observation = ConnectionObservation {
+            schema_version: CONNECTION_SCHEMA_VERSION,
+            connection_id: preparation.profile().id.clone(),
+            generation,
+            auth_state: AuthState::Unknown,
+            observed_at_ms,
+            expires_at_ms: None,
+            stale_after_ms: DIRECT_OPENSSH_OBSERVATION_FRESHNESS_MS,
+            tool_state: ToolState::Ready,
+            transport_state: TransportState::Available,
+            public_identity_summary: "OpenSSH identity will be selected at launch".into(),
+            diagnostic_code: None,
+            recovery_action: None,
+        };
+        let host_trust = HostTrustState::Unknown;
+        let review = review_direct_openssh(
+            preparation.profile(),
+            &plan,
+            &observation,
+            host_trust.clone(),
+            observed_at_ms,
+        )
+        .map_err(|_| CurrentDirectOpenSshReviewError::InvalidReview)?;
+        Ok(Self {
+            preparation,
+            plan,
+            observation,
+            host_trust,
+            executable,
+            review,
+        })
+    }
+
+    pub fn matches_preparation(&self, preparation: &DirectOpenSshPreparation) -> bool {
+        preparation == &self.preparation
+    }
+
+    pub fn bind(
+        &self,
+        now_ms: u64,
+    ) -> Result<DirectOpenSshLaunchBinding, CurrentDirectOpenSshReviewError> {
+        self.bind_current(&self.preparation, &self.executable, now_ms)
+    }
+
+    pub const fn review(&self) -> &DirectOpenSshReview {
+        &self.review
+    }
+
+    pub fn bind_current(
+        &self,
+        preparation: &DirectOpenSshPreparation,
+        executable: &ResolvedExecutable,
+        now_ms: u64,
+    ) -> Result<DirectOpenSshLaunchBinding, CurrentDirectOpenSshReviewError> {
+        if preparation != &self.preparation || executable != &self.executable {
+            return Err(CurrentDirectOpenSshReviewError::Stale);
+        }
+        self.review
+            .bind_launch(
+                preparation.profile(),
+                &self.plan,
+                &self.observation,
+                &self.host_trust,
+                now_ms,
+            )
+            .map_err(|_| CurrentDirectOpenSshReviewError::Stale)
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum InventoryPreparationError {
@@ -461,6 +593,72 @@ mod tests {
         assert_eq!(
             prepare_literal_direct_openssh(&oversized),
             Err(LiteralPreparationError::LimitExceeded)
+        );
+    }
+
+    #[test]
+    fn current_review_binds_only_the_exact_fresh_preparation_and_executable() {
+        const NOW_MS: u64 = 1_700_000_000_000;
+        let prepared = prepare_literal_direct_openssh("host.example.invalid").unwrap();
+        let executable = ResolvedExecutable {
+            executable_id: "ssh".into(),
+            identity_digest: "e".repeat(64),
+        };
+        let reviewed = CurrentDirectOpenSshReview::new(
+            prepared.clone(),
+            executable.clone(),
+            11,
+            NOW_MS,
+        )
+        .unwrap();
+
+        let binding = reviewed
+            .bind_current(&prepared, &executable, NOW_MS + 1)
+            .unwrap();
+        assert_eq!(binding.public_connection_id(), prepared.profile().id);
+        assert_eq!(reviewed.review().executable_identity, executable);
+
+        let changed_executable = ResolvedExecutable {
+            executable_id: "ssh".into(),
+            identity_digest: "f".repeat(64),
+        };
+        assert_eq!(
+            reviewed.bind_current(&prepared, &changed_executable, NOW_MS + 1),
+            Err(CurrentDirectOpenSshReviewError::Stale)
+        );
+        let changed_source =
+            prepare_literal_direct_openssh("other.example.invalid").unwrap();
+        assert_eq!(
+            reviewed.bind_current(&changed_source, &executable, NOW_MS + 1),
+            Err(CurrentDirectOpenSshReviewError::Stale)
+        );
+        assert_eq!(
+            reviewed.bind_current(&prepared, &executable, NOW_MS + 30_000),
+            Err(CurrentDirectOpenSshReviewError::Stale)
+        );
+        let debug = format!("{reviewed:?}");
+        assert!(!debug.contains("host.example.invalid"));
+        assert!(!debug.contains(&"e".repeat(64)));
+    }
+
+    #[test]
+    fn current_review_rejects_zero_generation_and_non_ssh_identity() {
+        let prepared = prepare_literal_direct_openssh("host.example.invalid").unwrap();
+        let ssh = ResolvedExecutable {
+            executable_id: "ssh".into(),
+            identity_digest: "e".repeat(64),
+        };
+        assert_eq!(
+            CurrentDirectOpenSshReview::new(prepared.clone(), ssh, 0, 7),
+            Err(CurrentDirectOpenSshReviewError::InvalidReview)
+        );
+        let wrong = ResolvedExecutable {
+            executable_id: "shell".into(),
+            identity_digest: "e".repeat(64),
+        };
+        assert_eq!(
+            CurrentDirectOpenSshReview::new(prepared, wrong, 1, 7),
+            Err(CurrentDirectOpenSshReviewError::InvalidReview)
         );
     }
 }

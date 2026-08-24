@@ -259,29 +259,27 @@ cargo xtask verify architecture
 The checker locks schema-1/schema-2/schema-3/schema-4 immutability and schema-5's
 production-disabled activation, linked unverified principal, trusted digest source/size, exact
 version/contract/verification, manual-shell behavior, grants/audits/defaults,
-nine trust boundaries, four-platform resolution, authority ceiling, nineteen
-native scenarios, one production broker/runner owner, runner bounds, one
+nine trust boundaries, four-platform resolution, authority ceiling, 23 native
+scenarios, one production broker/runner owner, runner bounds, one
 ContextManager guarded-PTY owner, and actionable review semantics. Mutation
 tests reject re-gating the production modules under `cfg(test)` or widening
 their authority.
 
-Rust tests cover fixed roots and native file identity, unverified/mismatched
-package denial before resolution, exact direct/routed options and typed fields,
-hostile option/control/
-size cases, bounded environment and trusted cwd, expiry/scope/replay/revocation,
-1/10/50 pure lifecycles, runner capacity and FIFO audit bounds, publish-before-
-complete, cancellation/shutdown, redaction, exact route mapping, focus-aware
-A/Enter/S/D keys, three accessibility decisions, and tiny-to-8K pointer
-geometry. The Windows PTY suite verifies the held executable, exact application
-path, non-inherited PATH, child exit, Job Object ownership, and repeated ConPTY
-cleanup; the macOS target check is compile evidence only.
+Rust tests cover bounded publish-before-wake executable review, 30-second
+freshness, exact identity/preparation equality, stale/exit invalidation,
+fail-closed package/argv/environment/cwd/lease behavior, 1/10/50 lifecycles,
+route publication, redaction, review input, and responsive accessibility.
+Lifecycle tests cover bounded PTY-worker joining and Windows whole-Job
+termination. Unix retains the waitable leader, signals its owned process group,
+and never signals after reaping; the macOS check is compile evidence only.
 
 These checks deliberately do not start production OpenSSH:
 `MANAGED_SESSION_LAUNCH_ENABLED` remains false and the linked candidate remains
 `Unverified`. ADR 0003 protected exact-head approvals/server enforcement, real
 loader attestation/revocation, native Linux/macOS plus controlled Windows
 OpenSSH host-key/auth/tunnel/hostile-output scenarios, graceful/forced child-tree
-proof, controlled pixels/screen readers, and 1/10/50 process/PTY/renderer
+proof for the locally implemented Job Object/process-group cleanup, controlled
+pixels/screen readers, and 1/10/50 process/PTY/renderer
 resource results remain activation gates in
 [ADR 0012](adr/0012-first-party-ssh-and-session-launch-boundary.md) and the
 [broker contract](SESSION-LAUNCH-BROKER.md).
@@ -1300,8 +1298,7 @@ Renderer-neutral accessibility and tiny-to-8K geometry tests passed, including
 three typed fields, full nontruncated Safety evidence, and mnemonic `C`. No new
 native pixel or controlled screen-reader run was captured for M4; real
 `ssh-add`, host-key prompts, system OpenSSH routing, protected activation,
-forced descendant cleanup, and Windows/macOS/Linux/WSL resources remain exact
-external gates.
+native cleanup proof, and cross-platform resources remain external gates.
 
 ### M5 typed OpenSSH tunnels and native release evidence
 

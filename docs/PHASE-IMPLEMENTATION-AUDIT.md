@@ -102,9 +102,9 @@ protected commit passes and the authenticated audit returns no external result.
 | DevOps | D0 | **Partial** | **Partial** | ADR 0012 is accepted and active schema 5 ratchets immutable schemas 1/2/3/4 with exact M3-M5 route/tunnel, trust/status, lifecycle/receipt/reconnect, and native-manifest rules; protected approvals and real native execution remain. |
 | DevOps | D1 | **Fully implemented** | **Partial** | Four private provider-neutral crates and bounded contracts satisfy their source boundary. |
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
-| DevOps | D3 | **Partial; nonactivated** | **Blocked** | The fail-closed broker/runner now binds exact managed argv and current executable identity, reconciles actual child status, emits redacted outcomes, and queues bounded receipts through the guarded PTY/route owner. Protected approvals, real attestation/activation, forced descendant proof, and native OpenSSH/resource/accessibility evidence remain. |
+| DevOps | D3 | **Partial; nonactivated** | **Blocked** | The fail-closed broker/runner owns bounded current-executable review, exact managed argv/identity binding, actual child status, redacted outcomes, process-group/Job Object teardown, PTY-worker joining, and bounded receipts through the guarded PTY/route owner. Protected approvals, real attestation/activation, and native OpenSSH descendant/resource/accessibility proof remain. |
 | DevOps | D4 | **Fully implemented; read-only product adapter active** | **Partial** | Bounded OpenSSH inventory/persistence is connected only to D5.1 reviewed browsing; it retains no process/network/launch authority. |
-| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 and nonactivated F5.1-F5.3 source complete locally** | **Partial/blocked** | Typed direct/config-jump/tunnel argv, loopback defaults, strong tunnel review, complete trust evidence, guarded lifecycle, receipts, reconnect, and compact tunnel states pass locally. Protected activation/attestation, actual status/SSH execution, forced cleanup, and controlled real native F5.4 evidence remain. |
+| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 and nonactivated F5.1-F5.3 source complete locally** | **Partial/blocked** | Typed direct/config-jump/tunnel argv, loopback defaults, strong tunnel review, complete trust evidence, guarded lifecycle, receipts, reconnect, and compact tunnel states pass locally. Protected activation/attestation, actual status/SSH execution, and controlled real native descendant/listener cleanup and F5.4 evidence remain. |
 | Multi-environment | M6/F6 | **Partial overall; review-only source contracts complete locally** | **Blocked** | Schema-2 reviewed library editing/migration/transfer, exact dependent fingerprints, typed recipe lifecycle/no-hooks, narrow remote initialization, declarative restore, armed broadcast, semantic UI models, fuzz/mutation, and bounded benchmarks pass. Proposed ADR 0023 acceptance, product activation/execution, and controlled native/resource/accessibility evidence remain. |
 | Multi-cloud | D6.0/M7 | **Fully implemented locally** | **Partial/external** | Strict provider-neutral schemas, immutable session capsules, 19-state lifecycle, exact allow-once review, isolation/redaction, passive-status migration, cached-only semantics, fuzz/mutation, 16×64 lifecycle, and a 64-capsule benchmark pass. No real provider CLI, cloud network, credential cache, browser/device flow, or Linux/macOS native provider evidence ran. |
 | Multi-cloud | D6.1/M8 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded AWS profile parser plus exact SSO/STS/SSM/EKS-dry-run contracts and ten focused tests pass. D3 activation, M11 EKS ingestion, product UI, and controlled native/provider/resource/accessibility evidence remain. |
@@ -450,6 +450,13 @@ regrouping, and removal of v0.4 Rio fallbacks at the v0.5 transition.
 
 Production relaunch/login is a D3/D5/D6 dependency, not missing D2 work.
 
+A capacity-one application worker now owns current executable observation away
+from input, PTY, renderer, and startup hot paths. It publishes a
+generation-bound result before waking the route; the controller installs only
+an exact current preparation within 30 seconds and invalidates it on refresh or
+exit. The first approval requests this observation; a second explicit approval
+binds it, and spawn revalidates the guarded file identity.
+
 ### D3 — exact-argv first-party session launch
 
 **Partially implemented and intentionally nonactivated.**
@@ -469,10 +476,13 @@ and deny through pointer, A/Enter, S, D, focus, and accessibility semantics.
 **Partially or not done for activation:** ADR 0012 is accepted by the project
 owner, but ADR 0003's two independent exact-head approvals and server
 enforcement are external. Real package-loader/build attestation and revocation,
-native graceful-then-forced descendant cleanup, hostile real OpenSSH/PTY/server
-fixtures, controlled screen-reader/pixels, and 1/10/50-session resource evidence
-remain. The linked package remains unverified and the activation constant
-remains false, so no production child can start.
+native proof of graceful-then-forced descendant cleanup, hostile real OpenSSH/
+PTY/server fixtures, controlled screen-reader/pixels, and 1/10/50-session
+resource evidence remain. The cleanup source itself is locally complete:
+Windows terminates the owned Job Object, Unix retains the waitable leader while
+signalling the owned process group, and PTY workers join with a deadline. The
+linked package remains unverified and the activation constant remains false,
+so no production child can start.
 
 The fail-closed production state is correct and must not be called shipped.
 
@@ -654,13 +664,13 @@ prerequisite without installing or changing anything.
 
 Still external or protected: ADR 0003's two independent exact-head approvals and
 server enforcement, real loader/build attestation and revocation, product
-controller consumption of a current attested executable observation, a real
-managed OpenSSH child, graceful-then-forced descendant cleanup, prompt/
-diagnostic and manual-SSH regression, controlled pixels/screen readers, and
+activation of the locally complete current-executable review path, a real
+managed OpenSSH child, native proof of graceful-then-forced descendant cleanup,
+prompt/diagnostic and manual-SSH regression, controlled pixels/screen readers, and
 native Windows/macOS/Linux plus separately gated WSL 1/10/50 resource evidence.
 Actual public status execution and production activation/native proof remain
 external. F5.3 tunnels are fully done locally and nonactivated; F5.4 still needs
-validated real Windows/macOS/Linux OpenSSH, forced cleanup, 1/10/50 resource,
+validated real Windows/macOS/Linux OpenSSH and cleanup proof, 1/10/50 resource,
 manual-SSH, enable/disable/uninstall, pixel, and accessibility manifests. WSL
 remains separately denied by the current release contract.
 
@@ -1443,7 +1453,7 @@ At this audited baseline, the focused order is:
 2. Preserve the locally complete D5.1 read-only Hub and obtain its external
    native/accessibility evidence. Preserve D5.2's nonactivated approval UI,
    application runner, guarded PTY, and exact route-publication path.
-3. Activate D3 only after its protected, attestation, cleanup, and three-OS
+3. Activate D3 only after its protected, attestation, native cleanup proof, and three-OS
    native gates pass. Preserve the locally complete nonactivated F5.1-F5.3
    routes/trust/tunnel/lifecycle source, then collect and validate F5.4's
    controlled Windows/macOS/Linux real OpenSSH evidence without treating the
@@ -1475,7 +1485,7 @@ extensions, and AI remain.
 
 > Current milestone: v0.4 source stabilization, D1/D2, disabled D4, the complete
 > local non-executing D5.0/F2 model boundary, CP0-CP3.3, and the local D0/D3
-> package/resolution/fixture contract are implemented at their stated local/
+> package/resolution/current-review/lifecycle contract are implemented at their stated local/
 > source boundaries. D0/D3/D5.0 remain partial because protected acceptance,
 > production authority, real loader binding, and native execution evidence are
 > open. Stable release proof, D5.1-D6/CP4/CP5 activation, and the other phases

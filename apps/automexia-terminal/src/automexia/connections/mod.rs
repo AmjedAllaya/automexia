@@ -9,6 +9,9 @@ pub use controller::{
     ConnectionHubController, DisabledHubAction, HubControllerEffect,
     HubControllerPresentation,
 };
+#[doc(hidden)]
+pub use direct_openssh::{CurrentDirectOpenSshReview, CurrentDirectOpenSshReviewError};
+
 pub use library::{
     preview_library_edit, ConnectionLibraryDocument, ConnectionLibraryStore,
     HubPreferences, LibraryEdit, LibraryEditPreview, LibraryError, LibraryErrorCode,

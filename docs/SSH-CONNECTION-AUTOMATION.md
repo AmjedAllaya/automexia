@@ -851,9 +851,12 @@ nonactivated.**
 - [x] **Fully done locally; nonactivated:** terminal receipts use the private
   bounded atomic connection worker/store, and opaque inventory reconnect rejects
   stale source before requiring a new review and approval.
+- [x] **Fully done locally; nonactivated:** bounded current-executable review
+  publishes before wake, rejects stale generations/preparations/freshness, and
+  requires a second explicit decision before guarded spawn.
 - [ ] **Partially done / external:** protected activation, real attestation,
-  current observation consumption by the controller, native OpenSSH prompts,
-  forced descendant cleanup, resources, and controlled accessibility remain.
+  native OpenSSH prompt/descendant proof, resources, and controlled
+  accessibility remain.
 - [x] **Fully done locally; nonactivated:** exact local/remote/dynamic tunnel
   descriptors use a configuration-free typed-direct grammar, loopback defaults,
   endpoint-bound strong Allow-once review, and a bounded session/generation

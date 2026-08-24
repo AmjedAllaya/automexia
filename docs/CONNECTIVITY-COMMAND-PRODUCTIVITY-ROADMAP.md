@@ -73,11 +73,11 @@ documentation, feature assurance, and a change fragment.
 | Provider-neutral contracts | D1 | Fully done | automexia-extension-api, automexia-extension-runtime, automexia-devops, automexia-ui-model; architecture gates | Hosted release evidence only |
 | Generic context and immutable capsules | D2 | Fully done | extension API/runtime plus application session/context tests | Production login/relaunch belongs to D3/D6 |
 | SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 is accepted; schema 5 ratchets immutable schemas 1/2/3/4 with exact M3-M5 routes/tunnels, trust/status, lifecycle/receipt/reconnect, 23-scenario native-manifest rules, and mutations | Obtain ADR 0003's two independent exact-head protected approvals/server enforcement; execute and validate real native F4/F5 manifests |
-| Exact-argument launch broker | D3 | Partially done; nonactivated | Production-compiled fail-closed broker, one application runner, exact guarded PTY seam, route publication, bounded lifecycle/audit state, approval UX, and local protected-path policy | Protected approvals/server enforcement, real loader attestation, forced descendant teardown proof, native process/resource/accessibility evidence |
+| Exact-argument launch broker | D3 | Partially done; nonactivated | Production-compiled fail-closed broker, bounded current-executable review worker, exact guarded PTY seam, route publication, process-group/Job Object teardown, PTY-worker joining, bounded lifecycle/audit state, approval UX, and local protected-path policy | Protected approvals/server enforcement, real loader attestation, and native OpenSSH descendant/process/resource/accessibility evidence |
 | Static OpenSSH inventory | D4 | Fully done | automexia-devops-ssh, hostile/property tests, fuzz, benchmark, assurance | Remains deliberately disabled until D5 |
 | Connection Hub model | D5.0 | Partially done | All local F2 schemas, reducers, dry-run planner, Hub/review/planner projections, fixtures, goldens, fuzz, mutations, and benchmark are implemented | ADR 0003 protected approvals and native evidence remain for D5.2; capability-free D5.1 is complete under ADR 0022 |
 | Read-only Connection Hub | D5.1 | Fully done locally; external evidence partial | App-scoped joined runtime, exact reviewed native selection, bounded modal/search/filter/grouping, CAS favorite/tag diffs, read-only recent/library data, disabled authority, tests, benchmark, and release-build evidence | Native macOS/Linux picker/permission plus controlled Narrator/NVDA, VoiceOver, and Orca evidence |
-| Managed OpenSSH | D5.2 | Partially done overall; F5.1-F5.3 source-complete nonactivated | Exact direct/routed/tunnel argv, typed endpoints, loopback defaults, strong tunnel review, full trust evidence, safe copy, guarded lifecycle, receipts, reconnect, and compact states pass locally | Protected activation/attestation, actual status execution, real OpenSSH/forced cleanup, native resources/accessibility, and F5.4 manifests |
+| Managed OpenSSH | D5.2 | Partially done overall; F5.1-F5.3 source-complete nonactivated | Exact direct/routed/tunnel argv, typed endpoints, loopback defaults, strong tunnel review, full trust evidence, safe copy, guarded lifecycle, receipts, reconnect, and compact states pass locally | Protected activation/attestation, actual status execution, real OpenSSH descendant/listener cleanup, native resources/accessibility, and F5.4 manifests |
 | Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, approval fingerprints, and private transactional Connection Library persistence/redacted transfer are implemented | Product editor, remote workspace lifecycle, and separately gated execution remain |
 | Multi-cloud framework and providers | D6.0-D6.5 | Partially done overall: D6.0 fully done locally; D6.1-D6.5 Teleport slice source-complete/nonactivated; OpenBao not done | Provider-neutral capsules plus independent AWS, Azure, GCP, Kubernetes, OpenShift, and Teleport bounded/exact source contracts, tests, and benchmarks | D3 product activation, accepted ADR 0024 plus OpenBao implementation, and real official-CLI/cluster/native evidence |
 | Native completion | CP1 | Fully done | shell integration, xtask completion manager, CP1 contract/tests | Hosted three-OS and longitudinal release evidence |
@@ -402,21 +402,30 @@ unverified and the production activation constant remains false.
   exact argv. It opens and re-compares the executable guard consumed by the
   platform PTY seam, closing the local check-to-spawn handoff without shell
   evaluation, PATH search, current-directory search, or implicit Enter.
+- [x] **Fully done locally; nonactivated** — Approval queues a capacity-one,
+  latest-generation current-executable review off input, PTY, renderer, and
+  startup hot paths. The worker publishes before the route-bound wake; the
+  controller accepts only an exact current preparation within 30 seconds and
+  invalidates it on refresh or exit. A second explicit decision binds that
+  review, and the guarded identity is revalidated before spawn.
 - [x] **Fully done locally; nonactivated** — ContextManager alone creates the
   guarded PTY, inserts exactly one new route whose numeric route equals the
   reviewed session, and marks publication only after insertion. Any create,
   scope, capacity, or publication failure cancels and revokes the exact lease.
-- [ ] **Partially done** — Completion, explicit cancellation, session
+- [x] **Fully done locally; native evidence external** — Completion, explicit
+  cancellation, session
   revocation, stale-lease rejection, failed-publication rollback, route-close
   reconciliation, and application shutdown are implemented and deterministic.
-  Graceful-then-forced descendant-tree behavior and listener/handle leak freedom
-  still require native process evidence on each supported platform.
+  Windows uses bounded Job Object termination, Unix retains the waitable leader
+  while signalling its owned process group, and PTY workers are joined with a
+  deadline. Real OpenSSH descendant/listener/handle leak proof remains native.
 - [ ] **Partially done** — Hostile argv, Unicode/spaces/leading dashes,
   executable replacement, replay, stale grants, session isolation, 1/10/50
   pure cycles, runner capacity/audit bounds, publish-before-complete, shutdown,
   route mapping, keyboard focus/mnemonics, accessibility semantics, and
   tiny-to-8K pointer geometry pass locally. Native process, pane/window,
-  OpenSSH-server, screen-reader, and sustained resource runs remain external.
+  OpenSSH-server/descendant, screen-reader, and sustained resource runs remain
+  external.
 - [ ] **Not done (external native evidence)** — Pass Windows ConPTY, macOS PTY,
   Linux PTY, and separately gated WSL process-tree evidence plus controlled
   latency, CPU, memory, handle, listener, audit-storage, and cleanup checks on
@@ -462,10 +471,10 @@ protected gates and F5.4 controlled native evidence.
   outcome/redaction/store recovery/saturation/restart/stale-source tests and
   assurance mutations pass.
 - [ ] **Not done externally / production blocked:** protected exact-head
-  approvals/server enforcement, real loader attestation/revocation, controller
-  consumption of a current attested observation, real OpenSSH prompts and
-  diagnostics, graceful/forced child-tree cleanup, before/after manual `ssh`,
-  controlled accessibility, and native Windows/macOS/Linux/WSL resource evidence.
+  approvals/server enforcement, real loader attestation/revocation, real
+  OpenSSH prompts and diagnostics, native proof of the implemented
+  graceful/forced child-tree cleanup, before/after manual `ssh`, controlled
+  accessibility, and native Windows/macOS/Linux/WSL resource evidence.
 ### F5.2 explicit routes and host trust
 
 Status: **Fully done locally; nonactivated.**
@@ -924,8 +933,9 @@ These do not become silently complete from local Windows development:
 ADR 0012 is accepted by the project owner. The current blocking actions are
 ADR 0003's two independent exact-head protected approvals/server enforcement,
 real package-loader attestation, and the native F4 evidence matrix. F3/D5.1 is
-fully implemented locally; F4's source-local runner, approval UI, guarded PTY,
-and route publication are implemented but nonactivated. F5.2 explicit routes/host trust and F5.3 typed tunnels are now complete locally
+fully implemented locally; F4's source-local runner, current-executable review,
+approval UI, guarded PTY, route publication, process-tree teardown, and worker
+joining are implemented but nonactivated. F5.2 explicit routes/host trust and F5.3 typed tunnels are now complete locally
 and nonactivated. The next M5 action is to execute and validate F5.4's private
 real OpenSSH evidence manifests on controlled Windows, macOS, and Linux runners;
 source work may proceed to F6 while those external F4/M5 gates are collected.

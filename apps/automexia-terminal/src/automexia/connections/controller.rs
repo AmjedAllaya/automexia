@@ -2,21 +2,24 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use automexia_devops::connections::DirectOpenSshPreparation;
+use automexia_devops::connections::{
+    DirectOpenSshLaunchBinding, DirectOpenSshPreparation,
+};
 use automexia_devops_ssh::GrantKind;
 use automexia_extension_runtime::CompletionWake;
 
 use super::direct_openssh::{
     parse_literal_direct_openssh_port, prepare_literal_direct_openssh_typed,
     validate_literal_direct_openssh_destination, validate_literal_direct_openssh_user,
+    CurrentDirectOpenSshReview, CurrentDirectOpenSshReviewError,
 };
 use automexia_ui_model::connection_hub::{
     apply_hub_key, hub_catalog_controls_visible, project_connection_catalog,
     project_connection_hub, project_direct_openssh_preparation,
-    validate_connection_catalog_query, ConnectionCatalogEntry,
-    ConnectionCatalogProjection, ConnectionCatalogQuery, ConnectionHubView,
-    ConnectionReviewView, ConnectionSummary, HubCatalogGrouping, HubCatalogSource,
-    HubContentState, HubFocus, HubKey, HubProjectionRequest, HubRoute,
+    project_direct_openssh_review, validate_connection_catalog_query,
+    ConnectionCatalogEntry, ConnectionCatalogProjection, ConnectionCatalogQuery,
+    ConnectionHubView, ConnectionReviewView, ConnectionSummary, HubCatalogGrouping,
+    HubCatalogSource, HubContentState, HubFocus, HubKey, HubProjectionRequest, HubRoute,
     HubVisualPreferences, InteractionEffect, InteractionState, Viewport,
     MAX_CATALOG_QUERY_BYTES, MAX_VISIBLE_ROWS,
 };
@@ -119,6 +122,7 @@ pub struct ConnectionHubController {
     selected_id: Option<String>,
     direct_openssh_preparation: Option<DirectOpenSshPreparation>,
     direct_openssh_preparation_origin: Option<DirectOpenSshPreparationOrigin>,
+    current_direct_openssh_review: Option<CurrentDirectOpenSshReview>,
     direct_openssh_diagnostic: Option<&'static str>,
     #[cfg(test)]
     projection_refresh_count: u64,
@@ -163,6 +167,7 @@ impl ConnectionHubController {
             selected_id: None,
             direct_openssh_preparation: None,
             direct_openssh_preparation_origin: None,
+            current_direct_openssh_review: None,
             direct_openssh_diagnostic: None,
             #[cfg(test)]
             projection_refresh_count: 1,
@@ -224,6 +229,48 @@ impl ConnectionHubController {
     }
     pub fn direct_openssh_preparation(&self) -> Option<&DirectOpenSshPreparation> {
         self.direct_openssh_preparation.as_ref()
+    }
+    #[doc(hidden)]
+    pub fn install_direct_openssh_review(
+        &mut self,
+        review: CurrentDirectOpenSshReview,
+    ) -> bool {
+        let is_current = self.active
+            && self.interaction.route == HubRoute::Review
+            && self
+                .direct_openssh_preparation
+                .as_ref()
+                .is_some_and(|prepared| review.matches_preparation(prepared));
+        if !is_current {
+            return false;
+        }
+        self.current_direct_openssh_review = Some(review);
+        self.direct_openssh_diagnostic = None;
+        true
+    }
+
+    #[doc(hidden)]
+    pub fn direct_openssh_binding(
+        &self,
+        now_ms: u64,
+    ) -> Result<DirectOpenSshLaunchBinding, CurrentDirectOpenSshReviewError> {
+        let review = self
+            .current_direct_openssh_review
+            .as_ref()
+            .ok_or(CurrentDirectOpenSshReviewError::Stale)?;
+        let preparation = self
+            .direct_openssh_preparation
+            .as_ref()
+            .ok_or(CurrentDirectOpenSshReviewError::Stale)?;
+        if !review.matches_preparation(preparation) {
+            return Err(CurrentDirectOpenSshReviewError::Stale);
+        }
+        review.bind(now_ms)
+    }
+
+    #[doc(hidden)]
+    pub fn invalidate_direct_openssh_review(&mut self) {
+        self.current_direct_openssh_review = None;
     }
 
     pub fn report_direct_openssh_diagnostic(&mut self, diagnostic: &'static str) {
@@ -755,9 +802,14 @@ impl ConnectionHubController {
             tag_editor: self.tag_editor.clone(),
             selected_entry: self.selected_entry().cloned(),
             direct_openssh_review: self
-                .direct_openssh_preparation
+                .current_direct_openssh_review
                 .as_ref()
-                .map(|prepared| project_direct_openssh_preparation(prepared, viewport)),
+                .map(|review| project_direct_openssh_review(review.review(), viewport))
+                .or_else(|| {
+                    self.direct_openssh_preparation.as_ref().map(|prepared| {
+                        project_direct_openssh_preparation(prepared, viewport)
+                    })
+                }),
             direct_openssh_diagnostic: self.direct_openssh_diagnostic,
             grant_review: self
                 .owned_grant_review()
@@ -984,6 +1036,7 @@ impl ConnectionHubController {
     }
 
     fn refresh_direct_openssh_preparation(&mut self) {
+        self.current_direct_openssh_review = None;
         self.direct_openssh_preparation = None;
         self.direct_openssh_preparation_origin = None;
         self.direct_openssh_diagnostic = None;
@@ -1003,6 +1056,7 @@ impl ConnectionHubController {
     }
 
     fn clear_direct_openssh_preparation(&mut self) {
+        self.current_direct_openssh_review = None;
         self.direct_openssh_preparation = None;
         self.direct_openssh_preparation_origin = None;
         self.direct_openssh_diagnostic = None;
@@ -1387,5 +1441,55 @@ mod tests {
         );
         assert_eq!(presentation.view.route, HubRoute::Results);
         assert!(presentation.direct_openssh_review.is_none());
+    }
+
+    #[test]
+    fn current_executable_review_projects_binds_and_is_invalidated_on_exit() {
+        use automexia_devops::connections::ResolvedExecutable;
+
+        const NOW_MS: u64 = 1_700_000_000_000;
+        let temporary = tempfile::tempdir().unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        let mut controller = ConnectionHubController::new(runtime);
+        controller.open("terminal-grid");
+        assert!(controller.begin_literal_destination_entry());
+        assert!(controller.append_literal_destination("host.example.invalid"));
+        assert_eq!(
+            controller.confirm_literal_destination(),
+            HubControllerEffect::LiteralReviewReady
+        );
+        let preparation = controller.direct_openssh_preparation().unwrap().clone();
+        let review = CurrentDirectOpenSshReview::new(
+            preparation,
+            ResolvedExecutable {
+                executable_id: "ssh".into(),
+                identity_digest: "e".repeat(64),
+            },
+            4,
+            NOW_MS,
+        )
+        .unwrap();
+        assert!(controller.install_direct_openssh_review(review));
+        assert!(controller.direct_openssh_binding(NOW_MS + 1).is_ok());
+
+        let presentation = controller.presentation(
+            Viewport::new(1_280.0, 800.0, 1.0),
+            HubVisualPreferences::default(),
+        );
+        let projected = presentation.direct_openssh_review.unwrap();
+        assert!(projected.sections.iter().any(|section| {
+            section.heading == "Launcher and package"
+                && section.summary.contains("canonical identity bound")
+        }));
+
+        assert_eq!(
+            controller.handle_key(HubKey::Escape, Box::new(|| {})),
+            HubControllerEffect::Interaction(InteractionEffect::BackToResults)
+        );
+        assert_eq!(
+            controller.direct_openssh_binding(NOW_MS + 1),
+            Err(CurrentDirectOpenSshReviewError::Stale)
+        );
     }
 }

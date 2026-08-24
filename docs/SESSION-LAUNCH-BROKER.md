@@ -259,9 +259,14 @@ revocation, and application shutdown reconciliation. Managed Context drop
 cancels unreconciled leases; natural close records completion before route
 removal. ContextManager owns the new PTY/route and never publishes a route whose
 numeric ID differs from its session ID. The compile-time gate means this
-lifecycle has no production child today. Graceful-then-forced cross-platform
-child-tree teardown, listener/tunnel cleanup, PID-reuse evidence, durable audit
-persistence, and controlled leak/resource proof remain activation gates.
+lifecycle has no production child today. The source boundary now owns bounded
+graceful-then-forced cleanup: Windows uses the same kill-on-close Job Object and
+`TerminateJobObject`; Unix signals the owned process group while retaining the
+unreaped leader identity through forced cleanup; PTY worker completion is joined
+with a bounded deadline. These local contracts cover replacement-safe ownership
+and PID-reuse resistance. Real OpenSSH descendant/listener/tunnel cleanup on
+each supported native platform, durable audit persistence, and controlled
+leak/resource proof remain activation evidence gates.
 
 Audit records contain only extension ID/version/publisher, decision,
 operation kind, optional future public connection ID, operation/session ID,
@@ -276,6 +281,16 @@ A managed direct request is now an opaque result of a fresh full-review equality
 check, not a destination string that a screen can rebuild. The ordered argv is
 exactly the 17 constants in `DIRECT_OPENSSH_MANAGED_OPTIONS` followed by one
 typed destination. The broker independently verifies this count/order and binds
+After protected activation, approval first submits a bounded off-input-path
+review request. The application worker resolves and observes the exact broker
+executable, composes a generation-bound review with a 30-second freshness
+window, publishes the result before its route-bound wake, and rejects obsolete
+requests. The controller installs only a result that still matches the current
+preparation. The user then approves the newly executable-bound review; the same
+guarded identity is revalidated again before spawn. This deliberate second
+approval prevents a pre-resolution decision from silently acquiring process
+authority.
+
 the current canonical executable's native file identity digest to the review.
 Any profile, source, capsule, plan, trust, observation, executable, option, or
 destination change requires a new review and approval.
@@ -388,16 +403,16 @@ constant or verified-principal construction, maintainers must:
 3. bind the real package loader's digest/signature, publisher, exact compatible
    version/contract, and live revocation result before constructing a verified
    principal;
-4. add current executable and identity observation to the Connection Review and
-   invalidate stale approval when either changes;
-5. add native Windows, macOS, Linux, and separately gated WSL OpenSSH
+4. add native Windows, macOS, Linux, and separately gated WSL OpenSSH
    spawn/cancel/teardown/hostile-output evidence, including PID reuse and
    application close;
-6. complete graceful-then-forced descendant cleanup, durable redacted completion
-   audit, and listener/tunnel reconciliation;
-7. finish controlled native pixels, keyboard/focus, screen-reader, redaction,
+5. validate the locally implemented graceful-then-forced process-group/Job
+   Object cleanup and bounded worker joins against real OpenSSH descendants,
+   then complete durable redacted audit and listener/tunnel reconciliation
+   evidence;
+6. finish controlled native pixels, keyboard/focus, screen-reader, redaction,
    and manual before/after `ssh` validation;
-8. pass controlled 1/10/50-session process, PTY, renderer, latency, resource,
+7. pass controlled 1/10/50-session process, PTY, renderer, latency, resource,
    and leak gates. Model and guarded-seam tests do not replace those native
    measurements.
 

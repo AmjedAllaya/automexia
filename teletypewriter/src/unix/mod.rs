@@ -7,7 +7,8 @@ mod signals;
 extern crate libc;
 
 use crate::{
-    ChildEvent, EventedPty, ExactExecutable, ProcessReadWrite, Winsize, WinsizeBuilder,
+    ChildEvent, EventedPty, ExactExecutable, ManagedPtyShutdown, ProcessReadWrite,
+    Winsize, WinsizeBuilder,
 };
 use corcovado::unix::EventedFd;
 #[cfg(target_os = "macos")]
@@ -28,6 +29,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::ptr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 #[cfg(all(target_os = "linux", not(target_env = "musl")))]
 const TIOCSWINSZ: libc::c_ulong = 0x5414;
@@ -128,6 +130,9 @@ pub struct Pty {
     token: corcovado::Token,
     signals_token: corcovado::Token,
     signals: Signals,
+    managed_owned_tree: bool,
+    managed_leader_reaped: bool,
+    managed_reconciled: bool,
 }
 
 impl Deref for Pty {
@@ -858,6 +863,9 @@ fn create_pty_with_spawn_inner(
             Ok(Pty {
                 child: child_unix,
                 file: unsafe { File::from_raw_fd(main) },
+                managed_owned_tree: exact_launch,
+                managed_leader_reaped: false,
+                managed_reconciled: false,
                 token: corcovado::Token::from(0),
                 signals,
                 signals_token: corcovado::Token::from(0),
@@ -951,6 +959,9 @@ pub fn create_pty_with_fork(
                 child,
                 signals,
                 file: unsafe { File::from_raw_fd(main) },
+                managed_owned_tree: false,
+                managed_leader_reaped: false,
+                managed_reconciled: false,
                 token: corcovado::Token(0),
                 signals_token: corcovado::Token(0),
             })
@@ -1040,6 +1051,82 @@ impl Child {
 
         Ok(Some(status))
     }
+
+    fn exited_without_reaping(&self) -> io::Result<bool> {
+        let mut info = MaybeUninit::<libc::siginfo_t>::zeroed();
+        let result = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                *self.pid as libc::id_t,
+                info.as_mut_ptr(),
+                libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+            )
+        };
+        if result == -1 {
+            return Err(io::Error::last_os_error());
+        }
+        let info = unsafe { info.assume_init() };
+        Ok(unsafe { info.si_pid() } == *self.pid)
+    }
+
+    fn signal_owned_group(&self, signal: libc::c_int) -> io::Result<bool> {
+        let pid = *self.pid;
+        if pid <= 1 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "refusing to signal an invalid managed process group",
+            ));
+        }
+        if unsafe { libc::kill(-pid, signal) } == 0 {
+            Ok(true)
+        } else {
+            let error = io::Error::last_os_error();
+            if error.raw_os_error() == Some(libc::ESRCH) {
+                Ok(false)
+            } else {
+                Err(error)
+            }
+        }
+    }
+
+    fn wait_without_reaping(&self, timeout: Duration) -> io::Result<bool> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if self.exited_without_reaping()? {
+                return Ok(true);
+            }
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn owned_group_exists(&self) -> io::Result<bool> {
+        let pid = *self.pid;
+        if unsafe { libc::kill(-pid, 0) } == 0 {
+            return Ok(true);
+        }
+        let error = io::Error::last_os_error();
+        match error.raw_os_error() {
+            Some(libc::ESRCH) => Ok(false),
+            Some(libc::EPERM) => Ok(true),
+            _ => Err(error),
+        }
+    }
+
+    fn wait_group_gone(&self, timeout: Duration) -> io::Result<bool> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if !self.owned_group_exists()? {
+                return Ok(true);
+            }
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
 }
 
 pub fn kill_pid(pid: i32) {
@@ -1052,14 +1139,6 @@ impl Deref for Child {
     type Target = libc::c_int;
     fn deref(&self) -> &libc::c_int {
         &self.id
-    }
-}
-
-impl Drop for Child {
-    fn drop(&mut self) {
-        unsafe {
-            libc::kill(*self.pid, libc::SIGHUP);
-        }
     }
 }
 
@@ -1086,13 +1165,29 @@ impl EventedPty for Pty {
                 return None;
             }
 
+            if self.managed_owned_tree
+                && self.child.exited_without_reaping().ok() == Some(true)
+            {
+                // Keep the unreaped leader identity reserved until every
+                // helper in this exact-launch session is force-closed.
+                let _ = self.child.signal_owned_group(libc::SIGKILL);
+            }
             match self.child.waitpid() {
                 Err(_e) => {
                     // std::process::exit(1);
                     None
                 }
                 Ok(None) => None,
-                Ok(Some(status)) => Some(ChildEvent::Exited(Some(status))),
+                Ok(Some(status)) => {
+                    if self.managed_owned_tree {
+                        self.managed_leader_reaped = true;
+                        self.managed_reconciled = self
+                            .child
+                            .wait_group_gone(Duration::from_secs(3))
+                            .unwrap_or(false);
+                    }
+                    Some(ChildEvent::Exited(Some(status)))
+                }
             }
         })
     }
@@ -1100,6 +1195,59 @@ impl EventedPty for Pty {
     #[inline]
     fn child_event_token(&self) -> corcovado::Token {
         self.signals_token
+    }
+
+    fn shutdown_owned_process_tree(&mut self) -> io::Result<ManagedPtyShutdown> {
+        if !self.managed_owned_tree {
+            return Ok(ManagedPtyShutdown::NotManaged);
+        }
+        if self.managed_reconciled {
+            return Ok(ManagedPtyShutdown::Graceful);
+        }
+        if self.managed_leader_reaped {
+            if self.child.wait_group_gone(Duration::from_secs(3))? {
+                self.managed_reconciled = true;
+                return Ok(ManagedPtyShutdown::Forced);
+            }
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the reaped managed Unix process group did not empty within the force budget",
+            ));
+        }
+        let _ = self.child.signal_owned_group(libc::SIGHUP)?;
+        let graceful = self.child.wait_without_reaping(Duration::from_secs(2))?;
+        let forced = !graceful;
+        // Even when the leader exited during grace, retain its unreaped PID
+        // while killing helpers. No destructive signal occurs after reaping.
+        let _ = self.child.signal_owned_group(libc::SIGKILL)?;
+        if !self.child.wait_without_reaping(Duration::from_secs(3))? {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the managed Unix process leader did not terminate within the force budget",
+            ));
+        }
+        let _ = self.child.waitpid();
+        self.managed_leader_reaped = true;
+        if !self.child.wait_group_gone(Duration::from_secs(3))? {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the managed Unix process group did not empty within the force budget",
+            ));
+        }
+        self.managed_reconciled = true;
+        Ok(if !forced {
+            ManagedPtyShutdown::Graceful
+        } else {
+            ManagedPtyShutdown::Forced
+        })
+    }
+}
+
+impl Drop for Pty {
+    fn drop(&mut self) {
+        if self.managed_owned_tree && !self.managed_reconciled {
+            let _ = self.shutdown_owned_process_tree();
+        }
     }
 }
 

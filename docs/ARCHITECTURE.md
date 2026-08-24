@@ -305,9 +305,18 @@ network, credential, listener, trust mutation, persistence, or secret authority
 is granted.
 
 The dormant post-activation M3 lifecycle keeps ContextManager as the only PTY,
-process, and route owner. Actual child exit, cancel, revoke, route close, and
-shutdown become fixed redacted results. A bounded connection worker persists only
-provider-neutral receipts and opaque reconnect identity; reconnect always returns
+process, and route owner. A separate bounded application worker observes the
+exact broker executable off input, PTY, renderer, and startup hot paths. It
+publishes a generation-bound result before its route wake; the controller
+rejects stale preparation, source, executable, or freshness state, and launch
+requires a second explicit approval of that executable-bound review. Actual
+child exit, cancel, revoke, route close, and shutdown become fixed redacted
+results. Windows keeps descendants in the guarded kill-on-close Job Object and
+uses bounded termination; Unix retains the unreaped leader identity while
+signalling the owned process group, so cleanup does not target a reused PID.
+PTY reader workers publish completion and are joined with a bounded deadline.
+A bounded connection worker persists only provider-neutral receipts and opaque
+reconnect identity; reconnect always returns
 to current D4-source validation and fresh review/approval. Connection Library and
 receipt storage share a connection-owned private-filesystem adapter, not the Quick
 Actions runtime, for stable Windows handle identity, native link/reparse
@@ -759,9 +768,12 @@ The broker and one Router-owned `ExternalToolRunner` compile in production, but
 `MANAGED_SESSION_LAUNCH_ENABLED` is false and the linked package candidate is
 `Unverified`. Authorization therefore denies before executable/filesystem
 resolution. Behind that denial, the runner accepts only an opaque fresh-review
-binding, re-hashes current native executable identity, enforces exact ordered
-argv, and owns 50 active operations plus 256 redacted audits/receipts/reconnect
-candidates. `ContextManager` alone creates the PTY and publishes the route.
+binding. A capacity-one, latest-generation review worker observes the exact
+broker executable, publishes before waking the owning route, and lets the
+controller install only a still-current 30-second review. The runner re-hashes
+the native executable identity, enforces exact ordered argv, and owns 50 active
+operations plus 256 redacted audits/receipts/reconnect candidates.
+`ContextManager` alone creates the PTY and publishes the route.
 Application child-exit reconciliation supplies the real outcome; close never
 assumes success. A nonblocking Router-attached connection worker persists at
 most 256 provider-neutral receipts/2 MiB with private atomic primary/previous
@@ -769,8 +781,11 @@ recovery. Reconnect uses opaque current-inventory/source identity and always
 returns to fresh review and approval.
 
 No production child can start until ADR 0003 protected approvals, real loader
-attestation/revocation, controller consumption of a current attested executable
-observation, and native forced-cleanup/OpenSSH/resource/accessibility gates pass.
+attestation/revocation, and native OpenSSH descendant-cleanup/resource/
+accessibility gates pass. Current executable observation, stale-result
+rejection, guarded spawn identity, process-group/Job Object termination, and
+bounded PTY worker joining are implemented locally but do not substitute for
+those exact native runs.
 User-owned OpenSSH configuration remains a launch-time trust surface and may
 spawn helpers, so native descendant-tree proof is mandatory. Exact limits and
 remaining gates are documented in the

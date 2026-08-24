@@ -376,8 +376,8 @@ gate is false and the linked extension candidate is unverified.
 | Inherited S0/v0.4 gates | Not done externally | Required workflows/checks, least-authority Actions, Dependabot, immutable releases, exact-head/freshness audit, and local mutations exist; all currently available remote controls pass. | Restore Actions billing and obtain green exact-revision CI, CodeQL, hostile-output, native, and release jobs. |
 | Trusted package attestation | Not done | Exact identity/version/contract/digest/verification/revocation policy and fail-closed tests exist; the linked candidate is unverified. | Real loader/build-provenance attestation and live revocation binding. |
 | Application runner | Fully done locally; nonactivated | Router owns one shared runner; active operations stop at 50, audits at 256, route/session/lease scope is exact, completion requires publication, and shutdown reconciles. | Protected activation and native process/resource proof. |
-| PTY/route lifecycle | Partially done | ContextManager alone consumes the guard, creates the exact PTY, inserts one independent Context, then marks the matching route/session published; natural completion and cancellation reconcile. | Cross-platform forced descendant cleanup, PID reuse, durable audit, listener/tunnel cleanup, and leak proof. |
-| Capability/recovery UX | Partially done | Review shows public package/launcher, target, route, risk, exact operation, 60-second approval scope, destination, and deny/allow-once/allow-session with pointer, focus, mnemonics, accessibility, and redacted recovery. | Bind the current resolved executable observation into a fresh pre-launch review after attestation; then obtain controlled pixels, screen-reader, localization, and high-scale evidence. |
+| PTY/route lifecycle | Fully done locally; nonactivated, native proof external | ContextManager alone consumes the guard, creates the exact PTY, inserts one independent Context, and marks the matching route/session published. Windows has bounded Job Object termination; Unix retains the waitable leader while signalling the owned process group; PTY workers join with a deadline. | Real OpenSSH descendant/listener cleanup and controlled leak/resource proof on every native platform. Durable audit remains the separate policy row below. |
+| Capability/recovery UX | Fully done locally; nonactivated, controlled evidence external | Review shows public package/launcher, target, route, risk, exact operation, scope, destination, and three accessible decisions. A capacity-one worker publishes a fresh current-executable observation before wake; the controller rejects stale results and requires a second approval. | Protected attestation/activation plus controlled pixels, screen-reader, localization, and high-scale evidence. |
 | Native OpenSSH evidence | Partially done | Windows guarded-spawn/ConPTY tests pass and macOS cross-check compiles. | Real loopback OpenSSH on native Windows/macOS/Linux and gated WSL plus controlled 1/10/50 resources. |
 
 The authenticated 2026-08-24 audit found one human collaborator, rulesets
@@ -419,23 +419,29 @@ activation revision; a local policy pass is not server enforcement.
 - [x] **Fully done locally; nonactivated** — Route, session, operation, capsule,
   decision, executable guard, argv, PTY, and Context are bound. Context
   insertion precedes lease publication and renderer wake.
-- [ ] **Partially done** — Natural completion, cancellation, revocation,
+- [x] **Fully done locally; nonactivated, native evidence external** — Natural
+  completion, cancellation, revocation,
   stale-lease/sibling isolation, capacity, and app shutdown reconcile locally.
-  Cross-platform forced child trees, listener/tunnel cleanup, PID reuse, thread
-  joining, and controlled resources remain.
+  Windows uses bounded Job Object termination; Unix retains the waitable leader
+  while signalling the owned process group; and PTY workers join with a bounded
+  deadline. Real OpenSSH descendants/listeners and controlled resources remain.
 - [ ] **Partially done** — Authorization/completion/cancellation audits are
   bounded and redacted in memory. Durable retention/rotation/recovery awaits a
   reviewed storage/privacy policy.
 
 #### M2.3 Capability/recovery UX
 
-- [ ] **Partially done; nonactivated** — The three-card review exposes public
+- [x] **Fully done locally; nonactivated, controlled evidence external** — The
+  three-card review exposes public
   package/launcher state, target, direct transport/new route, host trust,
   `session.launch`, fixed-options-plus-one-destination operation, PTY I/O,
   60-second scope, risk, and
   destination without aliases, opaque references, digests, paths, argument
-  values, environment values, or terminal data. A current resolved executable
-  observation must still be bound into a fresh review after real attestation.
+  values, environment values, or terminal data. A bounded review worker observes
+  the exact current executable off hot paths, publishes before wake, and rejects
+  obsolete generations. The controller accepts only an exact preparation within
+  30 seconds, invalidates on refresh/exit, and requires a second explicit
+  decision before the guarded identity can reach launch.
 - [x] **Fully done locally; nonactivated** — Deny, allow once, and allow session
   have pointer targets and A/Enter/S/D mnemonics. Enter cannot bypass Back; Tab
   includes PrimaryAction; accessibility buttons mirror the choices. Execution
@@ -454,9 +460,11 @@ activation revision; a local policy pass is not server enforcement.
   route/session publication, completion-before-publication, shutdown,
   pointer/focus/mnemonics, and redaction. Mutations reject test-gating production
   modules or PTY/process authority outside ContextManager.
-- [ ] **Partially done for native primitives** — Windows exact-spawn/ConPTY
-  lifecycle and macOS compile evidence pass. Native Linux/macOS runtime, real
-  OpenSSH, pane/window publication, forced cleanup, and durable audit remain.
+- [ ] **Partially done for native primitives** — Windows exact-spawn/ConPTY and
+  bounded owned-tree termination pass. Unix process-group/PID-reuse source
+  contracts and the macOS library cross-check compile. Native Linux/macOS
+  runtime, real OpenSSH descendant behavior,
+  pane/window publication, and durable audit remain external.
 - [ ] **Not done externally** — Run the frozen loopback matrix on native
   Windows/macOS/Linux and gated WSL; capture private redacted manifests and all
   six zero-resource cleanup invariants.
@@ -512,9 +520,9 @@ by M2's external gates.
   saturation, restart, redaction, mutation, and feature-assurance tests.
 - [ ] **Not done externally / activation blocked:** obtain ADR 0003's two
   independent exact-head approvals and server enforcement; bind real loader
-  attestation/revocation and a current executable observation into the product
-  controller; then execute real native OpenSSH prompt/diagnostic, before/after
-  manual-SSH, graceful/forced descendant cleanup, 1/10/50 resource, controlled
+  attestation/revocation; then execute real native OpenSSH prompt/diagnostic,
+  before/after manual-SSH, prove the locally implemented graceful/forced
+  descendant cleanup, collect 1/10/50 resource and controlled
   screen-reader, and Windows/macOS/Linux plus separately gated WSL evidence.
 
 Exit remains unavailable as a shipped connection: the implementation is
