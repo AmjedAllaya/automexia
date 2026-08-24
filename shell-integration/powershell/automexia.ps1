@@ -195,7 +195,10 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
 
     function global:prompt {
         $succeeded = $?
-        $exitCode = if ($succeeded) { 0 } elseif ($null -ne $global:LASTEXITCODE) { $global:LASTEXITCODE } else { 1 }
+        # LASTEXITCODE may still contain an unrelated earlier native process
+        # result. Preserve that user-owned variable and publish only the
+        # success/failure distinction consumed by terminal result styling.
+        $exitCode = if ($succeeded) { 0 } else { 1 }
         Publish-AutomexiaPowerShellIdentity
         $script:AutomexiaPromptGeneration++
         $promptPath = Get-AutomexiaPromptPath

@@ -172,6 +172,9 @@ public static class AutomexiaResizeDriver {
         public int DominantColorBucket;
         public int LuminanceSpread;
         public int MeanLuminance;
+        public int MeanRed;
+        public int MeanGreen;
+        public int MeanBlue;
         public int BrightSampleCount;
     }
 
@@ -346,6 +349,9 @@ public static class AutomexiaResizeDriver {
             int maximumLuminance = 0;
             long luminanceTotal = 0;
             int brightSamples = 0;
+            long redTotal = 0;
+            long greenTotal = 0;
+            long blueTotal = 0;
             int samples = 0;
             for (int py = 0; py < clippedHeight; py += 2) {
                 for (int px = 0; px < clippedWidth; px += 2) {
@@ -363,6 +369,9 @@ public static class AutomexiaResizeDriver {
                     if (luminance >= 32) {
                         brightSamples++;
                     }
+                    redTotal += color.R;
+                    greenTotal += color.G;
+                    blueTotal += color.B;
                     samples++;
                 }
             }
@@ -374,6 +383,9 @@ public static class AutomexiaResizeDriver {
                 DominantColorBucket = -1,
                 LuminanceSpread = maximumLuminance - minimumLuminance,
                 MeanLuminance = samples == 0 ? 0 : (int)(luminanceTotal / samples),
+                MeanRed = samples == 0 ? 0 : (int)(redTotal / samples),
+                MeanGreen = samples == 0 ? 0 : (int)(greenTotal / samples),
+                MeanBlue = samples == 0 ? 0 : (int)(blueTotal / samples),
                 BrightSampleCount = brightSamples,
             };
         }
@@ -935,6 +947,91 @@ $rendererConfig
         throw 'PowerShell did not complete the keyboard-selection probe command'
     }
     $initial = $selectionDone
+    # A surface from an earlier command is not evidence that the current
+    # command was grouped. Exercise representative PowerShell command classes
+    # and require a new semantic result identity, exact owning prompt, output
+    # token, exit state, and painted surface for every case.
+    $resultCommandCases = @(
+        [pscustomobject]@{
+            Name = 'single-success'
+            Command = "Write-Output 'AMX_RESULT_SINGLE_78101'"
+            Tokens = @('AMX_RESULT_SINGLE_78101')
+            ExitCode = 0
+        },
+        [pscustomobject]@{
+            Name = 'multiline-success'
+            Command = "Write-Output 'AMX_RESULT_MULTI_A_78102'; Write-Output 'AMX_RESULT_MULTI_B_78102'"
+            Tokens = @('AMX_RESULT_MULTI_A_78102', 'AMX_RESULT_MULTI_B_78102')
+            ExitCode = 0
+        },
+        [pscustomobject]@{
+            Name = 'external-process-success'
+            Command = 'cmd.exe /D /C "echo AMX_RESULT_EXTERNAL_78103"'
+            Tokens = @('AMX_RESULT_EXTERNAL_78103')
+            ExitCode = 0
+        },
+        [pscustomobject]@{
+            Name = 'error-output'
+            Command = "Write-Error 'AMX_RESULT_ERROR_78104'"
+            Tokens = @('AMX_RESULT_ERROR_78104')
+            ExitCode = 1
+        },
+        [pscustomobject]@{
+            Name = 'provider-pipeline-success'
+            Command = 'Get-Item -LiteralPath Cargo.toml | ForEach-Object { Write-Output ''AMX_RESULT_PROVIDER_78105''; Write-Output $_.Name }'
+            Tokens = @('AMX_RESULT_PROVIDER_78105', 'Cargo.toml')
+            ExitCode = 0
+        }
+    )
+    $resultCommandEvidence = @()
+    $resultProbe = $initial
+    foreach ($case in $resultCommandCases) {
+        $previousPromptId = [int64]$resultProbe.latest_prompt_id
+        $previousResultKey = if ($null -eq $resultProbe.command_result_key) {
+            -1
+        } else {
+            [int64]$resultProbe.command_result_key
+        }
+        $caseControl = "write-line:result-$($case.Name):$($case.Command)"
+        $script:testStage = "command-result $($case.Name)"
+        Send-AutomexiaTestControl $caseControl
+        $caseReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$resultProbe.sequence)
+        $caseDeadline = [DateTime]::UtcNow.AddSeconds(10)
+        do {
+            $casePanel = Get-ActiveAutomexiaPanel $caseReady
+            $allTokensVisible = $true
+            foreach ($token in $case.Tokens) {
+                if (-not ([string]$casePanel.visible_text).Contains($token)) {
+                    $allTokensVisible = $false
+                    break
+                }
+            }
+            $caseComplete = (
+                [string]$caseReady.last_control -eq $caseControl -and
+                [int64]$caseReady.latest_prompt_id -gt $previousPromptId -and
+                $null -ne $caseReady.command_result_key -and
+                [int64]$caseReady.command_result_key -gt $previousResultKey -and
+                [int64]$caseReady.command_result_generation -eq $previousPromptId -and
+                [int]$caseReady.command_result_exit_code -eq [int]$case.ExitCode -and
+                $null -ne $caseReady.command_result_surface -and
+                $allTokensVisible)
+            if (-not $caseComplete) {
+                $caseReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$caseReady.sequence)
+            }
+        } while (-not $caseComplete -and [DateTime]::UtcNow -lt $caseDeadline)
+        if (-not $caseComplete) {
+            Write-Host ($caseReady | ConvertTo-Json -Depth 10)
+            throw "Command-result case '$($case.Name)' did not publish fresh, truthful, visible output grouping"
+        }
+        $resultCommandEvidence += [ordered]@{
+            name = $case.Name
+            generation = [int64]$caseReady.command_result_generation
+            key = [int64]$caseReady.command_result_key
+            exit_code = [int]$caseReady.command_result_exit_code
+        }
+        $resultProbe = $caseReady
+    }
+    $initial = $resultProbe
     $initialPanel = Get-ActiveAutomexiaPanel $initial
     # Prove native PowerShell history navigation remains interactive after a
     # completed command. The recall path uses real window messages below; the
@@ -1053,6 +1150,38 @@ $rendererConfig
     if ($resultRegionWidth -lt 8 -or $resultRegionHeight -lt 8) {
         throw "Command-result painted region is unusable: $resultRegionWidth x $resultRegionHeight"
     }
+    # Sample output glyphs independently from the rail, divider, and status
+    # decoration. This prevents structural paint from masquerading as visible
+    # command text in a native frame.
+    $resultGlyphX = [int][Math]::Floor(
+        ([double]$resultSurface[0] + [double]$resultAccent[2] + 4.0) * $resultScale)
+    $resultGlyphY = $resultRegionY
+    $resultGlyphWidth = [int][Math]::Floor(
+        [Math]::Min([double]$resultSurface[2] * 0.55, 560.0) * $resultScale)
+    $resultGlyphHeight = [int][Math]::Ceiling(
+        [double]$resultSurface[3] * $resultScale)
+    if ($resultGlyphWidth -lt 64 -or $resultGlyphHeight -lt 8) {
+        throw 'Command-result glyph sample is too small'
+    }
+    # Compare blank pixels in the resting surface with the adjacent untouched
+    # gutter. Text diversity cannot satisfy this assertion.
+    $resultSampleX = [int][Math]::Floor(
+        ([double]$resultSurface[0] + [double]$resultSurface[2] * 0.60) * $resultScale)
+    $resultSampleWidth = [int][Math]::Floor(
+        [double]$resultSurface[2] * 0.25 * $resultScale)
+    $resultSurfaceSampleY = [int][Math]::Floor(
+        ([double]$resultSurface[1] + [double]$resultSurface[3] * 0.20) * $resultScale)
+    $resultSurfaceSampleHeight = [int][Math]::Max(2, [Math]::Floor(
+        [double]$resultSurface[3] * 0.60 * $resultScale))
+    $resultGutterSampleY = [int][Math]::Ceiling(
+        ($resultSurfaceBottom + $resultGutter * 0.20) * $resultScale)
+    $resultGutterSampleHeight = [int][Math]::Max(2, [Math]::Floor(
+        $resultGutter * 0.60 * $resultScale))
+    if ($resultSampleWidth -lt 32 -or
+        $resultSurfaceSampleHeight -lt 2 -or
+        $resultGutterSampleHeight -lt 2) {
+        throw 'Command-result blank-pixel contrast samples are too small'
+    }
     $script:testStage = 'command-result composited surface'
     $resultCaptureDeadline = [DateTime]::UtcNow.AddSeconds(5)
     $resultCaptureAttempts = 0
@@ -1061,6 +1190,9 @@ $rendererConfig
         $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
         throw "Could not expose Automexia for command-result capture (Win32 error $code)"
     }
+    $resultSurfaceBackground = $null
+    $resultGutterBackground = $null
+    $resultGlyphPixels = $null
     try {
         do {
             $resultCaptureAttempts++
@@ -1074,19 +1206,54 @@ $rendererConfig
                     $resultRegionY,
                     $resultRegionWidth,
                     $resultRegionHeight)
+            $resultGlyphPixels =
+                [AutomexiaResizeDriver]::CapturePhysicalClientRegionStats(
+                    $window,
+                    $resultGlyphX,
+                    $resultGlyphY,
+                    $resultGlyphWidth,
+                    $resultGlyphHeight)
+            $resultSurfaceBackground =
+                [AutomexiaResizeDriver]::CapturePhysicalClientRegionStats(
+                    $window,
+                    $resultSampleX,
+                    $resultSurfaceSampleY,
+                    $resultSampleWidth,
+                    $resultSurfaceSampleHeight)
+            $resultGutterBackground =
+                [AutomexiaResizeDriver]::CapturePhysicalClientRegionStats(
+                    $window,
+                    $resultSampleX,
+                    $resultGutterSampleY,
+                    $resultSampleWidth,
+                    $resultGutterSampleHeight)
+            $resultPaintDelta =
+                [Math]::Abs([int]$resultSurfaceBackground.MeanRed -
+                    [int]$resultGutterBackground.MeanRed) +
+                [Math]::Abs([int]$resultSurfaceBackground.MeanGreen -
+                    [int]$resultGutterBackground.MeanGreen) +
+                [Math]::Abs([int]$resultSurfaceBackground.MeanBlue -
+                    [int]$resultGutterBackground.MeanBlue)
             $resultPixelsValid = (
                 $resultFrame.Width -ge 100 -and
                 $resultFrame.Height -ge 100 -and
                 $resultPixels.SampleCount -ge 32 -and
+                $resultGlyphPixels.SampleCount -ge 32 -and
+                $resultGlyphPixels.DistinctColorBuckets -ge 8 -and
+                $resultGlyphPixels.LuminanceSpread -ge 96 -and
                 $resultPixels.DistinctColorBuckets -ge 4 -and
-                $resultPixels.LuminanceSpread -ge 32)
+                $resultPixels.LuminanceSpread -ge 32 -and
+                $resultPaintDelta -ge 16)
         } while (-not $resultPixelsValid -and
                  [DateTime]::UtcNow -lt $resultCaptureDeadline)
     } finally {
         [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
     }
     if (-not $resultPixelsValid) {
-        throw "Command-result pixels did not settle after $resultCaptureAttempts attempts: samples=$($resultPixels.SampleCount), buckets=$($resultPixels.DistinctColorBuckets), spread=$($resultPixels.LuminanceSpread)"
+        throw "Command-result pixels did not settle after $resultCaptureAttempts attempts: samples=$($resultPixels.SampleCount), buckets=$($resultPixels.DistinctColorBuckets), spread=$($resultPixels.LuminanceSpread), glyph-buckets=$($resultGlyphPixels.DistinctColorBuckets), glyph-spread=$($resultGlyphPixels.LuminanceSpread), blank-pixel-delta=$resultPaintDelta, surface-rgb=$($resultSurfaceBackground.MeanRed)/$($resultSurfaceBackground.MeanGreen)/$($resultSurfaceBackground.MeanBlue), gutter-rgb=$($resultGutterBackground.MeanRed)/$($resultGutterBackground.MeanGreen)/$($resultGutterBackground.MeanBlue)"
+    }
+    if ($resultPaintDelta -lt 16) {
+        throw "Command-result resting paint is not perceptible against its gutter: RGB delta $resultPaintDelta"
     }
 
     # Establish whether latency is in generic frontend -> PTY delivery or in a
@@ -2660,10 +2827,23 @@ $rendererConfig
                 region_sample_count = $resultPixels.SampleCount
                 region_distinct_color_buckets = $resultPixels.DistinctColorBuckets
                 region_luminance_spread = $resultPixels.LuminanceSpread
+                glyph_sample_count = $resultGlyphPixels.SampleCount
+                glyph_distinct_color_buckets = $resultGlyphPixels.DistinctColorBuckets
+                glyph_luminance_spread = $resultGlyphPixels.LuminanceSpread
                 opacity = $resultOpacity
                 pulse_duration_milliseconds = [int]$historyReady.command_result_pulse_duration_ms
                 pulse_hold_fraction = $resultPulseHold
                 single_cycle = $true
+                blank_surface_mean_rgb = @(
+                    $resultSurfaceBackground.MeanRed,
+                    $resultSurfaceBackground.MeanGreen,
+                    $resultSurfaceBackground.MeanBlue)
+                blank_gutter_mean_rgb = @(
+                    $resultGutterBackground.MeanRed,
+                    $resultGutterBackground.MeanGreen,
+                    $resultGutterBackground.MeanBlue)
+                blank_surface_gutter_rgb_delta = $resultPaintDelta
+                representative_commands = $resultCommandEvidence
                 artifact = if ($null -eq $resultFramePath) {
                     $null
                 } else {

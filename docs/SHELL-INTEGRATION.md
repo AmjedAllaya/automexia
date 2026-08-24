@@ -162,15 +162,24 @@ reflowed during resize without asking a shell editor to reconstruct scrollback.
 
 When a command completes and the following prompt is visible, Automexia groups
 every proven output row into a visible but restrained result surface. The
-semantic path is command-agnostic: it covers listing and non-listing commands, success and error
-exits, single- and multiline output, and managed input wrapped beyond eight
-rows. A persistent success/error-tinted band, 2.4-3.5 pixel left rail, adaptive
-6-10 pixel visual breathing gutter, end rule, and compact exit state plus
-duration separate the result from the next editable command without relying on
-color alone. A newly completed live result lightens once, holds for the first
+semantic path is command-agnostic: it covers listing and non-listing commands,
+success and error exits, single- and multiline output, and managed input wrapped
+beyond eight rows. A persistent success/error-tinted band, 2.4-3.5 pixel left
+rail, adaptive 6-10 pixel visual breathing gutter, end rule, and compact exit
+state plus duration separate the result from the next editable command without
+relying on color alone. A newly completed live result lightens once, holds for the first
 third of its 540 millisecond cycle, and then eases out through opacity; it never
 blinks, moves, repeats, or restarts
 while viewing scrollback.
+
+| Shell | Lifecycle available to Automexia | Completed-output surface |
+|---|---|---|
+| PowerShell | Monotonic `A/B/C/D`; `D` is semantic `0` success or `1` failure and never reuses or changes a stale user-owned `LASTEXITCODE` | Available |
+| Bash | Monotonic `A/B/C/D` with the captured shell exit status | Available |
+| Zsh | Monotonic `A/B/C/D` with the captured shell exit status | Available |
+| Fish | `fish_preexec`/`fish_postexec` provide `C/D`, but the user-owned prompt has no Automexia `A/B` generation | Not drawn; output limits are not guessed |
+| stock CMD | The prompt provides `A/B`, but `cmd.exe` exposes no supported generic post-command `C/D` hook or truthful timing boundary | Not drawn; completion/status are not fabricated |
+| unintegrated or unsupported shell | No complete trusted lifecycle | Not drawn |
 
 The renderer applies that treatment only when semantic prompt ownership proves
 both output limits and the following prompt. Uncertain or empty bounds fail
