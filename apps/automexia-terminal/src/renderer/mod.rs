@@ -259,7 +259,7 @@ const MAX_LEGACY_PROMPT_SCAN_ROWS: usize = 8;
 fn result_animation_enabled(requested: bool) -> bool {
     #[cfg(feature = "visual-test-hooks")]
     {
-        return requested && crate::automexia::visual_test_hooks::animations_enabled();
+        requested && crate::automexia::visual_test_hooks::animations_enabled()
     }
     #[cfg(not(feature = "visual-test-hooks"))]
     requested

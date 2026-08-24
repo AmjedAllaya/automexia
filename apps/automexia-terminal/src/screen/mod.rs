@@ -487,6 +487,9 @@ struct NativeWindowSnapshot {
     command_result_surface: Option<[f32; 4]>,
     command_result_accent: Option<[f32; 4]>,
     command_result_divider: Option<[f32; 4]>,
+    command_result_opacity: Option<[f32; 4]>,
+    command_result_pulse_duration_ms: Option<u64>,
+    command_result_pulse_hold_fraction: Option<f32>,
     command_result_pulse_generation: u64,
 }
 
@@ -632,6 +635,11 @@ fn write_native_resize_snapshot(
     snapshot["command_result_surface"] = serde_json::json!(window.command_result_surface);
     snapshot["command_result_accent"] = serde_json::json!(window.command_result_accent);
     snapshot["command_result_divider"] = serde_json::json!(window.command_result_divider);
+    snapshot["command_result_opacity"] = serde_json::json!(window.command_result_opacity);
+    snapshot["command_result_pulse_duration_ms"] =
+        serde_json::json!(window.command_result_pulse_duration_ms);
+    snapshot["command_result_pulse_hold_fraction"] =
+        serde_json::json!(window.command_result_pulse_hold_fraction);
     snapshot["command_result_pulse_generation"] =
         serde_json::json!(window.command_result_pulse_generation);
     #[cfg(feature = "visual-test-hooks")]
@@ -5966,6 +5974,8 @@ impl Screen<'_> {
                 .map(|snapshot| snapshot.announcement_generation);
             let command_result_visual =
                 self.renderer.devops_status.native_test_result_visual();
+            let command_result_style =
+                self.renderer.devops_status.native_test_result_style();
             write_native_resize_snapshot(
                 &self.context_manager.current().renderable_content,
                 panels,
@@ -5999,6 +6009,11 @@ impl Screen<'_> {
                     command_result_surface: command_result_visual.map(|visual| visual.0),
                     command_result_accent: command_result_visual.map(|visual| visual.1),
                     command_result_divider: command_result_visual.map(|visual| visual.2),
+                    command_result_opacity: command_result_style.map(|style| style.0),
+                    command_result_pulse_duration_ms: command_result_style
+                        .map(|style| style.1),
+                    command_result_pulse_hold_fraction: command_result_style
+                        .map(|style| style.2),
                     command_result_pulse_generation: command_result_visual
                         .map_or(0, |visual| visual.3),
                 },

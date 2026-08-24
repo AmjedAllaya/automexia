@@ -29,11 +29,12 @@ const PROMPT_TAG_MAX_FONT_SIZE: f32 = 14.0;
 const PROMPT_TAG_MIN_FONT_SIZE: f32 = 4.0;
 const PROMPT_TAG_LEFT_INSET: f32 = 2.0;
 const PROMPT_RESULT_RESERVE: f32 = 112.0;
-const RESULT_DIVIDER_ALPHA: f32 = 0.32;
-const RESULT_SURFACE_ALPHA: f32 = 0.018;
-const RESULT_ACCENT_ALPHA: f32 = 0.42;
-const RESULT_PULSE_ALPHA: f32 = 0.055;
+const RESULT_DIVIDER_ALPHA: f32 = 0.42;
+const RESULT_SURFACE_ALPHA: f32 = 0.065;
+const RESULT_ACCENT_ALPHA: f32 = 0.72;
+const RESULT_PULSE_ALPHA: f32 = 0.14;
 const RESULT_PULSE_DURATION: Duration = Duration::from_millis(540);
+const RESULT_PULSE_HOLD_FRACTION: f32 = 1.0 / 3.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PromptTagMetrics {
@@ -106,7 +107,9 @@ fn command_result_visual(anchor: &CommandResultAnchor) -> Option<CommandResultVi
     let output_top = anchor.output_top?;
     let divider = command_result_divider(anchor)?;
     let inset = (anchor.height * 0.1).clamp(1.0, 2.0);
-    let gutter = (anchor.height * 0.28).clamp(4.0, 8.0);
+    let gutter = (anchor.height * 0.36)
+        .clamp(6.0, 10.0)
+        .min(anchor.height * 0.45);
     let surface_bottom = anchor.y - gutter;
     let surface_height = surface_bottom - output_top;
     let surface_width = anchor.width - inset * 2.0;
@@ -114,7 +117,10 @@ fn command_result_visual(anchor: &CommandResultAnchor) -> Option<CommandResultVi
         return None;
     }
     let surface = [anchor.x + inset, output_top, surface_width, surface_height];
-    let accent_width = (anchor.height * 0.08).clamp(1.0, 2.0);
+    let accent_width = (anchor.height * 0.14)
+        .clamp(2.4, 3.5)
+        .min(anchor.height * 0.5)
+        .max(1.0);
     Some(CommandResultVisual {
         surface,
         accent: [surface[0], surface[1], accent_width, surface[3]],
@@ -130,6 +136,9 @@ struct CommandResultIdentity {
 
 #[cfg(feature = "native-gui-test-hooks")]
 type NativeCommandResultVisual = ([f32; 4], [f32; 4], [f32; 4], u64);
+
+#[cfg(feature = "native-gui-test-hooks")]
+type NativeCommandResultStyle = ([f32; 4], u64, f32);
 
 impl PartialEq for CommandResultIdentity {
     fn eq(&self, other: &Self) -> bool {
@@ -202,7 +211,17 @@ impl CommandResultPulse {
         if progress >= 1.0 {
             return 0.0;
         }
-        RESULT_PULSE_ALPHA * (1.0 - progress).powi(2)
+        let intensity = if progress <= RESULT_PULSE_HOLD_FRACTION {
+            1.0
+        } else {
+            let fade = ((progress - RESULT_PULSE_HOLD_FRACTION)
+                / (1.0 - RESULT_PULSE_HOLD_FRACTION))
+                .clamp(0.0, 1.0);
+            // Smoothstep's inverse avoids a sudden edge while keeping the
+            // notification perceptible for most of its single 540 ms cycle.
+            1.0 - fade * fade * (3.0 - 2.0 * fade)
+        };
+        RESULT_PULSE_ALPHA * intensity
     }
 
     fn needs_redraw(&mut self, now: Instant) -> bool {
@@ -268,6 +287,21 @@ impl DevOpsStatus {
 
     pub fn needs_redraw(&mut self) -> bool {
         self.command_result_pulse.needs_redraw(Instant::now())
+    }
+
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub(crate) fn native_test_result_style(&self) -> Option<NativeCommandResultStyle> {
+        self.native_command_result_visual?;
+        Some((
+            [
+                RESULT_SURFACE_ALPHA,
+                RESULT_ACCENT_ALPHA,
+                RESULT_DIVIDER_ALPHA,
+                RESULT_PULSE_ALPHA,
+            ],
+            RESULT_PULSE_DURATION.as_millis().min(u64::MAX as u128) as u64,
+            RESULT_PULSE_HOLD_FRACTION,
+        ))
     }
 
     #[cfg(feature = "native-gui-test-hooks")]
@@ -1170,10 +1204,10 @@ mod tests {
         assert!(visual.surface[0] >= anchor.x);
         assert!(visual.surface[1] >= 80.0);
         assert!(visual.surface[0] + visual.surface[2] <= anchor.x + anchor.width);
-        assert!((4.0..=8.0).contains(&gutter));
+        assert!((8.0..=10.0).contains(&gutter));
         assert_eq!(visual.accent[0], visual.surface[0]);
         assert_eq!(visual.accent[1], visual.surface[1]);
-        assert!(visual.accent[2] <= 2.0);
+        assert!((2.4..=3.5).contains(&visual.accent[2]));
         assert_eq!(visual.accent[3], visual.surface[3]);
         assert!(visual.divider[1] >= anchor.y);
     }
@@ -1196,6 +1230,41 @@ mod tests {
 
         anchor.output_top = Some(anchor.y);
         assert_eq!(command_result_visual(&anchor), None);
+    }
+
+    #[test]
+    fn result_paint_is_persistent_and_the_single_pulse_stays_perceptible() {
+        assert!((0.05..=0.10).contains(&RESULT_SURFACE_ALPHA));
+        assert!((0.60..=0.85).contains(&RESULT_ACCENT_ALPHA));
+        assert!((0.10..=0.18).contains(&RESULT_PULSE_ALPHA));
+        assert!((0.35..=0.60).contains(&RESULT_DIVIDER_ALPHA));
+
+        let anchor = CommandResultAnchor {
+            generation: Some(7),
+            key: 42,
+            x: 4.0,
+            y: 80.0,
+            width: 720.0,
+            height: 20.0,
+            output_top: Some(40.0),
+            separates_next_prompt: true,
+            exit_code: 0,
+            elapsed_ms: 18,
+        };
+        let started = Instant::now();
+        let mut pulse = CommandResultPulse::default();
+        pulse.observe(&[], true, started);
+        pulse.observe(&[anchor], true, started);
+
+        assert_eq!(pulse.alpha_for(&anchor, started), RESULT_PULSE_ALPHA);
+        assert!(
+            pulse.alpha_for(&anchor, started + RESULT_PULSE_DURATION / 2)
+                >= RESULT_PULSE_ALPHA * 0.70
+        );
+        assert_eq!(
+            pulse.alpha_for(&anchor, started + RESULT_PULSE_DURATION),
+            0.0
+        );
     }
 
     #[test]
