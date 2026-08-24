@@ -76,7 +76,7 @@ jobs:
       - name: PowerShell syntax
         shell: pwsh
         run: tools/ci/test_powershell.ps1 -SyntaxOnly
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+      - uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2
         with:
           tool: lychee@0.20.1
       - name: Markdown links
@@ -118,7 +118,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
           key: native-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+      - uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2
         with:
           tool: cargo-nextest@0.9.137
       - run: cargo fmt --all -- --check
@@ -207,7 +207,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+      - uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2
         with:
           tool: cargo-llvm-cov@0.6.21
       - run: cargo llvm-cov --workspace --locked --lcov --output-path lcov.info
@@ -216,7 +216,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           COVERAGE_PLATFORM: windows-x86_64-msvc
         run: python tools/ci/check_coverage.py
-      - uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
+      - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: lcov.info
           fail_ci_if_error: false
@@ -226,7 +226,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+      - uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2
         with:
           tool: cargo-deny@0.20.2
       - run: cargo deny --locked --color never check --hide-inclusion-graph
