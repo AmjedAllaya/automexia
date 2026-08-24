@@ -41,8 +41,8 @@ decision supersedes an old one instead of silently rewriting history.
 | [0026](../adr/0026-versioned-ghostty-keybinding-profiles.md) | Versioned Ghostty keybinding profiles | Preserve Automexia defaults while compiling explicit pinned compatibility profiles in a pure, bounded registry with offline fixture provenance. |
 | [0027](../adr/0027-redacted-compatibility-inspector.md) | Redacted compatibility inspector | Expose only bounded public terminal/binding metadata in a renderer-owned modal and forbid output, paths, commands, clipboard, environment, and credentials. |
 | [0028](../adr/0028-bounded-parked-pty-topology-history.md) | Bounded parked-PTY topology history | Undo/redo only complete closed top-level tabs initially, preserving existing route ownership while bounding count, age, history lines, invalidation, and cleanup. |
-
 | [0029](../adr/0029-sandboxed-signed-ecosystem-boundary.md) | Sandboxed signed ecosystem boundary (proposed) | Require strict signed immutable bundles, custom-WIT least authority, bounded Wasmtime hosting, current revocation, explicit capability changes, selected-input-only AI, no tools/execution, and exact rollback before D7/CP6 source work. |
+| [0030](../adr/0030-automation-studio-domain-extension-boundary.md) | Automation Studio and domain-extension boundary (proposed) | Keep the optional embedded file editor separate from DevOps/SRE and tool/language add-ons while core brokers retain authority. |
 
 ## When an ADR is required
 

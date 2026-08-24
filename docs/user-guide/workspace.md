@@ -1,6 +1,9 @@
 # Workspaces, tabs, and panes
 
-Automexia has several ways to organize sessions. They look similar at first, but each one has a different scope. Choosing the right level makes complex terminal work much easier to understand.
+Automexia lets you arrange command-driven work around the way the task
+actually unfolds. Windows, tabs, panes, and sessions have different scopes;
+choosing the right one keeps related work visible and separates contexts that
+should not interfere with each other.
 
 ## The workspace hierarchy
 
@@ -31,8 +34,8 @@ A window-level tab is the simplest way to separate substantial contexts without 
 
 Examples:
 
-- application repository vs infrastructure repository;
-- local development vs production-observation commands;
+- application work vs infrastructure work;
+- a data or media task vs its logs and generated output;
 - project A vs project B;
 - one long-running TUI workspace vs another.
 
@@ -45,7 +48,9 @@ Switch with `Ctrl+Tab` / `Ctrl+Shift+Tab`. On macOS, `Cmd+Shift+[` / `Cmd+Shift+
 
 ### Use a split when two sessions must stay visible
 
-Splits are for simultaneous visibility: editor + tests, server + logs, shell + database console, or local + remote.
+Splits are for simultaneous visibility: processing command + logs, source
+files + generated results, server + monitor, shell + database console, or local
++ remote.
 
 Automexia offers two different split behaviors.
 
@@ -181,11 +186,11 @@ The palette is the discoverable path for tab, split, pane, config, image-preview
 
 ## A useful layout pattern
 
-For a normal development project:
+For a typical multi-step task:
 
-1. Start Automexia in the project directory with `automexia --working-dir <project>`.
-2. Keep the left pane as the primary shell.
-3. Clone right for a second shell in the same project.
+1. Start Automexia in the working directory with `automexia --working-dir <path>`.
+2. Keep the left pane as the primary shell or control point.
+3. Clone right for a second shell in the same context.
 4. Create a fresh split down when you want a clean independent task runner.
 5. Add a pane-local tab only when one region needs multiple alternate sessions.
 6. Create another window-level tab when the entire task context changes.

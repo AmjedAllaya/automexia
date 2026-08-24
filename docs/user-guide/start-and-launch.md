@@ -1,13 +1,16 @@
 # Start and launch sessions
 
-This guide explains the practical ways to start Automexia and choose the initial shell, directory, or command. The correct approach depends on whether you are using a packaged executable or working from the source repository.
+Starting in the right shell, directory, and task context removes repeated
+setup and makes the purpose of a session clear. This guide explains the
+practical launch choices for a packaged executable and for work on the Automexia
+source repository.
 
 ## Choose a launch approach
 
 | Situation | Recommended approach | Why |
 |---|---|---|
 | Open a normal terminal | `automexia` | Uses your configured/default shell and normal settings. |
-| Start directly in a project | `automexia --working-dir <PATH>` | Avoids an extra `cd` and makes the initial directory explicit. |
+| Start directly in a task or project directory | `automexia --working-dir <PATH>` | Avoids an extra `cd` and makes the initial context explicit. |
 | Start one specific program/shell | `automexia [other options] -e <PROGRAM> [ARGS...]` | Launches that program instead of the configured shell. |
 | Generate a starter config | `automexia --write-config` | Creates a non-overwriting user config. |
 | Diagnose an Automexia shell-integration problem | `automexia shell-integration doctor` | Read-only health information. |

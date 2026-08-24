@@ -1,6 +1,13 @@
 # Automexia User Guide
 
-This category is the practical manual for **using Automexia as a terminal**. It is organized around tasks and choices: how to launch a session, when to use a tab versus a split, which command surface to use, how shortcuts behave, how to customize the terminal, and how to work with local or remote tools.
+This is the practical manual for using Automexia to organize command-driven
+work. It is for developers, operators, researchers, creators, automation users,
+and anyone else whose tools run through a shell. Start with the task you have:
+launch a session, arrange a workspace, find or repeat a command, customize the
+terminal, inspect a result, or combine local and remote tools.
+
+The broader purpose and future direction are described in the
+[product vision](../PRODUCT-VISION.md).
 
 The User Guide intentionally does not replace the exact reference pages. A guide explains **what to do and why**; a reference page remains the authority for every supported option, key binding, setting, default, and limit.
 
@@ -26,7 +33,7 @@ Automexia contains shipped features and work that exists only in local/developme
 | Work with listings, semantic output, selection, and image previews | [Files, output, and images](files-and-images.md) |
 | Review SSH inventory in the read-only Hub or connect with system OpenSSH | **[Connection Hub and SSH](connection-hub-and-ssh.md)** |
 | Use WSL or combine local and remote sessions | [Remote sessions and WSL](remote-and-wsl.md) |
-| Copy a practical setup for common development/operations workflows | [Workflow recipes](recipes.md) |
+| Copy a practical setup for project, operations, automation, or media work | [Workflow recipes](recipes.md) |
 | Fix a problem | [Troubleshooting](../guide/troubleshooting.md) |
 
 ## A 15-minute tour
@@ -42,7 +49,10 @@ If you are new to Automexia, this sequence covers the core mental model without 
 7. **Try terminal selection.** Hold `Shift` and press an Arrow key. `Ctrl+C` copies a non-empty selection; with no selection it still sends the shell interrupt.
 8. **Search scrollback.** Use `Ctrl+Shift+F` on Windows/Linux/BSD or `Cmd+F` on macOS.
 9. **Create a starter configuration.** Run `automexia --write-config`, then change only the settings you actually need.
-10. **Use your normal tools normally.** `git`, `cargo`, `kubectl`, `ssh`, editors, TUIs, REPLs, and shell scripts still run inside the real shell. Automexia does not replace their command syntax.
+10. **Use your normal tools normally.** `git`, `cargo`, `kubectl`, `ssh`,
+    Python, FFmpeg, editors, data tools, TUIs, REPLs, and shell scripts still run
+    inside the real shell. Automexia organizes the workspace; it does not
+    replace their command syntax.
 
 ## The five command surfaces
 
@@ -50,7 +60,7 @@ Users often confuse terminal commands with Automexia commands. The distinction i
 
 | Surface | Best for | Example |
 |---|---|---|
-| **Your shell** | Normal work and third-party tools | `git status`, `cargo test`, `ssh host` |
+| **Your shell** | Normal work and third-party tools | `git status`, `python task.py`, `ffmpeg ...`, `ssh host` |
 | **Automexia application CLI** | Launch-time choices and Automexia-owned maintenance | `automexia --working-dir D:\\work`, `automexia --write-config` |
 | **Command palette** | Discovering UI actions without memorizing bindings | Open palette, search for split/config/image actions |
 | **Quick Actions / aliases** | Reviewed repeatable command templates *(release-gated)* | Search → review → insert/copy; optionally publish an alias |
@@ -92,8 +102,10 @@ Use the User Guide while learning and working. Jump to these canonical reference
 
 **Everyday terminal user:** Start and launch → Workspace → Shortcuts → Customization.
 
-**Developer using Automexia as a daily terminal:** Start and launch → Workspace → Commands → Productivity → Recipes.
+**Project or automation user:** Start and launch → Workspace → Commands → Productivity → Recipes.
 
-**DevOps / remote user:** Commands → Workspace → Connection Hub and SSH → Remote sessions and WSL → Productivity → Recipes.
+**Creator, data, or media-tool user:** Start and launch → Workspace → Files and images → Recipes.
+
+**Operations / remote user:** Commands → Workspace → Connection Hub and SSH → Remote sessions and WSL → Productivity → Recipes.
 
 **Contributor to Automexia itself:** User Guide first, then [Getting started for source contributors](../guide/getting-started.md), [Architecture](../developer/architecture.md), and [Testing and release](../developer/testing-release.md).

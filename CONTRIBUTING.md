@@ -30,11 +30,14 @@ domain checks but never remove the base policy suite.
 - Follow the [documentation contribution guide](docs/DOCUMENTATION.md). Every
   new or materially changed feature must retain guide, reference, and
   explanation/ADR ownership in the machine-checked assurance ledger.
+- Keep public purpose, audience, value, and messaging aligned with the
+  [product vision](docs/PRODUCT-VISION.md) and [brand guide](docs/BRANDING.md).
+  Explain value before mechanism, and never present research as shipped work.
 - Add an ADR for dependency boundaries, persistence, threading,
   security/capabilities, or public-behavior decisions.
 - Include screenshots or renderer-neutral goldens for visible UI changes.
-- Follow `docs/BRANDING.md` for logo changes; never overwrite the canonical
-  source or approve redistribution rights without reviewable evidence.
+- For brand assets, never overwrite the canonical source or approve
+  redistribution rights without reviewable evidence.
 - Engine changes require a focused regression test even when inherited engine
   files are excluded from the untouched changed-line threshold.
 - Do not introduce network access, arbitrary process execution, or new extension

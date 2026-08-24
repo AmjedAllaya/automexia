@@ -1,6 +1,24 @@
 # Terminal experience
 
-This page describes the behavior a user sees: layout, tabs and panes, prompt context, selection, footer state, semantic output, and image handling. Detailed test commands live in [Testing and release](../developer/testing-release.md); exact shortcuts live in [Keyboard and input](../reference/keyboard.md).
+Automexia is designed to keep demanding command-driven work clear and
+manageable. The terminal should make it easy to understand the current task,
+arrange related work, find information, and stay in control without getting
+between the user and the tools they chose.
+
+## Experience goals
+
+- Keep the current task, shell, path, and scope easy to understand.
+- Keep related work visible across windows, tabs, and panes.
+- Make common actions reachable by keyboard and pointer.
+- Add useful context without changing application output.
+- Stay responsive during heavy output, resizing, and long sessions.
+- Keep sensitive or mutating actions explicit and reviewable.
+
+These goals follow the [Product vision](../PRODUCT-VISION.md). This page records
+the detailed experience contract: layout, tabs and panes, prompt context,
+selection, footer state, semantic output, and image handling. Detailed test
+commands live in [Testing and release](../developer/testing-release.md); exact
+shortcuts live in [Keyboard and input](../reference/keyboard.md).
 
 Automexia's native desktop UI follows the supplied liquid-hacker mockup while
 remaining a real terminal: applications still own their PTY bytes and ANSI
