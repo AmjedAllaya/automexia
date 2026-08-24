@@ -56,6 +56,7 @@ They retain their terminal/application or native-platform authority.
 | **Fully done** | U7 modal input composition | `application.rs`, `router/mod.rs`, and `screen/mod.rs` prioritize the visible modal owner before resize, chrome, pane, PTY, wheel, input-method, and file-drop paths; hidden surfaces do not intercept a higher-priority command palette | None for source implementation |
 | **Fully done** | U8 first-run welcome | `router/routes/welcome.rs` replaces the legacy black-and-white animation with a static responsive Automexia card, shared theme-aware accents, one clear Enter action, bounded copy, and no local configuration-path disclosure; layout/DPI/target/privacy tests own the contract | None for source implementation |
 | **Fully done** | U9 branded window caption controls | renderer/island.rs retains right-edge layout and 40–46 pixel hit targets while adding one theme-aware liquid-glass capsule, distinct cyan/purple/coral rails and glyphs, rest/hover/held/inactive states, native maximize/restore state, and same-control release activation with drag-away/focus-loss cancellation; application and screen owners only snapshot native state and route events | None for source implementation |
+| **Fully done** | U9.1 command-result boundary | `automexia/ui.rs`, `renderer/mod.rs`, and `renderer/devops_status.rs` move a completed command's compact exit state and duration to the following prompt's reserved row and paint one bounded semantic divider there; focused tests prove placement, final-result fallback, and geometry without adding terminal rows or PTY bytes | Manual multi-theme and assistive-technology evidence remains under U10 |
 | **Partially done** | U10 native visual and assistive-technology release evidence | Renderer-neutral layout, contrast, hit-test, hostile-input, redaction, and strict-lint evidence is automated | Record safe screenshots on supported WGPU/CPU backends at tiny, normal, split, 100–300% scale, light/dark custom themes, and complete Narrator/NVDA, VoiceOver, and Orca smoke evidence on the supported native operating systems |
 
 There are no remaining **Not done** source items in this renderer-owned branding
@@ -120,6 +121,10 @@ Focused Windows x86_64 source evidence completed on 2026-08-24:
 - scrollbar geometry, fade, lifecycle, and brand-role tests: 13 passed;
 - custom caption-control layout, semantic role, hit-target, maximize/restore,
   held-state, focus-loss, and release-cancellation tests: 52 passed;
+- command-result following-prompt placement, truthful final-result fallback,
+  and bounded divider geometry tests: 3 passed;
+- native Windows WGPU/CPU resize and compositing gate: 19 deterministic resize
+  tests plus both real-GUI passes completed; manual screenshot inspection remains U10;
 - native Windows caption interaction at 1280×760 and 125% scale: hover deltas
   stayed inside the intended 45×45 physical wells; drag-away cancellation,
   maximize, restore, and graceful cleanup passed;

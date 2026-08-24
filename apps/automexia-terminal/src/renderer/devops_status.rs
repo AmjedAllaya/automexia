@@ -29,6 +29,7 @@ const PROMPT_TAG_MAX_FONT_SIZE: f32 = 14.0;
 const PROMPT_TAG_MIN_FONT_SIZE: f32 = 4.0;
 const PROMPT_TAG_LEFT_INSET: f32 = 2.0;
 const PROMPT_RESULT_RESERVE: f32 = 112.0;
+const RESULT_DIVIDER_ALPHA: f32 = 0.32;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PromptTagMetrics {
@@ -65,6 +66,23 @@ fn prompt_tag_metrics(row_height: f32) -> PromptTagMetrics {
         tag_gap,
         radius,
     }
+}
+
+/// Keep the result boundary inside the following prompt's already-reserved
+/// context row. Nothing is inserted into the terminal grid or PTY stream.
+fn command_result_divider(anchor: &CommandResultAnchor) -> Option<[f32; 4]> {
+    if !anchor.separates_next_prompt {
+        return None;
+    }
+    let inset = (anchor.height * 0.1).clamp(1.0, 2.0);
+    let height = (anchor.height * 0.05).clamp(1.0, 1.5);
+    let width = anchor.width - inset * 2.0;
+    (width >= 1.0).then_some([
+        anchor.x + inset,
+        anchor.y + (anchor.height * 0.08).clamp(0.5, 1.5),
+        width,
+        height,
+    ])
 }
 
 struct PromptSnapshot {
@@ -494,6 +512,11 @@ impl DevOpsStatus {
                 color: color_to_u8(if success { colors.green } else { colors.red }),
                 ..DrawOpts::default()
             };
+            if let Some([x, y, width, height]) = command_result_divider(anchor) {
+                let mut divider_color = if success { colors.green } else { colors.red };
+                divider_color[3] = RESULT_DIVIDER_ALPHA;
+                sugarloaf.rect(None, x, y, width, height, divider_color, 0.0, ORDER - 2);
+            }
             let text_width = sugarloaf.text_mut().measure(&label, &opts);
             let x = anchor.x + anchor.width - text_width - 10.0;
             if x <= anchor.x + 24.0 {
@@ -908,6 +931,27 @@ mod tests {
         assert_eq!(format_duration(18), "18ms");
         assert_eq!(format_duration(1_250), "1.2s");
         assert_eq!(format_duration(62_000), "1m 02s");
+    }
+
+    #[test]
+    fn result_divider_is_bounded_and_only_marks_a_following_prompt() {
+        let mut anchor = CommandResultAnchor {
+            x: 4.0,
+            y: 40.0,
+            width: 720.0,
+            height: 20.0,
+            separates_next_prompt: true,
+            exit_code: 0,
+            elapsed_ms: 18,
+        };
+        let [x, y, width, height] = command_result_divider(&anchor).unwrap();
+        assert!(x >= anchor.x);
+        assert!(y >= anchor.y);
+        assert!(x + width <= anchor.x + anchor.width);
+        assert!(y + height <= anchor.y + anchor.height);
+
+        anchor.separates_next_prompt = false;
+        assert_eq!(command_result_divider(&anchor), None);
     }
 
     #[test]

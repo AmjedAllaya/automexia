@@ -252,6 +252,28 @@ struct DevOpsPaneRenderState {
     is_active: bool,
 }
 
+/// Move completion metadata to the first prompt below its command output.
+/// Prompt anchors are pane-local and sorted by visual `y`, so a logarithmic
+/// lookup preserves the renderer hot path even on very tall viewports.
+#[inline]
+fn command_result_boundary(
+    mut result: crate::automexia::ui::CommandResultAnchor,
+    prompt_anchors: &[crate::automexia::ui::PromptAnchor],
+) -> crate::automexia::ui::CommandResultAnchor {
+    let current_row_end = result.y + result.height * 0.5;
+    let next_index = prompt_anchors.partition_point(|anchor| anchor.y <= current_row_end);
+    let Some(next_prompt) = prompt_anchors.get(next_index) else {
+        return result;
+    };
+
+    result.x = next_prompt.x;
+    result.y = next_prompt.y;
+    result.width = next_prompt.width;
+    result.height = next_prompt.height;
+    result.separates_next_prompt = true;
+    result
+}
+
 fn devops_pane_render_state(
     context: &crate::context::Context<EventProxy>,
     margin: rio_backend::config::layout::Margin,
@@ -407,11 +429,16 @@ fn devops_pane_render_state(
                     y: origin_y + visual_index as f32 * cell_height,
                     width: grid_width,
                     height: cell_height,
+                    separates_next_prompt: false,
                     exit_code: result.exit_code,
                     elapsed_ms: result.elapsed_ms,
                 })
             })
             .collect::<Vec<_>>();
+    let command_results = command_results
+        .into_iter()
+        .map(|result| command_result_boundary(result, &historical_anchors))
+        .collect::<Vec<_>>();
 
     DevOpsPaneRenderState {
         session: crate::automexia::api::SessionFacts {
@@ -1467,10 +1494,15 @@ impl Renderer {
                             y: origin_y + visual_index as f32 * cell_height,
                             width: grid_width,
                             height: cell_height,
+                            separates_next_prompt: false,
                             exit_code: result.exit_code,
                             elapsed_ms: result.elapsed_ms,
                         })
                     })
+                    .collect::<Vec<_>>();
+                let command_results = command_results
+                    .into_iter()
+                    .map(|result| command_result_boundary(result, &historical_anchors))
                     .collect::<Vec<_>>();
 
                 (
@@ -2130,6 +2162,70 @@ mod prompt_visual_anchor_tests {
         rows[0][Column(1)].set_c(':');
         assert_eq!(first_paint_prompt_visual_anchor(&rows, 1), None);
         assert_eq!(first_paint_prompt_visual_anchor(&rows, 0), None);
+    }
+
+    #[test]
+    fn completed_command_result_moves_to_the_following_prompt_boundary() {
+        let result = crate::automexia::ui::CommandResultAnchor {
+            x: 4.0,
+            y: 40.0,
+            width: 720.0,
+            height: 20.0,
+            separates_next_prompt: false,
+            exit_code: 0,
+            elapsed_ms: 18,
+        };
+        let prompts = [
+            crate::automexia::ui::PromptAnchor {
+                generation: Some(1),
+                key: 2,
+                x: 4.0,
+                y: 40.0,
+                width: 720.0,
+                height: 20.0,
+            },
+            crate::automexia::ui::PromptAnchor {
+                generation: Some(2),
+                key: 8,
+                x: 8.0,
+                y: 160.0,
+                width: 704.0,
+                height: 24.0,
+            },
+        ];
+
+        let boundary = command_result_boundary(result, &prompts);
+
+        assert_eq!(boundary.x, 8.0);
+        assert_eq!(boundary.y, 160.0);
+        assert_eq!(boundary.width, 704.0);
+        assert_eq!(boundary.height, 24.0);
+        assert!(boundary.separates_next_prompt);
+        assert_eq!(boundary.exit_code, 0);
+        assert_eq!(boundary.elapsed_ms, 18);
+    }
+
+    #[test]
+    fn last_visible_command_result_keeps_its_truthful_origin() {
+        let result = crate::automexia::ui::CommandResultAnchor {
+            x: 4.0,
+            y: 160.0,
+            width: 720.0,
+            height: 20.0,
+            separates_next_prompt: false,
+            exit_code: 7,
+            elapsed_ms: 1_250,
+        };
+        let prompts = [crate::automexia::ui::PromptAnchor {
+            generation: Some(2),
+            key: 8,
+            x: 4.0,
+            y: 160.0,
+            width: 720.0,
+            height: 20.0,
+        }];
+
+        assert_eq!(command_result_boundary(result, &prompts), result);
     }
 
     #[test]
