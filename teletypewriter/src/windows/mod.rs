@@ -4,16 +4,18 @@ mod pipes;
 mod spsc;
 
 use std::ffi::OsStr;
-use std::io::{self};
+use std::io::{self, Write};
 use std::iter::once;
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::TryRecvError;
+use std::time::{Duration, Instant};
 
 use crate::windows::child::ChildExitWatcher;
 use crate::{
-    ChildEvent, EventedPty, ExactExecutable, ProcessReadWrite, Winsize, WinsizeBuilder,
+    ChildEvent, EventedPty, ExactExecutable, ManagedPtyShutdown, ProcessReadWrite,
+    Winsize, WinsizeBuilder,
 };
 use windows_sys::Win32::System::Threading::{CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW};
 
@@ -30,6 +32,7 @@ pub struct Pty {
     write_token: corcovado::Token,
     child_event_token: corcovado::Token,
     child_watcher: ChildExitWatcher,
+    managed_owned_tree: bool,
 }
 
 // Creates conpty instead of pty
@@ -145,6 +148,7 @@ impl Pty {
         conout: impl Into<ReadPipe>,
         conin: impl Into<WritePipe>,
         child_watcher: ChildExitWatcher,
+        managed_owned_tree: bool,
     ) -> Self {
         Self {
             backend: backend.into(),
@@ -154,6 +158,7 @@ impl Pty {
             write_token: 0.into(),
             child_event_token: 0.into(),
             child_watcher,
+            managed_owned_tree,
         }
     }
 
@@ -317,6 +322,38 @@ impl EventedPty for Pty {
             Err(TryRecvError::Empty) => None,
             Err(TryRecvError::Disconnected) => Some(ChildEvent::Exited(None)),
         }
+    }
+
+    fn shutdown_owned_process_tree(&mut self) -> io::Result<ManagedPtyShutdown> {
+        if !self.managed_owned_tree {
+            return Ok(ManagedPtyShutdown::NotManaged);
+        }
+        let _ = self.conin.write_all(&[0x03]);
+        if wait_for_job_empty(&self.backend, Duration::from_secs(2))? {
+            return Ok(ManagedPtyShutdown::Graceful);
+        }
+        self.backend.terminate_managed_job()?;
+        if wait_for_job_empty(&self.backend, Duration::from_secs(3))? {
+            Ok(ManagedPtyShutdown::Forced)
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the managed Job Object did not terminate within the force budget",
+            ))
+        }
+    }
+}
+
+fn wait_for_job_empty(backend: &Backend, timeout: Duration) -> io::Result<bool> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if backend.managed_job_is_empty()? {
+            return Ok(true);
+        }
+        if Instant::now() >= deadline {
+            return Ok(false);
+        }
+        std::thread::sleep(Duration::from_millis(5));
     }
 }
 

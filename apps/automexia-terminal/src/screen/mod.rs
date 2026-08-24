@@ -726,6 +726,7 @@ pub struct Screen<'screen> {
     action_surface: action_surface::Controller,
     connection_hub: crate::automexia::connections::ConnectionHubController,
     external_tool_runner: crate::context::external_tool_runner::ExternalToolRunner,
+    connection_hub_review_request: Option<u64>,
     export_manager: crate::automexia::export::ExportManager,
     pub renderer: Renderer,
     pub sugarloaf: Sugarloaf<'screen>,
@@ -981,6 +982,7 @@ impl Screen<'_> {
             action_surface,
             connection_hub,
             external_tool_runner,
+            connection_hub_review_request: None,
             export_manager: crate::automexia::export::ExportManager::new(),
             hints_config: config
                 .hints

@@ -4,7 +4,9 @@ use std::io::{ErrorKind, Read};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use teletypewriter::{ChildEvent, EventedPty, ProcessReadWrite, Pty, WinsizeBuilder};
+use teletypewriter::{
+    ChildEvent, EventedPty, ManagedPtyShutdown, ProcessReadWrite, Pty, WinsizeBuilder,
+};
 
 const PAYLOAD_BYTES: usize = 64 * 1024;
 
@@ -282,5 +284,76 @@ fn conpty_powershell_history_input_is_delivered_without_idle_stall() {
     assert!(
         search_elapsed < Duration::from_millis(1_500),
         "direct ConPTY Ctrl+R search took {search_elapsed:?}"
+    );
+}
+
+#[cfg(windows)]
+fn spawn_stubborn_exact_pty() -> Pty {
+    let executable = std::env::var_os("COMSPEC")
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .expect("COMSPEC must identify the native command interpreter");
+    let exact = teletypewriter::ExactExecutable::open(&executable)
+        .expect("the exact native command interpreter should open");
+    let environment = ["SYSTEMROOT", "WINDIR"]
+        .into_iter()
+        .filter_map(|name| std::env::var(name).ok().map(|value| (name.into(), value)))
+        .collect();
+    teletypewriter::create_exact_pty(
+        exact,
+        vec![
+            "/d".into(),
+            "/s".into(),
+            "/c".into(),
+            "ping -n 60 127.0.0.1 >nul".into(),
+        ],
+        &None,
+        environment,
+        80,
+        24,
+    )
+    .expect("the managed ConPTY fixture should start")
+}
+
+#[cfg(not(windows))]
+fn spawn_stubborn_exact_pty() -> Pty {
+    let executable =
+        std::fs::canonicalize("/bin/sh").expect("the native fixture shell should exist");
+    let exact = teletypewriter::ExactExecutable::open(&executable)
+        .expect("the exact native fixture shell should open");
+    teletypewriter::create_exact_pty(
+        exact,
+        vec![
+            "-c".into(),
+            "trap '' HUP TERM; while :; do sleep 60; done".into(),
+        ],
+        &None,
+        Vec::new(),
+        80,
+        24,
+        0,
+        0,
+    )
+    .expect("the managed Unix PTY fixture should start")
+}
+
+#[test]
+fn exact_pty_shutdown_is_bounded_and_confirms_owned_tree_exit() {
+    let mut pty = spawn_stubborn_exact_pty();
+    let started = Instant::now();
+    let outcome = pty
+        .shutdown_owned_process_tree()
+        .expect("managed process-tree shutdown should complete");
+
+    assert!(
+        matches!(
+            outcome,
+            ManagedPtyShutdown::Graceful | ManagedPtyShutdown::Forced
+        ),
+        "managed shutdown must confirm a graceful or forced terminal state: {outcome:?}"
+    );
+    assert!(
+        started.elapsed() <= Duration::from_secs(10),
+        "managed shutdown exceeded the frozen ten-second lifecycle budget"
     );
 }

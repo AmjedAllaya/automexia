@@ -12,9 +12,10 @@ use windows_sys::Win32::System::Console::{
     ClosePseudoConsole, CreatePseudoConsole, ResizePseudoConsole, COORD, HPCON,
 };
 use windows_sys::Win32::System::JobObjects::{
-    AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-    SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicAccountingInformation,
+    JobObjectExtendedLimitInformation, QueryInformationJobObject,
+    SetInformationJobObject, TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
 use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 use windows_sys::{s, w};
@@ -357,14 +358,53 @@ pub fn new(
         api,
         managed_job,
     };
+    let managed = conpty.managed_job.is_some();
 
-    Ok(Pty::new(conpty, conout, conin, child_watcher))
+    Ok(Pty::new(conpty, conout, conin, child_watcher, managed))
 }
 
 impl Conpty {
     pub fn on_resize(&mut self, window_size: Winsize) {
         let result = unsafe { (self.api.resize)(self.handle, window_size.into()) };
         assert_eq!(result, S_OK);
+    }
+
+    pub fn terminate_managed_job(&self) -> Result<()> {
+        let job = self.managed_job.as_ref().ok_or_else(|| {
+            Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "the PTY has no managed process-tree job",
+            )
+        })?;
+        if unsafe { TerminateJobObject(job.as_raw_handle(), 1) } == 0 {
+            Err(Error::last_os_error())
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn managed_job_is_empty(&self) -> Result<bool> {
+        let job = self.managed_job.as_ref().ok_or_else(|| {
+            Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "the PTY has no managed process-tree job",
+            )
+        })?;
+        let mut accounting = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
+        let queried = unsafe {
+            QueryInformationJobObject(
+                job.as_raw_handle(),
+                JobObjectBasicAccountingInformation,
+                ptr::from_mut(&mut accounting).cast(),
+                mem::size_of_val(&accounting) as u32,
+                ptr::null_mut(),
+            )
+        };
+        if queried == 0 {
+            Err(Error::last_os_error())
+        } else {
+            Ok(accounting.ActiveProcesses == 0)
+        }
     }
 }
 

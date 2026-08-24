@@ -15,7 +15,7 @@ use crate::event::{Msg, RioEvent};
 use crate::ime::Ime;
 pub use crate::layout::{ContextDimension, ContextGrid, ContextGridItem};
 use crate::messenger::Messenger;
-use crate::performer::{self, Machine};
+use crate::performer::{Machine, PtyWorkerHandle};
 use launch::{LiveSessionMetadata, SessionLaunchDescriptor};
 use renderable::Cursor;
 use renderable::RenderableContent;
@@ -34,7 +34,6 @@ use std::collections::VecDeque;
 use std::error::Error;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 // Global atomic counter for generating unique route IDs
@@ -177,19 +176,30 @@ pub struct Context<T: EventListener> {
     pub title: ContextTitle,
     pub ime: Ime,
     managed_session: Option<ManagedSessionGuard>,
-    _io_thread: Option<JoinHandle<(Machine<teletypewriter::Pty, T>, performer::State)>>,
+    _io_thread: Option<PtyWorkerHandle<()>>,
 }
 
 impl<T: rio_backend::event::EventListener> Drop for Context<T> {
     fn drop(&mut self) {
         // Shutdown the terminal's PTY.
         let _ = self.messenger.channel.send(Msg::Shutdown);
+        #[cfg(not(target_os = "windows"))]
+        let managed = self.managed_session.is_some();
 
         // `create_dead_context` uses 1 as a placeholder PID, so guard against
         // signalling init (1) or our own process group (0).
         #[cfg(not(target_os = "windows"))]
-        if self.shell_pid > 1 {
+        if !managed && self.shell_pid > 1 {
             teletypewriter::kill_pid(self.shell_pid as i32);
+        }
+
+        if let Some(mut worker) = self._io_thread.take() {
+            if !worker.join_timeout(Duration::from_secs(10)) {
+                tracing::warn!(
+                    route_id = self.route_id,
+                    "PTY worker did not join within the bounded shutdown budget"
+                );
+            }
         }
     }
 }

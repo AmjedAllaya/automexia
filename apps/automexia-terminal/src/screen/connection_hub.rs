@@ -94,6 +94,49 @@ fn managed_launch_diagnostic(
             "connection-launch-publication-failed"
         }
         RunnerErrorCode::LaunchDenied(_) => "connection-launch-denied",
+        RunnerErrorCode::ReviewBusy => "connection-launch-review-busy",
+        RunnerErrorCode::ReviewUnavailable => "connection-launch-review-unavailable",
+    }
+}
+fn managed_publish_diagnostic(
+    error: crate::context::ManagedPublishError,
+) -> &'static str {
+    match error {
+        crate::context::ManagedPublishError::CapacityExceeded => {
+            "connection-launch-capacity-reached"
+        }
+        crate::context::ManagedPublishError::InvalidScope => {
+            "connection-launch-review-stale"
+        }
+        crate::context::ManagedPublishError::PtyUnavailable => {
+            "connection-launch-pty-unavailable"
+        }
+        crate::context::ManagedPublishError::PublicationFailed => {
+            "connection-launch-publication-failed"
+        }
+    }
+}
+
+fn apply_openssh_review_completion(
+    controller: &mut crate::automexia::connections::ConnectionHubController,
+    result: Result<
+        crate::automexia::connections::CurrentDirectOpenSshReview,
+        crate::context::external_tool_runner::RunnerError,
+    >,
+) {
+    match result {
+        Ok(review) => {
+            if !controller.install_direct_openssh_review(review) && controller.is_active()
+            {
+                controller
+                    .report_direct_openssh_diagnostic("connection-launch-review-stale");
+            }
+        }
+        Err(error) => {
+            controller.invalidate_direct_openssh_review();
+            controller
+                .report_direct_openssh_diagnostic(managed_launch_diagnostic(&error));
+        }
     }
 }
 
@@ -107,7 +150,8 @@ impl Screen<'_> {
         self.mark_dirty();
     }
     fn attempt_managed_openssh(&mut self, decision: Decision) {
-        let Some(preparation) = self.connection_hub.direct_openssh_preparation() else {
+        let Some(preparation) = self.connection_hub.direct_openssh_preparation().cloned()
+        else {
             self.connection_hub
                 .report_direct_openssh_diagnostic("connection-launch-review-stale");
             return;
@@ -132,17 +176,119 @@ impl Screen<'_> {
             return;
         }
 
-        // Once attestation is available, the controller must supply a fresh
-        // `DirectOpenSshLaunchBinding`. Never fall back to the preparation's
-        // destination when that identity-bound review is absent.
-        self.connection_hub
-            .report_direct_openssh_diagnostic("connection-launch-review-stale");
+        let now_ms = crate::context::external_tool_runner::current_time_ms();
+        let binding = match self.connection_hub.direct_openssh_binding(now_ms) {
+            Ok(binding) => binding,
+            Err(_) => {
+                self.connection_hub.invalidate_direct_openssh_review();
+                if self.connection_hub_review_request.is_none() {
+                    let route_id = self.context_manager.current_route();
+                    let wake = self.context_manager.devops_refresh_completion(route_id);
+                    match self.external_tool_runner.request_openssh_review(
+                        preparation,
+                        now_ms,
+                        wake,
+                    ) {
+                        Ok(request) => {
+                            self.connection_hub_review_request = Some(request);
+                            self.connection_hub.report_direct_openssh_diagnostic(
+                                "connection-launch-review-checking",
+                            );
+                        }
+                        Err(error) => {
+                            self.connection_hub.report_direct_openssh_diagnostic(
+                                managed_launch_diagnostic(&error),
+                            )
+                        }
+                    }
+                } else {
+                    self.connection_hub.report_direct_openssh_diagnostic(
+                        "connection-launch-review-checking",
+                    );
+                }
+                return;
+            }
+        };
+
+        let reservation = match self.context_manager.reserve_managed_route() {
+            Ok(reservation) => reservation,
+            Err(error) => {
+                self.connection_hub
+                    .report_direct_openssh_diagnostic(managed_publish_diagnostic(error));
+                return;
+            }
+        };
+        let intent = match crate::context::external_tool_runner::OpenSshLaunchIntent::new(
+            reservation,
+            binding,
+            decision,
+            now_ms,
+        ) {
+            Ok(intent) => intent,
+            Err(error) => {
+                self.connection_hub
+                    .report_direct_openssh_diagnostic(managed_launch_diagnostic(&error));
+                return;
+            }
+        };
+        let guarded = match self
+            .external_tool_runner
+            .authorize_openssh_candidate(intent)
+        {
+            Ok(guarded) => guarded,
+            Err(error) => {
+                self.connection_hub
+                    .report_direct_openssh_diagnostic(managed_launch_diagnostic(&error));
+                return;
+            }
+        };
+
+        let old_index = self.context_manager.current_index();
+        self.resize_top_or_bottom_line();
+        #[cfg(not(target_os = "macos"))]
+        self.context_manager.contexts_mut()[old_index]
+            .update_dimensions(&mut self.sugarloaf);
+        let rich_text_id = crate::context::next_rich_text_id();
+        match self.context_manager.publish_managed_context(
+            reservation,
+            guarded,
+            self.external_tool_runner.clone(),
+            rich_text_id,
+        ) {
+            Ok(_) => {
+                self.context_manager.invalidate_topology_redo();
+                let new_index = self.context_manager.current_index();
+                self.context_manager.switch_context_visibility(
+                    &mut self.sugarloaf,
+                    old_index,
+                    new_index,
+                );
+                self.resize_top_or_bottom_line();
+                let _ = self.connection_hub.close();
+                self.renderer.connection_hub.set_presentation(None);
+                self.mark_dirty();
+            }
+            Err(error) => self
+                .connection_hub
+                .report_direct_openssh_diagnostic(managed_publish_diagnostic(error)),
+        }
     }
     pub fn connection_hub_is_active(&self) -> bool {
         self.connection_hub.is_active()
     }
 
     pub(super) fn sync_connection_hub(&mut self) {
+        if let Some(request) = self.connection_hub_review_request {
+            if !self.connection_hub.is_active() {
+                self.external_tool_runner.cancel_openssh_review(request);
+                self.connection_hub_review_request = None;
+            } else if let Some(result) =
+                self.external_tool_runner.take_openssh_review(request)
+            {
+                self.connection_hub_review_request = None;
+                apply_openssh_review_completion(&mut self.connection_hub, result);
+            }
+        }
         if !self.connection_hub.is_active() {
             self.renderer.connection_hub.set_presentation(None);
             return;
@@ -666,5 +812,41 @@ mod tests {
             &Key::Named(NamedKey::Enter),
             ModifiersState::empty(),
         ));
+    }
+
+    #[test]
+    fn completed_executable_review_is_installed_for_the_second_decision() {
+        use crate::automexia::connections::{
+            ConnectionHubController, ConnectionHubRuntime, CurrentDirectOpenSshReview,
+        };
+        use automexia_devops::connections::ResolvedExecutable;
+
+        const NOW_MS: u64 = 1_700_000_000_000;
+        let temporary = tempfile::tempdir().unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(std::time::Duration::from_secs(5)));
+        let mut controller = ConnectionHubController::new(runtime);
+        controller.open("terminal-grid");
+        assert!(controller.begin_literal_destination_entry());
+        assert!(controller.append_literal_destination("host.example.invalid"));
+        assert_eq!(
+            controller.confirm_literal_destination(),
+            crate::automexia::connections::HubControllerEffect::LiteralReviewReady
+        );
+        let preparation = controller.direct_openssh_preparation().unwrap().clone();
+        let review = CurrentDirectOpenSshReview::new(
+            preparation,
+            ResolvedExecutable {
+                executable_id: "ssh".into(),
+                identity_digest: "e".repeat(64),
+            },
+            9,
+            NOW_MS,
+        )
+        .unwrap();
+
+        apply_openssh_review_completion(&mut controller, Ok(review));
+
+        assert!(controller.direct_openssh_binding(NOW_MS + 1).is_ok());
     }
 }

@@ -221,6 +221,49 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
             else source
         )
 
+        validate(
+            lambda path, source: source.replace(
+                "pub(crate) fn request_openssh_review",
+                "removed request_openssh_review",
+            )
+            if path.name == "external_tool_runner.rs"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "pub enum ManagedPtyShutdown",
+                "removed ManagedPtyShutdown",
+            )
+            if path.name == "lib.rs"
+            and path.parent.name == "src"
+            and path.parent.parent.name == "teletypewriter"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "TerminateJobObject", "removed job termination"
+            )
+            if path.name == "conpty.rs"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "managed_leader_reaped", "removed reaped-leader guard"
+            )
+            if path.name == "mod.rs" and path.parent.name == "unix"
+            else source
+        )
+
+        validate(
+            lambda path, source: source.replace(
+                "apply_openssh_review_completion(&mut self.connection_hub, result)",
+                "removed sync completion consumption",
+            )
+            if path.name == "connection_hub.rs"
+            else source
+        )
+
+
     def test_audit_forbidden_fields_are_rejected(self) -> None:
         original = policy.bounded_text
 

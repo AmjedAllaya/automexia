@@ -23,7 +23,7 @@ use std::collections::VecDeque;
 #[cfg(feature = "pty")]
 use std::io::{self, ErrorKind, Read, Write};
 #[cfg(feature = "pty")]
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 #[cfg(feature = "pty")]
 use std::thread::{Builder, JoinHandle};
 #[cfg(feature = "pty")]
@@ -43,6 +43,29 @@ where
         .name(name.into())
         .spawn(f)
         .expect("thread spawn works")
+}
+
+/// Join ownership for one PTY worker without allowing route teardown to block
+/// forever on a stalled platform primitive.
+#[cfg(feature = "pty")]
+pub struct PtyWorkerHandle<T> {
+    thread: Option<JoinHandle<T>>,
+    completion: mpsc::Receiver<()>,
+}
+
+#[cfg(feature = "pty")]
+impl<T> PtyWorkerHandle<T> {
+    /// Wait at most `timeout` for worker completion, then join the finished
+    /// thread. A timeout leaves the handle joinable for a later shutdown pass.
+    pub fn join_timeout(&mut self, timeout: std::time::Duration) -> bool {
+        match self.completion.recv_timeout(timeout) {
+            Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => self
+                .thread
+                .take()
+                .is_none_or(|thread| thread.join().is_ok()),
+            Err(mpsc::RecvTimeoutError::Timeout) => false,
+        }
+    }
 }
 
 #[cfg(feature = "pty")]
@@ -126,7 +149,13 @@ impl<T: teletypewriter::EventedPty> PtyMessageSink for LivePtyMessageSink<'_, T>
         self.write_list.push_back(input);
     }
 
-    fn shutdown(&mut self) {}
+    fn shutdown(&mut self) {
+        if let Err(error) = self.pty.shutdown_owned_process_tree() {
+            warn!(
+                "managed PTY process-tree shutdown did not confirm completion: {error}"
+            );
+        }
+    }
 }
 
 /// Deliver a coalesced channel batch to the PTY boundary. Keeping this policy
@@ -424,8 +453,9 @@ where
         self.sender.clone()
     }
 
-    pub fn spawn(mut self) -> JoinHandle<(Self, State)> {
-        spawn_named("PTY reader", move || {
+    pub fn spawn(mut self) -> PtyWorkerHandle<()> {
+        let (completion_tx, completion) = mpsc::sync_channel(1);
+        let thread = spawn_named("PTY reader", move || {
             let mut state = State::default();
             let mut buf = [0u8; READ_BUFFER_SIZE];
 
@@ -621,8 +651,13 @@ where
             let _ = self.poll.deregister(&self.receiver.rx);
             let _ = self.pty.deregister(&self.poll);
 
-            (self, state)
-        })
+            drop((self, state));
+            let _ = completion_tx.send(());
+        });
+        PtyWorkerHandle {
+            thread: Some(thread),
+            completion,
+        }
     }
 }
 
@@ -869,5 +904,25 @@ mod tests {
             recording_pty.events,
             vec![RecordedPtyEvent::Resize(requested)]
         );
+    }
+
+    #[test]
+    fn pty_worker_join_is_bounded_and_can_complete_after_readiness() {
+        let (release_tx, release_rx) = std::sync::mpsc::sync_channel(0);
+        let (completion_tx, completion_rx) = std::sync::mpsc::sync_channel(1);
+        let thread = std::thread::spawn(move || {
+            release_rx.recv().unwrap();
+            completion_tx.send(()).unwrap();
+            7_u8
+        });
+        let mut worker = PtyWorkerHandle {
+            thread: Some(thread),
+            completion: completion_rx,
+        };
+
+        assert!(!worker.join_timeout(std::time::Duration::ZERO));
+        release_tx.send(()).unwrap();
+        assert!(worker.join_timeout(std::time::Duration::from_secs(1)));
+        assert!(worker.thread.is_none());
     }
 }

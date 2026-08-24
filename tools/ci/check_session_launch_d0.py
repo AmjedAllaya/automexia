@@ -404,6 +404,9 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "DirectOpenSshLaunchBinding", "record_terminal_outcome",
         "ManagedProcessOutcome::StatusUnavailable", "ManagedReceiptRecord::new",
         "managed_tunnel_decision_allowed", "requires_strong_tunnel_confirmation",
+        "struct OpenSshReviewRuntime", "BoundedWorker<OpenSshReviewRequest>",
+        "pub(crate) fn request_openssh_review",
+        "pub(crate) fn take_openssh_review", "CurrentDirectOpenSshReview::new",
     }, root)
     runner_lower = runner.lower()
     runner_authority_markers = {
@@ -428,7 +431,28 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "runner.mark_published(lease, route_id)",
         "managed_session: Option<ManagedSessionGuard>",
         "reconcile_managed_child_exit", "ManagedProcessOutcome::Failed",
+        "PtyWorkerHandle", "worker.join_timeout(Duration::from_secs(10))",
     }, root).replace("\r\n", "\n")
+    require_tokens("teletypewriter/src/lib.rs", {
+        "pub enum ManagedPtyShutdown", "fn shutdown_owned_process_tree",
+    }, root)
+    require_tokens("teletypewriter/src/windows/conpty.rs", {
+        "JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE", "TerminateJobObject",
+        "terminate_managed_job", "QueryInformationJobObject", "ActiveProcesses == 0",
+    }, root)
+    require_tokens("teletypewriter/src/windows/mod.rs", {
+        "fn shutdown_owned_process_tree", "wait_for_job_empty",
+        "ManagedPtyShutdown::Forced",
+    }, root)
+    require_tokens("teletypewriter/src/unix/mod.rs", {
+        "libc::WNOWAIT", "signal_owned_group", "wait_without_reaping", "wait_group_gone",
+        "managed_leader_reaped",
+        "libc::kill(-pid, signal)", "impl Drop for Pty",
+    }, root)
+    require_tokens("rio-vt/src/performer/mod.rs", {
+        "pub struct PtyWorkerHandle", "pub fn join_timeout",
+        "self.pty.shutdown_owned_process_tree()", "drop((self, state))",
+    }, root)
     for declaration in (
         "pub mod external_tool_runner;",
         "pub mod launch_broker;",
@@ -449,16 +473,27 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "self.external_tool_runner.clone()",
         "attach_receipt_sink", "Arc::new(connection_hub.clone())",
     }, root)
-    require_tokens(document["evidence"]["source"][4], {
+    screen = require_tokens(document["evidence"]["source"][4], {
         "fn attempt_managed_openssh",
         "Decision::AllowOnce",
         "Decision::AllowSession",
         "ConnectionHubHit::DenyManagedLaunch",
         "managed_openssh_activation_error",
-        "DirectOpenSshLaunchBinding",
-        "Never fall back",
+        "request_openssh_review", "take_openssh_review",
+        "direct_openssh_binding", "publish_managed_context",
+        "connection-launch-review-checking",
         "connection-launch-protected-review-pending",
     }, root)
+    sync_start = screen.find("pub(super) fn sync_connection_hub")
+    sync_end = screen.find("pub fn handle_connection_hub_key", sync_start)
+    if sync_start < 0 or sync_end < 0:
+        raise SessionLaunchD0Error("Connection Hub sync ownership is missing")
+    sync_source = screen[sync_start:sync_end]
+    for marker in (
+        "take_openssh_review", "cancel_openssh_review", "apply_openssh_review_completion"
+    ):
+        if marker not in sync_source:
+            raise SessionLaunchD0Error(f"Connection Hub sync is missing {marker}")
     require_tokens(document["evidence"]["source"][5], {
         "pub approval_action_enabled: bool",
         "append_direct_decision_accessibility",
@@ -516,6 +551,8 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "proxy_jump_rejects_executable_ambiguous_and_excessive_routes",
     }, root)
     require_tokens(document["evidence"]["source"][14], {
+        "pub struct CurrentDirectOpenSshReview", "pub fn bind_current",
+        "DIRECT_OPENSSH_OBSERVATION_FRESHNESS_MS",
         "prepare_literal_direct_openssh_typed", "record.proxy_jump.clone()",
         "config_route_is_preserved_while_invalid_generation_and_hostile_aliases_fail_closed",
     }, root)
