@@ -10,7 +10,7 @@ At comfortable sizes, the persistent application chrome is never part of the
 terminal grid:
 
 - a 48 px profile/tab row with an application mark, draggable tabs, new-tab
-  button, command/profile menu, and native-looking window controls on Windows;
+  button, command/profile menu, and Automexia-styled, native-behaving window controls on Windows;
 - a tab rail inside every pane that owns multiple local tabs. The rail begins
   at that pane's top edge and never floats above or changes the height of a
   sibling pane. A single-tab pane has no empty shelf or workspace-action buttons;
@@ -72,6 +72,14 @@ titles emitted while a profile loads never make the tab flicker through setup
 commands, paths, or a generic product persona. The close mark shared by window,
 top-level-tab, and pane-local-tab chrome is shaped through the text rasterizer
 for consistent antialiasing at every DPI and uses an always-available glyph.
+The three renderer-owned caption actions share one compact liquid-glass capsule
+instead of floating as unrelated glyphs. Cyan minimize, purple maximize/restore,
+and coral close rails add brand identity while the distinct glyph shapes retain
+meaning without color. Rounded hover wells, a held state, inactive-window
+muting, and a maximize-to-restore glyph mirror native state. The complete
+40–46 logical-pixel targets remain anchored to the right edge; activation occurs
+only when the primary button is released over the same control, so dragging away
+cancels safely.
 The renderer-owned window close control has window scope, not application
 scope. Closing a window created with `Ctrl+Shift+N` leaves every sibling OS
 window and its independent PTYs running. The native close button, custom

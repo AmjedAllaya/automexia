@@ -1852,6 +1852,16 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                             && route
                                 .window
                                 .screen
+                                .handle_window_control_release(&route.window.winit_window)
+                        {
+                            route.request_redraw();
+                            return;
+                        }
+
+                        if button == MouseButton::Left
+                            && route
+                                .window
+                                .screen
                                 .renderer
                                 .island
                                 .as_ref()
@@ -2712,6 +2722,11 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::RedrawRequested => {
+                let maximized = route.window.winit_window.is_maximized();
+                if let Some(island) = route.window.screen.renderer.island.as_mut() {
+                    island.set_window_maximized(maximized);
+                }
+
                 route.begin_render();
 
                 match route.path {

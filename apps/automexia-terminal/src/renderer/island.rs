@@ -10,7 +10,8 @@ use crate::context::ContextManager;
 use crate::renderer::helpers::spring::Spring;
 use crate::renderer::responsive::{ChromeMetrics, Viewport};
 use crate::renderer::ui_theme::{
-    color_u8 as theme_color_u8, UiTheme, BRAND_CYAN, BRAND_PURPLE,
+    color_u8 as theme_color_u8, UiTheme, BRAND_BLUE, BRAND_CORAL, BRAND_CYAN,
+    BRAND_PURPLE,
 };
 use rio_backend::event::{EventProxy, ProgressReport, ProgressState};
 use rio_backend::sugarloaf::text::DrawOpts;
@@ -132,6 +133,112 @@ pub enum ChromeAction {
     Minimize,
     Maximize,
     CloseWindow,
+}
+
+const WINDOW_CONTROL_CLUSTER_INSET_X: f32 = 4.0;
+const WINDOW_CONTROL_CLUSTER_INSET_Y: f32 = 4.0;
+const WINDOW_CONTROL_BUTTON_INSET: f32 = 5.0;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WindowControlRect {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WindowControlVisualLayout {
+    group: WindowControlRect,
+    buttons: [WindowControlRect; 3],
+}
+
+#[derive(Clone, Copy)]
+struct WindowControlRenderContext {
+    theme: UiTheme,
+    hover: Option<ChromeAction>,
+    pressed: Option<ChromeAction>,
+    maximized: bool,
+    focused: bool,
+    header_height: f32,
+    controls_x: f32,
+    button_width: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WindowControlGlyph {
+    Minimize,
+    Maximize,
+    Restore,
+    Close,
+}
+
+fn window_control_visual_layout(
+    header_height: f32,
+    controls_x: f32,
+    button_width: f32,
+) -> WindowControlVisualLayout {
+    let group = WindowControlRect {
+        x: controls_x + WINDOW_CONTROL_CLUSTER_INSET_X,
+        y: WINDOW_CONTROL_CLUSTER_INSET_Y,
+        width: (button_width * 3.0 - WINDOW_CONTROL_CLUSTER_INSET_X * 2.0).max(1.0),
+        height: (header_height - WINDOW_CONTROL_CLUSTER_INSET_Y * 2.0).max(1.0),
+    };
+    let buttons = std::array::from_fn(|index| WindowControlRect {
+        x: controls_x + index as f32 * button_width + WINDOW_CONTROL_BUTTON_INSET,
+        y: group.y + 2.0,
+        width: (button_width - WINDOW_CONTROL_BUTTON_INSET * 2.0).max(1.0),
+        height: (group.height - 4.0).max(1.0),
+    });
+    WindowControlVisualLayout { group, buttons }
+}
+
+fn window_control_accent(action: ChromeAction) -> [f32; 4] {
+    match action {
+        ChromeAction::Minimize => BRAND_CYAN,
+        ChromeAction::Maximize => BRAND_PURPLE,
+        ChromeAction::CloseWindow => BRAND_CORAL,
+        ChromeAction::NewTab | ChromeAction::OpenPalette => BRAND_BLUE,
+    }
+}
+
+fn window_control_glyph(action: ChromeAction, maximized: bool) -> WindowControlGlyph {
+    match action {
+        ChromeAction::Minimize => WindowControlGlyph::Minimize,
+        ChromeAction::Maximize if maximized => WindowControlGlyph::Restore,
+        ChromeAction::Maximize => WindowControlGlyph::Maximize,
+        ChromeAction::CloseWindow => WindowControlGlyph::Close,
+        ChromeAction::NewTab | ChromeAction::OpenPalette => {
+            unreachable!("tab actions are not window caption controls")
+        }
+    }
+}
+
+pub(crate) fn window_control_release_matches(
+    pressed: ChromeAction,
+    released_over: Option<ChromeAction>,
+) -> bool {
+    released_over == Some(pressed)
+}
+
+fn window_control_fill(
+    theme: UiTheme,
+    action: ChromeAction,
+    hovered: bool,
+    pressed: bool,
+    focused: bool,
+) -> [f32; 4] {
+    let alpha = if pressed {
+        0.34
+    } else if hovered {
+        0.22
+    } else if focused {
+        0.055
+    } else {
+        0.025
+    };
+    let accent = window_control_accent(action);
+    over(theme.surface, [accent[0], accent[1], accent[2], alpha])
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -624,6 +731,8 @@ pub struct Island {
     /// hover backdrop. Updated on every cursor move by `Screen`.
     close_hover: bool,
     chrome_hover: Option<ChromeAction>,
+    chrome_pressed: Option<ChromeAction>,
+    window_maximized: bool,
     custom_chrome: bool,
 }
 
@@ -656,6 +765,8 @@ impl Island {
             last_anim_frame: Instant::now(),
             close_hover: false,
             chrome_hover: None,
+            chrome_pressed: None,
+            window_maximized: false,
             custom_chrome,
         }
     }
@@ -787,6 +898,33 @@ impl Island {
         changed
     }
 
+    pub fn set_chrome_pressed(&mut self, pressed: Option<ChromeAction>) -> bool {
+        let changed = self.chrome_pressed != pressed;
+        self.chrome_pressed = pressed;
+        changed
+    }
+
+    #[inline]
+    pub fn take_chrome_pressed(&mut self) -> Option<ChromeAction> {
+        self.chrome_pressed.take()
+    }
+
+    pub fn cancel_chrome_press(&mut self) -> bool {
+        self.set_chrome_pressed(None)
+    }
+
+    pub fn set_window_maximized(&mut self, maximized: bool) -> bool {
+        let changed = self.window_maximized != maximized;
+        self.window_maximized = maximized;
+        changed
+    }
+
+    #[cfg(test)]
+    #[inline]
+    fn is_window_maximized(&self) -> bool {
+        self.window_maximized
+    }
+
     pub fn update_colors(
         &mut self,
         inactive_text_color: [f32; 4],
@@ -819,6 +957,7 @@ impl Island {
             self.cancel_drag();
             self.slide_springs.clear();
             self.chrome_hover = None;
+            self.chrome_pressed = None;
             self.close_hover = false;
         }
         self.custom_chrome = custom_chrome;
@@ -1147,6 +1286,7 @@ impl Island {
         dimensions: (f32, f32, f32),
         context_manager: &ContextManager<EventProxy>,
         bg_color: [f32; 4],
+        window_focused: bool,
     ) {
         let (window_width, window_height, scale_factor) = dimensions;
         let num_tabs = context_manager.len();
@@ -1515,14 +1655,23 @@ impl Island {
         }
 
         if self.custom_chrome {
+            let theme = UiTheme::resolve(
+                bg_color,
+                self.active_text_color,
+                self.inactive_text_color,
+            );
             draw_window_controls(
                 sugarloaf,
-                logical_width,
-                self.active_text_color,
-                self.chrome_hover,
-                metrics.header_height,
-                layout.controls_x,
-                layout.window_button_width,
+                WindowControlRenderContext {
+                    theme,
+                    hover: self.chrome_hover,
+                    pressed: self.chrome_pressed,
+                    maximized: self.window_maximized,
+                    focused: window_focused,
+                    header_height: metrics.header_height,
+                    controls_x: layout.controls_x,
+                    button_width: layout.window_button_width,
+                },
             );
         }
 
@@ -2471,102 +2620,213 @@ fn draw_pane_local_tab_rails(
     }
 }
 
-fn draw_window_controls(
-    sugarloaf: &mut Sugarloaf,
-    _logical_width: f32,
-    text_color: [f32; 4],
-    hover: Option<ChromeAction>,
-    header_height: f32,
-    controls_x: f32,
-    button_width: f32,
-) {
-    let color = muted_alpha(text_color, 0.90);
-    let center_y = header_height / 2.0;
+fn draw_window_controls(sugarloaf: &mut Sugarloaf, context: WindowControlRenderContext) {
+    const ORDER: u8 = 5;
+    let WindowControlRenderContext {
+        theme,
+        hover,
+        pressed,
+        maximized,
+        focused,
+        header_height,
+        controls_x,
+        button_width,
+    } = context;
+    let layout = window_control_visual_layout(header_height, controls_x, button_width);
 
-    for (index, action) in [
+    sugarloaf.rounded_rect(
+        None,
+        layout.group.x + 2.0,
+        layout.group.y + 3.0,
+        layout.group.width,
+        layout.group.height,
+        [0.0, 0.0, 0.0, 0.34],
+        0.03,
+        11.0,
+        ORDER - 2,
+    );
+    sugarloaf.rounded_rect(
+        None,
+        layout.group.x,
+        layout.group.y,
+        layout.group.width,
+        layout.group.height,
+        muted_alpha(theme.outline, if focused { 0.72 } else { 0.30 }),
+        0.03,
+        11.0,
+        ORDER - 1,
+    );
+    sugarloaf.rounded_rect(
+        None,
+        layout.group.x + 1.0,
+        layout.group.y + 1.0,
+        (layout.group.width - 2.0).max(1.0),
+        (layout.group.height - 2.0).max(1.0),
+        theme.surface,
+        0.03,
+        10.0,
+        ORDER,
+    );
+
+    let actions = [
         ChromeAction::Minimize,
         ChromeAction::Maximize,
         ChromeAction::CloseWindow,
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        if hover == Some(action) {
-            let fill = if action == ChromeAction::CloseWindow {
-                [0.83, 0.12, 0.18, 0.92]
-            } else {
-                [0.14, 0.20, 0.28, 0.90]
-            };
-            sugarloaf.rect(
+    ];
+    for (index, action) in actions.into_iter().enumerate() {
+        let button = layout.buttons[index];
+        let hovered = hover == Some(action);
+        let pressed_here = pressed == Some(action) && hovered;
+        let fill = window_control_fill(theme, action, hovered, pressed_here, focused);
+        let accent = window_control_accent(action);
+        if hovered {
+            sugarloaf.rounded_rect(
                 None,
-                controls_x + index as f32 * button_width,
-                0.0,
-                button_width,
-                header_height - 1.0,
+                button.x,
+                button.y,
+                button.width,
+                button.height,
+                muted_alpha(accent, if pressed_here { 0.94 } else { 0.72 }),
+                0.03,
+                8.0,
+                ORDER,
+            );
+            sugarloaf.rounded_rect(
+                None,
+                button.x + 1.0,
+                button.y + 1.0,
+                (button.width - 2.0).max(1.0),
+                (button.height - 2.0).max(1.0),
                 fill,
-                0.04,
-                3,
+                0.03,
+                7.0,
+                ORDER + 1,
+            );
+        } else {
+            sugarloaf.rounded_rect(
+                None,
+                button.x,
+                button.y,
+                button.width,
+                button.height,
+                fill,
+                0.03,
+                8.0,
+                ORDER,
             );
         }
+
+        let rail_width = if hovered { 18.0 } else { 8.0 };
+        sugarloaf.rounded_rect(
+            None,
+            button.x + (button.width - rail_width) * 0.5,
+            button.y + button.height - 3.0,
+            rail_width,
+            2.0,
+            muted_alpha(
+                accent,
+                if focused {
+                    if hovered {
+                        0.96
+                    } else {
+                        0.52
+                    }
+                } else {
+                    0.24
+                },
+            ),
+            0.0,
+            1.0,
+            ORDER + 2,
+        );
+
+        let glyph_color = muted_alpha(
+            accent,
+            if focused {
+                if hovered {
+                    1.0
+                } else {
+                    0.84
+                }
+            } else {
+                0.42
+            },
+        );
+        let center_x = button.x + button.width * 0.5;
+        let center_y = button.y + button.height * 0.5 - 1.0;
+        match window_control_glyph(action, maximized) {
+            WindowControlGlyph::Minimize => sugarloaf.line(
+                center_x - 6.0,
+                center_y + 3.0,
+                center_x + 6.0,
+                center_y + 3.0,
+                1.6,
+                0.0,
+                glyph_color,
+                ORDER + 3,
+            ),
+            WindowControlGlyph::Maximize => draw_window_control_box(
+                sugarloaf,
+                center_x - 6.0,
+                center_y - 6.0,
+                12.0,
+                glyph_color,
+                fill,
+                ORDER + 3,
+            ),
+            WindowControlGlyph::Restore => {
+                draw_window_control_box(
+                    sugarloaf,
+                    center_x - 3.0,
+                    center_y - 6.0,
+                    9.0,
+                    glyph_color,
+                    fill,
+                    ORDER + 2,
+                );
+                draw_window_control_box(
+                    sugarloaf,
+                    center_x - 6.0,
+                    center_y - 3.0,
+                    9.0,
+                    glyph_color,
+                    fill,
+                    ORDER + 3,
+                );
+            }
+            WindowControlGlyph::Close => draw_close_button(
+                sugarloaf,
+                center_x,
+                glyph_color,
+                hovered || pressed_here,
+                center_y + 1.0,
+                ORDER + 3,
+            ),
+        }
     }
+}
 
-    let minimize_x = controls_x + button_width / 2.0;
-    sugarloaf.line(
-        minimize_x - 7.0,
-        center_y,
-        minimize_x + 7.0,
-        center_y,
-        1.3,
+fn draw_window_control_box(
+    sugarloaf: &mut Sugarloaf,
+    x: f32,
+    y: f32,
+    size: f32,
+    color: [f32; 4],
+    fill: [f32; 4],
+    order: u8,
+) {
+    sugarloaf.rounded_rect(None, x, y, size, size, color, 0.0, 3.0, order);
+    sugarloaf.rounded_rect(
+        None,
+        x + 1.5,
+        y + 1.5,
+        (size - 3.0).max(1.0),
+        (size - 3.0).max(1.0),
+        fill,
         0.0,
-        color,
-        5,
+        1.8,
+        order + 1,
     );
-
-    let maximize_x = controls_x + button_width * 1.5;
-    let half = 6.0;
-    sugarloaf.line(
-        maximize_x - half,
-        center_y - half,
-        maximize_x + half,
-        center_y - half,
-        1.2,
-        0.0,
-        color,
-        5,
-    );
-    sugarloaf.line(
-        maximize_x + half,
-        center_y - half,
-        maximize_x + half,
-        center_y + half,
-        1.2,
-        0.0,
-        color,
-        5,
-    );
-    sugarloaf.line(
-        maximize_x + half,
-        center_y + half,
-        maximize_x - half,
-        center_y + half,
-        1.2,
-        0.0,
-        color,
-        5,
-    );
-    sugarloaf.line(
-        maximize_x - half,
-        center_y + half,
-        maximize_x - half,
-        center_y - half,
-        1.2,
-        0.0,
-        color,
-        5,
-    );
-
-    let close_x = controls_x + button_width * 2.5;
-    draw_close_button(sugarloaf, close_x, text_color, false, center_y, 5);
 }
 
 fn muted_alpha(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
@@ -2863,6 +3123,83 @@ mod tests {
                 "close target should survive {scale}x physical scaling",
             );
         }
+    }
+
+    #[test]
+    fn branded_window_control_visuals_are_bounded_and_distinct() {
+        let layout = window_control_visual_layout(48.0, 1_142.0, 46.0);
+        assert!(layout.group.x >= 1_142.0);
+        assert!(layout.group.y >= 0.0);
+        assert!(layout.group.x + layout.group.width <= 1_280.0);
+        assert!(layout.group.y + layout.group.height <= 48.0);
+        for button in layout.buttons {
+            assert!(button.width >= 32.0);
+            assert!(button.height >= 24.0);
+            assert!(button.x >= layout.group.x);
+            assert!(button.y >= layout.group.y);
+            assert!(button.x + button.width <= layout.group.x + layout.group.width);
+            assert!(button.y + button.height <= layout.group.y + layout.group.height);
+        }
+        assert_ne!(
+            window_control_accent(ChromeAction::Minimize),
+            window_control_accent(ChromeAction::Maximize)
+        );
+        assert_ne!(
+            window_control_accent(ChromeAction::Maximize),
+            window_control_accent(ChromeAction::CloseWindow)
+        );
+
+        let theme = UiTheme::resolve([0.01, 0.04, 0.08, 1.0], [0.9; 4], [0.6; 4]);
+        let rest = window_control_fill(theme, ChromeAction::Minimize, false, false, true);
+        let hover = window_control_fill(theme, ChromeAction::Minimize, true, false, true);
+        let held = window_control_fill(theme, ChromeAction::Minimize, true, true, true);
+        let inactive =
+            window_control_fill(theme, ChromeAction::Minimize, false, false, false);
+        assert_ne!(rest, hover);
+        assert_ne!(hover, held);
+        assert_ne!(rest, inactive);
+    }
+
+    #[test]
+    fn maximize_control_switches_to_restore_for_maximized_windows() {
+        assert_eq!(
+            window_control_glyph(ChromeAction::Maximize, false),
+            WindowControlGlyph::Maximize
+        );
+        assert_eq!(
+            window_control_glyph(ChromeAction::Maximize, true),
+            WindowControlGlyph::Restore
+        );
+        let mut island = Island::new([1.0; 4], [1.0; 4], false, 240.0, true);
+        assert!(island.set_window_maximized(true));
+        assert!(island.is_window_maximized());
+        assert!(!island.set_window_maximized(true));
+    }
+
+    #[test]
+    fn chrome_release_requires_the_same_control_and_cancels_drag_away() {
+        assert!(window_control_release_matches(
+            ChromeAction::Maximize,
+            Some(ChromeAction::Maximize)
+        ));
+        assert!(!window_control_release_matches(
+            ChromeAction::Maximize,
+            Some(ChromeAction::CloseWindow)
+        ));
+        assert!(!window_control_release_matches(
+            ChromeAction::Maximize,
+            None
+        ));
+    }
+
+    #[test]
+    fn chrome_press_latch_is_explicit_and_cancellable() {
+        let mut island = Island::new([1.0; 4], [1.0; 4], false, 240.0, true);
+        assert!(island.set_chrome_pressed(Some(ChromeAction::Maximize)));
+        assert_eq!(island.chrome_pressed, Some(ChromeAction::Maximize));
+        assert!(island.cancel_chrome_press());
+        assert_eq!(island.chrome_pressed, None);
+        assert!(!island.cancel_chrome_press());
     }
 
     #[test]
