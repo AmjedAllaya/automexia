@@ -575,7 +575,7 @@ or lifecycle gates are satisfied.
 | Threat/privacy model | General security bullets only | Threat model and schema-1 fixture define seven boundaries, 16 threats, assets, controls, verification, residual risks, and review triggers | Each later CP phase adds runtime evidence for activated boundaries |
 | Precedence and ceilings | Defined in prose but not mutation-tested | Exact precedence, native-wins policy, execution modes, 11 compatibility cases, 14 hard ceilings, nested schemas, and canonical fixture fingerprints are machine validated | Changes require ADR/threat/schema review |
 | Architecture nonactivation | Documented but not enforced | Policy uses bounded no-symlink reads, normalizes shell-hook whitespace, scans every runtime workspace crate, rejects all premature command-productivity runtime markers/provider hooks, and retains the terminal-grid inference prohibition | CP1 now narrows activation to its separate exact allowlist |
-| CI and regression ownership | Missing | Repository validation, architecture verification, PR policy, seventeen policy tests with an 11-case hostile corpus, shell contracts, and feature-assurance traceability own CP0 | Hosted CI must pass on pushed commit |
+| CI and regression ownership | Missing | Repository validation, architecture verification, PR policy, seventeen policy tests with an 11-case hostile corpus, repository-protection contract/mutations, shell contracts, and feature-assurance traceability own CP0 | Hosted CI must execute successfully on the exact current protected commit; zero-step billing rejection never counts |
 
 CP0 result: satisfied at the source/policy boundary. It grants no runtime
 capability and does not claim CP1 completion, Fish support, Quick Action
@@ -1173,8 +1173,11 @@ Source completion does not satisfy these external requirements:
    approval;
 2. a private conduct-reporting contact;
 3. Windows Authenticode and Apple Developer ID/notarization credentials;
-4. protected `main`, required reviews/CODEOWNERS, DCO, squash-only merging,
-   administrator applicability, and private vulnerability reporting;
+4. plan-supported no-bypass `main` and release-tag rules, at least three human
+   reviewers, expanded CODEOWNERS, exact-head reviews, public private-
+   vulnerability reporting, and available secret scanning/push protection;
+   squash-only merging, DCO, least-authority Actions, Dependabot, and immutable
+   future releases are already applied and audited;
 5. successful hosted Windows, Linux, macOS, ARM64, CodeQL, dependency-review,
    fuzz, sanitizer, Miri, coverage, packaging, SBOM, checksum, and attestation
    jobs;

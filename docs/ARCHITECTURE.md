@@ -1177,6 +1177,35 @@ stream-hashed, SBOM-scanned, attested, and checksum-verified as the exact bytes
 users receive. See [Release trust](RELEASE-TRUST.md) and
 [ADR 0016](adr/0016-final-artifact-release-trust.md).
 
+## Repository enforcement boundary
+
+The repository is an external security authority, not an implication of local
+source state. `.github/repository-protection.json` owns the exact remote target:
+merge behavior, least-authority Actions, security features, hosted workflows,
+required check names, reviewer capacity, and branch/tag rulesets. A bounded
+local validator prevents workflow or contract drift; an authenticated audit
+classifies each GitHub control as passing, failing, or externally unavailable.
+[ADR 0031](adr/0031-versioned-hosted-ci-and-repository-protection.md) owns the
+decision.
+
+Remote mutation is explicit, administrator-only, repository-confirmed, and
+idempotent. It may apply only the reversible controls in the versioned
+contract. It cannot change visibility, billing, plan, collaborators, secrets,
+credentials, release assets, or history. Rulesets have no bypass actor;
+protected-path approvals bind to the exact pull-request head; workflow tokens
+are read-only and cannot approve reviews; third-party Actions require the exact
+allowlist plus full commit-SHA pins.
+
+Hosted evidence belongs to the current protected revision. It passes only when
+every required workflow is active and every declared default-branch evidence
+workflow's latest run executed successfully on the exact current commit within
+seven days. The release-only workflow is active but does not impersonate
+default-branch evidence. Missing, stale, skipped-only, different-commit, and
+zero-step billing-rejected runs fail or stay
+explicitly external. Private-plan ruleset limits, reviewer capacity, reporting,
+security entitlements, billing, and native runners remain external authorities;
+source code must neither bypass them nor report them as complete.
+
 ## Capabilities
 
 First-party extensions declare explicit local-read capabilities. v0.4 supports

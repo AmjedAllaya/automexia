@@ -2,7 +2,7 @@
 
 Status: authoritative detailed implementation plan and evidence ledger.
 
-Last reconciled: 2026-08-22.
+Last reconciled: 2026-08-24.
 
 The [Connectivity and command-productivity focus roadmap](CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md)
 remains the owner of canonical phase order and phase status. This document is
@@ -368,21 +368,23 @@ local runner, guarded executable consumption, ContextManager PTY/route seam, and
 approval UX are implemented. Production remains fail-closed: the compile-time
 gate is false and the linked extension candidate is unverified.
 
-#### M2 implementation audit (2026-08-22)
+#### M2 implementation audit (2026-08-24)
 
 | M2 area | Classification | Current evidence | Missing exit proof |
 |---|---|---|---|
-| ADR/protected review | Partially done | ADR 0012 is accepted; local policy counts distinct non-author, non-bot approvals bound to the exact PR head. | Two independent exact-head approvals and non-bypassable server enforcement required by ADR 0003. |
-| Inherited S0/v0.4 gates | Not done externally | Local earlier-phase gates exist. | Green hosted CI, CodeQL, hostile-output, native, and release jobs on the protected M2 revision. |
+| ADR/protected review | Partially done | ADR 0012 is accepted; the versioned no-bypass ruleset contract and local policy count distinct non-author, non-bot approvals bound to the exact PR head. | Upgrade the private plan or explicitly publish, invite independent reviewers/expand CODEOWNERS, apply the ruleset, and obtain two exact-head approvals required by ADR 0003. |
+| Inherited S0/v0.4 gates | Not done externally | Required workflows/checks, least-authority Actions, Dependabot, immutable releases, exact-head/freshness audit, and local mutations exist; all currently available remote controls pass. | Restore Actions billing and obtain green exact-revision CI, CodeQL, hostile-output, native, and release jobs. |
 | Trusted package attestation | Not done | Exact identity/version/contract/digest/verification/revocation policy and fail-closed tests exist; the linked candidate is unverified. | Real loader/build-provenance attestation and live revocation binding. |
 | Application runner | Fully done locally; nonactivated | Router owns one shared runner; active operations stop at 50, audits at 256, route/session/lease scope is exact, completion requires publication, and shutdown reconciles. | Protected activation and native process/resource proof. |
 | PTY/route lifecycle | Partially done | ContextManager alone consumes the guard, creates the exact PTY, inserts one independent Context, then marks the matching route/session published; natural completion and cancellation reconcile. | Cross-platform forced descendant cleanup, PID reuse, durable audit, listener/tunnel cleanup, and leak proof. |
 | Capability/recovery UX | Partially done | Review shows public package/launcher, target, route, risk, exact operation, 60-second approval scope, destination, and deny/allow-once/allow-session with pointer, focus, mnemonics, accessibility, and redacted recovery. | Bind the current resolved executable observation into a fresh pre-launch review after attestation; then obtain controlled pixels, screen-reader, localization, and high-scale evidence. |
 | Native OpenSSH evidence | Partially done | Windows guarded-spawn/ConPTY tests pass and macOS cross-check compiles. | Real loopback OpenSSH on native Windows/macOS/Linux and gated WSL plus controlled 1/10/50 resources. |
 
-The 2026-08-21 remote snapshot found insufficient collaborators, no exact-head
-PR/hosted run, and unavailable ruleset enforcement on the current plan. Recheck
-that external state against the exact activation revision.
+The authenticated 2026-08-24 audit found one human collaborator, rulesets
+unavailable on the private Free plan, zero-step Actions billing rejection, and
+private-reporting/secret-scanning availability gaps. It also verified the eight
+available remote control groups. Recheck all external state against the exact
+activation revision; a local policy pass is not server enforcement.
 
 #### M2.1 Protected prerequisites
 

@@ -59,6 +59,7 @@ from check_feature_assurance import load_and_validate as validate_feature_assura
 from check_phase_implementation_audit import validate as validate_phase_audit
 from check_repository_aligned_docs import validate as validate_repository_aligned_docs
 from check_platform_coverage import validate_repository_workflows
+from repository_protection import validate_repository as validate_repository_protection
 from release_trust import load_policy as validate_release_trust_policy
 
 
@@ -306,6 +307,10 @@ def validate() -> None:
 
     validate_repository_workflows()
     counts["platform workflow matrix"] = 1
+
+    protection_counts = validate_repository_protection()
+    counts["repository protection rulesets"] = protection_counts["rulesets"]
+    counts["repository protection checks"] = protection_counts["required_checks"]
 
     validate_release_trust_policy()
     counts["release trust policy"] = 1

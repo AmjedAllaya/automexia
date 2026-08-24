@@ -172,8 +172,8 @@ Include:
 - focused command output with secrets and private paths removed;
 - a screenshot only when visual state is material.
 
-Use the repository `SUPPORT.md` process for public defects and the repository `SECURITY.md` process
-for private vulnerability reporting.
+Use the repository `SUPPORT.md` process for public defects and follow the
+current private vulnerability-reporting route in `SECURITY.md`.
 
 
 ## Windows and WSL development workflow

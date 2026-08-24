@@ -79,8 +79,10 @@ The release-only `reproducibility-linux` job performs two fresh, cold Linux
 x64 release builds at one canonical source path and requires byte-identical
 outputs. Publication depends on that evidence and on repository-level immutable
 releases. The publish step refuses a pre-existing tag release, uploads without
-`--clobber`, and publishes one new draft; enabling immutable releases is an
-external repository-owner prerequisite.
+`--clobber`, and publishes one new draft. Immutable releases were enabled and
+authenticated on 2026-08-24 and apply to future releases. The release workflow
+rechecks that setting before publication; remote drift fails closed. Existing
+releases are not rewritten.
 
 ## Ghostty compatibility profile gate
 

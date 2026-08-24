@@ -83,6 +83,10 @@ jobs:
         run: |
           python tools/ci/check_platform_coverage.py
           python tools/ci/test_platform_coverage.py
+      - name: Repository protection contract and mutation tests
+        run: |
+          python tools/ci/repository_protection.py check
+          python tools/ci/test_repository_protection.py
       - name: Runtime and release trust mutation tests
         run: |
           python tools/ci/check_runtime_trust.py

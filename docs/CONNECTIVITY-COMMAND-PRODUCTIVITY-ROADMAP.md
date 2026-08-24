@@ -264,8 +264,10 @@ Second-pass implementation audit (2026-08-17):
 - [x] **Fully done locally:** process, network, provider, credential, PTY,
   listener, renderer, and GPU authority remain disabled; models are pure and do
   not read files, spawn tools, connect sockets, resize a PTY, or draw a window.
-- [ ] **Not done externally:** protected reviewers must accept or supersede ADR
-  0012 before D5 can close or any production connection capability can activate.
+- [ ] **Not done externally:** ADR 0012 is accepted, but two independent
+  exact-head approvals and non-bypassable server rules still require plan-
+  supported protection, eligible reviewers, and a green exact-revision PR before
+  D5 can close or any production connection capability can activate.
 
 Implementation evidence (2026-08-17):
 

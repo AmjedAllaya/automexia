@@ -2,11 +2,13 @@
 
 Audit date: 2026-08-24
 
-Audited source baseline: 20ff7928ea2d1eac5d26f13c62d0cda9b86bc078 (committed implementation baseline)
+Audited source baseline: a8bcf6497a9a332cdda95dca88831e7b7411148b
+(last committed baseline before this repository-protection change).
 
-Uncommitted application, renderer, and documentation changes observed after
-this commit were preserved as work in progress and are not counted as shipped
-evidence.
+The versioned hosted-CI and repository-protection implementation recorded by
+ADR 0031 is included in this audit. Unrelated uncommitted application, renderer,
+and documentation changes were preserved as work in progress and are not
+counted as shipped evidence.
 
 Scope: every execution phase defined by the product, stabilization, DevOps/SSH,
 Connection Hub, command-productivity, persistent-alias, Ghostty compatibility,
@@ -74,16 +76,21 @@ remain subject to their documented protected milestones and evidence.
 
 | Check | Result on the audited commit |
 |---|---|
-| Feature assurance | Passed: 27 feature-assurance entries, 276 documented source/evidence entries, and 46 phase-audit entries. |
+| Feature assurance | Passed: 39 feature-assurance entries, 301 documented source/evidence entries, and 46 phase-audit entries. |
 | Platform coverage policy | Passed: Windows/Linux/macOS, PowerShell/CMD/Unix shells, X11/Wayland, alternate architectures, nightly artifacts, deep Windows/WSL jobs, and release validators are machine-enforced. |
-| Documentation coverage | Passed: 12 public pages, 172 configuration keys, 73 binding actions, 6 application flags, and 21 xtask commands. |
-| Repository validation | Passed: 42 TOML, 14 YAML, 26 JSON, 6 XML, one desktop file, 210 Markdown files, 69 pinned Actions, release trust, assurance, and roadmap policy contracts. |
+| Documentation coverage | Passed: 13 public pages, 175 configuration keys, 79 binding actions, 17 CLI flags, 5 CLI commands, and 25 xtask commands. |
+| Repository validation | Passed: 50 TOML, 14 YAML, 48 JSON, 6 XML, one desktop file, 331 Markdown files, 75 pinned Actions, 2 repository-protection rulesets, 14 exact required checks, release trust, assurance, and roadmap policy contracts. |
 
-The hosted GitHub run state was not independently queried because GitHub CLI is
-not installed on this host. The latest readiness record says hosted jobs were
-blocked before checkout by the account Actions billing/spending state. Treat
-that condition as **unverified and unresolved for release** until this exact
-protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
+The hosted GitHub state was authenticated on 2026-08-24. Eight available
+controls pass the versioned contract: repository merge/DCO/cleanup settings,
+Actions and selected-publisher permissions, workflow-token authority,
+Dependabot alerts and security updates, immutable releases, and active required
+workflows. Rulesets are unavailable on the private Free plan, reviewer capacity
+is one human, and hosted jobs are rejected before checkout by the account
+billing/spending state. Private vulnerability reporting and Secret Protection
+are also unavailable in the current private/entitlement state. These five
+conditions remain **unverified and unresolved for release** until the exact
+protected commit passes and the authenticated audit returns no external result.
 
 ## Executive phase matrix
 
@@ -1290,8 +1297,11 @@ exist. Publication still requires:
 - final editable brand assets and redistribution rights;
 - private conduct-reporting contact;
 - Windows Authenticode and Apple Developer/notarization credentials;
-- protected public repository/rules, reviews, DCO/CODEOWNERS, vulnerability
-  reporting, immutable releases, and successful hosted jobs;
+- plan-supported protected branch/tag rules, at least three eligible human
+  reviewers, expanded CODEOWNERS, exact-head reviews and successful hosted jobs;
+- public private-vulnerability reporting plus available secret scanning and push
+  protection; DCO, least-authority Actions, Dependabot, and immutable releases
+  are already enabled and remain continuously audited;
 - signed/notarized clean install/upgrade/uninstall/coexistence evidence;
 - Linux/macOS GPU/PTY/visual/accessibility and native alternate hardware;
 - elevated AppVerifier/WPR and the 30-day performance baseline;

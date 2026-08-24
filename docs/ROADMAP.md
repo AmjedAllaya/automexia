@@ -43,7 +43,7 @@ the audit's executive matrix so the two cannot drift.
 
 | Status | Feature / phase | Current scope |
 |---|---|---|
-| **Fully done** | v0.4/S0 | Core identity, hostile-input bounds, atomic reload, and current source gates; stable-release evidence remains external. |
+| **Fully done** | v0.4/S0 | Core identity, hostile-input bounds, atomic reload, and a versioned hosted-CI/repository-protection contract with local mutation coverage are source-complete. Available GitHub controls are applied; plan-limited rulesets, reviewer capacity, executed exact-head hosted runs, reporting, and secret-scanning entitlements remain external. |
 | **Partially done** | v0.4/S1 | Deterministic and Windows-native assurance now includes a shrinking resize queue model, generation-aware atomic snapshot publication, and a bounded reviewed visual-diff tool. Controlled Linux/macOS GPU/visual/accessibility runs and approved golden matrices remain external. |
 | **Partially done** | S2 | Strict evidence normalization/composition, a reviewed 30-day baseline builder, exact waivers, 90-day retention, and a fail-closed 5% latency/10% memory release ratchet are implemented. The baseline remains collecting until 30 controlled consecutive days are reviewed. |
 | **Partially done** | D0 | ADR 0012 is accepted; schema 5 freezes M3-M5 direct/routed/tunnel argv, trust/status, tunnel lifecycle, receipt/reconnect, and native-manifest rules while retaining immutable schemas 1/2/3/4. Protected approvals and real native execution remain. |

@@ -41,8 +41,11 @@ PROTECTED_PREFIXES = (
 )
 PROTECTED_EXACT_PATHS = {
     ".github/BRANCH-PROTECTION.md",
+    ".github/repository-protection.json",
     "docs/SESSION-LAUNCH-BROKER.md",
     "tools/ci/check_pr_policy.py",
+    "tools/ci/repository_protection.py",
+    "tools/ci/test_repository_protection.py",
     "tools/ci/test_pr_policy.py",
     "tools/ci/check_session_launch_d0.py",
     "tools/ci/test_session_launch_d0.py",

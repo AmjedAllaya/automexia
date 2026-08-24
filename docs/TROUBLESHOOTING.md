@@ -172,5 +172,5 @@ Include:
 - focused command output with secrets and private paths removed;
 - a screenshot only when visual state is material.
 
-Use [Support](../SUPPORT.md) for public defects and [Security](../SECURITY.md)
-for private vulnerability reporting.
+Use [Support](../SUPPORT.md) for public defects and follow the current private
+reporting route in [Security](../SECURITY.md) for vulnerabilities.

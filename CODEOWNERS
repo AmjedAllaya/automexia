@@ -1,3 +1,5 @@
+# Repository-wide fallback. Expand this list only after the invited reviewer has
+# accepted access and can satisfy the protected-path exact-head review policy.
 * @AmjedAllaya
 
 /apps/automexia-terminal/src/automexia/ @AmjedAllaya
