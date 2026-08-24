@@ -267,11 +267,16 @@ uses the shell's complete path and never abbreviates it to `.../` or duplicates
 Git or infrastructure metadata beside it. Automexia owns the context spacer
 and complete path as durable terminal rows; Readline, ZLE, or PSReadLine owns
 only the lambda, editable command, and cursor row. A delayed SIGWINCH editor
-repaint therefore cannot erase the path or duplicate renderer metadata. Command
-completion includes the actual exit code; Automexia measures between `C` and
-`D` and draws a right-aligned success/failure badge with duration. Prompt
+repaint therefore cannot erase the path or duplicate renderer metadata.
+Command completion includes the actual exit code; Automexia measures between
+`C` and `D`. When semantic prompt ownership proves the output limits and next
+prompt, the renderer adds a quiet success/error-tinted output band, slim left
+accent, four- to eight-pixel breathing gutter, end rule, and right-aligned
+success/failure badge with duration. The newest live result lightens once for
+180 milliseconds, with no repeated blink or movement. These renderer-only cues
+do not insert rows or bytes, so selection, copy, search, history, prompt
 identity, context, and command results survive scrollback and column
-shrink/grow reflow.
+shrink/grow reflow unchanged.
 
 CMD reserves the same visible three-row structure and publishes OSC 7 plus
 OSC 133 `A/B`, but stock `cmd.exe` exposes no pre/post-command hook from which

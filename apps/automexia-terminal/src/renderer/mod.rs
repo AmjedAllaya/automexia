@@ -249,7 +249,39 @@ struct DevOpsPaneRenderState {
     historical_anchors: Vec<crate::automexia::ui::PromptAnchor>,
     live_anchor: Option<crate::automexia::ui::PromptAnchor>,
     command_results: Vec<crate::automexia::ui::CommandResultAnchor>,
+    allow_result_animation: bool,
     is_active: bool,
+}
+
+const MAX_COMMAND_PROMPT_SCAN_ROWS: usize = 8;
+
+/// Locate the first output row without inspecting terminal text beyond the
+/// narrow legacy lambda fallback. Managed prompts use their semantic identity;
+/// uncertain layouts return None so renderer chrome never claims output.
+fn command_output_top(
+    rows: &[Row<Square>],
+    prompt_index: usize,
+    origin_y: f32,
+    cell_height: f32,
+) -> Option<f32> {
+    let prompt = rows.get(prompt_index)?;
+    let mut scan = rows
+        .iter()
+        .enumerate()
+        .skip(prompt_index.saturating_add(1))
+        .take(MAX_COMMAND_PROMPT_SCAN_ROWS);
+    let command_index = if let Some(generation) = prompt.semantic_prompt_id {
+        scan.filter(|(_, row)| {
+            row.semantic_prompt == SemanticPrompt::PromptContinuation
+                && row.semantic_prompt_id == Some(generation)
+        })
+        .map(|(index, _)| index)
+        .next_back()
+    } else {
+        scan.find(|(_, row)| terminal_row_first_character(row) == Some('λ'))
+            .map(|(index, _)| index)
+    }?;
+    Some(origin_y + command_index.saturating_add(1) as f32 * cell_height)
 }
 
 /// Move completion metadata to the first prompt below its command output.
@@ -272,6 +304,43 @@ fn command_result_boundary(
     result.height = next_prompt.height;
     result.separates_next_prompt = true;
     result
+}
+
+fn command_result_anchors(
+    rows: &[Row<Square>],
+    first_absolute_row: u64,
+    origin_x: f32,
+    origin_y: f32,
+    grid_width: f32,
+    cell_height: f32,
+    prompt_anchors: &[crate::automexia::ui::PromptAnchor],
+) -> Vec<crate::automexia::ui::CommandResultAnchor> {
+    rows.iter()
+        .enumerate()
+        .filter_map(|(row_index, row)| {
+            let result = row.semantic_command_result?;
+            let synthetic_index = (row_index..rows.len())
+                .take(MAX_COMMAND_PROMPT_SCAN_ROWS)
+                .find_map(|command_index| {
+                    synthetic_prompt_visual_anchor(rows, command_index)
+                });
+            let visual_index =
+                synthetic_index.or_else(|| prompt_visual_anchor(rows, row_index))?;
+            let anchor = crate::automexia::ui::CommandResultAnchor {
+                generation: row.semantic_prompt_id,
+                key: first_absolute_row.saturating_add(row_index as u64),
+                x: origin_x,
+                y: origin_y + visual_index as f32 * cell_height,
+                width: grid_width,
+                height: cell_height,
+                output_top: command_output_top(rows, row_index, origin_y, cell_height),
+                separates_next_prompt: false,
+                exit_code: result.exit_code,
+                elapsed_ms: result.elapsed_ms,
+            };
+            Some(command_result_boundary(anchor, prompt_anchors))
+        })
+        .collect()
 }
 
 fn devops_pane_render_state(
@@ -411,34 +480,15 @@ fn devops_pane_render_state(
         } else {
             None
         };
-    let command_results =
-        rc.visible_rows
-            .iter()
-            .enumerate()
-            .filter_map(|(row_index, row)| {
-                let result = row.semantic_command_result?;
-                let synthetic_index = (row_index..rc.visible_rows.len())
-                    .take(8)
-                    .find_map(|command_index| {
-                        synthetic_prompt_visual_anchor(&rc.visible_rows, command_index)
-                    });
-                let visual_index = synthetic_index
-                    .or_else(|| prompt_visual_anchor(&rc.visible_rows, row_index))?;
-                Some(crate::automexia::ui::CommandResultAnchor {
-                    x: origin_x,
-                    y: origin_y + visual_index as f32 * cell_height,
-                    width: grid_width,
-                    height: cell_height,
-                    separates_next_prompt: false,
-                    exit_code: result.exit_code,
-                    elapsed_ms: result.elapsed_ms,
-                })
-            })
-            .collect::<Vec<_>>();
-    let command_results = command_results
-        .into_iter()
-        .map(|result| command_result_boundary(result, &historical_anchors))
-        .collect::<Vec<_>>();
+    let command_results = command_result_anchors(
+        &rc.visible_rows,
+        first_absolute_row,
+        origin_x,
+        origin_y,
+        grid_width,
+        cell_height,
+        &historical_anchors,
+    );
 
     DevOpsPaneRenderState {
         session: crate::automexia::api::SessionFacts {
@@ -457,6 +507,7 @@ fn devops_pane_render_state(
         historical_anchors,
         live_anchor,
         command_results,
+        allow_result_animation: rc.display_offset == 0 && rc.shell_prompt_active,
         is_active,
     }
 }
@@ -1311,6 +1362,7 @@ impl Renderer {
                 historical_anchors,
                 live_anchor,
                 command_results,
+                allow_result_animation,
             ) = {
                 let grid = context_manager.current_grid();
                 let (context, margin) = grid.current_context_with_computed_dimension();
@@ -1473,38 +1525,15 @@ impl Renderer {
                 } else {
                     None
                 };
-                let command_results = rc
-                    .visible_rows
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(row_index, row)| {
-                        let result = row.semantic_command_result?;
-                        let synthetic_index = (row_index..rc.visible_rows.len())
-                            .take(8)
-                            .find_map(|command_index| {
-                                synthetic_prompt_visual_anchor(
-                                    &rc.visible_rows,
-                                    command_index,
-                                )
-                            });
-                        let visual_index = synthetic_index.or_else(|| {
-                            prompt_visual_anchor(&rc.visible_rows, row_index)
-                        })?;
-                        Some(crate::automexia::ui::CommandResultAnchor {
-                            x: origin_x,
-                            y: origin_y + visual_index as f32 * cell_height,
-                            width: grid_width,
-                            height: cell_height,
-                            separates_next_prompt: false,
-                            exit_code: result.exit_code,
-                            elapsed_ms: result.elapsed_ms,
-                        })
-                    })
-                    .collect::<Vec<_>>();
-                let command_results = command_results
-                    .into_iter()
-                    .map(|result| command_result_boundary(result, &historical_anchors))
-                    .collect::<Vec<_>>();
+                let command_results = command_result_anchors(
+                    &rc.visible_rows,
+                    first_absolute_row,
+                    origin_x,
+                    origin_y,
+                    grid_width,
+                    cell_height,
+                    &historical_anchors,
+                );
 
                 (
                     crate::automexia::api::SessionFacts {
@@ -1523,6 +1552,7 @@ impl Renderer {
                     historical_anchors,
                     live_anchor,
                     command_results,
+                    rc.display_offset == 0 && rc.shell_prompt_active,
                 )
             };
             let refresh_pending =
@@ -1546,6 +1576,7 @@ impl Renderer {
                 sugarloaf,
                 self.named_colors,
                 &command_results,
+                allow_result_animation,
             );
             // Completion directly wakes this route. De-duplicated timers remain
             // as a fallback for worker pressure and poll changing local
@@ -1618,6 +1649,7 @@ impl Renderer {
                     sugarloaf,
                     self.named_colors,
                     &pane.command_results,
+                    pane.allow_result_animation,
                 );
             }
             if inactive_refresh_pending {
@@ -1746,6 +1778,15 @@ impl Renderer {
     #[inline]
     pub fn needs_redraw(&mut self) -> bool {
         if self.search.needs_redraw() {
+            return true;
+        }
+        if self.devops_enabled
+            && (self.devops_status.needs_redraw()
+                || self
+                    .devops_statuses
+                    .values_mut()
+                    .any(devops_status::DevOpsStatus::needs_redraw))
+        {
             return true;
         }
         if self.trail_cursor_enabled && self.trail_cursor.is_animating() {
@@ -2170,12 +2211,44 @@ mod prompt_visual_anchor_tests {
     }
 
     #[test]
+    fn command_output_starts_after_the_owned_editable_prompt_row() {
+        let mut rows = vec![
+            Row::<Square>::new(12),
+            Row::<Square>::new(12),
+            Row::<Square>::new(12),
+            Row::<Square>::new(12),
+            Row::<Square>::new(12),
+        ];
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+        rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+        rows[1][Column(0)].set_c('/');
+        rows[2].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+        rows[2][Column(0)].set_c('λ');
+        rows[3][Column(0)].set_c('o');
+        rows[4].set_semantic_prompt(SemanticPrompt::Prompt, Some(8));
+
+        assert_eq!(command_output_top(&rows, 0, 4.0, 20.0), Some(64.0));
+    }
+
+    #[test]
+    fn command_output_bounds_fail_closed_without_an_owned_command_row() {
+        let mut rows = vec![Row::<Square>::new(12), Row::<Square>::new(12)];
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+        rows[1][Column(0)].set_c('u');
+
+        assert_eq!(command_output_top(&rows, 0, 4.0, 20.0), None);
+    }
+
+    #[test]
     fn completed_command_result_moves_to_the_following_prompt_boundary() {
         let result = crate::automexia::ui::CommandResultAnchor {
+            generation: Some(1),
+            key: 2,
             x: 4.0,
             y: 40.0,
             width: 720.0,
             height: 20.0,
+            output_top: Some(100.0),
             separates_next_prompt: false,
             exit_code: 0,
             elapsed_ms: 18,
@@ -2213,10 +2286,13 @@ mod prompt_visual_anchor_tests {
     #[test]
     fn last_visible_command_result_keeps_its_truthful_origin() {
         let result = crate::automexia::ui::CommandResultAnchor {
+            generation: Some(2),
+            key: 8,
             x: 4.0,
             y: 160.0,
             width: 720.0,
             height: 20.0,
+            output_top: Some(180.0),
             separates_next_prompt: false,
             exit_code: 7,
             elapsed_ms: 1_250,

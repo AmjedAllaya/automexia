@@ -30,6 +30,10 @@ const PROMPT_TAG_MIN_FONT_SIZE: f32 = 4.0;
 const PROMPT_TAG_LEFT_INSET: f32 = 2.0;
 const PROMPT_RESULT_RESERVE: f32 = 112.0;
 const RESULT_DIVIDER_ALPHA: f32 = 0.32;
+const RESULT_SURFACE_ALPHA: f32 = 0.018;
+const RESULT_ACCENT_ALPHA: f32 = 0.42;
+const RESULT_PULSE_ALPHA: f32 = 0.055;
+const RESULT_PULSE_DURATION: Duration = Duration::from_millis(180);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PromptTagMetrics {
@@ -85,6 +89,134 @@ fn command_result_divider(anchor: &CommandResultAnchor) -> Option<[f32; 4]> {
     ])
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct CommandResultVisual {
+    surface: [f32; 4],
+    accent: [f32; 4],
+    divider: [f32; 4],
+}
+
+/// Build a low-density result surface inside proven output bounds. The fill
+/// ends before the following reserved prompt row, leaving a visible 4-8 px
+/// breathing gutter without adding rows or changing PTY bytes.
+fn command_result_visual(anchor: &CommandResultAnchor) -> Option<CommandResultVisual> {
+    if !anchor.separates_next_prompt {
+        return None;
+    }
+    let output_top = anchor.output_top?;
+    let divider = command_result_divider(anchor)?;
+    let inset = (anchor.height * 0.1).clamp(1.0, 2.0);
+    let gutter = (anchor.height * 0.28).clamp(4.0, 8.0);
+    let surface_bottom = anchor.y - gutter;
+    let surface_height = surface_bottom - output_top;
+    let surface_width = anchor.width - inset * 2.0;
+    if surface_height < anchor.height * 0.35 || surface_width < 4.0 {
+        return None;
+    }
+    let surface = [anchor.x + inset, output_top, surface_width, surface_height];
+    let accent_width = (anchor.height * 0.08).clamp(1.0, 2.0);
+    Some(CommandResultVisual {
+        surface,
+        accent: [surface[0], surface[1], accent_width, surface[3]],
+        divider,
+    })
+}
+
+#[derive(Clone, Copy, Debug)]
+struct CommandResultIdentity {
+    generation: Option<u64>,
+    key: u64,
+}
+
+#[cfg(feature = "native-gui-test-hooks")]
+type NativeCommandResultVisual = ([f32; 4], [f32; 4], [f32; 4], u64);
+
+impl PartialEq for CommandResultIdentity {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.generation, other.generation) {
+            (Some(left), Some(right)) => left == right,
+            _ => self.generation == other.generation && self.key == other.key,
+        }
+    }
+}
+
+impl Eq for CommandResultIdentity {}
+
+impl From<&CommandResultAnchor> for CommandResultIdentity {
+    fn from(anchor: &CommandResultAnchor) -> Self {
+        Self {
+            generation: anchor.generation,
+            key: anchor.key,
+        }
+    }
+}
+
+#[derive(Default)]
+struct CommandResultPulse {
+    initialized: bool,
+    last_seen: Option<CommandResultIdentity>,
+    active: Option<(CommandResultIdentity, Instant)>,
+    generation: u64,
+}
+
+impl CommandResultPulse {
+    fn observe(
+        &mut self,
+        anchors: &[CommandResultAnchor],
+        allow_animation: bool,
+        now: Instant,
+    ) {
+        let latest = anchors.last().map(CommandResultIdentity::from);
+        if !self.initialized {
+            self.initialized = true;
+            self.last_seen = latest;
+            return;
+        }
+        let Some(latest) = latest else {
+            self.active = None;
+            return;
+        };
+        if self.last_seen == Some(latest) {
+            return;
+        }
+        self.last_seen = Some(latest);
+        self.active = if allow_animation {
+            Some((latest, now))
+        } else {
+            None
+        };
+        self.generation = self
+            .generation
+            .saturating_add(u64::from(self.active.is_some()));
+    }
+
+    fn alpha_for(&self, anchor: &CommandResultAnchor, now: Instant) -> f32 {
+        let Some((identity, started)) = self.active else {
+            return 0.0;
+        };
+        if identity != CommandResultIdentity::from(anchor) {
+            return 0.0;
+        }
+        let progress = now.saturating_duration_since(started).as_secs_f32()
+            / RESULT_PULSE_DURATION.as_secs_f32();
+        if progress >= 1.0 {
+            return 0.0;
+        }
+        RESULT_PULSE_ALPHA * (1.0 - progress).powi(2)
+    }
+
+    fn needs_redraw(&mut self, now: Instant) -> bool {
+        let Some((_, started)) = self.active else {
+            return false;
+        };
+        if now.saturating_duration_since(started) >= RESULT_PULSE_DURATION {
+            self.active = None;
+            return false;
+        }
+        true
+    }
+}
+
 struct PromptSnapshot {
     session_id: usize,
     generation: Option<u64>,
@@ -124,11 +256,29 @@ pub struct DevOpsStatus {
     snapshot_revision: u32,
     refresh_pending: bool,
     request_in_flight: bool,
+    command_result_pulse: CommandResultPulse,
+    #[cfg(feature = "native-gui-test-hooks")]
+    native_command_result_visual: Option<CommandResultVisual>,
 }
 
 impl DevOpsStatus {
     pub fn clear(&mut self) {
         *self = Self::default();
+    }
+
+    pub fn needs_redraw(&mut self) -> bool {
+        self.command_result_pulse.needs_redraw(Instant::now())
+    }
+
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub(crate) fn native_test_result_visual(&self) -> Option<NativeCommandResultVisual> {
+        let visual = self.native_command_result_visual?;
+        Some((
+            visual.surface,
+            visual.accent,
+            visual.divider,
+            self.command_result_pulse.generation,
+        ))
     }
 
     #[cfg(feature = "native-gui-test-hooks")]
@@ -490,11 +640,20 @@ impl DevOpsStatus {
 
     /// Draw completion state on the semantic row that owns the command.
     pub fn render_command_results(
-        &self,
+        &mut self,
         sugarloaf: &mut Sugarloaf,
         colors: Colors,
         anchors: &[CommandResultAnchor],
+        allow_animation: bool,
     ) {
+        let now = Instant::now();
+        self.command_result_pulse
+            .observe(anchors, allow_animation, now);
+        #[cfg(feature = "native-gui-test-hooks")]
+        {
+            self.native_command_result_visual =
+                anchors.last().and_then(command_result_visual);
+        }
         for anchor in anchors {
             let success = anchor.exit_code == 0;
             let status = if success { "✓" } else { "×" };
@@ -512,8 +671,41 @@ impl DevOpsStatus {
                 color: color_to_u8(if success { colors.green } else { colors.red }),
                 ..DrawOpts::default()
             };
-            if let Some([x, y, width, height]) = command_result_divider(anchor) {
-                let mut divider_color = if success { colors.green } else { colors.red };
+
+            let accent_color = if success { colors.green } else { colors.red };
+            let visual = command_result_visual(anchor);
+            if let Some(visual) = visual {
+                let pulse_alpha = self.command_result_pulse.alpha_for(anchor, now);
+                let mut surface_color = accent_color;
+                surface_color[3] = RESULT_SURFACE_ALPHA + pulse_alpha;
+                sugarloaf.rect(
+                    None,
+                    visual.surface[0],
+                    visual.surface[1],
+                    visual.surface[2],
+                    visual.surface[3],
+                    surface_color,
+                    0.0,
+                    ORDER - 4,
+                );
+                let mut rail_color = accent_color;
+                rail_color[3] = (RESULT_ACCENT_ALPHA + pulse_alpha).min(1.0);
+                sugarloaf.rect(
+                    None,
+                    visual.accent[0],
+                    visual.accent[1],
+                    visual.accent[2],
+                    visual.accent[3],
+                    rail_color,
+                    0.0,
+                    ORDER - 3,
+                );
+            }
+            let divider = visual
+                .map(|visual| visual.divider)
+                .or_else(|| command_result_divider(anchor));
+            if let Some([x, y, width, height]) = divider {
+                let mut divider_color = accent_color;
                 divider_color[3] = RESULT_DIVIDER_ALPHA;
                 sugarloaf.rect(None, x, y, width, height, divider_color, 0.0, ORDER - 2);
             }
@@ -936,10 +1128,13 @@ mod tests {
     #[test]
     fn result_divider_is_bounded_and_only_marks_a_following_prompt() {
         let mut anchor = CommandResultAnchor {
+            generation: Some(7),
+            key: 42,
             x: 4.0,
             y: 40.0,
             width: 720.0,
             height: 20.0,
+            output_top: Some(0.0),
             separates_next_prompt: true,
             exit_code: 0,
             elapsed_ms: 18,
@@ -952,6 +1147,143 @@ mod tests {
 
         anchor.separates_next_prompt = false;
         assert_eq!(command_result_divider(&anchor), None);
+    }
+
+    #[test]
+    fn result_surface_adds_bounded_tint_accent_and_breathing_gutter() {
+        let anchor = CommandResultAnchor {
+            generation: Some(7),
+            key: 42,
+            x: 4.0,
+            y: 160.0,
+            width: 720.0,
+            height: 24.0,
+            output_top: Some(80.0),
+            separates_next_prompt: true,
+            exit_code: 0,
+            elapsed_ms: 18,
+        };
+
+        let visual = command_result_visual(&anchor).expect("visible output surface");
+        let surface_bottom = visual.surface[1] + visual.surface[3];
+        let gutter = anchor.y - surface_bottom;
+        assert!(visual.surface[0] >= anchor.x);
+        assert!(visual.surface[1] >= 80.0);
+        assert!(visual.surface[0] + visual.surface[2] <= anchor.x + anchor.width);
+        assert!((4.0..=8.0).contains(&gutter));
+        assert_eq!(visual.accent[0], visual.surface[0]);
+        assert_eq!(visual.accent[1], visual.surface[1]);
+        assert!(visual.accent[2] <= 2.0);
+        assert_eq!(visual.accent[3], visual.surface[3]);
+        assert!(visual.divider[1] >= anchor.y);
+    }
+
+    #[test]
+    fn result_surface_requires_truthful_nonempty_output_bounds() {
+        let mut anchor = CommandResultAnchor {
+            generation: Some(7),
+            key: 42,
+            x: 4.0,
+            y: 80.0,
+            width: 720.0,
+            height: 20.0,
+            output_top: None,
+            separates_next_prompt: true,
+            exit_code: 0,
+            elapsed_ms: 18,
+        };
+        assert_eq!(command_result_visual(&anchor), None);
+
+        anchor.output_top = Some(anchor.y);
+        assert_eq!(command_result_visual(&anchor), None);
+    }
+
+    #[test]
+    fn completion_glow_is_one_shot_idempotent_and_scroll_safe() {
+        let first = CommandResultAnchor {
+            generation: Some(7),
+            key: 42,
+            x: 4.0,
+            y: 80.0,
+            width: 720.0,
+            height: 20.0,
+            output_top: Some(40.0),
+            separates_next_prompt: true,
+            exit_code: 0,
+            elapsed_ms: 18,
+        };
+        let second = CommandResultAnchor {
+            generation: Some(8),
+            key: 48,
+            ..first
+        };
+        let third = CommandResultAnchor {
+            generation: Some(9),
+            key: 54,
+            ..first
+        };
+        let started = Instant::now();
+        let mut pulse = CommandResultPulse::default();
+
+        pulse.observe(&[], true, started);
+        pulse.observe(&[first], true, started);
+        assert_eq!(pulse.alpha_for(&first, started), RESULT_PULSE_ALPHA);
+        assert_eq!(pulse.generation, 1);
+
+        let halfway = started + RESULT_PULSE_DURATION / 2;
+        let halfway_alpha = pulse.alpha_for(&first, halfway);
+        assert!(halfway_alpha > 0.0);
+        assert!(halfway_alpha < RESULT_PULSE_ALPHA);
+        pulse.observe(&[first], true, halfway);
+        assert_eq!(pulse.alpha_for(&first, halfway), halfway_alpha);
+        assert_eq!(pulse.generation, 1);
+
+        let finished = started + RESULT_PULSE_DURATION;
+        assert_eq!(pulse.alpha_for(&first, finished), 0.0);
+        assert!(!pulse.needs_redraw(finished));
+
+        pulse.observe(&[first, second], false, finished);
+        assert_eq!(pulse.alpha_for(&second, finished), 0.0);
+        assert_eq!(pulse.generation, 1);
+        pulse.observe(&[first, second, third], true, finished);
+        assert_eq!(pulse.alpha_for(&third, finished), RESULT_PULSE_ALPHA);
+        assert_eq!(pulse.alpha_for(&second, finished), 0.0);
+        assert_eq!(pulse.generation, 2);
+    }
+
+    #[test]
+    fn completion_glow_does_not_replay_after_reflow_or_transient_absence() {
+        let original = CommandResultAnchor {
+            generation: Some(7),
+            key: 42,
+            x: 4.0,
+            y: 80.0,
+            width: 720.0,
+            height: 20.0,
+            output_top: Some(40.0),
+            separates_next_prompt: true,
+            exit_code: 0,
+            elapsed_ms: 18,
+        };
+        let reflowed = CommandResultAnchor {
+            key: 142,
+            y: 100.0,
+            output_top: Some(60.0),
+            ..original
+        };
+        let started = Instant::now();
+        let finished = started + RESULT_PULSE_DURATION;
+        let mut pulse = CommandResultPulse::default();
+
+        pulse.observe(&[], true, started);
+        pulse.observe(&[original], true, started);
+        assert_eq!(pulse.generation, 1);
+        assert!(!pulse.needs_redraw(finished));
+
+        pulse.observe(&[], true, finished);
+        pulse.observe(&[reflowed], true, finished);
+        assert_eq!(pulse.alpha_for(&reflowed, finished), 0.0);
+        assert_eq!(pulse.generation, 1);
     }
 
     #[test]

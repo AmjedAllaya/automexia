@@ -484,6 +484,10 @@ struct NativeWindowSnapshot {
     search_live_announcement: Option<String>,
     search_announcement_generation: Option<u64>,
     search_surface: Option<[f32; 4]>,
+    command_result_surface: Option<[f32; 4]>,
+    command_result_accent: Option<[f32; 4]>,
+    command_result_divider: Option<[f32; 4]>,
+    command_result_pulse_generation: u64,
 }
 
 #[cfg(feature = "native-gui-test-hooks")]
@@ -625,6 +629,11 @@ fn write_native_resize_snapshot(
     snapshot["search_announcement_generation"] =
         serde_json::json!(window.search_announcement_generation);
     snapshot["search_surface"] = serde_json::json!(window.search_surface);
+    snapshot["command_result_surface"] = serde_json::json!(window.command_result_surface);
+    snapshot["command_result_accent"] = serde_json::json!(window.command_result_accent);
+    snapshot["command_result_divider"] = serde_json::json!(window.command_result_divider);
+    snapshot["command_result_pulse_generation"] =
+        serde_json::json!(window.command_result_pulse_generation);
 
     let payload = snapshot.to_string();
     if let Err(error) = publish_native_resize_snapshot_generation(
@@ -5943,6 +5952,8 @@ impl Screen<'_> {
             let search_announcement_generation = search_accessibility
                 .as_ref()
                 .map(|snapshot| snapshot.announcement_generation);
+            let command_result_visual =
+                self.renderer.devops_status.native_test_result_visual();
             write_native_resize_snapshot(
                 &self.context_manager.current().renderable_content,
                 panels,
@@ -5973,6 +5984,11 @@ impl Screen<'_> {
                     search_live_announcement,
                     search_announcement_generation,
                     search_surface: self.renderer.search.native_surface_rect(),
+                    command_result_surface: command_result_visual.map(|visual| visual.0),
+                    command_result_accent: command_result_visual.map(|visual| visual.1),
+                    command_result_divider: command_result_visual.map(|visual| visual.2),
+                    command_result_pulse_generation: command_result_visual
+                        .map_or(0, |visual| visual.3),
                 },
                 &self.native_test_last_control,
                 self.image_preview.native_test_state(&self.sugarloaf),
