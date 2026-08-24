@@ -1250,6 +1250,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
     let ci = read(&root().join(".github/workflows/ci.yml"))?;
     let release_workflow = read(&root().join(".github/workflows/release.yml"))?;
     let nightly_workflow = read(&root().join(".github/workflows/nightly.yml"))?;
+    let s2_workflow = read(&root().join(".github/workflows/s2-assurance.yml"))?;
     require(
         ci.contains("cargo-nextest@0.9.137")
             && ci.contains(
@@ -1276,11 +1277,18 @@ fn verify_phase_zero_assurance() -> TaskResult {
         performance_assurance.contains("EXPECTED_THRESHOLDS")
             && performance_assurance.contains("EXPECTED_POLICY_SHA256")
             && performance_assurance.contains("def collect_native_resource(")
+            && performance_assurance.contains("def validate_candidate_context(")
+            && performance_assurance.contains("def validate_active_baseline_context(")
+            && performance_assurance.contains("def _discover_criterion_results(")
             && performance_assurance.contains("def merge_candidate_evidence(")
             && performance_assurance.contains("def build_baseline(")
+            && performance_assurance.contains("require_clean_source(")
+            && performance_assurance.contains("validate-baseline")
             && performance_assurance.contains("--require-active")
             && performance_tests.contains("test_latency_and_memory_thresholds_fail_above_exact_limits")
             && performance_tests.contains("test_reviewed_baseline_builder_requires_exact_complete_daily_evidence")
+            && performance_tests.contains("test_candidate_is_fresh_and_bound_to_the_exact_source_commit")
+            && performance_tests.contains("test_criterion_requires_bounded_repeated_samples_and_narrow_confidence")
             && performance_policy.contains("\"latency_percent\": 5.0")
             && performance_policy.contains("\"memory_percent\": 10.0")
             && performance_policy.contains("\"minimum_consecutive_days\": 30")
@@ -1290,13 +1298,22 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && ci.contains("python tools/ci/test_performance_assurance.py")
             && nightly_workflow.contains("performance-controlled-windows")
             && nightly_workflow.contains("retention-days: 90")
+            && nightly_workflow.contains("--operator")
+            && nightly_workflow.contains("--expected-commit")
             && release_workflow.contains("Enforce the active S2 latency and memory ratchet")
+            && release_workflow.contains("--operator")
+            && release_workflow.contains("--expected-commit")
             && release_workflow.contains("--require-active")
+            && s2_workflow.contains("name: S2 controlled activation")
+            && s2_workflow.contains("environment: stable-release")
+            && s2_workflow.contains("validate-baseline")
+            && s2_workflow.contains("--expected-source-commit")
+            && s2_workflow.contains("retention-days: 90")
             && visual_diff.contains("MAX_PIXELS: u64 = 40_000_000")
             && visual_diff.contains("MAX_MASKS: usize = 32")
             && visual_policy.contains("\"max_channel_delta\": 2")
             && visual_policy.contains("\"max_changed_pixel_ratio\": 0.001"),
-        "S1/S2 visual, benchmark, baseline, waiver, nightly, or fail-closed release assurance drifted",
+        "S1/S2 visual, benchmark, source binding, baseline review, waiver, nightly, activation, or fail-closed release assurance drifted",
     )?;
 
     let codeql_workflow = read(&root().join(".github/workflows/codeql.yml"))?;

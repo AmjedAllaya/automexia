@@ -24,7 +24,7 @@ proven as separate slices; none of it is claimed as a current feature. See the
 |---|---|---|---|---|
 | Core | v0.4/S0 | **Fully implemented locally** | **Partial** | Identity, hostile-input bounds, atomic reload, and current terminal source gates are complete; stable release gates remain. |
 | Assurance | v0.4/S1 | **Fully implemented in source** | **Partial / external** | Exact deterministic visual hooks, Windows WGPU/CPU native/resource automation, separate bounded verifier phases, a strict 24-suite policy/validator, controlled workflow, and fail-closed stable-tag dependency are complete. Controlled Linux/macOS/named-GPU/elevated/accessibility evidence and approved visual matrices remain. |
-| Performance | S2 | **Partially implemented; collecting** | **External baseline pending** | Strict comparable evidence, native memory composition, baseline/waiver validation, 90-day retention, and fail-closed release enforcement exist; activation still requires 30 reviewed consecutive controlled-runner days. |
+| Performance | S2 | **Fully implemented in source; collecting** | **External baseline pending** | Strict bounded comparable evidence, repeated-sample quality, native memory composition, exact source/operator binding, independent activation review, 90-day retention, and fail-closed release enforcement exist; delivery still requires 30 reviewed consecutive controlled-runner days. |
 | DevOps | D0 | **Partial** | **Partial** | ADR 0012 is accepted; schema 5 ratchets immutable schemas 1/2/3/4 with exact M3-M5 routes/tunnels, trust/status, tunnel lifecycle, receipt/reconnect, and native-manifest rules. Protected approvals and real native execution remain. |
 | DevOps | D1 | **Fully implemented** | **Partial** | Four private provider-neutral crates and bounded contracts satisfy their source boundary. |
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
@@ -73,7 +73,7 @@ SSH child can start, and normal shell-owned `ssh` remains the recovery path.
 
 ### v0.4 — standalone terminal stability
 
-v0.4 freezes the terminal-core product boundary: standalone identity/migration, bounded hostile terminal input, transactional runtime configuration, panes/tabs/context/footer, shell integration, image handling, contributor automation, and multi-platform release policy. S0 source gates are complete locally; S1 controlled cross-platform/visual/accessibility evidence remains partial; S2 comparable performance enforcement is not active.
+v0.4 freezes the terminal-core product boundary: standalone identity/migration, bounded hostile terminal input, transactional runtime configuration, panes/tabs/context/footer, shell integration, image handling, contributor automation, and multi-platform release policy. S0 source gates are complete locally; S1 controlled cross-platform/visual/accessibility evidence remains partial; S2 source enforcement is complete but its comparable baseline remains collecting and inactive.
 
 Managed saved-host/cloud behavior is intentionally not added to v0.4. Users can always run normal `ssh` in their shell.
 

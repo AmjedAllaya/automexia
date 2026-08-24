@@ -98,7 +98,7 @@ protected commit passes and the authenticated audit returns no external result.
 |---|---|---|---|---|
 | Core | v0.4/S0 | **Fully implemented locally** | **Partial** | Identity, hostile-input bounds, atomic reload, and current terminal source gates are complete; stable release gates remain. |
 | Assurance | v0.4/S1 | **Source fully implemented; release evidence partial/external** | **Partial/external** | A versioned 24-suite policy, strict commit-bound validator, deterministic test-only visual fixture, bounded comparator, Windows-native WGPU/CPU QA/resource evidence, separate AppVerifier Basics/low-resource phases, mutation coverage, controlled workflow, and fail-closed release dependency exist. Elevated/named-hardware, Linux/macOS native, assistive-technology, exact visual-matrix, and independent human-review evidence remains external. |
-| Performance | S2 | **Partially implemented; collecting** | **External baseline pending** | Evidence normalization/composition, native memory metrics, baseline/waiver validation, 90-day retention, and a fail-closed release ratchet exist. Activation awaits 30 reviewed consecutive controlled-runner days. |
+| Performance | S2 | **Source and automation fully implemented; collecting** | **External baseline pending** | Bounded evidence normalization/composition, sample/confidence quality, exact source/operator binding, native memory metrics, independent baseline/waiver review, protected activation validation, 90-day retention, and a fail-closed release ratchet exist. Activation awaits 30 reviewed consecutive controlled-runner days. |
 | DevOps | D0 | **Partial** | **Partial** | ADR 0012 is accepted and active schema 5 ratchets immutable schemas 1/2/3/4 with exact M3-M5 route/tunnel, trust/status, lifecycle/receipt/reconnect, and native-manifest rules; protected approvals and real native execution remain. |
 | DevOps | D1 | **Fully implemented** | **Partial** | Four private provider-neutral crates and bounded contracts satisfy their source boundary. |
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
@@ -143,7 +143,7 @@ executable ledgers above as follows:
 
 | Architecture phase | Executable phase mapping | Status |
 |---|---|---|
-| Phase 0: v0.4 security/stability | S0, S1, S2 | **Source gates complete; assurance partial; enforcement not started.** |
+| Phase 0: v0.4 security/stability | S0, S1, S2 | **Source gates complete; assurance partial; S2 enforcement implemented but baseline activation pending.** |
 | Phase 1: provider-neutral APIs | D1, D2 | **Fully implemented at source boundary.** |
 | Phase 2: production first-party SSH | D0, D3, D4, D5.0-D5.2 | **Partial foundation only; production SSH not implemented.** |
 | Phase 3: provider auth/capsules | D6.0-D6.4 | **Partially implemented overall: D6.0 is fully implemented locally; D6.1-D6.4 are source-complete and nonactivated.** |
@@ -334,25 +334,35 @@ baseline, scoped cargo-mutants survivor triage, and governed cargo-vet adoption.
 
 ### S1.8 and S2 — performance proof and enforcement
 
-**Partially implemented; source enforcement complete and controlled baseline collecting.**
+**Source and automation fully implemented; controlled baseline collecting.**
 
 - Nine controlled Criterion targets cover application/DevOps services, image
   preview, Quick Action parsing/store, connection planning, PTY I/O, event
   polling, OpenSSH inventory, and VT. Each run uses a unique evidence target.
-- Strict bounded JSON normalizes classified Criterion estimates and the existing
-  native Windows private-bytes/working-set report, requires exact commit/time/
-  runner identity, and rejects duplicate, unknown, oversized, non-finite,
-  symlinked, or mismatched evidence.
+- Strict bounded no-follow JSON normalizes classified Criterion estimates and
+  the existing native Windows private-bytes/working-set report. Criterion
+  latency requires 50-10,000 finite repeated samples, exact 95% confidence, and
+  a confidence interval no wider than 10% of the estimate.
+- Composition requires a clean exact source commit plus exact time, runner,
+  toolchain, profile, and operator identity. It rejects stale/future, duplicate,
+  unknown, oversized, non-finite, linked, path-bearing, or mismatched evidence.
 - A reviewed-policy digest freezes 5% latency, 10% memory, 30-90 consecutive
   days, required claims, privacy limits, exact expiring waivers, and same-runner
-  comparability. The builder cannot activate incomplete/unreviewed history.
+  comparability. Each accepted day is digest/operator traceable; the builder
+  cannot activate incomplete history or let a collector accept the baseline.
 - Nightly retains normalized evidence for 90 days. Tagged release preflight now
-  requires an active baseline and fails closed on an unwaived regression.
+  requires fresh exact-commit evidence and an active baseline, and fails closed
+  on an unwaived regression. The registered `S2 controlled activation` workflow
+  uses the protected `stable-release` environment and emits a bounded digest
+  summary before activation can merge.
 
 External gate: the baseline fixture remains `collecting`. Thirty complete
 consecutive runs on the named Windows GPU/benchmark runner, controlled hardware
-metadata, and maintainer review/HTTPS acceptance are still required. No local
-or Linux-only run is reported as that missing evidence.
+metadata, independent review/HTTPS acceptance, and successful protected
+activation are still required. The 2026-08-24 remote audit found no configured
+runner variables and zero accepted S2 days. No local or Linux-only run is
+reported as that missing evidence. See the
+[S2 completion audit](research/S2-RELEASE-RATCHET-COMPLETION-AUDIT.md).
 
 ### v0.5 assurance maturation
 
@@ -1352,7 +1362,7 @@ dedicated video-editing release. No current video runtime is implied.
 |---|---|---|---|
 | Correctness | **Strong, incomplete globally** | Locked metadata, fmt, warning-denied Clippy, Nextest/doctests, conformance, migration, shell, PTY, UI, property, Windows native, architecture. | Hosted three-OS protected commit and tests for future phases. |
 | Security | **Strong boundary; release partial** | Default deny, exact argv/capabilities, no shell evaluation, one bounded app runner, guarded spawn/publication seam, approval UI, no-follow, private permissions, redaction, cargo-deny, and hosted scanners/SBOM policy. | Protected exact-head approvals/server enforcement, real attestation, native cleanup/OpenSSH campaigns, signing, vet governance, and future sandbox. |
-| Performance | **Local measurement; enforcement incomplete** | Fast paths, bounded queues/caches, cancellation, Criterion, deadlines, Windows budgets. | Named hardware for 30 days, full matrix, approved baseline, S2. |
+| Performance | **Source enforcement complete; controlled evidence collecting** | Fast paths, bounded queues/caches, cancellation, Criterion, deadlines, Windows budgets, and S2's exact 5%/10% fail-closed ratchet/activation workflow. | Named hardware for 30 consecutive days, full controlled matrix, independent review, and an approved active baseline. |
 | Resource/storage | **Good focused; controlled partial** | PTY/worker/image/store cycles, descendant cleanup, cache/artifact limits, isolated targets. | Long soak, AppVerifier/WPR, Linux/macOS GPU/process, crash/power loss, future lifecycle tests. |
 | Resilience/retry | **Good fail-closed design** | Last-known-good, CAS, reconciliation, stale rejection, coalescing, cancellation, rollback, no silent flaky retries. | SSH/provider reconnect states, UI recovery, cross-platform faults, power loss, future profile/sequence recovery. |
 | Architecture | **Strong current boundary** | Private provider-neutral crates, GPU/PTY separation, one launch descriptor, exact allowlists, denied authority. | Deferred app/engine cleanup; preserve rules in future phases. |

@@ -57,11 +57,18 @@ proves WSL identity/isolation; and `AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER=1`
 runs the exact native-resource and nine-target Criterion workload on the named
 Windows GPU/benchmark runner. The performance job composes classified latency
 with native private-byte/working-set evidence and calls
-`evaluate --require-active`. Therefore the checked-in `collecting` S2 baseline
-intentionally blocks stable tags until 30 consecutive comparable days are
-reviewed and activated. Above 5% latency or 10% memory, only an exact
-commit/metric/baseline waiver with bounded reason, HTTPS review, approver, and
-unexpired at-most-30-day lifetime can pass.
+`evaluate --require-active --expected-commit <tag-commit>`. Therefore the
+checked-in `collecting` S2 baseline intentionally blocks stable tags until 30
+consecutive comparable days are independently reviewed and activated. Evidence
+must be fresh, clean-source and exact-commit bound, carry public operator and
+runner identity, and satisfy the policy's repeated-sample/confidence limits.
+Above 5% latency or 10% memory, only an exact commit/metric/baseline/maximum
+waiver with bounded reason, HTTPS review, independent approver, and unexpired
+at-most-30-day lifetime can pass. Baseline changes must pass the registered
+`S2 controlled activation` workflow through the protected `stable-release`
+environment; its 90-day bounded summary proves the exact source and baseline
+digest. The [S2 completion audit](docs/research/S2-RELEASE-RATCHET-COMPLETION-AUDIT.md)
+owns collection, recovery, activation, and rollback.
 
 The fourth gate is S1. `AUTOMEXIA_S1_ASSURANCE_RUNNER=1` selects the controlled
 `automexia-assurance` runner and `AUTOMEXIA_S1_ASSURANCE_EVIDENCE` names its

@@ -36,6 +36,7 @@ EXPECTED_WORKFLOWS = {
     "release-drafter.yml": "Release Drafter",
     "release.yml": "Stable release",
     "s1-assurance.yml": "S1 controlled assurance",
+    "s2-assurance.yml": "S2 controlled activation",
 }
 EXPECTED_DEFAULT_BRANCH_EVIDENCE_WORKFLOWS = [
     "ci.yml",

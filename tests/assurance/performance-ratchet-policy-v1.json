@@ -6,6 +6,15 @@
     "latency_percent": 5.0,
     "memory_percent": 10.0
   },
+  "quality": {
+    "candidate_max_age_hours": 24,
+    "maximum_future_skew_minutes": 5,
+    "minimum_criterion_samples": 50,
+    "maximum_criterion_samples": 10000,
+    "criterion_confidence_level": 0.95,
+    "maximum_latency_interval_percent": 10.0,
+    "maximum_memory_interval_percent": 100.0
+  },
   "required_claims": [
     "startup",
     "input",
@@ -62,13 +71,15 @@
   "baseline": {
     "minimum_consecutive_days": 30,
     "maximum_days": 90,
-    "minimum_metrics_per_claim": 1
+    "minimum_metrics_per_claim": 1,
+    "maximum_acceptance_delay_days": 7
   },
   "waivers": {
     "maximum_duration_days": 30,
     "maximum_reason_bytes": 512,
     "https_review_required": true,
-    "wildcards_forbidden": true
+    "wildcards_forbidden": true,
+    "independent_approver_required": true
   },
   "limits": {
     "max_policy_bytes": 65536,
@@ -77,6 +88,9 @@
     "max_waiver_bytes": 262144,
     "max_report_bytes": 262144,
     "max_criterion_file_bytes": 262144,
+    "max_criterion_sample_file_bytes": 1048576,
+    "max_criterion_entries": 4096,
+    "max_criterion_depth": 16,
     "max_metrics": 512,
     "max_unclassified_metrics": 512,
     "max_metric_id_bytes": 192,
@@ -97,6 +111,7 @@
   "activation": {
     "automatic": false,
     "requires_reviewed_baseline": true,
+    "independent_review_required": true,
     "release_mode": "fail-closed-require-active"
   }
 }

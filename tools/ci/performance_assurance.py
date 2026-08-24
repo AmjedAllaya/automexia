@@ -14,11 +14,12 @@ from pathlib import Path
 import re
 import stat
 import statistics
+import subprocess
 import sys
 import tempfile
 from typing import Any
 import unicodedata
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -60,15 +61,31 @@ EXPECTED_LIMITS = {
     "max_waiver_bytes": 262_144,
     "max_report_bytes": 262_144,
     "max_criterion_file_bytes": 262_144,
+    "max_criterion_sample_file_bytes": 1_048_576,
+    "max_criterion_entries": 4_096,
+    "max_criterion_depth": 16,
     "max_metrics": 512,
     "max_unclassified_metrics": 512,
     "max_metric_id_bytes": 192,
     "max_metadata_value_bytes": 192,
 }
-EXPECTED_POLICY_SHA256 = "47fc98316d033c16e38062166add5a569a36b951f6c454d03fe00d1c610c30b8"
+EXPECTED_QUALITY = {
+    "candidate_max_age_hours": 24,
+    "maximum_future_skew_minutes": 5,
+    "minimum_criterion_samples": 50,
+    "maximum_criterion_samples": 10_000,
+    "criterion_confidence_level": 0.95,
+    "maximum_latency_interval_percent": 10.0,
+    "maximum_memory_interval_percent": 100.0,
+}
+EXPECTED_POLICY_SHA256 = "b0b54438f9813e8e85d3b21d0427287a4c703964401572d6b90032dfb01a2f2a"
 MAX_REPORT_BYTES = EXPECTED_LIMITS["max_report_bytes"]
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 METRIC_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/@+-]*(?:/[A-Za-z0-9._@+-]+)*$")
+OPERATOR_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}$")
+ABSOLUTE_PATH_RE = re.compile(r"(?:^[A-Za-z]:[\\/]|^/|^\\\\|[\\/]Users[\\/]|[\\/]home[\\/])")
+SECRET_RE = re.compile(r"(?:-----BEGIN|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,})")
 
 
 class AssuranceError(ValueError):
@@ -94,31 +111,54 @@ def _canonical(value: object) -> bytes:
     ).encode("utf-8")
 
 
+def _is_link_or_reparse(info: os.stat_result) -> bool:
+    attributes = getattr(info, "st_file_attributes", 0)
+    reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return stat.S_ISLNK(info.st_mode) or bool(attributes & reparse)
+
+
 def read_json(path: Path, maximum_bytes: int, label: str) -> Any:
+    descriptor: int | None = None
     try:
         before = path.lstat()
+        if _is_link_or_reparse(before) or not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise AssuranceError(f"{label} must be one non-linked regular file")
+        if before.st_size <= 0 or before.st_size > maximum_bytes:
+            raise AssuranceError(f"{label} size is outside 1..{maximum_bytes} bytes")
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+        opened = os.fstat(descriptor)
+        if (
+            _is_link_or_reparse(opened)
+            or not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or (opened.st_dev, opened.st_ino, opened.st_size)
+            != (before.st_dev, before.st_ino, before.st_size)
+        ):
+            raise AssuranceError(f"{label} changed or resolved through a link while opening")
+        payload = bytearray()
+        while len(payload) <= maximum_bytes:
+            chunk = os.read(descriptor, min(65_536, maximum_bytes + 1 - len(payload)))
+            if not chunk:
+                break
+            payload.extend(chunk)
+        after = os.fstat(descriptor)
+        if (
+            (after.st_dev, after.st_ino, after.st_size)
+            != (opened.st_dev, opened.st_ino, opened.st_size)
+            or len(payload) != opened.st_size
+            or len(payload) > maximum_bytes
+        ):
+            raise AssuranceError(f"{label} changed or grew while it was read")
+    except AssuranceError:
+        raise
     except OSError as error:
-        raise AssuranceError(f"could not inspect {label}: {error}") from error
-    if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
-        raise AssuranceError(f"{label} must be one regular non-symlinked file")
-    if before.st_size <= 0 or before.st_size > maximum_bytes:
-        raise AssuranceError(f"{label} size is outside 1..{maximum_bytes} bytes")
+        raise AssuranceError(f"could not read {label}") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
     try:
-        with path.open("rb") as source:
-            payload = source.read(maximum_bytes + 1)
-            after = os.fstat(source.fileno())
-    except OSError as error:
-        raise AssuranceError(f"could not read {label}: {error}") from error
-    if len(payload) > maximum_bytes:
-        raise AssuranceError(f"{label} size exceeds {maximum_bytes} bytes")
-    if (before.st_dev, before.st_ino, before.st_size) != (
-        after.st_dev,
-        after.st_ino,
-        after.st_size,
-    ):
-        raise AssuranceError(f"{label} changed while it was read")
-    try:
-        return json.loads(payload.decode("utf-8"), object_pairs_hook=_duplicate_object)
+        return json.loads(bytes(payload).decode("utf-8"), object_pairs_hook=_duplicate_object)
     except (UnicodeError, json.JSONDecodeError) as error:
         raise AssuranceError(f"{label} is not strict UTF-8 JSON: {error}") from error
 
@@ -139,6 +179,35 @@ def _bounded_text(value: object, maximum_bytes: int, label: str) -> str:
         or any(unicodedata.category(char) in {"Cc", "Cs"} for char in value)
     ):
         raise AssuranceError(f"{label} is empty, oversized, or contains controls")
+    return value
+
+
+def _operator(value: object, label: str) -> str:
+    text = _bounded_text(value, 128, label)
+    if OPERATOR_RE.fullmatch(text) is None:
+        raise AssuranceError(f"{label} must be a portable operator identity")
+    return text
+
+
+def _portable_metadata(value: object, maximum_bytes: int, label: str) -> str:
+    text = _bounded_text(value, maximum_bytes, label)
+    try:
+        encoded = text.encode("ascii")
+    except UnicodeEncodeError as error:
+        raise AssuranceError(f"{label} metadata must be portable ASCII") from error
+    if (
+        len(encoded) > maximum_bytes
+        or ABSOLUTE_PATH_RE.search(text) is not None
+        or SECRET_RE.search(text) is not None
+        or "\\" in text
+    ):
+        raise AssuranceError(f"{label} metadata contains a path or credential pattern")
+    return text
+
+
+def _sha256(value: object, label: str) -> str:
+    if not isinstance(value, str) or DIGEST_RE.fullmatch(value) is None:
+        raise AssuranceError(f"{label} must be one lowercase SHA-256 digest")
     return value
 
 
@@ -165,6 +234,84 @@ def _digest(value: object) -> str:
     return hashlib.sha256(_canonical(value)).hexdigest()
 
 
+def validate_source_state(current_commit: str, dirty: bool, expected_commit: str) -> None:
+    _commit(current_commit, "current source commit")
+    _commit(expected_commit, "expected source commit")
+    if current_commit != expected_commit:
+        raise AssuranceError("S2 evidence is not bound to the expected source commit")
+    if dirty:
+        raise AssuranceError("S2 evidence cannot be produced from a dirty tracked source tree")
+
+
+def current_source_state(root: Path = ROOT) -> tuple[str, bool]:
+    try:
+        commit_result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        unstaged = subprocess.run(
+            ["git", "diff", "--quiet", "--ignore-submodules", "--"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            timeout=15,
+        )
+        staged = subprocess.run(
+            ["git", "diff", "--cached", "--quiet", "--ignore-submodules", "--"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise AssuranceError("current S2 source state is unavailable") from error
+    commit = commit_result.stdout.strip()
+    if commit_result.returncode != 0 or COMMIT_RE.fullmatch(commit) is None:
+        raise AssuranceError("current S2 source commit is unavailable")
+    if unstaged.returncode not in {0, 1} or staged.returncode not in {0, 1}:
+        raise AssuranceError("current S2 tracked-tree state is unavailable")
+    return commit, unstaged.returncode == 1 or staged.returncode == 1
+
+
+def require_clean_source(expected_commit: str, root: Path = ROOT) -> None:
+    current, dirty = current_source_state(root)
+    validate_source_state(current, dirty, expected_commit)
+
+
+def validate_candidate_context(
+    candidate: dict[str, Any],
+    policy: dict[str, Any],
+    *,
+    expected_commit: str,
+    now: dt.datetime,
+) -> None:
+    if candidate["commit"] != _commit(expected_commit, "expected source commit"):
+        raise AssuranceError("candidate evidence does not match the expected source commit")
+    measured = _utc(candidate["measured_at_utc"], "candidate measurement time")
+    future_skew = dt.timedelta(minutes=policy["quality"]["maximum_future_skew_minutes"])
+    maximum_age = dt.timedelta(hours=policy["quality"]["candidate_max_age_hours"])
+    if measured > now + future_skew:
+        raise AssuranceError("candidate evidence is future-dated")
+    if now - measured > maximum_age:
+        raise AssuranceError("candidate evidence is stale")
+
+
+def validate_active_baseline_context(
+    baseline: dict[str, Any], policy: dict[str, Any], *, now: dt.datetime
+) -> None:
+    if baseline["status"] != "active":
+        raise AssuranceError("performance baseline is not active")
+    accepted_at = _utc(baseline["accepted"]["at_utc"], "baseline acceptance time")
+    if accepted_at > now + dt.timedelta(
+        minutes=policy["quality"]["maximum_future_skew_minutes"]
+    ):
+        raise AssuranceError("baseline acceptance is future-dated")
+
+
 def policy_digest(policy: dict[str, Any]) -> str:
     validate_policy(policy)
     return _digest(policy)
@@ -182,6 +329,7 @@ def validate_policy(value: object) -> dict[str, Any]:
             "phase",
             "status",
             "thresholds",
+            "quality",
             "required_claims",
             "comparability_fields",
             "criterion_claim_rules",
@@ -199,6 +347,8 @@ def validate_policy(value: object) -> dict[str, Any]:
         raise AssuranceError("repository performance policy must remain collecting")
     if policy["thresholds"] != EXPECTED_THRESHOLDS:
         raise AssuranceError("5% latency or 10% memory threshold changed")
+    if policy["quality"] != EXPECTED_QUALITY:
+        raise AssuranceError("performance evidence quality contract changed")
     if policy["required_claims"] != EXPECTED_REQUIRED_CLAIMS:
         raise AssuranceError("required performance claims changed")
     if policy["comparability_fields"] != EXPECTED_COMPARABILITY_FIELDS:
@@ -208,6 +358,7 @@ def validate_policy(value: object) -> dict[str, Any]:
     if policy["baseline"] != {
         "minimum_consecutive_days": 30,
         "maximum_days": 90,
+        "maximum_acceptance_delay_days": 7,
         "minimum_metrics_per_claim": 1,
     }:
         raise AssuranceError("30-day baseline eligibility changed")
@@ -215,6 +366,7 @@ def validate_policy(value: object) -> dict[str, Any]:
         "maximum_duration_days": 30,
         "maximum_reason_bytes": 512,
         "https_review_required": True,
+        "independent_approver_required": True,
         "wildcards_forbidden": True,
     }:
         raise AssuranceError("waiver boundary changed")
@@ -233,6 +385,7 @@ def validate_policy(value: object) -> dict[str, Any]:
         raise AssuranceError("performance evidence privacy boundary changed")
     if policy["activation"] != {
         "automatic": False,
+        "independent_review_required": True,
         "requires_reviewed_baseline": True,
         "release_mode": "fail-closed-require-active",
     }:
@@ -261,14 +414,14 @@ def validate_runner(value: object, policy: dict[str, Any]) -> dict[str, str]:
     runner = _exact_keys(value, set(policy["comparability_fields"]), "runner fingerprint")
     maximum = policy["limits"]["max_metadata_value_bytes"]
     for field in policy["comparability_fields"]:
-        _bounded_text(runner[field], maximum, f"runner {field}")
+        _portable_metadata(runner[field], maximum, f"runner {field}")
     return runner
 
 
 def validate_metric(value: object, policy: dict[str, Any], label: str) -> dict[str, Any]:
     metric = _exact_keys(
         value,
-        {"id", "claim", "family", "unit", "point", "lower", "upper"},
+        {"id", "claim", "family", "unit", "point", "lower", "upper", "samples"},
         label,
     )
     metric_id = _bounded_text(
@@ -294,6 +447,26 @@ def validate_metric(value: object, policy: dict[str, Any], label: str) -> dict[s
         values.append(number)
     if not values[0] <= values[1] <= values[2]:
         raise AssuranceError(f"{label} confidence bounds do not contain point")
+    samples = metric["samples"]
+    minimum_samples = (
+        policy["quality"]["minimum_criterion_samples"]
+        if metric["family"] == "latency"
+        else 2
+    )
+    if (
+        isinstance(samples, bool)
+        or not isinstance(samples, int)
+        or not minimum_samples <= samples <= policy["quality"]["maximum_criterion_samples"]
+    ):
+        raise AssuranceError(f"{label} samples are outside the reviewed quality bounds")
+    interval_percent = (values[2] - values[0]) / values[1] * 100.0
+    maximum_interval = policy["quality"][
+        "maximum_latency_interval_percent"
+        if metric["family"] == "latency"
+        else "maximum_memory_interval_percent"
+    ]
+    if interval_percent > maximum_interval + 1e-9:
+        raise AssuranceError(f"{label} confidence interval is too wide")
     return metric
 
 
@@ -317,6 +490,7 @@ def validate_evidence(value: object, policy: dict[str, Any]) -> dict[str, Any]:
             "kind",
             "commit",
             "measured_at_utc",
+            "operator",
             "runner",
             "metrics",
             "unclassified_metrics",
@@ -327,6 +501,7 @@ def validate_evidence(value: object, policy: dict[str, Any]) -> dict[str, Any]:
         raise AssuranceError("candidate evidence schema or kind changed")
     _commit(evidence["commit"], "candidate commit")
     _utc(evidence["measured_at_utc"], "candidate measured_at_utc")
+    _operator(evidence["operator"], "candidate operator")
     validate_runner(evidence["runner"], policy)
     _validate_metrics(evidence["metrics"], policy, "candidate")
     unknown = evidence["unclassified_metrics"]
@@ -335,17 +510,19 @@ def validate_evidence(value: object, policy: dict[str, Any]) -> dict[str, Any]:
     if unknown != sorted(set(unknown)):
         raise AssuranceError("unclassified metrics must be unique and sorted")
     for index, metric_id in enumerate(unknown):
-        _bounded_text(
+        text = _bounded_text(
             metric_id,
             policy["limits"]["max_metric_id_bytes"],
             f"unclassified metric {index}",
         )
+        if METRIC_ID_RE.fullmatch(text) is None or ".." in text:
+            raise AssuranceError("unclassified metric identity is unsafe")
     return evidence
 
 
 def _validate_acceptance(value: object) -> dict[str, Any]:
     accepted = _exact_keys(value, {"by", "at_utc", "review_url"}, "baseline acceptance")
-    _bounded_text(accepted["by"], 128, "baseline approver")
+    _operator(accepted["by"], "baseline approver")
     _utc(accepted["at_utc"], "baseline acceptance time")
     _https_url(accepted["review_url"], "baseline review URL")
     return accepted
@@ -378,17 +555,30 @@ def validate_baseline(
     if baseline["policy_sha256"] != policy_digest(policy):
         raise AssuranceError("active baseline is not bound to the current policy")
     validate_runner(baseline["runner"], policy)
-    _validate_acceptance(baseline["accepted"])
+    accepted = _validate_acceptance(baseline["accepted"])
     days = baseline["days"]
     minimum = policy["baseline"]["minimum_consecutive_days"]
     maximum = policy["baseline"]["maximum_days"]
     if not isinstance(days, list) or not minimum <= len(days) <= maximum:
         raise AssuranceError(f"active baseline requires {minimum} consecutive days")
     parsed_dates: list[dt.date] = []
+    measurements: list[dt.datetime] = []
+    operators: set[str] = set()
     expected_metric_ids: set[str] | None = None
     claims: dict[str, int] = {claim: 0 for claim in policy["required_claims"]}
     for index, raw_day in enumerate(days):
-        day = _exact_keys(raw_day, {"date", "commit", "metrics"}, f"baseline day {index}")
+        day = _exact_keys(
+            raw_day,
+            {
+                "date",
+                "commit",
+                "measured_at_utc",
+                "operator",
+                "evidence_sha256",
+                "metrics",
+            },
+            f"baseline day {index}",
+        )
         try:
             parsed_date = dt.date.fromisoformat(_bounded_text(day["date"], 10, "baseline date"))
         except ValueError as error:
@@ -398,6 +588,12 @@ def validate_baseline(
         parsed_dates.append(parsed_date)
         _commit(day["commit"], f"baseline day {index} commit")
         metrics = _validate_metrics(day["metrics"], policy, f"baseline day {index}")
+        measurement = _utc(day["measured_at_utc"], f"baseline day {index} measurement")
+        if measurement.date() != parsed_date:
+            raise AssuranceError("baseline measurement does not match its UTC date")
+        measurements.append(measurement)
+        operators.add(_operator(day["operator"], f"baseline day {index} operator"))
+        _sha256(day["evidence_sha256"], f"baseline day {index} evidence digest")
         metric_ids = {metric["id"] for metric in metrics}
         if expected_metric_ids is None:
             expected_metric_ids = metric_ids
@@ -416,6 +612,17 @@ def validate_baseline(
     missing = [claim for claim, count in claims.items() if count < minimum_per_claim]
     if missing:
         raise AssuranceError(f"baseline metric set is missing required claims: {', '.join(missing)}")
+    if measurements != sorted(measurements):
+        raise AssuranceError("baseline measurements must be ordered")
+    accepted_at = _utc(accepted["at_utc"], "baseline acceptance time")
+    if accepted["by"].casefold() in {operator.casefold() for operator in operators}:
+        raise AssuranceError("baseline acceptance must be independent from evidence operators")
+    if accepted_at < measurements[-1]:
+        raise AssuranceError("baseline acceptance predates its final measurement")
+    if accepted_at - measurements[-1] > dt.timedelta(
+        days=policy["baseline"]["maximum_acceptance_delay_days"]
+    ):
+        raise AssuranceError("baseline acceptance is too late for the measured evidence")
     return baseline
 
 
@@ -437,8 +644,21 @@ def load_evidence(path: Path, policy: dict[str, Any]) -> dict[str, Any]:
 
 def _https_url(value: object, label: str) -> str:
     text = _bounded_text(value, 512, label)
-    parsed = urlparse(text)
-    if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+    try:
+        encoded = text.encode("ascii")
+        parsed = urlsplit(text)
+        parsed.port
+    except (UnicodeEncodeError, ValueError) as error:
+        raise AssuranceError(f"{label} must be a portable HTTPS URL") from error
+    if (
+        len(encoded) > 512
+        or parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or any(char.isspace() for char in text)
+        or "\\" in text
+    ):
         raise AssuranceError(f"{label} must be an HTTPS URL without credentials")
     return text
 
@@ -449,6 +669,7 @@ def _validate_waiver(
     *,
     metric_id: str,
     candidate_commit: str,
+    candidate_operator: str,
     accepted_baseline_sha256: str,
     regression_percent: float,
     now: dt.datetime,
@@ -484,7 +705,9 @@ def _validate_waiver(
         waiver["reason"], policy["waivers"]["maximum_reason_bytes"], "waiver reason"
     )
     _https_url(waiver["review_url"], "waiver review URL")
-    _bounded_text(waiver["approved_by"], 128, "waiver approver")
+    approver = _operator(waiver["approved_by"], "waiver approver")
+    if approver.casefold() == candidate_operator.casefold():
+        raise AssuranceError("performance waiver approval must be independent from the operator")
     approved = _utc(waiver["approved_at_utc"], "waiver approval time")
     expires = _utc(waiver["expires_at_utc"], "waiver expiry time")
     if approved > now:
@@ -537,7 +760,7 @@ def _validate_waiver_document(value: object, policy: dict[str, Any]) -> list[dic
             "waiver reason",
         )
         _https_url(waiver["review_url"], "waiver review URL")
-        _bounded_text(waiver["approved_by"], 128, "waiver approver")
+        _operator(waiver["approved_by"], "waiver approver")
         _utc(waiver["approved_at_utc"], "waiver approval time")
         _utc(waiver["expires_at_utc"], "waiver expiry time")
     return document["waivers"]
@@ -557,10 +780,14 @@ def evaluate(
     *,
     now: dt.datetime,
     require_active: bool,
+    expected_commit: str,
 ) -> dict[str, Any]:
     validate_policy(policy)
     validate_baseline(baseline, policy, require_active=require_active)
     validate_evidence(candidate, policy)
+    validate_candidate_context(
+        candidate, policy, expected_commit=expected_commit, now=now
+    )
     waiver_values = _validate_waiver_document(waiver_document, policy)
     if baseline["status"] != "active":
         return {
@@ -582,7 +809,7 @@ def evaluate(
         raise AssuranceError("candidate runner fingerprint does not match accepted baseline")
     if candidate["unclassified_metrics"]:
         raise AssuranceError("candidate contains unclassified metrics")
-
+    validate_active_baseline_context(baseline, policy, now=now)
     daily_by_id: dict[str, list[float]] = {}
     baseline_metadata: dict[str, tuple[str, str, str]] = {}
     for day in baseline["days"]:
@@ -627,6 +854,7 @@ def evaluate(
                     policy,
                     metric_id=metric_id,
                     candidate_commit=candidate["commit"],
+                    candidate_operator=candidate["operator"],
                     accepted_baseline_sha256=accepted_sha256,
                     regression_percent=change,
                     now=now,
@@ -659,6 +887,9 @@ def evaluate(
                 "unit": unit,
                 "baseline_point": baseline_point,
                 "candidate_point": candidate_point,
+                "candidate_lower": float(candidate_metric["lower"]),
+                "candidate_upper": float(candidate_metric["upper"]),
+                "samples": candidate_metric["samples"],
                 "change_percent": round(change, 6),
                 "allowed_percent": allowed,
                 "verdict": verdict,
@@ -717,6 +948,9 @@ def build_baseline(
                 .date()
                 .isoformat(),
                 "commit": item["commit"],
+                "measured_at_utc": item["measured_at_utc"],
+                "operator": item["operator"],
+                "evidence_sha256": _digest(item),
                 "metrics": item["metrics"],
             }
             for item in validated
@@ -731,6 +965,21 @@ def write_document(path: Path, document: dict[str, Any], maximum_bytes: int) -> 
     if len(payload) > maximum_bytes:
         raise AssuranceError(f"performance document exceeds {maximum_bytes} bytes")
     path.parent.mkdir(parents=True, exist_ok=True)
+    cursor = path.parent
+    while True:
+        try:
+            info = cursor.lstat()
+        except OSError as error:
+            raise AssuranceError("performance output parent is unavailable") from error
+        if _is_link_or_reparse(info) or not stat.S_ISDIR(info.st_mode):
+            raise AssuranceError("performance output parent must not traverse a link")
+        if cursor == cursor.parent:
+            break
+        cursor = cursor.parent
+    if path.exists() or path.is_symlink():
+        info = path.lstat()
+        if _is_link_or_reparse(info) or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise AssuranceError("performance output must not replace a linked file")
     temporary: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -767,6 +1016,8 @@ def _criterion_estimate(document: object, label: str) -> tuple[float, float, flo
     interval = estimate.get("confidence_interval")
     if not isinstance(interval, dict):
         raise AssuranceError(f"{label} lacks a confidence interval")
+    if interval.get("confidence_level") != EXPECTED_QUALITY["criterion_confidence_level"]:
+        raise AssuranceError(f"{label} confidence level changed")
     raw_values = (
         interval.get("lower_bound"),
         estimate.get("point_estimate"),
@@ -784,27 +1035,100 @@ def _criterion_estimate(document: object, label: str) -> tuple[float, float, flo
         raise AssuranceError(f"{label} confidence interval is invalid")
     return values[0], values[1], values[2]
 
+def _criterion_sample_count(path: Path, policy: dict[str, Any], label: str) -> int:
+    sample = read_json(
+        path,
+        policy["limits"]["max_criterion_sample_file_bytes"],
+        f"{label} samples",
+    )
+    sample = _exact_keys(sample, {"sampling_mode", "iters", "times"}, f"{label} samples")
+    if sample["sampling_mode"] not in {"Linear", "Flat"}:
+        raise AssuranceError(f"{label} sampling mode is unsupported")
+    iterations = sample["iters"]
+    times = sample["times"]
+    minimum = policy["quality"]["minimum_criterion_samples"]
+    maximum = policy["quality"]["maximum_criterion_samples"]
+    if (
+        not isinstance(iterations, list)
+        or not isinstance(times, list)
+        or len(iterations) != len(times)
+        or not minimum <= len(iterations) <= maximum
+    ):
+        raise AssuranceError(f"{label} samples are outside {minimum}..{maximum}")
+    for raw in (*iterations, *times):
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            raise AssuranceError(f"{label} samples must be numeric")
+        number = float(raw)
+        if not math.isfinite(number) or number <= 0:
+            raise AssuranceError(f"{label} samples must be finite and positive")
+    return len(iterations)
+
+
+def _discover_criterion_results(
+    criterion_root: Path, policy: dict[str, Any]
+) -> list[Path]:
+    try:
+        root_info = criterion_root.lstat()
+    except OSError as error:
+        raise AssuranceError("could not inspect Criterion root") from error
+    if _is_link_or_reparse(root_info) or not stat.S_ISDIR(root_info.st_mode):
+        raise AssuranceError("Criterion root must be one non-symlinked directory")
+    maximum_entries = policy["limits"]["max_criterion_entries"]
+    maximum_depth = policy["limits"]["max_criterion_depth"]
+    entries = 0
+    results: list[Path] = []
+    stack: list[tuple[Path, int]] = [(criterion_root, 0)]
+    while stack:
+        directory, depth = stack.pop()
+        if depth > maximum_depth:
+            raise AssuranceError("Criterion result tree exceeds the reviewed depth")
+        try:
+            directory_info = directory.lstat()
+        except OSError as error:
+            raise AssuranceError("could not inspect Criterion directory") from error
+        if _is_link_or_reparse(directory_info) or not stat.S_ISDIR(directory_info.st_mode):
+            raise AssuranceError("Criterion result tree contains a linked directory")
+        try:
+            with os.scandir(directory) as children:
+                for child in children:
+                    entries += 1
+                    if entries > maximum_entries:
+                        raise AssuranceError("Criterion result tree exceeds the entry ceiling")
+                    child_info = child.stat(follow_symlinks=False)
+                    if _is_link_or_reparse(child_info) or child.is_symlink():
+                        raise AssuranceError("Criterion result tree contains a link")
+                    child_path = Path(child.path)
+                    if child.is_dir(follow_symlinks=False):
+                        stack.append((child_path, depth + 1))
+                    elif child.is_file(follow_symlinks=False):
+                        if child.name == "estimates.json" and child_path.parent.name == "new":
+                            results.append(child_path)
+                    else:
+                        raise AssuranceError("Criterion result tree contains a special file")
+        except AssuranceError:
+            raise
+        except OSError as error:
+            raise AssuranceError("could not traverse Criterion results") from error
+    results.sort()
+    if not results or len(results) > policy["limits"]["max_metrics"]:
+        raise AssuranceError("Criterion result count is outside bounds")
+    return results
+
 
 def collect_criterion(
     criterion_root: Path,
     runner: dict[str, str],
     commit: str,
     measured_at_utc: str,
+    operator: str,
     policy: dict[str, Any],
 ) -> dict[str, Any]:
     validate_policy(policy)
     validate_runner(runner, policy)
     _commit(commit)
     _utc(measured_at_utc, "measurement time")
-    try:
-        root_info = criterion_root.lstat()
-    except OSError as error:
-        raise AssuranceError(f"could not inspect Criterion root: {error}") from error
-    if stat.S_ISLNK(root_info.st_mode) or not stat.S_ISDIR(root_info.st_mode):
-        raise AssuranceError("Criterion root must be one non-symlinked directory")
-    paths = sorted(criterion_root.glob("**/new/estimates.json"))
-    if not paths or len(paths) > policy["limits"]["max_metrics"]:
-        raise AssuranceError("Criterion result count is outside bounds")
+    _operator(operator, "candidate operator")
+    paths = _discover_criterion_results(criterion_root, policy)
     metrics: list[dict[str, Any]] = []
     unclassified: list[str] = []
     for path in paths:
@@ -818,6 +1142,7 @@ def collect_criterion(
             f"Criterion result {relative}",
         )
         lower, point, upper = _criterion_estimate(document, f"Criterion result {relative}")
+        samples = _criterion_sample_count(path.with_name("sample.json"), policy, f"Criterion result {relative}")
         claim = _classify(relative, policy)
         if claim is None:
             unclassified.append(relative)
@@ -831,6 +1156,7 @@ def collect_criterion(
                 "point": point,
                 "lower": lower,
                 "upper": upper,
+                "samples": samples,
             }
         )
     metrics.sort(key=lambda item: item["id"])
@@ -842,6 +1168,7 @@ def collect_criterion(
         "kind": "candidate",
         "commit": commit,
         "measured_at_utc": measured_at_utc,
+        "operator": operator,
         "runner": runner,
         "metrics": metrics,
         "unclassified_metrics": unclassified,
@@ -854,12 +1181,14 @@ def collect_native_resource(
     runner: dict[str, str],
     commit: str,
     measured_at_utc: str,
+    operator: str,
     policy: dict[str, Any],
 ) -> dict[str, Any]:
     validate_policy(policy)
     validate_runner(runner, policy)
     _commit(commit)
     _utc(measured_at_utc, "measurement time")
+    _operator(operator, "candidate operator")
     document = read_json(
         report_path,
         policy["limits"]["max_evidence_bytes"],
@@ -922,6 +1251,7 @@ def collect_native_resource(
                 "point": final,
                 "lower": min(baseline, final),
                 "upper": max(baseline, final),
+                "samples": 2,
             }
         )
     evidence = {
@@ -929,6 +1259,7 @@ def collect_native_resource(
         "kind": "candidate",
         "commit": commit,
         "measured_at_utc": measured_at_utc,
+        "operator": operator,
         "runner": runner,
         "metrics": metrics,
         "unclassified_metrics": [],
@@ -948,6 +1279,7 @@ def merge_candidate_evidence(
     identity = {
         "commit": primary["commit"],
         "measured_at_utc": primary["measured_at_utc"],
+        "operator": primary["operator"],
         "runner": primary["runner"],
     }
     for index, evidence in enumerate(supplemental):
@@ -987,6 +1319,7 @@ def _parser() -> argparse.ArgumentParser:
     collect.add_argument("--criterion-root", type=Path, required=True)
     collect.add_argument("--output", type=Path, required=True)
     collect.add_argument("--commit", required=True)
+    collect.add_argument("--operator", required=True)
     collect.add_argument("--measured-at-utc", required=True)
     collect.add_argument("--supplemental", type=Path, action="append", default=[])
     collect.add_argument("--require-classified", action="store_true")
@@ -997,6 +1330,7 @@ def _parser() -> argparse.ArgumentParser:
     native.add_argument("--report", type=Path, required=True)
     native.add_argument("--output", type=Path, required=True)
     native.add_argument("--commit", required=True)
+    native.add_argument("--operator", required=True)
     native.add_argument("--measured-at-utc", required=True)
     for field in EXPECTED_COMPARABILITY_FIELDS:
         native.add_argument(f"--{field.replace('_', '-')}", dest=field, required=True)
@@ -1007,13 +1341,20 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("--accepted-at-utc", required=True)
     build.add_argument("--review-url", required=True)
     build.add_argument("--output", type=Path, required=True)
+    build.add_argument("--expected-source-commit", required=True)
 
     compare = subcommands.add_parser("evaluate")
     compare.add_argument("--candidate", type=Path, required=True)
     compare.add_argument("--baseline", type=Path, default=BASELINE_PATH)
     compare.add_argument("--waivers", type=Path, default=WAIVERS_PATH)
     compare.add_argument("--output", type=Path, required=True)
+    compare.add_argument("--expected-commit", required=True)
     compare.add_argument("--require-active", action="store_true")
+
+    validate = subcommands.add_parser("validate-baseline")
+    validate.add_argument("--baseline", type=Path, default=BASELINE_PATH)
+    validate.add_argument("--expected-source-commit", required=True)
+    validate.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -1030,11 +1371,13 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         if args.command == "collect-criterion":
+            require_clean_source(args.commit)
             evidence = collect_criterion(
                 args.criterion_root,
                 _runner_from_args(args),
                 args.commit,
                 args.measured_at_utc,
+                args.operator,
                 policy,
             )
             supplemental = [load_evidence(path, policy) for path in args.supplemental]
@@ -1048,17 +1391,20 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         if args.command == "collect-native-resource":
+            require_clean_source(args.commit)
             evidence = collect_native_resource(
                 args.report,
                 _runner_from_args(args),
                 args.commit,
                 args.measured_at_utc,
+                args.operator,
                 policy,
             )
             write_report(args.output, evidence)
             print(f"PASS: normalized {len(evidence['metrics'])} native memory metrics")
             return 0
         if args.command == "build-baseline":
+            require_clean_source(args.expected_source_commit)
             evidences = [load_evidence(path, policy) for path in args.evidence]
             baseline = build_baseline(
                 evidences,
@@ -1072,7 +1418,31 @@ def main(argv: list[str] | None = None) -> int:
             write_document(args.output, baseline, policy["limits"]["max_baseline_bytes"])
             print(f"PASS: built reviewed active baseline from {len(baseline['days'])} days")
             return 0
+        if args.command == "validate-baseline":
+            require_clean_source(args.expected_source_commit)
+            baseline = load_baseline(args.baseline, policy, require_active=True)
+            validate_active_baseline_context(
+                baseline, policy, now=dt.datetime.now(dt.timezone.utc)
+            )
+            digest = baseline_digest(baseline)
+            write_report(
+                args.output,
+                {
+                    "schema": 1,
+                    "status": "active",
+                    "source_commit": args.expected_source_commit,
+                    "baseline_sha256": digest,
+                    "days": len(baseline["days"]),
+                    "accepted": baseline["accepted"],
+                },
+            )
+            print(
+                f"PASS: active S2 baseline has {len(baseline['days'])} reviewed days "
+                f"and digest {digest}"
+            )
+            return 0
         if args.command == "evaluate":
+            require_clean_source(args.expected_commit)
             baseline = load_baseline(args.baseline, policy, require_active=args.require_active)
             candidate = load_evidence(args.candidate, policy)
             waivers = load_waivers(args.waivers, policy)
@@ -1083,6 +1453,7 @@ def main(argv: list[str] | None = None) -> int:
                 waivers,
                 now=dt.datetime.now(dt.timezone.utc),
                 require_active=args.require_active,
+                expected_commit=args.expected_commit,
             )
             write_report(args.output, report)
             print(

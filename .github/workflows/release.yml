@@ -89,6 +89,7 @@ jobs:
             --report target/performance/native-resource.json `
             --output target/performance/native-memory.json `
             --commit $env:GITHUB_SHA `
+            --operator $env:GITHUB_ACTOR `
             --measured-at-utc $measuredAt @runner
           if ($LASTEXITCODE -ne 0) { throw 'native memory normalization failed' }
           & python tools/ci/performance_assurance.py collect-criterion `
@@ -96,11 +97,13 @@ jobs:
             --supplemental target/performance/native-memory.json `
             --output target/performance/candidate.json `
             --commit $env:GITHUB_SHA `
+            --operator $env:GITHUB_ACTOR `
             --measured-at-utc $measuredAt `
             --require-classified @runner
           if ($LASTEXITCODE -ne 0) { throw 'performance evidence composition failed' }
           & python tools/ci/performance_assurance.py evaluate `
             --candidate target/performance/candidate.json `
+            --expected-commit $env:GITHUB_SHA `
             --output target/performance/comparison.json `
             --require-active
           if ($LASTEXITCODE -ne 0) { throw 'active S2 ratchet rejected this release' }

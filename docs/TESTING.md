@@ -950,14 +950,14 @@ python tools/ci/performance_assurance.py check-policy
 python tools/ci/test_performance_assurance.py
 ```
 
-The bounded normalizer rejects symlinks, duplicate keys/metrics, unknown or
-non-finite values, mismatched run identity, and unclassified release metrics.
-`build-baseline` requires 30-90 consecutive complete same-runner days plus an
-HTTPS-linked maintainer acceptance. `evaluate --require-active` is already in
-tagged release preflight: above 5% latency or 10% memory fails unless one exact
-commit/baseline/metric waiver is reviewed, bounded, and unexpired. The checked-in
-baseline remains `collecting`, so release remains blocked pending elapsed
-controlled evidence.
+Bounded no-follow normalization rejects linked/changed files, unsafe metadata,
+weak samples, dirty/mismatched source, stale/future evidence, and unknown metrics.
+`build-baseline` needs 30-90 same-runner days with operator/digest traceability
+and independent HTTPS review. Protected activation checks clean source. Tagged
+`evaluate --require-active --expected-commit` fails
+above 5% latency or 10% memory except for an exact temporary waiver. The
+checked-in baseline remains `collecting`; see the
+[S2 completion audit](research/S2-RELEASE-RATCHET-COMPLETION-AUDIT.md).
 
 For a focused optimized measurement of the most common unchanged-frame fast
 path, run:

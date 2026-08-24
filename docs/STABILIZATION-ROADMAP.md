@@ -488,13 +488,19 @@ regression or correctness failure appears. After the baseline period:
 - native nightly results inform the release gate; deterministic correctness
   tests remain mandatory on pull requests.
 
-Current source status: **Partially done / collecting.** Policy, normalization,
-composition, 30-day builder, exact expiring waivers, mutation tests, 90-day
-retention, and fail-closed release enforcement are implemented. The repository
-baseline deliberately remains `collecting`; it cannot become active until 30
-consecutive complete same-runner days and an HTTPS-linked maintainer review are
-supplied. That elapsed controlled evidence is an external gate, not a local
-source task.
+Current implementation status: **Fully done; release evidence collecting.** Policy, normalization,
+composition, clean exact-commit and operator binding, repeated-sample and 95%
+confidence quality, 30-day builder, independent acceptance/waiver review,
+mutation tests, 90-day retention, protected activation validation, and
+fail-closed release enforcement are fully implemented in source and automation.
+Evidence reads and writes are bounded, no-follow, identity stable, and linked-
+file rejecting; candidate freshness and baseline review times fail closed. The
+repository baseline deliberately remains `collecting`; it cannot become active
+until 30 consecutive complete same-runner days and an HTTPS-linked independent
+review are supplied through the `stable-release` environment. That elapsed
+controlled evidence is an external gate, not a local source task. The exact
+implementation and activation ledger is in the
+[S2 completion audit](research/S2-RELEASE-RATCHET-COMPLETION-AUDIT.md).
 
 ## v0.5 assurance maturation
 
