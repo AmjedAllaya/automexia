@@ -76,7 +76,8 @@
       "Nightly depth",
       "Release Drafter",
       "Stable release",
-      "S1 controlled assurance"
+      "S1 controlled assurance",
+      "S2 controlled activation"
     ],
     "success_recency_days": 7
   },

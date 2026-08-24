@@ -161,6 +161,7 @@ jobs:
             --output target/performance/candidate-linux.json \
             --commit "$GITHUB_SHA" \
             --measured-at-utc "$measured_at" \
+            --operator "$GITHUB_ACTOR" \
             --runner-class "${{ vars.AUTOMEXIA_PERFORMANCE_RUNNER_CLASS }}" \
             --os linux \
             --arch x86_64 \
@@ -221,6 +222,7 @@ jobs:
             --report target/performance/native-resource.json `
             --output target/performance/native-memory.json `
             --commit $env:GITHUB_SHA `
+            --operator $env:GITHUB_ACTOR `
             --measured-at-utc $measuredAt @runner
           if ($LASTEXITCODE -ne 0) { throw 'native memory normalization failed' }
           & python tools/ci/performance_assurance.py collect-criterion `
@@ -228,11 +230,13 @@ jobs:
             --supplemental target/performance/native-memory.json `
             --output target/performance/candidate-windows.json `
             --commit $env:GITHUB_SHA `
+            --operator $env:GITHUB_ACTOR `
             --measured-at-utc $measuredAt `
             --require-classified @runner
           if ($LASTEXITCODE -ne 0) { throw 'performance evidence composition failed' }
           & python tools/ci/performance_assurance.py evaluate `
             --candidate target/performance/candidate-windows.json `
+            --expected-commit $env:GITHUB_SHA `
             --output target/performance/comparison-windows.json
           if ($LASTEXITCODE -ne 0) { throw 'performance comparison failed' }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

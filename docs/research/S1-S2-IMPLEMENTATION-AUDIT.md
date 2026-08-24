@@ -12,6 +12,9 @@ reported as passing from this Windows checkout.
 > describes the earlier S1/S2 pass. Current S1 status and exact external gates
 > are authoritative in
 > [S1 native, visual, resource, and accessibility audit](S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AUDIT.md).
+> Current S2 source status, threat model, operator flow, and external activation
+> gates are authoritative in the
+> [S2 release-ratchet completion audit](S2-RELEASE-RATCHET-COMPLETION-AUDIT.md).
 
 ## Scope and authority
 
@@ -158,7 +161,7 @@ boundary without changing ordinary terminal behavior or persisted user state.
 | S1.6 QA orchestration | **Source tooling fully done** | S2 policy/mutation checks join bounded QA; benchmark targets are unique per run | Retained bundles on every release host |
 | S1.7 models/strength | **Partially done** | Resize property model plus bounded generation-aware atomic publisher | Long corpora, branch/region baseline, mutation/vet governance |
 | S1.8 measurement | **Partially done / collecting** | Classified Criterion/native-memory composition, exact runner identity, path-free reports, 90-day retention | Thirty complete controlled Windows runs |
-| S2 enforcement | **Partially done / collecting** | Digest-frozen 5%/10% policy, baseline builder, exact expiring waivers, fail-closed tagged-release job | Reviewed activation of the externally collected 30-day baseline |
+| S2 enforcement | **Source and automation fully done; release evidence collecting** | Digest-frozen 5%/10% policy, bounded sample quality, clean exact-source/operator binding, independent baseline/waiver review, protected activation validation, and fail-closed tagged-release job | Provisioned controlled runner plus reviewed activation of the externally collected 30-day baseline |
 
 The `collecting` fixture is intentional. Source implementation is present, but
 no generated or local evidence was substituted for elapsed controlled time,
