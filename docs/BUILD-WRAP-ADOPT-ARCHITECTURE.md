@@ -122,6 +122,10 @@ or accessibility platform adapter.
 | Quick Actions and aliases | Typed model with native shell projections | Build | Core productivity model plus first-party packs |
 | Completion | PSReadLine/Readline/ZLE/Fish ownership; optional Carapace | Hybrid | Core static registry, shell adapters, optional external bridge |
 | Workspaces | Existing panes, pane tabs, and layout | Build | Core |
+| Embedded file editing | CodeMirror 6; Monaco retained as the measured desktop comparison | Adopt conditionally after AS0 | Optional first-party Automation Studio behind a core document/surface boundary |
+| Native editor surface | Wry over system webviews; platform-specific Linux adapter if required | Conditional after native proof | Core platform adapter; one host per top-level window initially |
+| Language intelligence | LSP 3.18 with installed supported servers | Adopt protocol / wrap tools | Core language broker plus independently enabled first-party add-ons |
+| Debugging | Debug Adapter Protocol and installed adapters | Defer | AS6 only after a separate authority/threat ADR |
 | Session logs | Bounded chunks plus SQLite/FTS metadata | Hybrid | Core contracts; storage worker behind a protected milestone |
 | Team inventory | Git-transported non-secret state and semantic review | Hybrid | First-party team extension through core broker |
 | Local policy | Rust invariants first; Cedar later | Hybrid | Core invariants; optional policy adapter |
@@ -415,6 +419,50 @@ A native protocol is allowed only after peer identity, encryption, replay
 protection, ordering, rate/queue limits, malicious-peer tests, independent
 security review, and incident response are funded and accepted.
 
+### Automation Studio, language tools, and DevOps/SRE integration
+
+The proposed [Automation Studio architecture](AUTOMATION-STUDIO-ARCHITECTURE.md)
+uses a separate optional first-party foundation extension for files, diff and
+diagnostics presentation. The DevOps/SRE extension remains independently useful
+from the terminal and contributes only bounded domain templates, public
+target/risk context, plans, and typed run intents. A metadata-only Pack selects
+compatible packages without gaining authority.
+
+Core builds the reusable authority brokers: canonical documents and atomic
+recovery, workspace trust, native editor-surface lifecycle, typed webview IPC,
+bounded LSP mediation, existing exact-argv process/session ownership, opaque
+credential references, and redacted receipts. Studio, DevOps/SRE, and language
+add-ons never receive direct file, process, network, credential, provider,
+window, renderer, accessibility-platform, or PTY handles.
+
+CodeMirror 6 is the recommended first editor proof because its modular MIT
+state/view model and mobile support fit an optional lightweight surface. Monaco
+remains a serious desktop comparison, not the default, because its official
+mobile support is absent and its service/worker surface is wider. Wry is a host
+candidate, not an approved dependency: Windows, macOS, Linux X11, and Linux
+Wayland/GTK must pass real focus, IME, scaling, accessibility, GPU, packaging,
+crash, and cleanup evidence on Automexia's current window stack.
+
+Language features adopt LSP rather than editor-specific providers. Add-ons
+declare exact server/tool descriptors and supported versions; the core broker
+owns spawn, JSON-RPC framing, workspace trust, limits, cancellation, stale
+rejection, and mediation of edits/commands/configuration. DAP is deferred because
+debug attachment, evaluation, consoles, ports, and child execution widen
+authority.
+
+Script/tool execution extends the one ExternalToolRunner with a typed saved-
+revision intent. It binds executable identity/version, exact argv, cwd,
+Environment Capsule, target, opaque secret references, operation/risk, limits,
+review/plan generation, capability, and expiry. It never builds a shell command,
+types into an existing PTY, or presses Enter.
+
+The runner supervises but does not automatically sandbox an installed process.
+Exact executable/argv/cwd/environment, deadlines, output ceilings, cancellation,
+and descendant cleanup constrain Automexia's use of the process; they do not by
+themselves remove the operating-system account's file or network authority. Any
+stronger confinement claim requires separately reviewed native/container
+sandbox evidence and an explicit fallback when that profile is unavailable.
+
 ### Extension sandbox
 
 Trusted first-party modules continue to use the typed extension API and bounded
@@ -460,8 +508,9 @@ dependencies or product behavior.
 | **Near-term reviewed slices** | `clap_complete`, `clap_mangen`, `schemars`; AccessKit platform adapters; `nucleo` only after matcher benchmark; ExternalToolRunner contract | Safe SSH/provider parsers and exact request adapters | OpenSSH and official provider CLIs remain installed authorities |
 | **Protected credential slice** | Opaque reference/state models | Exact `keyring-core` stores plus `secrecy`/`zeroize` only if an ADR proves custody unavoidable | Agents, FIDO, Teleport, OpenBao, Smallstep, and external vaults remain primary |
 | **Protected feature milestones** | `rusqlite` storage worker; Cedar local-policy adapter | `openssh-sftp-client`, `serialport`, direct provider SDKs only after feature-specific proof | Mosh, Git, SOPS/age, Upterm, tmux/Zellij, rclone/rsync remain external |
-| **D7 ecosystem** | WIT/capability model and host broker | Wasmtime/WASI sandboxed third-party components | AI inference and collaboration relay remain user/organization owned |
-| **Deferred/rejected** | None | External Telnet adapter only if policy and demand justify it | Native primary SSH engine, password vault, embedded provider login, second UI/shell editor |
+| **D7 ecosystem** | WIT/capability model and host broker | Wasmtime Component Model with custom WIT and no default WASI | AI inference and collaboration relay remain user/organization owned |
+| **Automation Studio AS0-AS4** | Document/trust/surface/LSP brokers and typed saved-revision run intent after acceptance | CodeMirror-based Studio, DevOps/SRE and starter language/tool add-ons | System webviews and installed supported language servers/tools; Wry remains conditional on native proof |
+| **Deferred/rejected** | None | External Telnet adapter only if policy and demand justify it | Native primary SSH engine, password vault, embedded provider login, second shell-line editor or terminal UI framework |
 
 No dependency enters a runtime crate from this table alone. Its change must pin
 version/features, review license/source/advisories/provenance, record binary and

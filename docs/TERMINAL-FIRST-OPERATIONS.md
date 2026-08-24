@@ -2,10 +2,15 @@
 
 ## Status and purpose
 
-This document is the canonical product specification for replacing the useful
-remote-access, inventory, automation, collaboration, and governance workflows
-found in GUI-oriented products such as Termius with a keyboard-first Automexia
-experience.
+This document is the canonical product specification for Automexia's planned
+remote-access, inventory, automation, collaboration, and governance track. It
+explores how useful workflows found in GUI-oriented products such as Termius
+can become a keyboard-first Automexia experience.
+
+Remote operations are one specialized track within the broader [Product
+vision](PRODUCT-VISION.md), not the limit of Automexia's audience or future.
+The same values—less repeated setup, clearer organization, flexibility, and
+visible control—also apply to local, data, automation, and creator workflows.
 
 It is a **planned product contract**, not a claim that these commands ship in
 Automexia v0.4. F2/D5.0's bounded connection/profile/recipe/review and dry-run

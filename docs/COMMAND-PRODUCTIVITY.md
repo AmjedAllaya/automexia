@@ -13,6 +13,11 @@ specified in [Terminal-first remote operations](TERMINAL-FIRST-OPERATIONS.md).
 That document does not widen CP authority or turn planned commands into shipped
 behavior.
 
+In this document and ADR 0025, **editor** means the native shell's editable
+command line. It is separate from the proposed
+[Automation Studio](AUTOMATION-STUDIO-ARCHITECTURE.md) file editor; CP5 neither
+implements nor authorizes that document surface.
+
 ## Purpose
 
 Automexia should make frequent DevOps commands fast to discover and reuse

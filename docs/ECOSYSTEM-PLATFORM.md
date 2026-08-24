@@ -4,6 +4,12 @@ Status: proposal and policy contract only. Automexia does not currently install,
 download, execute, update, or expose public third-party extensions, and it does
 not send data to an AI provider.
 
+This boundary exists so future workflow domains can grow without bloating the
+terminal core or silently gaining authority. Possible remote, automation, data,
+media, or video extensions remain separate future proposals, not authorization
+or availability claims. See the [Product vision](PRODUCT-VISION.md) for
+direction and the [feature catalog](FEATURES.md) for what exists today.
+
 ## Current behavior
 
 Automexia uses private linked first-party extensions for reviewed local and
@@ -21,6 +27,25 @@ The policy and threat contract are implemented only as an offline repository
 gate. They ensure that future source work cannot be mistaken for current product
 authority. [ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md) is
 proposed, not accepted.
+
+## Relationship to Automation Studio
+
+The proposed [Automation Studio](AUTOMATION-STUDIO-ARCHITECTURE.md) is an
+optional first-party file-editing foundation, not the D7 public sandbox and not
+the CP5 shell-line editor bridge. Its separate
+[ADR 0030](adr/0030-automation-studio-domain-extension-boundary.md) keeps the
+DevOps/SRE domain extension and language/tool add-ons independently owned.
+
+Accepted first-party Studio slices could use reviewed private contracts without
+waiting for a public marketplace, but they still need ADR 0030, ADR 0003's exact
+capability approvals, and their native/file/process/security gates. This does
+not make the linked Rust extension API public.
+
+Any third-party Studio, language, or DevOps/SRE add-on still requires this D7
+package, signature, revocation, capability, sandbox, lifecycle, and rollback
+boundary. Studio cannot treat a signature as safety or expose its webview,
+documents, language servers, terminal, provider context, or runner as ambient
+guest authority.
 
 ## Fixed safety boundary
 

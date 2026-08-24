@@ -11,6 +11,11 @@ and Enter behavior. CP5.0 found no uniform mutation-free editor API across
 PSReadLine, Readline, ZLE, Fish, CMD, and WSL, retained CP1, and required a new
 security decision before an Automexia-rendered suggestion surface could exist.
 
+Here, “editor” means the shell-owned editable command line. This record is
+unrelated to the proposed
+[Automation Studio](../AUTOMATION-STUDIO-ARCHITECTURE.md) file editor and grants
+no document, webview, language-server, file-write, or script-run authority.
+
 An app popup cannot safely infer the editable command from terminal cells or
 OSC. It needs the active editor to deliberately provide a bounded buffer,
 cursor, selection, replacement span, quote context, and generation. That data

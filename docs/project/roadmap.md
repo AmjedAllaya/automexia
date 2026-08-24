@@ -9,6 +9,15 @@ must not override them. Detailed test commands and evidence live in
 
 A phase can be source-complete while release evidence is still partial. User-facing guides remain authoritative for what users can rely on today.
 
+## Product direction
+
+Automexia is being built for anyone who uses commands to turn ideas into
+results, not only for software development or remote operations. The current
+phases provide the terminal, workspace, productivity, security, and extension
+foundations. Later data, automation, media, and video work must be proposed and
+proven as separate slices; none of it is claimed as a current feature. See the
+[Product vision](../PRODUCT-VISION.md).
+
 ## Executive phase matrix
 
 | Track | Phase | Implementation | Release evidence | Conclusion |
@@ -26,6 +35,8 @@ A phase can be source-complete while release evidence is still partial. User-fac
 | Multi-cloud | D6.0/M7 | **Fully implemented locally** | **Partial/external** | Strict provider-neutral schemas, immutable session capsules, 19-state lifecycle, exact allow-once review, isolation/redaction, passive-status migration, cached-only semantics, fuzz/mutation, bounded lifecycle, and a 64-capsule benchmark pass. Real provider CLI/native evidence remains external. |
 | Multi-cloud | D6.1-D6.5 | **Partial overall; M8-M11 and M12 Teleport source-complete/nonactivated** | **Partial/blocked** | AWS, Azure, Google Cloud, Kubernetes/OpenShift, and Teleport bounded exact adapters pass locally. D3 product activation and controlled provider/native evidence remain; OpenBao is absent pending ADR 0024 acceptance. |
 | Ecosystem | D7 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance** | Proposed ADR 0029, a strict nine-threat/28-limit machine contract, 15 mutations, nonactivation/dependency gate, and detailed audit exist. Runtime SDK/download/package/sandbox/distribution/UI/native work is not authorized. |
+| Automation Studio | AS0 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance/native feasibility** | Architecture, proposed ADR 0030 and the future test ledger exist. Exact dependencies, limits and native Windows/macOS/Linux X11/Wayland editor-host proof remain. |
+| Automation Studio | AS1-AS6 | **Not implemented** | **Blocked on AS0** | No document service, editor/webview, LSP/DAP broker, Studio/DevOps integration, file-write or typed script-run product path exists. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
 | Productivity | CP1 | **Fully implemented** | **Partial** | Shell-native completion and bounded explicit refresh exist; hosted native evidence remains. |
 | Productivity | CP2.0 | **Fully implemented** | **Partial** | Bounded typed Quick Action model and hostile corpus exist with no runtime authority. |
@@ -90,7 +101,29 @@ After the generic process/capability/session boundary is proven, deliver separat
 
 ### v0.6 and later — ecosystem, richer remote operations, AI
 
-The D7/CP6 proposal-only package/sandbox/provenance/revocation/capability/AI contract and execution audit are complete without activation. Public extension distribution, sandboxing, signed third-party packs, direct provider APIs where truly needed, richer remote files/session memory/collaboration, and AI runtime still wait for explicit protected acceptance and independently proven slices. These are not prerequisites for production SSH.
+The D7/CP6 proposal-only package/sandbox/provenance/revocation/capability/AI
+contract and execution audit are complete without activation. Public extension
+distribution, sandboxing, signed third-party packs, direct provider APIs where
+truly needed, richer remote files/session memory/collaboration, and AI runtime
+still wait for explicit protected acceptance and independently proven slices.
+Later data, automation, media, and video domains would also require their own
+accepted boundaries and evidence. None is a current product claim or a
+prerequisite for production SSH.
+
+Automation Studio AS0 is likewise proposal-only. The target is an optional
+embedded file editor separated from the DevOps/SRE domain extension and
+language/tool add-ons, with core-owned documents, trust, native surface, LSP,
+process, terminal, credential and audit brokers. AS1-AS6 implementation is not
+done. See the [architecture](../AUTOMATION-STUDIO-ARCHITECTURE.md) and
+[future evidence contract](../AUTOMATION-STUDIO-TESTING.md).
+
+AS0 feasibility may continue before the first stable v0.4 release without
+adding production scope. AS1-AS2 follow that release; the evidenced minimal
+Studio should ship before a dedicated video-editing extension. Later Studio
+phases and video research may proceed independently. Both products reuse
+generic workspace and task services, while video owns its media-specific state
+and does not depend on Studio's editor or language-server internals.
+
 
 ## Command-productivity sequence
 

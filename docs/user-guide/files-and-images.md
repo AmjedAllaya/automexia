@@ -1,6 +1,11 @@
 # Files, output, and images
 
-Automexia adds useful presentation around terminal output while keeping the PTY bytes and shell/tool semantics intact. This page explains what is merely visual, what is interactive, and which image approach to use.
+Automexia helps you inspect text, files, and visual results without losing the
+context of the current task. Its presentation features make output easier to
+scan and images easier to preview, while the script or tool still controls the
+actual bytes and behavior.
+
+This page explains what is merely visual, what is interactive, and which image approach to use.
 
 ## The basic rule: presentation must not change command output
 

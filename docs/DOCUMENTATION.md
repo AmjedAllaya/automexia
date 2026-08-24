@@ -22,12 +22,21 @@ the claim.
 ## Canonical ownership
 
 - `docs/index.md` owns navigation.
+- `docs/PRODUCT-VISION.md` owns Automexia's purpose, audience, values,
+  experience principles, and broader direction. It does not define feature
+  availability.
 - `docs/FEATURES.md` owns the human-readable capability catalog.
 - `docs/CONFIGURATION.md`, `docs/KEYBOARD.md`, and
   `docs/CLI-REFERENCE.md` own exact public reference.
 - `docs/ARCHITECTURE.md` and `docs/adr/` own technical rationale.
 - `docs/BUILD-WRAP-ADOPT-ARCHITECTURE.md` owns the planned technology
   decision matrix and the core/first-party-extension/external-authority split.
+- `docs/AUTOMATION-STUDIO-ARCHITECTURE.md` owns the proposed embedded file-
+  editor, document, workspace-trust, language-tool, DevOps/SRE composition, and
+  typed script-run boundary. `docs/AUTOMATION-STUDIO-TESTING.md` owns its future
+  phase evidence ladder. They do not claim product availability or authorize
+  dependencies, implementation, or activation; proposed ADR 0030 owns the
+  durable decision.
 - `docs/COMMAND-PRODUCTIVITY.md` owns CP0-CP6 sequencing and
   `docs/DEVOPS-ALIASES.md` owns the CP2/CP3 typed-action, pure projection,
   collision/completion, metadata, CP3.1 private transaction/publication, native
@@ -90,7 +99,9 @@ even when the feature's roadmap status does not change.
 
 ## Writing rules
 
-1. Lead with the outcome and state the supported version/platform scope.
+1. Lead with the user value and outcome before the technical approach, then
+   state the supported version/platform scope. Keep the message consistent with
+   [Product vision](PRODUCT-VISION.md).
 2. Separate current behavior from planned behavior and label external evidence
    honestly.
 3. Give copyable commands, expected results, failure behavior, limits, and a

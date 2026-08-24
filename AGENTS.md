@@ -2,9 +2,11 @@
 
 This file is the repository operating contract for AI coding agents. It applies
 to planning, implementation, review, testing, documentation, and delivery work
-under this directory. Human contributor policy remains authoritative in
-[`CONTRIBUTING.md`](CONTRIBUTING.md); security, architecture, and release work
-must also follow `SECURITY.md`, `docs/ARCHITECTURE.md`, and `RELEASING.md`.
+under this directory. Product purpose, audience, values, and public messaging
+must follow [`docs/PRODUCT-VISION.md`](docs/PRODUCT-VISION.md). Human contributor
+policy remains authoritative in [`CONTRIBUTING.md`](CONTRIBUTING.md); security,
+architecture, and release work must also follow `SECURITY.md`,
+`docs/ARCHITECTURE.md`, and `RELEASING.md`.
 
 User and system instructions take precedence. Never weaken a quality gate,
 security boundary, or test merely to make a change pass.
@@ -337,6 +339,8 @@ Follow [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md). Update, as applicable:
 - testing documentation with exact local, CI, native, benchmark, and external
   evidence;
 - the roadmap and phase audit when delivery status changes;
+- the product vision and brand guidance when purpose, audience, value, or public
+  messaging changes;
 - feature and assurance matrices when a new capability or guarantee ships;
 - `docs/index.md` navigation;
 - one fragment under `changes/` unless policy explicitly exempts the change.

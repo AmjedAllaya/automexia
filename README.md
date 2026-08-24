@@ -4,93 +4,165 @@
 
 <h1 align="center">Automexia Terminal</h1>
 
-<p align="center"><strong>A fast, focused terminal for real development work.</strong></p>
+<p align="center"><strong>A flexible terminal that makes complex workflows faster, simpler, and easier to control.</strong></p>
 
 <p align="center">
   <a href="docs/user-guide/index.md">User Guide</a> ·
   <a href="docs/FEATURES.md">Features</a> ·
+  <a href="#extensions-that-fit-the-work">Extensions</a> ·
   <a href="docs/CONFIGURATION.md">Configuration</a> ·
   <a href="docs/KEYBOARD.md">Keyboard</a> ·
   <a href="docs/ROADMAP.md">Roadmap</a>
 </p>
 
-Automexia Terminal is a hardware-accelerated desktop terminal for Windows,
-Linux, and macOS. It keeps shells at the center of the experience while making
-windows, tabs, panes, search, images, and project context easier to manage.
+Automexia Terminal is for anyone who turns ideas into action through commands.
+It brings shells, tools, files, and project context into one organized workspace
+so you can move between tasks with less friction and less repetitive setup.
 
-Version 0.4.0 is a standalone product built from Rio's open-source history. It
-has its own executable, application identity, configuration folder, artwork,
-and release process.
+Flexibility is central to Automexia. It is designed to grow through focused
+extensions, so people and teams can add the tools, context, and repeatable
+workflows their field needs without making the core terminal crowded for
+everyone else.
+
+Today, Automexia provides a strong terminal experience for software work,
+system operations, automation, and everyday command-line tasks. Its wider
+direction goes beyond development: the same flexible workspace can grow to
+support creative and specialized workflows, including media processing and
+video editing, without hiding what runs or taking control away from you.
 
 ## Why Automexia
 
-Terminal work should feel direct. Automexia keeps the command line familiar and
-adds useful structure around it:
+### Move faster with less friction
 
-- arrange work with windows, window tabs, split panes, and pane-local tabs;
-- open a fresh shell or clone the current shell and working directory;
-- search one pane or every visible pane without sending input to the shell;
-- keep the active pane, command state, path, and shell context easy to see;
-- preview local images without uploading them or fetching remote content;
-- use keyboard controls for the full everyday workflow;
-- change appearance and behavior through a readable TOML configuration file.
+Keep related tools together, open or copy a working setup in seconds, and find
+commands or results without breaking your flow. Automexia reduces the small,
+repeated steps that make complex work feel slower than it should.
 
-The interface uses Automexia's blue-black surfaces, cyan and blue actions, and
-clear status colors. Important meaning is also shown with text or icons, so it
-does not depend on color alone.
+### Keep complex work understandable
+
+Separate tasks into windows, tabs, and panes while keeping the active shell,
+path, and project context visible. You can focus on one task without losing
+sight of the wider workflow.
+
+### Shape the workspace around you
+
+Choose how work is arranged, how shortcuts behave, and how the terminal looks.
+Automexia is meant to adapt to different people, platforms, tools, and fields
+instead of forcing every workflow into the same layout. Its extension model
+keeps that flexibility open: each domain can add a focused experience while
+the terminal remains useful on its own.
+
+### Stay in control
+
+Automexia keeps important actions visible and deliberate. Local previews stay
+local, invalid settings do not replace a working configuration, and planned
+integrations do not quietly gain permission to run commands or use credentials.
 
 ## What works today
 
-### Workspaces that stay organized
+### Organize work without losing context
 
-Automexia supports independent operating-system windows, window-level tabs,
-split panes, and tabs inside each pane. Pane-local tabs own separate terminal
-sessions and do not rearrange neighboring panes.
+Use separate windows, top-level tabs, split panes, and tabs inside each pane.
+Open a fresh shell when you want a clean start, or copy the active shell and
+working directory when you want to continue the same task elsewhere.
 
-Fresh splits open the normal configured shell. Clone actions open an independent
-session with the active shell, profile, WSL identity, and working directory.
+### Find what you need quickly
 
-### Search and command access
+Search the selected terminal or every visible pane in the workspace. Use the
+command palette when you know what you want to do but do not remember the
+shortcut.
 
-Pane search stays inside the selected terminal. Workspace search covers all
-visible panes in the active workspace without opening hidden tabs. Both search
-surfaces keep keyboard input away from the PTY until they close.
+### Use familiar shells
 
-The command palette gives one place to find actions when a shortcut is hard to
-remember.
+PowerShell, Command Prompt, WSL, Bash, and Zsh fit into the same workspace.
+Automexia can keep useful details such as the current path, shell, and command
+timing visible without adding noise to command output.
 
-### Shells that feel at home
+### See more than text
 
-Automexia has session-scoped support for PowerShell, Command Prompt, WSL, Bash,
-and Zsh workflows. It can show the current path, shell, user, command timing,
-and useful development context without writing decorative text into terminal
-output. Icon-aware listings remain normal shell data when piped to another tool.
+View inline terminal images and preview local image files directly from command
+output. Local previews stay on your computer and do not require an upload.
 
-Shell integration used by a normal launch belongs only to that child session.
-Persistent profile installation is a separate, explicit maintenance action and
-can be inspected or removed.
+### Make it yours
 
-### Local and inline images
+Adjust themes, fonts, windows, navigation, shells, and shortcuts through a
+readable configuration file. Changes apply safely, and the last working setup
+remains active when a new setting is invalid. An optional Ghostty keyboard
+profile offers a familiar starting point without replacing Automexia's defaults.
 
-Applications can render Sixel, Kitty Graphics, and iTerm2 inline images.
-Automexia can also preview bounded local raster files selected from terminal
-output. Local previews load in the background, stay with the current terminal
-view, and do not fetch anything from the internet.
+## Extensions that fit the work
 
-### Configuration that fails safely
+Automexia is designed to be more than a fixed collection of terminal features.
+A focused extension can adapt the workspace to a field, toolset, or team without
+forcing the same setup on every user. People can keep the terminal simple and
+add only the capabilities that make their own work faster and easier to manage.
 
-Automexia reads TOML configuration and supports platform overrides, themes,
-fonts, window settings, navigation, shell settings, and custom bindings. Live
-reload publishes a complete valid configuration or keeps the last known good
-one when the new file is invalid.
+Different domains can have their own extensions. An infrastructure extension
+can organize cloud accounts, clusters, connections, and environments. An
+automation extension can turn repeated work into clear, reusable recipes. Data,
+research, media, and video extensions can bring their own tools and focused
+controls while continuing to use the terminal as the common workspace.
 
-An optional Ghostty 1.3 keyboard profile is available for users who want a
-familiar migration path. Automexia's own bindings remain the default.
+### First-party extensions already in the source
+
+The repository already contains separate first-party extension foundations for:
+
+- OpenSSH and Teleport connections;
+- Amazon Web Services, Microsoft Azure, and Google Cloud;
+- Kubernetes and OpenShift;
+- multi-environment workspaces and reviewable automation recipes;
+- provider-aware actions that retain the selected account, project, cluster,
+  environment, and production-risk context.
+
+These foundations are built to make multi-cloud and production work easier to
+understand and safer to repeat. They keep environments separate, show the exact
+target before a sensitive action, and avoid turning hidden global state into the
+source of truth.
+
+The code and tested contracts for these first-party extensions exist today, but
+they remain behind release gates while product activation, native provider
+testing, and the remaining safety checks are completed. They are not public
+downloads in Automexia v0.4.
+
+### A future workspace for scripts and automation
+
+The proposed Automation Studio will make scripts and configuration easier to
+write, compare, understand, and review beside the terminal. It is planned as an
+optional part of the Automexia window, while the DevOps/SRE extension remains a
+separate package that still works through terminal-native actions when the
+editor is not installed.
+
+This keeps the experience flexible: install one DevOps/SRE Pack for a complete
+starting point, choose only the language and tool support you need, or keep a
+light terminal-only setup. The Studio is an architecture proposal today, not a
+shipped editor. See the [proposed architecture](docs/AUTOMATION-STUDIO-ARCHITECTURE.md)
+and its [evidence plan](docs/AUTOMATION-STUDIO-TESTING.md).
+
+Product delivery is deliberately ordered: finish the first stable terminal
+release, prove the shared extension and DevOps foundations, release a useful
+minimal Studio, and only then release a dedicated video-editing extension.
+Studio and video research can continue earlier, but neither should delay the
+first stable terminal. Video will reuse general workspace and task services,
+not depend on Studio's editor internals.
+
+### A simple extension experience is the goal
+
+The planned public extension experience will let people create, review, install,
+update, disable, and remove extensions for the work they do. An installed
+extension should add useful capabilities without silently gaining access to
+commands, credentials, files, networks, or production systems.
+
+This is how Automexia can grow from a flexible terminal into a workspace for
+many fields without losing its speed, clarity, or user control. See the
+[feature catalog](docs/FEATURES.md) for the current implementation status, the
+[ecosystem boundary](docs/ECOSYSTEM-PLATFORM.md) for the planned installation
+model, and the [product vision](docs/PRODUCT-VISION.md) for the wider direction.
 
 ## Quick start from source
 
-Install the Rust toolchain declared in `rust-toolchain.toml`, Python 3 with
-PyYAML, and the pinned `cargo-deny` release. Then run:
+Automexia is currently built from source. Install the Rust toolchain declared
+in `rust-toolchain.toml`, Python 3 with PyYAML, and the pinned `cargo-deny`
+release. Then run:
 
 ```text
 python -m pip install PyYAML
@@ -98,10 +170,9 @@ cargo install --locked cargo-deny --version 0.20.2
 cargo dev
 ```
 
-`cargo dev` runs the complete contributor gate, builds Automexia, checks the
-resulting executable, prepares session-only shell support, and opens the
-terminal. The first run can take several minutes and requires at least 12 GiB
-of free space on the selected Cargo target filesystem.
+`cargo dev` checks the project, builds Automexia, prepares its shell support,
+and opens the terminal. The first run can take several minutes and requires at
+least 12 GiB of free build space.
 
 After the repository has passed the full gate, use the faster daily command:
 
@@ -109,22 +180,16 @@ After the repository has passed the full gate, use the faster daily command:
 cargo automexia
 ```
 
-Before opening a pull request, run the full non-launching gate:
+Before opening a pull request, run the complete non-launching gate:
 
 ```text
 cargo ready
 ```
 
-Use `cargo storage` to inspect build storage. `cargo purge` removes all Cargo
-build artifacts and should only be used after Automexia windows are closed.
-
-Windows and WSL builds should use separate native checkouts. Keep Linux builds
-inside the WSL filesystem, such as `~/src/automexia-terminal`, and keep
-Windows/MSVC, ConPTY, GPU, and packaging work on NTFS.
-
-Read the [contributor guide](CONTRIBUTING.md) and
-[testing guide](docs/TESTING.md) for platform tools, focused checks, native
-evidence, packaging, and release validation.
+Read the [contributor guide](CONTRIBUTING.md),
+[testing guide](docs/TESTING.md), and
+[Windows/WSL guide](docs/WSL-DEVELOPMENT.md) for the complete development and
+release workflow.
 
 ## Run Automexia
 
@@ -136,8 +201,8 @@ automexia --working-dir <PATH>
 automexia -e <PROGRAM> [ARGS...]
 ```
 
-The `-e` or `--command` option must be last because everything after the program
-name is passed directly to that program.
+The `-e` or `--command` option must be last because the remaining arguments
+belong to the program being opened.
 
 Configuration is stored in these locations by default:
 
@@ -149,11 +214,11 @@ Configuration is stored in these locations by default:
 
 Set `AUTOMEXIA_CONFIG_HOME` to use a different folder.
 
-## Keyboard-first by design
+## Stay in the flow with the keyboard
 
-Automexia can be used without a pointer. The main controls cover command search,
-terminal search, selection, windows, tabs, panes, local tabs, image previews,
-configuration, and appearance.
+Everyday work can be completed without reaching for a pointer. Keyboard
+controls cover command search, terminal search, selection, windows, tabs,
+panes, image previews, configuration, and appearance.
 
 Shortcuts follow the conventions of each platform, so macOS uses Command for
 common desktop actions while Windows, Linux, and BSD use Control. See the
@@ -164,32 +229,29 @@ common desktop actions while Windows, Linux, and BSD use Control. See the
 
 | Platform | Current position |
 |---|---|
-| Windows | Supported with native ConPTY, PowerShell, Command Prompt, and WSL workflows |
-| Linux | Supported with native Unix PTY and desktop integration |
+| Windows | Supported with PowerShell, Command Prompt, and WSL workflows |
+| Linux | Supported with native desktop and shell integration |
 | macOS | Supported with native desktop and shell integration |
 | BSD | Source-compatible and best effort where the Unix paths apply |
 
-Cross-compilation is useful build evidence, but it does not replace native
-runtime, graphics, packaging, or accessibility testing. The exact platform
-claims are listed in [platform support](docs/PLATFORMS.md).
+See [platform support](docs/PLATFORMS.md) for current limitations and validation
+details.
 
-## Clear security boundaries
+## Move quickly without giving up control
 
-Automexia treats terminal output, paths, imported files, provider output,
-completions, and generated content as untrusted input. Structured actions use
-exact executables and argument lists instead of building shell command strings.
-Queues, history, image dimensions, files, retries, logs, and stored data have
-explicit limits.
+Automexia is designed to help you work faster without making hidden decisions
+for you:
 
-Credentials remain in platform or external credential stores whenever possible.
-The terminal does not turn background discovery into hidden process or network
-authority.
+- local image previews stay on your computer;
+- actions that can change something remain visible and deliberate;
+- credentials stay in platform or external credential stores when possible;
+- invalid configuration changes leave the last working setup in place;
+- new providers and extensions begin without command, network, or credential
+  access until their boundaries are reviewed.
 
-Managed SSH, live cloud-provider authentication, third-party extension
-downloads, public extension execution, and AI command execution are not shipped
-v0.4 features. Some later foundations exist in source with execution disabled;
-the documentation labels them as internal, release-gated, or planned instead of
-presenting them as available product behavior.
+Managed SSH, live cloud-provider access, public extensions, and automated
+command execution are not shipped v0.4 features. The project labels unfinished
+or disabled work clearly instead of presenting it as ready.
 
 Read [Security](SECURITY.md), [Architecture](docs/ARCHITECTURE.md), and the
 [build, wrap, or adopt boundary](docs/BUILD-WRAP-ADOPT-ARCHITECTURE.md) for the
@@ -197,20 +259,18 @@ full trust model.
 
 ## Project status
 
-The source tree contains the current v0.4 terminal and carefully separated v0.5
-foundations. The [feature catalog](docs/FEATURES.md) explains what is available,
-what is implemented locally but still release-gated, what is internal and
-disabled, and what remains planned.
+Automexia is under active development. The current source tree contains the
+v0.4 terminal and separately gated work for later releases. The
+[feature catalog](docs/FEATURES.md) distinguishes what people can use today
+from what is internal, awaiting release evidence, or still planned.
 
-Stable v0.4 publication still requires the final vector and monochrome logo
-sources, written artwork-rights approval, Windows signing, Apple signing and
-notarization, and the remaining private reporting/release prerequisites. The
-current raster mark is used for development and nightly packages. See the
-[brand asset workflow](docs/BRANDING.md) and
-[release readiness audit](docs/READINESS-AUDIT.md).
+Official stable packages still depend on the remaining brand, signing, and
+release prerequisites. See the [brand asset workflow](docs/BRANDING.md) and
+[release readiness audit](docs/READINESS-AUDIT.md) for the details.
 
 ## Documentation
 
+- [Product vision](docs/PRODUCT-VISION.md)
 - [Complete User Guide](docs/user-guide/index.md)
 - [Start and launch sessions](docs/user-guide/start-and-launch.md)
 - [Workspaces, tabs, and panes](docs/user-guide/workspace.md)

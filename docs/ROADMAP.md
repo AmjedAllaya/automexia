@@ -12,6 +12,25 @@ the focus roadmap owns the next executable checklist and dependencies.
 The [detailed SSH/connectivity/multi-environment/multi-cloud plan](SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md)
 owns the M0-M13 implementation and evidence checklist used for future phases.
 
+## Product direction
+
+Automexia's purpose is broader than software development or remote operations:
+it is a flexible terminal for making complex command-driven workflows faster,
+simpler, and easier to control. The current milestones establish the dependable
+terminal, workspace, productivity, security, and extension foundations needed
+for that direction. Later, independently reviewed work may support deeper data,
+automation, media, and video workflows without turning those ideas into current
+feature claims. The [Product vision](PRODUCT-VISION.md) owns this purpose and
+audience; the roadmap owns sequencing, and the [feature catalog](FEATURES.md)
+owns availability.
+
+The dependency order is: first stable terminal, shared extension/DevOps
+foundations, a minimal Automation Studio release, then a dedicated video-
+editing extension. Non-production AS0 and video research may proceed earlier,
+but they do not add v0.4 release scope. The video product reuses generic
+workspace and task services rather than Studio-specific editor internals.
+
+
 <!-- roadmap-status-register:start -->
 
 ## Current feature status
@@ -41,6 +60,8 @@ the audit's executive matrix so the two cannot drift.
 | **Partially done** | D6.4/M11 | Kubernetes/OpenShift are source-complete and nonactivated: independent packages, bounded stable exact-source YAML/JSON parsing/merge, default-denied exact exec review, capsule pinning, exact isolated kubectl/oc plans, focused tests, dependency policy, and benchmark pass. Product activation, real clients/clusters, native cleanup/resources/accessibility/release evidence remain. |
 | **Partially done** | D6.5/M12 | Teleport is source-complete and nonactivated with bounded public status plus exact reviewed version/login/status/ssh/logout plans. OpenBao remains unimplemented and blocked on proposed ADR 0024 acceptance. |
 | **Partially done** | D7 | Proposed ADR 0029, a strict schema-1 policy contract, nine mutation-owned threats, 28 resource ceilings, and a detailed execution audit are complete without runtime authority. Public SDK/downloads, package verification, Wasmtime host, distribution/revocation, product UX, and native release evidence require explicit acceptance and protected implementation. |
+| **Partially done** | AS0 | The proposed Automation Studio architecture, ADR 0030, technology decision, ownership boundary, AS0-AS6 sequence, and future evidence ledger exist. ADR acceptance, a numeric machine contract, exact dependency audit, and native Windows/macOS/Linux X11/Wayland editor-host proof remain. |
+| **Not done** | AS1-AS6 | No document service, workspace-trust implementation, editor/webview surface, LSP/DAP broker, language server, Studio or DevOps/SRE integration package, file-write capability, typed script-run product path, remote/mobile client, or advanced runtime exists. |
 | **Fully done** | CP0 | Architecture, threat model, ceilings, fixtures, mutation tests, and nonactivation policy are complete. |
 | **Fully done** | CP1 | Native shell completion, diagnostics, explicit bounded refresh, precedence, and lifecycle are complete locally. |
 | **Fully done** | CP2.0 | The bounded typed Quick Action model and hostile corpus are complete at their pure boundary. |
@@ -662,6 +683,93 @@ background/typing requests, and automatic execution are outside this decision.
 Responses are typed explanations/suggestions for copy or insert without Enter;
 a future tool-execution design would require another ADR and threat model.
 
+### Automation Studio and DevOps/SRE scripting (AS0-AS6)
+
+**AS0 is partially done only at a proposal/research-planning boundary. AS1-AS6
+are not done.** The canonical
+[Automation Studio architecture](AUTOMATION-STUDIO-ARCHITECTURE.md), future
+[testing contract](AUTOMATION-STUDIO-TESTING.md), and
+[proposed ADR 0030](adr/0030-automation-studio-domain-extension-boundary.md)
+define the target without adding a dependency, runtime, product UI, or authority.
+
+
+The release position is intentionally narrower than the AS0-AS6 phase list:
+
+- AS0 research and native feasibility may continue before the first stable v0.4
+  release, but cannot add production dependencies or become a release blocker;
+- AS1-AS2 product implementation follows the stable terminal and reuses the
+  independently proven extension, workspace, process, and DevOps boundaries;
+- the first releasable minimal Studio must pass AS2 before any dedicated video-
+  editing extension is released;
+- AS3-AS6 and video research may then proceed independently through their own
+  gates; video does not wait for unrelated Studio debugging, remote, AI, or
+  collaboration work.
+
+The target keeps three packages independently owned:
+
+- optional Automation Studio for embedded files, diff and diagnostics beside
+  terminal panes;
+- optional DevOps/SRE for terminal-native infrastructure workflows, target/risk
+  context, templates, plans and typed run intents;
+- optional language/tool add-ons for exact grammars, language servers,
+  formatters, linters, validators and CLIs.
+
+A metadata-only DevOps/SRE Pack may install a compatible set for convenience,
+but it grants no authority. The terminal remains useful when every package is
+disabled or uninstalled.
+
+The ordered delivery is:
+
+1. **AS0 — decision and feasibility:** accept the durable boundary only after a
+   CodeMirror/Monaco comparison, Wry/native-host proof on Windows, macOS, Linux
+   X11 and Linux Wayland, exact dependency review, limits fixture and terminal-
+   only baseline.
+2. **AS1 — neutral contracts:** implement core-owned documents, atomic save and
+   recovery, workspace trust, grants, typed IPC, lifecycle and surface
+   abstraction without a product editor or process/network authority.
+3. **AS2 — minimal Studio:** add local open/edit/search/diff/save/recovery with
+   native keyboard, IME, accessibility, resource, crash and package evidence;
+   no LSP or script execution.
+4. **AS3 — language intelligence:** add a bounded LSP 3.18 broker and small
+   first-party language packs through supervised installed servers.
+5. **AS4 — DevOps/SRE scripting:** bind a saved document revision, exact tool
+   identity/argv, environment capsule, target, opaque secrets, risk, limits,
+   plan/review generation, capability and expiry in a typed run intent. Never
+   type into an existing PTY or press Enter.
+6. **AS5 — domain packs:** add Terraform/OpenTofu, Kubernetes/OpenShift,
+   Ansible, cloud and policy integrations only through individual version,
+   provider, security, native, resource and lifecycle gates.
+7. **AS6 — advanced/remote:** consider DAP, remote documents, mobile,
+   collaboration and AI only through separate ADRs and threat models.
+
+First-party Studio work does not wait for a public marketplace after its own
+acceptance, but third-party add-ons still require D7/ADR 0029. CP5 remains the
+separate optional native shell-line suggestion bridge; it is not this file editor.
+
+### Future specialized workflow domains
+
+Specialized domains may be explored after the core and ecosystem boundaries are
+proven, and the terminal must remain useful when every such extension is
+disabled. Candidate domains include data processing, automation, and creator
+workflows. Media and video support is research only: Automexia does not
+currently ship editing, timeline, rendering, or media-project runtime features.
+
+Any specialized domain must define its owner, dependencies and licenses,
+process/network/file authority, CPU/GPU/memory/storage limits, cancellation and
+recovery, accessibility and native-platform evidence, and complete
+disable/uninstall/rollback behavior before implementation or product claims.
+
+A dedicated video-editing release follows the minimal AS2 Studio release, but
+it does not become a Studio add-on. Both may reuse generic core-owned workspace,
+file, task, progress, cancellation, recovery, and extension-lifecycle services;
+video must own its media project, preview, timeline, render, CPU/GPU, and storage
+contracts without depending on Studio's webview, editor state, LSP, or DevOps
+packages. Terminal-native media-tool use and non-production video research may
+continue before that release order is reached.
+
+See the [Product vision](PRODUCT-VISION.md) and the non-authoritative
+[video automation RFD](../automexia_docs_repository_aligned/research_proposals/rfds/RFD_VIDEO_AUTOMATION.md).
+
 ## Compatibility track
 
 Automexia keeps its classic `automexia` shortcuts as the implicit default. The
@@ -687,6 +795,7 @@ detailed implementation and exit gates. The version assignment is:
 | Native assurance | AppVerifier/WPR and controlled Windows/Linux/macOS GPU/shell matrices | System OpenSSH, agents, certificates, host keys, jumps, tunnels, cancellation, and cleanup on each OS | Official provider CLIs, Kubernetes/OpenShift, SSM/Bastion/IAP, offline/expiry paths | Sandboxed third-party and AI extension isolation |
 | Test-strength/security ratchets | Longer fuzz corpora and Automexia-owned coverage baseline | Fuzz config/index/IPC/diagnostics; mutation-test policy and argv validation | Fuzz provider/config/exec-plugin adapters; audit SDK/CLI supply chain | Public extension supply-chain, signature, revocation, and capability audits |
 | Command productivity | CP0 baseline plus CP1 shell-native managed completion, diagnostics, explicit bounded refresh, and CMD fallback; no action-store claim | CP2-CP3.3: typed persistent actions, opt-in aliases, static DevOps packs, selected native imports, and trusted exact workspace task bridges | CP4: capsule/provider-aware cached actions with freshness and brokered exact launch | CP5/CP6: optional editor bridge and signed ecosystem packs after separate gates |
+| Automation Studio | No file-editor claim | Preserve terminal-only fallback while AS0 evaluates dependencies and the native host | Reuse provider context and typed review without coupling documents to provider extensions | AS1-AS6 document/editor/LSP/DevOps execution phases only after their separate acceptance and native evidence |
 
 No single host or test layer may claim complete assurance. Pull requests prove
 deterministic contracts, nightly jobs explore expensive state and native

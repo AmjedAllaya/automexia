@@ -1,8 +1,10 @@
 # Workflow recipes
 
-These recipes combine the User Guide concepts into practical setups. They are examples, not a requirement to use Automexia in one fixed way.
+These recipes combine the User Guide concepts into practical setups for
+software, operations, automation, data, and media workflows. They are examples,
+not a requirement to use Automexia in one fixed way.
 
-## Recipe 1: Open a project and create a useful development layout
+## Recipe 1: Open a project and create a useful working layout
 
 Start in the project directory:
 
@@ -39,7 +41,7 @@ Use separate OS windows instead when the projects belong on different monitors/d
 
 ## Recipe 3: Keep one pane stable while rotating utility sessions
 
-Suppose the left pane is your main development shell and the right pane is your utility area.
+Suppose the left pane is your main task shell and the right pane is your utility area.
 
 1. Split right.
 2. Focus the right pane.
@@ -247,6 +249,22 @@ cargo ready
 ```
 
 This recipe is for developing the terminal project itself. Your own projects inside Automexia should use their own build/test commands.
+
+## Recipe 16: Organize a media-processing workflow
+
+Automexia does not include built-in video editing today, but it can organize
+command-line media tools without pretending to replace them:
+
+1. Start in the folder that contains the source media and project files.
+2. Keep one pane for listing sources, checking metadata, and choosing inputs.
+3. Clone a second pane for FFmpeg or a project-owned processing script.
+4. Add a lower split for progress, logs, or validation output.
+5. Preview generated still images through the supported image workflow.
+6. Use a separate window-level tab for a different job or output set.
+
+The selected media tool performs the transformation; Automexia keeps the
+commands, files, output, and progress easier to follow. Dedicated video controls
+remain a future research direction, not a shipped feature.
 
 ## When a recipe stops fitting
 

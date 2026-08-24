@@ -25,6 +25,8 @@ wins.
 
 - [Documentation index](../index.md) owns navigation and the short product
   status summary.
+- [Product vision](../PRODUCT-VISION.md) owns the purpose, audience, values,
+  experience principles, and broader direction; it does not own feature status.
 - User Guide and guide pages own task-oriented learning flows.
 - [Configuration](../CONFIGURATION.md), [keyboard](../KEYBOARD.md), and
   [CLI](../CLI-REFERENCE.md) own exact machine-checked public contracts;
@@ -44,7 +46,9 @@ forking exact tables, status, limits, or evidence.
 
 ## Writing rules
 
-1. Lead with the outcome and supported scope.
+1. Lead with the user value and outcome before implementation detail, then
+   state the supported scope. Keep public messaging consistent with the
+   [Product vision](../PRODUCT-VISION.md).
 2. Label **Available now**, **Implemented locally/release-gated**, **Implemented internally/not activated**, and **Planned** behavior explicitly.
 3. Put exact commands/defaults/limits in reference; User Guide pages may repeat only the practical subset needed for a task and must link back to the reference owner.
 4. Put detailed evidence in testing/release; summarize only the result where a guide needs it.

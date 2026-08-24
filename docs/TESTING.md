@@ -1924,6 +1924,11 @@ are maintained in [Sandboxed ecosystem and optional AI testing](ECOSYSTEM-PLATFO
 No runtime exists; the page distinguishes proposal evidence from protected
 native release gates.
 
+## Automation Studio evidence gate
+
+AS0 is proposal-only; AS1-AS6 are not implemented. The complete future gate is
+[Automation Studio testing](AUTOMATION-STUDIO-TESTING.md).
+
 ## External-tool and adopted-dependency assurance
 
 The canonical ownership policy is

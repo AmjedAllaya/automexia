@@ -27,6 +27,8 @@ Authoritative design sources:
 - [Detailed SSH, connectivity, multi-environment, and multi-cloud plan](SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md)
 - [Stabilization roadmap](STABILIZATION-ROADMAP.md)
 - [Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md)
+- [Automation Studio architecture](AUTOMATION-STUDIO-ARCHITECTURE.md)
+- [Automation Studio testing and evidence contract](AUTOMATION-STUDIO-TESTING.md)
 - [D7/CP6 ecosystem implementation audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md)
 - [Readiness audit](READINESS-AUDIT.md)
 - [SSH, DevOps, and multi-cloud architecture](SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md)
@@ -104,6 +106,8 @@ protected commit passes GitHub-hosted Windows, Linux, and macOS jobs.
 | Multi-cloud | D6.4/M11 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded Kubernetes/OpenShift packages, trusted source/merge/exec/capsule/exact CLI contracts, 13 focused tests, app guards, dependency policy, and near-limit benchmark pass. D3/product activation and controlled real client/cluster/native/resource/accessibility evidence remain. |
 | Multi-cloud | D6.5/M12 | **Partial overall; Teleport source-complete/nonactivated** | **Partial/blocked** | Teleport has a bounded exact adapter and focused evidence; D3 product UI/activation and controlled native/provider evidence remain. OpenBao is absent pending ADR 0024 acceptance. |
 | Ecosystem | D7 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance** | Proposed ADR 0029, strict duplicate-key-rejecting schema-1 contract, nine threats, 28 ceilings, 15 mutation tests, nonactivation/dependency enforcement, and detailed D7.0-D7.5 audit exist. No ecosystem runtime, dependency, package parser/store, WIT, sandbox, downloader, public SDK, or product UI is authorized. |
+| Automation Studio | AS0 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance and native feasibility** | The architecture, proposed ADR 0030, build/wrap/adopt choices, AS0-AS6 sequence, and future evidence ledger exist. No dependency or runtime was added; numeric machine limits, exact dependency review, and native Windows/macOS/Linux X11/Wayland editor-host proof remain. |
+| Automation Studio | AS1-AS6 | **Not implemented** | **Blocked on AS0 acceptance** | No document service, workspace-trust implementation, editor/webview host, LSP/DAP broker, language server, Studio/DevOps package integration, file-write grant, typed script-run product path, remote/mobile client, or advanced runtime exists. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
 | Productivity | CP1 | **Fully implemented** | **Partial** | Shell-native completion and bounded explicit refresh exist; hosted native evidence remains. |
 | Productivity | CP2.0 | **Fully implemented** | **Partial** | Bounded typed Quick Action model and hostile corpus exist with no runtime authority. |
@@ -785,6 +789,49 @@ package/supply-chain/native/accessibility/resource/privacy evidence, and release
 activation. Private first-party extensions remain the fallback and are not the
 public SDK.
 
+### AS0 — Automation Studio decision and native feasibility
+
+**Partially implemented at the proposal-only boundary; no product capability
+exists.** The canonical architecture, proposed ADR 0030, conditional CodeMirror/
+Monaco and Wry decisions, separate Studio/DevOps/SRE/add-on ownership, four-tier
+execution model, saved-revision run intent, lightweight profiles, AS0-AS6 order,
+and future security/native/accessibility/resource/lifecycle evidence contract are
+documented.
+
+The repository has no Studio production crate or package, editor dependency,
+document/trust/surface service, webview host, typed IPC, LSP/DAP broker, language
+server integration, file-write capability, Studio UI, or Studio script-run path.
+AS0 remains blocked on explicit ADR acceptance, a versioned numeric machine
+contract, exact license/advisory/provenance/MSRV/size/startup/resource review, and
+inspected native Windows, macOS, Linux X11, and Linux Wayland proof on the actual
+Automexia window/renderer stack. CP5 remains a separate shell-line proposal.
+This non-production AS0 work may continue before the first stable v0.4 release
+but cannot add a dependency, runtime, activation path, release claim, or v0.4
+blocker.
+
+
+### AS1-AS6 — Automation Studio implementation and advanced capabilities
+
+**Not implemented.** AS1 core-owned document/trust/IPC/lifecycle contracts, AS2
+minimal embedded editing, AS3 bounded LSP and first-party language packs, AS4
+separate DevOps/SRE typed script/tool integration, AS5 provider/tool domain
+packs, and AS6 debugging/remote/mobile/collaboration/AI all remain future work.
+
+First-party slices may proceed independently of a public marketplace only after
+ADR 0030 and exact existing capability gates are accepted. Third-party add-ons
+also require ADR 0029/D7. DAP, remote/mobile, collaboration and AI require
+separate authority decisions; none inherit AS0 approval. The terminal-only
+product, native shell editors, CP1 and current first-party extensions remain the
+required fallback throughout.
+
+The roadmap places AS1-AS2 after the first stable terminal release and requires
+an evidenced minimal AS2 Studio before a dedicated video-editing extension is
+released. This is a delivery dependency, not implementation evidence: no Studio
+or video runtime exists. AS3-AS6 and video research may proceed independently,
+and video must use generic workspace/task services rather than Studio-specific
+editor or language-server internals.
+
+
 ## Command-productivity phases
 
 ### CP0 — decisions, threats, and nonactivation
@@ -1272,6 +1319,16 @@ ADR 0029, a digest-frozen machine contract, mutation/repository/QA enforcement,
 and a complete ordered implementation/evidence audit. Runtime SDK/distribution/
 package verification/sandbox/action-pack/AI/provider/UX/native release work is
 not authorized and remains blocked on explicit acceptance plus protected gates.
+
+Automation Studio AS0 is also partial only as architecture/research planning:
+ADR 0030 and the future evidence ledger exist, while the dependency/native-host
+decision and numeric contract remain unaccepted. AS1-AS6 implementation,
+product activation, native UI/IME/accessibility/resource/package evidence, and
+every file/process/provider/remote/debug authority remain not implemented.
+AS0 may continue as non-production feasibility work before v0.4 release; AS1-
+AS2 follow the stable terminal, and an evidenced AS2 minimal Studio precedes a
+dedicated video-editing release. No current video runtime is implied.
+
 
 ## Cross-cutting quality assessment
 

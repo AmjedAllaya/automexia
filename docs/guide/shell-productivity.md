@@ -1,6 +1,15 @@
 # Shell integration and command productivity
 
-This page is the canonical product guide for shell integration, completion, Quick Actions, and persistent aliases. It replaces the previous split between `SHELL-INTEGRATION.md`, `COMMAND-PRODUCTIVITY.md`, `DEVOPS-ALIASES.md`, and the compatibility/threat-model pages.
+Automexia should save time around commands without taking command editing away
+from the shell. Its productivity features help people discover and reuse
+frequent actions, reduce repeated setup, and keep insertion, persistence, and
+any future execution deliberate.
+
+This value follows the [Product vision](../PRODUCT-VISION.md). This page is the
+canonical product guide for shell integration, completion, Quick Actions, and
+persistent aliases. It replaces the previous split between
+`SHELL-INTEGRATION.md`, `COMMAND-PRODUCTIVITY.md`, `DEVOPS-ALIASES.md`, and the
+compatibility/threat-model pages.
 
 ## Status at a glance
 

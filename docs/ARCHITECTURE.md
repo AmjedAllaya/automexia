@@ -1236,6 +1236,49 @@ data-flow review and may return only copy/insert suggestions. Private first-part
 extensions and CP1-CP3 remain authoritative fallback until every protected and
 native release gate passes.
 
+## Proposed Automation Studio and DevOps/SRE composition boundary
+
+Automation Studio is an AS0 proposal, not a current file editor or runtime.
+[Proposed ADR 0030](adr/0030-automation-studio-domain-extension-boundary.md)
+keeps it as an optional first-party foundation extension embedded beside terminal
+panes, while DevOps/SRE remains a separate domain extension that also works in
+terminal-only mode. A DevOps/SRE Pack is metadata-only convenience; it never
+becomes a capability principal or merges package lifecycle.
+
+The application composition root would own one canonical document service,
+workspace trust, native editor-surface host, language-tool broker, existing
+ExternalToolRunner/session broker, opaque credential references, and redacted
+receipts. Studio owns disposable editor views and presentation. DevOps/SRE owns
+domain templates, public target/risk context, typed plans, and result
+interpretation. Neither receives direct filesystem, process, network,
+credential, provider, renderer, window, accessibility-platform, or PTY handles.
+
+CodeMirror 6 and Wry are conditional AS0 candidates, not dependencies approved
+by this page. The native proof must cover the actual Automexia window stack on
+Windows, macOS, Linux X11, and Linux Wayland/GTK, including focus, IME, scaling,
+accessibility, GPU, packaging, crash, and cleanup. Language features would use a
+bounded core LSP 3.18 broker; DAP remains a separately gated later capability.
+
+Future script/tool execution accepts a saved canonical document revision and a
+typed intent that binds exact executable/argv, working directory, Environment
+Capsule, target, opaque secret references, risk, limits, review/plan generation,
+capability, and expiry. Final revalidation is mandatory. There is no command
+string, shell evaluation, implicit Enter, or input to an existing PTY.
+
+The complete ownership, trust, lifecycle, platform, lightweight-profile, and
+AS0-AS6 sequence lives in
+[Automation Studio architecture](AUTOMATION-STUDIO-ARCHITECTURE.md); its future
+evidence ladder is [Automation Studio testing](AUTOMATION-STUDIO-TESTING.md).
+
+AS0 feasibility may proceed without production integration before the first
+stable v0.4 release. AS1-AS2 follow that release, and the evidenced minimal
+Studio precedes a dedicated video-editing extension. This does not make video a
+Studio add-on: both may reuse generic core-owned workspace, file, task,
+progress, cancellation, recovery, and lifecycle services, while video owns its
+media project, preview, timeline, render, CPU/GPU, and storage boundaries and
+does not depend on Studio editor/webview/LSP internals.
+
+
 ## Accessibility boundary
 
 The v0.4 keyboard/focus/contrast/scaling contract, custom-surface inventory,

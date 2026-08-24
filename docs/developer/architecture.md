@@ -34,7 +34,19 @@ Private contracts/runtime/domain/UI-model crates own bounded identifiers, enviro
 
 ### First-party domain/provider adapters
 
-Reviewed extensions or domain crates own OpenSSH inventory interpretation, future cloud/orchestrator adapters, provider health, and domain-specific transformations. They publish bounded typed contributions to the core. They do not call GPU/window/PTy internals and do not create unmanaged child processes.
+Reviewed extensions or domain crates own OpenSSH inventory interpretation, future cloud/orchestrator adapters, provider health, and domain-specific transformations. They publish bounded typed contributions to the core. They do not call GPU/window/PTY internals and do not create unmanaged child processes.
+
+### Proposed Automation Studio
+
+Automation Studio is an AS0 architecture proposal, not a current editor. It is
+planned as an optional first-party file-editing foundation beside terminal panes,
+separate from the DevOps/SRE domain extension and language/tool add-ons. Core
+would retain canonical documents, workspace trust, native surface, LSP, process,
+terminal, credential-reference and receipt authority; extensions would contribute
+bounded presentation or domain records. See the
+[complete architecture](../AUTOMATION-STUDIO-ARCHITECTURE.md),
+[future evidence contract](../AUTOMATION-STUDIO-TESTING.md), and
+[proposed ADR 0030](../adr/0030-automation-studio-domain-extension-boundary.md).
 
 ## M6 automation and workspace boundary
 

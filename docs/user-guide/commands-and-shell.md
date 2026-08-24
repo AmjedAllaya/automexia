@@ -1,6 +1,9 @@
 # Commands and shell workflows
 
-Automexia is a terminal emulator, not a replacement shell. The most important command rule is therefore simple: **normal commands belong to your real shell; Automexia commands control Automexia itself.**
+Automexia organizes command-driven work across software, operations,
+automation, data, media, and other toolchains without replacing the shell. The
+most important command rule is simple: **normal commands belong to your real
+shell; Automexia commands control the workspace around it.**
 
 ## Understand the command layers
 
@@ -28,6 +31,10 @@ cargo test
 ```text
 ssh my-server
 ```
+
+The same rule applies to tools such as Python, FFmpeg, database clients,
+data-processing commands, build tools, and project scripts: use their normal
+syntax in the shell.
 
 Automexia does not reparse these commands from rendered terminal cells. PowerShell/PSReadLine, Bash/Readline, Zsh/ZLE, Fish, and other tools continue to own quoting, history, cursor movement, environment expansion, pipelines, and normal completion.
 
@@ -216,7 +223,7 @@ These commands are for the source repository, not general terminal use:
 | `cargo purge` | Remove workspace build artifacts after Automexia windows close |
 | `cargo xtask doctor` | Check Rust/tools/host shell/packaging/storage/WSL placement |
 
-For ordinary development on your own project inside Automexia, use that project's own commands. `cargo dev` here specifically means “develop Automexia Terminal.”
+For ordinary work inside Automexia, use the commands owned by your project or chosen tool. `cargo dev` here specifically means “develop Automexia Terminal.”
 
 ## 8. A simple decision tree
 

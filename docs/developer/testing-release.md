@@ -126,6 +126,14 @@ same-host Criterion noise, and limitations are in
 [M6 testing](../TESTING.md#m6-typed-automation-and-multi-environment-workspaces).
 These results do not activate a product controller/CLI or prove native managed
 OpenSSH/PTY/process/resource/accessibility behavior.
+
+## Automation Studio evidence
+
+Automation Studio AS0 is proposal-only and AS1-AS6 are not implemented. Its
+future document, webview, language, DevOps/SRE, native-platform, accessibility,
+security, resource and lifecycle gates are maintained in
+[Automation Studio testing](../AUTOMATION-STUDIO-TESTING.md).
+
 ## Current release blockers
 
 The source-level v0.4 S0 gates are complete locally, but stable release assurance remains partial. The important unresolved class is **evidence**, not a hidden claim that everything is done: controlled Linux/macOS visual/GPU/PTY runs, screen-reader evidence, longer security/performance baselines, signing/notarization/packaging proof on protected hosts, and other named release-environment requirements must be recorded before the corresponding release claim is made.
