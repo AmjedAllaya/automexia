@@ -865,9 +865,9 @@ tests also assert the deterministic root/cyan/violet/blue/lime path hierarchy.
 `cargo test -p rio-fonts` parses the embedded Symbols Nerd Font and verifies
 that every declared composite folder codepoint has a real glyph.
 
-These cover Windows-drive versus WSL title classification, custom chrome hit
-targets and resize edges, the absence of workspace-action paint and hit targets,
-conditional pane-local tab-rail reservation, pane/sibling isolation, HiDPI hit
+These cover Windows-drive versus WSL title classification, custom chrome
+independent-card snapshots, hit targets, resize edges, and the absence of
+workspace-action paint and hit targets, conditional pane-local tab-rail reservation, pane/sibling isolation, HiDPI hit
 testing, terminal-content displacement, native snapshot restoration, bundled Nerd icon
 codepoints, explicit shell identity, terminal-owned full-path three-row prompts,
 per-command context snapshots, OSC command status/timing, and context/result

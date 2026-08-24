@@ -72,11 +72,12 @@ titles emitted while a profile loads never make the tab flicker through setup
 commands, paths, or a generic product persona. The close mark shared by window,
 top-level-tab, and pane-local-tab chrome is shaped through the text rasterizer
 for consistent antialiasing at every DPI and uses an always-available glyph.
-The three renderer-owned caption actions share one compact liquid-glass capsule
-instead of floating as unrelated glyphs. Cyan minimize, purple maximize/restore,
-and coral close rails add brand identity while the distinct glyph shapes retain
-meaning without color. Rounded hover wells, a held state, inactive-window
-muting, and a maximize-to-restore glyph mirror native state. The complete
+The three renderer-owned caption actions render as separated rounded cards
+without a shared border or container, keeping the chrome lighter while retaining
+one clear action per target. Cyan minimize, purple maximize/restore, and coral
+close rails add brand identity while distinct glyph shapes retain meaning without
+color. Rounded hover wells, a held state, inactive-window muting, and a
+maximize-to-restore glyph mirror native state. The complete
 40–46 logical-pixel targets remain anchored to the right edge; activation occurs
 only when the primary button is released over the same control, so dragging away
 cancels safely.

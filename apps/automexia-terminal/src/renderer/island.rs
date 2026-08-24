@@ -135,9 +135,8 @@ pub enum ChromeAction {
     CloseWindow,
 }
 
-const WINDOW_CONTROL_CLUSTER_INSET_X: f32 = 4.0;
-const WINDOW_CONTROL_CLUSTER_INSET_Y: f32 = 4.0;
-const WINDOW_CONTROL_BUTTON_INSET: f32 = 5.0;
+const WINDOW_CONTROL_BUTTON_INSET_X: f32 = 5.0;
+const WINDOW_CONTROL_BUTTON_INSET_Y: f32 = 6.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct WindowControlRect {
@@ -149,7 +148,6 @@ struct WindowControlRect {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct WindowControlVisualLayout {
-    group: WindowControlRect,
     buttons: [WindowControlRect; 3],
 }
 
@@ -178,19 +176,13 @@ fn window_control_visual_layout(
     controls_x: f32,
     button_width: f32,
 ) -> WindowControlVisualLayout {
-    let group = WindowControlRect {
-        x: controls_x + WINDOW_CONTROL_CLUSTER_INSET_X,
-        y: WINDOW_CONTROL_CLUSTER_INSET_Y,
-        width: (button_width * 3.0 - WINDOW_CONTROL_CLUSTER_INSET_X * 2.0).max(1.0),
-        height: (header_height - WINDOW_CONTROL_CLUSTER_INSET_Y * 2.0).max(1.0),
-    };
     let buttons = std::array::from_fn(|index| WindowControlRect {
-        x: controls_x + index as f32 * button_width + WINDOW_CONTROL_BUTTON_INSET,
-        y: group.y + 2.0,
-        width: (button_width - WINDOW_CONTROL_BUTTON_INSET * 2.0).max(1.0),
-        height: (group.height - 4.0).max(1.0),
+        x: controls_x + index as f32 * button_width + WINDOW_CONTROL_BUTTON_INSET_X,
+        y: WINDOW_CONTROL_BUTTON_INSET_Y,
+        width: (button_width - WINDOW_CONTROL_BUTTON_INSET_X * 2.0).max(1.0),
+        height: (header_height - WINDOW_CONTROL_BUTTON_INSET_Y * 2.0).max(1.0),
     });
-    WindowControlVisualLayout { group, buttons }
+    WindowControlVisualLayout { buttons }
 }
 
 fn window_control_accent(action: ChromeAction) -> [f32; 4] {
@@ -2634,40 +2626,6 @@ fn draw_window_controls(sugarloaf: &mut Sugarloaf, context: WindowControlRenderC
     } = context;
     let layout = window_control_visual_layout(header_height, controls_x, button_width);
 
-    sugarloaf.rounded_rect(
-        None,
-        layout.group.x + 2.0,
-        layout.group.y + 3.0,
-        layout.group.width,
-        layout.group.height,
-        [0.0, 0.0, 0.0, 0.34],
-        0.03,
-        11.0,
-        ORDER - 2,
-    );
-    sugarloaf.rounded_rect(
-        None,
-        layout.group.x,
-        layout.group.y,
-        layout.group.width,
-        layout.group.height,
-        muted_alpha(theme.outline, if focused { 0.72 } else { 0.30 }),
-        0.03,
-        11.0,
-        ORDER - 1,
-    );
-    sugarloaf.rounded_rect(
-        None,
-        layout.group.x + 1.0,
-        layout.group.y + 1.0,
-        (layout.group.width - 2.0).max(1.0),
-        (layout.group.height - 2.0).max(1.0),
-        theme.surface,
-        0.03,
-        10.0,
-        ORDER,
-    );
-
     let actions = [
         ChromeAction::Minimize,
         ChromeAction::Maximize,
@@ -3128,17 +3086,18 @@ mod tests {
     #[test]
     fn branded_window_control_visuals_are_bounded_and_distinct() {
         let layout = window_control_visual_layout(48.0, 1_142.0, 46.0);
-        assert!(layout.group.x >= 1_142.0);
-        assert!(layout.group.y >= 0.0);
-        assert!(layout.group.x + layout.group.width <= 1_280.0);
-        assert!(layout.group.y + layout.group.height <= 48.0);
+        let mut previous_right = None;
         for button in layout.buttons {
             assert!(button.width >= 32.0);
             assert!(button.height >= 24.0);
-            assert!(button.x >= layout.group.x);
-            assert!(button.y >= layout.group.y);
-            assert!(button.x + button.width <= layout.group.x + layout.group.width);
-            assert!(button.y + button.height <= layout.group.y + layout.group.height);
+            assert!(button.x >= 1_142.0);
+            assert!(button.y >= 0.0);
+            assert!(button.x + button.width <= 1_280.0);
+            assert!(button.y + button.height <= 48.0);
+            if let Some(previous_right) = previous_right {
+                assert!(button.x > previous_right);
+            }
+            previous_right = Some(button.x + button.width);
         }
         assert_ne!(
             window_control_accent(ChromeAction::Minimize),
@@ -3158,6 +3117,36 @@ mod tests {
         assert_ne!(rest, hover);
         assert_ne!(hover, held);
         assert_ne!(rest, inactive);
+    }
+
+    #[test]
+    fn window_controls_render_as_independent_cards_without_a_group_container() {
+        let layout = window_control_visual_layout(48.0, 1_142.0, 46.0);
+
+        insta::assert_debug_snapshot!(layout, @r###"
+        WindowControlVisualLayout {
+            buttons: [
+                WindowControlRect {
+                    x: 1147.0,
+                    y: 6.0,
+                    width: 36.0,
+                    height: 36.0,
+                },
+                WindowControlRect {
+                    x: 1193.0,
+                    y: 6.0,
+                    width: 36.0,
+                    height: 36.0,
+                },
+                WindowControlRect {
+                    x: 1239.0,
+                    y: 6.0,
+                    width: 36.0,
+                    height: 36.0,
+                },
+            ],
+        }
+        "###);
     }
 
     #[test]
