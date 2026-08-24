@@ -737,6 +737,36 @@ mod pane_tab_tests {
     }
 
     #[test]
+    fn pointer_wheel_target_selects_only_the_exact_pane_under_the_cursor() {
+        let mut grid = two_panel_grid();
+        for item in grid.inner.values_mut() {
+            item.layout_rect = if item.val.route_id == 11 {
+                [0.0, 0.0, 100.0, 100.0]
+            } else {
+                [100.0, 0.0, 100.0, 100.0]
+            };
+        }
+        assert_eq!(grid.current().route_id, 22);
+
+        let mut mouse = Mouse {
+            x: 50.0,
+            y: 50.0,
+            ..Default::default()
+        };
+        assert!(grid.select_current_based_on_pointer(&mouse));
+        assert_eq!(grid.current().route_id, 11);
+        assert!(!grid.select_current_based_on_pointer(&mouse));
+
+        mouse.x = 250.0;
+        assert!(!grid.select_current_based_on_pointer(&mouse));
+        assert_eq!(grid.current().route_id, 11);
+
+        mouse.x = 150.0;
+        assert!(grid.select_current_based_on_pointer(&mouse));
+        assert_eq!(grid.current().route_id, 22);
+    }
+
+    #[test]
     fn visible_search_routes_are_deterministic_and_select_only_active_panes() {
         let mut grid = two_panel_grid();
         for item in grid.inner.values_mut() {
@@ -2081,9 +2111,9 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
     }
 
     #[inline]
-    /// Select panel based on mouse position using Taffy layout.
+    /// Select panel based on pointer position using Taffy layout.
     /// Returns true only when focus actually changed to a different panel.
-    pub fn select_current_based_on_mouse(&mut self, mouse: &Mouse) -> bool {
+    pub fn select_current_based_on_pointer(&mut self, mouse: &Mouse) -> bool {
         if self.inner.len() <= 1 {
             return false;
         }

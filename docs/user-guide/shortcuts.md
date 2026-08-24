@@ -92,6 +92,9 @@ Once a selection exists, an Arrow without `Shift`, printable input, paste, or IM
 - Right-click copies and clears an existing selection; with no selection it pastes through normal paste filtering.
 - Middle-click pastes the primary selection on platforms that provide one.
 - Left-click never pastes; it is reserved for focus, selection, links, image previews, and pane activation.
+- Rotating the mouse wheel or starting a trackpad scroll selects the pane under
+  the pointer and sends that initiating scroll to it; pointer hover alone does
+  not change pane selection.
 - Full-screen terminal applications that enable mouse reporting keep mouse ownership. Hold `Shift` for the established host-UI override where supported.
 
 ## Search and scrollback

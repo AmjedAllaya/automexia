@@ -92,6 +92,11 @@ impl Mouse {
         self.multiplier = multiplier;
         self.divider = divider;
     }
+
+    #[inline]
+    pub fn reset_accumulated_scroll(&mut self) {
+        self.accumulated_scroll = AccumulatedScroll::default();
+    }
 }
 
 /// Map a physical-pixel cursor position to a terminal grid `Pos`.
@@ -488,6 +493,19 @@ pub mod test {
             calculate_side_by_pos(1609.61, margin_x, cell, grid_w),
             Side::Right,
         );
+    }
+
+    #[test]
+    fn pane_switch_drops_fractional_wheel_motion_from_the_previous_pane() {
+        let mut mouse = Mouse {
+            accumulated_scroll: AccumulatedScroll { x: 7.25, y: -12.5 },
+            ..Default::default()
+        };
+
+        mouse.reset_accumulated_scroll();
+
+        assert_eq!(mouse.accumulated_scroll.x, 0.0);
+        assert_eq!(mouse.accumulated_scroll.y, 0.0);
     }
 
     /// Margin pre-scaled, must not be re-scaled in the side
