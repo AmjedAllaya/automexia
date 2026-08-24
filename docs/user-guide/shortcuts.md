@@ -72,9 +72,23 @@ On Windows/Linux/BSD, `Ctrl+C` has a deliberate dual behavior:
 - if Automexia has a non-empty terminal selection, it copies that selection;
 - if there is no selection, it sends the normal interrupt to the shell/application.
 
-`Ctrl+Shift+C` and `Ctrl+Shift+V` are the explicit copy/paste bindings on Windows/Linux/BSD.
+`Ctrl+Shift+C` is the explicit copy binding on Windows/Linux/BSD. With the
+Automexia Windows profile, both `Ctrl+V` and `Ctrl+Shift+V` paste into the selected pane, whether it
+hosts PowerShell, Command Prompt, WSL, SSH, or another terminal session.
+Linux/BSD keeps `Ctrl+Shift+V` as its paste binding.
 
 On macOS, use `Cmd+C` / `Cmd+V` for normal copy/paste. `Ctrl+C` remains available for shell/application semantics when no terminal-owned behavior takes precedence.
+
+Paste always uses Automexia's existing clipboard filtering and bracketed-paste
+path and does not synthesize an extra Enter. If a Windows terminal application such as Vim
+needs to receive `Ctrl+V` itself, restore terminal ownership explicitly:
+
+```toml
+[bindings]
+keys = [
+  { key = "V", with = "control", action = "ReceiveChar" },
+]
+```
 
 ### Keyboard selection
 

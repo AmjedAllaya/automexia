@@ -24,6 +24,10 @@ Automexia restores its original platform defaults. On Windows, Linux, and BSD:
 - `Alt`+`PageDown` / `Alt`+`PageUp` moves between independent tabs inside the
   selected pane, while `Ctrl`+`Tab` remains window-level.
 
+Windows additionally treats both `Ctrl+V` and `Ctrl+Shift+V` as clipboard
+paste for every selected child session, including WSL and SSH. An explicit
+`Ctrl+V = ReceiveChar` user binding restores terminal-application ownership.
+
 macOS retains `Cmd+T`, `Cmd+Shift+T`, `Cmd+D`, and `Cmd+Shift+D` for its native
 tab and fresh-split scopes; cloning and explicit shell passthrough use the same
 Control chords as other platforms. macOS geometric focus uses
@@ -40,7 +44,9 @@ user configuration.
 ## Verification
 
 Host-independent tests construct the Automexia macOS, Windows, and Linux/BSD tables,
-assert the classic scopes and shell passthroughs, exercise user overrides, and
+assert the classic scopes and shell passthroughs, prove that Windows
+`Ctrl+V` and `Ctrl+Shift+V` resolve to the shared Paste action, exercise the
+`ReceiveChar` override, and
 check command-palette labels. The architecture verifier prevents the clone,
 fresh-split, and explicit shell-control chords from drifting apart.
 
@@ -51,3 +57,7 @@ Existing Automexia users regain the original muscle memory. Bare `Ctrl+R` and
 the documented `Ctrl+Alt` passthroughs unless a user overrides the defaults.
 Ghostty migration remains possible later without coupling normal startup or
 the v0.4 release to an incomplete compatibility profile.
+
+On Windows, applications that use `Ctrl+V` as a terminal command must opt out
+with `ReceiveChar`. Linux/BSD retains `Ctrl+Shift+V`, and macOS retains
+`Cmd+V`, so their established terminal and platform conventions do not change.
