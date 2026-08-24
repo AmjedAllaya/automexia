@@ -52,7 +52,7 @@ host-provided. The required evidence is:
 | Surface | Required host and checks |
 |---|---|
 | Portable Rust, metadata, configuration, bindings, and renderer-neutral layout | Every PR runs locked, all-feature Clippy, Nextest, and doctests on native Windows, Ubuntu Linux, and macOS. |
-| Windows shells, ConPTY, and WGPU/CPU rendering | Native Windows runs the PowerShell, resize-stress, session-clone, and image-lifecycle gates. Resize stress verifies command-result geometry, one-shot cue, gutter, and composited pixels. |
+| Windows shells, ConPTY, WGPU/CPU | Native Windows runs PowerShell, resize-stress, clone, and image gates. Resize stress proves non-listing result pixels, bounds, gutter, and the 540 ms cue. |
 | Bash/Zsh install, repair, prompt metadata, and listing behavior | Native Linux and macOS run `bash tools/ci/test_shell_sources.sh`; the script uses only Bash 3.2/BSD-compatible temporary-file semantics and tests an isolated home. |
 | Linux display adapters | Ubuntu checks the frontend separately with X11-only, Wayland-only, and combined features. Release jobs additionally validate DEB and RPM metadata/install behavior; this does not imply that every downstream Linux distribution has been manually certified. |
 | WSL launch and clone routing | Native Windows plus an installed WSL distribution runs `cargo xtask test session-clone --native-wsl`; Linux source/build artifacts stay on the WSL filesystem rather than `/mnt/<drive>`. |

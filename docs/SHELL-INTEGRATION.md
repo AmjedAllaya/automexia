@@ -161,12 +161,15 @@ lambda, editable input, and cursor. This split is why completed prompts can be
 reflowed during resize without asking a shell editor to reconstruct scrollback.
 
 When a command completes and the following prompt is visible, Automexia groups
-the proven output rows into a quiet result surface. A success/error-tinted band,
-one- or two-pixel left accent, four- to eight-pixel visual breathing gutter, end
-rule, and compact exit state plus duration separate the result from the next
-editable command without relying on color alone. A newly completed live result
-lightens once and eases out through opacity over 180 milliseconds; it never
-blinks, moves, repeats, or restarts while viewing scrollback.
+every proven output row into a quiet result surface. The semantic path is
+command-agnostic: it covers listing and non-listing commands, success and error
+exits, single- and multiline output, and managed input wrapped beyond eight
+rows. A success/error-tinted band, one- or two-pixel left accent, four- to
+eight-pixel visual breathing gutter, end rule, and compact exit state plus
+duration separate the result from the next editable command without relying on
+color alone. A newly completed live result lightens once and eases out through
+opacity over 540 milliseconds; it never blinks, moves, repeats, or restarts
+while viewing scrollback.
 
 The renderer applies that treatment only when semantic prompt ownership proves
 both output limits and the following prompt. Uncertain or empty bounds fail

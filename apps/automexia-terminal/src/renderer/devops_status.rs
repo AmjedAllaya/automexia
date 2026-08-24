@@ -33,7 +33,7 @@ const RESULT_DIVIDER_ALPHA: f32 = 0.32;
 const RESULT_SURFACE_ALPHA: f32 = 0.018;
 const RESULT_ACCENT_ALPHA: f32 = 0.42;
 const RESULT_PULSE_ALPHA: f32 = 0.055;
-const RESULT_PULSE_DURATION: Duration = Duration::from_millis(180);
+const RESULT_PULSE_DURATION: Duration = Duration::from_millis(540);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PromptTagMetrics {
@@ -1200,6 +1200,8 @@ mod tests {
 
     #[test]
     fn completion_glow_is_one_shot_idempotent_and_scroll_safe() {
+        assert_eq!(RESULT_PULSE_DURATION, Duration::from_millis(540));
+
         let first = CommandResultAnchor {
             generation: Some(7),
             key: 42,
