@@ -522,6 +522,81 @@ def validate_s1_assurance(workflow: dict[str, Any]) -> None:
     )
 
 
+def validate_f5_openssh_assurance(workflow: dict[str, Any]) -> None:
+    triggers = workflow.get("on", workflow.get(True))
+    require(
+        isinstance(triggers, dict) and set(triggers) == {"workflow_dispatch"},
+        "F5 OpenSSH assurance must use manual dispatch only",
+    )
+    dispatch = triggers["workflow_dispatch"]
+    inputs = dispatch.get("inputs", {}) if isinstance(dispatch, dict) else {}
+    require(
+        isinstance(inputs, dict)
+        and set(inputs) == {"source_commit", "platform", "architecture"}
+        and inputs["platform"].get("options") == ["windows", "macos", "linux"]
+        and inputs["architecture"].get("options") == ["x86_64", "aarch64"]
+        and all(
+            isinstance(value, dict) and value.get("required") is True
+            for value in inputs.values()
+        ),
+        "F5 OpenSSH assurance dispatch inputs must remain exact and required",
+    )
+    require(
+        workflow.get("permissions") == {"contents": "read"},
+        "F5 OpenSSH assurance workflow must be read-only",
+    )
+    validate = job(workflow, "validate", "f5-openssh-assurance.yml")
+    runs_on = validate.get("runs-on", {})
+    require(
+        isinstance(runs_on, dict)
+        and runs_on.get("group") == "automexia-openssh"
+        and "inputs.platform" in str(runs_on.get("labels", ""))
+        and "inputs.architecture" in str(runs_on.get("labels", "")),
+        "F5 OpenSSH assurance must use the restricted self-hosted runner group",
+    )
+    require(
+        validate.get("environment") == "f5-openssh-release",
+        "F5 OpenSSH assurance must use the protected environment",
+    )
+    require(
+        "AUTOMEXIA_F5_OPENSSH_RUNNER" in str(validate.get("if", "")),
+        "F5 OpenSSH assurance must remain explicitly operator-enabled",
+    )
+    environment = validate.get("env", {})
+    required_environment = {
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_EXPECTED_COMMIT",
+    }
+    require(
+        isinstance(environment, dict)
+        and required_environment.issubset(environment),
+        "F5 OpenSSH assurance must receive the private manifest and exact artifact paths",
+    )
+    source = commands(validate)
+    for fragment, message in (
+        ("test_native_openssh_evidence.py", "mutation tests"),
+        ("--validate-environment", "controlled validator"),
+        ("target/native-openssh/summary.json", "redacted summary"),
+    ):
+        require(fragment in source, f"F5 OpenSSH assurance is missing {message}")
+    checkout = next(
+        (
+            step
+            for step in steps(validate)
+            if str(step.get("uses", "")).startswith("actions/checkout@")
+        ),
+        None,
+    )
+    require(
+        isinstance(checkout, dict)
+        and checkout.get("with", {}).get("persist-credentials") is False
+        and "inputs.source_commit" in str(checkout.get("with", {}).get("ref", "")),
+        "F5 OpenSSH assurance checkout must bind the requested commit without credentials",
+    )
+
+
 def validate_macos_runtime_contract(source: str) -> None:
     """Keep the supported macOS deployment floor independent of hard linking."""
     require(
@@ -578,6 +653,7 @@ def validate_repository_workflows() -> None:
     validate_windows_release_trust_contract(
         WINDOWS_RELEASE_TRUST_SCRIPT.read_text(encoding="utf-8")
     )
+    validate_f5_openssh_assurance(load_workflow("f5-openssh-assurance.yml"))
 
 
 def main() -> int:

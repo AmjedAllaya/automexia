@@ -89,6 +89,17 @@ events drive the pure lifecycle, and route shutdown closes all remaining
 nonterminal tunnel state. Production still denies before executable resolution
 because activation is false and package attestation/protected evidence is
 missing.
+F5 release evidence has one separate assurance owner. Its bounded validator
+accepts private 23-scenario manifests but a controlled run succeeds only when
+the manifest matches the executing native OS/architecture, exact clean source
+commit, fixed OpenSSH client/server versions, and fresh no-follow hashes of the
+reviewed application binary, package, and OpenSSH client. Synthetic manifests,
+zero-sentinel real baselines, links, replacement/growth during hashing, and
+path-bearing summaries fail closed. The manual protected workflow runs only on
+the restricted ephemeral OpenSSH runner group and uploads the path-free counts
+summary. It does not receive a launch grant, mutate SSH configuration/services,
+or authorize production. Real three-OS results, attestation, accessibility,
+protected approvals, and activation remain external prerequisites.
 
 ## Trust and data flow
 

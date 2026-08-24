@@ -818,7 +818,7 @@
   },
   "native_release_evidence": {
     "schema": 1,
-    "status": "validator-probe-and-synthetic-fixture-complete-real-native-results-external",
+    "status": "controlled-host-artifact-validator-and-workflow-complete-real-native-results-external",
     "platforms": [
       "windows",
       "macos",
@@ -864,9 +864,14 @@
     "manual_baseline": "client-and-user-config-sha256-stable-manual-ssh-before-after-disable-uninstall",
     "artifact_policy": "private-bounded-redacted-hash-manifest-not-committed",
     "max_manifest_bytes": 262144,
+    "max_release_artifact_bytes": 4294967296,
     "duplicate_keys": "reject",
     "synthetic_release_evidence": false,
     "probe_authority": "fixed-executable-version-check-only-no-install-service-network-or-config-mutation",
+    "controlled_binding": "native-platform-and-architecture-exact-source-commit-fixed-openssh-client-and-server-versions-plus-binary-package-and-client-sha256",
+    "controlled_workflow": ".github/workflows/f5-openssh-assurance.yml",
+    "runner_policy": "manual-protected-environment-restricted-ephemeral-jit-no-pull-request-trigger",
+    "summary_policy": "redacted-counts-and-platform-only-no-paths-or-private-manifest",
     "validator": "tools/ci/native_openssh_evidence.py",
     "mutation_tests": "tools/ci/test_native_openssh_evidence.py",
     "source_binding": "current-git-commit-plus-application-binary-and-package-sha256",

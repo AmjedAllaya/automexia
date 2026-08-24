@@ -2,7 +2,7 @@
   "schema": 1,
   "evidence_kind": "native-openssh-release",
   "synthetic": true,
-  "contract_sha256": "e66c763f5a3518ee5419a70fc5452e94e568905124344973dd21ac2be5a6946a",
+  "contract_sha256": "b4564430db295be8df0424999d49adb56f25c7e06ce3dd1ad5cb7c785fc76697",
   "source_commit": "1111111111111111111111111111111111111111",
   "platform": "windows",
   "architecture": "x86_64",

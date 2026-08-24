@@ -108,6 +108,16 @@ class RepositoryProtectionTests(unittest.TestCase):
         )
         self.assertNotIn("s1-assurance.yml", PROTECTION.EXPECTED_DEFAULT_BRANCH_EVIDENCE_WORKFLOWS)
 
+    def test_f5_controlled_workflow_is_registered_without_claiming_default_branch_evidence(self) -> None:
+        self.assertEqual(
+            PROTECTION.EXPECTED_WORKFLOWS["f5-openssh-assurance.yml"],
+            "F5 controlled native OpenSSH assurance",
+        )
+        self.assertNotIn(
+            "f5-openssh-assurance.yml",
+            PROTECTION.EXPECTED_DEFAULT_BRANCH_EVIDENCE_WORKFLOWS,
+        )
+
     def test_s2_activation_workflow_is_registered_without_claiming_default_branch_evidence(self) -> None:
         self.assertEqual(
             PROTECTION.EXPECTED_WORKFLOWS["s2-assurance.yml"],

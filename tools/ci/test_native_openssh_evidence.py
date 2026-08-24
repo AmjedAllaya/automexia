@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -14,6 +15,10 @@ import native_openssh_evidence as evidence
 
 
 ZERO_HASH = "0" * 64
+
+
+def sha256(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
 
 
 def valid_manifest(*, synthetic: bool = True) -> dict[str, object]:
@@ -98,6 +103,37 @@ def valid_manifest(*, synthetic: bool = True) -> dict[str, object]:
     }
 
 
+def release_manifest(
+    *,
+    source_commit: str,
+    application_binary: bytes,
+    application_package: bytes,
+    openssh_client: bytes,
+) -> dict[str, object]:
+    document = valid_manifest(synthetic=False)
+    document["source_commit"] = source_commit
+    document["application"]["binary_sha256"] = sha256(application_binary)
+    document["application"]["package_sha256"] = sha256(application_package)
+    document["fixture"]["fixture_sha256"] = "4" * 64
+    document["fixture"]["server_config_sha256"] = "5" * 64
+    document["fixture"]["known_hosts_seed_sha256"] = "6" * 64
+    document["fixture"]["random_seed_sha256"] = "7" * 64
+    document["openssh"]["client_version"] = "OpenSSH_10.5"
+    document["openssh"]["server_version"] = "OpenSSH_10.5"
+    document["manual_baseline"]["client_sha256_before"] = sha256(openssh_client)
+    document["manual_baseline"]["client_sha256_after"] = sha256(openssh_client)
+    empty_hash = sha256(b"")
+    document["manual_baseline"]["user_config_sha256_before"] = empty_hash
+    document["manual_baseline"]["user_config_sha256_after"] = empty_hash
+    return document
+
+
+def write_manifest(root: Path, document: dict[str, object]) -> Path:
+    path = root / "manifest.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path
+
+
 class NativeOpenSshEvidenceTests(unittest.TestCase):
     def validate(self, document: dict[str, object], *, allow_synthetic: bool = True):
         with tempfile.TemporaryDirectory() as directory:
@@ -148,6 +184,11 @@ class NativeOpenSshEvidenceTests(unittest.TestCase):
         document["fixture"]["random_seed_sha256"] = "7" * 64
         document["openssh"]["client_version"] = "OpenSSH_10.5"
         document["openssh"]["server_version"] = "OpenSSH_10.5"
+        document["manual_baseline"]["client_sha256_before"] = "8" * 64
+        document["manual_baseline"]["client_sha256_after"] = "8" * 64
+        document["manual_baseline"]["user_config_sha256_before"] = "9" * 64
+        document["manual_baseline"]["user_config_sha256_after"] = "9" * 64
+
         with mock.patch.object(
             evidence, "current_source_commit", return_value=expected_commit
         ):
@@ -286,6 +327,132 @@ class NativeOpenSshEvidenceTests(unittest.TestCase):
         self.assertNotIn("paths", result)
         self.assertIsInstance(result["missing"], list)
         self.assertIsInstance(result["versions"], dict)
+
+    def test_release_manual_baselines_cannot_use_synthetic_sentinels(self) -> None:
+        expected_commit = "2" * 40
+        document = release_manifest(
+            source_commit=expected_commit,
+            application_binary=b"application-binary",
+            application_package=b"application-package",
+            openssh_client=b"openssh-client",
+        )
+        document["manual_baseline"]["client_sha256_before"] = ZERO_HASH
+        document["manual_baseline"]["client_sha256_after"] = ZERO_HASH
+        with mock.patch.object(
+            evidence, "current_source_commit", return_value=expected_commit
+        ):
+            with self.assertRaisesRegex(
+                evidence.NativeOpenSshEvidenceError, "synthetic sentinel"
+            ):
+                self.validate(document, allow_synthetic=False)
+
+    def test_controlled_validation_binds_host_tools_commit_and_artifacts(self) -> None:
+        expected_commit = "2" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            values = {
+                "binary": b"application-binary",
+                "package": b"application-package",
+                "ssh": b"openssh-client",
+                "ssh-add": b"ssh-add",
+                "ssh-keygen": b"ssh-keygen",
+                "sshd": b"openssh-server",
+            }
+            files = {name: root / f"private-{name}" for name in values}
+            for name, path in files.items():
+                path.write_bytes(values[name])
+            manifest = write_manifest(
+                root,
+                release_manifest(
+                    source_commit=expected_commit,
+                    application_binary=values["binary"],
+                    application_package=values["package"],
+                    openssh_client=values["ssh"],
+                ),
+            )
+            candidates = {
+                name: (files[name],)
+                for name in ("ssh", "ssh-add", "ssh-keygen", "sshd")
+            }
+
+            def validate(
+                *,
+                platform_name: str = "windows",
+                architecture: str = "x86_64",
+                requested_commit: str = expected_commit,
+                versions: tuple[str, str] = ("OpenSSH_10.5", "OpenSSH_10.5"),
+            ) -> dict[str, int | str]:
+                with (
+                    mock.patch.object(
+                        evidence, "current_source_commit", return_value=expected_commit
+                    ),
+                    mock.patch.object(
+                        evidence, "_platform_name", return_value=platform_name
+                    ),
+                    mock.patch.object(
+                        evidence, "_architecture_name", return_value=architecture
+                    ),
+                    mock.patch.object(
+                        evidence, "_fixed_candidates", return_value=candidates
+                    ),
+                    mock.patch.object(
+                        evidence, "_probe_version", side_effect=list(versions)
+                    ),
+                ):
+                    return evidence.validate_controlled_environment(
+                        manifest,
+                        application_binary=files["binary"],
+                        application_package=files["package"],
+                        expected_commit=requested_commit,
+                    )
+
+            with mock.patch.object(
+                evidence, "load_manifest", wraps=evidence.load_manifest
+            ) as load_manifest:
+                result = validate()
+            self.assertEqual(load_manifest.call_count, 1)
+            self.assertEqual(result["host_bound"], 1)
+            self.assertEqual(result["artifacts"], 3)
+            self.assertEqual(result["architecture"], "x86_64")
+            self.assertNotIn(str(root), json.dumps(result))
+
+            cases = (
+                ({"platform_name": "linux"}, "native platform"),
+                ({"architecture": "aarch64"}, "architecture"),
+                ({"requested_commit": "3" * 40}, "requested source commit"),
+                ({"versions": ("OpenSSH_10.4", "OpenSSH_10.5")}, "client version"),
+                ({"versions": ("OpenSSH_10.5", "OpenSSH_10.4")}, "server version"),
+            )
+            for arguments, message in cases:
+                with self.subTest(message=message):
+                    with self.assertRaises(
+                        evidence.NativeOpenSshEvidenceError
+                    ) as caught:
+                        validate(**arguments)
+                    self.assertIn(message, str(caught.exception))
+                    self.assertNotIn(str(root), str(caught.exception))
+
+            files["binary"].write_bytes(b"tampered")
+            with self.assertRaisesRegex(
+                evidence.NativeOpenSshEvidenceError, "application binary"
+            ):
+                validate()
+            files["binary"].write_bytes(values["binary"])
+
+            linked = root / "linked-package"
+            try:
+                linked.symlink_to(files["package"])
+            except OSError:
+                return
+            original_package = files["package"]
+            files["package"] = linked
+            try:
+                with self.assertRaisesRegex(
+                    evidence.NativeOpenSshEvidenceError, "release artifact"
+                ):
+                    validate()
+            finally:
+                files["package"] = original_package
 
 
 if __name__ == "__main__":

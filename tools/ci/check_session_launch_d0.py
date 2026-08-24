@@ -177,7 +177,7 @@ EXPECTED_NATIVE_RESOURCE_BUDGETS = {
 }
 EXPECTED_NATIVE_RELEASE_EVIDENCE = {
     "schema": 1,
-    "status": "validator-probe-and-synthetic-fixture-complete-real-native-results-external",
+    "status": "controlled-host-artifact-validator-and-workflow-complete-real-native-results-external",
     "platforms": ["windows", "macos", "linux"],
     "architectures": ["x86_64", "aarch64"],
     "wsl_accepted": False,
@@ -188,9 +188,14 @@ EXPECTED_NATIVE_RELEASE_EVIDENCE = {
     "manual_baseline": "client-and-user-config-sha256-stable-manual-ssh-before-after-disable-uninstall",
     "artifact_policy": "private-bounded-redacted-hash-manifest-not-committed",
     "max_manifest_bytes": 262144,
+    "max_release_artifact_bytes": 4294967296,
     "duplicate_keys": "reject",
     "synthetic_release_evidence": False,
     "probe_authority": "fixed-executable-version-check-only-no-install-service-network-or-config-mutation",
+    "controlled_binding": "native-platform-and-architecture-exact-source-commit-fixed-openssh-client-and-server-versions-plus-binary-package-and-client-sha256",
+    "controlled_workflow": ".github/workflows/f5-openssh-assurance.yml",
+    "runner_policy": "manual-protected-environment-restricted-ephemeral-jit-no-pull-request-trigger",
+    "summary_policy": "redacted-counts-and-platform-only-no-paths-or-private-manifest",
     "source_binding": "current-git-commit-plus-application-binary-and-package-sha256",
     "fixture_binding": "fixture-server-config-known-host-seed-random-seed-sha256-loopback-private",
     "security_checks": [
@@ -571,13 +576,22 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "one_ten_and_fifty_fake_sessions_release_every_tunnel_state",
     }, root)
     require_tokens("tools/ci/native_openssh_evidence.py", {
-        "MAX_MANIFEST_BYTES", "synthetic evidence cannot satisfy a release gate",
+        "MAX_MANIFEST_BYTES", "MAX_RELEASE_ARTIFACT_BYTES",
+        "synthetic evidence cannot satisfy a release gate",
         "platform must be native Windows, macOS, or Linux", "probe_prerequisites",
         "current_source_commit", "tracked source tree is not clean", "O_NOFOLLOW",
         "synthetic sentinel", "application binary", "fixture requirement failed",
         "post_quantum_kex", "agent_session_binding_restricted_key",
         "peak_cpu_millicores", "peak_log_bytes", "open_handles_delta_after",
-        "owned_tunnels_after", "user_config_sha256_before",
+        "owned_tunnels_after", "user_config_sha256_before", "_architecture_name",
+        "validate_controlled_environment", "AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_EXPECTED_COMMIT",
+    }, root)
+    require_tokens(".github/workflows/f5-openssh-assurance.yml", {
+        "workflow_dispatch", "permissions", "contents: read",
+        "environment: f5-openssh-release", "persist-credentials: false",
+        "automexia-openssh", "--validate-environment", "retention-days: 90",
     }, root)
     require_tokens("tools/ci/test_native_openssh_evidence.py", {
         "test_synthetic_wsl_and_unbound_evidence_cannot_release",
