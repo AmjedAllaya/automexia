@@ -58,6 +58,13 @@ surface is drawn. Failure to prove it leaves terminal content unchanged instead
 of guessing. The current cue is visual-only and passive; it emits no PTY input
 or accessibility announcement and creates no new focus target.
 
+The controlled Windows native check verifies more than geometry: every tested
+command must publish a new owning result identity, captured output glyphs must
+remain visible independently of the rail/divider, and blank resting-surface
+pixels must differ from the adjacent gutter. It runs against WGPU and the CPU
+fallback. This is visual evidence only; it does not replace the outstanding
+native screen-reader region semantics.
+
 ## Search scope semantics
 
 The renderer-neutral search model exposes a `Search scope` group with `Current

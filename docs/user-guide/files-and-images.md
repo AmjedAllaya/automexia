@@ -57,6 +57,10 @@ This applies to ordinary output as well as listings; it is not an `ls`-specific
 effect. A new live result lightens once for 540 milliseconds and then keeps its
 persistent grouping. Commands without output retain the completion rule and
 badge but do not receive an empty output band.
+The full grouping is currently available in integrated PowerShell, Bash, and
+Zsh sessions. Fish and stock CMD do not yet expose the complete prompt and
+completion lifecycle required to prove both boundaries, so Automexia leaves
+their output ungrouped instead of guessing.
 
 Use it as a scanning aid, not as a replacement for the tool's own exit code or structured output.
 

@@ -138,6 +138,9 @@ struct CommandResultIdentity {
 type NativeCommandResultVisual = ([f32; 4], [f32; 4], [f32; 4], u64);
 
 #[cfg(feature = "native-gui-test-hooks")]
+type NativeCommandResultIdentity = (Option<u64>, u64, i32);
+
+#[cfg(feature = "native-gui-test-hooks")]
 type NativeCommandResultStyle = ([f32; 4], u64, f32);
 
 impl PartialEq for CommandResultIdentity {
@@ -278,6 +281,8 @@ pub struct DevOpsStatus {
     command_result_pulse: CommandResultPulse,
     #[cfg(feature = "native-gui-test-hooks")]
     native_command_result_visual: Option<CommandResultVisual>,
+    #[cfg(feature = "native-gui-test-hooks")]
+    native_command_result_identity: Option<NativeCommandResultIdentity>,
 }
 
 impl DevOpsStatus {
@@ -313,6 +318,13 @@ impl DevOpsStatus {
             visual.divider,
             self.command_result_pulse.generation,
         ))
+    }
+
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub(crate) fn native_test_result_identity(
+        &self,
+    ) -> Option<NativeCommandResultIdentity> {
+        self.native_command_result_identity
     }
 
     #[cfg(feature = "native-gui-test-hooks")]
@@ -687,6 +699,9 @@ impl DevOpsStatus {
         {
             self.native_command_result_visual =
                 anchors.last().and_then(command_result_visual);
+            self.native_command_result_identity = anchors
+                .last()
+                .map(|anchor| (anchor.generation, anchor.key, anchor.exit_code));
         }
         for anchor in anchors {
             let success = anchor.exit_code == 0;

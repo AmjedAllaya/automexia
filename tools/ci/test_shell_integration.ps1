@@ -41,6 +41,27 @@ if ($integrationSource -notmatch '\$continuation\s*\+\s*\$pathPrompt\s*\+\s*"`r`
 if ($integrationSource -notmatch 'return\s+\$lambda\s*\+\s*\$input' -or $integrationSource -match 'return\s+\$pathPrompt') { throw 'PowerShell does not limit PSReadLine ownership to the editable lambda row' }
 if ($integrationSource -match '\.\.\.[\\/]') { throw 'PowerShell prompt still truncates the current path' }
 if ($global:LASTEXITCODE -ne 73) { throw 'PowerShell prompt changed LASTEXITCODE' }
+# A shell-only failure must not inherit a stale successful native exit code.
+# The prompt may read LASTEXITCODE but must not change this user-owned value.
+$global:LASTEXITCODE = 0
+$previousConsoleOut = [Console]::Out
+$failureConsoleOut = New-Object System.IO.StringWriter
+try {
+    [Console]::SetOut($failureConsoleOut)
+    Write-Error 'AUTOMEXIA_SEMANTIC_FAILURE_PROBE' -ErrorAction SilentlyContinue
+    $emittedFailure = & prompt
+} finally {
+    [Console]::SetOut($previousConsoleOut)
+}
+$failureLifecycle = $failureConsoleOut.ToString()
+$failureConsoleOut.Dispose()
+if ($failureLifecycle -notmatch [regex]::Escape("$([char]27)]133;D;1$([char]7)")) {
+    throw 'PowerShell shell-only failure was misclassified by stale LASTEXITCODE'
+}
+if ($global:LASTEXITCODE -ne 0) {
+    throw 'PowerShell failure classification changed user-owned LASTEXITCODE'
+}
+
 
 $cmdAlias = Get-Command cmd -ErrorAction Stop
 $cmdExeAlias = Get-Command cmd.exe -ErrorAction Stop
