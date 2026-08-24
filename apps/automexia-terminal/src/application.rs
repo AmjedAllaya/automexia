@@ -2427,6 +2427,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 {
                     return;
                 }
+                // Focus the pane under the pointer before reading dimensions
+                // or delivering this same wheel event.
+                let _ = route.window.screen.select_current_based_on_wheel();
+
                 let _ = route.window.screen.dismiss_image_preview();
 
                 if self.config.hide_cursor_when_typing {

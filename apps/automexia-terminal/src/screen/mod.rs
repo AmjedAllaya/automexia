@@ -114,6 +114,19 @@ enum SecondaryClickClipboardAction {
     PasteClipboard,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PointerPaneFocusReason {
+    Click,
+    Wheel,
+}
+
+impl PointerPaneFocusReason {
+    #[inline]
+    fn clears_target_selection(self) -> bool {
+        matches!(self, Self::Click)
+    }
+}
+
 fn secondary_click_clipboard_action(
     has_selection: bool,
 ) -> SecondaryClickClipboardAction {
@@ -1257,22 +1270,37 @@ impl Screen<'_> {
 
     #[inline]
     pub fn reset_mouse(&mut self) {
-        self.mouse.accumulated_scroll = crate::mouse::AccumulatedScroll::default();
+        self.mouse.reset_accumulated_scroll();
     }
 
     #[inline]
     pub fn select_current_based_on_mouse(&mut self) -> bool {
+        self.select_current_based_on_pointer(PointerPaneFocusReason::Click)
+    }
+
+    #[inline]
+    pub fn select_current_based_on_wheel(&mut self) -> bool {
+        self.select_current_based_on_pointer(PointerPaneFocusReason::Wheel)
+    }
+
+    #[inline]
+    fn select_current_based_on_pointer(
+        &mut self,
+        reason: PointerPaneFocusReason,
+    ) -> bool {
         if self
             .context_manager
             .current_grid_mut()
-            .select_current_based_on_mouse(&self.mouse)
+            .select_current_based_on_pointer(&self.mouse)
         {
             self.context_manager.select_route_from_current_grid();
             self.resize_top_or_bottom_line();
-            // The focusing click never reaches on_left_click, so a
-            // selection left behind in the target panel would
-            // drag-extend from its stale anchor; drop it on switch.
-            self.clear_selection();
+            self.reset_mouse();
+            if reason.clears_target_selection() {
+                // A focusing click never reaches on_left_click, so a stale
+                // target selection would otherwise drag-extend.
+                self.clear_selection();
+            }
             return true;
         }
         false
@@ -7248,6 +7276,12 @@ mod tests {
             secondary_click_clipboard_action(false),
             SecondaryClickClipboardAction::PasteClipboard
         );
+    }
+
+    #[test]
+    fn wheel_focus_preserves_selection_while_click_focus_clears_it() {
+        assert!(PointerPaneFocusReason::Click.clears_target_selection());
+        assert!(!PointerPaneFocusReason::Wheel.clears_target_selection());
     }
 
     #[test]
