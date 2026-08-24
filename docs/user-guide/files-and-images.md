@@ -50,6 +50,14 @@ This is visual only:
 - selection and search highlights take higher priority;
 - semantic recognition does not execute or alter commands.
 
+Completed commands with proven shell boundaries also group their actual output
+inside a restrained tinted band with a visible left rail. A gap, end rule, and
+success/failure plus duration badge separate that result from the next command.
+This applies to ordinary output as well as listings; it is not an `ls`-specific
+effect. A new live result lightens once for 540 milliseconds and then keeps its
+persistent grouping. Commands without output retain the completion rule and
+badge but do not receive an empty output band.
+
 Use it as a scanning aid, not as a replacement for the tool's own exit code or structured output.
 
 ## Three ways to work with images

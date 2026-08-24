@@ -998,13 +998,34 @@ $rendererConfig
         [Math]::Abs([double]$resultAccent[0] - [double]$resultSurface[0]) -gt 0.01 -or
         [Math]::Abs([double]$resultAccent[1] - [double]$resultSurface[1]) -gt 0.01 -or
         [Math]::Abs([double]$resultAccent[3] - [double]$resultSurface[3]) -gt 0.01 -or
-        [double]$resultAccent[2] -lt 1.0 -or
-        [double]$resultAccent[2] -gt 2.0 -or
+        [double]$resultAccent[2] -lt 2.4 -or
+        [double]$resultAccent[2] -gt 3.5 -or
         [double]$resultDivider[2] -lt [double]$resultSurface[2] -or
-        $resultGutter -lt 4.0 -or
-        $resultGutter -gt 10.0) {
+        $resultGutter -lt 6.0 -or
+        $resultGutter -gt 12.5) {
         Write-Host ($historyReady | ConvertTo-Json -Depth 8)
         throw "Command-result surface geometry is clipped or lacks its breathing gutter: gutter=$resultGutter"
+    }
+    $resultOpacity = @($historyReady.command_result_opacity)
+    if ($resultOpacity.Count -ne 4 -or
+        [double]$resultOpacity[0] -lt 0.05 -or
+        [double]$resultOpacity[0] -gt 0.10 -or
+        [double]$resultOpacity[1] -lt 0.60 -or
+        [double]$resultOpacity[1] -gt 0.85 -or
+        [double]$resultOpacity[2] -lt 0.35 -or
+        [double]$resultOpacity[2] -gt 0.60 -or
+        [double]$resultOpacity[3] -lt 0.10 -or
+        [double]$resultOpacity[3] -gt 0.18) {
+        Write-Host ($historyReady | ConvertTo-Json -Depth 8)
+        throw 'Command-result paint regressed to an imperceptible opacity'
+    }
+    if ([int]$historyReady.command_result_pulse_duration_ms -ne 540) {
+        throw 'Command-result lightening no longer lasts the requested 540 milliseconds'
+    }
+    $resultPulseHold =
+        [double]$historyReady.command_result_pulse_hold_fraction
+    if ($resultPulseHold -lt 0.32 -or $resultPulseHold -gt 0.34) {
+        throw 'Command-result lightening no longer holds before its single fade'
     }
 
     $resultFramePath = if ([string]::IsNullOrWhiteSpace($ResultCapture)) {
@@ -2639,6 +2660,10 @@ $rendererConfig
                 region_sample_count = $resultPixels.SampleCount
                 region_distinct_color_buckets = $resultPixels.DistinctColorBuckets
                 region_luminance_spread = $resultPixels.LuminanceSpread
+                opacity = $resultOpacity
+                pulse_duration_milliseconds = [int]$historyReady.command_result_pulse_duration_ms
+                pulse_hold_fraction = $resultPulseHold
+                single_cycle = $true
                 artifact = if ($null -eq $resultFramePath) {
                     $null
                 } else {

@@ -52,11 +52,19 @@ host-provided. The required evidence is:
 | Surface | Required host and checks |
 |---|---|
 | Portable Rust, metadata, configuration, bindings, and renderer-neutral layout | Every PR runs locked, all-feature Clippy, Nextest, and doctests on native Windows, Ubuntu Linux, and macOS. |
-| Windows shells, ConPTY, WGPU/CPU | Native Windows runs PowerShell, resize-stress, clone, and image gates. Resize stress proves non-listing result pixels, bounds, gutter, and the 540 ms cue. |
+| Windows shells, ConPTY, WGPU/CPU | Native Windows runs PowerShell, resize-stress, clone, and image gates. Resize stress proves generic non-listing result pixels, bounds, 6-12.5 pixel measured gutter, visible resting/pulse opacity ranges, and the single 540 ms hold/fade cue. |
 | Bash/Zsh install, repair, prompt metadata, and listing behavior | Native Linux and macOS run `bash tools/ci/test_shell_sources.sh`; the script uses only Bash 3.2/BSD-compatible temporary-file semantics and tests an isolated home. |
 | Linux display adapters | Ubuntu checks the frontend separately with X11-only, Wayland-only, and combined features. Release jobs additionally validate DEB and RPM metadata/install behavior; this does not imply that every downstream Linux distribution has been manually certified. |
 | WSL launch and clone routing | Native Windows plus an installed WSL distribution runs `cargo xtask test session-clone --native-wsl`; Linux source/build artifacts stay on the WSL filesystem rather than `/mnt/<drive>`. |
 | macOS windows, Metal/WGPU, universal application, signing, and notarization | Native Intel/Apple-Silicon macOS jobs own compilation and tests. Controlled macOS hardware owns GUI, VoiceOver, Gatekeeper, notarization, and final artifact evidence. |
+
+The 2026-08-24 Windows x86_64 output-surface rerun exercised an ordinary
+PowerShell `Write-Output` command on both WGPU and CPU. Each backend produced
+the same 1,581 by 36 physical-pixel result region, 16.384 logical-pixel surface,
+3.5 pixel rail, 10.716 pixel measured gutter, 14,238 samples, 51 color buckets,
+and luminance spread 212. The native snapshot also bound resting surface, rail,
+divider, and pulse opacities to 0.065/0.72/0.42/0.14, a 540 millisecond cycle,
+and a one-third hold. Both captured frames were visually inspected.
 
 The native CI job intentionally enables every Cargo feature on all three host
 families. Platform-specific code must use target configuration, not rely on a
