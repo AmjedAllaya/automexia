@@ -55,7 +55,7 @@ They retain their terminal/application or native-platform authority.
 | **Fully done** | U6 scrollbar visual role | `renderer/scrollbar.rs` retains the allocation-free geometry, fade, hit area, and drag lifecycle while using rounded cyan/blue idle and drag roles | None for source implementation |
 | **Fully done** | U7 modal input composition | `application.rs`, `router/mod.rs`, and `screen/mod.rs` prioritize the visible modal owner before resize, chrome, pane, PTY, wheel, input-method, and file-drop paths; hidden surfaces do not intercept a higher-priority command palette | None for source implementation |
 | **Fully done** | U8 first-run welcome | `router/routes/welcome.rs` replaces the legacy black-and-white animation with a static responsive Automexia card, shared theme-aware accents, one clear Enter action, bounded copy, and no local configuration-path disclosure; layout/DPI/target/privacy tests own the contract | None for source implementation |
-| **Fully done** | U9 branded window caption controls | renderer/island.rs retains right-edge layout and 40–46 pixel hit targets while adding one theme-aware liquid-glass capsule, distinct cyan/purple/coral rails and glyphs, rest/hover/held/inactive states, native maximize/restore state, and same-control release activation with drag-away/focus-loss cancellation; application and screen owners only snapshot native state and route events | None for source implementation |
+| **Fully done** | U9 branded window caption controls | renderer/island.rs retains right-edge layout and 40–46 pixel hit targets while rendering three separated rounded cards without a shared border, with distinct cyan/purple/coral rails and glyphs, rest/hover/held/inactive states, native maximize/restore state, and same-control release activation with drag-away/focus-loss cancellation; application and screen owners only snapshot native state and route events | None for source implementation |
 | **Fully done** | U9.1 command-result boundary | `automexia/ui.rs`, `renderer/mod.rs`, and `renderer/devops_status.rs` move a completed command's compact exit state and duration to the following prompt's reserved row and paint one bounded semantic divider there; focused tests prove placement, final-result fallback, and geometry without adding terminal rows or PTY bytes | Manual multi-theme and assistive-technology evidence remains under U10 |
 | **Fully done** | U9.2 pointer-owned pane scrolling | `application.rs`, `screen/mod.rs`, `layout/mod.rs`, and `mouse/mod.rs` activate the exact pane under the pointer before delivering the initiating wheel/trackpad event, preserve wheel-focused selection, reset cross-pane fractional accumulation, and retain passive hover; focused tests cover hit-test boundaries and focus policy | Manual cross-platform mouse/trackpad interaction remains part of U10 native evidence |
 | **Fully done** | U9.3 Windows Ctrl+V paste | `bindings/mod.rs` maps both `Ctrl+V` and `Ctrl+Shift+V` to the existing safe Paste action for every Windows-hosted child session, including WSL and SSH; explicit `ReceiveChar` configuration restores application ownership, while Linux/BSD and macOS defaults remain unchanged | Manual physical clipboard validation in native WSL and terminal applications remains part of U10 native evidence |
@@ -122,7 +122,7 @@ Focused Windows x86_64 source evidence completed on 2026-08-24:
 - quit layout, hit-test, hover, and opacity tests: 4 passed;
 - scrollbar geometry, fade, lifecycle, and brand-role tests: 13 passed;
 - custom caption-control layout, semantic role, hit-target, maximize/restore,
-  held-state, focus-loss, and release-cancellation tests: 52 passed;
+  held-state, focus-loss, release-cancellation, and independent-card snapshot tests: 53 passed;
 - command-result following-prompt placement, truthful final-result fallback,
   and bounded divider geometry tests: 3 passed;
 - pointer-owned pane selection, selection preservation, and cross-pane wheel
@@ -130,7 +130,9 @@ Focused Windows x86_64 source evidence completed on 2026-08-24:
 - Windows `Ctrl+V`/legacy paste binding and explicit terminal-input override
   test: 1 passed;
 - native Windows WGPU/CPU resize and compositing gate: 19 deterministic resize
-  tests plus both real-GUI passes completed; manual screenshot inspection remains U10;
+  tests plus both real-GUI passes completed; inspected 1750×1080 title-bar crops
+  were byte-identical across backends and showed three separate cards without a
+  shared outline; the complete visual/assistive-technology matrix remains U10;
 - native Windows caption interaction at 1280×760 and 125% scale: hover deltas
   stayed inside the intended 45×45 physical wells; drag-away cancellation,
   maximize, restore, and graceful cleanup passed;
