@@ -270,13 +270,15 @@ only the lambda, editable command, and cursor row. A delayed SIGWINCH editor
 repaint therefore cannot erase the path or duplicate renderer metadata.
 Command completion includes the actual exit code; Automexia measures between
 `C` and `D`. When semantic prompt ownership proves the output limits and next
-prompt, the renderer adds a quiet success/error-tinted output band, slim left
-accent, four- to eight-pixel breathing gutter, end rule, and right-aligned
-success/failure badge with duration. The newest live result lightens once for
-180 milliseconds, with no repeated blink or movement. These renderer-only cues
-do not insert rows or bytes, so selection, copy, search, history, prompt
-identity, context, and command results survive scrollback and column
-shrink/grow reflow unchanged.
+prompt, the renderer applies the same quiet result surface to listing and
+non-listing commands, success and error exits, single- and multiline output,
+and managed input wrapped beyond eight rows. Its tinted band, slim left accent,
+four- to eight-pixel breathing gutter, end rule, and right-aligned
+success/failure badge with duration keep the boundary redundant. The newest
+live result lightens once for 540 milliseconds, with no repeated blink or
+movement. These renderer-only cues do not insert rows or bytes, so selection,
+copy, search, history, prompt identity, context, and command results survive
+scrollback and column shrink/grow reflow unchanged.
 
 CMD reserves the same visible three-row structure and publishes OSC 7 plus
 OSC 133 `A/B`, but stock `cmd.exe` exposes no pre/post-command hook from which

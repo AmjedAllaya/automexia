@@ -56,7 +56,7 @@ They retain their terminal/application or native-platform authority.
 | **Fully done** | U7 modal input composition | `application.rs`, `router/mod.rs`, and `screen/mod.rs` prioritize the visible modal owner before resize, chrome, pane, PTY, wheel, input-method, and file-drop paths; hidden surfaces do not intercept a higher-priority command palette | None for source implementation |
 | **Fully done** | U8 first-run welcome | `router/routes/welcome.rs` replaces the legacy black-and-white animation with a static responsive Automexia card, shared theme-aware accents, one clear Enter action, bounded copy, and no local configuration-path disclosure; layout/DPI/target/privacy tests own the contract | None for source implementation |
 | **Fully done** | U9 branded window caption controls | renderer/island.rs retains right-edge layout and 40–46 pixel hit targets while rendering three separated rounded cards without a shared border, with distinct cyan/purple/coral rails and glyphs, rest/hover/held/inactive states, native maximize/restore state, and same-control release activation with drag-away/focus-loss cancellation; application and screen owners only snapshot native state and route events | None for source implementation |
-| **Fully done** | U9.1 command-result boundary and surface | `automexia/ui.rs`, `renderer/mod.rs`, and `renderer/devops_status.rs` prove semantic output limits, group them with a quiet success/error tint, slim accent, 4–8 pixel visual breathing gutter, end rule, persistent icon/duration, and one 180 ms opacity-only lightening for a newly completed live result. The cue is idempotent, scroll-safe, bounded, and renderer-only; focused tests and native Windows WGPU/CPU geometry plus pixel evidence prove it adds no terminal rows or PTY bytes. | Native multi-theme, high-contrast, Linux/macOS renderer, and assistive-technology evidence remains under U10 |
+| **Fully done** | U9.1 command-result boundary and surface | `automexia/ui.rs`, `renderer/mod.rs`, and `renderer/devops_status.rs` prove contiguous semantic output limits for listing/non-listing, success/error, single/multiline, and deeply wrapped managed commands; group them with a quiet tint, slim accent, 4–8 pixel visual breathing gutter, end rule, persistent icon/duration, and one 540 ms opacity-only lightening for a newly completed live result. The cue is idempotent, scroll-safe, bounded, and renderer-only; focused tests and native Windows WGPU/CPU geometry plus pixel evidence prove it adds no terminal rows or PTY bytes. | Native multi-theme, high-contrast, Linux/macOS renderer, and assistive-technology evidence remains under U10 |
 | **Fully done** | U9.2 pointer-owned pane scrolling | `application.rs`, `screen/mod.rs`, `layout/mod.rs`, and `mouse/mod.rs` activate the exact pane under the pointer before delivering the initiating wheel/trackpad event, preserve wheel-focused selection, reset cross-pane fractional accumulation, and retain passive hover; focused tests cover hit-test boundaries and focus policy | Manual cross-platform mouse/trackpad interaction remains part of U10 native evidence |
 | **Fully done** | U9.3 Windows Ctrl+V paste | `bindings/mod.rs` maps both `Ctrl+V` and `Ctrl+Shift+V` to the existing safe Paste action for every Windows-hosted child session, including WSL and SSH; explicit `ReceiveChar` configuration restores application ownership, while Linux/BSD and macOS defaults remain unchanged | Manual physical clipboard validation in native WSL and terminal applications remains part of U10 native evidence |
 | **Fully done** | U9.4 continuous pane/workspace search | `bindings/mod.rs` keeps local/global search shortcuts active during Search; `screen/mod.rs` owns query-preserving, pane-isolated scope transitions and bounded visible-match counts; `renderer/search.rs` owns one responsive surface with clickable/keyboard scope choices, focus state, result status, and privacy-safe announcements. Focused tests cover both directions, idempotence, pointer targets, PTY isolation, checked/focused semantics, and tiny/HiDPI/ultrawide geometry; native Windows WGPU and CPU runs validate the real split-pane card. | Native Narrator/NVDA, VoiceOver, and Orca delivery remains part of U10 and the accepted v0.5 platform adapter. |
@@ -117,7 +117,7 @@ distinction while avoiding a second modal owner. Its two scope choices use the
 radio-group checked-state and arrow-key model in renderer-neutral form.
 
 The completed-output cue follows the frequent-interaction guidance by changing
-opacity for 180 milliseconds without moving or resizing content. It is a single
+opacity for 540 milliseconds without moving or resizing content. It is a single
 notification rather than a repeating blink, shuts its redraw timer down at the
 end, and leaves persistent icon, rule, accent, and whitespace cues afterward.
 
@@ -139,8 +139,9 @@ Focused Windows x86_64 source evidence completed on 2026-08-24:
 - custom caption-control layout, semantic role, hit-target, maximize/restore,
   held-state, focus-loss, release-cancellation, and independent-card snapshot tests: 53 passed;
 - command-result following-prompt placement, truthful output bounds, final-result
-  fallback, surface/accent/gutter geometry, one-shot idempotence, scrollback
-  suppression, and resize/reflow replay suppression tests: 9 passed;
+  fallback, listing/non-listing success/error single/multiline coverage, deep
+  managed-prompt wrapping, fail-closed stale metadata, surface/accent/gutter
+  geometry, 540 ms one-shot idempotence, and scroll/reflow suppression: 12 passed;
 - native Windows command-result WGPU and CPU runs passed the complete interaction
   stress suite; each measured an 18.4-pixel surface, 2-pixel accent, 8.7-pixel
   gutter, generation `2`, and a 1,581×36 physical-pixel region with 14,238

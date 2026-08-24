@@ -253,11 +253,13 @@ struct DevOpsPaneRenderState {
     is_active: bool,
 }
 
-const MAX_COMMAND_PROMPT_SCAN_ROWS: usize = 8;
+const MAX_LEGACY_PROMPT_SCAN_ROWS: usize = 8;
 
 /// Locate the first output row without inspecting terminal text beyond the
 /// narrow legacy lambda fallback. Managed prompts use their semantic identity;
-/// uncertain layouts return None so renderer chrome never claims output.
+/// their contiguous block is already bounded by the pane's visible snapshot,
+/// so wrapped or multiline input cannot be mistaken for command output.
+/// Uncertain layouts return None so renderer chrome never claims output.
 fn command_output_top(
     rows: &[Row<Square>],
     prompt_index: usize,
@@ -265,20 +267,22 @@ fn command_output_top(
     cell_height: f32,
 ) -> Option<f32> {
     let prompt = rows.get(prompt_index)?;
-    let mut scan = rows
-        .iter()
-        .enumerate()
-        .skip(prompt_index.saturating_add(1))
-        .take(MAX_COMMAND_PROMPT_SCAN_ROWS);
     let command_index = if let Some(generation) = prompt.semantic_prompt_id {
-        scan.filter(|(_, row)| {
-            row.semantic_prompt == SemanticPrompt::PromptContinuation
-                && row.semantic_prompt_id == Some(generation)
-        })
-        .map(|(index, _)| index)
-        .next_back()
+        rows.iter()
+            .enumerate()
+            .skip(prompt_index.saturating_add(1))
+            .take_while(|(_, row)| {
+                row.semantic_prompt == SemanticPrompt::PromptContinuation
+                    && row.semantic_prompt_id == Some(generation)
+            })
+            .map(|(index, _)| index)
+            .last()
     } else {
-        scan.find(|(_, row)| terminal_row_first_character(row) == Some('λ'))
+        rows.iter()
+            .enumerate()
+            .skip(prompt_index.saturating_add(1))
+            .take(MAX_LEGACY_PROMPT_SCAN_ROWS)
+            .find(|(_, row)| terminal_row_first_character(row) == Some('λ'))
             .map(|(index, _)| index)
     }?;
     Some(origin_y + command_index.saturating_add(1) as f32 * cell_height)
@@ -320,7 +324,7 @@ fn command_result_anchors(
         .filter_map(|(row_index, row)| {
             let result = row.semantic_command_result?;
             let synthetic_index = (row_index..rows.len())
-                .take(MAX_COMMAND_PROMPT_SCAN_ROWS)
+                .take(MAX_LEGACY_PROMPT_SCAN_ROWS)
                 .find_map(|command_index| {
                     synthetic_prompt_visual_anchor(rows, command_index)
                 });
@@ -2228,6 +2232,85 @@ mod prompt_visual_anchor_tests {
         rows[4].set_semantic_prompt(SemanticPrompt::Prompt, Some(8));
 
         assert_eq!(command_output_top(&rows, 0, 4.0, 20.0), Some(64.0));
+    }
+
+    #[test]
+    fn command_output_starts_after_an_entire_wrapped_managed_prompt() {
+        let mut rows = (0..16).map(|_| Row::<Square>::new(12)).collect::<Vec<_>>();
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+        for row in &mut rows[1..=12] {
+            row.set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+        }
+        rows[12][Column(0)].set_c('λ');
+        rows[13][Column(0)].set_c('o');
+        rows[14].set_semantic_prompt(SemanticPrompt::Prompt, Some(8));
+
+        assert_eq!(command_output_top(&rows, 0, 4.0, 20.0), Some(264.0));
+    }
+
+    #[test]
+    fn managed_output_bounds_stop_at_the_first_unowned_row() {
+        let mut rows = (0..5).map(|_| Row::<Square>::new(12)).collect::<Vec<_>>();
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+        rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+        rows[1][Column(0)].set_c('λ');
+        rows[2][Column(0)].set_c('o');
+        rows[3].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+
+        assert_eq!(command_output_top(&rows, 0, 0.0, 20.0), Some(40.0));
+    }
+
+    #[test]
+    fn result_anchors_cover_success_error_single_and_multiline_output() {
+        for (exit_code, output_row_count) in [(0, 1usize), (7, 3usize)] {
+            let next_prompt_index = 3 + output_row_count;
+            let mut rows = (0..=next_prompt_index)
+                .map(|_| Row::<Square>::new(12))
+                .collect::<Vec<_>>();
+            rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+            rows[0].set_semantic_command_result(
+                rio_backend::crosswords::grid::row::SemanticCommandResult {
+                    exit_code,
+                    elapsed_ms: 18,
+                },
+            );
+            rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+            rows[1][Column(0)].set_c('/');
+            rows[2].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+            rows[2][Column(0)].set_c('λ');
+            for row in &mut rows[3..next_prompt_index] {
+                row[Column(0)].set_c('o');
+            }
+            rows[next_prompt_index].set_semantic_prompt(SemanticPrompt::Prompt, Some(8));
+
+            let prompts = [
+                crate::automexia::ui::PromptAnchor {
+                    generation: Some(7),
+                    key: 10,
+                    x: 4.0,
+                    y: 0.0,
+                    width: 720.0,
+                    height: 20.0,
+                },
+                crate::automexia::ui::PromptAnchor {
+                    generation: Some(8),
+                    key: 10 + next_prompt_index as u64,
+                    x: 4.0,
+                    y: next_prompt_index as f32 * 20.0,
+                    width: 720.0,
+                    height: 20.0,
+                },
+            ];
+
+            let results =
+                command_result_anchors(&rows, 10, 4.0, 0.0, 720.0, 20.0, &prompts);
+
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].output_top, Some(60.0));
+            assert_eq!(results[0].y, next_prompt_index as f32 * 20.0);
+            assert_eq!(results[0].exit_code, exit_code);
+            assert!(results[0].separates_next_prompt);
+        }
     }
 
     #[test]
