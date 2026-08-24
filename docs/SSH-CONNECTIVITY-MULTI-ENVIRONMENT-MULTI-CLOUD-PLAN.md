@@ -117,14 +117,14 @@ native/release claim.
 
 | Area | Status | Current evidence | Remaining exit work |
 |---|---|---|---|
-| D0 SSH trust/fixture contract | Partially done | ADR 0012 is accepted; schema 5 ratchets immutable schemas 1/2/3/4 with exact direct/routed/tunnel argv, full trust evidence, tunnel lifecycle, recovery/status, receipt/reconnect, 23-scenario native-manifest rules, and mutations | ADR 0003 two exact-head approvals/server enforcement and controlled real native fixture execution. |
+| D0 SSH trust/fixture contract | Partially done | ADR 0012 is accepted; schema 5 ratchets immutable schemas 1/2/3/4 with exact direct/routed/tunnel argv, full trust evidence, tunnel lifecycle, recovery/status, receipt/reconnect, 23-scenario native-manifest rules, exact host/artifact binding, a protected workflow, and mutations | ADR 0003 two exact-head approvals/server enforcement and controlled real native fixture execution. |
 | D1 contracts and D2 immutable capsules | Fully done locally | `automexia-extension-api`, runtime, DevOps model and architecture checks | Preserve while adding real login/launch; hosted release assurance remains separate. |
 | D3 launch broker | Partially done; nonactivated | The production broker, one application runner, exact executable guard, ContextManager PTY/route seam, bounded lifecycle/audit, approval UX, and mutation checks pass locally | Production constant stays false and linked package unverified until protected approvals, attestation, descendant cleanup, and native evidence pass. |
 | D4 static OpenSSH inventory | Fully done locally | `extensions/devops-ssh`: bounded parser, canonical first-value ProxyJump chains (8 hops/2 KiB), grants, hostile/property/fuzz tests, 10,000-alias benchmark, private revisioned metadata | Deliberately remains non-executing; hosted macOS/longitudinal release proof remains external. |
 | F2/D5.0 Hub and planning model | Partially done overall; fully done locally | Pure records, validation, reducers, fingerprints, review/planner projection, accessibility goldens, fuzz and benchmark | ADR 0003 protected activation/native evidence blocks phase closure; no production authority is granted. |
 | F3/D5.1 read-only Connection Hub | Fully done locally; external evidence partially done | App-owned joined runtime, exact reviewed native selection, compact progressive setup, bounded browse/filter/group, redundant text/icon/color semantics, D4 favorite/tag CAS, read-only recent/library state, disabled authority, Windows tests/benchmark/build/native frame | Native macOS/Linux picker/permission and controlled screen-reader evidence remain external. |
 | F3 Connection Library | Fully done locally | `ConnectionLibraryStore` has 16 MiB private documents, CAS, recovery, transfer redaction, fresh import IDs, read-only/disk-full and link tests | Product editor/manager belongs to F6; macOS/Linux native permission and controlled screen-reader evidence remain. |
-| F5 managed OpenSSH | Partially done overall; F5.1-F5.3 source-complete nonactivated | Exact direct/routed/tunnel argv; typed host/user/port/endpoints; loopback defaults; strong per-use tunnel review; full trust evidence; guarded lifecycle; receipts; reconnect; and compact tunnel state pass locally | Protected activation/attestation, actual status execution, real OpenSSH/forced cleanup, native resources/accessibility, and validated F5.4 real manifests remain. |
+| F5 managed OpenSSH | Partially done overall; F5.1-F5.3 and the F5.4 local assurance path are complete nonactivated | Exact direct/routed/tunnel argv; typed endpoints; trust/review/lifecycle; 23-scenario validator; native host, commit, OpenSSH, and artifact binding; protected manual workflow; receipts; reconnect; and compact tunnel state pass locally | Protected activation/attestation, actual status execution, real OpenSSH/forced cleanup, native resources/accessibility, and validated F5.4 real manifests remain. |
 | F6 recipes and remote declarative workspaces | Partially done; review-only source contracts complete locally | Library schema 2/editor/migration previews, exact dependent fingerprints, pure recipe review/lifecycle, typed remote initialization, declarative workspaces/restore, armed broadcast, semantic projections, fuzz, mutation, and benchmarks pass | Proposed ADR 0023 acceptance, product editor/controller/renderer wiring, managed execution adapters, and controlled native/resource/accessibility evidence remain. |
 | D6.0/M7 provider-neutral authentication and capsule orchestration | Fully done locally | Bounded strict schemas, immutable provider contexts, 19-state lifecycle, generation/session isolation, exact allow-once review, redacted receipts/audits, passive-status migration, fuzz/mutation/benchmark evidence | D6.1-D6.4 and D6.5 Teleport builders are source-complete/nonactivated; product activation, real official-CLI/native evidence, and OpenBao remain external/not done. |
 | D6.1/M8 AWS | Partially done overall; source-complete nonactivated | Independent `automexia-devops-aws`; bounded public profiles; exact SSO/STS/SSM/EKS dry-run contracts; 10 focused tests | D3 product activation/attestation, M11 EKS ingestion, and controlled real official-tool/native/resource/accessibility/release evidence remain. |
@@ -378,7 +378,7 @@ gate is false and the linked extension candidate is unverified.
 | Application runner | Fully done locally; nonactivated | Router owns one shared runner; active operations stop at 50, audits at 256, route/session/lease scope is exact, completion requires publication, and shutdown reconciles. | Protected activation and native process/resource proof. |
 | PTY/route lifecycle | Fully done locally; nonactivated, native proof external | ContextManager alone consumes the guard, creates the exact PTY, inserts one independent Context, and marks the matching route/session published. Windows has bounded Job Object termination; Unix retains the waitable leader while signalling the owned process group; PTY workers join with a deadline. | Real OpenSSH descendant/listener cleanup and controlled leak/resource proof on every native platform. Durable audit remains the separate policy row below. |
 | Capability/recovery UX | Fully done locally; nonactivated, controlled evidence external | Review shows public package/launcher, target, route, risk, exact operation, scope, destination, and three accessible decisions. A capacity-one worker publishes a fresh current-executable observation before wake; the controller rejects stale results and requires a second approval. | Protected attestation/activation plus controlled pixels, screen-reader, localization, and high-scale evidence. |
-| Native OpenSSH evidence | Partially done | Windows guarded-spawn/ConPTY tests pass and macOS cross-check compiles. | Real loopback OpenSSH on native Windows/macOS/Linux and gated WSL plus controlled 1/10/50 resources. |
+| Native OpenSSH evidence | Partially done overall; local assurance path fully done | Windows guarded-spawn/ConPTY tests pass; schema-5 validates 23 scenarios and binds the native host, exact commit, fixed OpenSSH versions, binary/package/client hashes, and protected manual workflow. | Real loopback OpenSSH on native Windows/macOS/Linux, separately gated WSL, controlled accessibility, and 1/10/50 resources. |
 
 The authenticated 2026-08-24 audit found one human collaborator, rulesets
 unavailable on the private Free plan, zero-step Actions billing rejection, and
@@ -570,8 +570,10 @@ full-evidence, and fail closed. This is not a production connection claim.
 ### M5 — F5.3 typed tunnels and M5.4 native SSH release evidence
 
 Status: **Partially done overall.** F5.3 is fully done locally at the
-nonactivated source boundary. F5.4's bounded evidence contract and synthetic
-mutation fixture are implemented, while controlled real OpenSSH runs and M2/F4
+nonactivated source boundary. F5.4's bounded evidence contract, synthetic
+mutation fixture, exact executing-host/commit/OpenSSH/artifact binding, and
+protected manual runner workflow are fully implemented locally. Controlled
+real OpenSSH runs and M2/F4
 production activation evidence remain external prerequisites.
 
 M5 working statement (2026-08-22): implement the complete nonactivated source
@@ -640,18 +642,24 @@ redacted manifests validate.
   distinguishes planned/starting/ready/collision/failed/cancelled/closed, rejects
   stale scope and terminal reversal, projects compact redundant icon/color/text
   state into the Hub, and terminalizes every nonterminal entry on lease close.
-- [ ] **Partially done locally / external native remainder:** exact fake
+- [x] **Fully done locally / external native results remain:** exact fake
   preparation/argv/parser, hostile endpoint, collision, staleness, lifecycle,
   cleanup, decision, UI, and 1/10/50 pure-model tests pass. Active schema 5 and
   the bounded redacted 23-scenario manifest validator reject synthetic release
-  claims. Execute the real system OpenSSH matrix for host keys, encrypted keys,
+  claims. Controlled validation also rejects host/architecture/commit drift,
+  fixed OpenSSH client/server version drift, linked or changed files, artifact
+  hash drift, and real manual-baseline zero sentinels. A manual protected-
+  environment workflow targets the restricted ephemeral `automexia-openssh`
+  runner group and uploads only a path-free summary.
+- [ ] **External prerequisite:** execute the real system OpenSSH matrix for host keys, encrypted keys,
   agents, certificates, jumps, all tunnels, cancellation at DNS/connect/auth,
   offline, hostile output, exit status, and cleanup on Windows/macOS/Linux. WSL
   remains separately denied until its own native outcome passes.
 - [ ] **Partially done locally / external native remainder:** deterministic
   1/10/50 session/generation/tunnel isolation and cleanup invariants pass;
   activation stays false and the explicit prerequisite probe performs no install,
-  service, network, or SSH-file mutation. Controlled CPU/memory/socket/handle/
+  service, network, or SSH-file mutation. This Windows x86_64 host still has
+  OpenSSH 9.5 client tools but no `sshd`. Controlled CPU/memory/socket/handle/
   task/route/cache/log/storage measurements and before/after enable, disable,
   uninstall, manual-SSH, and generic-terminal baselines remain external.
 

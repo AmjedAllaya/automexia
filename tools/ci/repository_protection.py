@@ -32,6 +32,7 @@ EXPECTED_REPOSITORY = "AmjedAllaya/automexia-terminal"
 EXPECTED_WORKFLOWS = {
     "ci.yml": "CI",
     "codeql.yml": "CodeQL",
+    "f5-openssh-assurance.yml": "F5 controlled native OpenSSH assurance",
     "nightly.yml": "Nightly depth",
     "release-drafter.yml": "Release Drafter",
     "release.yml": "Stable release",

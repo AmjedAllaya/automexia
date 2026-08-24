@@ -358,8 +358,18 @@ caps bytes/durations/resources, requires zero cleanup and redaction leaks, and
 binds before/after manual-SSH plus disable/uninstall baselines. Its prerequisite
 probe executes only fixed OpenSSH `-V` arrays with bounded output; it never
 installs a server, changes a service, reads SSH configuration, or contacts a
-network. Controlled real OpenSSH and resource runs remain external release
-evidence.
+network.
+
+The controlled validator then binds a real manifest to the executing native OS
+and normalized architecture, the exact clean requested commit, the fixed
+OpenSSH client/server versions, and no-follow identity-stable SHA-256 reads of
+the application binary, application package, and OpenSSH client. Files are
+capped at 4 GiB; links, replacement/growth while hashing, zero-sentinel real
+baselines, and path-bearing output fail closed. The manual-only F5 workflow has
+read-only repository permission, a protected environment, credential-free
+exact-commit checkout, and a restricted ephemeral runner group. Only its
+path-free summary is uploaded. Controlled real OpenSSH, resource, and
+accessibility runs remain external release evidence and do not enable the broker.
 
 ### M6 typed automation and declarative workspace boundary
 

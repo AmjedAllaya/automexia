@@ -125,6 +125,16 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
                 "source_binding", "manifest-claims-only"
             ),
             lambda d: d["native_release_evidence"]["security_checks"].pop(),
+            lambda d: d["native_release_evidence"].pop("controlled_binding"),
+            lambda d: d["native_release_evidence"].__setitem__(
+                "controlled_workflow", "unprotected.yml"
+            ),
+            lambda d: d["native_release_evidence"].__setitem__(
+                "runner_policy", "persistent-shared-runner"
+            ),
+            lambda d: d["native_release_evidence"].__setitem__(
+                "max_release_artifact_bytes", 0
+            ),
             lambda d: d["native_release_evidence"]["resource_budgets"].__setitem__(
                 "peak_cpu_millicores", 0
             ),

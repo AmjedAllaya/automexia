@@ -78,6 +78,31 @@ preflight. Missing runner configuration, missing/stale/synthetic evidence,
 review gaps, or commit drift fail closed. Only the bounded summary is uploaded.
 The full contract is in
 `docs/research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AUDIT.md`.
+Managed OpenSSH remains a separate feature-activation gate. Before any release
+advertises or enables D5.2/F5, configure `f5-openssh-release` as a protected
+environment with required independent reviewers and no self-review. Set the
+repository operator switch `AUTOMEXIA_F5_OPENSSH_RUNNER=1`; define the private
+manifest, application binary, and package paths as environment variables; and
+provision one ephemeral JIT runner per job in the restricted
+`automexia-openssh` group. Runner labels must match the dispatched native
+platform and architecture. The host must contain the fixed system `ssh`,
+`ssh-add`, `ssh-keygen`, and `sshd` tools, the exact reviewed package artifacts,
+a private loopback-only fixture, and no ambient credentials.
+
+Dispatch `F5 controlled native OpenSSH assurance` manually with the exact
+already reviewed source commit. It checks out that digest without persisted
+credentials, runs the mutation suite, and validates that the private real
+manifest matches the executing OS/architecture, clean commit, fixed OpenSSH
+versions, and freshly hashed binary/package/client. It uploads only the bounded
+path-free summary for 90 days. Never upload the private manifest, fixture,
+configuration, paths, usernames, destinations, agent data, or terminal output.
+A missing runner/environment, synthetic manifest, version/hash drift, linked or
+changing artifact, nonzero cleanup, failed scenario, or absent controlled
+review blocks feature activation. Because this workflow is manual and
+protected, it is registered assurance rather than default-branch evidence.
+Actual three-OS results, accessibility review, package attestation, and ADR 0003
+approval/enforcement are still required; the workflow does not flip the
+compile-time activation constant.
 
 The final controlled Windows runner additionally carries the `defender` label.
 It verifies both signed MSI and ZIP architecture pairs, requires each portable

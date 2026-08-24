@@ -72,12 +72,12 @@ documentation, feature assurance, and a change fragment.
 |---|---|---|---|---|
 | Provider-neutral contracts | D1 | Fully done | automexia-extension-api, automexia-extension-runtime, automexia-devops, automexia-ui-model; architecture gates | Hosted release evidence only |
 | Generic context and immutable capsules | D2 | Fully done | extension API/runtime plus application session/context tests | Production login/relaunch belongs to D3/D6 |
-| SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 is accepted; schema 5 ratchets immutable schemas 1/2/3/4 with exact M3-M5 routes/tunnels, trust/status, lifecycle/receipt/reconnect, 23-scenario native-manifest rules, and mutations | Obtain ADR 0003's two independent exact-head protected approvals/server enforcement; execute and validate real native F4/F5 manifests |
+| SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 is accepted; schema 5 ratchets immutable schemas 1/2/3/4 with exact M3-M5 routes/tunnels, trust/status, lifecycle/receipt/reconnect, 23-scenario native-manifest rules, host/artifact binding, a protected manual workflow, and mutations | Obtain ADR 0003's two independent exact-head protected approvals/server enforcement; execute and validate real native F4/F5 manifests |
 | Exact-argument launch broker | D3 | Partially done; nonactivated | Production-compiled fail-closed broker, bounded current-executable review worker, exact guarded PTY seam, route publication, process-group/Job Object teardown, PTY-worker joining, bounded lifecycle/audit state, approval UX, and local protected-path policy | Protected approvals/server enforcement, real loader attestation, and native OpenSSH descendant/process/resource/accessibility evidence |
 | Static OpenSSH inventory | D4 | Fully done | automexia-devops-ssh, hostile/property tests, fuzz, benchmark, assurance | Remains deliberately disabled until D5 |
 | Connection Hub model | D5.0 | Partially done | All local F2 schemas, reducers, dry-run planner, Hub/review/planner projections, fixtures, goldens, fuzz, mutations, and benchmark are implemented | ADR 0003 protected approvals and native evidence remain for D5.2; capability-free D5.1 is complete under ADR 0022 |
 | Read-only Connection Hub | D5.1 | Fully done locally; external evidence partial | App-scoped joined runtime, exact reviewed native selection, bounded modal/search/filter/grouping, CAS favorite/tag diffs, read-only recent/library data, disabled authority, tests, benchmark, and release-build evidence | Native macOS/Linux picker/permission plus controlled Narrator/NVDA, VoiceOver, and Orca evidence |
-| Managed OpenSSH | D5.2 | Partially done overall; F5.1-F5.3 source-complete nonactivated | Exact direct/routed/tunnel argv, typed endpoints, loopback defaults, strong tunnel review, full trust evidence, safe copy, guarded lifecycle, receipts, reconnect, and compact states pass locally | Protected activation/attestation, actual status execution, real OpenSSH descendant/listener cleanup, native resources/accessibility, and F5.4 manifests |
+| Managed OpenSSH | D5.2 | Partially done overall; F5.1-F5.3 and the F5.4 local assurance path complete nonactivated | Exact routes/tunnels/trust/lifecycle plus native host/commit/OpenSSH/artifact binding, protected manual workflow, receipts, reconnect, and path-free summary pass locally | Protected activation/attestation, actual status execution, real OpenSSH descendant/listener cleanup, native resources/accessibility, and validated F5.4 real manifests |
 | Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, approval fingerprints, and private transactional Connection Library persistence/redacted transfer are implemented | Product editor, remote workspace lifecycle, and separately gated execution remain |
 | Multi-cloud framework and providers | D6.0-D6.5 | Partially done overall: D6.0 fully done locally; D6.1-D6.5 Teleport slice source-complete/nonactivated; OpenBao not done | Provider-neutral capsules plus independent AWS, Azure, GCP, Kubernetes, OpenShift, and Teleport bounded/exact source contracts, tests, and benchmarks | D3 product activation, accepted ADR 0024 plus OpenBao implementation, and real official-CLI/cluster/native evidence |
 | Native completion | CP1 | Fully done | shell integration, xtask completion manager, CP1 contract/tests | Hosted three-OS and longitudinal release evidence |
@@ -513,12 +513,16 @@ Status: **Fully done locally; nonactivated.**
 
 ### F5.4 native and release evidence
 
-- [ ] **Partially done locally:** exact fake preparation/argv/parser, hostile
+- [x] **Fully done locally — deterministic and controlled validation:** exact fake preparation/argv/parser, hostile
   endpoints, independent collision domains, stale scope, terminal lifecycle,
   cleanup, Hub projection, decision, and 1/10/50 pure-model cases pass. Active
   schema 5 and a bounded duplicate-key/size/redaction-aware evidence validator
-  freeze 23 ordered scenarios. A real hermetic OpenSSH server run remains
-  external and is not represented by the synthetic repository fixture.
+  freeze 23 ordered scenarios. Real evidence must additionally match the
+  executing native OS/architecture, exact clean commit, fixed OpenSSH client
+  and server versions, and freshly hashed application binary, package, and
+  client. The manual-only protected runner-group workflow uploads only a
+  path-free summary. A real hermetic OpenSSH server run remains external and
+  is not represented by the synthetic repository fixture.
 - [ ] **External prerequisite:** pass real system OpenSSH cases on Windows,
   macOS, and Linux for host keys, agents, encrypted keys, certificates, jumps,
   tunnels, cancellation, offline, hostile output, exit status, and cleanup. WSL
@@ -527,10 +531,14 @@ Status: **Fully done locally; nonactivated.**
 - [ ] **Partially done:** deterministic 1/10/50 scope isolation and cleanup
   invariants pass; bounded native CPU, memory, handle/descriptor, socket, task,
   route, cache, log, and storage measurements remain external.
-- [ ] **Partially done:** activation remains compile-time false, the evidence
-  probe is explicit and read-only, and the repository fixture cannot satisfy a
-  release. Controlled before/after enable, disable, uninstall, manual `ssh`,
-  and generic-terminal baselines remain external.
+- [x] **Fully done locally — fail-closed acquisition path:** activation remains
+  compile-time false, the evidence probe is explicit/read-only, real baseline
+  zero sentinels and linked or changed files fail closed, and the repository
+  fixture cannot satisfy a release. The F5 workflow uses read-only permissions,
+  a protected environment, exact-commit checkout without persisted credentials,
+  and a restricted ephemeral runner group.
+- [ ] **External prerequisite:** collect controlled before/after enable, disable,
+  uninstall, manual `ssh`, and generic-terminal baselines on every native host.
 
 Exit remains unavailable: the nonactivated tunnel source boundary is complete,
 but reviewed production SSH requires protected activation plus validated real
@@ -936,8 +944,9 @@ real package-loader attestation, and the native F4 evidence matrix. F3/D5.1 is
 fully implemented locally; F4's source-local runner, current-executable review,
 approval UI, guarded PTY, route publication, process-tree teardown, and worker
 joining are implemented but nonactivated. F5.2 explicit routes/host trust and F5.3 typed tunnels are now complete locally
-and nonactivated. The next M5 action is to execute and validate F5.4's private
-real OpenSSH evidence manifests on controlled Windows, macOS, and Linux runners;
+and nonactivated. The next M5 action is to configure the protected environment
+and ephemeral runner group, then dispatch F5.4's private real OpenSSH evidence
+manifests on controlled Windows, macOS, and Linux runners;
 source work may proceed to F6 while those external F4/M5 gates are collected.
 P1 autocomplete research is **Fully done** with CP1 retained. P2 is **Partially
 done at the proposal-only boundary**: ADR 0025 and its machine threat contract

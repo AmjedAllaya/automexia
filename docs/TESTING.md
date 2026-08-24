@@ -1313,6 +1313,8 @@ The M5 source and evidence-contract suites are reproducible with:
     python tools/ci/check_session_launch_d0.py
     python tools/ci/test_session_launch_d0.py
     python tools/ci/test_pr_policy.py
+    python tools/ci/test_platform_coverage.py
+    python tools/ci/test_repository_protection.py
 
 The Rust regression set covers exact local/remote/dynamic `-F none` argv,
 independent grammar revalidation, unchanged no-tunnel behavior, hostile
@@ -1325,7 +1327,10 @@ immutable schemas 1-4 and the synthetic evidence fixture. The Python mutation
 sets cover duplicate JSON keys, oversize manifests, contract/source drift, WSL,
 synthetic release claims, missing/reordered/failed scenarios, resource cleanup,
 manual-client/disable/uninstall baselines, forbidden fields, and redaction
-canaries.
+canaries. Controlled-binding mutations additionally cover native OS and
+architecture drift, requested-commit drift, fixed client/server version drift,
+tampered application artifacts, linked files, path redaction, and real
+zero-sentinel baselines.
 
 The safe local prerequisite probe is explicit:
 
@@ -1337,29 +1342,13 @@ configuration operation. On the 2026-08-22 Windows x86_64 development host it
 truthfully returned the external-prerequisite result: OpenSSH client 9.5 was
 present and `sshd` was absent. That is not native tunnel evidence.
 
-A controlled release runner keeps its redacted real manifest outside the
-repository and validates it through one of these platform forms:
-
-    $env:AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE='C:\private\m5-windows.json'
-    python tools/ci/native_openssh_evidence.py --validate-environment
-
-    AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE=/private/m5-linux.json \
-      python tools/ci/native_openssh_evidence.py --validate-environment
-
-The validator accepts only exact Windows, macOS, or Linux manifests tied to the
-current source commit and contract digest. The clean tracked-tree binding uses a
-two-second, no-output Git query. All 23 ordered scenarios must pass within
-bounded durations, including
-post-quantum KEX, weak-crypto warnings, restricted-key agent session binding,
-and tunnel bind collision. The manifest must match the current source commit,
-application binary/package hashes, and private loopback fixture/config/seed
-hashes. Exact 1/10/50 latency, CPU, memory, handles, process/PTY/listener/tunnel/
-task/route/cache/log/storage ceilings, zero cleanup deltas, redaction canaries,
-and stable manual-SSH plus disable/uninstall baselines are mandatory. WSL and
-synthetic evidence are
-rejected for release. The QA command runs this validation automatically only
-when the private environment variable is present and otherwise reports the step
-as an explicit external prerequisite without printing the manifest path.
+The protected runner setup, exact environment inputs, direct validation forms,
+host/tool/artifact checks, retention, rollback, and remaining external matrix
+are maintained in the [F5 native OpenSSH assurance guide](F5-NATIVE-OPENSSH-ASSURANCE.md).
+The QA command runs controlled validation only when the private evidence input
+is present; otherwise it reports an explicit external prerequisite without
+printing paths. A synthetic fixture or path-free summary is never real native
+evidence.
 
 Final local M5 evidence on Windows x86_64 (2026-08-22): the tunnel crate suite
 passed 8 tests, the UI review suite passed 4, the renderer/Hub filter passed 11,

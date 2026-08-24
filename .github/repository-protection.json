@@ -73,6 +73,7 @@
     "required_workflows": [
       "CI",
       "CodeQL",
+      "F5 controlled native OpenSSH assurance",
       "Nightly depth",
       "Release Drafter",
       "Stable release",

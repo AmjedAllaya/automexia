@@ -23,12 +23,14 @@ class PlatformCoverageTests(unittest.TestCase):
         self.nightly = PLATFORM.load_workflow("nightly.yml")
         self.release = PLATFORM.load_workflow("release.yml")
         self.s1_assurance = PLATFORM.load_workflow("s1-assurance.yml")
+        self.f5_openssh_assurance = PLATFORM.load_workflow("f5-openssh-assurance.yml")
 
     def test_current_workflows_satisfy_the_contract(self) -> None:
         PLATFORM.validate_ci(self.ci)
         PLATFORM.validate_nightly(self.nightly)
         PLATFORM.validate_release(self.release)
         PLATFORM.validate_s1_assurance(self.s1_assurance)
+        PLATFORM.validate_f5_openssh_assurance(self.f5_openssh_assurance)
         PLATFORM.validate_macos_runtime_contract(
             PLATFORM.MACOS_BUILD_SCRIPT.read_text(encoding="utf-8")
         )
@@ -131,6 +133,36 @@ class PlatformCoverageTests(unittest.TestCase):
             PLATFORM.PlatformCoverageError, "complete matrix"
         ):
             PLATFORM.validate_s1_assurance(altered)
+
+    def test_f5_assurance_cannot_drop_protected_exact_artifact_binding(self) -> None:
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["jobs"]["validate"]["runs-on"]["group"] = "shared"
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "restricted self-hosted runner group"
+        ):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        trigger_key = True if True in altered else "on"
+        altered[trigger_key]["pull_request"] = {}
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "manual dispatch only"
+        ):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["jobs"]["validate"].pop("environment")
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "protected environment"
+        ):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["jobs"]["validate"]["env"].pop(
+            "AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY"
+        )
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "artifact paths"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
 
     def test_preflight_cannot_receive_raw_signing_secret(self) -> None:
         altered = copy.deepcopy(self.release)

@@ -5,7 +5,9 @@ boundary**. D5.2 remains **partially done overall and nonactivated**, while
 F5.1-F5.3 are source-complete locally: typed host/user/port/endpoints, bounded
 config-jump routes, exact configuration-free tunnels, loopback defaults, strong
 tunnel review, full trust evidence, safe copy, guarded lifecycle, receipts,
-reconnect, and compact tunnel states are local. Activation is false and the
+reconnect, and compact tunnel states are local. F5.4's controlled validator and
+manual protected workflow bind real evidence to the exact native host, commit,
+OpenSSH tools, and release artifacts. Activation is false and the
 package unverified, so v0.4 starts no managed child or listener. Protected
 approvals, attestation, actual status/SSH execution, controlled real native
 cleanup/resources/accessibility, and all D6 provider execution remain.
@@ -1029,10 +1031,14 @@ target. This exit does not activate D5.2.
 - [x] **Fully done locally; nonactivated** - F5.3 exact typed local/remote/
   dynamic tunnels, loopback defaults, strong Allow-once review, bounded owner
   lifecycle, collision/cleanup behavior, compact state, and accessibility pass.
-- [ ] **Partially done / externally blocked** - F5.4's bounded 23-scenario
-  manifest validator and synthetic mutation fixture pass, but real
-  Windows/macOS/Linux OpenSSH, 1/10/50 resources, enable/disable/uninstall,
-  manual-SSH, and accessibility evidence remain external.
+- [x] **Fully done locally; real results external** - F5.4's bounded 23-scenario
+  manifest validator, synthetic mutation fixture, native OS/architecture and
+  exact-commit checks, fixed client/server version checks, no-follow binary/
+  package/client hashing, baseline sentinel denial, path-redacted summary, and
+  protected manual runner workflow pass locally.
+- [ ] **External prerequisite** - collect real Windows/macOS/Linux OpenSSH,
+  1/10/50 resources, enable/disable/uninstall, manual-SSH, visual, and
+  accessibility evidence. WSL remains separately denied.
 
 Exit remains unavailable as a shipped connection until the protected and native
 D5 matrix passes on Windows, macOS, Linux, and separately gated WSL; disabled

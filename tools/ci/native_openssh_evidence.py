@@ -29,6 +29,7 @@ SYNTHETIC_FIXTURE = (
     ROOT / "tests/fixtures/session-launch/native-openssh-evidence-synthetic-v1.json"
 )
 MAX_MANIFEST_BYTES = 262_144
+MAX_RELEASE_ARTIFACT_BYTES = 4 * 1024 * 1024 * 1024
 MAX_VERSION_BYTES = 512
 MAX_SCENARIO_DURATION_MS = 60_000
 MAX_TOTAL_DURATION_MS = 30 * 60_000
@@ -145,6 +146,12 @@ COMMIT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._,+() /-]{0,255}$")
 
 
+def _is_link_or_reparse(path: Path, metadata: os.stat_result) -> bool:
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    attributes = getattr(metadata, "st_file_attributes", 0)
+    return path.is_symlink() or bool(reparse_flag and attributes & reparse_flag)
+
+
 class NativeOpenSshEvidenceError(ValueError):
     """A release-evidence artifact violated the exact contract."""
 
@@ -153,7 +160,7 @@ def bounded_bytes(path: Path, maximum: int = MAX_MANIFEST_BYTES) -> bytes:
     descriptor: int | None = None
     try:
         before = path.lstat()
-        if not stat.S_ISREG(before.st_mode):
+        if not stat.S_ISREG(before.st_mode) or _is_link_or_reparse(path, before):
             raise NativeOpenSshEvidenceError(
                 "required native evidence is missing, linked, or not a regular file"
             )
@@ -193,6 +200,61 @@ def bounded_bytes(path: Path, maximum: int = MAX_MANIFEST_BYTES) -> bytes:
     except OSError as error:
         raise NativeOpenSshEvidenceError(
             "required native evidence is unavailable"
+        ) from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def release_file_sha256(
+    path: Path, maximum: int = MAX_RELEASE_ARTIFACT_BYTES
+) -> str:
+    """Hash one exact regular release file without exposing its path."""
+    descriptor: int | None = None
+    try:
+        before = path.lstat()
+        if not stat.S_ISREG(before.st_mode) or _is_link_or_reparse(path, before):
+            raise NativeOpenSshEvidenceError(
+                "required release artifact is missing, linked, or not a regular file"
+            )
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)
+        ):
+            raise NativeOpenSshEvidenceError(
+                "release artifact identity changed while opening"
+            )
+        if opened.st_size <= 0 or opened.st_size > maximum:
+            raise NativeOpenSshEvidenceError(
+                f"release artifact size must be within 1..{maximum} bytes"
+            )
+        digest = hashlib.sha256()
+        consumed = 0
+        while consumed <= maximum:
+            chunk = os.read(descriptor, min(1024 * 1024, maximum + 1 - consumed))
+            if not chunk:
+                break
+            digest.update(chunk)
+            consumed += len(chunk)
+        after = os.fstat(descriptor)
+        if (
+            (after.st_dev, after.st_ino) != (opened.st_dev, opened.st_ino)
+            or after.st_size != opened.st_size
+            or consumed != opened.st_size
+            or consumed > maximum
+        ):
+            raise NativeOpenSshEvidenceError(
+                "release artifact changed or grew while reading"
+            )
+        return digest.hexdigest()
+    except NativeOpenSshEvidenceError:
+        raise
+    except OSError as error:
+        raise NativeOpenSshEvidenceError(
+            "required release artifact is unavailable"
         ) from error
     finally:
         if descriptor is not None:
@@ -313,7 +375,19 @@ def validate_manifest(
     allow_synthetic: bool = False,
     root: Path = ROOT,
 ) -> dict[str, int | str]:
-    document = load_manifest(path)
+    return validate_document(
+        load_manifest(path), allow_synthetic=allow_synthetic, root=root
+    )
+
+
+def validate_document(
+    document: dict[str, Any],
+    *,
+    allow_synthetic: bool = False,
+    root: Path = ROOT,
+) -> dict[str, int | str]:
+    """Validate one identity-stable manifest snapshot."""
+    document = _exact_object(document, MANIFEST_KEYS, "native evidence")
     if document["schema"] != 1 or document["evidence_kind"] != "native-openssh-release":
         raise NativeOpenSshEvidenceError("native evidence identity changed")
     if not isinstance(document["synthetic"], bool):
@@ -434,6 +508,18 @@ def validate_manifest(
         "user_config_sha256_after",
     ):
         _hash(baseline[key], key)
+    if not document["synthetic"] and any(
+        baseline[key] == "0" * 64
+        for key in (
+            "client_sha256_before",
+            "client_sha256_after",
+            "user_config_sha256_before",
+            "user_config_sha256_after",
+        )
+    ):
+        raise NativeOpenSshEvidenceError(
+            "release manual baseline hashes cannot use the synthetic sentinel"
+        )
     if baseline["client_sha256_before"] != baseline["client_sha256_after"]:
         raise NativeOpenSshEvidenceError("OpenSSH client changed during native validation")
     if baseline["user_config_sha256_before"] != baseline["user_config_sha256_after"]:
@@ -469,6 +555,15 @@ def _platform_name() -> str | None:
         if "microsoft" in host_platform.release().lower():
             return None
         return "linux"
+    return None
+
+
+def _architecture_name() -> str | None:
+    machine = host_platform.machine().strip().lower()
+    if machine in {"amd64", "x86_64"}:
+        return "x86_64"
+    if machine in {"arm64", "aarch64"}:
+        return "aarch64"
     return None
 
 
@@ -549,6 +644,94 @@ def probe_prerequisites() -> dict[str, Any]:
     }
 
 
+def validate_controlled_environment(
+    manifest: Path,
+    *,
+    application_binary: Path,
+    application_package: Path,
+    expected_commit: str,
+    root: Path = ROOT,
+) -> dict[str, int | str]:
+    """Bind a private real manifest to the executing host and exact artifacts."""
+    if COMMIT.fullmatch(expected_commit) is None:
+        raise NativeOpenSshEvidenceError(
+            "requested source commit must be an exact lowercase commit digest"
+        )
+    document = load_manifest(manifest)
+    result = validate_document(document, root=root)
+    if document["synthetic"]:
+        raise NativeOpenSshEvidenceError(
+            "synthetic evidence cannot satisfy controlled validation"
+        )
+    if document["source_commit"] != expected_commit:
+        raise NativeOpenSshEvidenceError(
+            "native evidence is not bound to the requested source commit"
+        )
+
+    platform_name = _platform_name()
+    if platform_name is None or document["platform"] != platform_name:
+        raise NativeOpenSshEvidenceError(
+            "native platform does not match the release evidence"
+        )
+    architecture = _architecture_name()
+    if architecture is None or document["architecture"] != architecture:
+        raise NativeOpenSshEvidenceError(
+            "native architecture does not match the release evidence"
+        )
+
+    executables = {
+        name: _fixed_executable(candidates)
+        for name, candidates in _fixed_candidates(platform_name).items()
+    }
+    if any(executable is None for executable in executables.values()):
+        raise NativeOpenSshEvidenceError(
+            "fixed native OpenSSH tools are unavailable"
+        )
+    client = executables["ssh"]
+    server = executables["sshd"]
+    if client is None or server is None:
+        raise NativeOpenSshEvidenceError(
+            "fixed native OpenSSH tools are unavailable"
+        )
+    client_version = _probe_version(client)
+    server_version = _probe_version(server)
+    openssh = document["openssh"]
+    if client_version is None or client_version != openssh["client_version"]:
+        raise NativeOpenSshEvidenceError(
+            "native OpenSSH client version does not match the release evidence"
+        )
+    if server_version is None or server_version != openssh["server_version"]:
+        raise NativeOpenSshEvidenceError(
+            "native OpenSSH server version does not match the release evidence"
+        )
+
+    application = document["application"]
+    if release_file_sha256(application_binary) != application["binary_sha256"]:
+        raise NativeOpenSshEvidenceError(
+            "application binary does not match the release evidence"
+        )
+    if release_file_sha256(application_package) != application["package_sha256"]:
+        raise NativeOpenSshEvidenceError(
+            "application package does not match the release evidence"
+        )
+    client_hash = release_file_sha256(client)
+    baseline = document["manual_baseline"]
+    if (
+        client_hash != baseline["client_sha256_before"]
+        or client_hash != baseline["client_sha256_after"]
+    ):
+        raise NativeOpenSshEvidenceError(
+            "native OpenSSH client does not match the manual baseline"
+        )
+
+    return {
+        **result,
+        "architecture": architecture,
+        "artifacts": 3,
+        "host_bound": 1,
+    }
+
+
 def validate_repository_contract(root: Path = ROOT) -> dict[str, int]:
     fixture = root / SYNTHETIC_FIXTURE.relative_to(ROOT)
     result = validate_manifest(fixture, allow_synthetic=True, root=root)
@@ -574,9 +757,21 @@ def main() -> int:
             result = validate_repository_contract()
         elif args.validate_environment:
             manifest = os.environ.get("AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE")
-            if not manifest:
-                raise NativeOpenSshEvidenceError("native evidence environment is missing")
-            result = validate_manifest(Path(manifest))
+            binary = os.environ.get("AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY")
+            package = os.environ.get("AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE")
+            commit = os.environ.get(
+                "AUTOMEXIA_QA_NATIVE_OPENSSH_EXPECTED_COMMIT"
+            )
+            if not all((manifest, binary, package, commit)):
+                raise NativeOpenSshEvidenceError(
+                    "controlled native evidence environment is incomplete"
+                )
+            result = validate_controlled_environment(
+                Path(manifest),
+                application_binary=Path(binary),
+                application_package=Path(package),
+                expected_commit=commit,
+            )
         else:
             result = probe_prerequisites()
     except (NativeOpenSshEvidenceError, OSError, json.JSONDecodeError) as error:

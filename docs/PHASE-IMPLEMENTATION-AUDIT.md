@@ -104,7 +104,7 @@ protected commit passes and the authenticated audit returns no external result.
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
 | DevOps | D3 | **Partial; nonactivated** | **Blocked** | The fail-closed broker/runner owns bounded current-executable review, exact managed argv/identity binding, actual child status, redacted outcomes, process-group/Job Object teardown, PTY-worker joining, and bounded receipts through the guarded PTY/route owner. Protected approvals, real attestation/activation, and native OpenSSH descendant/resource/accessibility proof remain. |
 | DevOps | D4 | **Fully implemented; read-only product adapter active** | **Partial** | Bounded OpenSSH inventory/persistence is connected only to D5.1 reviewed browsing; it retains no process/network/launch authority. |
-| SSH UX | D5.0-D5.2 | **Partial overall; D5.1 and nonactivated F5.1-F5.3 source complete locally** | **Partial/blocked** | Typed direct/config-jump/tunnel argv, loopback defaults, strong tunnel review, complete trust evidence, guarded lifecycle, receipts, reconnect, and compact tunnel states pass locally. Protected activation/attestation, actual status/SSH execution, and controlled real native descendant/listener cleanup and F5.4 evidence remain. |
+| SSH UX | D5.0-D5.2 | **Partial overall; D5.1, nonactivated F5.1-F5.3, and the F5.4 local assurance path complete** | **Partial/blocked** | Routes/trust/tunnels/lifecycle plus exact native host/commit/OpenSSH/artifact binding, protected manual workflow, and path-free summaries pass locally. Protected activation/attestation, actual status/SSH execution, and controlled real native descendant/listener/resource/accessibility manifests remain. |
 | Multi-environment | M6/F6 | **Partial overall; review-only source contracts complete locally** | **Blocked** | Schema-2 reviewed library editing/migration/transfer, exact dependent fingerprints, typed recipe lifecycle/no-hooks, narrow remote initialization, declarative restore, armed broadcast, semantic UI models, fuzz/mutation, and bounded benchmarks pass. Proposed ADR 0023 acceptance, product activation/execution, and controlled native/resource/accessibility evidence remain. |
 | Multi-cloud | D6.0/M7 | **Fully implemented locally** | **Partial/external** | Strict provider-neutral schemas, immutable session capsules, 19-state lifecycle, exact allow-once review, isolation/redaction, passive-status migration, cached-only semantics, fuzz/mutation, 16×64 lifecycle, and a 64-capsule benchmark pass. No real provider CLI, cloud network, credential cache, browser/device flow, or Linux/macOS native provider evidence ran. |
 | Multi-cloud | D6.1/M8 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded AWS profile parser plus exact SSO/STS/SSM/EKS-dry-run contracts and ten focused tests pass. D3 activation, M11 EKS ingestion, product UI, and controlled native/provider/resource/accessibility evidence remain. |
@@ -609,7 +609,7 @@ actions remain disabled until D5.2.
 
 ### D5.2 — managed OpenSSH launch and lifecycle
 
-**Partially implemented overall; F5.1-F5.3 are fully implemented at the nonactivated source boundary; F5.4 real native evidence remains external.**
+**Partially implemented overall; F5.1-F5.3 and the F5.4 local assurance path are fully implemented at the nonactivated boundary; F5.4 real native results remain external.**
 
 The pure owner accepts one current inventory route or bounded typed host/user/
 port. Direct argv freezes 17 defensive options plus optional exact `-l`/`-p`;
@@ -656,7 +656,10 @@ with its route. Compact icon/color/text and accessibility projections expose the
 same exact public facts.
 
 The active schema also binds a bounded redacted 23-scenario native-manifest
-validator and synthetic mutation fixture. Deterministic exact-argv/hostile/
+validator and synthetic mutation fixture. Controlled validation binds real
+evidence to the executing OS/architecture, exact clean commit, fixed OpenSSH
+versions, and freshly hashed binary/package/client; a protected manual workflow
+uploads only path-free summary fields. Deterministic exact-argv/hostile/
 collision/staleness/decision/UI/1/10/50 cleanup tests pass. The synthetic
 fixture cannot satisfy a release; the explicit local probe found OpenSSH client
 9.5 but no `sshd` on this Windows host and truthfully returned an external
