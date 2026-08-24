@@ -1,0 +1,246 @@
+{
+  "schema": 1,
+  "phase": "S1",
+  "status": "collecting",
+  "freshness_days": 14,
+  "required_visual_fixture": "s1-standard-v1",
+  "allowed": {
+    "platforms": ["windows", "linux", "macos"],
+    "architectures": ["x86_64", "aarch64"],
+    "display_servers": ["win32", "rdp", "x11", "wayland", "quartz"],
+    "renderer_backends": ["wgpu", "cpu", "metal"],
+    "gpu_vendors": ["intel", "amd", "nvidia", "apple", "software"],
+    "power_modes": ["balanced", "performance", "battery"],
+    "artifact_privacy": ["public-redacted", "private"]
+  },
+  "limits": {
+    "max_manifest_bytes": 1048576,
+    "max_environments": 32,
+    "max_suites": 64,
+    "max_reviews": 16,
+    "max_artifacts_per_suite": 16,
+    "max_artifact_bytes": 4294967296,
+    "max_suite_duration_ms": 14400000,
+    "max_identifier_bytes": 96,
+    "max_metadata_bytes": 192,
+    "max_shell_versions": 8
+  },
+  "privacy": {
+    "persist": "allowlisted-redacted-aggregate-metadata-and-digests-only",
+    "forbidden": [
+      "terminal-content",
+      "command-history",
+      "clipboard",
+      "credentials",
+      "environment-dump",
+      "user-paths",
+      "hostnames",
+      "raw-etl",
+      "raw-screen-reader-transcript"
+    ]
+  },
+  "environment_requirements": [
+    {"id": "windows-intel-wgpu", "platform": "windows", "architecture": "x86_64", "display_server": "win32", "renderer_backend": "wgpu", "gpu_vendor": "intel"},
+    {"id": "windows-amd-wgpu", "platform": "windows", "architecture": "x86_64", "display_server": "win32", "renderer_backend": "wgpu", "gpu_vendor": "amd"},
+    {"id": "windows-nvidia-wgpu", "platform": "windows", "architecture": "x86_64", "display_server": "win32", "renderer_backend": "wgpu", "gpu_vendor": "nvidia"},
+    {"id": "windows-rdp-cpu", "platform": "windows", "architecture": "x86_64", "display_server": "rdp", "renderer_backend": "cpu", "gpu_vendor": "software"},
+    {"id": "linux-x11", "platform": "linux", "architecture": "x86_64", "display_server": "x11", "renderer_backend": "wgpu", "gpu_vendor": "intel"},
+    {"id": "linux-wayland", "platform": "linux", "architecture": "x86_64", "display_server": "wayland", "renderer_backend": "wgpu", "gpu_vendor": "amd"},
+    {"id": "macos-intel", "platform": "macos", "architecture": "x86_64", "display_server": "quartz", "renderer_backend": "metal", "gpu_vendor": "intel"},
+    {"id": "macos-apple-silicon", "platform": "macos", "architecture": "aarch64", "display_server": "quartz", "renderer_backend": "metal", "gpu_vendor": "apple"}
+  ],
+  "required_suites": [
+    {
+      "id": "native-windows-wgpu",
+      "domain": "native",
+      "environment_id": "windows-intel-wgpu",
+      "tool": "native-gui",
+      "artifact_kind": "native-state-bundle",
+      "coverage": {"scenarios": ["startup-prompt", "platform-shell-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery"]}
+    },
+    {
+      "id": "native-windows-cpu-fallback",
+      "domain": "native",
+      "environment_id": "windows-rdp-cpu",
+      "tool": "native-gui",
+      "artifact_kind": "native-state-bundle",
+      "coverage": {"scenarios": ["startup-prompt", "platform-shell-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery"]}
+    },
+    {
+      "id": "native-linux-x11",
+      "domain": "native",
+      "environment_id": "linux-x11",
+      "tool": "native-gui",
+      "artifact_kind": "native-state-bundle",
+      "coverage": {"scenarios": ["startup-prompt", "bash-zsh-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery"]}
+    },
+    {
+      "id": "native-linux-wayland",
+      "domain": "native",
+      "environment_id": "linux-wayland",
+      "tool": "native-gui",
+      "artifact_kind": "native-state-bundle",
+      "coverage": {"scenarios": ["startup-prompt", "bash-zsh-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery"]}
+    },
+    {
+      "id": "native-macos-intel",
+      "domain": "native",
+      "environment_id": "macos-intel",
+      "tool": "native-gui",
+      "artifact_kind": "native-state-bundle",
+      "coverage": {"scenarios": ["startup-prompt", "zsh-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery"]}
+    },
+    {
+      "id": "native-macos-apple-silicon",
+      "domain": "native",
+      "environment_id": "macos-apple-silicon",
+      "tool": "native-gui",
+      "artifact_kind": "native-state-bundle",
+      "coverage": {"scenarios": ["startup-prompt", "zsh-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery"]}
+    },
+    {
+      "id": "resource-windows-intel",
+      "domain": "resource",
+      "environment_id": "windows-intel-wgpu",
+      "tool": "native-resource",
+      "artifact_kind": "resource-report",
+      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release"]}
+    },
+    {
+      "id": "resource-windows-amd",
+      "domain": "resource",
+      "environment_id": "windows-amd-wgpu",
+      "tool": "native-resource",
+      "artifact_kind": "resource-report",
+      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release"]}
+    },
+    {
+      "id": "resource-windows-nvidia",
+      "domain": "resource",
+      "environment_id": "windows-nvidia-wgpu",
+      "tool": "native-resource",
+      "artifact_kind": "resource-report",
+      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release"]}
+    },
+    {
+      "id": "resource-windows-rdp-software",
+      "domain": "resource",
+      "environment_id": "windows-rdp-cpu",
+      "tool": "native-resource",
+      "artifact_kind": "resource-report",
+      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release"]}
+    },
+    {
+      "id": "resource-linux-x11",
+      "domain": "resource",
+      "environment_id": "linux-x11",
+      "tool": "native-resource",
+      "artifact_kind": "resource-report",
+      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release"]}
+    },
+    {
+      "id": "resource-linux-wayland",
+      "domain": "resource",
+      "environment_id": "linux-wayland",
+      "tool": "native-resource",
+      "artifact_kind": "resource-report",
+      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release"]}
+    },
+    {
+      "id": "appverifier-basics",
+      "domain": "resource",
+      "environment_id": "windows-intel-wgpu",
+      "tool": "application-verifier",
+      "artifact_kind": "appverifier-redacted-xml",
+      "coverage": {"layers": ["Basics", "Heaps", "Handles", "Locks"], "scenarios": ["native-resize-and-lifecycle"]}
+    },
+    {
+      "id": "appverifier-low-resource",
+      "domain": "resource",
+      "environment_id": "windows-intel-wgpu",
+      "tool": "application-verifier",
+      "artifact_kind": "appverifier-redacted-xml",
+      "coverage": {"layers": ["LowResource"], "scenarios": ["bounded-startup-shutdown-fault-injection"]}
+    },
+    {
+      "id": "wpr-redacted-summary",
+      "domain": "resource",
+      "environment_id": "windows-intel-wgpu",
+      "tool": "wpr",
+      "artifact_kind": "wpr-redacted-summary",
+      "coverage": {"scenarios": ["threshold-failure-or-maintainer-request", "private-etl", "redacted-summary"]}
+    },
+    {
+      "id": "visual-windows",
+      "domain": "visual",
+      "environment_id": "windows-intel-wgpu",
+      "tool": "visual-diff",
+      "artifact_kind": "visual-matrix-manifest",
+      "coverage": {"themes": ["dark", "light"], "scales": ["1.0", "1.25", "1.5", "2.0", "3.0"], "viewports": ["300x200", "compact", "normal", "portrait", "ultrawide", "split", "4k", "8k"], "surfaces": ["tabs-and-panes", "command-palette", "file-listing", "context-identity", "path", "footer", "smallest-pane"], "cross_product_complete": true, "capture_count": 560}
+    },
+    {
+      "id": "visual-linux-x11",
+      "domain": "visual",
+      "environment_id": "linux-x11",
+      "tool": "visual-diff",
+      "artifact_kind": "visual-matrix-manifest",
+      "coverage": {"themes": ["dark", "light"], "scales": ["1.0", "1.25", "1.5", "2.0", "3.0"], "viewports": ["300x200", "compact", "normal", "portrait", "ultrawide", "split", "4k", "8k"], "surfaces": ["tabs-and-panes", "command-palette", "file-listing", "context-identity", "path", "footer", "smallest-pane"], "cross_product_complete": true, "capture_count": 560}
+    },
+    {
+      "id": "visual-linux-wayland",
+      "domain": "visual",
+      "environment_id": "linux-wayland",
+      "tool": "visual-diff",
+      "artifact_kind": "visual-matrix-manifest",
+      "coverage": {"themes": ["dark", "light"], "scales": ["1.0", "1.25", "1.5", "2.0", "3.0"], "viewports": ["300x200", "compact", "normal", "portrait", "ultrawide", "split", "4k", "8k"], "surfaces": ["tabs-and-panes", "command-palette", "file-listing", "context-identity", "path", "footer", "smallest-pane"], "cross_product_complete": true, "capture_count": 560}
+    },
+    {
+      "id": "visual-macos",
+      "domain": "visual",
+      "environment_id": "macos-apple-silicon",
+      "tool": "visual-diff",
+      "artifact_kind": "visual-matrix-manifest",
+      "coverage": {"themes": ["dark", "light"], "scales": ["1.0", "1.25", "1.5", "2.0", "3.0"], "viewports": ["300x200", "compact", "normal", "portrait", "ultrawide", "split", "4k", "8k"], "surfaces": ["tabs-and-panes", "command-palette", "file-listing", "context-identity", "path", "footer", "smallest-pane"], "cross_product_complete": true, "capture_count": 560}
+    },
+    {
+      "id": "accessibility-windows-narrator",
+      "domain": "accessibility",
+      "environment_id": "windows-intel-wgpu",
+      "tool": "narrator",
+      "artifact_kind": "accessibility-redacted-checklist",
+      "coverage": {"tasks": ["launch", "identify-tabs-active-pane", "open-filter-activate-dismiss-palette", "split-select-close", "keyboard-only", "focus-order-restoration", "200-percent-scale", "known-limitations-confirmed"]}
+    },
+    {
+      "id": "accessibility-windows-nvda",
+      "domain": "accessibility",
+      "environment_id": "windows-intel-wgpu",
+      "tool": "nvda",
+      "artifact_kind": "accessibility-redacted-checklist",
+      "coverage": {"tasks": ["launch", "identify-tabs-active-pane", "open-filter-activate-dismiss-palette", "split-select-close", "keyboard-only", "focus-order-restoration", "200-percent-scale", "known-limitations-confirmed"]}
+    },
+    {
+      "id": "accessibility-macos-voiceover",
+      "domain": "accessibility",
+      "environment_id": "macos-apple-silicon",
+      "tool": "voiceover",
+      "artifact_kind": "accessibility-redacted-checklist",
+      "coverage": {"tasks": ["launch", "identify-tabs-active-pane", "open-filter-activate-dismiss-palette", "split-select-close", "keyboard-only", "focus-order-restoration", "200-percent-scale", "known-limitations-confirmed"]}
+    },
+    {
+      "id": "accessibility-linux-x11-orca",
+      "domain": "accessibility",
+      "environment_id": "linux-x11",
+      "tool": "orca-x11",
+      "artifact_kind": "accessibility-redacted-checklist",
+      "coverage": {"tasks": ["launch", "identify-tabs-active-pane", "open-filter-activate-dismiss-palette", "split-select-close", "keyboard-only", "focus-order-restoration", "200-percent-scale", "known-limitations-confirmed"]}
+    },
+    {
+      "id": "accessibility-linux-wayland-orca",
+      "domain": "accessibility",
+      "environment_id": "linux-wayland",
+      "tool": "orca-wayland",
+      "artifact_kind": "accessibility-redacted-checklist",
+      "coverage": {"tasks": ["launch", "identify-tabs-active-pane", "open-filter-activate-dismiss-palette", "split-select-close", "keyboard-only", "focus-order-restoration", "200-percent-scale", "known-limitations-confirmed"]}
+    }
+  ]
+}

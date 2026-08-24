@@ -1965,26 +1965,28 @@ behavior intact. Naming a crate in a roadmap does not satisfy this gate.
 
 ## Assurance status and remaining expansion
 
-The Phase 0 local baseline now includes pinned Nextest/JUnit/doctests, a
-self-tested deadline/process-tree-safe and privacy-bounded `cargo qa --bundle`,
-allowlisted host identity, isolated coverage summaries, shrinking viewport/DPI
-properties with a persisted regression, a reviewed structured footer snapshot,
-finite Loom models, Windows resource ceilings, and topmost client-region final-frame
-smoke validation.
-These are implemented commands and locally passing evidence, not release-host
-claims.
+S1 source assurance is versioned and release-gated:
+
+```text
+python tools/ci/s1_assurance.py check-policy
+python tools/ci/test_s1_assurance.py
+python tools/ci/s1_assurance.py validate --manifest <private-manifest.json> --expected-commit <40-character-commit> --require-complete --output <public-summary.json>
+```
+
+It rejects incomplete, stale, dirty-source, secret-bearing, or unreviewed input.
+See the [S1 assurance audit](research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AUDIT.md).
 
 The remaining roadmap work is deliberately separate:
 
-- controlled expected/actual/diff raster goldens across viewport, theme, font,
-  and DPI matrices plus native Linux/macOS frame evidence;
+- execution and approval of the exact 560-case raster matrix across the four
+  policy environments, plus retained Windows/Linux/macOS native frames;
 - broader pure-state Proptest/Loom models, longer persisted fuzz campaigns, and
   a separate Automexia-owned coverage baseline;
 - executed and compared Criterion/startup/interaction/resource evidence on named
   stable hardware followed by the complete 30-day baseline;
-- elevated Windows Application Verifier/WPR evidence and expanded controlled GPU
-  resource tests on all supported operating systems;
-- recorded v0.4 Narrator/NVDA, VoiceOver, and Orca smoke followed by the v0.5
+- elevated Windows Application Verifier/WPR evidence and named Intel/AMD/NVIDIA/
+  RDP, Linux X11/Wayland, and macOS Intel/Apple Silicon resource runs;
+- recorded v0.4 Narrator/NVDA, VoiceOver, and Orca evidence followed by the v0.5
   renderer-independent native accessibility model; and
 - v0.5 scoped mutation testing and maintainable cargo-vet supply-chain audits.
 

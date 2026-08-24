@@ -22,11 +22,13 @@ class PlatformCoverageTests(unittest.TestCase):
         self.ci = PLATFORM.load_workflow("ci.yml")
         self.nightly = PLATFORM.load_workflow("nightly.yml")
         self.release = PLATFORM.load_workflow("release.yml")
+        self.s1_assurance = PLATFORM.load_workflow("s1-assurance.yml")
 
     def test_current_workflows_satisfy_the_contract(self) -> None:
         PLATFORM.validate_ci(self.ci)
         PLATFORM.validate_nightly(self.nightly)
         PLATFORM.validate_release(self.release)
+        PLATFORM.validate_s1_assurance(self.s1_assurance)
         PLATFORM.validate_macos_runtime_contract(
             PLATFORM.MACOS_BUILD_SCRIPT.read_text(encoding="utf-8")
         )
@@ -111,6 +113,24 @@ class PlatformCoverageTests(unittest.TestCase):
         altered["permissions"] = {"contents": "write", "id-token": "write"}
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "contents: read"):
             PLATFORM.validate_release(altered)
+
+    def test_release_cannot_bypass_complete_s1_assurance(self) -> None:
+        altered = copy.deepcopy(self.release)
+        altered["jobs"]["preflight"]["needs"].remove("s1-assurance")
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "S1 assurance"):
+            PLATFORM.validate_release(altered)
+
+    def test_s1_assurance_cannot_accept_incomplete_or_unbound_evidence(self) -> None:
+        altered = copy.deepcopy(self.s1_assurance)
+        step = PLATFORM.step_for_command(
+            altered["jobs"]["validate"], "s1_assurance.py validate"
+        )
+        self.assertIsNotNone(step)
+        step["run"] = str(step["run"]).replace("--require-complete", "")
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "complete matrix"
+        ):
+            PLATFORM.validate_s1_assurance(altered)
 
     def test_preflight_cannot_receive_raw_signing_secret(self) -> None:
         altered = copy.deepcopy(self.release)

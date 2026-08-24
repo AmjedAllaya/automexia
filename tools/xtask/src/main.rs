@@ -1422,8 +1422,30 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && appverifier.contains("finally")
             && appverifier.contains("-disable '*'")
             && appverifier.contains("-delete settings")
-            && appverifier.contains("automexia.exe"),
-        "Application Verifier wrapper lacks preflight refusal, exact target, or guaranteed cleanup",
+            && appverifier.contains("automexia.exe")
+            && appverifier.contains("'/faults'")
+            && appverifier.contains("MaximumVerifierLogBytes")
+            && appverifier.contains("AUTOMEXIA_S1_BASICS_START")
+            && appverifier.contains("AUTOMEXIA_S1_LOW_RESOURCE_START"),
+        "Application Verifier wrapper lacks preflight refusal, exact target, bounded Basics/low-resource phases, failure detection, or guaranteed cleanup",
+    )?;
+    let visual_hooks =
+        read(&root().join("apps/automexia-terminal/src/automexia/visual_test_hooks.rs"))?;
+    let runtime = read(&root().join("apps/automexia-terminal/src/automexia/runtime.rs"))?;
+    let s1_validator = read(&root().join("tools/ci/s1_assurance.py"))?;
+    let s1_policy = read(&root().join("tests/assurance/s1-assurance-policy-v1.json"))?;
+    let s1_workflow = read(&root().join(".github/workflows/s1-assurance.yml"))?;
+    require(
+        app_manifest.contains("visual-test-hooks = [\"native-gui-test-hooks\"]")
+            && visual_hooks.contains("s1-standard-v1")
+            && visual_hooks.contains("animations_enabled")
+            && runtime.contains("visual_test_snapshot")
+            && s1_validator.contains("require_complete")
+            && s1_validator.contains("current_source_commit")
+            && s1_policy.contains("accessibility-linux-wayland-orca")
+            && s1_workflow.contains("--require-complete")
+            && s1_workflow.contains("--expected-commit $env:GITHUB_SHA"),
+        "S1 assurance lacks deterministic visual fixtures or a complete commit-bound native/visual/resource/accessibility release contract",
     )?;
     let wpr = read(&root().join("tests/integration/wpr-windows.ps1"))?;
     require(
@@ -1832,7 +1854,7 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
             "automexia-terminal",
             "--locked",
             "--features",
-            "native-gui-test-hooks",
+            "visual-test-hooks",
         ],
     )?;
     let identity = product_identity()?;
@@ -2030,7 +2052,7 @@ fn test_session_clone(native: Option<&str>) -> TaskResult {
             "automexia-terminal",
             "--locked",
             "--features",
-            "native-gui-test-hooks",
+            "visual-test-hooks",
         ],
     )?;
     let identity = product_identity()?;

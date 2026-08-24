@@ -373,7 +373,13 @@ fn process_refresh(mut request: RefreshRequest) {
         return;
     }
 
-    let result = catch_unwind(AssertUnwindSafe(|| devops::detect(&request.session)));
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        #[cfg(feature = "visual-test-hooks")]
+        if let Some(snapshot) = super::visual_test_hooks::visual_test_snapshot() {
+            return snapshot;
+        }
+        devops::detect(&request.session)
+    }));
     match result {
         Ok(snapshot) => {
             tracing::debug!(

@@ -75,7 +75,8 @@
       "CodeQL",
       "Nightly depth",
       "Release Drafter",
-      "Stable release"
+      "Stable release",
+      "S1 controlled assurance"
     ],
     "success_recency_days": 7
   },

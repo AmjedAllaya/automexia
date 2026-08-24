@@ -30,6 +30,8 @@ MAX_BUNDLE_BYTES = 64 * 1024 * 1024
 DEFAULT_STEP_TIMEOUT_SECONDS = 30 * 60
 STEP_TIMEOUT_SECONDS = {
     "qa-runner-self-tests": 120,
+    "s1-assurance-policy": 120,
+    "s1-assurance-mutations": 300,
     "rustfmt": 300,
     "metadata": 300,
     "repository-contracts": 600,
@@ -599,6 +601,16 @@ def main() -> int:
     commands: list[tuple[str, list[str], dict[str, str] | None]] = [
         ("qa-runner-self-tests", [sys.executable, "tools/ci/test_qa.py"], None),
         (
+            "s1-assurance-policy",
+            [sys.executable, "tools/ci/s1_assurance.py", "check-policy"],
+            None,
+        ),
+        (
+            "s1-assurance-mutations",
+            [sys.executable, "tools/ci/test_s1_assurance.py"],
+            None,
+        ),
+        (
             "performance-assurance-policy",
             [sys.executable, "tools/ci/performance_assurance.py", "check-policy"],
             None,
@@ -734,6 +746,37 @@ def main() -> int:
     steps.append(collect_junit(run_dir))
 
     next_index = len(steps) + 1
+    s1_evidence = os.environ.get("AUTOMEXIA_QA_S1_EVIDENCE", "").strip()
+    if s1_evidence:
+        steps.append(
+            run_step(
+                run_dir,
+                next_index,
+                "s1-release-assurance-evidence",
+                [
+                    sys.executable,
+                    "tools/ci/s1_assurance.py",
+                    "validate",
+                    "--manifest",
+                    s1_evidence,
+                    "--expected-commit",
+                    git_value("rev-parse", "HEAD"),
+                    "--require-complete",
+                    "--output",
+                    str(run_dir / "artifacts" / "s1-assurance.json"),
+                ],
+            )
+        )
+        next_index += 1
+    else:
+        steps.append(
+            skipped(
+                "s1-release-assurance-evidence",
+                "set AUTOMEXIA_QA_S1_EVIDENCE to the private, redacted, complete controlled-runner manifest",
+                external=True,
+            )
+        )
+
     if os.environ.get("AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE"):
         steps.append(
             run_step(
@@ -958,20 +1001,6 @@ def main() -> int:
         skipped(
             "30-day-performance-baseline",
             "requires 30 consecutive days of named controlled-runner evidence",
-            external=True,
-        )
-    )
-    steps.append(
-        skipped(
-            "linux-macos-native-gpu-matrix",
-            "requires controlled Linux X11/Wayland and macOS GPU runners",
-            external=True,
-        )
-    )
-    steps.append(
-        skipped(
-            "screen-reader-smoke",
-            "requires manual Narrator/NVDA, VoiceOver, and Orca evidence on controlled hosts",
             external=True,
         )
     )

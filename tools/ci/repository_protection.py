@@ -35,6 +35,7 @@ EXPECTED_WORKFLOWS = {
     "nightly.yml": "Nightly depth",
     "release-drafter.yml": "Release Drafter",
     "release.yml": "Stable release",
+    "s1-assurance.yml": "S1 controlled assurance",
 }
 EXPECTED_DEFAULT_BRANCH_EVIDENCE_WORKFLOWS = [
     "ci.yml",

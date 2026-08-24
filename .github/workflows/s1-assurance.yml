@@ -1,0 +1,33 @@
+name: S1 controlled assurance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate native, visual, resource, and accessibility evidence
+    if: vars.AUTOMEXIA_S1_ASSURANCE_RUNNER == '1'
+    runs-on: [self-hosted, automexia-assurance]
+    timeout-minutes: 30
+    env:
+      AUTOMEXIA_S1_ASSURANCE_EVIDENCE: ${{ vars.AUTOMEXIA_S1_ASSURANCE_EVIDENCE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate policy, mutations, and the complete commit-bound matrix
+        shell: pwsh
+        run: |
+          python tools/ci/s1_assurance.py check-policy
+          if ($LASTEXITCODE -ne 0) { throw 'S1 policy validation failed' }
+          python tools/ci/test_s1_assurance.py
+          if ($LASTEXITCODE -ne 0) { throw 'S1 mutation tests failed' }
+          python tools/ci/s1_assurance.py validate --manifest $env:AUTOMEXIA_S1_ASSURANCE_EVIDENCE --expected-commit $env:GITHUB_SHA --require-complete --output target/s1-assurance/summary.json
+          if ($LASTEXITCODE -ne 0) { throw 'S1 assurance rejected the controlled evidence' }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: s1-assurance-summary
+          path: target/s1-assurance/summary.json
+          if-no-files-found: error
+          retention-days: 90

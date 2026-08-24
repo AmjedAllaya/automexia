@@ -614,6 +614,10 @@ fn format_clock(hour: u16, minute: u16) -> String {
 
 #[cfg(target_os = "windows")]
 fn current_clock_label() -> String {
+    #[cfg(feature = "visual-test-hooks")]
+    if let Some(label) = crate::automexia::visual_test_hooks::frozen_clock_label() {
+        return label.to_owned();
+    }
     use windows_sys::Win32::Foundation::SYSTEMTIME;
     use windows_sys::Win32::System::SystemInformation::GetLocalTime;
 
@@ -627,6 +631,10 @@ fn current_clock_label() -> String {
 
 #[cfg(all(not(target_os = "windows"), not(target_arch = "wasm32")))]
 fn current_clock_label() -> String {
+    #[cfg(feature = "visual-test-hooks")]
+    if let Some(label) = crate::automexia::visual_test_hooks::frozen_clock_label() {
+        return label.to_owned();
+    }
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs()) as libc::time_t;
@@ -643,6 +651,10 @@ fn current_clock_label() -> String {
 
 #[cfg(target_arch = "wasm32")]
 fn current_clock_label() -> String {
+    #[cfg(feature = "visual-test-hooks")]
+    if let Some(label) = crate::automexia::visual_test_hooks::frozen_clock_label() {
+        return label.to_owned();
+    }
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());

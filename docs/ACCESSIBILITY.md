@@ -122,6 +122,22 @@ Record failures with renderer-neutral state, a screenshot when safe, and exact
 reproduction steps. Never include shell output, paths containing private user
 data, clipboard content, credentials, or tokens in a public artifact.
 
+The release record is machine-checked against
+`tests/assurance/s1-assurance-policy-v1.json`. It requires distinct Narrator,
+NVDA, VoiceOver, Orca X11, and Orca Wayland suites, a fresh exact source commit,
+bounded private artifact digests, redaction canaries, and independent
+HTTPS-linked approval. Local QA reports missing native sessions as external;
+stable release validation uses `--require-complete` and fails closed.
+
+```text
+python tools/ci/s1_assurance.py check-policy
+python tools/ci/s1_assurance.py validate --manifest <private-redacted-manifest.json> --expected-commit <commit> --require-complete
+```
+
+This evidence gate does not change the stated v0.4 limitation: it verifies the
+semantics currently exposed and cannot substitute for ADR 0013's deferred
+renderer-independent native accessibility tree.
+
 ## Release limitations
 
 Until the v0.5 model and platform adapters land, release notes must state that

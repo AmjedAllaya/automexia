@@ -25,7 +25,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 $wpr = Get-Command wpr.exe -ErrorAction Stop
 if (-not (Test-Path -LiteralPath $Binary -PathType Leaf)) {
-    & cargo build -p automexia-terminal --locked
+    & cargo build -p automexia-terminal --locked --features visual-test-hooks
     if ($LASTEXITCODE -ne 0) { throw "Could not build Automexia (exit $LASTEXITCODE)." }
 }
 $Binary = (Resolve-Path -LiteralPath $Binary).Path

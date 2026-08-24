@@ -22,3 +22,5 @@ pub mod shell_integration;
 mod state;
 pub mod theme;
 pub mod ui;
+#[cfg(feature = "visual-test-hooks")]
+pub mod visual_test_hooks;

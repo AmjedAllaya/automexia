@@ -5,6 +5,14 @@ close only the contracts identified below. Native-host, controlled-hardware,
 human-review, and elapsed-time evidence remains external and must never be
 reported as passing from this Windows checkout.
 
+> 2026-08-24 follow-up: the remaining S1 source gaps are now closed by the
+> versioned 24-suite policy, strict evidence validator, deterministic visual
+> fixture, separate AppVerifier Basics/low-resource phases, mutation coverage,
+> controlled workflow, and release dependency. The historical ledger below
+> describes the earlier S1/S2 pass. Current S1 status and exact external gates
+> are authoritative in
+> [S1 native, visual, resource, and accessibility audit](S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AUDIT.md).
+
 ## Scope and authority
 
 The user-visible outcome is a reproducible release-assurance path that catches

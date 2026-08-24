@@ -113,9 +113,35 @@ jobs:
             target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}.zip
           if-no-files-found: error
           retention-days: 90
+
+  s1-assurance:
+    name: Enforce complete S1 native, visual, resource, and accessibility evidence
+    if: vars.AUTOMEXIA_S1_ASSURANCE_RUNNER == '1'
+    runs-on: [self-hosted, automexia-assurance]
+    timeout-minutes: 30
+    env:
+      AUTOMEXIA_S1_ASSURANCE_EVIDENCE: ${{ vars.AUTOMEXIA_S1_ASSURANCE_EVIDENCE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate exact, current, complete S1 evidence
+        shell: pwsh
+        run: |
+          python tools/ci/s1_assurance.py check-policy
+          if ($LASTEXITCODE -ne 0) { throw 'S1 policy validation failed' }
+          python tools/ci/test_s1_assurance.py
+          if ($LASTEXITCODE -ne 0) { throw 'S1 mutation tests failed' }
+          python tools/ci/s1_assurance.py validate --manifest $env:AUTOMEXIA_S1_ASSURANCE_EVIDENCE --expected-commit $env:GITHUB_SHA --require-complete --output target/s1-assurance/summary.json
+          if ($LASTEXITCODE -ne 0) { throw 'S1 assurance rejected the release evidence' }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-evidence-s1-assurance
+          path: target/s1-assurance/summary.json
+          if-no-files-found: error
+          retention-days: 90
+
   preflight:
-    needs: [native-gui-resilience, native-wsl-resilience, performance-assurance]
-    if: needs.native-gui-resilience.result == 'success' && needs.native-wsl-resilience.result == 'success' && needs.performance-assurance.result == 'success'
+    needs: [native-gui-resilience, native-wsl-resilience, performance-assurance, s1-assurance]
+    if: needs.native-gui-resilience.result == 'success' && needs.native-wsl-resilience.result == 'success' && needs.performance-assurance.result == 'success' && needs.s1-assurance.result == 'success'
     runs-on: ubuntu-latest
     environment: stable-release
     env:
