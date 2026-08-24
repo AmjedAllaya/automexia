@@ -1,6 +1,6 @@
 # v0.4 implementation and readiness audit
 
-Audit date: 2026-08-23
+Audit date: 2026-08-24
 
 This document reconciles the standalone-rebrand plan and the later prompt,
 resize-storm, PowerShell-listing, responsive-layout, session-cloning, semantic
@@ -191,17 +191,23 @@ These are not source defects and must not be bypassed:
    address.
 3. Windows Authenticode and Apple Developer ID/notarization credentials are not
    configured. The locally built Windows executable is intentionally unsigned.
-4. The repository is currently private. Public visibility, private
-   vulnerability reporting, branch/ruleset protection, squash-only merging,
-   review counts, CODEOWNERS enforcement, administrator applicability, and
-   immutable releases need repository-owner configuration. The release workflow
-   now checks the immutable-releases API and will fail until it is enabled.
-   Authenticated inspection of commit
-   `cd7113688056f27cb57f1c1bdff0ac8999d0533f` found every CI, Nightly, and
-   CodeQL runner job rejected before checkout with zero executed steps because
-   GitHub reported failed account payments or an insufficient Actions spending
-   limit. Billing must be restored and the exact protected commit rerun before
-   hosted enforcement or cross-platform results can be credited.
+4. The repository is private on GitHub Free. The 2026-08-24 authenticated
+   contract apply and audit enabled and rechecked squash-only merging, merged-
+   branch cleanup, update-branch UX, web DCO signoff, selected full-SHA Actions,
+   read-only non-approving workflow tokens, dependency graph/Dependabot alerts
+   and security updates, active required workflows, and immutable future
+   releases. The versioned source contract, local checker, mutation tests,
+   CODEOWNERS fallback, exact check set, no-bypass branch/tag rules, and bounded
+   audit/apply path are fully implemented locally.
+
+   Five external gates remain: the current private Free plan rejects rulesets;
+   only one human collaborator exists; Actions jobs are rejected before checkout
+   with zero steps because of the account billing/spending state; private
+   vulnerability reporting is unavailable while private; and Secret Protection
+   is not entitled. An owner must restore billing, choose private plan upgrade or
+   explicitly authorize public visibility, invite at least two independent
+   reviewers and expand CODEOWNERS, rerun the exact protected commit, then rerun
+   the apply/audit. None of those states is credited as passing source evidence.
 5. The fork-point tag exists locally but was not observed on `origin`; publish
    it intentionally during repository administration rather than as a side
    effect of a code audit.

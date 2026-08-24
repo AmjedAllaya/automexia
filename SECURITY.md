@@ -7,8 +7,15 @@ receives critical security fixes for 90 days.
 
 ## Report a vulnerability
 
-Use GitHub private vulnerability reporting for this repository. Do not open a
-public issue, discussion, or pull request containing exploit details or secrets.
+When GitHub displays **Report a vulnerability** for this repository, use that
+private form. While the repository remains private on a plan that does not
+expose private vulnerability reporting, invited collaborators must contact a
+maintainer through an already-established private channel. Do not send exploit
+details to an unverified address and do not open an issue, discussion, or pull
+request containing exploit details or secrets. Public launch remains blocked
+until GitHub private vulnerability reporting is enabled or a dedicated private
+security-reporting address is published here.
+
 Include affected versions, impact, reproduction steps, and suggested mitigation
 when available. Maintainers will acknowledge a complete report within five
 business days and coordinate disclosure after a fix is available.

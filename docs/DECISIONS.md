@@ -38,6 +38,7 @@ decision supersedes an old one instead of silently rewriting history.
 | [0028](adr/0028-bounded-parked-pty-topology-history.md) | Bounded parked-PTY topology history | Undo/redo only complete closed top-level tabs initially, preserving existing route ownership while bounding count, age, history lines, invalidation, and cleanup. |
 | [0029](adr/0029-sandboxed-signed-ecosystem-boundary.md) | Sandboxed signed ecosystem boundary (proposed) | Require strict signed immutable bundles, custom-WIT least authority, bounded Wasmtime hosting, current revocation, explicit capability changes, selected-input-only AI, no tools/execution, and exact rollback before D7/CP6 source work. |
 | [0030](adr/0030-automation-studio-domain-extension-boundary.md) | Automation Studio and domain-extension boundary (proposed) | Keep a general embedded file editor separate from DevOps/SRE and tool/language add-ons while core brokers retain documents, trust, webview, process, terminal, credential, and audit authority. |
+| [0031](adr/0031-versioned-hosted-ci-and-repository-protection.md) | Versioned hosted CI and repository protection | Bind exact workflows, checks, reviews, least-authority Actions, security controls, current-revision evidence, and no-bypass branch/tag rules to one auditable contract while keeping plan, visibility, billing, people, and credentials external. |
 
 ## When an ADR is required
 

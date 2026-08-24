@@ -606,6 +606,7 @@ Every PR runs policy checks regardless of changed paths:
 - Windows MSVC x64 tests and ARM64 cross-check;
 - macOS x64 and ARM64 compile checks;
 - `cargo deny`, dependency review, CodeQL, and secret-safe fork permissions;
+- versioned hosted-CI/repository-protection contract and mutation tests;
 - LLVM coverage with a non-decreasing recorded global baseline and at least 80%
   line coverage on changed Automexia-owned lines.
 

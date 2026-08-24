@@ -20,6 +20,7 @@ class PullRequestDocumentationPolicyTests(unittest.TestCase):
     def test_session_launch_and_policy_authorities_are_protected(self) -> None:
         changed = {
             ".github/BRANCH-PROTECTION.md",
+            ".github/repository-protection.json",
             "apps/automexia-terminal/src/context/launch_broker.rs",
             "automexia-extension-api/src/lib.rs",
             "automexia-extension-runtime/src/lib.rs",
@@ -32,6 +33,8 @@ class PullRequestDocumentationPolicyTests(unittest.TestCase):
             "tests/fixtures/session-launch/d0-d3-contract-v4.json",
             "tests/fixtures/session-launch/d0-d3-contract-v5.json",
             "tools/ci/check_pr_policy.py",
+            "tools/ci/repository_protection.py",
+            "tools/ci/test_repository_protection.py",
             "tools/ci/check_session_launch_d0.py",
             "tools/ci/native_openssh_evidence.py",
             "tools/ci/test_native_openssh_evidence.py",
