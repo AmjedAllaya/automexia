@@ -1272,6 +1272,7 @@ impl Renderer {
                 (window_size.width, window_size.height, scale_factor),
                 context_manager,
                 island_bg,
+                self.is_window_focused,
             );
         }
 

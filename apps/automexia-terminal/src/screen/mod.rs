@@ -4327,11 +4327,13 @@ impl Screen<'_> {
                     ChromeAction::OpenPalette => {
                         self.renderer.command_palette.set_enabled(true)
                     }
-                    ChromeAction::Minimize => window.set_minimized(true),
-                    ChromeAction::Maximize => {
-                        window.set_maximized(!window.is_maximized())
+                    ChromeAction::Minimize
+                    | ChromeAction::Maximize
+                    | ChromeAction::CloseWindow => {
+                        if let Some(island) = self.renderer.island.as_mut() {
+                            island.set_chrome_pressed(Some(action));
+                        }
                     }
-                    ChromeAction::CloseWindow => self.context_manager.close_window(),
                 }
                 self.mark_dirty();
                 return true;
@@ -4510,6 +4512,47 @@ impl Screen<'_> {
             }
         }
 
+        true
+    }
+
+    pub fn handle_window_control_release(
+        &mut self,
+        window: &rio_window::window::Window,
+    ) -> bool {
+        let Some(pressed) = self
+            .renderer
+            .island
+            .as_mut()
+            .and_then(|island| island.take_chrome_pressed())
+        else {
+            return false;
+        };
+
+        let scale = self.sugarloaf.scale_factor();
+        let size = self.sugarloaf.window_size();
+        let num_tabs = self.context_manager.len();
+        let released_over = self.renderer.island.as_ref().and_then(|island| {
+            island.chrome_action_at(
+                size.width,
+                size.height,
+                scale,
+                num_tabs,
+                self.mouse.x as f32 / scale,
+                self.mouse.y as f32 / scale,
+            )
+        });
+
+        if island::window_control_release_matches(pressed, released_over) {
+            match pressed {
+                ChromeAction::Minimize => window.set_minimized(true),
+                ChromeAction::Maximize => {
+                    window.set_maximized(!window.is_maximized());
+                }
+                ChromeAction::CloseWindow => self.context_manager.close_window(),
+                ChromeAction::NewTab | ChromeAction::OpenPalette => {}
+            }
+        }
+        self.mark_dirty();
         true
     }
 
@@ -5134,11 +5177,16 @@ impl Screen<'_> {
             rc.pending_update
                 .set_terminal_damage(rio_backend::event::TerminalDamage::CursorOnly);
 
+            let mut chrome_changed = false;
             if let Some(ref mut island) = self.renderer.island {
                 if island.is_dragging() {
                     island.cancel_drag();
-                    self.mark_dirty();
+                    chrome_changed = true;
                 }
+                chrome_changed |= island.cancel_chrome_press();
+            }
+            if chrome_changed {
+                self.mark_dirty();
             }
             self.mouse.left_button_state = ElementState::Released;
         }

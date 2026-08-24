@@ -55,10 +55,11 @@ They retain their terminal/application or native-platform authority.
 | **Fully done** | U6 scrollbar visual role | `renderer/scrollbar.rs` retains the allocation-free geometry, fade, hit area, and drag lifecycle while using rounded cyan/blue idle and drag roles | None for source implementation |
 | **Fully done** | U7 modal input composition | `application.rs`, `router/mod.rs`, and `screen/mod.rs` prioritize the visible modal owner before resize, chrome, pane, PTY, wheel, input-method, and file-drop paths; hidden surfaces do not intercept a higher-priority command palette | None for source implementation |
 | **Fully done** | U8 first-run welcome | `router/routes/welcome.rs` replaces the legacy black-and-white animation with a static responsive Automexia card, shared theme-aware accents, one clear Enter action, bounded copy, and no local configuration-path disclosure; layout/DPI/target/privacy tests own the contract | None for source implementation |
-| **Partially done** | U9 native visual and assistive-technology release evidence | Renderer-neutral layout, contrast, hit-test, hostile-input, redaction, and strict-lint evidence is automated | Record safe screenshots on supported WGPU/CPU backends at tiny, normal, split, 100–300% scale, light/dark custom themes, and complete Narrator/NVDA, VoiceOver, and Orca smoke evidence on the supported native operating systems |
+| **Fully done** | U9 branded window caption controls | renderer/island.rs retains right-edge layout and 40–46 pixel hit targets while adding one theme-aware liquid-glass capsule, distinct cyan/purple/coral rails and glyphs, rest/hover/held/inactive states, native maximize/restore state, and same-control release activation with drag-away/focus-loss cancellation; application and screen owners only snapshot native state and route events | None for source implementation |
+| **Partially done** | U10 native visual and assistive-technology release evidence | Renderer-neutral layout, contrast, hit-test, hostile-input, redaction, and strict-lint evidence is automated | Record safe screenshots on supported WGPU/CPU backends at tiny, normal, split, 100–300% scale, light/dark custom themes, and complete Narrator/NVDA, VoiceOver, and Orca smoke evidence on the supported native operating systems |
 
 There are no remaining **Not done** source items in this renderer-owned branding
-scope. U9 is an external release-assurance gate and must not be presented as
+scope. U10 is an external release-assurance gate and must not be presented as
 passing until those native runs are recorded.
 
 ## Interaction and trust boundaries
@@ -97,6 +98,7 @@ content behind a modal is inert, Escape closes, and a visible close control is
 provided. It also follows WCAG 2.2 AA text contrast and the 24 by 24 CSS-pixel
 minimum target guidance:
 
+- [Windows app title bar design](https://learn.microsoft.com/en-us/windows/apps/design/basics/titlebar-design)
 - [WAI-ARIA Authoring Practices: modal dialog pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/)
 - [Web Content Accessibility Guidelines 2.2](https://www.w3.org/TR/WCAG22/)
 - [Understanding Success Criterion 2.5.8: Target Size (Minimum)](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html)
@@ -116,10 +118,15 @@ Focused Windows x86_64 source evidence completed on 2026-08-24:
 - picker geometry and hostile UTF-8 input tests: 2 passed;
 - quit layout, hit-test, hover, and opacity tests: 4 passed;
 - scrollbar geometry, fade, lifecycle, and brand-role tests: 13 passed;
+- custom caption-control layout, semantic role, hit-target, maximize/restore,
+  held-state, focus-loss, and release-cancellation tests: 52 passed;
+- native Windows caption interaction at 1280×760 and 125% scale: hover deltas
+  stayed inside the intended 45×45 physical wells; drag-away cancellation,
+  maximize, restore, and graceful cleanup passed;
 - `cargo clippy -p automexia-terminal --all-targets --locked -- -D warnings`:
   passed.
 
 The final repository-wide formatting, workspace Clippy, Nextest, doctest, full
 QA, contributor-ready, diff, and documentation-policy results are recorded in
 the delivery handoff. Native visual and assistive-technology evidence remains
-U9.
+U10.
