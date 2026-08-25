@@ -5,8 +5,8 @@ use std::ptr::null_mut;
 
 use automexia_devops::suggestions::{
     decode_request_frame, decode_submission_frame, encode_replacement_frame,
-    EditorRequest, EditorSubmission, FrameError, NativeEditorReplacement,
-    SuggestionLimits,
+    encode_reply_frame, EditorRequest, EditorSubmission, FrameError,
+    NativeEditorReplacement, NativeEditorReply, SuggestionLimits,
 };
 use windows_sys::Win32::Foundation::{
     CloseHandle, GetLastError, LocalFree, ERROR_INSUFFICIENT_BUFFER,
@@ -132,6 +132,13 @@ impl WindowsEndpoint {
         decode_submission_frame(&frame).map_err(EndpointReadError::Frame)
     }
 
+    pub fn write_reply(
+        &self,
+        reply: &NativeEditorReply,
+    ) -> Result<(), EndpointReadError> {
+        let frame = encode_reply_frame(reply).map_err(EndpointReadError::Frame)?;
+        self.write_exact(&frame).map_err(EndpointReadError::Io)
+    }
     pub fn write_replacement(
         &self,
         replacement: &NativeEditorReplacement,

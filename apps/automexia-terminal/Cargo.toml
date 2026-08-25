@@ -1,5 +1,6 @@
 [package]
 name = "automexia-terminal"
+default-run = "automexia"
 description = "Automexia Terminal is a hardware-accelerated terminal for modern development workflows."
 publish = false
 version.workspace = true
@@ -28,7 +29,10 @@ icons = [
     "../../assets/brand/png/*.png",
 ]
 resources = ["../../LICENSE", "../../NOTICE.md", "../../THIRD_PARTY_NOTICES.md", "../../README.md", "../../shell-integration"]
-binaries = [{ path = "automexia", main = true }]
+binaries = [
+    { path = "automexia", main = true },
+    { path = "automexia-suggestion-helper" },
+]
 
 [package.metadata.packager.windows]
 allow-downgrades = false
@@ -40,6 +44,10 @@ component-group-refs = ["AutomexiaContextMenuComponents"]
 [[bin]]
 name = "automexia"
 path = "src/main.rs"
+
+[[bin]]
+name = "automexia-suggestion-helper"
+path = "src/bin/automexia-suggestion-helper.rs"
 
 [dependencies]
 automexia-keybindings = { workspace = true }
