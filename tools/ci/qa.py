@@ -745,10 +745,42 @@ def main() -> int:
                 None,
             ),
         )
+        commands.insert(
+            5,
+            (
+                "cp5-native-powershell-bridge",
+                [
+                    "pwsh",
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-File",
+                    "tools/ci/test_cp5_native_powershell_bridge.ps1",
+                ],
+                None,
+            ),
+        )
     else:
         commands.insert(
             4, ("shell-contracts", ["bash", "tools/ci/test_shell_sources.sh"], None)
         )
+        commands.insert(
+            5,
+            (
+                "cp5-native-zsh-fish-bridges",
+                [sys.executable, "tools/ci/test_cp5_native_shell_adapters.py"],
+                None,
+            ),
+        )
+        if platform.system() == "Linux":
+            commands.insert(
+                5,
+                (
+                    "cp5-native-bash-bridge",
+                    [sys.executable, "tools/ci/test_cp5_native_shell_bridge.py"],
+                    None,
+                ),
+            )
 
     steps: list[dict[str, object]] = []
     for index, (name, command, env_add) in enumerate(commands, 1):

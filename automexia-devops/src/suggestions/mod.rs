@@ -12,6 +12,15 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
+pub mod helper;
+pub mod helper_shell;
+mod reply;
+
+pub use reply::{
+    decode_reply_frame, encode_reply_frame, NativeEditorReply, NativeEditorStatus,
+    NativeEditorStatusCode,
+};
+
 pub const PROTOCOL_SCHEMA: u16 = 1;
 
 pub struct SuggestionLimits;
@@ -26,6 +35,7 @@ impl SuggestionLimits {
     pub const ACTIVE_ROUTES: usize = 64;
     pub const CACHE_BYTES: usize = 8 * 1024 * 1024;
     pub const SOURCE_DEADLINE_MS: u64 = 250;
+    pub const EDITOR_RESPONSE_TIMEOUT_MS: u64 = 30_000;
     pub const TOKEN_CONTEXT_BYTES: usize = 256;
     pub const EDITOR_VERSION_BYTES: usize = 64;
     pub const CWD_BYTES: usize = 4096;

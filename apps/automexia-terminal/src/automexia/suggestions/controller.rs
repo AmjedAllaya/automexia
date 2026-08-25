@@ -3,7 +3,9 @@
 //! The screen adapter consumes this model. Acceptance returns only a
 //! revalidated native-editor replacement and has no PTY-write or Enter path.
 
-use automexia_devops::suggestions::{AcceptanceContext, EditorRequest, NativeInsertion};
+use automexia_devops::suggestions::{
+    AcceptanceContext, EditorRequest, NativeEditorReplacement,
+};
 use automexia_ui_model::suggestions::{
     project_surface, AnnouncementGate, Navigation, Point, SuggestionInteraction,
     SuggestionSurface, SurfaceError, SurfaceRequest,
@@ -48,7 +50,7 @@ pub enum SuggestionInteractionOutcome {
     Consumed,
     Dismissed,
     ForwardToEditor,
-    Insert(NativeInsertion),
+    Replace(NativeEditorReplacement),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -258,9 +260,11 @@ fn accept(
         .candidates
         .get(index)
         .ok_or(SuggestionControllerError::InvalidCandidate)?;
-    let insertion = ranked
-        .candidate
-        .revalidate_for_acceptance(&active.request, current)
-        .map_err(|_| SuggestionControllerError::WrongOwner)?;
-    Ok(SuggestionInteractionOutcome::Insert(insertion))
+    let replacement = NativeEditorReplacement::from_candidate(
+        &active.request,
+        &ranked.candidate,
+        current,
+    )
+    .map_err(|_| SuggestionControllerError::WrongOwner)?;
+    Ok(SuggestionInteractionOutcome::Replace(replacement))
 }

@@ -11,8 +11,9 @@ pub use windows::{EndpointReadError, WindowsEndpoint};
 use std::io::{self, Read, Write};
 
 use automexia_devops::suggestions::{
-    decode_submission_frame, encode_replacement_frame, EditorSubmission, FrameError,
-    NativeEditorReplacement, SuggestionCapability, SuggestionLimits,
+    decode_submission_frame, encode_replacement_frame, encode_reply_frame,
+    EditorSubmission, FrameError, NativeEditorReplacement, NativeEditorReply,
+    SuggestionCapability, SuggestionLimits,
 };
 
 #[derive(Debug)]
@@ -54,6 +55,13 @@ pub fn read_submission(
     decode_submission_frame(&frame).map_err(EndpointFrameError::Frame)
 }
 
+pub fn write_reply(
+    writer: &mut impl Write,
+    reply: &NativeEditorReply,
+) -> Result<(), EndpointFrameError> {
+    let frame = encode_reply_frame(reply).map_err(EndpointFrameError::Frame)?;
+    writer.write_all(&frame).map_err(EndpointFrameError::Io)
+}
 pub fn write_replacement(
     writer: &mut impl Write,
     replacement: &NativeEditorReplacement,

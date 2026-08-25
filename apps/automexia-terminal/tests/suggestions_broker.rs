@@ -385,11 +385,18 @@ fn ui_controller_revalidates_ownership_navigation_pointer_and_acceptance() {
     let accepted = controller
         .pointer_accept(&AcceptanceContext::from_request(&request))
         .unwrap();
-    let SuggestionInteractionOutcome::Insert(insertion) = accepted else {
+    let SuggestionInteractionOutcome::Replace(replacement) = accepted else {
         panic!("pointer must return one native-editor replacement");
     };
+    let insertion = replacement
+        .revalidate(
+            &AcceptanceContext::from_request(&request),
+            &request.capability,
+        )
+        .unwrap();
     assert_eq!(insertion.span, request.replacement_span);
     assert_eq!(insertion.bytes, b"checkout");
+    assert!(!replacement.execute);
     assert!(!insertion.bytes.contains(&b'\n'));
 
     let mut stale = AcceptanceContext::from_request(&request);

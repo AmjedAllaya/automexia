@@ -1,10 +1,11 @@
 use std::hint::black_box;
 
 use automexia_devops::suggestions::{
-    decode_request_frame, encode_request_frame, rank_batches, Candidate,
-    CandidateFreshness, CandidateKind, CandidateRisk, CandidateSource, CompletionMode,
-    EditorRequest, QuoteContext, RankInput, ReplacementSpan, RequestReason, ShellKind,
-    SourceBatch, SourcePolicy, SuggestionCapability,
+    decode_reply_frame, decode_request_frame, encode_reply_frame, encode_request_frame,
+    rank_batches, AcceptanceContext, Candidate, CandidateFreshness, CandidateKind,
+    CandidateRisk, CandidateSource, CompletionMode, EditorRequest,
+    NativeEditorReplacement, NativeEditorReply, QuoteContext, RankInput, ReplacementSpan,
+    RequestReason, ShellKind, SourceBatch, SourcePolicy, SuggestionCapability,
 };
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
@@ -111,5 +112,30 @@ fn suggestion_frame_encode(criterion: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, suggestion_ranking, suggestion_frame_encode);
+fn suggestion_authenticated_reply(criterion: &mut Criterion) {
+    let request = request();
+    let batch = batch(&request, 1);
+    let replacement = NativeEditorReplacement::from_candidate(
+        &request,
+        &batch.candidates[0].candidate,
+        &AcceptanceContext::from_request(&request),
+    )
+    .unwrap();
+    let reply = NativeEditorReply::Replacement(replacement);
+    criterion.bench_function("cp5_suggestion_reply_encode", |bencher| {
+        bencher.iter(|| encode_reply_frame(black_box(&reply)).unwrap());
+    });
+
+    let encoded = encode_reply_frame(&reply).unwrap();
+    criterion.bench_function("cp5_suggestion_reply_decode", |bencher| {
+        bencher.iter(|| decode_reply_frame(black_box(&encoded)).unwrap());
+    });
+}
+
+criterion_group!(
+    benches,
+    suggestion_ranking,
+    suggestion_frame_encode,
+    suggestion_authenticated_reply
+);
 criterion_main!(benches);

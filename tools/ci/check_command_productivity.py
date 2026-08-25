@@ -168,6 +168,15 @@ CP1_ALLOWED_SHELL_FILES = {
     "shell-integration/uninstall-unix.sh",
     "shell-integration/uninstall-windows.ps1",
 }
+# ADR 0025 packages these exact editor adapters as inert resources. CP5.6 owns
+# their content and separately proves that no normal shell startup script
+# sources them. They must not be mistaken for active CP0/CP1 registration code.
+CP5_INERT_SHELL_FILES = {
+    "shell-integration/suggestions/bash/automexia-suggestions.bash",
+    "shell-integration/suggestions/zsh/automexia-suggestions.zsh",
+    "shell-integration/suggestions/fish/automexia-suggestions.fish",
+    "shell-integration/suggestions/powershell/automexia-suggestions.ps1",
+}
 CP2_PURE_ACTION_FILES = {
     "automexia-devops/src/actions/activation.rs",
     "automexia-devops/src/actions/imports.rs",
@@ -925,11 +934,11 @@ def validate_persistence_sources(root: Path, runtime_files: list[Path]) -> set[s
         raise CommandProductivityError("CP2.1 persistence module wiring is missing")
     return present
 
-def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
+def validate_shell_pre_activation(root: Path = ROOT) -> int:
     shell_files = source_files(root, "shell-integration")
     for path in shell_files:
         relative = path.relative_to(root).as_posix()
-        if relative in CP1_ALLOWED_SHELL_FILES:
+        if relative in CP1_ALLOWED_SHELL_FILES or relative in CP5_INERT_SHELL_FILES:
             continue
         shell_text = normalized_source(path)
         for hook in sorted(SHELL_PROVIDER_HOOKS):
@@ -937,6 +946,11 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
                 raise CommandProductivityError(
                     f"CP0 shell startup unexpectedly activates provider/completion hook {hook!r}"
                 )
+    return len(shell_files)
+
+
+def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
+    shell_file_count = validate_shell_pre_activation(root)
 
     interactive_roots = [
         "apps/automexia-terminal/src/renderer",
@@ -1003,7 +1017,7 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
                 f"PowerShell integration regression test no longer rejects {marker!r}"
             )
     return {
-        "shell_files": len(shell_files),
+        "shell_files": shell_file_count,
         "cp1_allowed_shell_files": len(CP1_ALLOWED_SHELL_FILES),
         "cp2_pure_action_files": len(pure_action_files & CP2_PURE_ACTION_FILES),
         "cp4_pure_action_files": len(pure_action_files & CP4_PURE_ACTION_FILES),

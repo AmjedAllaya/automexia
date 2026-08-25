@@ -5,7 +5,14 @@
 //! redacted health in memory. It never writes suggestion text to a PTY.
 
 mod controller;
+mod endpoint_service;
+mod helper;
+mod helper_bootstrap;
+mod helper_endpoint;
+mod helper_runner;
+mod helper_transport;
 mod platform;
+mod publication;
 mod service;
 
 use std::collections::BTreeMap;
@@ -22,13 +29,34 @@ pub use controller::{
     SuggestionAcceptanceKeys, SuggestionControllerError, SuggestionInteractionKey,
     SuggestionInteractionOutcome, SuggestionInvalidation, SuggestionUiController,
 };
+pub use endpoint_service::{serve_one_suggestion_submission, EndpointServiceError};
+pub use helper::{HelperSessionBinding, HelperSessionBridge, HelperSessionError};
+pub use helper_bootstrap::{
+    decode_helper_bootstrap, encode_helper_bootstrap, read_helper_bootstrap,
+    HelperBootstrap, HelperBootstrapError, HelperEndpointLocator,
+};
+pub use helper_endpoint::{
+    connect_helper_endpoint, FramedHelperEndpoint, LocalHelperStream,
+};
+pub use helper_runner::{
+    run_helper_records, HelperEndpointExchange, HelperEndpointFailure, HelperRunError,
+    HelperRunStats,
+};
+pub use helper_transport::{
+    read_helper_record, write_helper_record, HelperTransportError,
+};
 #[cfg(unix)]
 pub use platform::UnixEndpoint;
 pub use platform::{
-    generate_capability, read_submission, write_replacement, EndpointFrameError,
+    generate_capability, read_submission, write_replacement, write_reply,
+    EndpointFrameError,
 };
 #[cfg(windows)]
 pub use platform::{EndpointReadError, WindowsEndpoint};
+pub use publication::{
+    submit_and_wait_for_ui, PublicationError, SuggestionPublication,
+    SuggestionPublicationMailbox,
+};
 pub use service::{SuggestionService, SuggestionTicket};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]

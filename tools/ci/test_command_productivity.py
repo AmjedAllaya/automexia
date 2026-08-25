@@ -169,6 +169,22 @@ class CommandProductivityPolicyTests(unittest.TestCase):
             with self.assertRaisesRegex(POLICY.CommandProductivityError, "shell startup"):
                 POLICY.validate_pre_activation(root)
 
+    def test_reviewed_cp5_adapter_is_inert_not_startup_activation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            adapter = (
+                root
+                / "shell-integration/suggestions/fish/automexia-suggestions.fish"
+            )
+            adapter.parent.mkdir(parents=True)
+            adapter.write_text("complete -C\n", encoding="utf-8")
+            self.assertEqual(POLICY.validate_shell_pre_activation(root), 1)
+
+            active = root / "shell-integration/automexia.fish"
+            active.write_text("complete -c kubectl\n", encoding="utf-8")
+            with self.assertRaisesRegex(POLICY.CommandProductivityError, "shell startup"):
+                POLICY.validate_shell_pre_activation(root)
+
     def test_terminal_grid_command_inference_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
