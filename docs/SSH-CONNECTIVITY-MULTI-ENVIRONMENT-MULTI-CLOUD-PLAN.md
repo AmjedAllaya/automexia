@@ -126,12 +126,12 @@ native/release claim.
 | F3 Connection Library | Fully done locally | `ConnectionLibraryStore` has 16 MiB private documents, CAS, recovery, transfer redaction, fresh import IDs, read-only/disk-full and link tests | Product editor/manager belongs to F6; macOS/Linux native permission and controlled screen-reader evidence remain. |
 | F5 managed OpenSSH | Partially done overall; F5.1-F5.3 and the F5.4 local assurance path are complete nonactivated | Exact direct/routed/tunnel argv; typed endpoints; trust/review/lifecycle; 23-scenario validator; native host, commit, OpenSSH, and artifact binding; protected manual workflow; receipts; reconnect; and compact tunnel state pass locally | Protected activation/attestation, actual status execution, real OpenSSH/forced cleanup, native resources/accessibility, and validated F5.4 real manifests remain. |
 | F6 recipes and remote declarative workspaces | Partially done overall; review/edit source and product surface complete locally | Accepted ADR 0023; schema-2 editor/migration/recovery; exact dependent fingerprints; recipe/restore/broadcast reviews; public preview-first CLI; worker-published immutable library snapshot; Connection Hub catalog/review routes; responsive semantic projections; fuzz, mutation, integration, and benchmark evidence | ADR 0012/D3/M5 protected activation, managed execution adapters, real OpenSSH/PTY/process/handle/socket cleanup, and controlled native/resource/accessibility/release evidence remain. |
-| D6.0/M7 provider-neutral authentication and capsule orchestration | Fully done locally | Bounded strict schemas, immutable provider contexts, 19-state lifecycle, generation/session isolation, exact allow-once review, redacted receipts/audits, passive-status migration, fuzz/mutation/benchmark evidence | D6.1-D6.4 and D6.5 Teleport builders are source-complete/nonactivated; product activation, real official-CLI/native evidence, and OpenBao remain external/not done. |
-| D6.1/M8 AWS | Partially done overall; source-complete nonactivated | Independent `automexia-devops-aws`; bounded public profiles; exact SSO/STS/SSM/EKS dry-run contracts; 10 focused tests | D3 product activation/attestation, M11 EKS ingestion, and controlled real official-tool/native/resource/accessibility/release evidence remain. |
-| D6.2/M9 Azure | Partially done overall; source-complete nonactivated | Independent `automexia-devops-azure`; bounded public account JSON; exact tenant-scoped login/account observation; AAD-only Bastion plan; opaque transient AKS intent; 8 focused tests | D3 product activation/attestation, M11 AKS ingestion, and controlled real Azure/native/resource/accessibility/release evidence remain. |
-| D6.3/M10 Google Cloud | Partially done overall; source-complete nonactivated | Independent `automexia-devops-gcp`; bounded named public config; exact per-command login/project observation; opaque federation; scope-bound IAP; private-environment GKE intent; 8 focused tests | D3 activation/attestation, M11 GKE ingestion, and controlled real Google/native/resource/accessibility/release evidence remain. |
-| D6.4/M11 Kubernetes/OpenShift | Partially done overall; source-complete nonactivated | Independent Kubernetes/OpenShift packages; bounded exact-source YAML/JSON parsing and merge; default-denied exec review; exact isolated kubectl/oc plans; 13 tests and benchmark | D3/product activation, real client/cluster/native/resource/accessibility/release evidence. |
-| D6.5/M12 Teleport/OpenBao | Partially done overall | Teleport is source-complete and nonactivated through a separate bounded extension with exact version/login/status/ssh/logout plans; OpenBao ADR 0024 remains proposed and unaccepted | Activate and prove Teleport only through D3/native release gates; accept ADR 0024 before any OpenBao code. |
+| D6.0/M7 provider-neutral authentication and capsule orchestration | Fully done locally | Bounded strict schemas, immutable provider contexts, 19-state lifecycle, generation/session isolation, exact allow-once review, redacted receipts/audits, passive-status migration, fuzz/mutation/benchmark evidence | M8-M11 and M12 Teleport source/cached review plus M11 private lifecycle are locally complete and nonactivated; real official-CLI/native execution evidence and OpenBao remain external/not done. |
+| D6.1/M8 AWS | Partially done overall; local source and cached product review fully done, execution nonactivated | Independent `automexia-devops-aws`; bounded public profiles; exact SSO/STS/SSM/EKS dry-run contracts; cached six-provider Hub catalog/review; strict capsule replacement; focused source/product tests | D3 activation/attestation and controlled real official-tool/native/resource/accessibility/release evidence remain. |
+| D6.2/M9 Azure | Partially done overall; local source and cached product review fully done, execution nonactivated | Independent `automexia-devops-azure`; bounded public account JSON; exact tenant-scoped login/account observation; AAD-only Bastion; AKS private transient lifecycle; cached Hub review; focused source/product tests | D3 activation/attestation and controlled real Azure/native/resource/accessibility/release evidence remain. |
+| D6.3/M10 Google Cloud | Partially done overall; local source and cached product review fully done, execution nonactivated | Independent `automexia-devops-gcp`; bounded named public config; exact per-command login/project observation; opaque federation; scope-bound IAP; GKE private transient lifecycle; cached Hub review; focused tests/benchmarks | D3 activation/attestation and controlled real Google/native/resource/accessibility/release evidence remain. |
+| D6.4/M11 Kubernetes/OpenShift | Partially done overall; local source, private transient lifecycle, and cached product review fully done, execution nonactivated | Independent packages; bounded exact-source YAML/JSON parse/merge; default-denied exec; exact isolated kubectl/oc plans; app-owned private no-follow transient allocation/validation/revalidation/revoke/cleanup; focused lifecycle/UI tests and benchmarks | D3 activation, real clients/clusters/plugins, Unix native no-follow, controlled resource/accessibility/release evidence remain. |
+| D6.5/M12 Teleport/OpenBao | Partially done overall | Teleport source and cached product review are fully done locally and nonactivated; OpenBao is **Not done** and ADR 0024 remains proposed/unaccepted | Activate and prove Teleport only through D3/native release gates; accept ADR 0024 before any OpenBao code. |
 | Provider-aware Quick Actions (CP4/F13) | Partially done overall; source-complete nonactivated | Seven provider projections, immutable route snapshots, cached search, final revalidation, compact accessible context, production confirmation, fuzz/benchmark/policy evidence | Product provider publication, exact provider execution, OpenBao, and real native/provider/accessibility/release evidence remain. |
 
 ### Important distinction: existing legacy DevOps status is not D6
@@ -781,9 +781,10 @@ independently gated D6.1-D6.5 slices.
 
 ### M8 — F8 AWS slice
 
-Status: **Partially done overall; source-complete locally and nonactivated.**
-Kubernetes output ingestion still depends on M11, and real official-tool/native
-release evidence remains external.
+Status: **Partially done overall; local source and cached product review are
+fully done, while execution remains nonactivated.** M11 private EKS ingestion is
+fully implemented locally; real official-tool/native release evidence remains
+external.
 
 - [x] **Fully done locally** - `automexia-devops-aws` is an independent,
   disabled-by-default extension with exact process/network capabilities. Its
@@ -808,17 +809,26 @@ release evidence remains external.
 - [x] **Fully done locally** - EKS produces only a reviewed `--dry-run` intent
   for M11 private transient ingestion. It never names or merges the user
   kubeconfig and never changes current context.
-- [x] **Fully done locally** - Nine deterministic tests cover public profile
+- [x] **Fully done locally** - Ten deterministic tests cover public profile
   extraction, credential canaries, duplicate/oversize rejection, PKCE/device
   selection, exact STS args/capabilities, strict output, explicit AWS CLI 2.22+
   PKCE and Session Manager plugin 1.1.17+ floors, truthful failure states,
   production risk, capsule isolation, SSM plugin/PTY/tree cleanup, EKS no-write,
   redacted debug/JSON, and disabled least-privilege manifest. Locked tests,
   warning-denied Clippy, and formatting pass on Windows x86_64.
-- [ ] **External/blocked** - Wire the product provider controller/review UI to
-  the protected application runner after D3 activation, bind native executable
-  identity and real descendant cleanup, ingest EKS output through completed M11,
-  and run controlled IAM Identity Center PKCE/device/MFA, STS, SSM, EKS,
+- [x] **Fully done locally** - Publish validated public AWS contexts through the
+  app-owned immutable six-provider snapshot. The Providers catalog and review
+  expose cached identity/scope/freshness/risk with pointer, keyboard, responsive,
+  and accessibility semantics; they request no process, network, login, or PTY.
+  Capsule refresh requires a new capsule ID and session and invalidates stale
+  review ownership.
+- [x] **Fully done locally** - Allocate, validate, revalidate, revoke, and clean
+  EKS dry-run output only through the bounded app-owned M11 private transient
+  manager. It never names or merges user kubeconfig.
+- [ ] **External/blocked** - Connect reviewed AWS operations to the protected
+  application runner after D3 activation, bind native executable identity and
+  real descendant cleanup, and run controlled IAM Identity Center
+  PKCE/device/MFA, STS, SSM, EKS,
   offline/denied/cancel/revoke/uninstall, Windows/macOS/Linux, resource,
   accessibility, packaging, signing, and release fixtures.
 
@@ -828,8 +838,9 @@ network, credential cache, Session Manager session, or EKS cluster ran in this
 slice.
 ### M9 — F9 Azure slice
 
-Status: Partially done overall; source-complete and nonactivated on Windows
-x86_64, with product activation, AKS ingestion, and external evidence remaining.
+Status: **Partially done overall; local source and cached product review are
+fully done on Windows x86_64, while execution remains nonactivated.** M11 private
+AKS ingestion is fully implemented locally; external evidence remains.
 
 - [x] **Fully done locally:** add independent `automexia-devops-azure`, disabled
   by default with only exact process/network capability declarations and a
@@ -860,9 +871,12 @@ x86_64, with product activation, AKS ingestion, and external evidence remaining.
   warning-denied Clippy, formatting, architecture/identity, and repository
   policy gates pass on Windows x86_64. The 128-account Criterion target measured
   473.69–478.86 µs over 100 samples; eight high-side outliers were reported.
-- [ ] **Partially done/external:** connect the source contract to the protected
-  D3 product review/runner only after activation/attestation authority exists;
-  M11 must allocate, validate, publish, revoke, and clean the AKS transient file.
+- [x] **Fully done locally:** the app-owned Providers catalog/review publishes
+  validated cached Azure public context with strict capsule replacement and no
+  execution/PTY authority. The M11 transient manager now allocates, validates,
+  revalidates, revokes, and cleans AKS output without touching user kubeconfig.
+- [ ] **Partially done/external:** connect reviewed Azure operations to the
+  protected D3 runner only after activation/attestation authority exists.
 - [ ] **External prerequisite:** run controlled real Azure CLI 2.61+ WAM/browser/device/
   MFA/conditional-access/cancel/offline cases, Azure Bastion native client (CLI
   floor 2.32+), AKS, Windows/macOS/Linux process-tree/resource/accessibility,
@@ -875,8 +889,9 @@ this slice.
 
 ### M10 — F10 Google Cloud slice
 
-Status: Partially done overall; source-complete and nonactivated on Windows
-x86_64, with product activation, GKE ingestion, and external evidence remaining.
+Status: **Partially done overall; local source and cached product review are
+fully done on Windows x86_64, while execution remains nonactivated.** M11 private
+GKE ingestion is fully implemented locally; external evidence remains.
 
 - [x] **Fully done locally:** add independent `automexia-devops-gcp`, disabled by
   default with exact process/network declarations and separate app registration.
@@ -902,9 +917,13 @@ x86_64, with product activation, GKE ingestion, and external evidence remaining.
   denied all-target Clippy, formatting, and a near-limit Criterion target pass on
   Windows x86_64. The benchmark measured 444.00–460.66 µs over 100 samples and
   reported 9 high-side outliers.
-- [ ] **Partially done/external:** connect through protected D3 review/runner only
-  after activation/attestation; M11 must allocate/validate/publish/revoke/clean
-  the GKE file and approve any resulting exec credential plugin independently.
+- [x] **Fully done locally:** the app-owned Providers catalog/review publishes
+  validated cached Google Cloud public context with strict capsule replacement
+  and no execution/PTY authority. The M11 transient manager now owns private GKE
+  allocation, validation, revalidation, revoke, and cleanup; exec remains denied.
+- [ ] **Partially done/external:** connect reviewed Google Cloud operations
+  through the protected D3 runner only after activation/attestation and approve
+  any resulting exec credential plugin independently.
 - [ ] **External prerequisite:** controlled real gcloud user browser/remote/2FA,
   Workforce/Workload federation, IAM denial/offline/cancel, IAP/OS Login, GKE,
   Windows/macOS/Linux cleanup/resources/accessibility, packaging/signing/release.
@@ -915,8 +934,9 @@ GKE cluster, kubeconfig file, or provider PTY ran in this slice.
 
 ### M11 — F11 Kubernetes and OpenShift slice
 
-Status: Partially done overall; source-complete and nonactivated. M7 remains the
-capsule authority and D3 remains the only future execution boundary.
+Status: **Partially done overall; local source, app-owned private transient
+lifecycle, and cached product review are fully done and nonactivated.** M7
+remains the capsule authority and D3 remains the only future execution boundary.
 
 - [x] **Fully done locally:** treat every source as code-capable untrusted input.
   The Kubernetes package accepts only exact absolute grants or private transient
@@ -949,10 +969,21 @@ capsule authority and D3 remains the only future execution boundary.
   redaction, session isolation, explicit expiry/offline/denial/plugin failure,
   disable registration, and exact argv. Warning-denied Clippy, dependency policy,
   and the 900 KiB Windows benchmark at 1.8280–1.8788 ms pass.
-- [ ] **Partially done/external:** protected D3 product activation, actual private
-  transient-file allocation/cleanup, real `kubectl`/`oc` and EKS/AKS/GKE/
-  OpenShift fixtures, plugin execution, forced child teardown, sustained
-  resource/storage evidence, Linux/macOS native clients, product UI,
+- [x] **Fully done locally:** the application is the sole private transient-file
+  owner. It creates no-follow private files below its exact connection root,
+  accepts at most 16 active 1 MiB documents, validates generated kubeconfig before
+  publication, binds opaque handles to provider/capsule/session/generation/source
+  revision, detects post-publication tamper, and cleans on expiry, revoke,
+  provider disable, session revoke, shutdown, and drop. Recovery examines at
+  most 64 stale roots/files and never exposes paths through public/debug state.
+- [x] **Fully done locally:** the cached six-provider Hub catalog/review adds
+  Kubernetes and OpenShift rows with compact identity/scope/freshness/risk,
+  responsive pointer/keyboard focus, accessible status announcements, and no
+  process/network/PTY/input authority.
+- [ ] **Partially done/external:** protected D3 product activation, real
+  `kubectl`/`oc` and EKS/AKS/GKE/OpenShift fixtures, plugin execution, forced
+  child teardown, Unix native no-follow checks, sustained
+  resource/storage evidence, Linux/macOS native clients, controlled native UI/
   accessibility, packaging, signing, and release evidence remain.
 
 Exit is met for the two independently disabled source packages, not product
@@ -960,9 +991,9 @@ activation or release. No Kubernetes/OpenShift executable, plugin, network,
 credential, cluster, browser, PTY, or user kubeconfig ran in this slice.
 ### M12 — F12 organization identity: Teleport, then OpenBao
 
-Status: Partially done overall. Teleport is source-complete and nonactivated;
-OpenBao is not implemented and remains an external prerequisite pending ADR
-0024 acceptance.
+Status: **Partially done overall.** Teleport source and cached product review are
+fully done locally and nonactivated. OpenBao is **Not done** and remains an
+external prerequisite pending ADR 0024 acceptance.
 
 #### M12.1 Teleport
 
@@ -980,6 +1011,10 @@ OpenBao is not implemented and remains an external prerequisite pending ADR
   revocation, offline/cancelled/MFA states,
   proxy/target/session/revision drift, exact argv, relogin/access-request denial,
   redaction, disable/uninstall, and bounded process-tree intent.
+- [x] **Fully done locally:** Teleport is one of the six cached Providers rows;
+  review exposes only bounded public proxy/cluster/user/scope/freshness/risk,
+  rejects OpenBao, invalidates stale capsule review, and requests no process,
+  browser, network, cache, certificate, agent, or PTY authority.
 - [ ] **External:** D3 product activation/attestation plus real `tsh`, proxy,
   browser/MFA, cache/certificate/agent, PTY, native cleanup/resources,
   accessibility, packaging, signing, and release fixtures remain.
@@ -989,14 +1024,14 @@ OpenBao is not implemented and remains an external prerequisite pending ADR
 - [ ] **External prerequisite/not done:** obtain acceptance of proposed ADR 0024
   for OpenBao’s token-helper and certificate-file boundary before any
   implementation. Teleport or generic OpenSSH approval does not cover it.
-- [ ] Keep token/helper interaction external; retain only opaque references and
+- [ ] **Not done/blocked:** keep token/helper interaction external; retain only opaque references and
   bounded public certificate metadata. Do not accept password/private-key
   material or serialize certificate contents as an Automexia credential store.
-- [ ] Give it an independent capability grant, cache, revocation, certificate
+- [ ] **Not done/blocked:** give it an independent capability grant, cache, revocation, certificate
   expiry/cleanup, native fixtures, recovery/uninstall behavior, and docs.
 
-Exit is met only for Teleport’s independently disabled source package. Product
-activation and native release evidence remain external. The combined M12 exit
+Exit is met for Teleport’s independently disabled source and cached product
+review, not execution activation or native release evidence. The combined M12 exit
 is not met because OpenBao is intentionally absent until ADR 0024 is accepted;
 neither organization adapter may grant authority to the other.
 

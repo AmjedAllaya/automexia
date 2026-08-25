@@ -107,11 +107,11 @@ protected commit passes and the authenticated audit returns no external result.
 | SSH UX | D5.0-D5.2 | **Partial overall; D5.1, nonactivated F5.1-F5.3, and the F5.4 local assurance path complete** | **Partial/blocked** | Routes/trust/tunnels/lifecycle plus exact native host/commit/OpenSSH/artifact binding, protected manual workflow, and path-free summaries pass locally. Protected activation/attestation, actual status/SSH execution, and controlled real native descendant/listener/resource/accessibility manifests remain. |
 | Multi-environment | M6/F6 | **Partial overall; review/edit source and product surfaces fully implemented locally** | **Blocked on D3/M5 execution evidence** | Accepted ADR 0023; schema-2 editor/migration/recovery; public preview-first CLI; immutable worker publication; Connection Hub catalog/restore review; exact fingerprints; typed recipes/no-hooks; narrow remote initialization; armed broadcast; semantic projections; fuzz/mutation/integration and bounded benchmarks pass. Managed execution and controlled native/resource/accessibility/release evidence remain. |
 | Multi-cloud | D6.0/M7 | **Fully implemented locally** | **Partial/external** | Strict provider-neutral schemas, immutable session capsules, 19-state lifecycle, exact allow-once review, isolation/redaction, passive-status migration, cached-only semantics, fuzz/mutation, 16×64 lifecycle, and a 64-capsule benchmark pass. No real provider CLI, cloud network, credential cache, browser/device flow, or Linux/macOS native provider evidence ran. |
-| Multi-cloud | D6.1/M8 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded AWS profile parser plus exact SSO/STS/SSM/EKS-dry-run contracts and ten focused tests pass. D3 activation, M11 EKS ingestion, product UI, and controlled native/provider/resource/accessibility evidence remain. |
-| Multi-cloud | D6.2/M9 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded Azure public-account parser plus exact tenant login/account, AAD-only Bastion, opaque transient AKS contracts, and eight focused tests pass. D3 activation, M11 AKS ingestion, product UI, and controlled native/provider/resource/accessibility evidence remain. |
-| Multi-cloud | D6.3/M10 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded named gcloud parser plus exact per-command user/project, opaque federation, scope-bound IAP, private-environment GKE contracts, eight focused tests, and near-limit benchmark pass. D3 activation, M11 GKE ingestion, product UI, and controlled native/provider evidence remain. |
-| Multi-cloud | D6.4/M11 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded Kubernetes/OpenShift packages, trusted source/merge/exec/capsule/exact CLI contracts, 13 focused tests, app guards, dependency policy, and near-limit benchmark pass. D3/product activation and controlled real client/cluster/native/resource/accessibility evidence remain. |
-| Multi-cloud | D6.5/M12 | **Partial overall; Teleport source-complete/nonactivated** | **Partial/blocked** | Teleport has a bounded exact adapter and focused evidence; D3 product UI/activation and controlled native/provider evidence remain. OpenBao is absent pending ADR 0024 acceptance. |
+| Multi-cloud | D6.1/M8 | **Partial overall; source and cached product review fully implemented locally, execution nonactivated** | **Blocked** | AWS adapter, strict capsule replacement, cached six-provider Hub review, and M11 private EKS ingestion pass locally. D3 activation/attestation and controlled real AWS/native/resource/accessibility/release evidence remain. |
+| Multi-cloud | D6.2/M9 | **Partial overall; source and cached product review fully implemented locally, execution nonactivated** | **Blocked** | Azure adapter, cached Hub review, and M11 private AKS allocation/validation/revoke/cleanup pass locally. D3 activation/attestation and controlled real Azure/native/resource/accessibility/release evidence remain. |
+| Multi-cloud | D6.3/M10 | **Partial overall; source and cached product review fully implemented locally, execution nonactivated** | **Blocked** | Google Cloud adapter, cached Hub review, and M11 private GKE allocation/validation/revoke/cleanup pass locally. D3 activation/attestation and controlled real Google/native/resource/accessibility/release evidence remain. |
+| Multi-cloud | D6.4/M11 | **Partial overall; source, private transient lifecycle, and cached product review fully implemented locally, execution nonactivated** | **Blocked** | Kubernetes/OpenShift contracts plus app-owned 16-file/1 MiB private validate/revalidate/revoke/cleanup and responsive Hub review pass locally. D3 activation, real clients/clusters/plugins, Unix no-follow, controlled cleanup/resources/accessibility/release evidence remain. |
+| Multi-cloud | D6.5/M12 | **Partial overall; Teleport source and cached product review fully implemented locally, execution nonactivated; OpenBao not done** | **Partial/blocked** | Teleport has bounded exact source plus cached Hub review; D3 activation and controlled real native/provider evidence remain. OpenBao is rejected and absent pending ADR 0024 acceptance. |
 | Ecosystem | D7 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance** | Proposed ADR 0029, strict duplicate-key-rejecting schema-1 contract, nine threats, 28 ceilings, 15 mutation tests, nonactivation/dependency enforcement, and detailed D7.0-D7.5 audit exist. No ecosystem runtime, dependency, package parser/store, WIT, sandbox, downloader, public SDK, or product UI is authorized. |
 | Automation Studio | AS0 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance and native feasibility** | The architecture, proposed ADR 0030, build/wrap/adopt choices, AS0-AS6 sequence, and future evidence ledger exist. No dependency or runtime was added; numeric machine limits, exact dependency review, and native Windows/macOS/Linux X11/Wayland editor-host proof remain. |
 | Automation Studio | AS1-AS6 | **Not implemented** | **Blocked on AS0 acceptance** | No document service, workspace-trust implementation, editor/webview host, LSP/DAP broker, language server, Studio/DevOps package integration, file-write grant, typed script-run product path, remote/mobile client, or advanced runtime exists. |
@@ -146,8 +146,8 @@ executable ledgers above as follows:
 | Phase 0: v0.4 security/stability | S0, S1, S2 | **Source gates complete; assurance partial; S2 enforcement implemented but baseline activation pending.** |
 | Phase 1: provider-neutral APIs | D1, D2 | **Fully implemented at source boundary.** |
 | Phase 2: production first-party SSH | D0, D3, D4, D5.0-D5.2 | **Partial foundation only; production SSH not implemented.** |
-| Phase 3: provider auth/capsules | D6.0-D6.4 | **Partially implemented overall: D6.0 is fully implemented locally; D6.1-D6.4 are source-complete and nonactivated.** |
-| Phase 4: lazy inventory/infrastructure/enterprise adapters | Later D6/D6.5 work | **Not implemented.** |
+| Phase 3: provider auth/capsules | D6.0-D6.4 | **Partially implemented overall: M7 is fully implemented locally; M8-M11 source, cached product review, and private transient lifecycle are fully implemented locally while execution remains nonactivated.** |
+| Phase 4: lazy inventory/infrastructure/enterprise adapters | Later D6/D6.5 work | **Partially implemented: M12 Teleport source and cached review are complete locally/nonactivated; OpenBao is not implemented pending ADR 0024.** |
 | Phase 5: third-party ecosystem/AI | D7 and CP6 | **Partially implemented: the proposal-only security contract and automated nonactivation gate are complete; runtime and product activation remain deferred pending ADR 0029 acceptance and protected approvals.** |
 
 ## Core stabilization phases
@@ -747,7 +747,7 @@ workspace tasks gain no remote/provider authority.
 
 ### D6.0-D6.5 — providers and multi-cloud
 
-**Partially implemented overall: D6.0/M7 is fully implemented locally; D6.1/M8 through D6.4/M11 and the D6.5/M12 Teleport slice are source-complete and nonactivated; OpenBao is not implemented pending ADR 0024 acceptance.**
+**Partially implemented overall: D6.0/M7 is fully implemented locally; M8-M11 and M12 Teleport now have fully implemented local source, cached product review, and M11 private transient lifecycle while all execution remains nonactivated; OpenBao is not implemented pending ADR 0024 acceptance.**
 
 D6.0 now owns one authority-free provider-neutral source boundary:
 
@@ -822,10 +822,11 @@ but statistically unchanged 100-sample Windows benchmark pass. No `tsh`, proxy,
 network, browser/MFA, cache/certificate/agent, PTY, or native release fixture
 ran.
 
-D6.1-D6.5 still need D3 product activation/attestation, actual private
-transient-file allocation and cleanup where applicable, product review UI,
-controlled real-tool native tests, cleanup/resource/accessibility, and release
-evidence. OpenBao remains intentionally absent until ADR 0024 is accepted. Direct SDK inventory remains a later, explicit, lazy authority.
+D6.1-D6.5 still need D3 product activation/attestation, controlled real-tool
+native tests, child cleanup/resource/accessibility, and release evidence. Cached
+product review and M11 private transient allocation/validation/revalidation/
+revoke/cleanup are complete locally. OpenBao remains intentionally absent until
+ADR 0024 is accepted. Direct SDK inventory remains a later, explicit, lazy authority.
 
 ### D7 — public ecosystem, direct APIs, and AI
 
@@ -1236,7 +1237,7 @@ Planned work, with no shipped-command claim:
 | Identity references, agent/certificate/hardware public state, known-host explanation, routes/jumps/proxies/tunnels | D5.2 | M4 references/status/trust and M5 exact local/remote/dynamic tunnels, loopback defaults, strong review, and lifecycle are fully implemented locally and nonactivated; actual status execution, broader proxies, protected activation, and real F5.4 native evidence remain |
 | Quick Actions, aliases, lifecycle hooks, reviewed multi-target execution | CP2.2-CP4/D5E | CP2/CP3 actions and CP4 cached provider discovery/final revalidation are source-complete locally; exact provider and multi-target execution remain disabled |
 | Declarative workspace persistence/restoration and visibly armed broadcast | M6/F6 | Accepted schema-2 preview/CAS manager, public CLI, immutable Hub catalog/restore review, armed broadcast projection, and bounded product tests are complete locally; managed execution and controlled native evidence remain |
-| Per-pane multi-cloud/context commands and typed import/reconcile adapters | D6.0-D6.5/CP4 | Partially implemented: D6.0, M8-M11, M12 Teleport, and CP4 cached provider-action projection are source-complete and nonactivated; product refresh/import/reconcile/execution, real provider/native evidence, and OpenBao remain gated |
+| Per-pane multi-cloud/context commands and typed import/reconcile adapters | D6.0-D6.5/CP4 | Partially implemented: M7, M8-M11, M12 Teleport, cached Hub review, M11 private lifecycle, and CP4 cached action projection are locally complete/nonactivated; provider refresh/import/reconcile/execution, real provider/native evidence, and OpenBao remain gated |
 | Structured files/SFTP, bounded logs/bookmarks, team state/policy, shared sessions | D7 protected slices | Not implemented |
 | Mosh, Telnet, serial, public ecosystem packs, optional editor popup, AI explain/suggest | D7/CP5-CP6 | Not implemented/deferred |
 

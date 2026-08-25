@@ -16,14 +16,15 @@ use super::direct_openssh::{
 use automexia_ui_model::connection_hub::{
     apply_hub_key, hub_catalog_controls_visible, project_connection_catalog,
     project_connection_hub, project_direct_openssh_preparation,
-    project_direct_openssh_review, project_workspace_catalog, project_workspace_restore,
+    project_direct_openssh_review, project_provider_catalog, project_provider_review,
+    project_workspace_catalog, project_workspace_restore,
     validate_connection_catalog_query, ConnectionCatalogEntry,
     ConnectionCatalogProjection, ConnectionCatalogQuery, ConnectionHubView,
     ConnectionReviewView, ConnectionSummary, HubCatalogGrouping, HubCatalogSource,
     HubContentState, HubFocus, HubKey, HubProjectionRequest, HubRoute,
-    HubVisualPreferences, InteractionEffect, InteractionState, Viewport,
-    WorkspaceCatalogView, WorkspaceRestoreView, MAX_CATALOG_QUERY_BYTES,
-    MAX_VISIBLE_ROWS,
+    HubVisualPreferences, InteractionEffect, InteractionState, ProviderCatalogItem,
+    ProviderCatalogView, ProviderReviewView, Viewport, WorkspaceCatalogView,
+    WorkspaceRestoreView, MAX_CATALOG_QUERY_BYTES, MAX_VISIBLE_ROWS,
 };
 
 use super::{
@@ -106,6 +107,8 @@ pub struct HubControllerPresentation {
     pub disabled_actions: Vec<DisabledHubAction>,
     pub workspace_catalog: Option<WorkspaceCatalogView>,
     pub workspace_restore: Option<WorkspaceRestoreView>,
+    pub provider_catalog: Option<ProviderCatalogView>,
+    pub provider_review: Option<ProviderReviewView>,
 }
 
 pub struct ConnectionHubController {
@@ -136,6 +139,9 @@ pub struct ConnectionHubController {
     workspace_selected_index: usize,
     workspace_restore: Option<WorkspaceRestorePlan>,
     workspace_review_generation: u64,
+    provider_selected_index: usize,
+    provider_review: Option<ProviderCatalogItem>,
+    provider_review_revision: u64,
 }
 
 impl ConnectionHubController {
@@ -184,6 +190,9 @@ impl ConnectionHubController {
             workspace_selected_index: 0,
             workspace_restore: None,
             workspace_review_generation: 0,
+            provider_selected_index: 0,
+            provider_review: None,
+            provider_review_revision: 0,
         }
     }
 
@@ -192,6 +201,7 @@ impl ConnectionHubController {
         self.cancel_literal_destination_entry();
         self.clear_direct_openssh_preparation();
         self.workspace_restore = None;
+        self.provider_review = None;
         self.active = true;
         self.interaction = InteractionState::new(
             self.projection.indices.len(),
@@ -303,6 +313,7 @@ impl ConnectionHubController {
             return false;
         }
         self.workspace_restore = None;
+        self.provider_review = None;
         self.interaction.route = HubRoute::Results;
         self.interaction.focus = HubFocus::Results;
         true
@@ -318,6 +329,7 @@ impl ConnectionHubController {
         }
         self.clear_direct_openssh_preparation();
         self.workspace_restore = None;
+        self.provider_review = None;
         self.workspace_selected_index = self
             .workspace_selected_index
             .min(self.workspace_count().saturating_sub(1));
@@ -385,6 +397,68 @@ impl ConnectionHubController {
             .workspaces
             .workspaces
             .len()
+    }
+    pub fn open_providers(&mut self) -> bool {
+        if !self.active
+            || self.literal_destination.is_some()
+            || self.metadata_review.is_some()
+            || self.owned_grant_review().is_some()
+        {
+            return false;
+        }
+        self.clear_direct_openssh_preparation();
+        self.workspace_restore = None;
+        self.provider_review = None;
+        self.provider_selected_index = self
+            .provider_selected_index
+            .min(self.provider_count().saturating_sub(1));
+        self.interaction.route = HubRoute::Providers;
+        self.interaction.focus = HubFocus::ProviderList;
+        true
+    }
+
+    pub fn select_provider_index(&mut self, index: usize) -> bool {
+        if self.interaction.route != HubRoute::Providers || index >= self.provider_count()
+        {
+            return false;
+        }
+        self.provider_selected_index = index;
+        self.interaction.focus = HubFocus::ProviderList;
+        true
+    }
+
+    pub fn review_selected_provider(&mut self) -> bool {
+        if self.interaction.route != HubRoute::Providers {
+            return false;
+        }
+        let Some(provider) = self
+            .runtime_snapshot
+            .providers
+            .catalog
+            .get(self.provider_selected_index)
+            .cloned()
+        else {
+            return false;
+        };
+        self.provider_review = Some(provider);
+        self.provider_review_revision = self.runtime_snapshot.providers.revision;
+        self.interaction.route = HubRoute::ProviderReview;
+        self.interaction.focus = HubFocus::Review;
+        true
+    }
+
+    pub fn back_to_providers(&mut self) -> bool {
+        if self.interaction.route != HubRoute::ProviderReview {
+            return false;
+        }
+        self.provider_review = None;
+        self.interaction.route = HubRoute::Providers;
+        self.interaction.focus = HubFocus::ProviderList;
+        true
+    }
+
+    fn provider_count(&self) -> usize {
+        self.runtime_snapshot.providers.catalog.len()
     }
 
     pub fn can_begin_literal_destination_entry(&self) -> bool {
@@ -815,10 +889,22 @@ impl ConnectionHubController {
             self.runtime_snapshot.library.revision != next_snapshot.library.revision;
         let catalog_changed =
             !Arc::ptr_eq(&self.runtime_snapshot.catalog, &next_snapshot.catalog);
+        let providers_changed =
+            self.runtime_snapshot.providers.revision != next_snapshot.providers.revision;
         let review_binding_changed = self.runtime_snapshot.state != next_snapshot.state
             || self.runtime_snapshot.metadata_revision != next_snapshot.metadata_revision
             || catalog_changed;
         self.runtime_snapshot = next_snapshot;
+        if providers_changed {
+            self.provider_review = None;
+            self.provider_selected_index = self
+                .provider_selected_index
+                .min(self.provider_count().saturating_sub(1));
+            if self.interaction.route == HubRoute::ProviderReview {
+                self.interaction.route = HubRoute::Providers;
+                self.interaction.focus = HubFocus::ProviderList;
+            }
+        }
         if library_changed {
             self.workspace_restore = None;
             self.workspace_selected_index = self
@@ -923,6 +1009,27 @@ impl ConnectionHubController {
         } else {
             None
         };
+        let provider_catalog =
+            (self.interaction.route == HubRoute::Providers).then(|| {
+                project_provider_catalog(
+                    &self.runtime_snapshot.providers.catalog,
+                    self.provider_selected_index,
+                    viewport,
+                )
+            });
+        let provider_review = if self.interaction.route == HubRoute::ProviderReview
+            && self.provider_review_revision == self.runtime_snapshot.providers.revision
+        {
+            self.provider_review.as_ref().map(|provider| {
+                project_provider_review(
+                    provider,
+                    viewport,
+                    format!("provider-row-{:?}", provider.provider).to_ascii_lowercase(),
+                )
+            })
+        } else {
+            None
+        };
         HubControllerPresentation {
             view,
             query: self.query.text.clone(),
@@ -959,6 +1066,8 @@ impl ConnectionHubController {
             disabled_actions: DISABLED_ACTIONS.to_vec(),
             workspace_catalog,
             workspace_restore,
+            provider_catalog,
+            provider_review,
         }
     }
 
@@ -1024,6 +1133,55 @@ impl ConnectionHubController {
             && key == HubKey::Escape
         {
             let _ = self.back_to_workspaces();
+            return HubControllerEffect::Interaction(InteractionEffect::BackToResults);
+        } else if self.interaction.route == HubRoute::Providers {
+            match key {
+                HubKey::Up => {
+                    self.provider_selected_index =
+                        self.provider_selected_index.saturating_sub(1);
+                    return HubControllerEffect::Interaction(
+                        InteractionEffect::SelectionChanged(self.provider_selected_index),
+                    );
+                }
+                HubKey::Down => {
+                    self.provider_selected_index = self
+                        .provider_selected_index
+                        .saturating_add(1)
+                        .min(self.provider_count().saturating_sub(1));
+                    return HubControllerEffect::Interaction(
+                        InteractionEffect::SelectionChanged(self.provider_selected_index),
+                    );
+                }
+                HubKey::Home => {
+                    self.provider_selected_index = 0;
+                    return HubControllerEffect::Interaction(
+                        InteractionEffect::SelectionChanged(0),
+                    );
+                }
+                HubKey::End => {
+                    self.provider_selected_index =
+                        self.provider_count().saturating_sub(1);
+                    return HubControllerEffect::Interaction(
+                        InteractionEffect::SelectionChanged(self.provider_selected_index),
+                    );
+                }
+                HubKey::Enter => {
+                    let _ = self.review_selected_provider();
+                    return HubControllerEffect::Interaction(InteractionEffect::None);
+                }
+                HubKey::Escape => {
+                    self.interaction.route = HubRoute::Results;
+                    self.interaction.focus = HubFocus::Results;
+                    return HubControllerEffect::Interaction(
+                        InteractionEffect::BackToResults,
+                    );
+                }
+                _ => {}
+            }
+        } else if self.interaction.route == HubRoute::ProviderReview
+            && key == HubKey::Escape
+        {
+            let _ = self.back_to_providers();
             return HubControllerEffect::Interaction(InteractionEffect::BackToResults);
         }
         if self.literal_destination.is_some() {

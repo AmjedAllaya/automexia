@@ -526,6 +526,23 @@ renderer paths. Provider-specific parsing, exact argv construction, product
 controls, real-tool lifecycle, and native accessibility remain independent
 D6.1-D6.5 owners.
 
+The product composition remains authority-free. `apps/automexia-terminal` owns
+one immutable `ProviderProductSnapshot` over exactly AWS, Azure, Google Cloud,
+Kubernetes, OpenShift, and Teleport. It accepts only a completely validated M7
+capsule, rejects unsupported providers before publication, caps the public scope
+summary at 512 bytes, and exposes only cached identity, scope, provenance,
+freshness, recovery, and risk to the renderer-neutral Hub model. A replacement
+must change both capsule ID and session and increase capsule revision; reuse,
+sibling publication, revoke, and shutdown fail closed or clear the catalog.
+
+The controller and renderer add one Providers list/review route alongside
+Connections and Workspaces. `C`/`W`/`P`, exact pointer targets, bounded selection,
+responsive 320 px through 5K/high-scale layouts, and semantic dialog/status/row
+nodes stay inside the modal. The review has no enabled action and explicitly
+sets execution and PTY-input requests false. UI open, selection, pointer, key,
+layout, paint, and accessibility projection therefore cannot trigger discovery,
+login, network, process, filesystem, or provider work.
+
 ### M8 AWS adapter source boundary
 
 `extensions/devops-aws` is the independently disabled D6.1 owner. It depends on
@@ -651,8 +668,25 @@ but owns only `oc`: web login must target a newly allocated private transient
 output, project inspection is read-only, and `rsh` pins context/project. Neither
 package emits `use-context` or a mutating `oc project` action, and all execution
 flags remain false behind D3. Reverting or disabling either registration does
-not edit kubeconfig or CLI state; real file allocation/cleanup, client/plugin/
-cluster execution, network, browser, PTY, and native release evidence remain
+not edit kubeconfig or CLI state.
+
+The application `provider_transients` module is the sole private-file lifecycle
+owner for cloud-generated and OpenShift output. Each manager allocates an exact
+private connection subroot, creates no-follow private files, admits at most 16
+active files of at most 1 MiB, validates generated kubeconfig through the M11
+parser before publishing an opaque handle, and binds provider relation, capsule,
+session, generation, source revision, expiry, and a content digest. Exact-path
+resolution is application-private and revalidates ownership and content so
+replacement or post-publication tamper fails closed. Expiry, explicit revoke,
+provider disable, session revoke, shutdown, and drop remove owned files; startup
+recovery examines at most 64 roots/files older than 24 hours. Public errors,
+handles, and debug output disclose no path or file contents.
+
+This local lifecycle creates no provider process or network authority. EKS, AKS,
+GKE, and OpenShift operations can use it only after the protected D3 runner is
+activated and supplies reviewed output. Real clients/plugins/clusters, Unix
+native no-follow execution, forced process-tree cleanup, sustained resources,
+controlled accessibility, packaging, signing, and release evidence remain
 external activation gates.
 
 ### M12 Teleport organization-identity source boundary

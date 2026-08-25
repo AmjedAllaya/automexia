@@ -2,8 +2,50 @@
 
 This page owns focused evidence that would exceed the byte budget of the main
 [testing guide](TESTING.md). Provider adapters remain disabled and
-nonactivated; a source test is not evidence that a real provider, network,
-credential cache, connection, cluster, or native process tree ran.
+nonactivated. The cached Providers catalog/review and M11 private transient
+lifecycle are product-connected locally, but a source or UI test is not evidence
+that a real provider, network, credential cache, connection, cluster, or native
+process tree ran.
+
+## M8-M12 cached provider product and M11 private lifecycle
+
+Run the product-boundary evidence with:
+
+```text
+cargo test -p automexia-terminal --lib --locked providers
+cargo test -p automexia-terminal --lib --locked provider_transients
+cargo test -p automexia-terminal --test m8_m12_provider_product --locked
+cargo test -p automexia-ui-model --locked provider_catalog
+cargo test -p automexia-terminal --lib --locked provider_catalog
+cargo clippy -p automexia-terminal -p automexia-ui-model --all-targets --locked -- -D warnings
+cargo bench -p automexia-terminal --bench connection_catalog --locked -- provider_catalog_6_cached_projection --sample-size 100
+```
+
+The regression set freezes a six-row cached-only catalog, public bounded
+projection, responsive 320/1,920/5,120 px and 300% layouts, semantic status and
+focus, exact keyboard/pointer ownership, disabled action and PTY input, stale
+review invalidation, unsupported OpenBao rejection, strict new-capsule/new-
+session/higher-revision replacement, exact revoke, and runtime shutdown.
+
+The M11 manager is the only app-owned private output lifecycle. Its Windows
+fixtures cover all six accepted provider relations, valid/invalid/oversized/
+expired data, cross-session and stale-generation denial, post-publication tamper,
+path/debug/secret canaries, provider/session revoke, shutdown/drop, and 64
+repeated full-capacity cycles (1,024 files). Files are capped at 1 MiB, active
+handles at 16, stale recovery at 64 roots/files older than 24 hours, and every
+candidate is validated by the canonical M11 kubeconfig parser before an opaque
+handle is published. The Unix symlink case is compiled but did not run on the
+Windows host.
+
+A Windows x86_64 optimized 100-sample run of the six-provider cached projection
+measured 4.8751-4.9453 microseconds, with 12 high-side outliers (eight mild, four
+severe). It is same-host local evidence, not a controlled release ratchet.
+
+No provider CLI, account, browser/device/MFA flow, cloud or cluster network,
+credential/token/certificate cache, client plugin, managed provider child, or
+PTY ran. Controlled native pixels/screen readers, Unix no-follow execution,
+real descendant cleanup/resources, packaging, signing, and release fixtures
+remain external. OpenBao has no implementation because ADR 0024 is unaccepted.
 
 ## M10 Google Cloud adapter source contracts
 
@@ -30,9 +72,10 @@ increase; that comparison changed the workload to ~252 KiB and is not a
 same-input code regression.
 
 No gcloud executable, browser/2FA/federation flow, Google network, credential
-database, IAP/SSH process, OS Login, GKE cluster, kubeconfig file, product UI,
-Linux/macOS native, accessibility, resource, packaging, signing, or release
-fixture ran. D3 activation/attestation, M11 private transient-file lifecycle activation, real
+database, IAP/SSH process, OS Login, GKE cluster, kubeconfig file, active provider action, Linux/macOS native, accessibility,
+resource, packaging, signing, or release fixture ran. The cached product review
+and private transient lifecycle tests above do not run gcloud. D3 activation/
+attestation and real
 process-tree cleanup, and controlled native/provider/release evidence remain.
 
 ## M11 Kubernetes and OpenShift source contracts
@@ -79,11 +122,11 @@ Serde parsing, duplicate-key errors, merge-key denial, and configurable budgets;
 the archived `serde_yaml` and a handwritten Kubernetes parser were rejected.
 
 No `kubectl` or `oc` executable, exec plugin, browser, cloud/cluster network,
-credential, EKS/AKS/GKE/OpenShift cluster, product UI, PTY, or user kubeconfig
-ran. Windows exercised pure/parser/native file checks; the Unix symlink test was
-compiled but did not run on Windows. D3 activation, private transient-file
-allocation/permissions/deletion, real clients and controlled clusters, plugin
-execution, forced descendant cleanup, sustained resource/storage evidence,
+credential, EKS/AKS/GKE/OpenShift cluster, active provider action, PTY, or user
+kubeconfig ran. Windows exercised pure/parser/native file checks plus the
+app-owned private transient lifecycle; the Unix symlink test was compiled but
+did not run on Windows. D3 activation, real clients and controlled clusters,
+plugin execution, forced descendant cleanup, sustained resource/storage evidence,
 Linux/macOS native runs, accessibility, packaging, signing, and release evidence
 remain external.
 ## M12 Teleport source contracts
@@ -132,7 +175,7 @@ this bounded maintained primitive.
 
 No `tsh` executable, proxy/network, browser/MFA/hardware-key flow, `~/.tsh`
 profile/cache/certificate, SSH agent, access request, real SSH process/PTY,
-product control, Linux/macOS native host, accessibility, forced descendant
+active provider action, Linux/macOS native host, accessibility, forced descendant
 cleanup, sustained resource/storage, packaging, signing, or release fixture ran.
 D3 activation/attestation and controlled Teleport/native/release evidence remain
 external. OpenBao has no implementation or test owner because proposed ADR 0024
@@ -173,3 +216,43 @@ build, and `automexia 0.4.0` smoke. The isolated verification artifacts were
 removed after the run. Controlled native OpenSSH, interactive Windows GPU,
 Application Verifier, WPR, named-hardware benchmarks, coverage, 30-day baseline,
 Linux/macOS GPU, and screen-reader evidence remain explicitly external.
+
+### M8-M12 cached provider product and private lifecycle gate (2026-08-25)
+
+The completed local M8-M12 change passed the required contributor commands on
+Windows x86_64:
+
+```text
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo nextest run --workspace --locked --profile ci
+cargo test --workspace --doc --locked
+python3 tools/ci/qa.py --full
+cargo ready
+```
+
+The clean Nextest run executed 2,110 tests: all 2,110 passed and seven were
+profile-skipped. Documentation tests included 46 passing Corcovado examples plus
+18 passing and three intentionally ignored rio-window examples. Full QA passed
+all locally executable stages; its report is
+`target/qa/20260825T052759Z-39376/report.html`. The optimized six-provider cached
+catalog projection measured 4.8751-4.9453 microseconds over 100 samples, with
+eight mild and four severe high-side outliers. This same-host measurement is not
+a controlled release ratchet.
+
+The persistent workspace-drive `cargo ready` preflight correctly refused to
+start with 1.17 GiB free against its 12 GiB minimum. The identical readiness
+workflow then passed from a verified disposable system-temporary target with
+22.27 GiB available: clean all-target checks, warning-denied Clippy, the complete
+unit/integration/documentation suite, dependency policy, application build, and
+the `automexia 0.4.0` executable smoke all passed. The generated temporary target
+was verified and removed after the run.
+
+This is source, renderer-neutral, Windows file-lifecycle, and local build/test
+evidence. Protected D3 activation and attestation, controlled live AWS/Azure/GCP/
+Kubernetes/OpenShift/Teleport accounts and clients, network and browser/MFA
+flows, native Linux/macOS lifecycle and symlink execution, forced descendant
+cleanup, sustained named-hardware resource/storage campaigns, interactive GPU
+and screen-reader checks, packaging, signing, and release evidence remain
+external. OpenBao remains **Not done** until proposed ADR 0024 is accepted; no
+OpenBao execution or credential owner was introduced.

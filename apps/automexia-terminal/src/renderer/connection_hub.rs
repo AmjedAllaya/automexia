@@ -65,6 +65,10 @@ pub enum ConnectionHubHit {
     Search,
     OpenConnections,
     OpenWorkspaces,
+    OpenProviders,
+    SelectProvider { visible_index: usize },
+    ReviewProvider,
+    BackToProviders,
     SelectWorkspace { visible_index: usize },
     ReviewWorkspace,
     BackToWorkspaces,
@@ -156,17 +160,52 @@ impl ConnectionHub {
     ) -> Option<ConnectionHubHit> {
         let presentation = self.presentation.as_ref()?;
         let layout = Self::layout(presentation, dimensions);
-        let (connections_tab, workspaces_tab) = hub_tabs(&layout);
+        let (connections_tab, workspaces_tab, providers_tab) = hub_tabs(&layout);
         if connections_tab.contains(mouse_x, mouse_y) {
             return Some(ConnectionHubHit::OpenConnections);
         }
         if workspaces_tab.contains(mouse_x, mouse_y) {
             return Some(ConnectionHubHit::OpenWorkspaces);
         }
+        if providers_tab.contains(mouse_x, mouse_y) {
+            return Some(ConnectionHubHit::OpenProviders);
+        }
         if presentation.literal_destination.is_none()
             && layout.close.contains(mouse_x, mouse_y)
         {
             return Some(ConnectionHubHit::Close);
+        }
+        if matches!(
+            presentation.view.route,
+            HubRoute::Providers | HubRoute::ProviderReview
+        ) {
+            let provider = provider_layout(presentation, &layout);
+            if provider
+                .back
+                .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
+            {
+                return Some(ConnectionHubHit::BackToProviders);
+            }
+            if presentation.view.route == HubRoute::Providers {
+                for (visible_index, row) in provider.rows.iter().enumerate() {
+                    if row.contains(mouse_x, mouse_y) {
+                        return Some(ConnectionHubHit::SelectProvider { visible_index });
+                    }
+                }
+            }
+            if provider
+                .primary
+                .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
+            {
+                return Some(if presentation.view.route == HubRoute::Providers {
+                    ConnectionHubHit::ReviewProvider
+                } else {
+                    ConnectionHubHit::Inert
+                });
+            }
+            if provider.panel.contains(mouse_x, mouse_y) {
+                return Some(ConnectionHubHit::Inert);
+            }
         }
         if matches!(
             presentation.view.route,
@@ -418,6 +457,10 @@ impl ConnectionHub {
                 "Saved environments"
             } else if presentation.view.route == HubRoute::WorkspaceReview {
                 "Workspace restore review"
+            } else if presentation.view.route == HubRoute::Providers {
+                "Cloud and cluster contexts"
+            } else if presentation.view.route == HubRoute::ProviderReview {
+                "Provider context review"
             } else if presentation.literal_destination.is_some() {
                 "Direct SSH host"
             } else {
@@ -432,7 +475,7 @@ impl ConnectionHub {
         }
 
         if presentation.literal_destination.is_none() {
-            let (connections_tab, workspaces_tab) = hub_tabs(&layout);
+            let (connections_tab, workspaces_tab, providers_tab) = hub_tabs(&layout);
             let connections_active = matches!(
                 presentation.view.route,
                 HubRoute::Results | HubRoute::Review | HubRoute::RecipePlanner
@@ -454,9 +497,42 @@ impl ConnectionHub {
                 ),
                 &label,
             );
+            section_tab(
+                sugarloaf,
+                providers_tab,
+                if layout.compact { "P" } else { "Providers" },
+                matches!(
+                    presentation.view.route,
+                    HubRoute::Providers | HubRoute::ProviderReview
+                ),
+                &label,
+            );
             button(sugarloaf, layout.close, "×", false, &label);
         }
 
+        if matches!(
+            presentation.view.route,
+            HubRoute::Providers | HubRoute::ProviderReview
+        ) {
+            render_provider_surface(
+                sugarloaf,
+                presentation,
+                &layout,
+                &body,
+                &small,
+                &label,
+            );
+            render_status_footer(
+                sugarloaf,
+                presentation,
+                &layout,
+                left,
+                &operation_status,
+                &small,
+            );
+            sugarloaf.end_modal_layer();
+            return;
+        }
         if matches!(
             presentation.view.route,
             HubRoute::Workspaces | HubRoute::WorkspaceReview
@@ -1323,15 +1399,24 @@ impl ConnectionHub {
     }
 }
 
-fn hub_tabs(layout: &Layout) -> (Rect, Rect) {
+fn hub_tabs(layout: &Layout) -> (Rect, Rect, Rect) {
     let gap = 6.0;
-    let width = if layout.compact { 38.0 } else { 104.0 };
-    let workspaces = bounded_to(
+    let width = if layout.compact { 38.0 } else { 96.0 };
+    let providers = bounded_to(
         Rect {
             x: layout.close.x - gap - width,
             y: layout.close.y + 3.0,
             width,
             height: layout.close.height - 6.0,
+        },
+        layout.card,
+    );
+    let workspaces = bounded_to(
+        Rect {
+            x: providers.x - gap - width,
+            y: providers.y,
+            width,
+            height: providers.height,
         },
         layout.card,
     );
@@ -1344,7 +1429,7 @@ fn hub_tabs(layout: &Layout) -> (Rect, Rect) {
         },
         layout.card,
     );
-    (connections, workspaces)
+    (connections, workspaces, providers)
 }
 
 fn workspace_layout(
@@ -1429,6 +1514,222 @@ fn workspace_layout(
     }
 }
 
+fn provider_layout(
+    presentation: &HubControllerPresentation,
+    layout: &Layout,
+) -> WorkspaceLayout {
+    let inner = if layout.compact { 12.0 } else { 20.0 };
+    let panel = bounded_to(
+        Rect {
+            x: layout.card.x + inner,
+            y: layout.card.y + 78.0,
+            width: (layout.card.width - inner * 2.0).max(1.0),
+            height: (layout.card.height - 136.0).max(1.0),
+        },
+        layout.card,
+    );
+    let row_height = if layout.compact { 54.0 } else { 64.0 };
+    let rows_top = panel.y + if layout.compact { 46.0 } else { 58.0 };
+    let rows_bottom = panel.y + panel.height - 52.0;
+    let mut rows = Vec::new();
+    if let Some(catalog) = presentation.provider_catalog.as_ref() {
+        rows.reserve(catalog.rows.len());
+        for index in 0..catalog.rows.len() {
+            let y = rows_top + index as f32 * (row_height + 6.0);
+            if y + row_height > rows_bottom {
+                break;
+            }
+            rows.push(bounded_to(
+                Rect {
+                    x: panel.x + 12.0,
+                    y,
+                    width: (panel.width - 24.0).max(1.0),
+                    height: row_height,
+                },
+                panel,
+            ));
+        }
+    }
+    let back = (presentation.view.route == HubRoute::ProviderReview).then(|| {
+        bounded_to(
+            Rect {
+                x: panel.x + 12.0,
+                y: panel.y + 10.0,
+                width: if layout.compact { 76.0 } else { 104.0 },
+                height: 34.0,
+            },
+            panel,
+        )
+    });
+    let primary = if presentation.view.route == HubRoute::Providers {
+        presentation
+            .provider_catalog
+            .as_ref()
+            .filter(|catalog| !catalog.rows.is_empty())
+            .map(|_| {
+                bounded_to(
+                    Rect {
+                        x: panel.x + panel.width - 188.0,
+                        y: panel.y + panel.height - 42.0,
+                        width: 176.0,
+                        height: 32.0,
+                    },
+                    panel,
+                )
+            })
+    } else {
+        Some(bounded_to(
+            Rect {
+                x: panel.x + panel.width - 206.0,
+                y: panel.y + panel.height - 42.0,
+                width: 194.0,
+                height: 32.0,
+            },
+            panel,
+        ))
+    };
+    WorkspaceLayout {
+        panel,
+        rows,
+        back,
+        primary,
+    }
+}
+
+fn render_provider_surface(
+    sugarloaf: &mut Sugarloaf,
+    presentation: &HubControllerPresentation,
+    layout: &Layout,
+    body: &DrawOpts,
+    small: &DrawOpts,
+    label: &DrawOpts,
+) {
+    let geometry = provider_layout(presentation, layout);
+    rounded(sugarloaf, geometry.panel, SURFACE, 10.0);
+    if presentation.view.route == HubRoute::Providers {
+        sugarloaf.text_mut().draw(
+            geometry.panel.x + 14.0,
+            geometry.panel.y + 12.0,
+            "Providers",
+            label,
+        );
+        sugarloaf.text_mut().draw(
+            geometry.panel.x + 14.0,
+            geometry.panel.y + 32.0,
+            "Cached public contexts only · P",
+            small,
+        );
+        let Some(catalog) = presentation.provider_catalog.as_ref() else {
+            return;
+        };
+        for (index, row) in catalog.rows.iter().enumerate() {
+            let Some(rect) = geometry.rows.get(index).copied() else {
+                break;
+            };
+            rounded(
+                sugarloaf,
+                rect,
+                if row.selected {
+                    SELECTED
+                } else {
+                    SURFACE_RAISED
+                },
+                8.0,
+            );
+            sugarloaf.text_mut().draw(
+                rect.x + 12.0,
+                rect.y + 8.0,
+                &format!("{}  {}", row.semantic_icon, row.provider_label),
+                label,
+            );
+            let detail = format!(
+                "{} · {} · {} · {} risk",
+                row.public_identity,
+                row.scope_summary,
+                row.freshness_label,
+                row.risk_label
+            );
+            sugarloaf.text_mut().draw(
+                rect.x + 12.0,
+                rect.y + if layout.compact { 30.0 } else { 34.0 },
+                &truncated(&detail, if layout.compact { 44 } else { 96 }),
+                small,
+            );
+        }
+        if let Some(primary) = geometry.primary {
+            action_button(
+                sugarloaf,
+                primary,
+                "Review provider",
+                HubIcon::Status,
+                PRIMARY,
+                [0.90, 0.98, 1.0, 1.0],
+                label,
+            );
+        }
+        return;
+    }
+
+    if let Some(back) = geometry.back {
+        button(sugarloaf, back, "← Providers", false, label);
+    }
+    let Some(review) = presentation.provider_review.as_ref() else {
+        sugarloaf.text_mut().draw(
+            geometry.panel.x + 14.0,
+            geometry.panel.y + 72.0,
+            "Provider review is no longer current",
+            body,
+        );
+        return;
+    };
+    sugarloaf.text_mut().draw(
+        geometry.panel.x + 14.0,
+        geometry.panel.y + 54.0,
+        &format!("{}  {}", review.semantic_icon, review.title),
+        label,
+    );
+    let details = [
+        ("Identity", review.identity.as_str()),
+        ("Scope", review.scope_summary.as_str()),
+        ("Source", review.source_summary.as_str()),
+        ("Tool", review.executable_id.as_str()),
+        ("State", review.auth_label.as_str()),
+        ("Freshness", review.freshness_label.as_str()),
+    ];
+    let top = geometry.panel.y + 90.0;
+    let bottom = geometry.panel.y + geometry.panel.height - 82.0;
+    for (index, (heading, value)) in details.into_iter().enumerate() {
+        let y = top + index as f32 * 50.0;
+        if y + 42.0 > bottom {
+            break;
+        }
+        let card = Rect {
+            x: geometry.panel.x + 14.0,
+            y,
+            width: (geometry.panel.width - 28.0).max(1.0),
+            height: 42.0,
+        };
+        rounded(sugarloaf, card, SURFACE_RAISED, 7.0);
+        sugarloaf
+            .text_mut()
+            .draw(card.x + 10.0, card.y + 5.0, heading, small);
+        sugarloaf.text_mut().draw(
+            card.x + 10.0,
+            card.y + 22.0,
+            &truncated(value, if layout.compact { 42 } else { 96 }),
+            label,
+        );
+    }
+    sugarloaf.text_mut().draw(
+        geometry.panel.x + 14.0,
+        geometry.panel.y + geometry.panel.height - 58.0,
+        &truncated(&review.activation_blocker, 96),
+        small,
+    );
+    if let Some(primary) = geometry.primary {
+        button(sugarloaf, primary, "Activation gates pending", true, label);
+    }
+}
 fn render_workspace_surface(
     sugarloaf: &mut Sugarloaf,
     presentation: &HubControllerPresentation,
@@ -2838,6 +3139,8 @@ mod tests {
             disabled_actions: Vec::new(),
             workspace_catalog: None,
             workspace_restore: None,
+            provider_catalog: None,
+            provider_review: None,
         }
     }
 
@@ -3293,13 +3596,14 @@ mod tests {
         let presentation = workspace_presentation();
         let dimensions = (1280.0, 720.0, 1.0);
         let layout = ConnectionHub::layout(&presentation, dimensions);
-        let (connections_tab, workspaces_tab) = hub_tabs(&layout);
+        let (connections_tab, workspaces_tab, providers_tab) = hub_tabs(&layout);
         let workspace = workspace_layout(&presentation, &layout);
         let mut hub = ConnectionHub::default();
         hub.set_presentation(Some(presentation));
 
         assert!(connections_tab.x + connections_tab.width < workspaces_tab.x);
-        assert!(workspaces_tab.x + workspaces_tab.width < layout.close.x);
+        assert!(workspaces_tab.x + workspaces_tab.width < providers_tab.x);
+        assert!(providers_tab.x + providers_tab.width < layout.close.x);
         assert_eq!(
             hub.hit_test(
                 connections_tab.x + connections_tab.width * 0.5,
@@ -3307,6 +3611,14 @@ mod tests {
                 dimensions,
             ),
             Some(ConnectionHubHit::OpenConnections)
+        );
+        assert_eq!(
+            hub.hit_test(
+                providers_tab.x + providers_tab.width * 0.5,
+                providers_tab.y + providers_tab.height * 0.5,
+                dimensions,
+            ),
+            Some(ConnectionHubHit::OpenProviders)
         );
         let row = workspace.rows[0];
         assert_eq!(
@@ -3328,6 +3640,68 @@ mod tests {
         );
     }
 
+    #[test]
+    fn provider_rows_review_action_and_tab_have_distinct_pointer_targets() {
+        let mut presentation = presentation();
+        presentation.view.route = HubRoute::Providers;
+        presentation.provider_catalog =
+            Some(automexia_ui_model::connection_hub::ProviderCatalogView {
+                layout: HubLayout::Wide,
+                total_providers: 1,
+                visible_range: 0..1,
+                rows: vec![automexia_ui_model::connection_hub::ProviderCatalogRowView {
+                    provider: automexia_devops::connections::ProviderKind::Aws,
+                    provider_label: "AWS".into(),
+                    semantic_icon: "AWS".into(),
+                    public_identity: "account 123456789012".into(),
+                    scope_summary: "region eu-west-1".into(),
+                    freshness_label: "Current".into(),
+                    auth_label: "Available".into(),
+                    recovery_label: "Refresh".into(),
+                    risk_label: "Production".into(),
+                    configured: true,
+                    selected: true,
+                    tone: automexia_ui_model::connection_hub::SemanticTone::Success,
+                    accessibility_label: "AWS production account".into(),
+                }],
+                execution_enabled: false,
+                pty_input_requested: false,
+                accessibility_tree: Vec::new(),
+            });
+        let dimensions = (1280.0, 720.0, 1.0);
+        let layout = ConnectionHub::layout(&presentation, dimensions);
+        let (_, _, providers_tab) = hub_tabs(&layout);
+        let provider = provider_layout(&presentation, &layout);
+        let row = provider.rows[0];
+        let primary = provider.primary.unwrap();
+        let mut hub = ConnectionHub::default();
+        hub.set_presentation(Some(presentation));
+        assert_eq!(
+            hub.hit_test(
+                providers_tab.x + providers_tab.width * 0.5,
+                providers_tab.y + providers_tab.height * 0.5,
+                dimensions,
+            ),
+            Some(ConnectionHubHit::OpenProviders)
+        );
+        assert_eq!(
+            hub.hit_test(
+                row.x + row.width * 0.5,
+                row.y + row.height * 0.5,
+                dimensions,
+            ),
+            Some(ConnectionHubHit::SelectProvider { visible_index: 0 })
+        );
+        assert_eq!(
+            hub.hit_test(
+                primary.x + primary.width * 0.5,
+                primary.y + primary.height * 0.5,
+                dimensions,
+            ),
+            Some(ConnectionHubHit::ReviewProvider)
+        );
+        assert!(row.y + row.height < primary.y);
+    }
     #[test]
     fn workspace_review_is_bounded_back_navigable_and_cannot_execute() {
         let mut presentation = workspace_presentation();

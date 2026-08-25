@@ -2,7 +2,7 @@
 
 Status: active M8-M12 implementation ledger and execution plan.
 
-Last reconciled: 2026-08-23.
+Last reconciled: 2026-08-25.
 
 This page turns the provider portion of the
 [SSH, connectivity, multi-environment, and multi-cloud plan](SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md)
@@ -51,12 +51,12 @@ native host is available as assumed evidence.
 
 | Slice | Current status | Existing evidence | Missing exit evidence |
 |---|---|---|---|
-| M8 / D6.1 AWS | Partially done overall; source-complete and nonactivated | Independent bounded extension; granted public parser; exact capsule-bound SSO/STS/SSM/EKS-dry-run contracts; ten focused tests and app registration | D3 activation, M11 private kubeconfig ingestion, product UI, and controlled real AWS/native/resource/accessibility/release evidence |
-| M9 / D6.2 Azure | Partially done overall; source-complete and nonactivated | Independent bounded extension; public JSON parser; exact tenant login/account, AAD-only Bastion, opaque transient AKS contracts; eight focused tests and app registration | D3 activation, M11 private kubeconfig ingestion, product UI, and controlled real Azure/native/resource/accessibility/release evidence |
-| M10 / D6.3 Google Cloud | Partially done overall; source-complete and nonactivated | Independent bounded extension; named public parser; exact per-command user/project, opaque federation, scope-bound IAP, private-environment GKE; eight focused tests, app registration, benchmark | D3 activation, M11 private kubeconfig ingestion, product UI, and controlled real Google/native/resource/accessibility/release evidence |
-| M11 / D6.4 Kubernetes/OpenShift | Partially done overall; source-complete and nonactivated | Independent packages; 1 MiB typed YAML/JSON parser; exact stable source grants/private transient ingestion; collision-denied merge; public-only metadata; default-denied exact exec review; capsule pinning; exact isolated kubectl/oc plans; 13 tests, app guards, benchmark | D3/product activation, real kubectl/oc/cloud/OpenShift fixtures, transient-file lifecycle, native cleanup/resources/accessibility/release |
-| M12.1 / D6.5 Teleport | Partially done overall; source-complete and nonactivated | Independent disabled extension; 256 KiB/4,096-node/32-profile bounded public status; RFC 3339 expiry; exact reviewed 18.10+ version/login/status/ssh/logout plans; agent/environment isolation; eleven focused tests, app guard, dependency policy, benchmark | D3 product activation/attestation, real `tsh`/proxy/browser/MFA/cache/certificate/agent/PTY execution, native cleanup/resources/accessibility/packaging/signing/release evidence |
-| M12.2 / D6.5 OpenBao | External prerequisite | Provider-neutral kind only | Accepted security ADR for token-helper/certificate-file custody, then a separate implementation and native evidence |
+| M8 / D6.1 AWS | Partially done overall; source and cached product review fully done locally, execution nonactivated | Independent bounded extension; exact SSO/STS/SSM/EKS-dry-run; strict capsule replacement; six-provider cached Hub catalog/review; M11 private ingestion; source/product tests and product benchmark | D3 activation and controlled real AWS/native/resource/accessibility/release evidence |
+| M9 / D6.2 Azure | Partially done overall; source and cached product review fully done locally, execution nonactivated | Independent bounded extension; exact tenant login/account, AAD-only Bastion, AKS private transient lifecycle; cached Hub review; source/product tests | D3 activation and controlled real Azure/native/resource/accessibility/release evidence |
+| M10 / D6.3 Google Cloud | Partially done overall; source and cached product review fully done locally, execution nonactivated | Independent bounded extension; exact per-command user/project, opaque federation, scope-bound IAP, GKE private transient lifecycle; cached Hub review; source/product tests and benchmarks | D3 activation and controlled real Google/native/resource/accessibility/release evidence |
+| M11 / D6.4 Kubernetes/OpenShift | Partially done overall; source, cached product review, and private transient lifecycle fully done locally, execution nonactivated | Independent packages; bounded typed parse/merge; default-denied exec; exact kubectl/oc plans; app-owned 16-file/1 MiB no-follow validate/revalidate/revoke/cleanup lifecycle; product UI/lifecycle/security tests and benchmarks | D3 activation, real clients/clusters/plugins, Unix native no-follow, controlled cleanup/resources/accessibility/release evidence |
+| M12.1 / D6.5 Teleport | Partially done overall; source and cached product review fully done locally, execution nonactivated | Independent bounded exact adapter plus one cached Teleport Hub row/review with capsule invalidation, disabled action, and no PTY input; source/product tests and benchmarks | D3 activation/attestation, real `tsh`/proxy/browser/MFA/cache/certificate/agent/PTY, native cleanup/resources/accessibility/packaging/signing/release evidence |
+| M12.2 / D6.5 OpenBao | Not done; external prerequisite | Provider-neutral enum only; product publication rejects it | Accept ADR 0024 for token-helper/certificate-file custody, then implement and prove a separate adapter |
 
 M11 now adopts [`serde-saphyr` 1.1.0](https://docs.rs/serde-saphyr/1.1.0/serde_saphyr/) with deserialization only: MIT OR
 Apache-2.0, no filesystem include feature, typed Serde targets, duplicate-key
@@ -113,8 +113,10 @@ evidence; native provider tools are never bundled.
    fingerprints, exec-plugin denial, and exact isolated kubectl/oc requests.
 5. `extensions/devops-teleport` owns exact `tsh` operations and bounded public
    `tsh status --format=json` decoding.
-6. `apps/automexia-terminal` only registers independent manifests. It does not
-   parse provider files or create a provider-specific runner.
+6. `apps/automexia-terminal` registers independent manifests, composes one
+   immutable cached-only six-provider Hub snapshot, and owns the bounded private
+   transient-file lifecycle. It does not parse provider configuration, create a
+   provider-specific runner, or grant process/network/PTY authority.
 7. The accepted M7 model continues to own capsules, exact capability review,
    browser policy, authorization, generation isolation, receipts, and audits.
 
@@ -141,9 +143,13 @@ and descendant cleanup remain application responsibilities.
   command, arguments, environment values, `ExecCredential`, token, client key,
   or certificate value is retained. Future execution needs a separate exact
   executable digest and per-session grant.
-- EKS, AKS, and GKE generation always targets a private transient kubeconfig
-  reference. Defaults that merge into the user's kubeconfig or change
-  `current-context` are forbidden.
+- EKS, AKS, and GKE generation always targets an app-owned private transient
+  kubeconfig reference. The manager caps documents at 1 MiB and active files at
+  16; validates before publishing an opaque capsule/session/generation-bound
+  handle; revalidates content and source revision; and removes files on expiry,
+  revoke, provider disable, session revoke, shutdown, and drop. Recovery scans at
+  most 64 roots/files older than 24 hours. Defaults that merge into the user's
+  kubeconfig or change `current-context` remain forbidden.
 - Errors identify provider, public field, and recovery action but never echo
   input values. Debug output reports counts and stable public identifiers only.
 - Adapters have no background thread, cache, retry loop, filesystem handle,
@@ -159,9 +165,11 @@ scope, destination, browser/device behavior, requested capabilities, and safe
 recovery. Loading, MFA/browser/device pending, denied, offline, stale, expired,
 unsupported, and error states use text and icon in addition to color. Keyboard
 focus returns to the invoking control after review. No provider work runs when
-the Hub opens or while the user types. Product rendering and controlled screen
-reader evidence remain a later application integration gate; this slice must
-not claim them from pure model tests.
+the Hub opens or while the user types. The cached catalog/review, pointer and
+keyboard ownership, responsive renderer-neutral layouts, and semantic status
+announcements are product-connected and tested. Controlled native pixels and
+Narrator/NVDA/VoiceOver/Orca evidence remain external and are not inferred from
+model tests.
 
 ## Primary-source compatibility findings
 
@@ -215,8 +223,9 @@ adds the smallest adapter implementation. Focused tests cover parser limits,
 preference precedence, capsule/config matching, browser choices, isolation,
 production risk, redaction, disabled manifests, and uninstall independence.
 Kubernetes adds YAML/JSON corpus, merge ordering/collisions, relative paths,
-source drift, exec denial, cloud generated-config isolation, and repeated parse
-cleanup. Teleport adds status byte/node/depth/profile limits, schema and major-
+source drift, exec denial, cloud-generated isolation, private allocation/
+validation/revalidation/tamper/revoke/shutdown, 1,024-file repeated cleanup, and
+responsive cached product review. Teleport adds status byte/node/depth/profile limits, schema and major-
 version drift, exact proxy/cluster/user matching, expiry, revocation, agent and
 environment isolation, stale capsule/session/revision rejection, and redaction.
 
