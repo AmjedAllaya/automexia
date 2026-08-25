@@ -694,21 +694,30 @@ test demonstrate a material benefit.
 The complete ownership matrix and protected dependency order are in
 [Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md).
 
-## M6 review-only workspace and broadcast projections
+## M6 workspace catalog and nonexecuting review projections
 
-The internal M6 projection extends the semantic model, not the activated product
-controller. Workspace restore uses one compact summary and exact connection rows,
-returns focus to the invoking control, and states that reconnect/resume are off.
-Broadcast uses redundant icon, color, and text for disarmed/armed/completed/
-cancelled/expired states; exposes the exact transient command only in the
-review textbox; requires separate production confirmation; and never requests
-execution or Enter. Debug and audit representations retain only digest, byte
-count, target, outcome, and stable diagnostic code.
+The product controller now exposes a Workspaces section over the immutable
+library snapshot published by the existing joined Hub worker. The compact
+catalog virtualizes bounded rows, keeps one selected owner, supports exact
+pointer targets plus Up/Down/Home/End/Enter, and projects semantic dialog/status/
+grid/row accessibility nodes. `W` and `C` switch catalog sections only when
+Search and review do not own input. The renderer keeps tabs clear of Close,
+reduces labels at narrow widths, and bounds catalog and review cards from 320 px
+through high-scale 5K geometry.
+
+Workspace restore shows one compact summary and exact current connection rows,
+returns focus to Workspaces, invalidates on library replacement, and states that
+reconnect/resume are off. Its activation control is disabled. Broadcast remains
+CLI/model review: redundant icon/color/text describe disarmed/armed/completed/
+cancelled/expired states, exact transient command appears only in explicit
+review output, production confirmation is separate, and execution/Enter are
+never requested. Debug and audit retain only digest, byte count, target, outcome,
+and stable diagnostics.
 
 The model caps 16 windows, 64 panes, 128 connections, 50 broadcast targets, 8 KiB
-of command text, and 60 seconds of arming. Tiny/large viewport integration,
-native pixels, screen readers, controller input, and managed execution remain
-external gates. [Proposed ADR 0023](adr/0023-typed-automation-and-declarative-workspaces.md)
+of command text, and 60 seconds of arming; the private document is 16 MiB.
+Controlled native pixels, screen readers, real OpenSSH/process/resource cleanup,
+and managed execution remain external D3/M5 gates. [Accepted ADR 0023](adr/0023-typed-automation-and-declarative-workspaces.md)
 owns the boundary.
 ## Recovery, backup, migration, and export
 

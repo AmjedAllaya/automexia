@@ -3,7 +3,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use automexia_devops::connections::{
-    DirectOpenSshLaunchBinding, DirectOpenSshPreparation,
+    DirectOpenSshLaunchBinding, DirectOpenSshPreparation, WorkspaceRestorePlan,
 };
 use automexia_devops_ssh::GrantKind;
 use automexia_extension_runtime::CompletionWake;
@@ -16,18 +16,21 @@ use super::direct_openssh::{
 use automexia_ui_model::connection_hub::{
     apply_hub_key, hub_catalog_controls_visible, project_connection_catalog,
     project_connection_hub, project_direct_openssh_preparation,
-    project_direct_openssh_review, validate_connection_catalog_query,
-    ConnectionCatalogEntry, ConnectionCatalogProjection, ConnectionCatalogQuery,
-    ConnectionHubView, ConnectionReviewView, ConnectionSummary, HubCatalogGrouping,
-    HubCatalogSource, HubContentState, HubFocus, HubKey, HubProjectionRequest, HubRoute,
+    project_direct_openssh_review, project_workspace_catalog, project_workspace_restore,
+    validate_connection_catalog_query, ConnectionCatalogEntry,
+    ConnectionCatalogProjection, ConnectionCatalogQuery, ConnectionHubView,
+    ConnectionReviewView, ConnectionSummary, HubCatalogGrouping, HubCatalogSource,
+    HubContentState, HubFocus, HubKey, HubProjectionRequest, HubRoute,
     HubVisualPreferences, InteractionEffect, InteractionState, Viewport,
-    MAX_CATALOG_QUERY_BYTES, MAX_VISIBLE_ROWS,
+    WorkspaceCatalogView, WorkspaceRestoreView, MAX_CATALOG_QUERY_BYTES,
+    MAX_VISIBLE_ROWS,
 };
 
 use super::{
-    platform_setup_guidance, ConnectionHubRuntime, GrantReviewState, HubLibrarySnapshot,
-    HubMetadataChangeState, HubRuntimeErrorCode, HubRuntimeSnapshot, HubRuntimeState,
-    HubStoreState, MetadataChangeReview, PlatformFamily, SetupGuidance,
+    platform_setup_guidance, review_library_workspace_restore, ConnectionHubRuntime,
+    GrantReviewState, HubLibrarySnapshot, HubMetadataChangeState, HubRuntimeErrorCode,
+    HubRuntimeSnapshot, HubRuntimeState, HubStoreState, MetadataChangeReview,
+    PlatformFamily, SetupGuidance,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -101,6 +104,8 @@ pub struct HubControllerPresentation {
     pub store_state: HubStoreState,
     pub setup_guidance: SetupGuidance,
     pub disabled_actions: Vec<DisabledHubAction>,
+    pub workspace_catalog: Option<WorkspaceCatalogView>,
+    pub workspace_restore: Option<WorkspaceRestoreView>,
 }
 
 pub struct ConnectionHubController {
@@ -128,6 +133,9 @@ pub struct ConnectionHubController {
     projection_refresh_count: u64,
     library_preferences_applied: bool,
     active: bool,
+    workspace_selected_index: usize,
+    workspace_restore: Option<WorkspaceRestorePlan>,
+    workspace_review_generation: u64,
 }
 
 impl ConnectionHubController {
@@ -173,6 +181,9 @@ impl ConnectionHubController {
             projection_refresh_count: 1,
             library_preferences_applied: false,
             active: false,
+            workspace_selected_index: 0,
+            workspace_restore: None,
+            workspace_review_generation: 0,
         }
     }
 
@@ -180,6 +191,7 @@ impl ConnectionHubController {
         let opener_id = opener_id.into();
         self.cancel_literal_destination_entry();
         self.clear_direct_openssh_preparation();
+        self.workspace_restore = None;
         self.active = true;
         self.interaction = InteractionState::new(
             self.projection.indices.len(),
@@ -208,6 +220,7 @@ impl ConnectionHubController {
         self.discard_owned_review();
         self.metadata_review = None;
         self.tag_editor = None;
+        self.workspace_restore = None;
         self.active = false;
         self.interaction.opener_id.clone()
     }
@@ -227,6 +240,10 @@ impl ConnectionHubController {
     pub const fn execution_requested(&self) -> bool {
         self.interaction.execution_requested
     }
+    pub const fn route(&self) -> HubRoute {
+        self.interaction.route
+    }
+
     pub fn direct_openssh_preparation(&self) -> Option<&DirectOpenSshPreparation> {
         self.direct_openssh_preparation.as_ref()
     }
@@ -279,6 +296,95 @@ impl ConnectionHubController {
 
     pub fn focus_search(&mut self) {
         self.interaction.focus = HubFocus::Search;
+    }
+
+    pub fn open_connections(&mut self) -> bool {
+        if !self.active {
+            return false;
+        }
+        self.workspace_restore = None;
+        self.interaction.route = HubRoute::Results;
+        self.interaction.focus = HubFocus::Results;
+        true
+    }
+
+    pub fn open_workspaces(&mut self) -> bool {
+        if !self.active
+            || self.literal_destination.is_some()
+            || self.metadata_review.is_some()
+            || self.owned_grant_review().is_some()
+        {
+            return false;
+        }
+        self.clear_direct_openssh_preparation();
+        self.workspace_restore = None;
+        self.workspace_selected_index = self
+            .workspace_selected_index
+            .min(self.workspace_count().saturating_sub(1));
+        self.interaction.route = HubRoute::Workspaces;
+        self.interaction.focus = HubFocus::WorkspaceList;
+        true
+    }
+
+    pub fn select_workspace_index(&mut self, index: usize) -> bool {
+        if self.interaction.route != HubRoute::Workspaces
+            || index >= self.workspace_count()
+        {
+            return false;
+        }
+        self.workspace_selected_index = index;
+        self.interaction.focus = HubFocus::WorkspaceList;
+        true
+    }
+
+    pub fn review_selected_workspace(&mut self) -> bool {
+        if self.interaction.route != HubRoute::Workspaces || self.workspace_count() == 0 {
+            return false;
+        }
+        let Some(generation) = self.workspace_review_generation.checked_add(1) else {
+            return false;
+        };
+        let Some(workspace) = self
+            .runtime_snapshot
+            .library
+            .document
+            .workspaces
+            .workspaces
+            .get(self.workspace_selected_index)
+        else {
+            return false;
+        };
+        let Ok(review) = review_library_workspace_restore(
+            &self.runtime_snapshot.library.document,
+            &workspace.id,
+            generation,
+        ) else {
+            return false;
+        };
+        self.workspace_review_generation = generation;
+        self.workspace_restore = Some(review);
+        self.interaction.route = HubRoute::WorkspaceReview;
+        self.interaction.focus = HubFocus::Review;
+        true
+    }
+
+    pub fn back_to_workspaces(&mut self) -> bool {
+        if self.interaction.route != HubRoute::WorkspaceReview {
+            return false;
+        }
+        self.workspace_restore = None;
+        self.interaction.route = HubRoute::Workspaces;
+        self.interaction.focus = HubFocus::WorkspaceList;
+        true
+    }
+
+    fn workspace_count(&self) -> usize {
+        self.runtime_snapshot
+            .library
+            .document
+            .workspaces
+            .workspaces
+            .len()
     }
 
     pub fn can_begin_literal_destination_entry(&self) -> bool {
@@ -705,12 +811,24 @@ impl ConnectionHubController {
 
     pub fn sync(&mut self) {
         let next_snapshot = self.runtime.snapshot();
+        let library_changed =
+            self.runtime_snapshot.library.revision != next_snapshot.library.revision;
         let catalog_changed =
             !Arc::ptr_eq(&self.runtime_snapshot.catalog, &next_snapshot.catalog);
         let review_binding_changed = self.runtime_snapshot.state != next_snapshot.state
             || self.runtime_snapshot.metadata_revision != next_snapshot.metadata_revision
             || catalog_changed;
         self.runtime_snapshot = next_snapshot;
+        if library_changed {
+            self.workspace_restore = None;
+            self.workspace_selected_index = self
+                .workspace_selected_index
+                .min(self.workspace_count().saturating_sub(1));
+            if self.interaction.route == HubRoute::WorkspaceReview {
+                self.interaction.route = HubRoute::Workspaces;
+                self.interaction.focus = HubFocus::WorkspaceList;
+            }
+        }
         let mut refresh_projection = catalog_changed;
         if !self.library_preferences_applied
             && !matches!(self.runtime_snapshot.state, HubRuntimeState::Initializing)
@@ -786,6 +904,25 @@ impl ConnectionHubController {
                     .map(|group| group.label.clone())
             })
             .collect();
+        let workspace_catalog =
+            (self.interaction.route == HubRoute::Workspaces).then(|| {
+                project_workspace_catalog(
+                    &self.runtime_snapshot.library.document.workspaces.workspaces,
+                    self.workspace_selected_index,
+                    viewport,
+                )
+            });
+        let workspace_restore = if self.interaction.route == HubRoute::WorkspaceReview {
+            self.workspace_restore.as_ref().map(|review| {
+                project_workspace_restore(
+                    review,
+                    viewport,
+                    format!("workspace-row-{}", review.workspace_id),
+                )
+            })
+        } else {
+            None
+        };
         HubControllerPresentation {
             view,
             query: self.query.text.clone(),
@@ -820,6 +957,8 @@ impl ConnectionHubController {
             store_state: self.runtime_snapshot.store_state,
             setup_guidance: platform_setup_guidance(current_platform()),
             disabled_actions: DISABLED_ACTIONS.to_vec(),
+            workspace_catalog,
+            workspace_restore,
         }
     }
 
@@ -830,6 +969,62 @@ impl ConnectionHubController {
     ) -> HubControllerEffect {
         if !self.active {
             return HubControllerEffect::None;
+        }
+        if self.interaction.route == HubRoute::Workspaces {
+            match key {
+                HubKey::Up => {
+                    self.workspace_selected_index =
+                        self.workspace_selected_index.saturating_sub(1);
+                    return HubControllerEffect::Interaction(
+                        InteractionEffect::SelectionChanged(
+                            self.workspace_selected_index,
+                        ),
+                    );
+                }
+                HubKey::Down => {
+                    self.workspace_selected_index = self
+                        .workspace_selected_index
+                        .saturating_add(1)
+                        .min(self.workspace_count().saturating_sub(1));
+                    return HubControllerEffect::Interaction(
+                        InteractionEffect::SelectionChanged(
+                            self.workspace_selected_index,
+                        ),
+                    );
+                }
+                HubKey::Home => {
+                    self.workspace_selected_index = 0;
+                    return HubControllerEffect::Interaction(
+                        InteractionEffect::SelectionChanged(0),
+                    );
+                }
+                HubKey::End => {
+                    self.workspace_selected_index =
+                        self.workspace_count().saturating_sub(1);
+                    return HubControllerEffect::Interaction(
+                        InteractionEffect::SelectionChanged(
+                            self.workspace_selected_index,
+                        ),
+                    );
+                }
+                HubKey::Enter => {
+                    let _ = self.review_selected_workspace();
+                    return HubControllerEffect::Interaction(InteractionEffect::None);
+                }
+                HubKey::Escape => {
+                    self.interaction.route = HubRoute::Results;
+                    self.interaction.focus = HubFocus::Results;
+                    return HubControllerEffect::Interaction(
+                        InteractionEffect::BackToResults,
+                    );
+                }
+                _ => {}
+            }
+        } else if self.interaction.route == HubRoute::WorkspaceReview
+            && key == HubKey::Escape
+        {
+            let _ = self.back_to_workspaces();
+            return HubControllerEffect::Interaction(InteractionEffect::BackToResults);
         }
         if self.literal_destination.is_some() {
             return match key {

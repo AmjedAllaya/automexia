@@ -112,14 +112,31 @@ The executable has no network-management subcommands in v0.4. SSH and cloud
 sessions use the selected shell and system tools; first-party managed SSH is a
 v0.5 roadmap item.
 
-## Managed connection and workspace commands (M6)
+## Managed workspace review commands (M6)
 
-There is currently **no public** `automexia connect`, `run`, `workspace`,
-`tunnel`, `broadcast`, or `--no-hooks` command. M6 implements internal,
-nonexecuting review contracts only; the command grammar in roadmap/specification
-pages is planned and must not be used as shipped syntax. Continue using system
-OpenSSH in the shell and normal pane/window controls. A future CLI must consume
-the same reviewed fingerprints and activation gates rather than bypass them.
+`automexia workspaces` is the public, nonexecuting manager for the private
+Connection Library. Reads are bounded and reject links; writes are preview-first
+and require explicit `--apply` plus the current library/entity revisions. JSON
+input is strict, migration and recovery are reviewed, and no subcommand can
+start a process, create a PTY, connect, broadcast, or send Enter.
+
+| Command | Result |
+|---|---|
+| `automexia workspaces list [--json]` | List public workspace metadata and the current library revision. |
+| `automexia workspaces show <id> [--json]` | Show one saved declarative topology and its public bindings. |
+| `automexia workspaces put <file> [--json]` | Preview a strict workspace JSON edit. Add `--apply --expected-revision <library> --expected-entity-revision <workspace>` to commit it; use entity revision `0` only for creation. |
+| `automexia workspaces remove <id> --entity-revision <workspace> [--json]` | Preview removal. Add `--apply --expected-revision <library>` to commit the exact reviewed revision. |
+| `automexia workspaces restore <id> --generation <n> [--json]` | Review exact current profile bindings for a fresh restore generation. Reconnect and resume stay off. |
+| `automexia workspaces recipe-plan --profile <id> --generation <n> [--no-hooks] [--context <file>] [--json]` | Review the authoritative ordered typed plan. `--no-hooks` is explicit recovery intent; context JSON is bounded and strict. |
+| `automexia workspaces broadcast <id> --command-file <file> [--arm-duration-ms <n>] [--json]` | Review one bounded single-line exact command and exact targets from a regular file. The command is never accepted as an argument and execution stays off. |
+| `automexia workspaces migrate [--json]` | Preview an in-memory schema migration; add `--apply --expected-revision <library>` to persist by CAS. |
+| `automexia workspaces recover <previous-revision> [--json]` | Preview an available previous generation; add `--apply` only when the primary is absent or rejected. |
+| `automexia workspaces doctor [--json]` | Report load/recovery state and the D3/M5 activation blockers without probing the network or tools. |
+
+There is still no public managed `connect`, `run`, or `tunnel` command. Continue
+using system OpenSSH in the shell for actual connections. Accepted ADR 0023 does
+not bypass ADR 0012/D3/M5: managed recipe, restore, and broadcast execution stays
+fail-closed until protected attestation and native lifecycle evidence pass.
 ## Daily Cargo aliases
 
 | Command | Mutates profiles? | Result |

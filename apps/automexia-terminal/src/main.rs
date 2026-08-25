@@ -155,6 +155,9 @@ fn execute_cli_command(
             automexia::quick_actions::execute_packs_command(command)
         }
         CliCommand::Migrate(command) => execute_migration_command(command),
+        CliCommand::Workspaces(command) => {
+            automexia::connections::execute_workspaces_command(command)
+        }
     }
 }
 

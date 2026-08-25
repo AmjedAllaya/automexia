@@ -12,7 +12,7 @@ use automexia_devops::connections::{
     DirectOpenSshPreparation, DirectOpenSshReview, DirectOpenSshTunnelConfirmation,
     DirectOpenSshTunnelDescriptor, DirectOpenSshTunnelLifecycle, DirectOpenSshTunnelPlan,
     DirectOpenSshTunnelState, EnvironmentRisk, ExecutionStage, HostTrustState,
-    ProviderKind, ResolvedConnectionPlan, StaleAuthState, TunnelKind,
+    ProviderKind, ResolvedConnectionPlan, StaleAuthState, TunnelKind, WorkspaceIntentV1,
     WorkspaceRestorePlan,
 };
 use serde::{Deserialize, Serialize};
@@ -160,6 +160,8 @@ pub enum HubRoute {
     Results,
     Review,
     RecipePlanner,
+    Workspaces,
+    WorkspaceReview,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -176,6 +178,7 @@ pub enum HubFocus {
     Back,
     Review,
     Planner,
+    WorkspaceList,
     PrimaryAction,
     Close,
     ErrorSummary,
@@ -1156,6 +1159,12 @@ pub fn apply_hub_key(state: &mut InteractionState, key: HubKey) -> InteractionEf
                 (HubRoute::RecipePlanner, HubFocus::Back) => HubFocus::Planner,
                 (HubRoute::RecipePlanner, HubFocus::Planner) => HubFocus::Close,
                 (HubRoute::RecipePlanner, _) => HubFocus::Back,
+                (HubRoute::Workspaces, HubFocus::WorkspaceList) => HubFocus::Close,
+                (HubRoute::Workspaces, _) => HubFocus::WorkspaceList,
+                (HubRoute::WorkspaceReview, HubFocus::Back) => HubFocus::Review,
+                (HubRoute::WorkspaceReview, HubFocus::Review) => HubFocus::PrimaryAction,
+                (HubRoute::WorkspaceReview, HubFocus::PrimaryAction) => HubFocus::Close,
+                (HubRoute::WorkspaceReview, _) => HubFocus::Back,
             };
             InteractionEffect::FocusChanged(state.focus.clone())
         }
@@ -1171,6 +1180,12 @@ pub fn apply_hub_key(state: &mut InteractionState, key: HubKey) -> InteractionEf
                 (HubRoute::RecipePlanner, HubFocus::Planner) => HubFocus::Back,
                 (HubRoute::RecipePlanner, HubFocus::Back) => HubFocus::Close,
                 (HubRoute::RecipePlanner, _) => HubFocus::Planner,
+                (HubRoute::Workspaces, HubFocus::WorkspaceList) => HubFocus::Close,
+                (HubRoute::Workspaces, _) => HubFocus::WorkspaceList,
+                (HubRoute::WorkspaceReview, HubFocus::Review) => HubFocus::Back,
+                (HubRoute::WorkspaceReview, HubFocus::PrimaryAction) => HubFocus::Review,
+                (HubRoute::WorkspaceReview, HubFocus::Back) => HubFocus::Close,
+                (HubRoute::WorkspaceReview, _) => HubFocus::PrimaryAction,
             };
             InteractionEffect::FocusChanged(state.focus.clone())
         }
@@ -1883,6 +1898,119 @@ pub enum SemanticTone {
     Success,
     Warning,
     Danger,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkspaceCatalogRowView {
+    pub id: String,
+    pub display_name: String,
+    pub description: String,
+    pub environment: String,
+    pub risk_label: String,
+    pub window_count: usize,
+    pub connection_count: usize,
+    pub selected: bool,
+    pub accessibility_label: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkspaceCatalogView {
+    pub layout: HubLayout,
+    pub total_workspaces: usize,
+    pub visible_range: Range<usize>,
+    pub rows: Vec<WorkspaceCatalogRowView>,
+    pub execution_enabled: bool,
+    pub pty_input_requested: bool,
+    pub accessibility_tree: Vec<AccessibilityNode>,
+}
+
+pub fn project_workspace_catalog(
+    workspaces: &[WorkspaceIntentV1],
+    selected_index: usize,
+    viewport: Viewport,
+) -> WorkspaceCatalogView {
+    let layout = hub_layout(viewport);
+    let selected = selected_index.min(workspaces.len().saturating_sub(1));
+    let range = visible_range(viewport, layout, workspaces.len(), selected);
+    let rows = workspaces[range.clone()]
+        .iter()
+        .enumerate()
+        .map(|(offset, workspace)| {
+            let selected = range.start.saturating_add(offset) == selected;
+            let window_count = workspace.windows.len();
+            let connection_count = workspace.connections.len();
+            let risk = risk_label(workspace.environment.risk);
+            WorkspaceCatalogRowView {
+                id: workspace.id.clone(),
+                display_name: workspace.display_name.clone(),
+                description: workspace.description.clone(),
+                environment: workspace.environment.label.clone(),
+                risk_label: risk.to_owned(),
+                window_count,
+                connection_count,
+                selected,
+                accessibility_label: format!(
+                    "{}, {}, {risk} risk, {window_count} windows, {connection_count} connections",
+                    workspace.display_name, workspace.environment.label,
+                ),
+            }
+        })
+        .collect::<Vec<_>>();
+    let mut accessibility_tree = Vec::with_capacity(rows.len() + 3);
+    accessibility_tree.push(AccessibilityNode::new(
+        "workspace-title",
+        AccessibilityRole::Heading,
+        "Multi-environment workspaces",
+    ));
+    let mut status = AccessibilityNode::new(
+        "workspace-status",
+        AccessibilityRole::Status,
+        format!(
+            "{} saved workspace{}; declarative review only; no live sessions are restored automatically",
+            workspaces.len(),
+            if workspaces.len() == 1 { "" } else { "s" },
+        ),
+    );
+    status.live = true;
+    accessibility_tree.push(status);
+    let mut grid = AccessibilityNode::new(
+        "workspace-results",
+        AccessibilityRole::Grid,
+        format!(
+            "{} workspace{}",
+            workspaces.len(),
+            if workspaces.len() == 1 { "" } else { "s" },
+        ),
+    );
+    grid.focusable = workspaces.is_empty();
+    grid.actions = vec![
+        "move-previous".into(),
+        "move-next".into(),
+        "open-review".into(),
+    ];
+    accessibility_tree.push(grid);
+    for row in &rows {
+        let mut node = AccessibilityNode::new(
+            format!("workspace-row-{}", row.id),
+            AccessibilityRole::Row,
+            row.accessibility_label.clone(),
+        );
+        node.focusable = true;
+        node.selected = row.selected;
+        node.actions = vec!["select".into(), "open-review".into()];
+        accessibility_tree.push(node);
+    }
+    WorkspaceCatalogView {
+        layout,
+        total_workspaces: workspaces.len(),
+        visible_range: range,
+        rows,
+        execution_enabled: false,
+        pty_input_requested: false,
+        accessibility_tree,
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

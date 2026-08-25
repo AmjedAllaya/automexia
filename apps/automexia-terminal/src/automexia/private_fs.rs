@@ -80,6 +80,21 @@ pub(crate) fn read_bounded_regular(
     path: &Path,
     maximum: usize,
 ) -> Result<Option<Vec<u8>>, PrivateFsError> {
+    read_bounded_regular_with_policy(path, maximum, true)
+}
+
+pub(crate) fn read_bounded_untrusted_regular(
+    path: &Path,
+    maximum: usize,
+) -> Result<Option<Vec<u8>>, PrivateFsError> {
+    read_bounded_regular_with_policy(path, maximum, false)
+}
+
+fn read_bounded_regular_with_policy(
+    path: &Path,
+    maximum: usize,
+    require_private_permissions: bool,
+) -> Result<Option<Vec<u8>>, PrivateFsError> {
     let before = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -96,7 +111,7 @@ pub(crate) fn read_bounded_regular(
     let mut file = options.open(path).map_err(PrivateFsError::io)?;
     let opened = file.metadata().map_err(PrivateFsError::io)?;
     validate_regular(&opened)?;
-    if !private_permissions_are_safe(path, &opened)? {
+    if require_private_permissions && !private_permissions_are_safe(path, &opened)? {
         return Err(PrivateFsError::new(PrivateFsErrorCode::PrivatePermissions));
     }
     if !same_identity(&before, &opened) || !opened_file_matches_path(&file, path)? {
@@ -534,6 +549,39 @@ fn private_permissions_are_safe(
     _metadata: &Metadata,
 ) -> Result<bool, PrivateFsError> {
     Ok(false)
+}
+
+#[cfg(test)]
+mod bounded_reader_tests {
+    use super::*;
+
+    #[test]
+    fn untrusted_reader_accepts_only_stable_bounded_regular_files() {
+        let temporary = tempfile::tempdir().unwrap();
+        let source = temporary.path().join("source.json");
+        fs::write(&source, b"review").unwrap();
+
+        assert_eq!(
+            read_bounded_untrusted_regular(&source, 6).unwrap(),
+            Some(b"review".to_vec())
+        );
+        assert_eq!(
+            read_bounded_untrusted_regular(&temporary.path().join("missing"), 6).unwrap(),
+            None
+        );
+        assert_eq!(
+            read_bounded_untrusted_regular(&source, 5)
+                .unwrap_err()
+                .code(),
+            PrivateFsErrorCode::SourceTooLarge
+        );
+        assert_eq!(
+            read_bounded_untrusted_regular(temporary.path(), 6)
+                .unwrap_err()
+                .code(),
+            PrivateFsErrorCode::NotRegularFile
+        );
+    }
 }
 
 #[cfg(all(test, windows))]

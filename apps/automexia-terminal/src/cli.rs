@@ -74,6 +74,115 @@ pub enum CliCommand {
     Packs(PacksCommand),
     /// Preview or explicitly apply a bounded compatibility migration.
     Migrate(MigrationCommand),
+    /// Inspect and manage declarative multi-environment workspaces.
+    Workspaces(WorkspacesCommand),
+}
+
+#[derive(Args, Debug)]
+pub struct WorkspacesCommand {
+    #[clap(subcommand)]
+    pub action: WorkspacesAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum WorkspacesAction {
+    /// List saved workspace metadata without starting a terminal session.
+    List {
+        #[clap(long)]
+        json: bool,
+    },
+    /// Show one declarative workspace, including topology and public bindings.
+    Show {
+        id: String,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Preview or save one strict workspace JSON document.
+    Put {
+        #[clap(value_hint = ValueHint::FilePath)]
+        input: PathBuf,
+        /// Apply the reviewed edit. Without this flag no state changes.
+        #[clap(long, requires_all = ["expected_revision", "expected_entity_revision"])]
+        apply: bool,
+        /// Current Connection Library revision required for compare-and-swap.
+        #[clap(long, requires = "apply")]
+        expected_revision: Option<u64>,
+        /// Current workspace revision, or 0 when creating a new workspace.
+        #[clap(long, requires = "apply")]
+        expected_entity_revision: Option<u64>,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Preview or remove one workspace by exact ID and entity revision.
+    Remove {
+        id: String,
+        #[clap(long)]
+        entity_revision: u64,
+        #[clap(long, requires = "expected_revision")]
+        apply: bool,
+        #[clap(long, requires = "apply")]
+        expected_revision: Option<u64>,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Review a fresh restore plan; no session, PTY, or process is started.
+    Restore {
+        id: String,
+        #[clap(long)]
+        generation: u64,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Review the selected profile's ordered recipe plan.
+    RecipePlan {
+        #[clap(long)]
+        profile: String,
+        #[clap(long)]
+        generation: u64,
+        /// Omit all recipe-origin hooks and retain only planner-owned steps.
+        #[clap(long)]
+        no_hooks: bool,
+        /// Optional strict public planner context JSON document.
+        #[clap(long, value_hint = ValueHint::FilePath)]
+        context: Option<PathBuf>,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Review one exact command for all connections saved in a workspace.
+    Broadcast {
+        id: String,
+        /// UTF-8 file containing the exact single-line command to review.
+        #[clap(long, value_hint = ValueHint::FilePath)]
+        command_file: PathBuf,
+        /// Bounded review-arm duration; execution remains unavailable.
+        #[clap(long, default_value_t = 10_000)]
+        arm_duration_ms: u64,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Preview or persist an in-memory schema migration with compare-and-swap.
+    Migrate {
+        #[clap(long, requires = "expected_revision")]
+        apply: bool,
+        #[clap(long, requires = "apply")]
+        expected_revision: Option<u64>,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Preview recovery state or restore the private previous generation.
+    Recover {
+        /// Exact previous revision selected for recovery.
+        previous_revision: u64,
+        #[clap(long)]
+        apply: bool,
+        #[clap(long)]
+        json: bool,
+    },
+    /// Report library health and the exact remaining activation gates.
+    Doctor {
+        #[clap(long)]
+        json: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]

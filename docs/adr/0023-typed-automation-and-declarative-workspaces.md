@@ -1,6 +1,6 @@
 # ADR 0023: Typed automation and declarative workspaces
 
-- Status: Proposed for v0.5 M6/F6
+- Status: Accepted for v0.5 M6/F6 on 2026-08-25
 - Date: 2026-08-22
 - Extends: [ADR 0012](0012-first-party-ssh-and-session-launch-boundary.md), [ADR 0018](0018-terminal-first-remote-operations.md), [ADR 0019](0019-acyclic-owned-crate-dependencies.md), and [ADR 0022](0022-read-only-connection-hub-activation.md)
 
@@ -46,9 +46,9 @@ be treated like the typed local launch boundary.
    failure isolation, cancellation, and generation checks.
 8. CP3.3 trusted local workspace tasks remain insert-only and separate. M6 does
    not give them remote, provider, SSH, or broadcast authority.
-9. Native execution, product editor/controller activation, and managed SSH
-   adapters remain disabled until this ADR is accepted and the existing
-   ADR 0012/D3/M5 protected and native-evidence gates pass.
+9. Acceptance authorizes the bounded review/editor product surface and public
+   preview-first CLI. Native execution and managed SSH adapters remain disabled
+   until the existing ADR 0012/D3/M5 protected and native-evidence gates pass.
 
 No dependency is added. The build/wrap/adopt decision is to build these small
 policy/state contracts on the existing immutable models, reducers, hashing,
@@ -85,9 +85,15 @@ restoration, mutation checks, fuzz entry points, and maximum-cardinality
 Criterion cases. Exact commands and results are recorded in
 [Testing](../TESTING.md#m6-typed-automation-and-multi-environment-workspaces).
 
-Acceptance, native product interaction, real OpenSSH/PTY/process/socket/handle
-cleanup, macOS/Linux native execution, controlled screen readers, and hosted
-release evidence remain external. Cross-platform pure-model tests do not replace
+The accepted product boundary also has Windows x86_64 source evidence for the
+preview-first `automexia workspaces` CLI, immutable worker-published library
+snapshot, Connection Hub workspace catalog/review routes, mnemonic and pointer
+navigation, bounded responsive geometry, semantic accessibility projections,
+stale-library invalidation, no PTY input, and fail-closed activation blockers.
+
+Real OpenSSH/PTY/process/socket/handle cleanup, macOS/Linux native execution,
+controlled screen readers and visual inspection, and hosted release evidence
+remain external. Cross-platform pure-model and renderer tests do not replace
 those gates.
 
 ## Consequences
@@ -102,7 +108,7 @@ those gates.
 
 ### Trade-offs
 
-- Users cannot yet execute these internal reviews from the product surface.
+- Users can manage and review workspaces from the CLI and Connection Hub, but cannot execute them until protected native activation passes.
 - Schema-1 libraries require an explicit reviewed CAS before schema-2 storage.
 - Workspace transfer intentionally drops connection bindings and private labels;
   users must rebind imported topology locally.

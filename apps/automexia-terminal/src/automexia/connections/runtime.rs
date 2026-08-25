@@ -189,6 +189,7 @@ pub struct HubLibrarySnapshot {
     pub preferences: HubPreferences,
     pub recovered: bool,
     pub migration_preview: bool,
+    pub document: Arc<ConnectionLibraryDocument>,
 }
 
 impl HubLibrarySnapshot {
@@ -205,6 +206,7 @@ impl HubLibrarySnapshot {
             preferences: document.preferences.clone(),
             recovered,
             migration_preview,
+            document: Arc::new(document.clone()),
         }
     }
 }
