@@ -26,7 +26,7 @@ class DocumentationCoverageTests(unittest.TestCase):
         self.assertGreaterEqual(counts["config_keys"], 100)
         self.assertGreaterEqual(counts["binding_actions"], 60)
         self.assertEqual(counts["cli_flags"], 17)
-        self.assertEqual(counts["cli_commands"], 5)
+        self.assertEqual(counts["cli_commands"], 6)
         self.assertGreaterEqual(counts["xtask_commands"], 20)
 
     def test_missing_config_key_is_rejected(self) -> None:
