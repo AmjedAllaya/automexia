@@ -54,6 +54,17 @@ with their proper owners, keep local data local unless the user chooses
 otherwise, and provide safe cancellation, recovery, disable, and rollback
 paths.
 
+### Safer production operations
+
+Help operators keep the exact environment, current evidence, dependencies,
+permissions, risk, impact, verification, and recovery visible while they work.
+Make recurring questions—what changed, why this resource differs, where a
+connection fails, which users are affected, and what remains unknown—quick to
+answer without copying whole dashboards into the terminal. Suggestions should
+reduce investigation and context switching without pretending there is always
+one certain answer. Diagnosis and refusal are better than a confident unsafe
+action, and every external change remains a human decision.
+
 ### Room to grow
 
 Keep the terminal useful by itself while allowing separately reviewed workflow
@@ -80,6 +91,17 @@ typing, shell use, startup, or terminal output slower or less predictable.
 8. **Tell the truth about status.** Available behavior, release-gated work,
    disabled foundations, research, and future plans must never be presented as
    the same thing.
+9. **Stay AI-capable, not AI-dependent.** The terminal and every domain
+   extension must remain complete and useful without a model, provider account,
+   network connection, or paid API. Model-assisted orchestration belongs in a
+   separately installed extension and never receives hidden execution authority.
+
+A future small task-specific model must follow the same principle: it belongs in
+a separately reviewed optional model extension or adapter, not in core or hidden
+inside a domain extension. It must prove that its narrow value, offline behavior,
+model provenance, memory, storage, CPU/GPU use, cancellation, disable, uninstall,
+and fallback justify the added cost. This is not permission to label ordinary
+rules, parsing, search, or automation as AI.
 
 ## What Automexia provides today
 
@@ -103,16 +125,26 @@ Product delivery should preserve a clear dependency order:
 
 1. finish and publish the first stable terminal release;
 2. prove the shared extension, workspace, process, and DevOps foundations;
-3. release the first useful Automation Studio slice for file editing and
+3. deliver the separately gated read-only context, evidence graph,
+   change/resource/comparison/network/user-impact investigations,
+   situation-aware completion, and production preflight slices after their
+   CP5/D6 foundations; add Incident Mode before any managed operation or
+   diagnostic session, while Studio and neutral-workflow research may continue
+   without runtime authority;
+4. define and prove a small domain-neutral workflow contract that domain
+   extensions can expose without depending on an editor or a model;
+5. release the first useful Automation Studio slice for file editing and
    recovery;
-4. release a dedicated video-editing extension only after that Studio slice is
+6. release a dedicated video-editing extension only after that Studio slice is
    stable at its declared platform boundary.
 
-Architecture research, feasibility prototypes, and video research may proceed
-earlier when they add no production dependency, runtime authority, or release
-blocker. The ordering does not require every advanced Studio phase—language
-intelligence, debugging, remote work, collaboration, or AI—to finish before
-video work can continue.
+Architecture research and feasibility prototypes may proceed earlier when they
+add no production dependency, runtime authority, or release blocker. The
+optional LLM Orchestration extension may start after the domain-neutral workflow
+contract is proven; it is independent of Studio and video delivery and must not
+block either. The ordering does not require every advanced Studio phase—language
+intelligence, debugging, remote work, or collaboration—to finish before video
+work can continue.
 
 Automation Studio and future video work should reuse generic core-owned
 workspace, file, task, progress, cancellation, recovery, and extension
@@ -127,12 +159,45 @@ turning every task into a developer workflow. Candidate domains include remote
 operations, infrastructure, data processing, automation, media production, and
 video workflows.
 
+For production operations, the planned direction is a lightweight optional
+DevOps/SRE layer that can show a pane-local production passport, use bounded
+current evidence to explain state and scheduling, show recent changes and field
+ownership, compare unhealthy resources with healthy peers, trace a network path,
+summarize user impact, rank native commands, and preserve GitOps and just-in-time
+access policy. Incident Mode can then organize hypotheses, time/log navigation,
+handoff, verification and recovery. Managed changes, port forwards, probes and
+debug sessions remain later, separately granted actions. The layer stays
+deterministic and model-free by default, performs no provider work per keystroke,
+and never turns a suggestion into hidden execution.
+See the [Production Operations proposal](SITUATION-AWARE-PRODUCTION-OPERATIONS.md).
+The experience should stay compact and reveal complexity only when requested:
+extend the context already shown above the command, reuse the native suggestion
+surface, keep evidence detail progressive, use one cancel-first review for a
+mutation, and keep any managed-operation monitor nonmodal. The shortest safe path
+must remain keyboard-efficient, understandable without internal terminology,
+usable at narrow sizes and high scale, and honest about stale, conflicting, or
+missing evidence.
+
+Inserting or reviewing shell text does not make Automexia the execution owner;
+the shell owns a later Enter. Only a separately activated managed-action path may
+promise final revalidation, monitoring, verification, receipts, cancellation,
+and recovery. Product language must keep that distinction visible.
+
+
 For video work, the direction is not to pretend that terminal text alone is a
 complete editor. A future, separately reviewed extension could combine
 command-line media tools with focused visual controls, previews, timelines, and
 repeatable processing steps. The specialist media tools would still perform the
 actual transformations, while Automexia would help people organize, review, and
 control the workflow.
+
+A future LLM Orchestration extension may help a user compose reviewable workflows
+from actions exposed by installed extensions. It is a separate optional product
+surface, not a feature hidden inside the terminal, DevOps/SRE, Studio, or video
+extensions. Models may propose typed plans, but core-owned policy, review,
+approval, and action execution remain authoritative. Local and self-hosted use
+must be possible without a required paid provider; remote providers, if added,
+remain explicit adapters inside that extension.
 
 This direction is research, not shipped behavior. It does not authorize a video
 runtime, model, dependency, download, network service, or editing claim. Any

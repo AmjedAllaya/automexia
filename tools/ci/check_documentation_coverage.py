@@ -46,6 +46,7 @@ CONFIG_STRUCTS = {
 INTERNAL_CONFIG_KEYS = {"adaptive_colors"}
 REQUIRED_PAGES = {
     "docs/index.md",
+    "docs/PRODUCT-VISION.md",
     "docs/GETTING-STARTED.md",
     "docs/FEATURES.md",
     "docs/CONFIGURATION.md",

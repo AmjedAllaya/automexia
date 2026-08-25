@@ -29,7 +29,7 @@ class FeatureTestReinforcementTests(unittest.TestCase):
 
     def test_canonical_contract_covers_every_feature_with_detailed_reinforcement(self) -> None:
         counts = self.validate(copy.deepcopy(self.document))
-        self.assertEqual(counts["features"], 39)
+        self.assertEqual(counts["features"], 40)
         self.assertGreaterEqual(counts["needed_tests"], counts["features"] * 3)
         self.assertGreaterEqual(counts["evidence_owners"], counts["features"])
         self.assertEqual(counts["plan_anchors"], counts["features"])

@@ -126,6 +126,33 @@ trust/revocation owners, malicious supply-chain and sandbox drills, native signe
 three-platform package/cleanup/accessibility evidence, provider privacy/legal
 review, resource baselines, 1,000 cycles and 30-day soak remain mandatory.
 
+## Proposed LLM orchestration security boundary
+
+Proposed ADR 0033 defines a later, separately installed first-party LLM
+Orchestration extension. It is not part of core, a domain extension, or CP6. The
+model may return only an untrusted candidate typed plan; it receives no shell,
+PTY, process, filesystem, provider, credential, MCP, domain-action, or executor
+handle. The application remains the sole action-registry, policy, risk, review,
+grant, final-revalidation, execution, cancellation, and receipt authority.
+
+Planning uses an explicit bounded context manifest and disclosed model, endpoint,
+locality, destination, purpose, retention, size, risk, and billing mode. Local or
+self-hosted inference remains an external trust boundary. Remote adapters are
+opt-in and cannot be a silent fallback. Approval is one run and bound to the
+exact canonical plan, context, action-catalog, policy, target, and expiry;
+production, destructive, privilege, credential, public-network, irreversible,
+billing-sensitive, or scope-expanding steps interrupt again immediately before
+execution. Unattended high-risk execution is outside the initial boundary.
+
+No LLM runtime authority exists today. ADR acceptance, a strict machine contract,
+protected approval for every authority, hostile-plan and prompt-injection tests,
+secret-canary privacy proof, resource and cleanup measurements, accessible
+review, native platform evidence, packaging, disable/uninstall, and rollback are
+required before activation. With the extension absent or disabled there must be
+no model worker, provider request, model download, prompt store, or terminal hot-
+path work. See [the architecture](docs/LLM-ORCHESTRATION-EXTENSION.md) and
+[testing contract](docs/LLM-ORCHESTRATION-TESTING.md).
+
 ## Provider-neutral authentication security boundary
 
 M7/D6.0 is implemented as an authority-free framework. It validates bounded
@@ -134,7 +161,7 @@ observations, exact operation/isolation/browser metadata, capability review,
 recovery, and redacted receipts/audits. It does not own a process, network
 socket, browser or callback listener, filesystem path, credential, token or
 certificate cache, provider configuration writer, PTY, renderer, clipboard,
-telemetry client, or AI integration.
+telemetry client, selected-input model integration, or LLM orchestration.
 
 Every provider operation is bound to a nonzero operation, exact capsule ID,
 session, revision, concrete provider, reviewed executable, ordered arguments,

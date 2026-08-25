@@ -3,8 +3,9 @@
 Status: CP0-CP3.3 are fully implemented at the local/source boundary; stable
 hosted, native accessibility, and longitudinal release evidence is partial.
 CP4 provider-aware actions are product-integrated and nonactivated. ADR 0025 is
-accepted: CP5.1-CP5.3 are fully implemented at source/local model boundaries,
-CP5.4-CP5.6 remain partial, and no CP5 preview or product surface is activated.
+accepted: CP5.1-CP5.4 are fully implemented at their source/local boundaries,
+CP5.5 is complete as an inert helper/adapter source bridge, CP5.6 remains
+partial, and no CP5 preview or product surface is activated.
 
 ## Purpose
 
@@ -26,7 +27,7 @@ machine-readable authority is
 | DevOps short aliases | Opt-in native-wins five-shell generations with collision review, private atomic publication, reload, rollback, diagnostics, and exact uninstall | CP3.0/CP3.1 implemented locally | Hosted native/macOS/WSL and longitudinal evidence |
 | Persistent Quick Actions | Bounded private store, joined application worker, layered local search, reviewed placeholders, dry-run CLI/import/export, insert/copy, reviewed static packs, native imports, and trusted local workspace task bridges | CP2.2/CP3.2/CP3.3 implemented locally | Hosted native and controlled accessibility/performance evidence |
 | Provider-aware candidates | Explicit immutable cached public capsule snapshot; retained Connection Hub-to-route handoff; no provider work on input | CP4 product-integrated/nonactivated for SSH, AWS, Azure, GCP, Kubernetes, OpenShift, and Teleport | Approved provider refresh/capsule production, exact provider execution, OpenBao, native provider/accessibility/release evidence |
-| Automexia suggestion surface | Source protocol/endpoints, bounded sources/ranking, UI model/controller/renderer, and inert request-only shell scaffolds exist; no signed helper, native replacement, WSL relay, public setting, shortcut, or activated surface | CP5.0 fully done; CP5.1-CP5.3 fully done at source/local model boundaries; CP5.4-CP5.6 partially done; CP1/native behavior remains authoritative | Complete signed helper and native editor replacement, native OS/shell/accessibility/package/resource/rollback gates, and 30-day preview evidence before activation |
+| Automexia suggestion surface | Source protocol/endpoints, bounded sources/ranking, UI model/controller/renderer, helper target, and four bidirectional shell adapters exist; no reviewed/signed launcher, WSL host relay, live composition, public setting, shortcut, or activated surface | CP5.0 fully done; CP5.1-CP5.4 fully done at source/local boundaries; CP5.5 inert bridge source complete; CP5.6 partial; CP1/native behavior remains authoritative | Complete launcher/signing, interactive native replacement and live composition, then native OS/shell/accessibility/package/resource/rollback gates and 30-day preview evidence before activation |
 
 This audit is deliberately strict: prompt path styling, icon-aware `ls`, command
 palette commands, OpenSSH host inventory, CP3 alias projection, and shell
@@ -46,7 +47,7 @@ Automexia never recovers the editable command from terminal-grid cells. A future
 custom completion surface requires the CP5 editor bridge and must preserve the
 native editor as a complete disable/failure fallback.
 
-## Planned CP5 bridge and fallback matrix
+## CP5 bridge and fallback matrix
 
 This matrix is a feasibility and activation gate, not a shipped-support claim.
 Each row requires a versioned native adapter and its own disable/uninstall proof.
