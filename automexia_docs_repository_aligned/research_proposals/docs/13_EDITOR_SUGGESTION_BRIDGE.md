@@ -1,7 +1,8 @@
 
 # Editor Suggestion Bridge Research
 
-**Real owner:** proposed project ADR 0025; no CP5 runtime is authorized.
+**Real owner:** accepted project ADR 0025; disabled source implementation is
+authorized, while preview and stable activation remain gated.
 This document is research input only.
 
 Keep:

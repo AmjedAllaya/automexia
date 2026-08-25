@@ -4,9 +4,11 @@
 > **Reference copy:** The maintained integration note is
 > [`repository_integration/CP5_ADR_0025_RESEARCH_DELTAS.md`](../../repository_integration/CP5_ADR_0025_RESEARCH_DELTAS.md).
 > Do not treat this retained RFD copy as a second authority. Project ADR 0025
-> remains proposed, and the same-user limitation is now recorded there.
+> is accepted for disabled source implementation, records the same-user
+> limitation, and keeps preview and stable activation gated.
 
-**Owner:** proposed project ADR 0025; no CP5 runtime is authorized.
+**Owner:** accepted project ADR 0025; disabled source implementation is
+authorized, while preview and stable activation remain gated.
 This file is not an ADR and must not compete with it.
 
 Useful research safeguards to consider merging into ADR 0025 where not already covered:

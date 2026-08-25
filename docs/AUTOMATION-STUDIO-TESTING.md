@@ -47,7 +47,7 @@ is not proof of keyboard, IME, screen-reader, process, or cleanup behavior.
 |---|---|---|---|
 | Terminal and private first-party extension isolation | **Fully or partially implemented at existing documented boundaries** | Current architecture, unit/integration tests, native gates, and feature ledger | Regression evidence against the exact Studio dependency/host commit |
 | Typed review, revisions, target context, risk and exact-argv runner concepts | **Partially implemented in M6, CP2-CP4, and D3-D6; activation varies and remains gated** | Existing pure contracts and focused tests | Studio-specific saved-document binding, product wiring, native tool execution and accessibility/resource proof |
-| D7 public package/sandbox policy | **Partially implemented at proposal-only boundary** | Digest-frozen contract, mutation checker, proposed ADR 0029 and audit | Accepted ADR, runtime/dependencies, malicious components/packages, supply chain, product and native evidence |
+| D7 public package/sandbox policy | **Fully implemented locally at the accepted nonactivating source boundary; partial overall** | Accepted ADR 0029 and exact digest; strict policy/runtime crates, signed local verification, protected disabled store, optional no-WASI Wasmtime conformance, capabilities/lifecycle, mutation/property/fuzz/benchmark evidence | Protected activation/distribution decision, production trust governance, malicious component/package and supply-chain drills, native signed packages, product UX/accessibility/resources, rollback and soak evidence |
 | Automation Studio AS0 | **Partially implemented only as architecture/research/test planning** | Architecture page, proposed ADR 0030, current primary-source research | Native editor/host proof, exact dependency audit, numeric machine contract and explicit acceptance |
 | Automation Studio AS1-AS6 | **Not implemented** | None | All phase-specific source, tests, benchmarks, native/manual evidence and activation approvals below |
 
@@ -215,7 +215,7 @@ malicious-component gate in
 [Sandboxed ecosystem testing](ECOSYSTEM-PLATFORM-TESTING.md). Signing is never
 treated as sandbox or behavioral proof.
 
-### AS6 — debug, remote, mobile, collaboration and AI
+### AS6 — debug, remote, mobile, collaboration and orchestration interoperability
 
 AS6 has no inherited approval. Each capability needs a separate ADR and threat
 model before source work:
@@ -228,9 +228,12 @@ model before source work:
   offline state, backgrounding, reconnect, bandwidth and lost-device recovery;
 - collaboration: member identity, roles, concurrent-edit convergence, replay,
   revocation, audit, abuse/rate limits and no shared credential/PTY authority;
-- AI: explicit selected data, redaction, provider/locality/retention review,
-  prompt injection, typed bounded output and no tools/automatic execution unless
-  another accepted decision says otherwise.
+- orchestration interoperability: Studio contains no model/provider/prompt logic;
+  it exports only versioned bounded document actions to the core-owned registry,
+  requires explicit selected-document context and redaction, rejects stale
+  revisions, and never exposes document, webview, language-server, filesystem or
+  task-runner handles to the optional orchestrator. The separate LO evidence
+  ladder remains authoritative for model planning and workflow execution.
 
 ## Performance and resource evidence
 
@@ -279,7 +282,7 @@ but do not replace assistive-technology runs.
 Release evidence must answer, with artifacts rather than assertions:
 
 - What exact content crosses file, webview IPC, language-server, external-tool,
-  provider, extension and optional remote/AI boundaries?
+  provider, extension, optional remote and orchestration boundaries?
 - Which process owns each byte and for how long?
 - Which capabilities, trust receipt, target, revision and expiry authorize it?
 - Which numeric limit stops malformed or amplified input?

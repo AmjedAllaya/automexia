@@ -395,7 +395,7 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
         },
         "docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md": {
             "CP5.0 fully done",
-            "CP5.1-CP5.3 are fully implemented at source/local model boundaries",
+            "CP5.1-CP5.4 are fully implemented at their source/local boundaries",
         },
         "docs/project/roadmap.md": {
             "CP5.0",

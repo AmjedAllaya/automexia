@@ -1,7 +1,7 @@
 
 # Automexia Architecture Research and Repository-Integration Pack
 
-**Last verified:** 2026-08-24; source snapshot: 2026-08-23
+**Last verified:** 2026-08-26; source snapshot: 2026-08-23
 **Status:** Repository-aligned research/proposal pack — **not a replacement for the project's accepted ADRs, source, roadmap, or release evidence**
 
 ## Authority and evidence model
@@ -46,6 +46,7 @@ The 2026-08-23 repository audit supplied by the implementation agent reports:
 - proposed project ADR 0025 owns the unaccepted CP5 editor bridge proposal;
 - proposed project ADR 0029 freezes a non-activating D7/CP6 ecosystem
   boundary; it adds no runtime;
+
 - current first-party extensions use private linked contracts; public Wasmtime/WIT is future research;
 - video automation is not implemented;
 - v0.4 release closure remains gated by its native, security, accessibility,
@@ -70,6 +71,7 @@ lane B — v0.5 activation hardening
 
 later, under separate accepted decisions
   public extension ecosystem
+  optional LLM Orchestration after a neutral workflow contract
   major process-topology redesign
   video-platform implementation
 ```
@@ -84,6 +86,31 @@ later, under separate accepted decisions
 - `BUNDLE_VALIDATION.md` — internal bundle/link/hash validation only.
 - `REFERENCE_SOURCES_2026.md` — dated upstream research references.
 
+## Canonical resolution after the source snapshot
+
+As of 2026-08-26, accepted ADR 0025 authorizes the disabled CP5 editor-bridge
+source boundary while preview and stable activation remain gated. Accepted ADR
+0029 authorizes the nonactivating D7/CP6 ecosystem and selected-input source
+boundary while activation and public distribution remain gated. D7/CP6 may add
+selected-input model explanations or suggestions with no tools or workflows,
+while proposed ADR 0033 defines a separately installed LLM Orchestration
+extension that may propose typed workflows for core-owned review and execution.
+See the canonical
+[LLM Orchestration specification](../docs/LLM-ORCHESTRATION-EXTENSION.md),
+[testing contract](../docs/LLM-ORCHESTRATION-TESTING.md), and
+[proposed ADR 0033](../docs/adr/0033-optional-llm-orchestration-extension.md).
+
+This resolution does not alter the frozen 2026-08-23 source audit or turn this
+pack into authority. Earlier nonhistorical passages that reject a “large LLM /
+paid API active roadmap” remain valid against a required core, domain-extension,
+or default-cloud dependency; they are superseded only where they could be read
+as forbidding the new optional, independently gated extension proposal.
+
 ## Product constraint
 
-This pack does not require or recommend large LLMs, paid inference APIs, or cloud AI services as a solution for Automexia. Narrow local specialized models may remain research candidates only when a concrete feature justifies them.
+Automexia must not require a large LLM, paid inference API, cloud AI service, or
+agent loop for the terminal or a domain extension. Small task-specific models
+remain candidates only in separately reviewed optional model extensions or
+adapters when a concrete feature and resource evidence justify them. The LLM
+Orchestration proposal likewise requires no paid provider and grants a model no
+direct execution authority.

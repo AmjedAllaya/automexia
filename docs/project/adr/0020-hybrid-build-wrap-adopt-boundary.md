@@ -7,7 +7,8 @@
 
 Automexia's terminal-first roadmap spans SSH, provider authentication,
 inventory, quick actions, completion, workspaces, files, logs, team state,
-policy, collaboration, extensions, and optional AI. Implementing every
+policy, collaboration, extensions, selected-input model assistance, and optional
+LLM orchestration. Implementing every
 underlying protocol or platform facility would turn the terminal into a second
 SSH stack, shell editor, credential vault, cloud SDK bundle, database engine,
 policy engine, sandbox, and relay. Embedding separate UI or process systems
@@ -59,6 +60,10 @@ security and cross-platform behavior depend on each adapter.
 The full ownership matrix, feature placement, process contract, dependency
 sequence, verification rules, and sources are in
 [Build, wrap, and adopt architecture](../../developer/architecture.md).
+Proposed [ADR 0033](../../adr/0033-optional-llm-orchestration-extension.md) later
+clarifies that model/provider code belongs in a separately installed extension
+while a pure domain-neutral workflow contract may be shared below deterministic
+domains.
 
 ## Alternatives
 

@@ -124,6 +124,25 @@ they remain behind release gates while product activation, native provider
 testing, and the remaining safety checks are completed. They are not public
 downloads in Automexia v0.4.
 
+### Production guidance that stays under your control
+
+A planned DevOps/SRE feature will help people see the exact production account,
+region, cluster, namespace, identity, and incident before choosing an action. It
+will use fresh, bounded evidence to place the most relevant native commands
+first, explain why they are useful, show uncertainty and impact, and keep
+diagnosis, approval, monitoring, and recovery visible.
+
+For example, after `kubectl rollout`, Automexia may suggest checking status,
+reviewing history, undoing a bad rollout, restarting a specific Deployment, or
+continuing diagnosis. It will not assume that every unhealthy Pod needs a
+restart, and it will never run the selected command automatically.
+
+This is planned work, not a current v0.4 feature. It will remain optional,
+perform no provider work on every keystroke, keep credentials with their
+existing owners, and use deterministic safety rules without requiring an LLM.
+See the [Production Operations proposal](docs/SITUATION-AWARE-PRODUCTION-OPERATIONS.md)
+and its [evidence plan](docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md).
+
 ### A future workspace for scripts and automation
 
 The proposed Automation Studio will make scripts and configuration easier to
@@ -138,12 +157,30 @@ light terminal-only setup. The Studio is an architecture proposal today, not a
 shipped editor. See the [proposed architecture](docs/AUTOMATION-STUDIO-ARCHITECTURE.md)
 and its [evidence plan](docs/AUTOMATION-STUDIO-TESTING.md).
 
-Product delivery is deliberately ordered: finish the first stable terminal
-release, prove the shared extension and DevOps foundations, release a useful
-minimal Studio, and only then release a dedicated video-editing extension.
-Studio and video research can continue earlier, but neither should delay the
-first stable terminal. Video will reuse general workspace and task services,
-not depend on Studio's editor internals.
+Product delivery is deliberately ordered: finish the first stable terminal,
+prove the shared extension and DevOps foundations, then deliver the separately
+gated production context, evidence, situation-aware completion, and preflight
+slices. A reusable workflow contract and a useful minimal Studio follow, and
+only then does the dedicated video-editing extension release. Studio,
+orchestration, and video research can continue
+earlier, but none should delay the first stable terminal. Video will reuse
+general workspace and task services, not depend on Studio's editor internals.
+
+### Optional orchestration, without an AI-dependent terminal
+
+Automexia is designed to stay useful without an AI model, an account, or a paid
+API. A future, separately installed LLM Orchestration extension may help people
+turn a goal into a reviewable workflow across extensions. It will not be built
+into the terminal core, the DevOps/SRE extension, Automation Studio, or the
+video-editing extension.
+
+The model will only propose a bounded, typed plan. Automexia will validate that
+plan, show the important steps and risks, ask for the required approval, and
+execute through the same controlled actions available without AI. Local or
+self-hosted models will be the default path; optional remote providers will
+remain adapters inside the extension. See the
+[LLM Orchestration proposal](docs/LLM-ORCHESTRATION-EXTENSION.md) for the exact
+boundary and current status.
 
 ### A simple extension experience is the goal
 
@@ -280,6 +317,9 @@ release prerequisites. See the [brand asset workflow](docs/BRANDING.md) and
 - [CLI reference](docs/CLI-REFERENCE.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Situation-aware production operations proposal](docs/SITUATION-AWARE-PRODUCTION-OPERATIONS.md)
+- [Production operations UX and implementation blueprint](docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md)
+- [Optional LLM orchestration strategy](docs/LLM-ORCHESTRATION-EXTENSION.md)
 - [Testing](docs/TESTING.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Decision index](docs/DECISIONS.md)

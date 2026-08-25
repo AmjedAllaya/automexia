@@ -179,7 +179,7 @@ Extensions own:
 - later, explicitly granted provider API adapters outside renderer/VT code.
 
 Core never depends on OpenSSH parsing libraries, cloud provider SDKs,
-Kubernetes/OpenShift clients, Termix, Electron/Node, or AI orchestration code.
+Kubernetes/OpenShift clients, Termix, Electron/Node, or LLM orchestration code.
 Typing `ssh`, `kubectl`, `oc`, `aws`, `az`, or `gcloud` manually
 remains ordinary shell/PTY behavior with every extension disabled.
 
@@ -882,10 +882,12 @@ typed messages, applies endpoint/size/time/concurrency limits, redacts results,
 and exposes no general TCP control port. It returns public structured metadata
 or an approved stream, never raw credentials.
 
-AI extensions use the same capability system but receive no ambient session
+The proposed LLM Orchestration extension receives no ambient session
 environment, SSH agent, cloud cache, terminal history, capsule, connection, or
-production authority. Every tool call is a structured, exact-session request;
-read authority does not imply command authority.
+production authority. It may return only a candidate typed workflow plan. The
+application composition root resolves registered actions, enforces policy,
+collects approval, and invokes ordinary domain brokers; the model receives no
+executable callback and read authority never implies command authority.
 
 ### Command productivity boundary
 
@@ -985,7 +987,7 @@ and stable activation remain forbidden until its exact release gates pass.
 - VT parsing and PTY paths contain no extension or product-state logic.
 - Extension API/model code is renderer-, GPU-, and PTY-independent.
 - Core application/engine crates contain no SSH-, cloud-, Kubernetes-,
-  OpenShift-, infrastructure-, or AI-provider business logic or SDK dependency.
+  OpenShift-, infrastructure-, or model-provider business logic or SDK dependency.
 - The application is the sole owner of process-to-PTY/session attachment.
   Extensions submit typed capability requests and never receive PTY, process,
   renderer, or mutable terminal-engine handles.
@@ -1119,6 +1121,53 @@ and stable activation remain forbidden until its exact release gates pass.
 - OSC 133 `C`/`D` records exit code and elapsed time on the stable prompt row.
   This metadata is copied, recycled, merged and split with the row and marks
   metadata-only snapshots dirty.
+
+### Planned semantic diagnostic navigation boundary
+
+The proposed post-v0.4 DN0-DN6
+[Semantic Diagnostic Navigator](SEMANTIC-DIAGNOSTIC-NAVIGATOR.md) is not
+implemented or authorized. Proposed
+[ADR 0032](adr/0032-bounded-semantic-diagnostic-navigation.md) keeps it as a
+generic, on-demand terminal workflow rather than a DevOps-only feature.
+
+The selected grid and trusted shell semantic metadata remain canonical. Current
+OSC 133 result metadata identifies a supported prompt result; it does not define
+a durable complete command-output region. DN1 therefore navigates failed-command
+actions to the exact prompt/input anchor and keeps unknown shell status neutral.
+Failed command, diagnostic class, severity, provenance, and confidence remain
+separate types.
+
+`Crosswords` would own only bounded normalized logical-line batches, content-free
+positions, viewport movement, and resize/reflow/overwrite/eviction signals. It
+would not own structured-log, Python, Rust, compiler, provider, extension, or
+user-pattern meaning. One route `Context` would own one navigator, its request
+and cancellation generations, at most one coalesced continuation, an optional
+256-entry content-free cache, cleanup, and publication. Pure built-in detectors
+would begin in an app-owned diagnostics module and run outside the terminal lock.
+The renderer would consume one renderer-neutral content-free highlight and
+perform no scan or classification.
+
+Generic scanning would occur only after an explicit action. Under the terminal
+lock it would copy at most one bounded transient logical-text batch plus
+positions, release the lock, classify outside it, revalidate every route/session/
+buffer/layout/request/detector/filter generation, and either publish the nearest
+result or enqueue one low-priority route continuation. It would never run from
+paint, input, PTY parsing, resize, startup, a worker per pane, or a continuous
+history index. Transient text would be discarded and excluded from caches,
+metrics, persistence, crash evidence, and renderer snapshots.
+
+DN1 would reuse prompt identity rather than introducing global logical-line IDs.
+DN2 anchors would be valid only for exact generations. Reflow may remap the
+small cache through an existing exact remap when proven and measured; otherwise
+it clears the cache and rescans on demand. A general line identity needs a later
+accepted decision if multiple features justify its global memory/reflow cost.
+
+No default shortcut, public setting, feature-ledger entry, detector extension
+capability, or runtime dependency exists. DN3 begins only with bounded structured
+severity, conservative anchored Error/Fatal text, and section reconstruction.
+Specialized formats, user patterns, and extension contributions remain later,
+separately evidenced slices. Alternate screens are unsupported; selection and
+search styling remain visually dominant; disable/close/resize/reflow/eviction
 
 ## Interactive performance invariants
 
@@ -1310,8 +1359,10 @@ The first SSH release intentionally grants no direct extension network and no
 raw secret access. The system OpenSSH child owns network and credential-agent
 interaction under the user's existing OS/OpenSSH policy. v0.5.1 official CLI
 adapters reuse the same exact-argv path. Direct SDK network, browser callback,
-sealed secret-handle, third-party process, and AI tool capabilities require
-their own reviewed schemas, quotas, threat models, and ADR changes.
+sealed secret-handle, third-party process, and model-assisted workflow
+capabilities require their own reviewed schemas, quotas, threat models, and ADRs;
+proposed [ADR 0033](adr/0033-optional-llm-orchestration-extension.md) defines the
+non-activating LLM boundary.
 
 ## Accepted D7/CP6 sandboxed ecosystem source boundary
 
@@ -1383,6 +1434,182 @@ CP1-CP3 remain authoritative fallback.
 
 This D7/CP6 boundary is deliberately narrower than the proposed first-party LLM
 Orchestration extension below. Neither decision activates or weakens the other.
+
+## Proposed situation-aware production operations boundary
+
+PO0 is a detailed documentation/research/checker proposal only and PO1-PO8 are
+not implemented. The
+[canonical specification](SITUATION-AWARE-PRODUCTION-OPERATIONS.md),
+[exact proposed contracts and 2026 decisions](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md),
+[UX and implementation blueprint](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md),
+[testing contract](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md), and
+[proposed ADR 0034](adr/0034-situation-aware-production-operations.md) add no
+dependency, process, provider capability, watcher, investigation view, live-log
+controller, managed diagnostic session, setting, journal, UI, model, or execution
+authority.
+
+If accepted, the feature composes existing owners rather than creating a second
+terminal or DevOps stack:
+
+- CP1 remains the immediate shell-native fallback and CP5 remains the sole
+  authenticated editor-state, suggestion-surface, and replacement-only insertion
+  owner;
+- D2 Environment Capsules and D6 provider adapters remain the source of bounded
+  route-scoped public context and freshness;
+- a new private pure operation model would own only versioned passports,
+  knowledge/evidence quality, observations, change/ownership records,
+  explanations, cohort/comparison/network/SLO records, resource/dependency
+  edges, assessments, recommendations, intents, typed actions, safety decisions,
+  preflight, one-use grants, verification predicates, monitor and managed-session
+  state, and content-minimized receipts;
+- the DevOps/SRE extension and separately installed Kubernetes, cloud, GitOps,
+  observability, incident, identity, and service-catalog adapters would map
+  bounded external evidence into that model;
+- the desktop application remains the only composition, review, one-use
+  confirmation, execution-handoff, publication, and route-lifecycle owner; and
+- the existing D3 ExternalToolRunner/session broker remains the only future
+  exact-executable/argv and child-lifecycle path.
+
+The product may present one coherent `Investigate` experience, but there is no
+single mutable “Ops Engine.” Six capability families compose through the pure
+model: provenance/change, resource explanation, comparison, network diagnosis,
+incident evidence, and managed diagnostic sessions. Provider adapters retain
+their own I/O and lifecycle; the app owns route composition; CP5 owns completion;
+DN owns terminal diagnostic navigation; D3/provider brokers own execution and
+children/listeners. The conceptual Context/Evidence/Action planes are a design
+aid, not new runtime authorities.
+
+The provisional implementation map keeps every concern in one owner:
+
+| Concern | Proposed owner | Required boundary |
+|---|---|---|
+| Typed passports, evidence, graphs, candidates, preflight and operation states | New private pure `automexia-operations-model` crate | No UI, I/O, persistence, credential, process, provider, shell, PTY, or model dependency. |
+| Kubernetes/cloud/GitOps/identity/observability mapping and lifecycle | DevOps/SRE `operations` service plus separately gated provider adapters | Bounded public inputs, exact scope/quota/deadline/cancellation, redaction, immutable generations, no per-key work. |
+| Change, field ownership, drift, resource explanation, cohort/revision, scheduling, network-path and SLO mappings | Pure domain rules plus the relevant separately gated adapter | Structured facts and source references only; no raw manifests/Secrets/time series, causal overclaim, scheduler/GitOps/SLO replacement, or active probe. |
+| Live multi-source log view | App-owned PO5 stream controller fed by separately gated log adapters | Memory-only bounded per-source records, backpressure/gaps, no evidence-cache or persistence ownership, no concatenated global log. |
+| Terminal diagnostic/time handoff | Existing DN owner publishes a bounded content-free marker/anchor reference to the app | No terminal-history access by provider/DevOps adapters; no timestamp fabrication or second scanner. |
+| Managed Kubernetes port forward, active probe and debug session | Existing activated D3/provider broker plus app-owned PO6 operation lifecycle | Exact target/vantage/image/profile/listener, one-use grant, external authorization/admission, bounded traffic/time, descendants/listeners/temporary-resource cleanup; no new runner. |
+| Route composition, refresh scheduling, preflight coordination, focus and operation lifecycle | Desktop application `automexia::operations` controller | Sole composition root; rejects stale route/context/evidence/policy/editor generations and owns cleanup. |
+| Renderer-neutral surface, accessibility and responsive projection | Existing UI model with a production-operations projection module | Pure hierarchy/geometry/semantics; hidden or stale surfaces own no input, hit target, focus node, or live announcement. |
+| Situation candidate display and authenticated editor replacement | Existing CP5 controller, list and editor bridge | No competing popup/controller; replacement only, never Enter or shell evaluation. |
+| Exact execution and descendants | Existing activated D3/provider broker | Structured executable/request and exact arguments only; one reviewed operation, final revalidation, observation/stabilization/verification, receipt and cleanup. |
+| Optional incident persistence | Application-owned private storage adapter behind PO5 opt-in | Content-minimized versioned records, protected atomic writes, retention, recovery, export, disable and uninstall. |
+
+The exact provisional crate/module and surface-to-controller mapping remains
+subject to PO0 owner review; it is not evidence that these modules exist.
+
+The pure model has no renderer, window, PTY, shell, filesystem, persistence,
+process, network, credential, provider SDK, or model dependency. Display text,
+Events, logs, telemetry, labels, annotations, runbooks, and provider responses
+are untrusted bounded data and never become arguments. Executable identity and
+exact argv stay typed separately.
+
+The adapter strategy is hybrid without creating a second authority. Explicit
+one-shot observations and familiar inserted commands reuse the existing
+exact-argv provider adapters. Sustained Kubernetes list/watch may use a
+maintained relist-aware client only inside the optional first-party adapter after
+its dependency, TLS, proxy, exec-plugin, MSRV, binary-size, resource, lifecycle,
+platform and rollback review. Cloud SDKs are not adopted by default. External
+GitOps, IAM, policy and observability systems remain semantic authorities and
+return only bounded normalized records.
+
+PO5 live logs follow a separate bounded stream path and publish only immutable
+per-source projections with visible gap state. PO6 diagnostic sessions follow a
+separate reviewed-session path to the existing broker. Neither path feeds raw
+content or handles into the evidence graph, pure rules, CP5, or renderer.
+
+The data path is explicit refresh or a bounded adapter-owned observation,
+validation and normalization, a route-scoped immutable evidence graph,
+deterministic assessment/recommendation, registered typed action, hard gates,
+explainable lexicographic ranking, immutable UI projection, CP5 insertion without
+Enter, and, if separately activated, current preflight plus D3 handoff.
+Publication revalidates route, passport, resource UID, evidence, policy, and
+editor generations. Context change, cancellation, revocation, adapter loss,
+route close, uninstall, or shutdown rejects stale work and joins or releases the
+owning resources.
+
+Action authority is deliberately split into four visible contracts:
+
+- **Native shell insertion** and **reviewed insertion** may replace only the
+  authenticated editor span. The shell owns a later Enter and Automexia cannot
+  enforce preflight, policy, observation, verification, receipt, or recovery over
+  what the user subsequently edits or runs manually.
+- **Managed operation** exists only after PO6 plus D3/provider activation. The
+  application owns final revalidation of a one-use exact-action grant and sends
+  one typed action to the broker, then owns observation, stabilization,
+  regression detection, verification, cancellation, receipt, and a separately
+  reviewed recovery proposal.
+- **Managed diagnostic session** uses the same final review and one-use grant
+  boundary, but its typed session descriptor additionally binds endpoint or
+  vantage, image/profile, lifetime, traffic and cleanup. It never becomes a
+  pane-wide mutation grant or a second process/listener owner.
+- Policy may remove or disable PO-provided mutation candidates and managed
+  actions. It cannot prevent a user from typing the same native command directly
+  into an unrestricted shell; product copy and audit claims must never imply
+  otherwise.
+
+No path may silently fall back from managed execution to text insertion, treat a
+manual shell result as managed evidence, or publish a managed success from
+process exit alone.
+
+Automexia-managed production mutations fail closed on stale/unknown context,
+authorization, policy, change-window, GitOps ownership, impact, target, or
+recovery. Active diagnostic sessions also fail closed on unknown target,
+authorization, admission, listener/vantage, image/profile, lifetime or cleanup
+ownership. A production lock freezes the reviewed identity rather than the external
+environment. Kubernetes ownership uses owner-reference kind/name/UID chains,
+not inferred names. Restart, rollback, scale, or failover is never inferred from
+an unhealthy Pod alone; missing or conflicting evidence yields diagnosis or
+refusal.
+
+Provider work is forbidden on typing, PTY, resize, renderer, and startup hot
+paths. PO0 proposes one active generation per pane, bounded candidates and
+frames, namespace-scoped list/watch or polling, shared identical-scope watches,
+process-wide query/object/memory/stream/session ceilings, no raw log/time-series
+evidence cache, memory-only bounded PO5 live logs, no evidence disk cache by
+default, content-minimized session receipts, cancellation, parked idle watchers,
+and CP1 fallback. The proposed values are now frozen for review by the strict
+PO0 machine-contract digest and mutation checker, but they are not accepted
+guarantees until ADR/owner approval and real resource evidence support them.
+
+Initial ranking is model-free. A later optional small local tie-breaker can only
+reorder candidates that already passed deterministic validation and cannot
+create a command, target, capability, approval, or execution request. The
+separate LLM Orchestration extension remains optional and neither the core nor a
+domain extension depends on it.
+
+## Proposed optional LLM Orchestration boundary
+
+LO0 is implemented only as documentation, a proposed ADR, and an evidence plan.
+It adds no workflow-model crate, model/provider dependency, model download,
+action registry, plan executor, MCP mapping, product surface, or runtime
+authority. See the canonical
+[LLM Orchestration specification](LLM-ORCHESTRATION-EXTENSION.md),
+[testing plan](LLM-ORCHESTRATION-TESTING.md), and
+[proposed ADR 0033](adr/0033-optional-llm-orchestration-extension.md).
+
+Cross-domain orchestration requires a private pure `automexia-workflow-model`
+below domain extensions and the optional orchestrator. It would own only
+versioned action descriptors, workflow plans, canonical digests, one-run grants,
+structured results, and content-minimized receipts. It has no filesystem,
+process, network, provider, credential, renderer, window, PTY, persistence, or
+model authority. Existing DevOps action types migrate through compatibility
+adapters rather than becoming the universal owner.
+
+The desktop application remains the only composition and execution root. It
+builds the current action registry from enabled extensions, independently
+validates and classifies every candidate plan, presents review, grants one exact
+plan digest, revalidates each step, and invokes existing domain brokers. The LLM
+extension owns model/provider adapters, explicit intent, planning, explanation,
+and bounded replanning only. Domain extensions never depend on it and remain
+complete when it is absent, disabled, offline, crashed, or uninstalled.
+
+Model function/tool syntax may transport a candidate plan but never an executable
+callback. No arbitrary shell, implicit Enter, direct provider tool, ambient MCP
+passthrough, or unattended high-risk execution exists in the initial boundary.
+A local or self-hosted endpoint is the first direction; remote adapters are
+explicit choices inside the optional extension, with no required paid API and no
+silent local-to-remote or provider fallback.
 
 ## Proposed Automation Studio and DevOps/SRE composition boundary
 

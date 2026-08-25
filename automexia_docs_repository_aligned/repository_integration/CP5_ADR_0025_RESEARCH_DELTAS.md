@@ -1,7 +1,8 @@
 
 # CP5 Research Deltas for Real Project ADR 0025
 
-**Owner:** proposed project ADR 0025; no CP5 runtime is authorized.
+**Owner:** accepted project ADR 0025; disabled source implementation is
+authorized, while preview and stable activation remain gated.
 This file is not an ADR and must not compete with it.
 
 Useful research safeguards to consider merging into ADR 0025 where not already covered:

@@ -25,10 +25,34 @@ audience; the roadmap owns sequencing, and the [feature catalog](FEATURES.md)
 owns availability.
 
 The dependency order is: first stable terminal, shared extension/DevOps
-foundations, a minimal Automation Studio release, then a dedicated video-
-editing extension. Non-production AS0 and video research may proceed earlier,
-but they do not add v0.4 release scope. The video product reuses generic
-workspace and task services rather than Studio-specific editor internals.
+foundations, a small domain-neutral workflow contract, a minimal Automation
+Studio release, then a dedicated video-editing extension. Non-production AS0,
+LO0 and video research may proceed earlier, but they do not add v0.4 release
+scope. The video product reuses generic workspace and task services rather than
+Studio-specific editor or LLM internals.
+
+The optional LLM Orchestration extension may proceed after the neutral workflow
+contract is proven. It remains independently releasable from Studio and video,
+does not block either, and never becomes a dependency of the terminal core or a
+domain extension. Automexia remains complete without a model, provider account,
+network connection or paid API.
+
+Semantic diagnostic navigation is a separate post-v0.4 core workflow track. Its
+DN0 design work may proceed without runtime authority, but DN1 product work
+begins only after the first stable terminal release. It is independent of SSH,
+Automation Studio, and video delivery and does not become their release blocker
+without an explicit future release decision.
+
+Situation-aware production operations is a separate optional `PO0-PO8` DevOps/
+SRE track. It builds on CP5 insertion, D2/D6 environment evidence, CP4 typed
+actions, and DN navigation, but does not merge or activate those owners. PO1-PO4
+follow the applicable read-only provider and CP5 gates; PO5 adds only bounded
+incident/log/time/handoff ownership; PO6 waits for D3/provider activation for
+managed actions and diagnostic sessions; PO8 keeps cross-environment comparison
+read-only. The feature stays deterministic and human-controlled,
+with no LLM dependency in the terminal core or DevOps/SRE extension. The
+[canonical specification](SITUATION-AWARE-PRODUCTION-OPERATIONS.md) owns the
+detailed sequence and safeguards.
 
 
 <!-- roadmap-status-register:start -->
@@ -59,9 +83,15 @@ the audit's executive matrix so the two cannot drift.
 | **Partially done** | D6.3/M10 | Google Cloud source, cached Hub review, and M11 private GKE ingestion lifecycle are fully done locally without execution. D3 activation/attestation and controlled real Google/native/resource/accessibility/release evidence remain. |
 | **Partially done** | D6.4/M11 | Kubernetes/OpenShift source, the app-owned bounded private transient allocation/validation/revalidation/revoke/cleanup lifecycle, and cached Hub review are fully done locally without execution. D3 activation, real clients/clusters/plugins, Unix native no-follow, controlled cleanup/resources/accessibility/release evidence remain. |
 | **Partially done** | D6.5/M12 | Teleport source and cached Hub review are fully done locally without execution. OpenBao is **Not done** and remains blocked on proposed ADR 0024 acceptance; D3/native Teleport activation evidence remains external. |
-| **Partially done** | D7 | Proposed ADR 0029, a strict schema-1 policy contract, nine mutation-owned threats, 28 resource ceilings, and a detailed execution audit are complete without runtime authority. Public SDK/downloads, package verification, Wasmtime host, distribution/revocation, product UX, and native release evidence require explicit acceptance and protected implementation. |
+| **Partially done** | D7 | **Fully done at the accepted source boundary; partially done overall.** ADR 0029 and the exact contract digest are accepted. The private pure model, strict signed local-bundle verifier, protected atomic disabled store, custom-WIT/no-default-WASI Wasmtime conformance host, exact grants/lifecycle, non-executing signed action-pack mapping, selected-input consent/response model, renderer-neutral review states, app adapter, fuzz/property/mutation checks, and benchmarks are implemented locally. Component activation, public downloads/SDK, distribution transport, provider calls, native released UX, signed three-platform packages, malicious-corpus drills, 1,000 cycles, and 30-day evidence remain release-gated. |
+| **Partially done** | LO0 | The canonical optional LLM Orchestration specification, proposed ADR 0033, build/wrap/adopt boundary, neutral-workflow dependency direction, provisional limits, and future evidence ladder exist. No workflow-model crate, model/provider adapter, action registry, plan executor, product surface, MCP mapping, model download, or runtime authority exists; ADR acceptance and a versioned machine contract remain. |
+| **Not done** | LO1-LO5 | No domain-neutral action/workflow implementation, orchestrator extension, model request, context-consent UI, reviewed one-run execution, multi-extension workflow, provider delivery, conversation store, or native/release evidence exists. |
 | **Partially done** | AS0 | The proposed Automation Studio architecture, ADR 0030, technology decision, ownership boundary, AS0-AS6 sequence, and future evidence ledger exist. ADR acceptance, a numeric machine contract, exact dependency audit, and native Windows/macOS/Linux X11/Wayland editor-host proof remain. |
 | **Not done** | AS1-AS6 | No document service, workspace-trust implementation, editor/webview surface, LSP/DAP broker, language server, Studio or DevOps/SRE integration package, file-write capability, typed script-run product path, remote/mobile client, or advanced runtime exists. |
+| **Partially done** | DN0 | The canonical Semantic Diagnostic Navigator specification, evidence ledger, proposed ADR 0032, ownership/resource/privacy/test contract, and DN0-DN6 sequence exist. ADR acceptance, frozen machine-checked limits, failing tests, and production-owner approval remain. |
+| **Not done** | DN1-DN6 | No failed-command action, generic scan, diagnostic detector, anchor cache, highlight, setting, specialized/user pattern, extension contribution, or native release evidence exists. |
+| **Partially done** | PO0 | The canonical specification, exact proposed PO0 contract/digest with 17 record payloads and 37 phase/effect/authority-bound actions, semantic checker/mutations/source nonactivation scan, UX/build blueprint, 2026 primary-source baseline, proposed ADR 0034, provider/rule/lifecycle/settings/traceability details and PO0-PO8 sequence exist. Runtime schemas and parsers, protected ADR/exact-digest and owner/dependency/capability acceptance, reviewed prototypes, first failing real-path tests, independent threat review and packaged nonactivation evidence remain. |
+| **Not done** | PO1-PO8 | No production passport/lock; change/ownership/drift, resource/scheduling, cohort/environment, network/SLO, live-log/time/handoff or dependency view; situation-aware candidate; rollout prioritization; impact preflight; GitOps/JIT/policy composition; Incident Mode; managed operation/diagnostic session; journal; runbook pack; provider adapter; local ranker; execution path; or native/release evidence exists. |
 | **Fully done** | CP0 | Architecture, threat model, ceilings, fixtures, mutation tests, and nonactivation policy are complete. |
 | **Fully done** | CP1 | Native shell completion, diagnostics, explicit bounded refresh, precedence, and lifecycle are complete locally. |
 | **Fully done** | CP2.0 | The bounded typed Quick Action model and hostile corpus are complete at their pure boundary. |
@@ -74,7 +104,7 @@ the audit's executive matrix so the two cannot drift.
 | **Partially done** | CP4 | Fully done locally at the product-integrated nonactivating boundary: seven provider-aware projections, retained cached-product-to-selected-route handoff, immutable route snapshots, idempotence/revocation, stale-generation rejection, final copy/insert revalidation, accessible context/risk states, production confirmation, fuzz/benchmark/policy evidence. Approved provider refresh/capsule production, exact execution, OpenBao, and real native/provider/accessibility/release evidence remain. |
 | **Fully done** | CP5.0 | Native API/version research, a bounded non-runtime editor-state prototype, 32/128/512 matcher evidence, dependency review, privacy delta, and a retain-CP1/defer-P2 decision are machine-gated. |
 | **Partially done** | CP5.1-CP5.6 | ADR 0025 is accepted. CP5.1 authenticated protocol/endpoints/route exchange, CP5.2 sources, CP5.3 ranking, and CP5.4 UI/publication are fully done at source/local boundaries. CP5.5 has an inert helper target and four bidirectional native adapters with local Windows PowerShell and WSL Bash/Zsh/Fish evidence. Reviewed launcher, signing/attestation, WSL relay, live composition, activation, and successful three-OS/accessibility/package/resource/30-day evidence remain. CP1 remains fallback. |
-| **Partially done** | CP6 | The non-activating D7/CP6 contract freezes signed-pack provenance/capability/revocation rules and selected-input-only AI consent with no tools or execution. Runtime pack import, provider transport, UX, privacy/native evidence, and release activation remain blocked on ADR 0029 acceptance. |
+| **Partially done** | CP6 | **Fully done at the accepted no-provider source boundary; partially done overall.** Verified capability-free action packs map into existing typed disabled insert-only actions. Explicit selected text receives bounded normalization/redaction, exact data-flow review, digest/route/generation/expiry-bound single-use consent, strict typed bounded output, independent risk, and cancel-first accessible review models. Provider/tool/workflow/MCP calls, ambient data, Enter, execution, public UI/SDK/downloads, and release activation remain disabled; native privacy/accessibility/provider evidence is external. |
 | **Partially done** | G0 | Pinned Ghostty 1.3.1 Linux/BSD source/binary/checksum provenance, generated fixtures/references, deterministic Windows adaptation, accepted ADR 0026, classic golden, property tests, and offline verification are implemented. Native macOS fixture plus native Linux/macOS release evidence remain. |
 | **Fully done** | G1 | The pure private typed/compiled registry, schemas, origins, scopes, policies, direct/reverse indexes, sequence trie/table reservation, classic adapter, registry-derived palette, and latency evidence are implemented. |
 | **Fully done** | G2 | Explicit default/moving/pinned profiles, typed bind/unbind layers, strict diagnostics, immutable last-known-good publication, transactional hotkeys/palette, and dry-run/confirmed atomic migration are implemented. |
@@ -197,9 +227,11 @@ authority or an implementation claim:
 
 | Release/owners | Terminal-first outcome | Explicit exclusions until later |
 |---|---|---|
-| v0.5.0 D5 + CP2/CP3 | Generated operation registry; action search/review/insert; collision-safe optional aliases; read-only host/group/tag/recent/favorite inventory; Connection Review; quick connect; destination selection; routes/jumps; typed tunnels; identity references; host-key explanation; safe workspace intent/restore; native completion | Structured SFTP, provider API inventory, shared sessions, proprietary identity, AI execution |
+| v0.5.0 D5 + CP2/CP3 | Generated operation registry; action search/review/insert; collision-safe optional aliases; read-only host/group/tag/recent/favorite inventory; Connection Review; quick connect; destination selection; routes/jumps; typed tunnels; identity references; host-key explanation; safe workspace intent/restore; native completion | Structured SFTP, provider API inventory, shared sessions, proprietary identity, model-assisted workflow execution |
 | v0.5.1 D6 + CP4 | Immutable per-pane cloud/cluster/infrastructure context; official AWS/Azure/GCP/Kubernetes/OpenShift/Teleport/OpenBao flows; static imports; explicit provider refresh; capsule-aware actions; reviewed multi-target operations | Ambient provider processes, global context mutation, background authentication, secret custody |
-| v0.6+ D7 + CP5/CP6 | Independently gated file transfer, bounded session memory/bookmarks, team inventory/policy, read-only-first collaboration, additional transports, signed ecosystem packs, optional editor bridge, and isolated AI explanation/suggestion | Any capability that has not passed its own file/network/peer/privacy/sandbox/native release gate |
+| Post-v0.5.1 PO1-PO8 | Production passport/lock; bounded explain/change/compare/network/SLO/dependency views; situation-aware native command ranking/refusal; impact/GitOps/JIT/policy preflight; Incident hypotheses, time/log navigation, handoff and journal; one-action observe/stabilize/verify/recover; managed port-forward/probe/debug sessions; declarative organization packs; read-only cross-environment comparison | No per-key provider work, raw observability storage, credential custody, blind restart, implicit Enter, autonomous remediation, merged cross-environment authority, core/domain LLM dependency, or managed action/session before D3/provider gates |
+| v0.6+ D7 + CP5/CP6 | Independently gated file transfer, bounded session memory/bookmarks, team inventory/policy, read-only-first collaboration, additional transports, signed ecosystem packs, optional editor bridge, and selected-input model explanation/suggestion | Workflow planning/execution and any capability that has not passed its own file/network/peer/privacy/sandbox/native release gate |
+| Post-foundation LO0-LO5 | Optional separately installed orchestrator proposes typed plans over registered domain actions; core policy, review, one-run grants and existing brokers remain authoritative | No terminal/domain dependency on models, no required paid API, no direct model tool handle, no unattended high-risk mode, and no release before its separate gates |
 
 The detailed mapping names every planned command, leader sequence, picker
 behavior, risk review, data boundary, security/performance invariant, test
@@ -223,7 +255,8 @@ until its protected slice passes review and evidence.
 | v0.5.0 D3-D5 and CP2-CP3 | Preserve the one nonactivated `ExternalToolRunner`; complete protected activation/native proof; generate CLI/help/completion/schema artifacts from typed registries; preserve exact launch, session, capsule, risk, redaction, and resource policy | Safe OpenSSH inventory; exact SSH/jump/tunnel requests; Connection Review; typed actions, aliases, and first-party packs | System OpenSSH; shell-native editors/completion; planned `clap_complete`, `clap_mangen`, `schemars`, and AccessKit. CP5.0 retained the in-tree matcher after measuring Nucleo. | Native SSH stack, provider SDK bundle, secret vault, structured SFTP, untrusted extensions |
 | Protected credential slice | Opaque identity references, public auth state, protected input, approval/revocation, and canary/redaction rules | Version-aware Teleport/OpenBao/agent integration returning public state only | Agents, FIDO, external vaults, `tsh`, OpenBao/Smallstep; exact `keyring-core` stores plus `secrecy`/`zeroize` only after a custody ADR | Private-key formats, CA, password manager, credential sync, recovery claims |
 | v0.5.1 D6 and CP4 | Immutable per-pane Capsules, explicit refresh, last-known-good state, provider-neutral inventory, provenance/freshness/risk, and cross-pane isolation | Separately enabled AWS, Azure, GCP, Kubernetes, OpenShift, infrastructure, and enterprise-policy adapters | Official provider CLIs/config first; OPA only for an existing organization policy service | Direct provider SDK until CLI/config cannot meet a measured pagination/watch/cancellation/performance need |
-| v0.6+ D7 and CP5-CP6 protected features | Storage/redaction contracts, file-operation states, WIT capabilities, quotas, signed-bundle policy, AI risk/approval boundary | Transfer, Mosh, serial, logs/search, team Git, collaboration, local policy, sandboxed ecosystem, and AI adapters as separate slices | System `sftp`/`scp`, Mosh, Git, SOPS/age, Upterm, optional `rusqlite`, `openssh-sftp-client`, `serialport`, Cedar, Wasmtime/WASI | Telnet disabled by default; custom relay, embedded inference, SQLCipher, and direct SDKs require independent justification |
+| v0.6+ D7 and CP5-CP6 protected features | Storage/redaction contracts, file-operation states, WIT capabilities, quotas, signed-bundle policy, selected-input model consent/risk boundary | Transfer, Mosh, serial, logs/search, team Git, collaboration, local policy, sandboxed ecosystem, and CP6 provider adapter as separate slices | System `sftp`/`scp`, Mosh, Git, SOPS/age, Upterm, optional `rusqlite`, `openssh-sftp-client`, `serialport`, Cedar, Wasmtime/WASI | Tool/workflow execution, Telnet, custom relay, embedded inference, SQLCipher, and direct SDKs require independent justification |
+| LO0-LO5 optional orchestration | Pure workflow schema; app-owned registry, plan policy/review, one-run grants, execution composition and receipts after acceptance | One separately installed LLM Orchestration extension; domain extensions publish deterministic typed actions without model dependencies | User-operated local/self-hosted inference first; explicit remote adapters later | Direct model tools, arbitrary MCP, embedded inference, silent provider fallback, conversation storage and unattended high-risk work remain separately gated |
 
 The core never embeds another terminal UI framework, shell editor, SSH engine,
 cloud-login implementation, password vault, policy language, database engine,
@@ -543,6 +576,140 @@ The exact contract, provisional budgets, UI behavior, source precedence,
 rejected dependencies, and acceptance criteria live in
 [Command Productivity](COMMAND-PRODUCTIVITY.md).
 
+### Post-v0.4 semantic diagnostic navigation (DN0-DN6)
+
+**DN0 is partially done at the documentation boundary. DN1-DN6 are not done.**
+The canonical
+[Semantic Diagnostic Navigator](SEMANTIC-DIAGNOSTIC-NAVIGATOR.md) and proposed
+[ADR 0032](adr/0032-bounded-semantic-diagnostic-navigation.md) define the target.
+They add no current action, shortcut, detector, setting, runtime dependency,
+cache, telemetry, persistent index, or extension permission.
+
+The product sequence is:
+
+1. finish and publish the stable v0.4 terminal without this feature;
+2. accept or supersede ADR 0032 and close DN0's measurable limits/threat/test
+   contract;
+3. deliver exact failed-command traversal independently of heuristic detection;
+4. prove a bounded on-demand scanner and generic Error/Fatal sections;
+5. finish accessible product interaction and native/resource assurance;
+6. add specialized formats and user patterns only through separate evidence;
+7. consider extension contributions only after their privacy/capability
+   boundary, and ADR 0029 where third-party delivery applies.
+
+DN1-DN4 may be scheduled alongside v0.5 work after v0.4, but their release
+assignment remains open. They do not wait for managed SSH, multi-cloud,
+Automation Studio, or a public marketplace, and none of those tracks wait for
+the navigator. DN6 is different: ambient terminal-history access is not part of
+the current extension model and remains blocked on a separately accepted
+decision.
+
+Current reusable evidence is deliberately narrow:
+
+- semantic previous/next prompt actions and bounded terminal search exist;
+- supported shell integrations attach OSC 133 command results to prompt rows;
+- stock CMD and unsupported shells remain neutral when status is unknown;
+- prompt identity survives supported scrollback/reflow cases;
+- renderer-neutral UI, route scheduling, and bounded cache patterns exist.
+
+This does not mean diagnostic navigation is partially implemented. Current
+result metadata does not provide a durable complete command-output region; the
+command-result assurance page also records a long-output/scrollback surface gap.
+There is no generic stable logical-line identity, diagnostic scanner, detector,
+section locator, navigation state, highlight, or extension contract.
+
+The planned owner split is fixed unless ADR 0032 is superseded:
+
+- `rio-vt`/`Crosswords` owns grid truth, prompt results, bounded normalized line
+  batches, content-free positions, viewport movement, and reflow/eviction
+  signals, but no format/domain detector meaning;
+- one route `Context` owns one navigator, cancellation generations, at most one
+  continuation, optional bounded content-free anchors, cleanup, and publication;
+- an app-owned pure module owns generic candidate filtering, detectors, bounded
+  section reconstruction, and cache policy;
+- the renderer owns only content-free highlight geometry, paint, precedence,
+  and accessibility projection;
+- extensions receive no history by default and never receive grid, PTY,
+  renderer, process, window, credential, or mutable session handles.
+
+#### DN0 - decision, threats, limits, and tests
+
+**Partially done at the documentation boundary.** Complete only after explicit
+ADR acceptance, reviewed action naming, exact module/dependency ownership,
+frozen machine-checked ceilings and mutation owners, a hostile/false-positive
+corpus, and failing tests for every first-slice behavior/lifecycle contract.
+No dependency or runtime activation is authorized by the current proposal.
+
+#### DN1 - exact failed-command navigation
+
+**Not done.** Add separate previous/next failed-command actions and palette
+entries using trusted supported-shell result metadata. Navigate to the exact
+prompt/input anchor, never a fabricated output region. Cover non-zero, success,
+unknown status, oldest/newest/no-wrap/forward-to-live, manual movement,
+new output, resize, eviction, route/session isolation, close, accessibility, and
+disabled behavior. Assign no default shortcut before collision evidence.
+
+#### DN2 - bounded on-demand scan infrastructure
+
+**Not done.** Add bounded normalized logical-line batches, route-local scan
+generations, one coalesced low-priority continuation, stale-result rejection,
+optional 256-entry content-free cache, exact viewport placement, and complete
+cleanup. Scan outside paint/input/PTY/resize/startup paths, release the terminal
+lock before classification, and use deterministic row/byte ceilings plus a
+measured yield target. Use generation invalidation or a proven small-cache
+reflow remap; do not add a global logical-line ID first.
+
+#### DN3 - generic built-in error sections
+
+**Not done.** Add bounded structured severity, conservative anchored Error/Fatal
+text, and bounded section reconstruction. Keep failed command, class, severity,
+provenance, and confidence separate. Warnings remain outside the default action.
+Malformed, oversized, Unicode, wrapped, overwritten, mixed-format, quoted,
+negated, path/command, "0 errors", and output-storm cases require deterministic
+negative tests, property checks, fuzz ownership, and performance ceilings.
+
+#### DN4 - product interaction and assurance
+
+**Not done.** Add transient renderer-neutral non-color highlighting, selection/
+search precedence, immediate reduced-motion-safe scrolling, content-free
+accessible announcements, tiny-to-8K responsive behavior, experimental
+enable/disable, last-known-good configuration, and complete native/resource
+evidence. A scan cannot pass merely because its focused test or one Windows host
+passes; input/frame/lock/allocation/cleanup ratchets and Windows, macOS, Linux
+X11/Wayland, WGPU/CPU where applicable, and assistive-technology evidence remain
+separate gates.
+
+#### DN5 - specialized formats and user patterns
+
+**Not done.** Add Python tracebacks, Rust panics, compiler formats, and other
+formats as independent measured slices rather than one bundle. User patterns
+come only after built-in precision is stable, compile during atomic
+configuration validation, and remain bounded to the reviewed count/source/
+automaton/execution policy. Every detector has versioned identity, positive and
+negative fixtures, limits, provenance, disable, cache invalidation, fuzz,
+benchmark, native UX, rollback, reference, and changelog evidence.
+
+#### DN6 - extension contributions
+
+**Not done and not authorized.** Prefer declarative rules that core executes
+without exposing content. Any parser that observes bounded terminal text gains a
+privacy-sensitive read capability with explicit consent/scope, isolation,
+quotas, revocation, cleanup, and malicious-detector evidence. It cannot persist
+or forward text and cannot inherit filesystem, process, network, provider,
+credential, PTY, renderer, or AI authority. Third-party delivery also waits for
+ADR 0029.
+
+#### Cross-phase release gates
+
+The disabled path must perform no scan, create no worker, write no storage, and
+change no terminal behavior. The grid plus trusted shell metadata remains
+canonical; transient batches are discarded, anchors/metrics are content-free,
+alternate screens are unavailable, and eviction/truncation/unsupported shells
+remain truthful. Every implemented slice updates guide, exact action/config
+reference, architecture/ADR, testing evidence, feature assurance, roadmap/audit,
+and changelog together. The exact provisional ceilings and complete test ladder
+are owned by the canonical specification.
+
 ### v0.5.0 first-party SSH extension
 
 The D5 product surface is the renderer-neutral Connection Hub rather than a
@@ -674,6 +841,300 @@ and dependency growth, and avoids binding the terminal core to unstable or
 provider-specific SDKs. OpenTofu/Terraform workspaces are displayed as context,
 never treated as credential or authorization boundaries.
 
+### Post-v0.5.1 situation-aware production operations (PO0-PO8)
+
+**PO0 is partially done only at a documentation/research-planning boundary.
+PO1-PO8 are not done.** The
+[canonical specification](SITUATION-AWARE-PRODUCTION-OPERATIONS.md),
+[exact proposed PO0 contracts](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md),
+[future testing contract](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md), and
+[proposed ADR 0034](adr/0034-situation-aware-production-operations.md) define
+the target without adding a provider capability, watcher, completion source,
+setting, journal, model, execution path, or release claim.
+
+PO0 now includes a strict non-activating JSON planning contract, canonical
+digest, semantic checker, mutation suite, current-source nonactivation scan,
+all 17 exact neutral record payloads, 37 action profiles with phase, effect and
+evidence authority, provider/version/freshness profiles, rule and lifecycle
+tables, planned settings and requirement traceability. The planning mirror is
+not a runtime schema. This does **not** advance PO0 beyond partial: runtime
+schemas/parsers, ADR/owner acceptance, dependency approval, reviewed prototypes,
+first failing real-path tests, independent threat review and packaged
+nonactivation evidence remain open.
+
+The outcome is a production-aware terminal workflow that shows the exact
+environment, prioritizes relevant native commands from current evidence,
+answers recurring change, state, comparison, network and user-impact questions,
+explains uncertainty, previews impact, preserves GitOps and just-in-time access
+controls, and helps the operator investigate, hand over, verify and recover. It includes the requested
+`kubectl rollout` experience: Automexia may prioritize `status`, `history`,
+`undo`, `restart`, or diagnosis for affected workloads, but only after resolving
+the real controller owner, cause, authority, policy, GitOps state, blast radius,
+and evidence freshness. A restart is never preferred merely because Pods are
+unhealthy.
+
+The delivery order is:
+
+1. **PO0 — decision and contract:** accept or supersede ADR 0034 and approve or
+   revise the current proposed machine-contract digest; freeze exact owners,
+   capabilities, limits, refusal/ranking semantics and dependencies; complete
+   prototypes, first failing real-path tests and packaged nonactivation proof.
+2. **PO1 — environment passport and lock:** add read-only pane-local provider,
+   account, region, cluster, namespace, identity, expiry, GitOps, incident, and
+   freshness context with exact context-change diff and production fail-closed.
+3. **PO2 — bounded investigation evidence:** normalize public provider
+   observations and deliver independently gated change/ownership/drift,
+   resource/scheduling explanation, healthy cohort/revision comparison,
+   read-only network-path diagnosis, optional SLO summaries, dependencies,
+   health, rollout, events and permissions. Keep active probes, raw logs, time
+   series, credentials, and persistent evidence caches out.
+4. **PO3 — situation-aware completion:** layer deterministic hard gates,
+   evidence/refusal reasons, lexicographic ranking, and exact insert-without-
+   Enter behavior over CP5 while CP1 remains immediately available.
+5. **PO4 — production preflight:** compose exact argv/targets, impact,
+   permissions, risk, GitOps, JIT elevation, policy, change windows, approval,
+   verification, and recovery without executing an action.
+6. **PO5 — Incident Mode and journal:** pin incident context, hypotheses and
+   coverage-qualified negative evidence; provide a bounded timeline, optional
+   memory-only log fan-in, trusted/approximate time navigation and session
+   journal; support reviewed redacted handoff/export with exact privacy,
+   retention, recovery, and uninstall rules.
+7. **PO6 — reviewed operation and diagnostic-session lifecycle:** only after D3
+   and the applicable provider capability are independently activated, compose
+   one explicit execute-observe-stabilize-verify-recover operation. Add
+   Kubernetes port forward, controlled probe, or safe debug slices only behind
+   their own one-use grant and native/provider cleanup evidence. Never chain a
+   second mutation automatically.
+8. **PO7 — organization packs and guided workflows:** accept signed, versioned,
+   declarative runbook/policy packs and one-step-at-a-time cross-tool workflows.
+   Packs add no scripts, credentials, capabilities, or execution grants.
+9. **PO8 — adapter and release maturation:** add separately proven provider
+   slices, read-only multi-region/cluster comparison with reviewed service
+   equivalence and independent authority, and optionally evaluate a small local
+   tie-breaker that can only reorder already-valid candidates. Deterministic
+   policy remains authoritative.
+
+#### PO phase-by-phase experience and build contract
+
+The detailed surface layouts, copy, keyboard model, responsive behavior, user
+journeys, implementation ownership, and UX definition of done are frozen by the
+[Production Operations UX and implementation blueprint](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md).
+The roadmap summary below is mandatory for planning and status review; it does
+not activate any feature.
+
+**PO0 — decision, prototype, and enforceable contract**
+
+- **User experience:** validate nonactive prototypes of the environment
+  passport, situation list, candidate detail, preflight, operation monitor, and
+  Incident workspace. Cover the common read-only journey, reviewed insertion,
+  managed-operation journey, narrow panes, keyboard-only use, stale/offline
+  state, refusal, cancellation, failure, and recovery. Wording must distinguish
+  observed fact, correlation, inference, unknown, and policy decision.
+- **Implementation work:** accept or supersede ADR 0034 and accept or revise the
+  current strict proposed machine contract; freeze versioned typed
+  schemas, limits, risk/refusal/ranking rules, ownership-path and operation/
+  session-kind semantics, surface
+  ownership, accessibility names, focus transitions, protocol frames, privacy
+  fields, resource budgets, feature flags, operation/session kinds, rollback,
+  and status transitions.
+  Maintain the present semantic checker, mutation suite, traceability and source
+  nonactivation scan; create the exact scenario corpus and first failing
+  real-path tests, benchmark plan, full dependency review, prototype evidence
+  and packaged nonactivation test.
+- **Exit:** owners approve the decision, threat model, prototype flows, wording,
+  machine contract, and evidence plan. PO projections and actions remain absent
+  from all six reused surfaces in the released runtime, and no capability,
+  watcher, provider request, setting, or execution route is activated.
+
+**PO1 — environment passport, lock, and context change**
+
+- **User experience:** extend the existing context line above the command; do
+  not add a second dashboard. In one glance it shows environment class, provider
+  account/project, region, cluster/namespace, active identity/role, expiry,
+  GitOps owner, incident, and freshness. Compact/minimal layouts preserve
+  `PROD`, target, identity, and freshness first. A changed context shows the
+  exact before/after fields with `Adopt`, `Keep locked`, and safe dismiss/close
+  behavior; it never steals editor focus.
+- **Implementation work:** add one immutable route-scoped passport snapshot,
+  provenance/freshness per field, environment classification, production
+  unknown/fail-closed state, lock generation, field-level context diff, and pure
+  responsive projection. Reuse D2 route/session/revision cancellation and the
+  existing UI/accessibility model; keep provider resolution off startup, typing,
+  PTY, resize, and render paths. Clear snapshots and locks on route close,
+  logout, revoke, disable, uninstall, and shutdown.
+- **Exit:** exact pane/tab/window/clone isolation, context-change rejection,
+  stale/offline recovery, focus stability, screen-reader semantics, controlled
+  pixels, native shells, latency, memory/handle cleanup, and removal are proven.
+
+**PO2 — bounded evidence, recent changes, and dependency graph**
+
+- **User experience:** evidence appears only inside the requested situation or
+  detail surface. One `Investigate` action exposes relevant `Explain state`,
+  `What changed?`, `Compare with healthy`, `Diagnose connection`, and
+  `Show user impact` choices. Rows show source, age, scope, coverage and
+  supporting/contradicting/unknown state. Changes say “correlated with” unless
+  an independent authority proves cause. Cohorts, network vantage, low-traffic
+  SLO limits and unavailable sources are visible; raw logs and dashboards are
+  not copied into PO2.
+- **Implementation work:** define provider-neutral knowledge/evidence quality,
+  observation, change, field ownership/drift, typed findings, cohort/revision,
+  network-layer, permission, rollout, health and approved SLO-summary records.
+  Resolve ownership by stable UID; normalize semantic fields rather than YAML;
+  build bounded dependency/impact graphs; consume provider-native GitOps diff/
+  ignore/self-heal behavior; preserve explicit unknowns and correlation-not-
+  causation. Each adapter owns scope, deadline, quota, polling/watch, relist,
+  throttle, cancellation, freshness, redaction and cleanup. No active probe,
+  provider mutation, raw stream or default evidence disk cache exists.
+- **Exit:** explainer/scheduling, change/ownership/drift, cohort/revision,
+  network-path and SLO boundary tables pass with independent provider oracles;
+  property/fuzz/model tests cover clocks, false-causal language, normalization,
+  watch/relist/offline/stale/revoke, graph/cohort/fan-out limits, secret canaries,
+  low traffic, unavailable vantage, resources, disable/uninstall and cleanup.
+
+**PO3 — situation-aware completion and deterministic prioritization**
+
+- **User experience:** typing `kubectl rollout` and explicitly requesting
+  completion opens the existing CP5 pane-local list, not a new popup. A maximum
+  of five current-situation rows show command, exact target, one reason,
+  freshness, and `Read-only`, `Review required`, or `Refused`; normal shell
+  completion remains reachable. Arrows move, detail is explicit, Escape closes,
+  and Tab/Right Arrow inserts only the authenticated span without Enter.
+- **Implementation work:** construct candidates only from an immutable passport
+  plus evidence generation. Apply stale, target-UID, authorization, policy,
+  GitOps, scope, contradiction, and supported-action hard gates before a stable
+  lexicographic rank. Prefer diagnosis and reversible actions when evidence is
+  equal; keep unknown business priority unknown. Project through the current
+  CP5 controller/renderer/editor bridge, cancel obsolete generations, preserve
+  stable selection, and keep CP1 immediately available when PO is disabled,
+  offline, slow, or failed.
+- **Exit:** the Kubernetes cause/owner corpus and cross-tool cases match an
+  independent reference ranker; exact editor bytes/no Enter, native shells,
+  stale cancellation, ordinary-keystroke zero-I/O, p95/p99 explicit-completion
+  latency, accessible listbox behavior, responsive pixels, and fallback pass.
+
+**PO4 — impact, authority, policy, GitOps, JIT, and recovery preflight**
+
+- **User experience:** choosing a mutation opens one review in the fixed order
+  environment → target → observed reason → expected impact → authority →
+  GitOps/policy/change window → verification → recovery. Cancel is always
+  available. Before PO6, the positive action is only `Insert reviewed command`;
+  the shell owns later Enter. JIT access, ticket, or approval is a separate
+  explicit step and cannot be silently requested.
+- **Implementation work:** compose typed executable/argv/targets/UIDs, target
+  count and blast radius, credential expiry, live permission result, admission
+  limits, GitOps ownership/drift/sync window, organization policy, change
+  window, approval/ticket, verification probes, timeout, and recovery options.
+  Distinguish real provider dry-run/plan support from estimates. Bind all fields
+  to route, context, evidence, policy, and candidate revisions; expire the review
+  on any relevant change. Do not execute, elevate, approve, or mutate global CLI
+  state in this phase.
+- **Exit:** exhaustive boundary tables and independent provider/policy/GitOps
+  comparisons prove fail-closed production behavior, truthful dry-run wording,
+  exact target/argv display, cancellation, expiry, accessibility, native review,
+  and forbidden-side-effect absence.
+
+**PO5 — Incident workspace, live evidence navigation, and content-minimized journal**
+
+- **User experience:** one deliberate action enters a pane/workspace showing
+  objective, locked environment, current facts, hypotheses/contradictions/
+  missing evidence, a short timeline, tried actions and one next safe action.
+  Trusted entries can jump to their source; approximate terminal anchors say so.
+  Optional log fan-in is visibly source-separated, pausable and memory-only with
+  gaps/drops shown. Journaling is `Session only` by default. Handoff previews
+  included/redacted facts, hypotheses, outcomes, unresolved questions and links.
+- **Implementation work:** add incident/hypothesis/session state, coverage-
+  qualified negative evidence, bounded deduplicated timeline, trusted/
+  approximate anchors, evidence/policy/receipt references and content-minimized
+  journal. Add a separate bounded per-source live-log controller with
+  backpressure, source-local sequence, clock/gap state and Error Navigation
+  references. Store no raw terminal output, log stream, time series, provider
+  body, secret or arbitrary environment value. Optional persistence keeps its
+  protected atomic migration/retention/recovery/export/delete lifecycle.
+- **Exit:** session-only zero-write, log ordering/gap/backpressure and time-anchor
+  oracles; hypothesis/negative-evidence, crash/restore/handoff/export/retention,
+  privacy canaries, 24-hour resources, multiple-operator conflict, native focus/
+  accessibility and complete stream/storage removal pass.
+
+**PO6 — one managed operation or diagnostic session**
+
+- **User experience:** only after separate activation, preflight may offer
+  `Execute reviewed action`. A nonmodal monitor shows exact target and one state:
+  preparing, running, observing, stabilizing, succeeded, failed, cancelled,
+  uncertain, or recovery available. The same review/monitor pattern owns a
+  Kubernetes port forward, controlled probe or safe debug session; each shows
+  listener/vantage/image/profile, authority, lifetime and cleanup. Success is
+  never inferred from process exit alone and no second mutation auto-starts.
+- **Implementation work:** route one typed action through the activated D3 or
+  provider broker after final context/UID/evidence/permission/policy revalidation.
+  Own exact argv/request/environment, deadlines, process descendants, provider
+  operation IDs, cancellation, before-state, progress observations,
+  stabilization/regression/verification predicates, uncertain/partial results,
+  content-minimized receipts, and a separate reviewed recovery proposal. Each
+  port-forward/probe/debug slice binds exact target, local endpoint or vantage,
+  immutable image/profile, traffic/time limits, authorization/admission,
+  descendants/listeners/temporary resources and cleanup. Never evaluate display
+  text or silently fall back to shell insertion.
+- **Exit:** real disposable provider/cluster workflows prove exact side effects,
+  no forbidden second action, process/resource cleanup, timeout/cancel/context-
+  change/policy-revoke behavior, observation/stabilization/regression,
+  verification and recovery, plus per-slice listener/probe/debug privilege,
+  orphan and cleanup matrices, native monitor UX, packaging, rollback, and
+  controlled release. D3 and each provider capability must already be
+  independently active.
+
+**PO7 — signed organization packs and one-step guided workflows**
+
+- **User experience:** installation shows publisher, signature, version,
+  supported tools, rules, required data, conflicts, and zero execution grants.
+  A guided workflow presents one reviewed step, its evidence and expected
+  result, then stops. The operator explicitly requests the next step; disabling
+  or removing a pack restores deterministic built-in behavior immediately.
+- **Implementation work:** define strict declarative schemas for service
+  criticality, ownership, dependency hints, allowed/refused actions, verification,
+  and runbook steps. Reuse the accepted D7 signature/provenance/limits/store
+  boundary only after its capability decision. Reject scripts, shell strings,
+  callbacks, credentials, provider authority, hidden capabilities, cycles,
+  unsupported steps, policy conflicts, downgrade, and compromised updates.
+- **Exit:** malicious-pack, canonical-digest, revoke/update/rollback, policy-
+  conflict, one-step boundary, cross-tool result, provenance, disable/uninstall,
+  accessible review, and native package tests pass without granting capability.
+
+**PO8 — adapter maturation, cross-environment comparison, optional local
+tie-breaker, and release proof**
+
+- **User experience:** AWS, Azure, Google Cloud, Kubernetes/OpenShift, GitOps,
+  identity, and observability slices use the same passport, row, detail,
+  preflight, monitor, and incident language. Unsupported or disconnected sources
+  say what is missing and preserve safe shell completion. An optional local
+  tie-breaker has an understandable setting and explanation; turning it off
+  immediately restores deterministic order. `Compare environments` is read-only
+  and first shows the reviewed service-equivalence mapping, selected regions or
+  clusters, independent authorization and freshness, traffic/window coverage,
+  and fan-out limit. It never creates a multi-environment mutation.
+- **Implementation work:** ship adapters one at a time behind separate feature,
+  capability, quota, version, auth, redaction, resource, rollback, and release
+  gates. If adopted, a small offline model may only reorder candidates that
+  passed deterministic gates; it cannot create/refuse/execute actions, read raw
+  logs or secrets, use a network, or override policy. Enforce memory/CPU/model-
+  size limits, signed provenance, deterministic fallback, and instant disable/
+  uninstall. Add cross-environment comparison only after explicit equivalence
+  mapping and independent per-environment access; never merge authority. No LLM
+  becomes a core or domain-extension dependency.
+- **Exit:** each named adapter has controlled native account/environment proof;
+  the optional ranker has differential safety, adversarial, latency, memory, and
+  fallback evidence; and Windows, Linux, and macOS package, accessibility,
+  visual, soak, rollback, removal, and protected release gates pass on the exact
+  artifact being claimed.
+
+Provider/network work stays off typing, PTY, resize, renderer, and startup hot
+paths. One active request per pane, bounded namespace-scoped collection,
+generation cancellation, explicit freshness, no disk evidence cache by default,
+and content-minimized receipts keep the feature lightweight. Managed mutation
+through Automexia remains impossible until current context, permission, policy,
+impact, confirmation, execution, monitoring, recovery, native, resource,
+accessibility,
+and release gates all pass.
+
 ## v0.6 — sandboxed extension platform and selected-input model suggestions
 
 **D7/CP6 is partially done overall and fully done locally at the accepted source
@@ -718,6 +1179,51 @@ controlled resource baselines, 1,000 lifecycle cycles, the 30-day soak, and
 verified kill/disable/uninstall/rollback/fallback evidence pass. Public download
 also requires a separate network/distribution ADR and maintained update client.
 
+### Optional LLM Orchestration extension (LO0-LO5)
+
+**LO0 is partially done only at a documentation/research-planning boundary.
+LO1-LO5 are not done.** The canonical
+[LLM Orchestration specification](LLM-ORCHESTRATION-EXTENSION.md),
+[testing contract](LLM-ORCHESTRATION-TESTING.md), and
+[proposed ADR 0033](adr/0033-optional-llm-orchestration-extension.md) define the
+target without adding a dependency, model request, workflow runtime, UI, or
+authority.
+
+The delivery order is:
+
+1. **LO0 — decision and contract:** accept the boundary, freeze a strict machine
+   contract and exact owners/limits/threats; documentation alone activates
+   nothing.
+2. **LO1 — neutral workflow model:** add pure versioned action descriptors,
+   plans, digests, one-run grants and structured results below all domain
+   extensions, with no I/O or execution authority.
+3. **LO2 — plan only:** add a disabled-by-default first-party extension, explicit
+   context consent and one local/self-hosted provider path that returns draft
+   plans but invokes no action.
+4. **LO3 — reviewed one-run execution:** let the application registry validate,
+   review, grant and invoke sequential low-risk steps through existing brokers,
+   interrupting again for production and other sensitive work.
+5. **LO4 — bounded multi-extension workflows:** add dependencies, safe
+   concurrency, structured results and at most three replans with deterministic
+   partial-failure, cancellation, recovery, resource and leak proof.
+6. **LO5 — provider/ecosystem expansion:** add individually reviewed remote
+   adapters, optional storage, organization policy or typed MCP mappings only
+   after their own privacy, cost, security, native and lifecycle evidence.
+
+The orchestrator is optional and independently installable. Models propose
+candidate typed plans; they receive no executor, PTY, shell, filesystem,
+credential, provider, DevOps, Studio, video, or MCP handle. The application owns
+the current action registry, independent risk/policy checks, exact plan review,
+one-run grant, final revalidation, execution, cancellation and receipts. Local or
+self-hosted inference is the first direction, no paid API is required, and no
+provider fallback is silent.
+
+LO1 may begin only after explicit LO0 acceptance. Later LO work is independent of
+Automation Studio and video release ordering and must not block either. Domain
+extensions remain deterministic and fully useful when the orchestrator is
+absent, disabled, offline, crashed or uninstalled. Third-party delivery also
+waits for the accepted D7 package/sandbox boundary.
+
 ### Automation Studio and DevOps/SRE scripting (AS0-AS6)
 
 **AS0 is partially done only at a proposal/research-planning boundary. AS1-AS6
@@ -736,9 +1242,9 @@ The release position is intentionally narrower than the AS0-AS6 phase list:
   independently proven extension, workspace, process, and DevOps boundaries;
 - the first releasable minimal Studio must pass AS2 before any dedicated video-
   editing extension is released;
-- AS3-AS6 and video research may then proceed independently through their own
-  gates; video does not wait for unrelated Studio debugging, remote, AI, or
-  collaboration work.
+- AS3-AS6, LO and video research may then proceed independently through their
+  own gates; video does not wait for unrelated Studio debugging, remote,
+  collaboration, or orchestration work.
 
 The target keeps three packages independently owned:
 
@@ -775,7 +1281,8 @@ The ordered delivery is:
    Ansible, cloud and policy integrations only through individual version,
    provider, security, native, resource and lifecycle gates.
 7. **AS6 — advanced/remote:** consider DAP, remote documents, mobile,
-   collaboration and AI only through separate ADRs and threat models.
+   collaboration and neutral workflow-registry interoperability only through
+   separate ADRs and threat models. Studio itself has no model/provider logic.
 
 First-party Studio work does not wait for a public marketplace after its own
 acceptance, but third-party add-ons still require D7/ADR 0029. CP5 remains the
@@ -824,12 +1331,13 @@ detailed implementation and exit gates. The version assignment is:
 | Capability | v0.4 | v0.5.0 SSH | v0.5.1 multi-cloud | v0.6 ecosystem |
 |---|---|---|---|---|
 | Test orchestration and evidence | Pinned Nextest/JUnit, timeouts, leak reporting, and redacted QA bundle | Component profiles plus SSH/launch/broker evidence | Provider authentication, capsule, and remote-transport evidence | Public SDK/package/sandbox evidence |
-| Visual verification | Deterministic renderer state, controlled frame capture, diffs, and human platform review | Generic status, quick-connect, host-key, tunnel, grant, and error goldens | Multi-provider identity, risk, login, expiry, and stale-state goldens | Third-party and AI capability UX contracts |
+| Visual verification | Deterministic renderer state, controlled frame capture, diffs, and human platform review | Generic status, quick-connect, host-key, tunnel, grant, and error goldens | Multi-provider identity, risk, login, expiry, and stale-state goldens | Third-party and selected-input model-consent UX contracts |
 | Property/concurrency testing | Proptest resize/session invariants and initial bounded Loom models | Exact argv, operation/cancellation, queue/cache, tunnel, and teardown state machines | Capsule isolation, provider refresh, exec-plugin, and broker state machines | Capability/sandbox/package state machines |
 | Performance | Execute Criterion, collect 30-day baselines, record startup/interaction/resource data | Enforce ratchets and add SSH index/connect/tunnel/saturation budgets | Add CLI/config/API refresh and 10/50/100-session budgets | Add public SDK/sandbox overhead budgets |
-| Native assurance | AppVerifier/WPR and controlled Windows/Linux/macOS GPU/shell matrices | System OpenSSH, agents, certificates, host keys, jumps, tunnels, cancellation, and cleanup on each OS | Official provider CLIs, Kubernetes/OpenShift, SSM/Bastion/IAP, offline/expiry paths | Sandboxed third-party and AI extension isolation |
+| Native assurance | AppVerifier/WPR and controlled Windows/Linux/macOS GPU/shell matrices | System OpenSSH, agents, certificates, host keys, jumps, tunnels, cancellation, and cleanup on each OS | Official provider CLIs, Kubernetes/OpenShift, SSM/Bastion/IAP, offline/expiry paths | Sandboxed third-party and CP6 provider isolation |
 | Test-strength/security ratchets | Longer fuzz corpora and Automexia-owned coverage baseline | Fuzz config/index/IPC/diagnostics; mutation-test policy and argv validation | Fuzz provider/config/exec-plugin adapters; audit SDK/CLI supply chain | Public extension supply-chain, signature, revocation, and capability audits |
-| Command productivity | CP0 baseline plus CP1 shell-native managed completion, diagnostics, explicit bounded refresh, and CMD fallback; no action-store claim | CP2-CP3.3: typed persistent actions, opt-in aliases, static DevOps packs, selected native imports, and trusted exact workspace task bridges | CP4: capsule/provider-aware cached actions with freshness and brokered exact launch | CP5/CP6: optional editor bridge and signed ecosystem packs after separate gates |
+| Command productivity | CP0 baseline plus CP1 shell-native managed completion, diagnostics, explicit bounded refresh, and CMD fallback; no action-store claim | CP2-CP3.3: typed persistent actions, opt-in aliases, static DevOps packs, selected native imports, and trusted exact workspace task bridges | CP4: capsule/provider-aware cached actions with freshness and brokered exact launch | CP5/CP6: optional editor bridge, signed ecosystem packs and selected-input suggestions after separate gates |
+| LLM orchestration | No model or workflow-runtime claim; LO0 documentation may proceed | No dependency on v0.5 SSH delivery | Neutral workflow design may reuse proven typed actions without gaining provider authority | LO1-LO5 only after separate acceptance, security/privacy/resource/native/lifecycle evidence; never a Studio/video blocker |
 | Automation Studio | No file-editor claim | Preserve terminal-only fallback while AS0 evaluates dependencies and the native host | Reuse provider context and typed review without coupling documents to provider extensions | AS1-AS6 document/editor/LSP/DevOps execution phases only after their separate acceptance and native evidence |
 
 No single host or test layer may claim complete assurance. Pull requests prove

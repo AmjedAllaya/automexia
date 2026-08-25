@@ -135,7 +135,7 @@ back to terminal
 | AWS/Azure/GCP/Kubernetes/Teleport | Source-mature, integration-unproven |
 | Provider-aware Quick Actions | Strong defensive design |
 | OpenBao | Correctly deferred |
-| Extension architecture | D7/CP6 policy boundary frozen in proposed ADR 0029; runtime not accepted |
+| Extension architecture | D7/CP6 nonactivating source boundary accepted in ADR 0029 and implemented locally; activation and public distribution remain unaccepted |
 | Overlay architecture | Keep and formalize |
 | Cross-platform native evidence | Insufficient for stable activation |
 | Status/documentation governance | Needs cleanup |
@@ -463,7 +463,7 @@ reviewed executable identity
 spawned executable identity
 ```
 
-#### Windows
+#### Windows executable identity
 
 Validate:
 
@@ -1977,7 +1977,7 @@ Real provider/tool execution available to approved internal users.
 
 Opt-in preview, provider-specific kill switches, still not stable.
 
-### Stable
+### Stable activation tier
 
 Release-qualified, signed, cross-platform validated.
 
@@ -2024,7 +2024,7 @@ Do not activate everything simultaneously.
 
 ## 46. OS-Native Child Ownership and Cleanup
 
-### Windows
+### Windows child ownership
 
 Prefer:
 
@@ -2852,7 +2852,7 @@ Stable
 - signed packages,
 - multi-OS coverage.
 
-### Stable
+### Stable release ring
 
 Requires:
 
@@ -4530,7 +4530,7 @@ EKS context stale
 
 Before sensitive execution, assert fresh identity matches expected account/principal.
 
-### Manual
+### Manual AWS test
 
 ```text
 1. Select test account.
@@ -4671,7 +4671,7 @@ timeout
 malformed credential output
 ```
 
-### Manual
+### Manual Kubernetes and OpenShift test
 
 ```text
 1. Connect to controlled cluster.

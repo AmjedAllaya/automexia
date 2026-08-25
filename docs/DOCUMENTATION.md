@@ -41,11 +41,53 @@ the claim.
   `docs/DEVOPS-ALIASES.md` owns the CP2/CP3 typed-action, pure projection,
   collision/completion, metadata, CP3.1 private transaction/publication, native
   activation/reload, rollback, and uninstall boundaries.
+- `docs/SEMANTIC-DIAGNOSTIC-NAVIGATOR.md` owns the proposed DN0-DN6 user
+  behavior, evidence ledger, terminal/app/renderer ownership, resource and
+  privacy limits, detector policy, lifecycle, accessibility, test ladder, and
+  phase exit criteria. It does not define a shipped action, shortcut, setting,
+  detector, or extension capability; proposed ADR 0032 owns the durable
+  decision.
+- `docs/SITUATION-AWARE-PRODUCTION-OPERATIONS.md` owns the proposed PO0-PO8
+  product behavior, current evidence ledger, production context, evidence-quality
+  language, change/ownership/drift, resource/scheduling explanation,
+  cohort/revision/environment comparison, network diagnosis, SLO summaries,
+  situation-aware completion and Kubernetes rollout example,
+  impact/GitOps/JIT/policy review, Incident Mode, live-log/time/navigation
+  boundaries, managed operation and diagnostic-session lifecycle, runbooks,
+  resource/privacy limits, delivery order, and non-goals.
+  `docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md` owns the exact
+  proposed PO0 serialization/compatibility rules, record envelopes, knowledge
+  and freshness tables, deterministic rule/ranking profiles, provider-specific
+  behavior, policy precedence, action lifecycle, journal fields, planned
+  configuration/actions, dependency decisions, migration and requirement
+  traceability. Its versioned JSON mirror, semantic checker and mutation suite
+  freeze a non-activating proposal; they do not accept ADR 0034 or prove PO1-PO8.
+  `docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md` owns the exact six-surface
+  hierarchy, copy, responsive density, keyboard/focus/accessibility contract,
+  investigation views, end-to-end journeys, manual-versus-managed action and
+  diagnostic-session wording, provisional implementation map, phase
+  implementation slices, and UX definition of done.
+  `docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md` owns its future
+  scenario, oracle, provider, evidence-quality, ownership/drift, scheduler,
+  cohort, network-vantage, SLO/log/time, managed-session, security, native,
+  accessibility, resource, lifecycle, and release evidence ladder. These four
+  pages do not
+  claim a setting, UI, provider capability, watcher, log controller, diagnostic
+  session, journal, model, execution path, or release;
+  proposed ADR 0034 owns the durable decision.
 - `docs/ECOSYSTEM-PLATFORM.md` owns the current no-runtime behavior, fixed
-  D7/CP6 package/sandbox/capability/AI safety boundary, planned review, and
-  recovery/fallback contract. The detailed ordered work and evidence ledger live
-  in `docs/research/D7-CP6-IMPLEMENTATION-AUDIT.md`; detailed evidence commands
-  and the future matrix live in `docs/ECOSYSTEM-PLATFORM-TESTING.md`.
+  D7/CP6 package/sandbox/capability/selected-input suggestion boundary, planned
+  review, and recovery/fallback contract. The detailed ordered work and evidence
+  ledger live in `docs/research/D7-CP6-IMPLEMENTATION-AUDIT.md`; detailed
+  evidence commands and the future matrix live in
+  `docs/ECOSYSTEM-PLATFORM-TESTING.md`.
+- `docs/LLM-ORCHESTRATION-EXTENSION.md` owns the proposed LO0-LO5 optional LLM
+  Orchestration product, domain-neutral workflow contracts, provider isolation,
+  consent, privacy, resource, lifecycle, and delivery boundaries.
+  `docs/LLM-ORCHESTRATION-TESTING.md` owns its future evidence ladder. They do
+  not authorize a provider dependency, action registry, workflow executor,
+  extension capability, model download, or runtime activation; proposed ADR
+  0033 owns the durable decision.
 - `docs/TESTING.md` owns evidence levels and commands.
 - `docs/FEATURE-TEST-REINFORCEMENT.md` owns the human per-feature scenario,
   oracle, interaction, checker, and exit-criteria plan synchronized with
@@ -55,15 +97,17 @@ the claim.
   register.
 - `docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md` owns the ordered focused
   execution checklist for SSH, connectivity, remote workspaces, multi-cloud,
-  Quick Actions, and autocomplete. It does not replace the main status register
-  or exact shipped-behavior references.
+  Quick Actions, autocomplete, and Production Operations PO0-PO8. It mirrors PO
+  phase status and acceptance from the canonical PO specification/UX/testing
+  set and `docs/ROADMAP.md`; it does not create a competing product contract or
+  replace the main status register or exact shipped-behavior references.
 - `docs/TERMINAL-FIRST-OPERATIONS.md` owns the planned command-first remote
   operations vocabulary and its cross-feature D/CP phase mapping. It does not
   define shipped CLI behavior until the exact reference and feature ledger are
   updated.
 - [Phase implementation audit](PHASE-IMPLEMENTATION-AUDIT.md) owns the
-  evidence-based status reconciliation across the S, D, CP, and G roadmap
-  tracks.
+  evidence-based status reconciliation across the S, D, CP, G, DN, AS, LO, and
+  PO roadmap tracks.
 - root governance/support/security/release files own their named policies.
 - `automexia_docs_repository_aligned/` is a versioned research and proposal
   pack. Its manifest, snapshots, and RFDs preserve analysis and candidate

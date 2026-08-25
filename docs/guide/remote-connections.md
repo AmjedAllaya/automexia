@@ -21,7 +21,8 @@ guarded lifecycle, child outcomes, receipts, reconnect, and compact tunnel
 state. **Planned/protected:** actual status/SSH execution, controlled real
 F5.4 cleanup/resource/accessibility proof, provider authentication and
 multi-cloud adapters, remote-file/session-memory/collaboration, and later
-ecosystem/AI features.
+signed ecosystem packs, CP6 selected-input model suggestions, and the separate
+optional LLM Orchestration extension.
 
 ## Internal Connection Library boundary
 
@@ -281,4 +282,4 @@ Provider work is sequenced independently so AWS, Azure, Google Cloud, Kubernetes
 
 ## What is not shipped v0.4 behavior
 
-Saved managed hosts, one-click cloud authentication, password/secret custody, automated tunnels, remote file browsers, broadcast workspaces, shared live PTYs, searchable session memory, public extension downloads, and AI execution are roadmap items. Do not infer them from internal record types or planning tests. The current phase status is in [Roadmap](../project/roadmap.md).
+Saved managed hosts, one-click cloud authentication, password/secret custody, automated tunnels, remote file browsers, broadcast workspaces, shared live PTYs, searchable session memory, public extension downloads, CP6 selected-input model suggestions, and optional LLM workflow orchestration are roadmap items. Do not infer them from internal record types or planning tests. The current phase status is in [Roadmap](../project/roadmap.md).

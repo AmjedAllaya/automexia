@@ -1,7 +1,8 @@
 
 # Reference Sources — 2026 Research Snapshot
 
-**Access date for this pack:** 2026-08-23
+**Access date for the source snapshot:** 2026-08-23. Later addenda state their
+own access date.
 
 Source categories:
 
@@ -40,6 +41,17 @@ These are release-time verification references, not immutable architecture depen
 - 1Password SSH agent/bookmarks: https://developer.1password.com/docs/ssh/bookmarks/
 - FFmpeg downloads/releases: https://ffmpeg.org/download.html
 
+
+### Optional LLM Orchestration boundary addendum
+
+Accessed 2026-08-25. These sources inform the canonical optional-extension
+proposal; they do not approve a provider, model, dependency, MCP connection, or
+runtime activation.
+
+- NIST Generative AI Profile: https://doi.org/10.6028/NIST.AI.600-1
+- Model Context Protocol security principles: https://modelcontextprotocol.io/specification/2025-11-25/index
+- Model Context Protocol authorization: https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization
+- llama.cpp repository and local server: https://github.com/ggml-org/llama.cpp
 
 ### Ghostty compatibility reference
 

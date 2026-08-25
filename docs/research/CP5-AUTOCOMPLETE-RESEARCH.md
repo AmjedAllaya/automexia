@@ -5,6 +5,15 @@ Decision: CP1 remains the complete solution; P2 is deferred.
 Machine contract:
 <code>tests/fixtures/command-productivity/cp50-research-contract-v1.json</code>
 
+> **Historical phase record.** This page preserves the CP5.0 decision as it
+> stood on 2026-08-21. Accepted
+> [ADR 0025](../adr/0025-authenticated-native-editor-suggestion-bridge.md) later
+> authorized disabled CP5 source work: CP5.1-CP5.4 are now complete at their
+> source/local boundaries, CP5.5 is complete as an inert helper/adapter bridge,
+> and CP5.6 plus live product activation remain partial. Current status lives in
+> the [implementation audit](CP51-CP56-IMPLEMENTATION-AUDIT.md) and
+> [roadmap](../ROADMAP.md).
+
 This report closes CP5.0 at its research boundary. It does not activate a
 suggestion surface, add a product dependency, inspect terminal cells, retain
 command buffers, change a profile or keybinding, start a process from typing,
@@ -29,8 +38,8 @@ a reviewable P2 decision. The following conditions are now true:
   workspace; the root manifest, root lockfile, libraries, application, and
   release binaries do not contain it;
 - CP1 remains enabled, reversible, removable, and the authoritative fallback;
-- CP5.1 through CP5.6 remain not implemented and require a separate accepted
-  bridge ADR and machine threat contract.
+- at this CP5.0 checkpoint, CP5.1 through CP5.6 were not implemented and
+  required a separate accepted bridge ADR and machine threat contract.
 
 Out of scope are an editor transport, shell adapter activation, product ranking
 changes, history ingestion, provider refresh, a renderer popup, new shortcuts,

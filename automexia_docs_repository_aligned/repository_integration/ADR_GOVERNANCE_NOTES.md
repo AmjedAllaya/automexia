@@ -13,9 +13,9 @@ Proposal files from earlier research used ADR numbers `0001–0015`. Those numbe
 Known real owners from the supplied repository audit:
 
 ```text
-ADR 0025 → proposed CP5 editor bridge
+ADR 0025 → accepted CP5 editor-bridge source boundary; activation gated
 ADR 0028 → accepted bounded top-level tab parked-PTY undo/redo
-ADR 0029 → proposed non-activating public ecosystem/sandbox/AI boundary
+ADR 0029 → accepted nonactivating ecosystem/sandbox/selected-input source boundary; activation gated
 ```
 
 When a research note contains useful material:

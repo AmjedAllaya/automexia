@@ -4801,7 +4801,7 @@ Testing must be deep because the product combines terminal emulation, security, 
 - revocation,
 - agent unavailable.
 
-### SSH
+### SSH integration fixture
 - unknown host,
 - changed host key,
 - agent signing,
@@ -4819,7 +4819,7 @@ Test:
 - session expiry,
 - role/project switching.
 
-### Teleport
+### Teleport integration fixture
 Use controlled real proxy and MFA flow.
 
 ### Native platform fixtures
@@ -8155,7 +8155,7 @@ Bitwarden capabilities/limitations must be represented explicitly; it currently 
 
 ### Provider-specific 2026 hardening
 
-#### SSH
+#### SSH provider hardening
 Sanitize/bind `SSH_AUTH_SOCK`, `SSH_ASKPASS`, `SSH_ASKPASS_REQUIRE`, and relevant security-key provider overrides. Strict managed mode disables ambient forwarding, multiplexing, X11, local commands, and arbitrary ProxyCommand unless typed AccessPlans explicitly enable reviewed functionality.
 
 #### Azure
@@ -8167,7 +8167,7 @@ Treat gcloud workforce login/credential configuration files as authority-bearing
 #### Kubernetes
 For Kubernetes 1.35+ managed kubectl, use native `kuberc` `credentialPluginPolicy`/allowlist in addition to Automexia executable identity/digest policy. Prefer full-path allowlist entries. Use `DenyAll` when no exec credential plugin is required.
 
-#### Teleport
+#### Teleport provider hardening
 Discover target cluster major and validate `tsh` major compatibility dynamically. Prefer Teleport-supported installation provenance. Do not hardcode a single Teleport minor in architecture.
 
 #### OpenBao

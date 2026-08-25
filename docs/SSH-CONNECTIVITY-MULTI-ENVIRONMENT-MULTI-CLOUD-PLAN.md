@@ -44,8 +44,8 @@ provider state.
 - Automatic `known_hosts`, shell-profile, provider-config, kubeconfig, or
   persistent remote-state mutation.
 - SFTP, file transfer, collaboration, direct provider SDK/API inventory,
-  third-party extensions, and AI execution. They need separate protected
-  programs.
+  third-party extensions, CP6 selected-input model suggestions, and optional
+  LLM workflow orchestration. They need separate protected programs.
 
 ### Release-level acceptance criteria
 
@@ -94,8 +94,8 @@ ADR where applicable.
   paths. It is bounded, cancellable, generation-aware, and has one cleanup
   owner.
 - All untrusted input — configuration, provider output, remote output, paths,
-  labels, imports, completion values, and AI suggestions — is validated and
-  rendered as data, never as authority.
+  labels, imports, completion values, model suggestions, and candidate workflow
+  plans — is validated and rendered as data, never as authority.
 - Persistent Automexia state is versioned, size-bounded, private, no-follow,
   atomic, recoverable, removable, and stores public metadata or opaque
   references only.

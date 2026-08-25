@@ -25,8 +25,9 @@ This roadmap is the ordered implementation checklist for:
 It does not make planned commands or screens shipped behavior. Exact current
 behavior remains owned by the feature catalog and public references. Public
 ecosystem packs, direct provider SDK inventory, embedded SSH, secret custody,
-SFTP, collaboration, and AI execution remain outside this focus until their
-separate protected phases are approved.
+SFTP, collaboration, CP6 selected-input model suggestions, and optional LLM
+workflow orchestration remain outside this focus until their separate protected
+phases are approved.
 
 ## Authority and change control
 
@@ -79,7 +80,7 @@ documentation, feature assurance, and a change fragment.
 | Read-only Connection Hub | D5.1 | Fully done locally; external evidence partial | App-scoped joined runtime, exact reviewed native selection, bounded modal/search/filter/grouping, CAS favorite/tag diffs, read-only recent/library data, disabled authority, tests, benchmark, and release-build evidence | Native macOS/Linux picker/permission plus controlled Narrator/NVDA, VoiceOver, and Orca evidence |
 | Managed OpenSSH | D5.2 | Partially done overall; F5.1-F5.3 and the F5.4 local assurance path complete nonactivated | Exact routes/tunnels/trust/lifecycle plus native host/commit/OpenSSH/artifact binding, protected manual workflow, receipts, reconnect, and path-free summary pass locally | Protected activation/attestation, actual status execution, real OpenSSH descendant/listener cleanup, native resources/accessibility, and validated F5.4 real manifests |
 | Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, approval fingerprints, and private transactional Connection Library persistence/redacted transfer are implemented | Product editor, remote workspace lifecycle, and separately gated execution remain |
-| Multi-cloud framework and providers | D6.0-D6.5 | Partially done overall: M7 fully done locally; M8-M11 and M12 Teleport source/cached review plus M11 private lifecycle fully done locally and nonactivated; OpenBao not done | Provider-neutral capsules, independent exact adapters, strict cached publication, six-provider Hub review, bounded private validation/revalidation/revoke/cleanup, tests, and benchmarks | D3 activation, accepted ADR 0024 plus OpenBao implementation, and real official-CLI/cluster/native/resource/accessibility/release evidence |
+| Multi-cloud framework and providers | D6.0-D6.5 | Partially done overall: M7 fully done locally; M8-M11 and M12 Teleport source/cached review plus M11 private lifecycle fully done locally and nonactivated; OpenBao not done | Provider-neutral capsules, independent exact adapters, strict cached publication, six-provider Hub review, bounded private validation/revalidation/revoke/cleanup, tests, and benchmarks | D3 activation, ADR 0024 acceptance plus OpenBao implementation, and real official-CLI/cluster/native/resource/accessibility/release evidence |
 | Native completion | CP1 | Fully done | shell integration, xtask completion manager, CP1 contract/tests | Hosted three-OS and longitudinal release evidence |
 | Quick Actions and persistence | CP2.0-CP2.2 | Fully done | automexia-devops model, application store/worker/UI/CLI tests | Hosted shell insertion, controlled accessibility, longitudinal evidence |
 | Aliases and DevOps packs | CP3.0-CP3.2 | Fully done | compiler, private generations, shell activation, packs, fuzz/bench/contracts | Hosted native and controlled baseline evidence |
@@ -87,7 +88,9 @@ documentation, feature assurance, and a change fragment.
 | Provider-aware Quick Actions | CP4 | Fully done locally at product-integrated nonactivating boundary; partially done overall | Seven provider projections, retained cached-product handoff, exact route/session/revision publication, idempotence/revocation, cached search, final revalidation, accessible context, production confirmation, fuzz/benchmark/policy evidence | Approved provider refresh/capsule production, exact provider execution, OpenBao, and native provider/accessibility/release evidence |
 | Autocomplete research | CP5.0/P1 | Fully done | Shell/API matrix, pure bounded insertion prototype, locked matcher benchmark, dependency/privacy review, retain-CP1 decision | External low-end/Zsh/Fish/accessibility evidence applies only to a future P2 proposal |
 | Automexia suggestion surface | CP5.1-CP5.6/P2-P4 | Partially done overall; CP5.1-CP5.4 fully done at source/local boundaries; CP5.5 inert bridge source complete | Accepted ADR; authenticated request/reply protocol; restrictive endpoints; bounded broker/sources/ranking; pane UI/publication/route exchange; packaged helper target; four bidirectional adapters; real local shell/mutation/lifecycle evidence | Reviewed launcher, signed/attested artifact, WSL relay, live activation, successful three-OS endpoint/shell/accessibility/package/rollback/resource/30-day evidence |
+| Situation-aware production operations | PO0-PO8 | PO0 partially done at detailed proposal/checker boundary; PO1-PO8 not done | Canonical specification, exact proposed PO0 contracts, UX/build blueprint, primary-source baseline, proposed ADR 0034, strict JSON/digest/checker/mutations/nonactivation scan, owner/trust/resource/privacy boundaries, future testing ladder and roadmap integration | Protected ADR/exact-digest and owner/dependency/capability acceptance, prototypes and first real-path failures before source; CP5/D6/D3/D7 phase gates; no passport; explain/change/compare/network/SLO/dependency view; candidate; preflight; Incident log/time/handoff; journal; managed operation/diagnostic session; pack; adapter; model; execution; native; or release evidence exists |
 | Signed ecosystem packs and selected-input model suggestions | CP6/D7 | Partially done overall; accepted nonactivating source boundary fully done locally | Accepted ADR 0029 and exact digest; private strict domain/runtime crates; signed local verification and protected atomic store; optional no-WASI Wasmtime conformance host; exact capability/lifecycle/consent models; disabled action packs and selected-input product adapter; 17 contract mutations, properties, fuzz harness and benchmarks | Protected release permit and public distribution/SDK/provider decisions; production trust governance; native Linux/macOS, signed-package, visual/accessibility, malicious-component, resource/lifecycle and soak evidence |
+| Optional LLM workflow orchestration | LO0-LO5 | LO0 partially done as documentation only; LO1-LO5 not done | Canonical specification, proposed ADR 0033, neutral-workflow direction, provisional limits and future evidence ladder | ADR acceptance and strict machine contract before source work; no model/provider, registry, execution, MCP, UI, native or release evidence exists |
 
 The workspace term has two separate meanings and must remain explicit:
 
@@ -152,6 +155,23 @@ Autocomplete lane:
 4. P4/CP5.4-CP5.6 is partially done overall: CP5.4 UI/publication source and the CP5.5 inert helper/adapters are implemented; launcher/signing/live composition, public activation, and release gates remain open.
 
 CP5 never blocks production SSH. CP1 remains the complete fallback throughout.
+
+Production Operations lane:
+
+1. PO0 accepts the decision, freezes owners/limits/contracts/tests, and preserves
+   nonactivation.
+2. PO1 follows the relevant D2/D6 read-only context evidence.
+3. PO2 adds bounded adapter-owned change/ownership/drift, resource/scheduling
+   explanation, healthy cohort/revision comparison, passive network diagnosis,
+   approved SLO summaries and dependency/impact graphs.
+4. PO3 follows CP5 activation evidence and keeps CP1 as fallback.
+5. PO4-PO5 add preflight/policy/GitOps/JIT and Incident Mode with hypotheses,
+   time/log navigation, journal and handoff without execution.
+6. PO6 waits for independent D3 and provider activation before any managed
+   operation, port forward, active probe or debug session.
+7. PO7 waits for the ecosystem capability/distribution decision.
+8. PO8 adds only independently proven adapters, bounded read-only cross-
+   environment comparison and optional local tie-breaking.
 
 ## F0 - preserve completed foundations
 
@@ -892,6 +912,303 @@ composition, CP5.6 activation, and release evidence remain open.
 
 Exit: maintainers prove a measured UX improvement; otherwise CP1 remains active.
 
+## PO0 - accept the situation-aware production operations contract
+
+Status: Partially done at the detailed proposal/checker boundary. The strict
+proposed machine contract, digest, semantic checker, mutation suite and source
+nonactivation scan exist; ADR/digest acceptance, owner/dependency/capability
+approval, prototypes and first failing real-path tests remain open.
+
+User experience target: freeze nonactive, testable prototypes of the six
+reused surfaces and the shortest read-only, reviewed-insertion,
+managed-operation, and managed-diagnostic-session journeys. The prototype must
+cover comfortable/compact/minimal panes,
+keyboard-only and pointer use, accessible names/focus, stale/offline/unknown,
+refusal, cancellation, failure, recovery, and plain wording for fact,
+correlation, inference, policy, and uncertainty. No prototype control may call a
+provider, change the editor, or execute.
+
+- [x] Add the canonical product specification, requested Kubernetes rollout
+  example, current evidence ledger, 2026 primary-source baseline, owner map,
+  threat model, provisional resource ceilings, delivery phases, and honest
+  refusal behavior.
+- [x] Add proposed ADR 0034 and the separate future testing/evidence contract.
+- [x] Add the canonical surface, copy, responsive, keyboard, accessibility,
+  journey, implementation-owner, and UX definition-of-done blueprint.
+- [x] Synchronize the main/concise/focused roadmaps, phase audit, architecture,
+  feature catalog, testing, assurance, navigation, and change fragment.
+- [ ] Accept or supersede ADR 0034 through protected owner review.
+- [ ] Freeze exact types, capabilities, source dependencies, numeric ceilings,
+  risk/refusal/ranking semantics, privacy, lifecycle, and nonactivation in a
+  versioned machine contract.
+- [ ] Add a fail-closed checker and mutations for deletion, weakening, stale
+  paths, fabricated evidence, hidden activation, broadened authority, and
+  relaxed resource limits.
+- [ ] Add the first failing real-path PO1 tests before production source.
+
+Exit: the accepted machine contract proves documentation cannot activate a
+provider, watcher, investigation view, live-log controller, completion source,
+managed diagnostic session, UI, model, journal, or execution path.
+
+## PO1 - implement the production passport and context lock
+
+Status: Not done.
+
+User experience target: extend the context line already shown above the command,
+not a separate dashboard. It must answer where, who, production classification,
+credential expiry, GitOps/incident ownership, and freshness at a glance; retain
+production, target, identity, and freshness as space shrinks; never capture
+typing focus; and present an exact changed-field diff with clear `Adopt` and
+`Keep locked` choices before a locked route can follow a new context.
+
+- [ ] Reuse D2/D6 public route-scoped context; define provider/account/region/
+  cluster/namespace/identity/role-expiry/GitOps/incident/freshness fields.
+- [ ] Add pane-local lock, exact before/after context diff, explicit adopt/reject,
+  expiry, logout/revoke, route-close, restore, disable and uninstall behavior.
+- [ ] Block production mutation review on unknown, stale, changed or expired
+  context while leaving read-only diagnosis and CP1 available.
+- [ ] Add renderer-neutral and native tiny-to-8K, 100-300%, theme, keyboard,
+  IME, focus, screen-reader, multi-pane and clone/isolation evidence.
+- [ ] Measure zero hot-path provider work, memory, tasks, handles and cleanup.
+
+Exit: a production operator can always see and verify the exact route identity;
+one pane cannot silently change or inherit another pane's context.
+
+## PO2 - implement bounded investigation evidence
+
+Status: Not done.
+
+User experience target: show evidence only when the operator requests a
+situation or detail. One `Investigate` entry exposes only relevant `Explain
+state`, `What changed?`, `Compare with healthy`, `Diagnose connection`, and
+`Show user impact` choices. Each result states fact, source authority, age,
+scope, coverage, contradiction, explicit unknowns and network vantage where
+relevant. Change rows say `correlated with` unless a separate authority proves
+cause; comparison explains its cohort and exclusions. Refresh and provenance are
+explicit; last-known-good data is visibly stale; a failed adapter explains what
+is unavailable without blocking CP1/CP5. No copied log viewer, metric dashboard,
+raw-YAML diff, active probe or giant dependency canvas is added.
+
+- [ ] Define strict knowledge/evidence quality, observation, change, field-
+  ownership/drift, resource-explanation, cohort/comparison, network-path,
+  SLO-summary and resource-node/edge records with source, UID, route, revision,
+  observed time, expiry, coverage, redaction class and digest.
+- [ ] Implement independently reviewed Kubernetes, cloud, GitOps, observability,
+  identity, incident and service-catalog adapters only as needed per slice.
+- [ ] Add bounded typed recent-change markers and a deterministic correlation
+  window; preserve correlation, inference, and independently proven cause as
+  different model, copy, ranking-input, test, and receipt states.
+- [ ] Resolve Kubernetes ownership through exact ownerReferences kind/name/UID;
+  add service/dependency mappings only from identified reviewed sources.
+- [ ] Add kind-specific resource/scheduling explainers; normalize semantic
+  cohort/revision differences without reading Secret values or raw manifests;
+  and keep observed fact, assessment, recommendation and action separate.
+- [ ] Add read-only DNS/Service/EndpointSlice/backend/policy path mapping with
+  exact source/destination/vantage and unknown layers; add approved SLO summaries
+  with window/request-volume/low-traffic limitations. Active probes remain PO6.
+- [ ] Use bounded namespace-scoped list/watch or polling with resource-version,
+  relist, throttling, timeout, cancellation, parked-idle and shutdown behavior.
+- [ ] Enforce candidate/frame/query/concurrency/object/memory/TTL ceilings; keep
+  raw logs, metric series, credentials and evidence disk caches out.
+- [ ] Pass hostile/secret canary, graph-cycle/fan-out, stale/replaced UID,
+  offline/reconnect, provider-native, resource/leak and disable/uninstall gates.
+
+Exit: adapters publish bounded public evidence independently; no adapter failure
+or large environment can block typing, rendering, PTY, startup or CP1.
+
+## PO3 - implement situation-aware diagnostic completion
+
+Status: Not done.
+
+User experience target: after an explicit completion request, reuse the current
+CP5 list and show no more than five current-situation rows before normal results.
+Each two-line row exposes command, exact target, one reason, freshness, and
+`Read-only`, `Review required`, or `Refused`. Arrows move selection, detail is
+deliberate, Escape closes, and Tab/Right Arrow replaces only the authenticated
+editor span without Enter. Refresh preserves the selected stable candidate or
+moves predictably; it never steals focus or reorders an item under confirmation.
+CP1 remains immediately usable throughout.
+
+- [ ] Build deterministic hard gates and lexicographic ranking over typed actions;
+  record supporting, contradicting, missing and freshness evidence.
+- [ ] Implement the Kubernetes matrix for healthy, crash loop, missing config,
+  bad image, unschedulable, resource/probe, bad/active/stalled rollout,
+  StatefulSet/DaemonSet/custom owner, permission, GitOps and stale-context cases.
+- [ ] Show `status`, `history`, `undo`, `restart`, or diagnosis only when
+  the exact evidence and controller contract support it.
+- [ ] Bind candidate route/passport/UID/evidence/policy/editor generations and
+  insert through CP5 without Enter; revalidate immediately before insertion.
+- [ ] Preserve CP1 fallback, native editor quoting/selection/IME/history,
+  deterministic ties, refusal states, accessibility and no per-key I/O.
+- [ ] Pass independent reference-ranker, metamorphic, fuzz, exact editor-byte,
+  native shell, pixel, screen-reader, p50/p95/p99 and cleanup evidence.
+
+Exit: Automexia explains relevant safe candidates and uncertainty without
+claiming certainty, executing, retargeting, or hiding native shell completion.
+
+## PO4 - implement production impact and authority preflight
+
+Status: Not done.
+
+User experience target: one cancel-first review reads environment, exact target,
+observed reason, expected impact, current authority, GitOps/policy/change window,
+verification, and recovery in that order. Unknown is visible and blocking where
+required. Before PO6, the only positive result is `Insert reviewed command` and
+the shell owns any later Enter; Automexia must not imply that it will enforce
+policy or monitor that manual execution. After PO6, `Execute reviewed action` is
+a separate managed route with final revalidation. JIT access, ticketing, or
+approval is an explicit separate request, never a hidden side effect.
+
+- [ ] Show exact executable/argv, environment, target kind/name/UID/count,
+  dependencies, current health, rollout strategy and blast radius.
+- [ ] Recheck current authorization, credential/JIT expiry, organization policy,
+  incident/ticket/approval, change window, GitOps owner/self-heal/sync window,
+  verification, timeout, stop condition, rollback and no-rollback disclosure.
+- [ ] Label a real provider diff/plan separately from an impact estimate; never
+  present unsupported `rollout restart` dry-run behavior.
+- [ ] Bind confirmation to the exact candidate digest, context, targets,
+  evidence/policy revisions, expiry and one use; deny broad/destructive actions
+  in the initial contract.
+- [ ] Prove preflight has no provider mutation, credential custody, role
+  self-approval, global CLI/config mutation, policy bypass or implicit execution.
+
+Exit: every PO-provided production mutation is either refused, exposed as an
+honestly advisory reviewed insertion, or presented with enough current, exact and
+independent evidence for a deliberate managed-action decision.
+
+## PO5 - implement Incident Mode, live evidence navigation and the bounded journal
+
+Status: Not done.
+
+User experience target: a deliberate entry opens one workspace with objective,
+locked environment, facts, hypotheses, contradictions, missing evidence, a short
+timeline and one next safe action. Trusted links return to their source;
+approximate terminal anchors say so. Optional source-separated logs are pausable,
+bounded, visibly memory-only and expose gaps. Normal completion does not require
+Incident Mode. Journaling reads `Session only` by default; opt-in persistence
+discloses location and retention. Handoff/export previews included/redacted facts,
+hypotheses, outcomes, unresolved questions, links and destination. Exit or route
+close restores the prior surface, focus, and normal terminal behavior.
+
+- [ ] Pin incident identity, objective, severity, environment and operator role;
+  add hypothesis/negative-evidence state, bounded summary timeline, trusted/
+  approximate anchors and situation-filtered candidates.
+- [ ] Add a separate bounded per-source live-log controller with source-local
+  order, arrival/provider clocks, filters, pause/resume, backpressure, visible
+  gaps/drops, memory-only cleanup and a content-free DN marker handoff.
+- [ ] Keep the default journal session-only with content-minimized public
+  receipts; make protected persistence explicit, bounded and opt-in.
+- [ ] Exclude logs, metrics, terminal content, output, credentials, environment
+  values, raw provider responses and arbitrary secret-bearing arguments.
+- [ ] Add reviewed redacted export/handoff, retention, crash recovery,
+  read-only/disk-full/corrupt/interrupted storage, logout, exit, disable and
+  exact uninstall behavior.
+- [ ] Pass multi-operator/route/workspace isolation, long-session resources,
+  accessibility, privacy approval and storage-tree/digest oracles.
+
+Exit: Incident Mode improves shared context without widening authority or
+turning Automexia into a telemetry store or external audit authority.
+
+## PO6 - implement reviewed execute, observe, stabilize, verify and recover
+
+Status: Not done and blocked on independent D3/provider activation.
+
+User experience target: only after PO6 activation may production preflight offer
+`Execute reviewed action`. A nonmodal monitor shows one exact target in `Preparing`,
+`Running`, `Observing`, `Stabilizing`, `Verifying`, `Succeeded`, `Failed`,
+`Cancelled`, `Uncertain`, or `Recovery available`, with elapsed time,
+before-state, last verified observation, safe cancel/stop, cleanup, receipt, and
+one deliberate recovery proposal. The same preflight/monitor pattern owns a
+Kubernetes port forward, controlled probe or safe workload-debug session and
+shows exact endpoint/vantage/image/profile, authority, lifetime and cleanup. The
+terminal remains usable.
+Process exit alone never becomes success, loss of observation becomes
+`Uncertain`, and no retry, rollback, recovery, or second mutation starts without
+a new review. Managed execution never silently falls back to shell insertion.
+
+- [ ] Reuse the one app-owned exact-argument runner and provider capability;
+  never create a PO process/network path.
+- [ ] Implement the bounded draft/preflight/approval/executing/observing/
+  stabilizing/verified/failed/uncertain/cancel/recovery state machine with
+  fake-clock/model tests before real execution.
+- [ ] Revalidate context, UID, permission, policy, evidence and executable before
+  launch; monitor declared signals with fixed deadline and stop conditions.
+- [ ] Return control after one mutation. Never recurse, retry a mutation
+  automatically, or launch a suggested recovery without a new exact review.
+- [ ] Add independent typed port-forward/probe/debug slices with exact target,
+  loopback endpoint or vantage, immutable image/profile, traffic/time limits,
+  one-use authorization/admission, descendants/listeners/temporary resources,
+  context/revoke behavior and observable cleanup. Node debug and public
+  production listeners remain unavailable initially.
+- [ ] Compare real provider state, process trees, network attempts, receipts,
+  handles/files/children and final cleanup on controlled disposable systems.
+- [ ] Pass rollback/no-rollback, adapter loss, context change, shutdown, native,
+  package, security, accessibility, resource and release evidence.
+
+Exit: one explicitly approved action or diagnostic session has an observable
+bounded outcome, exact cleanup state, and safe recovery offer where applicable;
+unavailable external evidence keeps the phase partial.
+
+## PO7 - implement declarative organization packs and guided workflows
+
+Status: Not done and blocked on the ecosystem capability/distribution decision.
+
+User experience target: installation shows publisher, signature, version,
+supported tools, data needs, conflicts, and zero execution grants in one review.
+A guided workflow presents one step, the evidence that selected it, expected
+effect, verification, and stop condition, then returns control. Continuing is a
+new deliberate choice. Disable/uninstall is immediate, and conflict or unsupported
+state explains which deterministic built-in behavior remains available.
+
+- [ ] Define signed/versioned schemas for service owners/dependencies/criticality,
+  evidence predicates, typed registered actions, risk/approval/change windows,
+  success/stop/timeout/recovery predicates, links and compatibility.
+- [ ] Keep packs capability-free declarative data with no arbitrary script,
+  command string, credential, direct network/process, executable callback or
+  execution grant.
+- [ ] Implement verified disabled install, provenance/revocation, conflict
+  review, atomic update/rollback, disable and exact uninstall.
+- [ ] Keep cross-tool workflows guided and one-step-at-a-time; show each owning
+  adapter and native command/API operation.
+- [ ] Pass malicious bundle/schema/graph/policy conflict, compromised/revoked
+  key, rollback/downgrade, native package, resource and removal evidence.
+
+Exit: reviewed organization knowledge improves ranking without becoming an
+unreviewed code or authority channel.
+
+## PO8 - expand adapters, compare environments and evaluate optional local tie-breaking
+
+Status: Not done.
+
+User experience target: every provider slice uses the same passport, situation
+row, evidence detail, preflight, monitor, and Incident workspace language.
+Disconnected or unsupported sources state what is missing and preserve safe
+shell completion. If a small local tie-breaker is adopted, settings explain that
+it only reorders already-valid candidates; each candidate identifies the
+deterministic evidence behind it; disabling the model immediately restores the
+stable deterministic order. `Compare environments` is read-only and first shows
+reviewed service equivalence, selected environments, independent access/
+freshness, field/traffic/window coverage and fan-out. It never creates a cross-
+environment mutation. No user needs an LLM, paid API, or network model.
+
+- [ ] Deliver each new provider/tool adapter as an independent versioned slice
+  with license/provenance/advisory, capability, quota, privacy, lifecycle,
+  native provider, accessibility, resource and uninstall evidence.
+- [ ] Add bounded read-only region/cluster comparison only for explicitly mapped
+  services; normalize declared fields and telemetry windows without merging
+  credentials, policy, approval, state or mutation authority.
+- [ ] Evaluate a small local model only as an optional tie-breaker over
+  already-valid candidates using bounded redacted features off hot paths.
+- [ ] Prove the model cannot create text, commands, targets, grants, approvals or
+  execution; deterministic ordering remains the removable fallback.
+- [ ] Measure binary/startup/CPU/memory/storage/energy cost on low-end hardware
+  and reject adoption without a demonstrated workflow benefit.
+- [ ] Complete three-platform native UX/accessibility/packages, controlled
+  provider fixtures, rollback, soak and release evidence for claimed slices.
+
+Exit: optional breadth never weakens deterministic policy, core weight, offline
+operation, provider isolation, or the user's control.
+
 ## Common phase execution checklist
 
 Every future phase request follows [AGENTS.md](../AGENTS.md) and must complete:
@@ -968,8 +1285,8 @@ These do not become silently complete from local Windows development:
 - SFTP/file synchronization and persistent background tunnels.
 - Arbitrary custom scripts and organization-signed recipe packs.
 - Shared PTYs, collaboration relay, team secret sync, and mobile clients.
-- Public third-party extensions, sandboxed packs, AI execution, and ambient
-  model access.
+- Public third-party extensions, sandboxed packs, CP6 selected-input model
+  suggestions, optional LLM workflow orchestration, and ambient model access.
 - Any background login, provider refresh, or network work triggered by startup,
   search, selection, hover, rendering, or ordinary typing.
 

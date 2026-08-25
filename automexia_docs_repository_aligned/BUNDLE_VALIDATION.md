@@ -2,7 +2,8 @@
 
 **Scope:** generated documentation pack only; not source/native/release certification.
 
-**Last verified:** 2026-08-24 against the frozen source baseline below.
+**Last verified:** 2026-08-26 against the frozen source baseline below and the
+later canonical-resolution links.
 
 - Manifest entries: 61
 - Non-historical entries: 57
@@ -15,9 +16,11 @@
 - Audited committed baseline pinned to `20ff7928ea2d1eac5d26f13c62d0cda9b86bc078`: yes
 - G6 top-level accepted/implemented state reflected: yes
 - Broader topology history marked future: yes
-- Proposed ADR 0025, accepted ADR 0028, and proposed ADR 0029 reflected: yes
+- Frozen-snapshot ADR 0025/0028/0029 state reflected: yes
+- Current accepted-but-nonactivated ADR 0025/0029 resolutions reflected: yes
+- Later canonical ADR 0033 optional-orchestration resolution linked: yes
 - Video marked future/deferred: yes
-- Large LLM / paid API required: no
+- Large LLM / paid API required by core or a domain extension: no
 
 Validation commands:
 

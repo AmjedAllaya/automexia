@@ -346,6 +346,60 @@ Current assurance: **Partially enforced; preview disabled**.
 - Keep CP1/native behavior independently tested and keep activation false until
   every external exit criterion is attached to the exact artifact.
 
+### situation-aware-production-operations-po0-proposal
+
+Current assurance: **Planned/proposal only**.
+
+- The strict proposed PO0 JSON contract, canonical digest, semantic checker,
+  mutation suite and current-source nonactivation scan now enforce the
+  documentation boundary. They cover exact formats, all 17 record payloads,
+  freshness/ranking/policy/provider values, all 37 action phase/effect/authority
+  profiles, lifecycle/settings/journal/resource/accessibility/traceability
+  values. They do not prove a provider, UI, runtime, native or release path.
+- Run `python tools/ci/check_production_operations_po0.py` and
+  `python tools/ci/test_production_operations_po0.py` before broader repository
+  validation. Any accepted contract revision must deliberately update the
+  canonical digest and its semantic mutations.
+
+- Boundary-check route/passport/resource UID/evidence/policy/editor generations;
+  evidence-quality/knowledge states; change/ownership/drift, explanation,
+  cohort/revision/environment comparison, network-vantage and SLO boundaries;
+  deterministic hard gates, refusal, risk and ranking; adapter capabilities;
+  Kubernetes ownership/cause matrices; preflight; Incident hypotheses/time/log/
+  DN handoff; journal; one-action observe/stabilize/verify/recover; managed
+  port-forward/probe/debug sessions; declarative packs; limits; fallback and cleanup.
+- Exercise the exact six-surface hierarchy and its shortest read-only, reviewed-
+  insertion, managed-action, stale/refused, cancel/failure and recovery journeys.
+  Assert comfortable/compact/minimal projection order, at-most-five two-line
+  situation rows, one primary action, safe exit, progressive detail, stable
+  selection, focus restoration, plain uncertainty, and no hidden-surface input
+  or accessibility ownership.
+- Independently distinguish native insertion, reviewed insertion, managed
+  operation and managed diagnostic-session scope. Mutate false claims that
+  shell-owned Enter is policy-governed, monitored or receipted; missing PO6
+  activation/final revalidation; inherited session authority; silent managed-to-
+  shell fallback; process-exit-only success; or automatic recovery.
+- Measure instrumented and predefined moderated tasks with action/focus/error/
+  backtrack/cancel/time distributions. Reject fabricated participant scope,
+  cherry-picked averages, missing narrow/keyboard/screen-reader journeys, and
+  screenshot-only usability claims.
+- Mutate stale/cross-pane publication, name-based retargeting, poisoned telemetry,
+  command injection, secret leakage, authorization/GitOps/JIT/policy bypass,
+  false dry-run, blast-radius relaxation, automatic Enter/execution/retry,
+  false causality, wrong cohort/vantage, log/time-gap hiding, listener/debug
+  privilege or cleanup weakening, cross-environment authority merging, arbitrary
+  runbook scripts, per-key I/O, raw evidence persistence, hidden model authority
+  and uninstall residue.
+- Require independent exact editor-byte, argv, resource UID, provider authority,
+  external state, process/network/storage tree, side-effect-absence, pixel,
+  accessibility, focus/input, interaction-efficiency, moderated-usability, and
+  resource/latency oracles plus real controlled provider and
+  native fixtures before any phase claim.
+- Continuously prove that PO0 adds no provider capability, watcher, completion
+  source, investigation view, live-log controller, managed diagnostic session,
+  setting, UI, journal, model, process, network request or execution authority.
+  CP1 remains the fallback and PO1-PO8 remain not implemented.
+
 ### ecosystem-d7-cp6-proposal
 
 Current assurance: **Accepted source partially enforced; activation external**.
@@ -362,7 +416,6 @@ Current assurance: **Accepted source partially enforced; activation external**.
 - Continuously reject contract/acceptance/dependency drift, ambient imports,
   extraction shortcuts, authority changes, selected-content logging, false
   native claims, and any coupling to the separate LO0-LO5 workflow track.
-
 ### contributor-automation-quality-policy
 
 Current assurance: **Partial**.

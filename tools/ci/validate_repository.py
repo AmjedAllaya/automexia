@@ -63,6 +63,9 @@ from check_feature_test_reinforcement import (
     load_and_validate as validate_feature_test_reinforcement,
 )
 from check_phase_implementation_audit import validate as validate_phase_audit
+from check_production_operations_po0 import (
+    validate_repository as validate_production_operations_po0,
+)
 from check_repository_aligned_docs import validate as validate_repository_aligned_docs
 from check_platform_coverage import validate_repository_workflows
 from repository_protection import validate_repository as validate_repository_protection
@@ -363,6 +366,10 @@ def validate() -> None:
     )
     ecosystem_d7_cp6_counts = validate_ecosystem_d7_cp6()
     counts["ecosystem D7/CP6 accepted source"] = ecosystem_d7_cp6_counts["source_files"]
+    production_operations_po0_counts = validate_production_operations_po0()
+    counts["Production Operations PO0 proposal"] = (
+        production_operations_po0_counts["traceability"]
+    )
     session_launch_d0_counts = validate_session_launch_d0()
     counts["session launch D0/D3"] = session_launch_d0_counts["scenarios"]
     provider_auth_m7_counts = validate_provider_auth_m7()

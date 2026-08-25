@@ -323,6 +323,7 @@ deliberately deferred to v0.5.
 | `openssh-sftp-client` | v0.6 isolated structured-transfer milestone | Adopt only after system `sftp`/`scp`; model ambiguous mutation cancellation, atomic finalize, containment, symlinks, hostile filenames, integrity, quotas, cleanup, and real-server evidence. |
 | `serialport` | v0.6 optional transport milestone | Blocking worker per session, bounded buffers and teardown, device removal/reconnect, and real-device Windows/Linux/macOS evidence before a platform support claim. |
 | Wasmtime/WASI Component Model | D7 third-party extension milestone | WIT contracts, no ambient capability, fuel/deadline/memory/output/file/network/concurrency quotas, signatures/revocation, guest-output sanitization, crash isolation, and sandbox escape review. |
+| External local/self-hosted model endpoint | LO2 only after LO0/LO1 acceptance and proof | Keep inference outside the desktop binary initially; pin protocol/version/locality, disclose data and resources, bound requests, cancel/join cleanly, store no prompts by default, and never expose direct action tools. Remote adapters require their own privacy, credential, retention, cost and network review. |
 | External Git, Mosh, Upterm, SOPS/age, task/session and advanced sync tools | Feature-specific optional adapters | All invocations use the central exact-argv runner; tool absence is isolated; authority and credentials stay with the external tool; no automatic directory-open or background network work. |
 
 Every added crate/tool must have a pinned version, license/source/advisory
@@ -576,7 +577,8 @@ CP2/CP3 implementation details and exit evidence are canonical in
 | CP3.3 trusted imports and task bridges | CP3.2 | Dry-run selected PowerShell/Bash/Zsh/Fish/CMD/Git import and trusted explicit just/Task/mise insertion. | **Fully done locally:** bounded no-follow/CAS import and workspace state, hostile rejection, path-free digest/revision trust, revocation, conflict/rename/export/removal, background authorization and insertion recheck, tests, mutation, fuzz, benchmarks, CLI, ADR, and docs pass; hosted native/accessibility and 30-day evidence remain release gates. |
 | CP4 capsule-aware actions | D3 activation plus D5/D6 | Bind cached public capsule/target context with freshness; explicit refresh; reviewed exact launch only through the broker. | Mixed-pane/session isolation, offline/stale/revocation/cancellation, production-risk, provider-native, audit-redaction, and resource tests pass. |
 | CP5 Shell Completion and Suggestions | CP5.0 research fully done with CP1 retained; ADR 0025 accepted; CP2/CP3 action candidates; cached-public CP4/D6 only | CP5.1-CP5.4 are fully done at source/local boundaries. CP5.5 has an inert helper target and four bidirectional adapters with local native evidence. CP5.6 activation/release evidence remains partial or external. | No grid/history-file/remote-output inference, network/auth/secret work, or per-keystroke process. Preview remains disabled until reviewed launcher/signing, WSL relay, live composition, successful native endpoint/shell/IME/accessibility, latency/leak/rollback/30-day evidence, and measurable-benefit proof pass. Not a v0.5.0 blocker. |
-| CP6 ecosystem packs | v0.6 capability/sandbox/signing gates | Signed third-party packs and separate opt-in AI tools only through provenance, capability, quota, revocation, and privacy policy. | Malicious-package/sandbox/supply-chain/data-flow gates pass; no ambient terminal, secret, provider, or process authority. |
+| CP6 ecosystem packs and selected-input model suggestions | v0.6 capability/sandbox/signing gates | Signed third-party packs and separate opt-in selected-input explanation/suggestion only through provenance, capability, quota, revocation and privacy policy; no tool/workflow calls. | Malicious-package/sandbox/supply-chain/data-flow gates pass; no ambient terminal, secret, provider, process or execution authority. |
+| LO0-LO5 optional LLM orchestration | Separate acceptance; LO1 neutral workflow model before any provider/runtime | Optional first-party extension proposes typed plans; application owns registry, policy, review, one-run grants, final revalidation, existing-broker execution and receipts. Domain extensions stay model-free. | Machine contract, provider/privacy/security/resource/accessibility/native/lifecycle evidence pass; no direct tools, silent fallback, required paid API, unattended high-risk work or Studio/video dependency. |
 
 ### CP5 status and activation ledger
 
@@ -635,7 +637,7 @@ Linux, and macOS checks plus the existing controlled release gates.
 | Bounded validation | Top-level ceilings were frozen but nested tags and mutating acknowledgement were implicit | 1 MiB pre-decode limit; 1,024 actions; 256 enabled aliases; 64 arguments/tags; 32 placeholders; 4 KiB strings; portable IDs; duplicate/reference/shell/mode/risk/secret/raw-insert/control/bidi rejection | CP2.1 reuses the validated-only model before every write/load; schema changes remain review-gated |
 | Hostile evidence | Policy mutation fixture only | Readable valid TOML plus 11 versioned hostile TOML cases with stable failure codes; boundary and round-trip tests cover limits and safe Unicode | Parser fuzz and long-running resource campaigns continue in nightly/release depth |
 | Architecture | CP0 rejected all Quick Action runtime vocabulary | Exact seven-file pure model (including nonactivated CP3.0 projection, CP3.2 packs, and CP3.3 imports), 13-file reviewed application boundary, and separate UI adapter allowlist; capability mutations reject filesystem/process/network/secret/grid/execution drift | CP3.1 publication and CP3.2/CP3.3 persistence stay app-owned; CP4 provider context and D3 exact execution require separate gates |
-| Status truth | CP2/CP3 documented only as planned | Machine contracts say `CP3.0-pure-projection-compiler-activation-disabled`; roadmap and audit distinguish the complete pure compiler from unimplemented activation/packs/bridges | Hosted/controlled CP2.2 and CP3.0 evidence remains before stable release claims |
+| Status truth | CP2/CP3 documented only as planned | Machine contracts and the roadmap distinguish the implemented local CP2.0-CP2.2 and CP3.0-CP3.3 boundaries from disabled exact execution and incomplete hosted/native release evidence | Hosted/controlled CP2/CP3 native, accessibility, resource, and longitudinal evidence remains before stable release claims |
 
 CP2.0 result: satisfied at the pure source/model boundary. It adds no filesystem,
 watcher, process, network, secret, UI, PTY, shell-profile, provider, alias, or
@@ -1151,7 +1153,7 @@ AWS, Azure, GCP, Kubernetes, and OpenShift preserve exact identity and capsule
 isolation; expired/offline/slow providers remain truthful and cannot affect
 terminal latency or another pane.
 
-### D7 — deferred ecosystem and selected-input model-suggestion gates
+### D7 — accepted nonactivating ecosystem and selected-input source boundary
 
 Status: partially done overall and fully done locally at the accepted,
 nonactivating source boundary. ADR 0029 and the exact schema-1 digest are
@@ -1176,6 +1178,30 @@ trust and publisher owners, hostile package/component and supply-chain drills,
 native three-platform signed package/sandbox/cleanup, privacy/accessibility/
 performance/resource evidence, exact rollback, 1,000 lifecycle cycles, and the
 30-day soak. Private first-party extensions and CP1-CP3 remain the fallback.
+
+### LO0-LO5 — optional LLM Orchestration gates
+
+Status: LO0 is partially done at the documentation-only proposal boundary;
+LO1-LO5 are not done. The canonical specification, proposed ADR 0033, neutral-
+workflow dependency direction, provisional resource ceilings and future evidence
+ladder exist. There is no workflow-model crate, action registry, orchestrator,
+model/provider adapter, request, plan review, executor, product UI, model
+download, conversation store, MCP mapping, shortcut, setting or runtime authority.
+
+After explicit LO0 acceptance and a strict machine contract, LO1 must first
+prove an I/O-free domain-neutral action/plan/digest/grant/result model. LO2 is
+plan-only with explicit context and provider disclosure. LO3 adds reviewed one-
+run execution only through the app-owned registry and existing domain brokers.
+LO4 adds bounded dependencies/concurrency/replans; LO5 adds independently
+reviewed providers, storage, organization policy or typed MCP mappings. Each
+stage retains final revalidation, cancellation/join, content-minimized receipts,
+disable/uninstall recovery and a complete non-AI fallback.
+
+Models never receive an executor, shell, PTY, filesystem, credential, provider,
+DevOps, Studio, video or MCP handle. Local/self-hosted inference is the first
+direction, no paid API is required, and local-to-remote/provider fallback is
+never silent. LO work is independently releasable from Automation Studio and
+video and must not block either. Third-party delivery also waits for accepted D7.
 
 ## Tooling decisions and non-goals
 
@@ -1226,11 +1252,11 @@ documented keyboard/focus/contrast/scaling plus screen-reader baseline. A
 compile-only benchmark job or renderer-neutral JSON alone does not satisfy the
 corresponding performance or visual gate.
 
-Provider, credential, managed-SSH, public-extension, and AI activation gates
-belong to v0.5 or later. They must not be added as prerequisites for closing
-v0.4. Conversely, passing v0.4 terminal release evidence does not authorize
-those later capabilities. The two lanes can progress concurrently but retain
-separate acceptance evidence and release decisions.
+Provider, credential, managed-SSH, public-extension, CP6 model-suggestion and
+LLM Orchestration activation gates belong after v0.4. They must not be added as
+prerequisites for closing v0.4. Conversely, passing v0.4 terminal release
+evidence does not authorize those later capabilities. The lanes can progress
+concurrently but retain separate acceptance evidence and release decisions.
 
 The S0 source gates pass locally, but stable v0.4 remains blocked until every
 applicable S1, hosted, native, and external release gate is satisfied. S1

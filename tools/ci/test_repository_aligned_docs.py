@@ -56,6 +56,7 @@ class RepositoryAlignedDocumentationTests(unittest.TestCase):
             "current_edition": "2021",
             "real_project_adr_owners": {
                 "cp5": "0025",
+                "llm_orchestration": "0033",
                 "top_level_parked_tab_history": "0028",
                 "public_ecosystem": "0029",
             },
@@ -84,7 +85,7 @@ class RepositoryAlignedDocumentationTests(unittest.TestCase):
                 "# Pack\n\n"
                 f"Audited implementation baseline: `{BASELINE}`.\n\n"
                 "ADR 0025 is proposed. ADR 0028 owns top-level history. "
-                "ADR 0029 is proposed.\n\n"
+                "ADR 0029 and ADR 0033 are proposed.\n\n"
                 "v0.4 release closure is separate from v0.5 activation hardening.\n"
             ),
             "repository_snapshot/CURRENT_REPOSITORY_STATE_2026-08-23.md": (

@@ -115,6 +115,7 @@ def validate_metadata(manifest: dict[str, Any]) -> str:
     owners = manifest.get("real_project_adr_owners")
     expected_owners = {
         "cp5": "0025",
+        "llm_orchestration": "0033",
         "top_level_parked_tab_history": "0028",
         "public_ecosystem": "0029",
     }
@@ -214,6 +215,7 @@ def validate_baseline_documents(pack: Path, baseline: str) -> None:
         "adr 0025",
         "adr 0028",
         "adr 0029",
+        "adr 0033",
         "v0.4 release closure",
         "v0.5 activation hardening",
     )
@@ -261,7 +263,9 @@ def update_manifest(root: Path = ROOT) -> int:
     manifest["files"] = entries
     destination = pack / MANIFEST_NAME
     temporary = destination.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    temporary.write_text(
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
     temporary.replace(destination)
     return len(entries)
 

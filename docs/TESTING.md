@@ -1905,18 +1905,65 @@ SDK/download/distribution, provider calls, actual native product UX, signed
 three-platform packages, malicious-corpus drills, 1,000 cycles and the 30-day
 soak are external gates and must not be reported as passing.
 
+## LLM Orchestration evidence gate
+
+LO0 is documentation-only; LO1-LO5 are not implemented. The separate threat,
+contract, unit/property/fuzz/mutation, provider/privacy, workflow, security,
+resource/leak, accessibility, native, package, disable/uninstall and external
+evidence ladder is maintained in
+[Optional LLM Orchestration testing](LLM-ORCHESTRATION-TESTING.md). It does not
+replace or relax the initial D7/CP6 no-tool contract.
+
 ## Automation Studio evidence gate
 
 AS0 is proposal-only; AS1-AS6 are not implemented. The complete future gate is
 [Automation Studio testing](AUTOMATION-STUDIO-TESTING.md).
+
+## Situation-Aware Production Operations evidence gate
+
+PO0 is a proposal/checker only; PO1-PO8 are not implemented. The separate
+environment-passport/route-lock; change/ownership/drift, resource/scheduler,
+cohort/revision/environment, passive-network/SLO and dependency evidence;
+Kubernetes situation/ranking; editor-byte/no-Enter;
+permission/GitOps/JIT/policy preflight; Incident hypothesis/time/live-log/
+Diagnostic-Navigator-handoff/journal; execute-observe-stabilize-verify-recover;
+port-forward/probe/debug; organization-pack; provider; security; fuzz/model;
+visual/accessibility; native; resource/storage; rollback/disable/uninstall;
+package; and external evidence ladder is maintained
+in [Situation-Aware Production Operations testing](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md).
+Exact surface, responsive, focus, ownership-path/session-kind, usability, and accessibility
+requirements are owned by the
+[Production Operations UX and implementation blueprint](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md).
+The dedicated testing plan applies them separately to shell-owned insertion,
+PO6 managed execution and PO6 managed diagnostic sessions; this index does not
+duplicate that contract.
+
+That plan does not activate CP5, provider collection, a watcher, investigation
+view, live-log controller, managed diagnostic session, completion source, LLM,
+model, D3 runner, or any product behavior. CP1 remains the
+fallback and all phase-specific external provider/native evidence stays open.
+
+The non-activating
+[PO0 contract](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md) is checked with:
+
+```text
+python tools/ci/check_production_operations_po0.py
+python tools/ci/test_production_operations_po0.py
+```
+
+They prove proposal integrity and current source-marker absence only; all
+runtime, provider, native and release evidence stays external.
 
 ## External-tool and adopted-dependency assurance
 
 The canonical ownership policy is
 [Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md).
 Every OpenSSH, provider CLI, Mosh, Git, Upterm, SOPS/age, task-runner, transfer,
-policy, collaboration, or AI adapter must use the one core ExternalToolRunner.
-Each adapter's protected milestone adds all applicable evidence below.
+policy, collaboration, or local executable model adapter must use the one core
+ExternalToolRunner. A network model endpoint instead requires the separately
+reviewed extension-host network capability and provider/privacy contract. Neither
+kind receives action execution authority. Each adapter's protected milestone
+adds all applicable evidence below.
 
 | Layer | Required deterministic evidence |
 |---|---|

@@ -23,7 +23,9 @@ Current release inputs:
 Candidate inputs, only after an accepted owning milestone:
 
 - Tokio only for a measured asynchronous ownership need;
-- Wasmtime only after proposed ADR 0029 is accepted and runtime work authorized;
+- Wasmtime only within accepted ADR 0029's optional, no-WASI, nonactivating
+  source boundary; activation and public distribution require protected
+  authorization and evidence;
 - SQLite only for an approved bounded persistence contract;
 - managed or compatible system FFmpeg only after a distribution ADR;
 - exact model/runtime assets only after artifact-level license, provenance,

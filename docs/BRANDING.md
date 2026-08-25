@@ -20,12 +20,17 @@ Use a simple, confident, and natural voice:
   trust the product;
 - keep what works today separate from implemented-but-gated, planned, and
   research work;
-- describe future media, video, AI, and ecosystem ideas as planned or research
-  until their own delivery evidence exists.
+- describe future media, video, orchestration, and ecosystem ideas as planned or
+  research until their own delivery evidence exists;
+- describe Automexia as AI-capable but not AI-dependent when the optional LLM
+  Orchestration extension is relevant.
 
-Avoid inflated marketing claims, vague automation jargon, presenting future
-ideas as available, or suggesting that Automexia replaces the specialist tools
-a workflow depends on.
+Do not call Automexia an “AI terminal” or imply that a model, provider account,
+network connection, or paid API is required. Avoid inflated marketing claims,
+vague automation jargon, presenting future ideas as available, or suggesting
+that Automexia replaces the specialist tools a workflow depends on. When the
+optional orchestration proposal is discussed, say plainly that models propose
+reviewable plans while Automexia retains policy, approval, and execution control.
 
 ## Visual asset workflow
 

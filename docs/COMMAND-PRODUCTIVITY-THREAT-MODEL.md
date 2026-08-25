@@ -276,11 +276,15 @@ the documented CP5.5/CP5.6 gates pass.
   outside Automexia's ability to repair. Identity checks and explicit activation
   reduce but do not eliminate local compromise.
 - CMD cannot provide feature parity with programmable shell editors.
-- Remote marketplace packs, automatic cloud sync, AI command generation, and
-  direct provider APIs remain outside CP0-CP4. The proposal-only D7/CP6 threat
-  inventory is frozen separately by [ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md)
-  and its [machine contract](../tests/fixtures/ecosystem/d7-cp6-ecosystem-contract-v1.json);
-  runtime still requires acceptance and protected implementation.
+- Remote marketplace packs, automatic cloud sync, selected-input model command
+  suggestions, and direct provider APIs remain outside CP0-CP4. The proposal-
+  only D7/CP6 threat inventory is frozen separately by
+  [ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md) and its
+  [machine contract](../tests/fixtures/ecosystem/d7-cp6-ecosystem-contract-v1.json);
+  it permits neither tools nor workflows, and runtime still requires acceptance
+  and protected implementation. Optional cross-extension LLM workflow
+  orchestration is a later independent LO0-LO5 boundary under proposed
+  [ADR 0033](adr/0033-optional-llm-orchestration-extension.md).
 
 ## Mandatory review triggers
 

@@ -932,7 +932,7 @@ Every input must be inspected with `ffprobe` before editing.
 
 Record at minimum:
 
-### Video
+### Video probe fields
 
 - stream index
 - codec
@@ -952,7 +952,7 @@ Record at minimum:
 - field order/interlacing
 - HDR indicators/metadata when present
 
-### Audio
+### Audio probe fields
 
 - stream index
 - codec
@@ -1376,7 +1376,7 @@ A video containing a continuous music bed mixed into the same audio stream canno
 
 ## 41. Cut Smoothing
 
-### Audio
+### Audio cut smoothing
 
 Use:
 
@@ -1387,7 +1387,7 @@ Use:
 
 Do not use long crossfades between spoken words because they can smear phonemes.
 
-### Video
+### Video cut smoothing
 
 Normal behavior is a hard cut.
 
@@ -2381,7 +2381,7 @@ Golden tests for:
 - reframe keyframes
 - graphic anchor choice
 
-### Audio
+### Audio correctness checks
 
 Check:
 
@@ -2390,7 +2390,7 @@ Check:
 - no unexpected channel-layout change
 - bounded A/V sync error
 
-### Video
+### Video correctness checks
 
 Check:
 

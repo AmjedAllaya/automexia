@@ -990,6 +990,32 @@ Exit: all machine gates pass, external native accessibility evidence is linked,
 and maintainers record that the Automexia surface improves a measured workflow.
 Otherwise CP1 native completion remains the shipped solution.
 
+#### PO cross-track — situation-aware production candidates
+
+The planned PO track does not widen CP5's accepted source boundary. CP5 remains
+the editor and presentation owner; PO contributes only typed, route-bound,
+already-cached operational candidates after its own future capability, privacy,
+freshness, policy, and resource gates pass. No provider, observability, GitOps,
+identity, policy, or cluster request is triggered by a keystroke.
+
+A PO candidate must preserve CP5's authenticated route/generation/replacement
+span, local privacy, cancellation, candidate/message ceilings, accessibility,
+insert-without-Enter behavior, and CP1 fallback. It additionally binds the
+environment passport, exact resource UID/target, evidence and policy revisions,
+risk, expiry, supporting/contradicting evidence, evidence quality and explicit
+unknowns, impact, verification, and recovery. Final selection still inserts native command text
+only; a separate app-owned preflight and confirmation is required before any
+future execution.
+
+The requested Kubernetes rollout ranking, production context lock, change/
+ownership/drift, resource explanation, healthy and environment comparison,
+network/SLO diagnosis, dependency graph, GitOps/JIT awareness, Incident Mode,
+live-log/time/DN handoff, managed operation/diagnostic sessions, journal, and
+runbook packs are specified in
+[Situation-Aware Production Operations](SITUATION-AWARE-PRODUCTION-OPERATIONS.md).
+They are PO1-PO8 planned behavior, not CP5 implementation or current completion
+sources.
+
 ### CP6 — ecosystem integration
 
 Status: partially done at the proposal-only policy boundary. Proposed
@@ -997,7 +1023,7 @@ Status: partially done at the proposal-only policy boundary. Proposed
 [schema-1 machine contract](../tests/fixtures/ecosystem/d7-cp6-ecosystem-contract-v1.json),
 15 mutation tests, and the
 [D7/CP6 execution audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md) are complete.
-No pack or AI runtime, public SDK, download, sandbox, provider request, tool
+No pack or model runtime, public SDK, download, sandbox, provider request, tool
 call, or execution authority exists.
 
 - Signed third-party action packs may map only into existing typed CP2/CP3
@@ -1005,20 +1031,27 @@ call, or execution authority exists.
   current revocation, and exact capability/data-flow review. A pack never owns
   execution; preview, collision, stale revision, production confirmation,
   insert/copy, and final revalidation remain host-owned.
-- Optional AI is a separate opt-in and per-request consent flow. It may receive
-  only exact selected bounded text after redaction preview and provider/locality/
-  model/destination/purpose/retention/size/risk disclosure. Ambient terminal,
-  history, clipboard, files, environment, credentials, agents, provider caches,
-  capsules, connections, other panes, logs, telemetry, and support data remain
-  unavailable.
-- AI output is a bounded typed explanation or suggestion, independently risk
-  classified and offered as copy/insert without Enter. Tool calls, MCP
-  passthrough, background or typing-triggered requests, and automatic execution
-  are outside CP6.
+- The optional CP6 model suggestion is a separate opt-in and per-request consent
+  flow. It may receive only exact selected bounded text after redaction preview
+  and provider/locality/model/destination/purpose/retention/size/risk disclosure.
+  Ambient terminal, history, clipboard, files, environment, credentials, agents,
+  provider caches, capsules, connections, other panes, logs, telemetry, and
+  support data remain unavailable.
+- Its output is a bounded typed explanation or suggestion, independently risk
+  classified and offered as copy/insert without Enter. Tool calls, workflow
+  planning, MCP passthrough, background or typing-triggered requests, and
+  automatic execution are outside CP6.
 - Runtime work requires explicit ADR/contract acceptance followed by the package,
   custom WIT/Wasmtime, distribution/revocation, privacy, UX, native,
   accessibility, performance/resource, rollback, and release gates in the
   execution audit. CP1-CP3 and private first-party extensions remain fallback.
+
+CP6 is not the multi-extension orchestration architecture. The separately
+proposed [LLM Orchestration extension](LLM-ORCHESTRATION-EXTENSION.md) may later
+propose bounded typed workflow plans, but core-owned policy, review, one-run
+grants and ordinary action brokers remain authoritative. Its LO0-LO5 phases,
+ADR 0033 acceptance and machine contract are independent gates; they do not
+weaken or silently replace this CP6 no-tool boundary.
 
 ## Verification matrix
 

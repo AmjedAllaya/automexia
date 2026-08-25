@@ -140,6 +140,21 @@ viewport, viewport-plus-one, large, and storm heights, followed by the ownership
 fix and rerun of native shell, exact-pixel, accessibility, resource, and
 benchmark evidence. Unintegrated or unsupported shells still fail closed.
 
+## Relationship to planned diagnostic navigation
+
+The proposed
+[Semantic Diagnostic Navigator](SEMANTIC-DIAGNOSTIC-NAVIGATOR.md) may reuse
+trusted prompt result metadata for exact failed-command traversal after v0.4.
+That proposal does not close this command-result assurance gap and must not
+describe current visible result geometry as a durable complete command region.
+Its DN1 slice navigates to the identified prompt/input anchor only; generic
+error-section reconstruction is separate DN2/DN3 work over bounded normal
+scrollback.
+
+Failed-command status and recognized Error/Fatal output remain separate
+classifications. Unknown CMD or unsupported-shell status stays neutral, and no
+future navigator may infer failure from color or fabricate missing metadata.
+
 This local evidence does not justify a universal native-platform claim. Native
 Linux/macOS GUI frames, the complete theme/high-contrast matrix, and
 Narrator/NVDA, VoiceOver, and Orca delivery remain outstanding under U10. The

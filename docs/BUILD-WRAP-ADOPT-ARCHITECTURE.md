@@ -122,6 +122,9 @@ or accessibility platform adapter.
 | Quick Actions and aliases | Typed model with native shell projections | Build | Core productivity model plus first-party packs |
 | Completion | PSReadLine/Readline/ZLE/Fish ownership; optional Carapace | Hybrid | Core static registry, shell adapters, optional external bridge |
 | Workspaces | Existing panes, pane tabs, and layout | Build | Core |
+| Situation-aware production operations | Existing CP5/D2/D6/CP4/D3/DN contracts; official provider/GitOps/JIT/authorization/observability/network authorities; Kubernetes API semantics; OpenTelemetry conventions where useful | Build pure typed investigation/policy/ranking/session composition; wrap external authorities and active operations; adopt provider libraries only after measured adapter need | Optional DevOps/SRE layer and separately enabled adapters; no provider, log-stream, listener, debug, execution or model logic in core |
+| Domain-neutral workflows | Versioned typed action descriptors, plans, digests, one-run grants and structured results | Build only after LO0 acceptance | Private pure `automexia-workflow-model`; application remains registry/review/execution root |
+| Semantic diagnostic navigation | Existing grid/prompt metadata plus bounded in-tree parsing/matching infrastructure | Build product orchestration; reuse existing primitives; no new dependency approved by DN0 | Core grid access/navigation primitive plus app-owned pure detectors and renderer-neutral highlight |
 | Embedded file editing | CodeMirror 6; Monaco retained as the measured desktop comparison | Adopt conditionally after AS0 | Optional first-party Automation Studio behind a core document/surface boundary |
 | Native editor surface | Wry over system webviews; platform-specific Linux adapter if required | Conditional after native proof | Core platform adapter; one host per top-level window initially |
 | Language intelligence | LSP 3.18 with installed supported servers | Adopt protocol / wrap tools | Core language broker plus independently enabled first-party add-ons |
@@ -132,7 +135,7 @@ or accessibility platform adapter.
 | Enterprise policy | Existing organization OPA | Wrap | Optional enterprise extension |
 | Collaboration | Upterm before a custom relay | Wrap | Optional collaboration extension |
 | Untrusted extensions | Wasmtime Component Model with custom WIT and no default WASI | Adopted for accepted disabled conformance source | D7 private host, never terminal-core authority; activation/public distribution remain release-gated |
-| AI | User-chosen local/remote endpoint with zero execution authority | Wrap | Optional isolated extension |
+| LLM orchestration | User-chosen local/self-hosted endpoint first; explicit remote adapters later | Build neutral workflow policy; wrap external inference | Optional first-party extension; model/provider has zero direct action authority |
 | Testing and supply chain | Existing suite plus `cargo-vet` and scoped `cargo-mutants` | Extend | Contributor/CI tooling, never runtime |
 
 ## One external-tool boundary
@@ -188,6 +191,34 @@ Taffy, the application event loop, and the existing focus/accessibility model
 remain the only native product UI system. AccessKit initially covers chrome and
 structured overlays; terminal-grid accessibility remains an Automexia-owned
 text/document projection.
+
+### Semantic diagnostic navigation
+
+**Core builds:** the route-local on-demand navigator; separate failed-command
+and Error/Fatal actions; exact generations and cancellation; bounded transient
+line batches; content-free anchors; section reconstruction policy; viewport
+placement; renderer-neutral highlight/accessibility state; and all limits,
+privacy, cleanup, and recovery behavior.
+
+**Core reuses:** existing prompt/result metadata, grid/reflow/eviction behavior,
+route scheduling, typed action and command-palette infrastructure, bounded
+search/matching support, structured parsing already present in the workspace,
+and the renderer-neutral UI model. DN0 approves no new dependency.
+
+**Placement:** `rio-vt` owns only terminal truth, bounded normalized logical-line
+access, content-free positions, viewport movement, and lifecycle signals. Pure
+generic detectors begin in an app-owned module outside terminal locks. The
+renderer only paints an immutable content-free projection.
+
+**Extensions:** none in DN1-DN5. DN6 prefers declarative rules executed by core.
+Any extension parser that observes output requires a separate privacy-sensitive
+capability decision, explicit scope/revocation/quotas/cleanup, and ADR 0029 for
+third-party delivery.
+
+**Rejected:** continuous indexing, per-pane workers, a persistent log database,
+color classification, format/domain parsers in the VT engine, a global logical-
+line identity as a DN1 prerequisite, unrestricted regex, network/AI detection,
+and treating every non-zero result as a confirmed error.
 
 ### SSH connections, routes, tunnels, and trust
 
@@ -362,6 +393,56 @@ generation cancellation; and source, freshness, type, and risk labels.
 by an explicit refresh. Automexia never infers editable input from terminal
 cells and never invokes cloud or DevOps providers per keystroke.
 
+### Situation-aware production operations
+
+**Build:** the product-defining pure types, route/passport/evidence/policy
+binding, change/ownership, resource explanation, cohort comparison, network-path,
+SLO-summary and resource/dependency contracts; deterministic hard gates;
+explainable ranking/refusal; impact projection; Incident Mode, live-log reference,
+operation and managed-session state; content-minimized receipts; limits; and
+immutable UI projection. Reuse CP5 insertion and the one application composition
+root.
+
+**Wrap:** Kubernetes/cloud authorization, provider CLIs/APIs, GitOps
+reconciliation and sync windows, JIT elevation, admission/policy, service
+catalogs, incident tools and observability sources through separate bounded
+adapters. These external systems remain authoritative for identity, permission,
+declared state, audit and business policy. Wrap active probes, Kubernetes
+port-forward/debug operations and any provider live-log source only through the
+existing activated process/provider broker with separate capability and cleanup.
+
+**Adopt conditionally:** a focused provider client such as `kube-rs` only when
+bounded list/watch behavior materially improves a separately approved adapter
+over official CLI/config sources; reuse OpenTelemetry semantic conventions for
+normalization where they fit. Record exact dependency features, license,
+advisories, provenance, binary/startup/resource cost, platform support,
+authority, disable/uninstall and native/provider evidence before adoption.
+
+**Reject:** an LLM agent, a second shell editor or runner, `kubectl` plugin as
+the existing-command owner, provider queries per keystroke, raw log/metric
+storage, an embedded observability platform, one opaque priority score,
+automatic remediation and organization runbooks as arbitrary scripts. A small
+local model may be evaluated only later as a removable tie-breaker over
+already-valid candidates.
+
+The detailed proposed accepted/rejected boundary is in
+[Situation-Aware Production Operations](SITUATION-AWARE-PRODUCTION-OPERATIONS.md).
+Exact format, rule, provider, policy, lifecycle, dependency and ceiling
+decisions are in the non-activating
+[PO0 contract](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md).
+The exact product surfaces, interaction rules and implementation map are in the
+[Production Operations UX and implementation blueprint](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md).
+PO0 approves no dependency.
+
+The build/wrap/adopt boundary applies only to Automexia-owned actions. Native and
+reviewed insertion replace editor text while the shell owns any later Enter;
+they cannot claim policy enforcement or monitored outcome. Only PO6 may compose
+one activated managed broker action or diagnostic session with final
+revalidation, observation, stabilization, verification, receipt, cleanup and
+recovery for its exact reviewed scope. Policy can disable Automexia's candidate
+or managed route but cannot stop an equivalent command typed into an unrestricted
+shell, and the UI must never imply otherwise.
+
 ### Workspaces and restoration
 
 The core owns declarative workspaces on the existing pane, pane-tab, and session
@@ -465,11 +546,7 @@ sandbox evidence and an explicit fallback when that profile is unavailable.
 
 ### Extension sandbox
 
-Trusted first-party modules continue to use the typed extension API and bounded
-runtime. Accepted D7 source validates future untrusted Component Model code
-through a feature-gated Wasmtime conformance host with custom WIT and no default
-WASI; public execution remains denied. Native shared libraries are not the
-public extension model.
+Trusted first-party modules continue to use the typed extension API and bounded runtime. Accepted D7 source validates future untrusted Component Model code through a feature-gated Wasmtime conformance host with custom WIT and no default WASI; public execution remains denied. Native shared libraries are not the public extension model.
 
 Automexia still owns WIT interfaces, manifests, approval/revocation, CPU fuel,
 epoch deadlines, memory/output/file/network/concurrency quotas, signed-bundle
@@ -478,25 +555,30 @@ sanitization. A guest starts with no filesystem, network, process, clipboard,
 PTY, environment, history, or secret authority. WebAssembly is defense in
 depth, not permission.
 
-### Model assistance
+### Model assistance and orchestration
 
-The accepted D7/CP6 source boundary covers an initial selected-input explanation
-and suggestion slice only. Automexia owns explicit selection, redaction, exact
-data-flow disclosure, single-use consent, a bounded typed response, independent
-risk, and copy/insert without Enter. Provider/tool/workflow/MCP calls and
-execution remain hard-disabled. Inference remains outside the desktop binary;
-no provider fallback is silent, and schema-valid output is not proof of safety
-or authorization.
+The accepted D7/CP6 source boundary covers an initial selected-input explanation and suggestion slice only. Automexia owns explicit selection, redaction, exact data-flow disclosure, single-use consent, a bounded typed response, independent risk, and copy/insert without Enter. Provider/tool/workflow/MCP calls and execution remain hard-disabled. Accepted [ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md) and the [D7/CP6 audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md) are the exact nonactivating authority for this source slice.
 
-#### D7/CP6 accepted source status
+The separate proposed LLM Orchestration extension may later turn explicit user
+intent into a candidate typed workflow across installed domain extensions. A
+pure private `automexia-workflow-model` would own action/plan/grant/result data;
+the desktop composition root would own the action registry, risk/policy checks,
+review, one-run grants, final revalidation, execution through existing brokers,
+cancellation, and receipts. The model/provider receives no executor, PTY, shell,
+filesystem, credential, provider, or mutable extension handle.
 
-Accepted [ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md) and the
-[D7/CP6 audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md) authorize the exact
-nonactivating source slice. D7 adds reduced-feature Wasmtime, Ed25519, ZIP,
-Unicode, and WIT source dependencies for private local verification and
-conformance. Public SDK/download, distribution transport, active components,
-provider adapters, tool calls, credentials, process, PTY, and execution
-authority remain denied or separately release-gated.
+Inference remains outside the desktop binary initially. A user-operated local or
+self-hosted endpoint is the first direction; separately configured remote
+adapters remain inside the optional extension. No paid API is required, no
+provider fallback is silent, and an allowlisted MCP mapping is deferred until a
+later reviewed capability maps into the same typed registry. Schema-valid model
+output is not proof of safety or authorization, and MCP transport authorization
+is not an Automexia capability grant. The complete boundary is in
+[Optional LLM Orchestration extension](LLM-ORCHESTRATION-EXTENSION.md) and
+[proposed ADR 0033](adr/0033-optional-llm-orchestration-extension.md).
+
+D7/CP6 acceptance and LO0 acceptance are separate. D7 now adds reduced-feature Wasmtime, Ed25519, ZIP, Unicode and WIT source dependencies for private local verification and conformance, but still adds no public SDK/download, distribution transport, provider adapter, active component, tool call or execution authority. LO0 remains proposal-only and inherits none of D7 acceptance.
+
 ## Dependency introduction order
 
 | Gate | Core additions | Extension additions | Remains external or deferred |
@@ -505,6 +587,7 @@ authority remain denied or separately release-gated.
 | **Protected credential slice** | Opaque reference/state models | Exact `keyring-core` stores plus `secrecy`/`zeroize` only if an ADR proves custody unavoidable | Agents, FIDO, Teleport, OpenBao, Smallstep, and external vaults remain primary |
 | **Protected feature milestones** | `rusqlite` storage worker; Cedar local-policy adapter | `openssh-sftp-client`, `serialport`, direct provider SDKs only after feature-specific proof | Mosh, Git, SOPS/age, Upterm, tmux/Zellij, rclone/rsync remain external |
 | **D7 ecosystem accepted source** | Pure WIT/capability/lifecycle/consent models and app denial adapter | Reduced-feature Wasmtime Component Model, Ed25519 verification, strict manual ZIP ingestion and WIT parsing; no default WASI | Public distribution/SDK, component/provider activation, model inference and collaboration relay remain separately gated |
+| **LLM Orchestration LO0-LO5** | Pure workflow model, registry/policy/review/execution composition after acceptance | Optional orchestrator and reviewed local/remote provider adapters | Inference endpoints remain user/organization owned initially; MCP and embedded inference deferred |
 | **Automation Studio AS0-AS4** | Document/trust/surface/LSP brokers and typed saved-revision run intent after acceptance | CodeMirror-based Studio, DevOps/SRE and starter language/tool add-ons | System webviews and installed supported language servers/tools; Wry remains conditional on native proof |
 | **Deferred/rejected** | None | External Telnet adapter only if policy and demand justify it | Native primary SSH engine, password vault, embedded provider login, second shell-line editor or terminal UI framework |
 
@@ -611,7 +694,7 @@ A feature review must answer all of these before implementation:
   [SQLite FTS5](https://www.sqlite.org/fts5.html),
   [asciicast v3](https://docs.asciinema.org/manual/asciicast/v3/), and
   [SOPS](https://github.com/getsops/sops)
-- Optional AI authorities:
+- Optional model and LLM authorities:
   [llama.cpp](https://github.com/ggml-org/llama.cpp) and
   [MCP authorization](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization)
 - Test orchestration:

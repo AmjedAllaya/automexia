@@ -17,9 +17,10 @@
 | broad Ghostty G0–G6 program | Keep stable G0–G6 traceability labels; overlay TC terminal capability, GM Ghostty migration, and PS persistent-session lifecycle |
 | G6 entirely proposed | Corrected: bounded top-level tab history accepted/implemented under ADR 0028; broader topology future |
 | credential revalidation before PTY reveal | Refined: reveal/re-attach existing PTY with stale/risk status; revalidate before new authority-bearing operations |
-| public extension runtime presented as decided | Corrected to proposed ADR 0029's non-activating policy boundary; Wasmtime/WIT runtime remains unaccepted |
+| public extension runtime presented as decided | Corrected to accepted ADR 0029's nonactivating source boundary; activation and public distribution remain unaccepted |
 | "no connect button" | Rejected; accessible pointer control may dispatch the same semantic plan |
 | Automexia Lab as new authority | Thin scenario/evidence layer over existing test owners |
 | managed FFmpeg as settled policy | Future reproducibility candidate requiring distribution/legal/security/signing decision |
 | video "no GUI dependency" | CLI-complete with optional keyboard-complete renderer-native review UI |
 | video on active roadmap | Future product discovery; integration deferred |
+| “no large LLM / paid API active roadmap” | Retained as a prohibition on required core/domain/default-cloud AI. The canonical project now separately proposes optional LLM Orchestration under ADR 0033 after a neutral workflow contract; it requires no paid provider and grants no direct model execution authority. |

@@ -563,6 +563,31 @@
       }
     },
     {
+      "id": "situation-aware-production-operations-po0-proposal",
+      "title": "Documentation-only situation-aware production operations proposal",
+      "components": ["docs", "tests/assurance"],
+      "documentation": {
+        "guide": ["docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md#surface-map", "docs/SITUATION-AWARE-PRODUCTION-OPERATIONS.md#user-experience"],
+        "reference": ["docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md#exact-neutral-records", "docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md#scenario-inventory"],
+        "explanation": ["docs/adr/0034-situation-aware-production-operations.md#proposed-decision"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "PO0 adds no product UI; keyboard, focus, semantics, contrast, reduced-motion, and native screen-reader evidence are mandatory gates for later visible PO phases."},
+        "correctness": {"level": "external", "evidence": ["tests/fixtures/production-operations/po0-contract-v1.json", "tools/ci/check_production_operations_po0.py", "tools/ci/test_production_operations_po0.py", "docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md#phase-exit-criteria"], "rationale": "The proposed contract/checker/mutations prove strict planning values and current-source nonactivation only; no production implementation, provider, native, or executable correctness evidence exists."},
+        "security": {"level": "external", "evidence": ["docs/SITUATION-AWARE-PRODUCTION-OPERATIONS.md#security-and-privacy-threat-model"], "rationale": "The threat model defines fail-closed trust boundaries; hostile-input, capability, redaction, no-implicit-Enter, and native process evidence remain future work."},
+        "performance": {"level": "external", "evidence": ["docs/SITUATION-AWARE-PRODUCTION-OPERATIONS.md#resource-and-performance-contract"], "rationale": "Provisional budgets are design ceilings rather than measurements; same-host and low-end native benchmarks are required before activation."},
+        "resource_lifetime": {"level": "not_applicable", "evidence": [], "rationale": "PO0 creates no runtime watcher, worker, process, cache, queue, or provider connection; later phases must prove bounded cancellation and cleanup."},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "PO0 persists no operational data; later journaling and packs require redaction, quotas, atomic recovery, retention, disable, and uninstall evidence."},
+        "resilience": {"level": "external", "evidence": ["docs/SITUATION-AWARE-PRODUCTION-OPERATIONS.md#failure-and-refusal-behavior"], "rationale": "Fallback, stale-evidence, refusal, recovery, and core-terminal independence are specified but have no executable evidence."},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "PO0 draws no surface; later passport, candidate, preflight, incident, and recovery UI must pass renderer-neutral, exact-pixel, and native visual gates."}
+      },
+      "platforms": {
+        "windows": {"level": "external", "evidence": ["docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md#phase-exit-criteria"], "rationale": "No Windows runtime behavior ships in PO0; native shells, CLIs, clusters, providers, accessibility, resource, and packaged-artifact evidence remain future gates."},
+        "linux": {"level": "external", "evidence": ["docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md#phase-exit-criteria"], "rationale": "No Linux runtime behavior ships in PO0; native shells, CLIs, clusters, providers, accessibility, resource, and packaged-artifact evidence remain future gates."},
+        "macos": {"level": "external", "evidence": ["docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md#phase-exit-criteria"], "rationale": "No macOS runtime behavior ships in PO0; native shells, CLIs, clusters, providers, accessibility, resource, and packaged-artifact evidence remain future gates."}
+      }
+    },
+    {
       "id": "ecosystem-d7-cp6-proposal",
       "title": "Accepted nonactivating sandboxed ecosystem and selected-input model source",
       "components": ["automexia-ecosystem", "automexia-ecosystem-runtime", "apps/automexia-terminal", "wit", "sdk/automexia-ecosystem", "tools/ci", "tests/fixtures/ecosystem"],

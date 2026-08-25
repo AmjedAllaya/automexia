@@ -1,6 +1,6 @@
 # Phase implementation audit
 
-Audit date: 2026-08-24
+Audit date: 2026-08-26
 
 Audited source baseline: a8bcf6497a9a332cdda95dca88831e7b7411148b
 (last committed baseline before this repository-protection change).
@@ -10,9 +10,29 @@ ADR 0031 is included in this audit. Unrelated uncommitted application, renderer,
 and documentation changes were preserved as work in progress and are not
 counted as shipped evidence.
 
+DN0-DN6 was added on 2026-08-25 as a documentation-only design audit against the
+then-current repository and working tree. Existing prompt/result/navigation
+foundations are counted only as reusable evidence; uncommitted or proposed DN
+behavior is not counted as implemented product capability.
+
+LO0-LO5 was added on 2026-08-25 as a documentation-only architecture audit.
+Existing extension, action, capability and runner foundations are reusable
+evidence only; they are not counted as an implemented neutral workflow model,
+LLM extension, provider path, plan review or execution capability.
+
+PO0-PO8 was added on 2026-08-25 as a documentation-only production-operations
+audit. Existing CP5, D2/D6, CP4/M13, D3, and DN foundations are reusable evidence
+only; they are not counted as a production lock, change/provenance view,
+resource-state explainer, cohort comparison, network diagnosis, SLO/log view,
+dependency graph, situation-aware recommendation, preflight, Incident Mode,
+managed diagnostic session, monitor, journal, runbook pack, model, provider
+capability, or execution implementation.
+
 Scope: every execution phase defined by the product, stabilization, DevOps/SSH,
 Connection Hub, command-productivity, persistent-alias, Ghostty compatibility,
-and D7/CP6 ecosystem roadmaps.
+D7/CP6 ecosystem, Semantic Diagnostic Navigator DN0-DN6, and optional LLM
+Orchestration LO0-LO5 and situation-aware Production Operations PO0-PO8
+roadmaps.
 
 ## Purpose
 
@@ -32,12 +52,15 @@ Authoritative design sources:
 - [Automation Studio architecture](AUTOMATION-STUDIO-ARCHITECTURE.md)
 - [Automation Studio testing and evidence contract](AUTOMATION-STUDIO-TESTING.md)
 - [D7/CP6 ecosystem implementation audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md)
+- [Optional LLM Orchestration extension](LLM-ORCHESTRATION-EXTENSION.md)
+- [Optional LLM Orchestration testing](LLM-ORCHESTRATION-TESTING.md)
 - [Readiness audit](READINESS-AUDIT.md)
 - [SSH, DevOps, and multi-cloud architecture](SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md)
 - [Connection Hub](CONNECTION-HUB.md)
 - [Command Productivity](COMMAND-PRODUCTIVITY.md)
 - [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md)
 - [Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md)
+- [Semantic Diagnostic Navigator](SEMANTIC-DIAGNOSTIC-NAVIGATOR.md)
 
 ## Status rules
 
@@ -113,8 +136,14 @@ protected commit passes and the authenticated audit returns no external result.
 | Multi-cloud | D6.4/M11 | **Partial overall; source, private transient lifecycle, and cached product review fully implemented locally, execution nonactivated** | **Blocked** | Kubernetes/OpenShift contracts plus app-owned 16-file/1 MiB private validate/revalidate/revoke/cleanup and responsive Hub review pass locally. D3 activation, real clients/clusters/plugins, Unix no-follow, controlled cleanup/resources/accessibility/release evidence remain. |
 | Multi-cloud | D6.5/M12 | **Partial overall; Teleport source and cached product review fully implemented locally, execution nonactivated; OpenBao not done** | **Partial/blocked** | Teleport has bounded exact source plus cached Hub review; D3 activation and controlled real native/provider evidence remain. OpenBao is rejected and absent pending ADR 0024 acceptance. |
 | Ecosystem | D7 | **Fully implemented locally at accepted source boundary; partially implemented overall** | **Release activation and external evidence open** | Accepted ADR 0029/digest; pure domain, signed local verification, protected atomic disabled store, custom-WIT/no-WASI Wasmtime conformance, exact grants/lifecycle, action-pack mapping, selected-input model policy, renderer-neutral review, app denial adapter, property/fuzz/mutation/benchmark evidence. Public SDK/download/distribution/provider calls/component activation/native release evidence remain false or external. |
+| LLM orchestration | LO0 | **Partially implemented at documentation-only proposal boundary** | **Blocked on ADR acceptance and a versioned machine contract** | The canonical specification, proposed ADR 0033, neutral-workflow dependency direction, provider/context/approval/resource/lifecycle boundaries, provisional limits, LO0-LO5 sequence and future evidence ladder exist. No workflow-model crate, provider/model adapter, registry, executor, UI, MCP mapping, model download or runtime authority exists. |
+| LLM orchestration | LO1-LO5 | **Not implemented** | **Blocked on LO0; later slices require independent protected and native gates** | No neutral action/workflow implementation, orchestrator extension, model request, context-consent UI, reviewed one-run execution, multi-extension workflow, provider delivery, storage or native/release evidence exists. |
 | Automation Studio | AS0 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance and native feasibility** | The architecture, proposed ADR 0030, build/wrap/adopt choices, AS0-AS6 sequence, and future evidence ledger exist. No dependency or runtime was added; numeric machine limits, exact dependency review, and native Windows/macOS/Linux X11/Wayland editor-host proof remain. |
 | Automation Studio | AS1-AS6 | **Not implemented** | **Blocked on AS0 acceptance** | No document service, workspace-trust implementation, editor/webview host, LSP/DAP broker, language server, Studio/DevOps package integration, file-write grant, typed script-run product path, remote/mobile client, or advanced runtime exists. |
+| Diagnostic navigation | DN0 | **Partially implemented at documentation-only proposal boundary** | **Blocked on ADR acceptance and implementation evidence** | The canonical specification, evidence ledger, proposed ADR 0032, owner split, provisional ceilings, privacy/accessibility/lifecycle contract, test ladder, and DN0-DN6 sequence exist. No runtime dependency or action is authorized; accepted ADR, frozen machine contract, mutation owners, and failing tests remain. |
+| Diagnostic navigation | DN1-DN6 | **Not implemented** | **Blocked on DN0; DN6 also requires a separate extension capability decision** | No failed-command action, scan scheduler, normalized-line API, detector, section locator, cache, highlight, setting, user pattern, extension contribution, or native/resource/accessibility/release evidence exists. |
+| Production operations | PO0 | **Partially implemented at detailed proposal/checker boundary** | **Blocked on runtime schemas plus ADR/exact-digest and owner/dependency/capability acceptance** | The canonical specification, exact proposed PO0 contract/digest with 17 record payloads and 37 phase/effect/authority-bound actions, semantic checker/mutations/source nonactivation scan, UX/build blueprint, 2026 source baseline, provider/rule/lifecycle/settings/traceability details and future evidence ledger exist. Runtime schemas/parsers, prototypes, first real-path failures, runtime capability, dependency, setting, watcher, investigation view, managed session, provider authority and execution remain absent. |
+| Production operations | PO1-PO8 | **Not implemented** | **Blocked on PO0 and phase-specific CP5/D6/D3/D7 gates** | No production passport/lock; change/ownership/drift, resource/scheduling, cohort/environment, network/SLO, live-log/time/handoff or dependency view; situation-aware candidate or Kubernetes rollout prioritization; preflight; GitOps/JIT/policy composition; Incident Mode; managed operation/diagnostic session; journal; runbook pack; provider adapter; local ranker; execution path; or native/release evidence exists. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
 | Productivity | CP1 | **Fully implemented** | **Partial** | Shell-native completion and bounded explicit refresh exist; hosted native evidence remains. |
 | Productivity | CP2.0 | **Fully implemented** | **Partial** | Bounded typed Quick Action model and hostile corpus exist with no runtime authority. |
@@ -148,7 +177,11 @@ executable ledgers above as follows:
 | Phase 2: production first-party SSH | D0, D3, D4, D5.0-D5.2 | **Partial foundation only; production SSH not implemented.** |
 | Phase 3: provider auth/capsules | D6.0-D6.4 | **Partially implemented overall: M7 is fully implemented locally; M8-M11 source, cached product review, and private transient lifecycle are fully implemented locally while execution remains nonactivated.** |
 | Phase 4: lazy inventory/infrastructure/enterprise adapters | Later D6/D6.5 work | **Partially implemented: M12 Teleport source and cached review are complete locally/nonactivated; OpenBao is not implemented pending ADR 0024.** |
-| Phase 5: third-party ecosystem/AI | D7 and CP6 | **Partially implemented: the proposal-only security contract and automated nonactivation gate are complete; runtime and product activation remain deferred pending ADR 0029 acceptance and protected approvals.** |
+| Phase 5: third-party ecosystem/selected-input suggestions | D7 and CP6 | **Fully implemented locally at the accepted nonactivating source boundary; partially implemented overall because public distribution, component/provider activation, native product UX, and release assurance remain gated.** |
+
+LO0-LO5 is a separate cross-extension product track, not a retrospective Phase 6
+of this older architecture mapping. LO0 is documentation-only and LO1-LO5 are
+not implemented.
 
 ## Core stabilization phases
 
@@ -828,24 +861,79 @@ product review and M11 private transient allocation/validation/revalidation/
 revoke/cleanup are complete locally. OpenBao remains intentionally absent until
 ADR 0024 is accepted. Direct SDK inventory remains a later, explicit, lazy authority.
 
-### D7 — public ecosystem, direct APIs, and AI
+### D7 — public ecosystem, direct APIs, and selected-input model suggestions
 
-**Partially implemented at the proposal-only policy boundary; runtime is not authorized.** Proposed ADR 0029, the strict schema-1 D7/CP6 contract, nine
-threats with hostile mutations/verification owners/residual risk, 28 explicit
-resource ceilings, 12 evidence domains, ten external gates, a 15-test mutation
-suite, repository/full-QA registration, and the detailed D7.0-D7.5 execution
-audit are complete. The checker also prevents a Wasmtime/signature/update
-dependency or ecosystem crate from entering the workspace before acceptance.
+**Fully implemented locally at the accepted source boundary; partially implemented overall.** ADR 0029 and the exact contract digest were accepted on
+2026-08-25. The immutable proposal contract remains unchanged and a separate
+acceptance receipt authorizes private source dependencies while leaving every
+release authority false.
 
-No public SDK/download, package parser/store, signature or update verifier, WIT
-world, component host, Wasmtime/WASI dependency, filesystem/network/process/
-secret capability, product UX, action-pack import, AI provider request, AI tool
-call, or execution path exists. Explicit acceptance of ADR 0029 and its exact
-contract digest is required before source work; authority-bearing slices then
-still require ADR 0003's protected approvals, dependency review, malicious-
-package/supply-chain/native/accessibility/resource/privacy evidence, and release
-activation. Private first-party extensions remain the fallback and are not the
-public SDK.
+Implemented source owners are:
+
+- `automexia-ecosystem`: strict JSON/manifest/path/compatibility, exact capability
+  grants and diffs, bounded fair lifecycle, offline distribution policy,
+  selected-input privacy/consent/response contracts, and renderer-neutral review
+  states without filesystem/process/network/provider/PTY authority;
+- `automexia-ecosystem-runtime`: real Ed25519/provenance/SBOM/license/revocation
+  verification over bounded local ZIP packages, protected atomic disabled
+  storage and recovery, exact cleanup, signed non-executing action-pack mapping,
+  versioned WIT conformance, and optional Wasmtime Component Model tests with no
+  default WASI, exact imports, fuel/epoch/memory/table/instance limits and joined
+  cancellation;
+- the terminal adapter: explicit inspect/install-disabled/review/disable/kill/
+  uninstall composition plus hard denial of activation, downloads, provider
+  calls and grants; marketplace status is truthfully accepted-source-disabled.
+
+The accepted logical world is `automexia:ecosystem/suggestion@1`; checked-in WIT
+uses source world `extension` because WIT package interfaces and worlds share an
+item namespace and the contract also imports `suggestion`. The separate
+acceptance receipt freezes this syntax mapping. The private conformance source
+is unpublished and cannot activate a component.
+
+The source checker, 17 hostile mutations, unit/property tests, real signed ZIP
+fixtures, WIT parser, Wasmtime fixtures, Windows protected-ACL/recovery tests,
+app denial tests, fuzz harness compile and Criterion benchmarks provide local
+evidence. A live sanitizer fuzz campaign remains blocked without nightly; the
+stable-toolchain rejection is recorded rather than called a pass.
+
+Still external/release-gated: two exact-head protected approvals for activated
+authority; named publisher/trust/repository/revocation/incident owners; public
+SDK and downloader; a separate network ADR/update client; controlled malicious
+package/component and compromised-key drills; native signed Windows/Linux/macOS
+sandbox/package/uninstall evidence; actual visual/accessibility/IME/focus
+assessment; privacy/legal provider approval; full resource baselines; 1,000
+lifecycle cycles; the 30-day soak; and verified rollback/fallback. Until those
+pass, component execution, public downloads, provider calls, tools, process,
+credentials, PTY input and automatic execution remain disabled.
+
+### LO0-LO5 — optional LLM Orchestration
+
+**LO0 is partially implemented at the documentation-only proposal boundary;
+LO1-LO5 are not implemented.** The canonical specification, proposed ADR 0033,
+build/wrap/adopt decision, pure `automexia-workflow-model` dependency direction,
+typed action/plan/digest/grant/result outline, explicit context-consent and
+provider policy, one-run approval model, provisional limits, lifecycle and
+future test ladder are documented.
+
+The repository has no workflow-model crate, cross-domain action registry,
+orchestrator package, model/provider adapter, context-consent UI, plan parser,
+workflow grant, plan executor, model request, managed model, prompt store, MCP
+mapping, shortcut, configuration or runtime surface. Existing Quick Actions,
+extension contracts, capability review and ExternalToolRunner are reusable
+foundations, not proof of orchestration.
+
+LO0 requires explicit ADR acceptance, a strict versioned machine contract and
+approved owners before LO1 production source work. LO1 must remain pure and
+I/O-free. LO2 may produce draft plans only. LO3-LO5 add authority only through
+app-owned registry/policy/review, one-run grants, existing domain brokers, final
+revalidation, sensitive-step interruption, cancellation and receipts. Models
+receive no executable handle. Local/self-hosted inference is the first direction;
+no paid API is required and no remote/provider fallback is silent.
+
+This track is independent of Studio and video release sequencing and does not
+block either. Domain extensions contain no model/provider code and remain useful
+when the orchestrator is absent, disabled, offline, crashed or uninstalled.
+Third-party delivery additionally requires accepted D7.
 
 ### AS0 — Automation Studio decision and native feasibility
 
@@ -873,12 +961,15 @@ blocker.
 **Not implemented.** AS1 core-owned document/trust/IPC/lifecycle contracts, AS2
 minimal embedded editing, AS3 bounded LSP and first-party language packs, AS4
 separate DevOps/SRE typed script/tool integration, AS5 provider/tool domain
-packs, and AS6 debugging/remote/mobile/collaboration/AI all remain future work.
+packs, and AS6 debugging/remote/mobile/collaboration plus neutral workflow-
+registry interoperability all remain future work. Studio contains no model or
+provider behavior.
 
 First-party slices may proceed independently of a public marketplace only after
 ADR 0030 and exact existing capability gates are accepted. Third-party add-ons
-also require ADR 0029/D7. DAP, remote/mobile, collaboration and AI require
-separate authority decisions; none inherit AS0 approval. The terminal-only
+also require ADR 0029/D7. DAP, remote/mobile, collaboration and orchestration
+interoperability require separate authority decisions; none inherit AS0 or LO0
+approval. The terminal-only
 product, native shell editors, CP1 and current first-party extensions remain the
 required fallback throughout.
 
@@ -1190,21 +1281,210 @@ Enter, default adapter sourcing, missing preview guards, and false completion
 claims. CP1 remains the default and fallback; a popup alone cannot satisfy
 privacy, insertion, accessibility, lifecycle, performance, or rollback gates.
 
-### CP6 — ecosystem packs and AI
+### CP6 — ecosystem packs and selected-input model suggestions
 
-**Partially implemented at the proposal-only policy boundary; runtime is not authorized.** The shared D7/CP6 schema-1 contract freezes signed immutable
-action-pack mapping into existing typed CP2/CP3 actions without execution
-authority. It also freezes separate opt-in, per-request AI consent that exposes
-the exact selected data, redactions, provider/locality/model/destination/
-purpose/retention/size/risk and accepts only a bounded typed explanation or
-suggestion for copy/insert without Enter. Ambient terminal/history/clipboard/
-file/environment/credential/agent/provider/capsule/connection data, tool calls,
-MCP passthrough, background/typing requests, and automatic execution remain
-forbidden.
+**Fully implemented locally at the accepted no-provider source boundary; partially implemented overall.** A verified immutable package that requests no
+capabilities can map a signed action document into the existing typed Quick
+Action model. Actions are namespaced, disabled, insert-only, exact-argument,
+non-alias, non-raw, and collision/revocation/final-state checked. The mapping
+never executes or presses Enter.
 
-Pack manifest/import/runtime/update/removal, AI provider transport and product
-UI, malicious-package/prompt-injection/native/accessibility/performance/privacy
-evidence, and release activation remain missing pending ADR 0029 acceptance.
+The model slice accepts only explicit bounded selected text. It normalizes and
+validates input, creates deterministic secret redactions, discloses exact preview,
+redactions, provider, locality, model, destination, purpose, retention, byte
+count and environment risk, and binds confirmation to a digest, route,
+generation, expiry and one use. Responses are strict typed bounded explanations
+or suggestions; Automexia independently classifies risk. Debug/receipt/persistent
+state excludes selected and response content. Renderer-neutral surfaces are
+cancel-first, responsive, reduced-motion aware and carry textual accessible
+trust/risk meaning.
+
+Provider calls, tool calls, workflow planning, MCP passthrough, background or
+typing requests, ambient terminal/history/clipboard/file/environment/credential/
+agent/provider/capsule/connection/other-pane data, Enter and automatic execution
+are hard-disabled. Remaining work is external release evidence: native product
+composition and UX, screen readers/IME/focus/visual matrix, provider timeout/
+cancel/delete/retention behavior, privacy/legal approval, malicious prompt
+corpus, signed three-platform packages, resources/soak and protected activation.
+The separate LO track neither activates nor weakens CP6.
+
+### DN0-DN6 - semantic diagnostic navigation
+
+**DN0 is partially implemented at the documentation-only proposal boundary.
+DN1-DN6 are not implemented.**
+
+The
+[Semantic Diagnostic Navigator](SEMANTIC-DIAGNOSTIC-NAVIGATOR.md), proposed
+[ADR 0032](adr/0032-bounded-semantic-diagnostic-navigation.md), main-roadmap
+register, architecture link, feature non-claim, command-result relationship,
+decision indices, and changelog fragment are present. This proves that the
+recommendation is integrated into repository authorities; it does not prove
+runtime behavior.
+
+Reusable current foundations:
+
+- semantic previous/next prompt movement exists;
+- supported integrations attach OSC 133 result metadata to prompt rows;
+- normal scrollback, bounded search, renderer-neutral UI contracts, route
+  scheduling, and exact route cleanup patterns exist;
+- prompt identity supports its declared prompt/reflow lifecycle.
+
+Important missing evidence:
+
+- current result metadata is not a durable complete command-output region, and
+  the command-result surface has a recorded long-output/scrollback gap;
+- no generic stable logical-line identity exists, and the proposal intentionally
+  defers adding one;
+- no navigator owner, action, palette entry, binding, setting, continuation,
+  line-batch API, detector, section locator, cache, highlight, metric, fuzz
+  target, benchmark, native harness, or feature-assurance entry exists;
+- no extension has terminal-history capability, and DN6 is not implied by the
+  private first-party extension API.
+
+| Phase | Audit status | Exit evidence still required |
+|---|---|---|
+| DN0 | **Partially implemented at documentation-only proposal boundary** | Explicit ADR acceptance or supersession; approved action semantics; exact module/dependency owners; machine-checked ceilings and mutations; hostile/false-positive corpus; tests that fail before DN1 code; experimental rollout decision. |
+| DN1 | **Not implemented** | Separate previous/next failed-command typed actions and palette entries; exact prompt/input targeting; known non-zero/success/neutral shell cases; order/no-wrap/forward-live/manual reset; output/resize/eviction/route close/session isolation; accessible status; disabled baseline; no default shortcut without collision proof. |
+| DN2 | **Not implemented** | Bounded normalized logical-line batches; one route-local request/continuation; generations and stale rejection; optional 256-entry content-free cache; viewport placement; reflow remap-or-clear; alternate-screen suspension; queue/lock/allocation/cleanup tests and benchmarks; cache-disabled equivalence. |
+| DN3 | **Not implemented** | Borrowed structured severity; conservative anchored Error/Fatal headers; bounded section locator; separate class/severity/provenance/confidence; false-positive corpus; malformed/oversized/Unicode/wrap/overwrite/eviction/mixed-format property/fuzz/performance evidence. |
+| DN4 | **Not implemented** | Renderer-neutral non-color highlight; selection/search precedence; reduced-motion, tiny-to-8K and 100-300% behavior; content-free accessibility announcements; experimental disable/reset/LKG; Windows/macOS/Linux X11/Wayland and assistive-technology evidence; S2 input/frame/memory/cleanup ratchets. |
+| DN5 | **Not implemented** | Independent specialized-format slices; bounded config-load-only user patterns; exact version/fixtures/limits/provenance/disable/cache invalidation/fuzz/benchmark/native/reference/rollback evidence per detector. |
+| DN6 | **Not implemented and not authorized** | Separate accepted privacy-sensitive terminal-output read/contribution capability; declarative-first design; consent/scope/isolation/quotas/revocation/cleanup/malicious-detector proof; no content persistence/forwarding; ADR 0029 for third-party delivery. |
+
+The architecture decision rejects continuous scanning, per-pane workers, a
+persistent history database, color classification, domain parsers in `rio-vt`,
+global logical-line IDs as a DN1 prerequisite, unrestricted regular expressions,
+non-zero-equals-error semantics, and network/AI detection.
+
+The planned scanner is strictly on demand. One `Context` owns its state. Under
+the terminal lock it creates only a small bounded transient normalized-text
+batch plus content-free positions, then runs app-owned pure detectors outside
+the lock. Publication revalidates route, session, buffer, layout, request,
+detector, and filter generations. Transient text is discarded and excluded from
+anchors, metrics, persistence, crash evidence, QA bundles, and renderer state.
+
+Provisional review ceilings are one active request and one continuation per
+context, 256 content-free anchors, 256 physical rows/64 KiB transient text per
+batch, 16 KiB text and 64 KiB structured candidates, a one-millisecond yield
+target checked after each line, 1,000 logical lines/512 KiB per reconstructed
+section, one highlight, and-only in DN5-32 patterns of at most 1 KiB each. These
+are not public settings or accepted guarantees. DN0 must freeze or lower them
+through tests, a machine contract, lock/input/frame benchmarks, and native
+resource evidence.
+
+No current test command can honestly claim DN behavior. Before any status
+advance, the phase must add the focused deterministic test first, then
+unit/model/property/fuzz/concurrency/renderer-neutral/native/accessibility/
+benchmark/leak evidence proportionate to that slice. The disabled path must show
+zero scan work, zero per-pane worker, zero persistent storage, and unchanged
+terminal behavior. Every late fix reruns all affected gates.
+
+Release sequencing remains deliberately independent: DN1 production follows the
+stable v0.4 release, DN1-DN4 may run alongside later v0.5 work with no assigned
+release yet, DN5 follows generic precision/resource evidence, and DN6 waits for
+its own capability decision. DN does not block SSH, providers, Automation
+Studio, or video unless a future explicit release plan makes it a shared gate.
+
+
+### PO0-PO8 - situation-aware production operations
+
+**PO0 is partially implemented at the detailed proposal/checker boundary.
+PO1-PO8 are not implemented.**
+
+The
+[Situation-Aware Production Operations specification](SITUATION-AWARE-PRODUCTION-OPERATIONS.md),
+[exact proposed PO0 contracts](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md),
+[UX and implementation blueprint](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md),
+[future testing contract](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md),
+[proposed ADR 0034](adr/0034-situation-aware-production-operations.md), roadmap
+register, architecture boundary, feature non-claim, decision index, assurance
+entry, changelog fragment, strict JSON planning contract, canonical digest,
+semantic checker, mutation suite and current-source nonactivation scan are
+present. They establish one repository-owned proposal; they do not establish
+runtime behavior or accept ADR 0034.
+
+Reusable current foundations:
+
+- CP1 remains the complete shell-native fallback, while CP5 provides a
+  preview-disabled authenticated editor/suggestion boundary;
+- D2 owns route-scoped immutable Environment Capsules, freshness, cancellation,
+  and isolation;
+- D6/M7-M12 own bounded public provider sources and cached review without active
+  provider execution;
+- CP4/M13 owns typed route-bound provider actions with final revalidation,
+  production confirmation, and insert-without-Enter behavior;
+- D3 owns the nonactivated exact-argv broker and child lifecycle; and
+- DN0 separately proposes navigation inside terminal diagnostic output.
+
+Important missing evidence:
+
+- no accepted PO decision or accepted machine-contract digest exists; the
+  proposed numeric contract/checker exists, but protected owner/dependency/
+  capability approval, reviewed prototypes, first failing real-path tests,
+  independent threat review and packaged nonactivation evidence do not;
+- no pure operation model, environment passport, pane lock, context-diff state,
+  evidence-quality model, evidence snapshot, resource/dependency graph,
+  change/provenance/field-owner view, semantic drift comparison, resource or
+  scheduling explainer, healthy cohort/revision/environment comparison,
+  network-path diagnosis, SLO summary, live-log controller, incident hypothesis,
+  adapter, watcher, ranker, policy engine, candidate, preflight, Incident Mode,
+  journal, monitor, recovery, port-forward/probe/debug session, runbook pack, UI,
+  setting, shortcut, provider capability, or execution path exists;
+- no `kubectl rollout` situation corpus, real-cluster oracle, authorization,
+  GitOps, JIT, impact, blast-radius, event-retention, ownership, scheduler,
+  cohort, network-vantage, SLO-window, log-gap, time-anchor, debug-privilege,
+  listener-cleanup, resource, fuzz, native, visual, accessibility, package,
+  rollback, uninstall, or soak evidence exists; and
+- current provider caches do not imply fresh live health, permission, GitOps,
+  policy, telemetry, or business-criticality evidence.
+
+| Phase | Audit status | Exit evidence still required |
+|---|---|---|
+| PO0 | **Partially implemented at detailed proposal/checker boundary** | The proposed strict machine contract, 17 payload sets, 37 action profiles, digest, semantic checker, mutations, traceability and source nonactivation scan exist. Still required: add phase-owned runtime schemas/parsers; accept or supersede ADR 0034 and the exact digest; approve source/dependency/capability owners; review nonactive prototypes and threats; add first failing real-path and packaged nonactivation tests. |
+| PO1 | **Not implemented** | Read-only route-scoped production passport/lock/context diff; provider/public identity freshness; production fail-closed; pane/tab/window/clone isolation; native, responsive, accessibility, resource and cleanup evidence. |
+| PO2 | **Not implemented** | Separately reviewed provider adapters; bounded public evidence and UID-based resource graph; change/provenance/field ownership and semantic drift; resource/scheduling explanation; healthy cohort/revision comparison; passive network-path diagnosis; optional approved SLO summaries; explicit evidence quality and unknowns; no raw logs, active probes, time-series store, credentials or disk cache; stale/offline/relist/revoke/disable/uninstall and resource evidence. |
+| PO3 | **Not implemented** | Deterministic Kubernetes/cross-tool scenario corpus; hard gates, refusal, reasons and stable ranking; exact CP5 replacement/no Enter; CP1 fallback; stale/cancel/performance; native shells, pixels and assistive technology. |
+| PO4 | **Not implemented** | Exact target/argv impact preflight; independent authorization, risk, GitOps, JIT, policy, change-window, approval and recovery contracts; no false dry-run claim; fail-closed production and provider authority evidence. |
+| PO5 | **Not implemented** | Incident Mode with hypotheses, contradictions, coverage-qualified negative evidence, bounded timeline, trusted/approximate time anchors, optional source-separated memory-only live logs, Error Navigation handoff and content-minimized session journal; optional protected persistence and reviewed handoff/export; log-gap/order/backpressure, privacy, corruption/disk-full/recovery/retention/disable/uninstall and long-session evidence. |
+| PO6 | **Not implemented and blocked on independent execution gates** | D3 and adapter capability activation; exact one-action review/execute/observe/stabilize/verify/recover state machine; before-state, regression and real provider/process-tree oracles; separately granted Kubernetes port-forward, controlled-probe and safe-debug slices with listener/vantage/image/profile/privilege/cleanup proof; cancellation/timeouts/rollback/no-chaining; native/resource/package/release evidence. |
+| PO7 | **Not implemented** | D7/capability decision; signed versioned declarative organization packs; malicious corpus, policy conflict, one-step workflow, provenance, atomic rollback, disable/uninstall and cross-tool native evidence. |
+| PO8 | **Not implemented** | Independent adapter slices; read-only cross-region/cluster comparison with reviewed service equivalence, separate authority/freshness and bounded fan-out; optional local tie-breaker restricted to already-valid candidates; deterministic fallback; model safety/resource differential tests; three-platform native UX/accessibility/package and controlled provider/soak evidence. |
+
+Future user-experience evidence is also phase-specific and currently missing:
+
+| Phase | Exact future UX proof required before the audit may advance |
+|---|---|
+| PO0 | Reviewed nonactive PO projections for all six reused surfaces and read-only, reviewed-insertion, managed-action/session, responsive, keyboard, accessible, stale/refused, cancel/failure/recovery journeys; frozen copy, focus, input, ownership-path and operation/session-kind contracts; explicit nonactivation. |
+| PO1 | Existing above-command context line extended as a nonfocusing passport; comfortable/compact/minimal field order; exact context diff, adopt/keep-lock flow, production text semantics, pane/clone isolation, native focus and screen-reader proof. |
+| PO2 | One `Investigate` entry exposing only relevant Explain state, What changed, Compare with healthy, Diagnose connection and Show user impact views; source/age/scope/coverage/evidence-quality labels; correlation never presented as cause; semantic rather than secret-bearing/raw-YAML comparison; explicit network vantage; visible stale/offline/unknown state; responsive detail and source-accessibility proof. |
+| PO3 | Existing CP5 surface with at most five two-line situation rows, ordinary results reachable, predictable stable selection, detail on request, refusal/review labels, exact Tab/Right Arrow insertion without Enter, CP1 fallback, native shell/IME/listbox proof. |
+| PO4 | One cancel-first fixed-order preflight with exact target/impact/authority/GitOps/policy/verification/recovery; unknown blocking state; reviewed insertion before PO6; clearly separate managed action after PO6; JIT/approval never hidden. |
+| PO5 | Explicit Incident workspace entry/exit, objective/passport/facts/hypotheses/contradictions/missing evidence/timeline/next-action hierarchy; trusted versus approximate time navigation; visibly source-separated pausable memory-only logs with gaps; session-only journal default; reviewed redacted handoff/export; restored focus, multiple-operator/accessibility/long-session proof. |
+| PO6 | Nonmodal one-operation monitor with prepare/run/observe/stabilize/verify/result/uncertain/recovery states, terminal remains usable, safe cancellation, before-state and last verified observation, no process-exit-only success, no automatic second mutation; the same explicit review/lifetime/stop model for port forwards, probes and debug sessions with native failure/cleanup proof. |
+| PO7 | Pack install review showing publisher/signature/version/data/conflicts/zero grants; guided workflow stops after each reviewed step; immediate disable/uninstall; conflict, provenance, keyboard/accessibility and cross-tool native proof. |
+| PO8 | Identical words and surfaces per adapter, graceful unsupported/disconnected behavior, read-only Compare environments with visible equivalence/access/freshness/window/fan-out limits and no merged authority, optional reorder-only model setting and instant deterministic fallback, low-end performance, three-platform visual/accessibility/package/soak/removal proof. |
+
+The audit must compare these contracts with real controller, input, projection,
+renderer, accessibility, provider, and packaged behavior. Screenshots or prose
+alone cannot satisfy a phase.
+
+The proposal uses deterministic rules, resource ownership/dependency graphs,
+current public evidence, and reviewed organization metadata. It rejects an LLM-
+first autonomous agent, provider work per keystroke, one opaque priority score,
+automatic execution, a competing completion/process owner, and raw observability
+storage. Any later small local ranker can only reorder candidates that already
+passed deterministic gates and can neither create nor execute a command.
+
+No current test command can claim PO runtime or provider behavior. The PO0
+checker can claim only that the reviewed planning fixture is strict and that
+current named runtime sources do not contain the reserved activation markers.
+Before a phase advances, its
+machine contract, first failing real-path test, independent oracles, focused
+unit/property/fuzz/model checks, renderer-neutral/native/accessibility evidence,
+resource and storage measurements, rollback/disable/uninstall proof, and exact
+documentation must exist. Missing providers, accounts, clusters, GitOps systems,
+policies, credentials, hardware, signing, protected reviewers, or assistive
+technology stay external.
 
 ## Terminal-first remote operations projection
 
@@ -1214,7 +1494,7 @@ for the v0.5+ roadmap by
 [ADR 0018](adr/0018-terminal-first-remote-operations.md). It does not introduce
 another phase or capability system: D3-D7 own remote/process/provider/file/
 collaboration authority, while CP2-CP6 own actions, aliases, completion,
-suggestions, packs, and AI-assisted insertion.
+suggestions, packs, and selected-input model insertion without execution.
 
 **Specification complete; public product implementation mostly not started.**
 
@@ -1240,7 +1520,8 @@ Planned work, with no shipped-command claim:
 | Declarative workspace persistence/restoration and visibly armed broadcast | M6/F6 | Accepted schema-2 preview/CAS manager, public CLI, immutable Hub catalog/restore review, armed broadcast projection, and bounded product tests are complete locally; managed execution and controlled native evidence remain |
 | Per-pane multi-cloud/context commands and typed import/reconcile adapters | D6.0-D6.5/CP4 | Partially implemented: M7, M8-M11, M12 Teleport, cached Hub review, M11 private lifecycle, and CP4 cached action projection are locally complete/nonactivated; provider refresh/import/reconcile/execution, real provider/native evidence, and OpenBao remain gated |
 | Structured files/SFTP, bounded logs/bookmarks, team state/policy, shared sessions | D7 protected slices | Not implemented |
-| Mosh, Telnet, serial, public ecosystem packs, optional editor popup, AI explain/suggest | D7/CP5-CP6 | Not implemented/deferred |
+| Mosh, Telnet, serial, public ecosystem packs, optional editor popup, selected-input model explain/suggest | D7/CP5-CP6 | D7/CP6 source boundary fully done locally but public distribution, component/provider activation and native release evidence remain deferred; Mosh/Telnet/serial remain not implemented |
+| Optional cross-extension LLM workflow orchestration | LO0-LO5 | LO0 documentation exists; workflow model, extension, provider request, reviewed execution and release evidence are not implemented |
 
 Before any row changes to shipped, it needs the exact CLI/configuration/
 keyboard reference, feature-ledger entry, typed resource ceilings, threat and
@@ -1374,7 +1655,7 @@ and user-facing persistent actions/aliases must not be claimed.
 **Not implemented.** D6 capsules/auth/providers/transports and mixed-provider
 native/resource evidence remain.
 
-### v0.6 ecosystem and AI
+### v0.6 ecosystem and selected-input model suggestions
 
 **Fully implemented locally at the accepted nonactivating source boundary; partially implemented overall.** D7/CP6 has private policy/runtime crates, strict
 signed local bundle verification, protected atomic disabled storage, versioned
@@ -1385,6 +1666,13 @@ and benchmarks. Public distribution/SDK, component/provider activation, actual
 native product UX, three-platform signed-package assurance, controlled security
 campaigns, 1,000 cycles and 30-day evidence remain open release gates.
 
+LO0 is separately partial only as documentation/research planning: ADR 0033,
+the canonical architecture and future evidence ladder exist, while its machine
+contract and acceptance remain open. LO1-LO5 implementation, model requests,
+workflow execution, product UI, native/provider/privacy/resource/package evidence
+and every new authority remain not implemented. LO is not a Studio or video
+prerequisite.
+
 Automation Studio AS0 is also partial only as architecture/research planning:
 ADR 0030 and the future evidence ledger exist, while the dependency/native-host
 decision and numeric contract remain unaccepted. AS1-AS6 implementation,
@@ -1393,7 +1681,6 @@ every file/process/provider/remote/debug authority remain not implemented.
 AS0 may continue as non-production feasibility work before v0.4 release; AS1-
 AS2 follow the stable terminal, and an evidenced AS2 minimal Studio precedes a
 dedicated video-editing release. No current video runtime is implied.
-
 
 ## Cross-cutting quality assessment
 
@@ -1500,6 +1787,22 @@ At this audited baseline, the focused order is:
 8. Keep v0.4 external release evidence and G0-G6 compatibility work as
    independent evidence tracks; defer D7/CP6/G6 until their protected designs
    pass.
+9. After the stable v0.4 release, close DN0 through explicit ADR/limit/test
+   acceptance, then implement DN1-DN4 independently in test-first bounded
+   slices. Keep DN5 evidence-driven and DN6 blocked on its separate privacy and
+   extension-capability decision.
+10. Preserve PO0 as a non-activating proposal/checker only until ADR/exact-
+    digest, owner, dependency, capability, prototype, threat and first failing
+    real-path-test acceptance. Implement
+    PO1-PO5 after applicable D6/CP5 read-only gates, PO6 only after D3/provider
+    activation, PO7 only after the ecosystem decision, and PO8 per independent
+    adapter/release slice. Keep PO2 read-only and PO5 memory-only by default;
+    gate every PO6 operation or diagnostic session independently. Keep CP1
+    available and all production changes human-reviewed.
+11. Preserve LO0 as documentation only until explicit ADR and machine-contract
+    acceptance. Then prove LO1's neutral I/O-free workflow model before any
+    provider or plan runtime. Keep LO2-LO5 independent of Studio and video and
+    retain a complete model-free fallback for every domain.
 
 ## Final assessment
 
@@ -1511,7 +1814,7 @@ security controls, resource limits, documentation, and platform policy.
 The full roadmap is not complete. Stable v0.4 evidence is incomplete;
 production SSH/Connection Hub, remote workspaces, multi-cloud/provider-action
 activation, Automexia-owned suggestions, full Ghostty compatibility, public
-extensions, and AI remain.
+extensions, and optional LLM orchestration remain.
 
 > Current milestone: v0.4 source stabilization, D1/D2, disabled D4, the complete
 > local non-executing D5.0/F2 model boundary, CP0-CP3.3, and the local D0/D3
@@ -1520,3 +1823,16 @@ extensions, and AI remain.
 > production authority, real loader binding, and native execution evidence are
 > open. Stable release proof, D5.1-D6/CP4/CP5 activation, and the other phases
 > remain partial or not implemented as listed above.
+
+Semantic diagnostic navigation remains unimplemented beyond DN0's documentation-
+only proposal boundary. Existing prompt navigation and command-result metadata
+are reusable foundations, not evidence of failed-command or error-section
+product behavior. LLM orchestration likewise remains unimplemented beyond LO0's
+documentation-only proposal; existing actions and brokers are foundations, not a
+model, registry, plan or workflow-runtime claim. Situation-aware production
+operations likewise remains unimplemented beyond PO0's documentation-only
+proposal; current context, provider caches, Quick Actions, CP5 and D3 do not
+constitute a production lock, change/ownership/drift view, resource explainer,
+cohort/environment comparison, network or SLO diagnosis, evidence graph,
+recommendation, preflight, Incident Mode, live-log/time/handoff controller,
+managed operation/diagnostic session, journal, runbook or execution claim.

@@ -5,11 +5,12 @@ from the shell. Its productivity features help people discover and reuse
 frequent actions, reduce repeated setup, and keep insertion, persistence, and
 any future execution deliberate.
 
-This value follows the [Product vision](../PRODUCT-VISION.md). This page is the
-canonical product guide for shell integration, completion, Quick Actions, and
-persistent aliases. It replaces the previous split between
-`SHELL-INTEGRATION.md`, `COMMAND-PRODUCTIVITY.md`, `DEVOPS-ALIASES.md`, and the
-compatibility/threat-model pages.
+This value follows the [Product vision](../PRODUCT-VISION.md). This
+reader-oriented guide brings the shell-integration, completion, Quick Action,
+and persistent-alias experience together. Exact status and contracts remain in
+[`COMMAND-PRODUCTIVITY.md`](../COMMAND-PRODUCTIVITY.md),
+[`DEVOPS-ALIASES.md`](../DEVOPS-ALIASES.md), the compatibility/threat-model
+pages, and their accepted ADRs.
 
 ## Status at a glance
 
@@ -22,9 +23,10 @@ compatibility/threat-model pages.
 | Five-shell alias projection and opt-in persistence | **Implemented locally** | Generated files are derived artifacts; activation is explicit and reversible. |
 | Static first-party DevOps action packs | **Implemented locally** | Packs are disabled by default and collision-checked. |
 | Selected native alias import and trusted workspace task bridges | **Implemented locally** | Import/trust is explicit, bounded, revocable, and insertion-only. |
-| Provider/capsule-aware actions | **Planned** | Requires managed session/provider context. |
-| App-owned inline suggestion UI | **Partially done; preview disabled** | CP5.1-CP5.3 source/local models are done; CP5.4-CP5.6 publication, native shell replacement and release evidence remain partial or external. Native CP1 completion remains the fallback. |
-| Ecosystem/AI action packs | **Deferred** | Requires later signing/sandbox/security gates. |
+| Provider/capsule-aware actions | **Implemented locally; nonactivated** | CP4 uses cached public capsule data and final insertion review; approved live provider refresh, exact execution, and native release evidence remain gated. |
+| App-owned inline suggestion UI | **Partially done; preview disabled** | CP5.1-CP5.4 source/local boundaries and the CP5.5 inert helper/adapter bridge are done. Reviewed launcher/signing, WSL relay, interactive native replacement, live composition, CP5.6 release evidence, and activation remain open. Native CP1 completion remains the fallback. |
+| Signed ecosystem packs and selected-input model suggestions | **Implemented locally at the accepted nonactivating source boundary** | D7/CP6 verification, disabled storage, sandbox/capability models, action-pack mapping, and selected-input consent/review source exist. Public distribution, provider calls, native product UX, and release activation remain gated; suggestions cannot invoke tools or workflows. |
+| Optional LLM workflow orchestration | **Separate later track** | LO0 is documentation only; the separately installed extension, typed workflow contract and reviewed execution path are not implemented. |
 
 ## Design principle
 

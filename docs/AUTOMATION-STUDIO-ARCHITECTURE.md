@@ -37,7 +37,8 @@ fallback. That slice should ship before a dedicated video-editing extension.
 Video research and terminal-native media workflows may continue in parallel.
 AS3-AS6 are not blanket prerequisites for video: language intelligence,
 DevOps/SRE execution, domain packs, debugging, remote access, collaboration,
-and AI remain independently gated. Studio and future video work may share only
+and LLM orchestration remain independently gated. Studio and future video work
+may share only
 generic core-owned workspace, file, task, progress, cancellation, recovery,
 and extension-lifecycle services. Video must not depend on Studio's editor
 webview, document-view state, or language-server internals.
@@ -488,7 +489,15 @@ video-editing extension; AS3-AS6 may continue independently afterward.
 | AS3 — language intelligence | `LanguageToolBroker`, starter first-party language packs, bounded LSP sync/diagnostics/completion/navigation/rename/code action mediation | Fake/malicious server, cancellation/stale, multi-workspace isolation, native server lifecycle, performance and uninstall evidence |
 | AS4 — DevOps/SRE scripting | Separate domain extension, `ScriptRunIntent`, check/format/lint/test/plan/run review, exact runner integration and receipts | Exact-argv/security/resource/native/provider fixtures; no existing-PTY input; saved-revision and production review proof |
 | AS5 — domain packs | Terraform/OpenTofu, Kubernetes/OpenShift, Ansible, cloud, policy and other independently gated integrations; metadata-only Pack | Per-tool version/offline/plan/apply/rollback evidence, provider isolation, real controlled targets, disable/uninstall |
-| AS6 — advanced and remote | DAP/debugging, remote content providers, mobile client, collaboration, optional AI assistance | Separate ADRs and threat models for attachment/evaluation, remote transport, conflicts, privacy, multi-user authority, and AI; none inherit AS0-AS5 approval |
+| AS6 — advanced and remote | DAP/debugging, remote content providers, mobile client, collaboration, optional interoperability with the separate workflow registry | Separate ADRs and threat models for attachment/evaluation, remote transport, conflicts, privacy, multi-user authority, and orchestration data exchange; none inherit AS0-AS5 approval |
+
+Studio itself contains no model adapter, provider credential, prompt format,
+conversation store, planner, or model-specific action. If the separately
+installed LLM Orchestration extension is enabled later, Studio may contribute
+bounded domain-neutral document actions through the same core-owned registry as
+other domains. It does not give the model a document, webview, language-server,
+filesystem, task-runner or editor handle, and it remains complete without the
+orchestrator.
 
 First-party AS1-AS4 do not need to wait for a public marketplace, but they do
 need ADR 0030 and every existing protected capability gate. Third-party Studio,

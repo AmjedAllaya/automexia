@@ -11,5 +11,6 @@ This file preserves proposal reasoning without claiming an ADR number or accepta
 
 ## Candidate direction
 
-If proposed project ADR 0029 is accepted and a protected runtime milestone is
-authorized, evaluate Wasmtime with Automexia-owned versioned WIT interfaces.
+Accepted project ADR 0029 authorizes only the current optional, no-WASI,
+nonactivating Wasmtime/WIT source boundary. Activation and public distribution
+still require a protected runtime milestone and its release evidence.

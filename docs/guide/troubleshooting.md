@@ -117,7 +117,8 @@ below their documented minimum. See [Liquid Hacker UX](terminal-experience.md).
 This is expected when Linux Cargo reads a checkout under `/mnt/c` or `/mnt/d`.
 Move Linux work to a WSL-native checkout such as `~/src/automexia-terminal` and
 keep Windows/MSVC work in the NTFS checkout. Do not share `target/` between
-them. The complete workflow is in [Windows and WSL development](troubleshooting.md).
+them. The complete workflow is in
+[Windows and WSL development](#windows-and-wsl-development-workflow).
 
 ## C: or D: is filling up
 
@@ -174,7 +175,6 @@ Include:
 
 Use the repository `SUPPORT.md` process for public defects and follow the
 current private vulnerability-reporting route in `SECURITY.md`.
-
 
 ## Windows and WSL development workflow
 
@@ -279,7 +279,7 @@ The shell uses `pipefail`, explicit nightly Rust, bounded time/RSS, and a cleanu
 trap. The disposable source, corpus, and build artifacts are removed on normal
 exit, error, or interruption.
 
-### Troubleshooting
+### Windows and WSL recovery steps
 
 If the guard reports a mounted Windows source:
 

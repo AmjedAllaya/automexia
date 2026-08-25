@@ -36,11 +36,24 @@ These documents must distinguish current architecture from candidate/future arch
 - broad universal Resource Graph/Context Guardian/Policy-service refactor;
 - large process-topology redesign.
 
+## Canonical resolutions after the pack snapshot
+
+- The terminal and domain extensions remain model-independent.
+- Accepted ADR 0029 authorizes the nonactivating D7/CP6 ecosystem and
+  selected-input source boundary. Activation and public distribution remain
+  gated; selected-input model suggestions receive no tools or workflows.
+- Optional cross-extension workflow planning is a separate LO0-LO5 proposal;
+  canonical details are in the project
+  [LLM Orchestration specification](../docs/LLM-ORCHESTRATION-EXTENSION.md),
+  [testing contract](../docs/LLM-ORCHESTRATION-TESTING.md), and proposed
+  [ADR 0033](../docs/adr/0033-optional-llm-orchestration-extension.md).
+
 ## Real project ADR references
 
-- CP5 authority: **proposed project ADR 0025**
+- CP5 authority: **accepted project ADR 0025; activation remains gated**
 - bounded top-level tab parked-PTY history: **accepted project ADR 0028**
-- public ecosystem/sandbox/AI boundary: **proposed project ADR 0029**
+- public ecosystem/sandbox/selected-input model boundary: **accepted project ADR 0029; activation and public distribution remain gated**
+- optional LLM Orchestration boundary: **proposed project ADR 0033**
 
 Proposal/RFD files in this pack deliberately do not reuse the project's ADR number namespace.
 

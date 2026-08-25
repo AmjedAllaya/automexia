@@ -87,7 +87,7 @@ REQUIRED_PHASE_PREFIXES = (
     "### v0.4 stable",
     "### v0.5.0 foundation and SSH",
     "### v0.5.1 multi-cloud",
-    "### v0.6 ecosystem and AI",
+    "### v0.6 ecosystem and selected-input model suggestions",
 )
 REQUIRED_EVIDENCE_TERMS = (
     "correctness",

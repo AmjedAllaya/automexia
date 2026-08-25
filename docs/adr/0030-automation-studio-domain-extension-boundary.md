@@ -225,10 +225,12 @@ Before acceptance, AS0 must provide:
 - terminal-only baseline and disable/uninstall/rollback proof.
 
 Acceptance authorizes only the reviewed next source slice. File write, process,
-network, credential, provider, production, remote, debug, collaboration, AI, or
-third-party authority still requires its existing protected review and native
-evidence. ADR 0023 continues to own M6 automation activation, and ADR 0029
-continues to own public signed/sandboxed packages.
+network, credential, provider, production, remote, debug, collaboration, LLM
+orchestration, or third-party authority still requires its existing protected
+review and native evidence. ADR 0023 continues to own M6 automation activation,
+accepted ADR 0029 continues to own public signed/sandboxed packages, and proposed
+[ADR 0033](0033-optional-llm-orchestration-extension.md) separately owns optional
+cross-extension model planning.
 
 Verification follows
 [Automation Studio testing](../AUTOMATION-STUDIO-TESTING.md): deterministic
@@ -266,8 +268,9 @@ and [Wasmtime resource limiting](https://docs.wasmtime.dev/api/wasmtime/trait.Re
   while third-party packages keep the stricter signed/sandboxed boundary.
 - The saved-revision rule deliberately postpones convenient execution of unsaved
   text until immutable temporary-artifact ownership is proven.
-- More advanced debugging, remote/mobile, collaboration, and AI workflows remain
-  separate decisions rather than silently inheriting Studio approval.
+- More advanced debugging, remote/mobile, collaboration, and LLM-orchestrated
+  workflows remain separate decisions rather than silently inheriting Studio
+  approval. Studio remains complete and deterministic without a model.
 - The first stable terminal release remains independent of Studio. A minimal
   evidenced Studio precedes a video-editing product, while video research and
   later Studio phases may advance independently through shared generic services.

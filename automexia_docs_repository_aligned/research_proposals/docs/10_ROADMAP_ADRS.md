@@ -20,10 +20,11 @@ Integrate TC/GM/PS terminology into the real Ghostty roadmap:
 - GM optional Ghostty migration;
 - PS session lifecycle.
 
-Real ADR owners from the supplied audit:
-- proposed ADR 0025 — CP5;
+Real ADR owners after the canonical post-snapshot resolutions:
+- accepted ADR 0025 — CP5 source boundary; preview/stable activation gated;
 - accepted ADR 0028 — bounded top-level parked-tab history;
-- proposed ADR 0029 — non-activating ecosystem/sandbox/AI boundary.
+- accepted ADR 0029 — nonactivating ecosystem/sandbox/selected-input source
+  boundary; activation and public distribution gated.
 
 Do not import proposal ADR numbers from this pack.
 

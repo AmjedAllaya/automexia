@@ -35,6 +35,9 @@ assurance, and project pages own future work and decision history.
 | Look up every config key/default | [Configuration reference](reference/configuration.md) |
 | Understand the technical design | [Architecture overview](developer/architecture.md), [detailed architecture contract](ARCHITECTURE.md) |
 | Review the proposed embedded script editor and DevOps/SRE extension design | [Automation Studio architecture](AUTOMATION-STUDIO-ARCHITECTURE.md), [testing and evidence contract](AUTOMATION-STUDIO-TESTING.md), [proposed ADR 0030](adr/0030-automation-studio-domain-extension-boundary.md) |
+| Review the optional LLM Orchestration architecture | [LLM Orchestration specification](LLM-ORCHESTRATION-EXTENSION.md), [testing and evidence contract](LLM-ORCHESTRATION-TESTING.md), [proposed ADR 0033](adr/0033-optional-llm-orchestration-extension.md) |
+| Review the proposed error-section and failed-command navigation design | [Semantic Diagnostic Navigator](SEMANTIC-DIAGNOSTIC-NAVIGATOR.md), [proposed ADR 0032](adr/0032-bounded-semantic-diagnostic-navigation.md) |
+| Review the proposed production investigation, situation-aware completion, incident, and managed-operations design | [Production Operations specification](SITUATION-AWARE-PRODUCTION-OPERATIONS.md), [exact PO0 contracts and 2026 decisions](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md), [UX and implementation blueprint](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md), [testing and evidence contract](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md), [proposed ADR 0034](adr/0034-situation-aware-production-operations.md) |
 | Run verification or understand release gates | [Testing overview](developer/testing-release.md), [complete testing and evidence contract](TESTING.md), [per-feature reinforcement plan](FEATURE-TEST-REINFORCEMENT.md) |
 | Audit completed-output grouping and its validation incident | [Command-result surface assurance](COMMAND-RESULT-ASSURANCE.md) |
 | Configure or audit controlled F5 native OpenSSH evidence | [F5 native OpenSSH assurance](F5-NATIVE-OPENSSH-ASSURANCE.md) |
@@ -53,12 +56,14 @@ keyboard navigation, configurable behavior, and local or terminal-protocol
 image viewing. Invalid configuration leaves the last working setup active, and
 migration from Rio is explicit and non-destructive.
 
-The repository also contains substantial v0.5 foundations. Native shell completion and the CP2/CP3 Quick Action/alias pipeline are implemented locally, while S1 visual/model tooling and the S2 release ratchet are source-complete at their boundaries. Stable release still depends on hosted native/accessibility evidence, approved visual matrices, and 30 consecutive controlled performance days. The v0.5 read-only Connection Hub is implemented locally with process/network authority deliberately disabled; native macOS/Linux and controlled accessibility evidence remain release-gated. Managed SSH, multi-cloud provider authentication, public extensions, and AI execution are **not** shipped v0.4 behavior.
+The repository also contains substantial v0.5 foundations. Native shell completion and the CP2/CP3 Quick Action/alias pipeline are implemented locally, while S1 visual/model tooling and the S2 release ratchet are source-complete at their boundaries. Stable release still depends on hosted native/accessibility evidence, approved visual matrices, and 30 consecutive controlled performance days. The v0.5 read-only Connection Hub is implemented locally with process/network authority deliberately disabled; native macOS/Linux and controlled accessibility evidence remain release-gated. Managed SSH, multi-cloud provider authentication, public extensions, model
+suggestions, and LLM workflow orchestration are **not** shipped v0.4 behavior.
 
 Release work has two independent lanes: **v0.4 release closure** proves the
 existing terminal product on its declared native, security, visual,
-accessibility, packaging, and performance gates; **v0.5 activation hardening**
-governs managed SSH, providers, credentials, ecosystem runtime, and AI authority.
+accessibility, packaging, and performance gates; **later protected feature
+work** independently governs managed SSH, providers, credentials, ecosystem
+runtime, CP6 model suggestions, and optional LLM orchestration authority.
 
 | Area | Product status | Where to read |
 |---|---|---|
@@ -69,6 +74,8 @@ governs managed SSH, providers, credentials, ecosystem runtime, and AI authority
 | Typed Quick Actions and opt-in aliases | **Implemented locally; release evidence still gated** | [Shell and command productivity](guide/shell-productivity.md) |
 | Provider-aware Quick Actions (CP4) | **Product-integrated and nonactivating; provider refresh/execution not activated** | [Commands and shell](user-guide/commands-and-shell.md#provider-aware-quick-actions), [CP4 audit](PROVIDER-AWARE-QUICK-ACTIONS-IMPLEMENTATION-AUDIT.md), [testing](TESTING.md#m13-provider-aware-quick-actions) |
 | Optional Automexia autocomplete surface | **Accepted source work partial overall; CP5.1-CP5.4 source/local models and CP5.5 inert bridge source done, preview disabled, native release gates open** | [CP5 testing](CP5-SUGGESTION-TESTING.md), [CP5 implementation audit](research/CP51-CP56-IMPLEMENTATION-AUDIT.md), [accepted ADR 0025](adr/0025-authenticated-native-editor-suggestion-bridge.md), [CP5.0 research](research/CP5-AUTOCOMPLETE-RESEARCH.md) |
+| Semantic diagnostic and failed-command navigation | **DN0 design partially done; no action, detector, setting, or product UI exists** | [Proposed specification](SEMANTIC-DIAGNOSTIC-NAVIGATOR.md), [Roadmap](ROADMAP.md#post-v04-semantic-diagnostic-navigation-dn0-dn6) |
+| Situation-aware production operations and investigation | **PO0 detailed proposal/checker only; passports, explain/change/compare/network/SLO views, situation-aware candidates, Incident Mode, managed operations/diagnostic sessions, runbooks, cross-environment comparison, and all PO1-PO8 runtime behavior are not implemented** | [Proposed specification](SITUATION-AWARE-PRODUCTION-OPERATIONS.md), [exact proposed contracts](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md), [detailed UX/build blueprint](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md), [testing](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md), [Roadmap](ROADMAP.md#post-v051-situation-aware-production-operations-po0-po8) |
 | Static OpenSSH inventory, read-only Hub, and disabled direct-review preparation | **Implemented locally; release evidence gated; no launch authority** | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md) |
 | Connection Hub records, pending selected-host review, and dry-run models | **Implemented locally; authority disabled** | [Remote connections](guide/remote-connections.md) |
 | Recipes and multi-environment workspace review (M6) | **CLI and Hub review/editor surface implemented; execution disabled by D3/M5 gates** | [Connection automation](SSH-CONNECTION-AUTOMATION.md#m6-review-only-implementation), [workspace guide](user-guide/connection-hub-and-ssh.md#review-only-workspaces-and-broadcast), [M6 roadmap](ROADMAP.md) |
@@ -79,6 +86,7 @@ governs managed SSH, providers, credentials, ecosystem runtime, and AI authority
 | Kubernetes/OpenShift source contracts | **Implemented internally, not activated** | [Provider testing](MULTI-CLOUD-PROVIDERS-TESTING.md#m11-kubernetes-and-openshift-source-contracts), [Provider audit](MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md) |
 | Teleport adapter / OpenBao adapter | **Teleport implemented internally, not activated / OpenBao blocked on ADR 0024** | [Provider testing](MULTI-CLOUD-PROVIDERS-TESTING.md#m12-teleport-source-contracts), [Provider audit](MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md) |
 | Public extension SDK, sandbox, and CP6 selected-input model suggestions | **Accepted source implementation complete locally; activation/downloads/provider calls disabled; native/release gates open** | [Safety boundary](ECOSYSTEM-PLATFORM.md), [testing](ECOSYSTEM-PLATFORM-TESTING.md), [implementation audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md), [accepted ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md) |
+| Optional LLM Orchestration extension | **LO0 documentation proposal only; LO1-LO5 and all runtime behavior not implemented** | [Specification](LLM-ORCHESTRATION-EXTENSION.md), [testing](LLM-ORCHESTRATION-TESTING.md), [proposed ADR 0033](adr/0033-optional-llm-orchestration-extension.md) |
 | Embedded Automation Studio file editor, language servers, and DevOps/SRE script execution | **Architecture and test proposal only; no implementation or product UI** | [Architecture](AUTOMATION-STUDIO-ARCHITECTURE.md), [testing](AUTOMATION-STUDIO-TESTING.md), [proposed ADR 0030](adr/0030-automation-studio-domain-extension-boundary.md) |
 | Specialized workflow extensions, including media and video | **Research direction only; no product runtime or editing claim** | [Product vision](PRODUCT-VISION.md#long-term-direction), [Roadmap](ROADMAP.md#future-specialized-workflow-domains) |
 
@@ -93,15 +101,21 @@ processing and video editing. A separately proposed Automation Studio would
 provide an embedded, optional foundation for scripts and configuration while a
 DevOps/SRE extension would remain independently usable from the terminal. These
 features must remain optional and separately reviewed; the current product does
-not claim a built-in file or video editor. The [product vision](PRODUCT-VISION.md)
-owns this value direction, while the
+not claim a built-in file or video editor. A separately proposed LLM
+Orchestration extension may later compose reviewable workflows across enabled
+domain actions, but Automexia remains useful without a model, account, network
+connection or paid API. It is not part of the core, DevOps/SRE, Studio or video
+extensions, and no orchestration runtime exists today. The
+[product vision](PRODUCT-VISION.md) owns this value direction, while the
 [roadmap](ROADMAP.md) owns sequencing and the [feature catalog](FEATURES.md)
 owns availability.
 
 The planned product order is the first stable terminal, shared extension and
-DevOps foundations, a minimal Studio release, then a dedicated video-editing
-extension. Research may overlap, but video remains a separate domain built on
-generic workspace and task services rather than Studio-specific editor code.
+DevOps foundations, a small neutral workflow contract, a minimal Studio release,
+then a dedicated video-editing extension. Orchestration may proceed after the
+neutral contract is proven, independently of Studio and video. Research may
+overlap, but video remains a separate domain built on generic workspace and task
+services rather than Studio-specific editor or LLM code.
 
 
 ## Documentation model
