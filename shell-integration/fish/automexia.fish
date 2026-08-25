@@ -12,8 +12,12 @@ set -g AUTOMEXIA_FISH_INTEGRATION_LOADED 1
 set -gx AUTOMEXIA_SHELL_INTEGRATION 1
 set -gx TERM_PROGRAM Automexia
 set -gx COLORTERM truecolor
+set -g __automexia_fish_prompt_generation 0
 
 function __automexia_fish_prompt --on-event fish_prompt
+    set -g __automexia_fish_prompt_generation \
+        (math --scale 0 "$__automexia_fish_prompt_generation + 1")
+    printf '\e]133;A;aid=%s\a' "$__automexia_fish_prompt_generation"
     set -l encoded_path (string replace -a ' ' '%20' -- "$PWD")
     printf '\e]7;file://localhost%s\a' "$encoded_path"
     printf '\e]1337;SetUserVar=automexia_shell=MQ==\a'
@@ -24,11 +28,22 @@ function __automexia_fish_preexec --on-event fish_preexec
     printf '\e]133;C\a'
 end
 
-function __automexia_fish_postexec --on-event fish_postexec
-    # fish_postexec receives the expanded command line, not the exit code. Capture
-    # $status before any Fish builtin can overwrite it.
-    set -l status_code $status
+function __automexia_fish_finish --argument-names status_code
     printf '\e]133;D;%s\a' "$status_code"
+end
+
+function __automexia_fish_postexec --on-event fish_postexec
+    # Event arguments contain the expanded command line, not the exit code.
+    # Capture $status before any Fish builtin can overwrite it.
+    set -l status_code $status
+    __automexia_fish_finish "$status_code"
+end
+
+# Fish 4.8+ publishes syntax failures separately. Older supported Fish versions
+# accept the named handler and simply never emit the event.
+function __automexia_fish_posterror --on-event fish_posterror
+    set -l status_code $status
+    __automexia_fish_finish "$status_code"
 end
 
 set -l integration_dir (path dirname (status filename))

@@ -52,19 +52,14 @@ host-provided. The required evidence is:
 | Surface | Required host and checks |
 |---|---|
 | Portable Rust, metadata, configuration, bindings, and renderer-neutral layout | Every PR runs locked, all-feature Clippy, Nextest, and doctests on native Windows, Ubuntu Linux, and macOS. |
-| Windows shells, ConPTY, WGPU/CPU | Native Windows runs PowerShell, resize-stress, clone, and image gates. Resize stress proves generic non-listing result pixels, bounds, 6-12.5 pixel measured gutter, visible resting/pulse opacity ranges, and the single 540 ms hold/fade cue. |
+| Windows shells, ConPTY, WGPU/CPU | Native Windows runs PowerShell, resize-stress, clone, WSL, and image gates. Resize stress proves eight PowerShell command shapes, neutral CMD output, fresh result ownership, real glyph pixels, bounds, a 6-12.5 pixel measured gutter, visible resting/pulse opacity ranges, no vertical rail, and the single 540 ms hold/fade cue. |
 | Bash/Zsh install, repair, prompt metadata, and listing behavior | Native Linux and macOS run `bash tools/ci/test_shell_sources.sh`; the script uses only Bash 3.2/BSD-compatible temporary-file semantics and tests an isolated home. |
 | Linux display adapters | Ubuntu checks the frontend separately with X11-only, Wayland-only, and combined features. Release jobs additionally validate DEB and RPM metadata/install behavior; this does not imply that every downstream Linux distribution has been manually certified. |
 | WSL launch and clone routing | Native Windows plus an installed WSL distribution runs `cargo xtask test session-clone --native-wsl`; Linux source/build artifacts stay on the WSL filesystem rather than `/mnt/<drive>`. |
 | macOS windows, Metal/WGPU, universal application, signing, and notarization | Native Intel/Apple-Silicon macOS jobs own compilation and tests. Controlled macOS hardware owns GUI, VoiceOver, Gatekeeper, notarization, and final artifact evidence. |
 
-The 2026-08-24 Windows x86_64 output-surface rerun exercised an ordinary
-PowerShell `Write-Output` command on both WGPU and CPU. Each backend produced
-the same 1,581 by 36 physical-pixel result region, 16.384 logical-pixel surface,
-3.5 pixel rail, 10.716 pixel measured gutter, 14,238 samples, 51 color buckets,
-and luminance spread 212. The native snapshot also bound resting surface, rail,
-divider, and pulse opacities to 0.065/0.72/0.42/0.14, a 540 millisecond cycle,
-and a one-third hold. Both captured frames were visually inspected.
+Exact WGPU/CPU, PowerShell, neutral CMD, and native WSL result evidence is in
+[Command-result surface assurance](COMMAND-RESULT-ASSURANCE.md).
 
 The native CI job intentionally enables every Cargo feature on all three host
 families. Platform-specific code must use target configuration, not rely on a
@@ -754,9 +749,11 @@ viewport rather than the reduced PTY extent, place its footer against the pane
 bottom, and publish one complete prompt without synthetic keyboard input.
 The same real ConPTY then enters bare `cmd`, requires CMD identity and the
 complete lambda/path prompt without a second keypress, renders folder and Rust
-icons directly beside fixture names, exits, and requires PowerShell identity to
-return on the first parent prompt. Native snapshots are decoded explicitly as
-UTF-8, so mojibake cannot satisfy the glyph assertions.
+icons directly beside fixture names, and requires that output to own a fresh
+neutral result surface with no fabricated generation, exit status, or duration.
+It then exits and requires PowerShell identity to return on the first parent
+prompt. Native snapshots are decoded explicitly as UTF-8, so mojibake cannot
+satisfy the glyph assertions.
 The driver sends the already-tested CSI Up encoding through Automexia's input
 queue, avoiding nondeterministic desktop foreground-lock policy while retaining
 the real frontend queue, ConPTY, PSReadLine, VT, damage, and renderer path. Rust
@@ -979,6 +976,10 @@ a no-damage snapshot. It protects the contract that cursor/UI-only activity
 does not copy the resident style table or visible grid. Run the complete
 `vt_input` benchmark before and after changes to parser, grid, or snapshot code;
 record the machine, power mode, and median result in any performance waiver.
+
+Command-result lifecycle benchmark commands, samples, and interpretation are in
+[Command-result surface assurance](COMMAND-RESULT-ASSURANCE.md).
+
 
 Shell-history repaint latency has a dedicated deep-scrollback benchmark:
 

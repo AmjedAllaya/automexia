@@ -50,8 +50,11 @@ pub struct CommandResultAnchor {
     /// making that row the visual boundary after the command output. In this
     /// state y is also the exclusive lower bound of the result region.
     pub separates_next_prompt: bool,
-    pub exit_code: i32,
-    pub elapsed_ms: u64,
+    /// Shell-reported exit status. None means the shell proved completion but
+    /// did not expose a status; the renderer must use a neutral treatment.
+    pub exit_code: Option<i32>,
+    /// Terminal-measured execution duration, absent for boundary-only shells.
+    pub elapsed_ms: Option<u64>,
 }
 
 /// Bound historical per-prompt extension UI state. This is intentionally small:

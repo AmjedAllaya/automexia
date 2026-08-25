@@ -164,29 +164,31 @@ When a command completes and the following prompt is visible, Automexia groups
 every proven output row into a visible but restrained result surface. The
 semantic path is command-agnostic: it covers listing and non-listing commands,
 success and error exits, single- and multiline output, and managed input wrapped
-beyond eight rows. A persistent success/error-tinted band, 2.4-3.5 pixel left
-rail, adaptive 6-10 pixel visual breathing gutter, end rule, and compact exit
-state plus duration separate the result from the next editable command without
-relying on color alone. A newly completed live result lightens once, holds for the first
-third of its 540 millisecond cycle, and then eases out through opacity; it never
-blinks, moves, repeats, or restarts
-while viewing scrollback.
+beyond eight rows. A persistent tinted band, adaptive 6-10 pixel visual
+breathing gutter, end rule, and compact exit state plus duration when the shell
+can provide them separate the result from the next editable command without
+relying on color alone. A newly completed live result lightens once, holds for
+the first third of its 540 millisecond cycle, and then eases out through
+opacity; it never blinks, moves, repeats, or restarts while viewing scrollback.
 
 | Shell | Lifecycle available to Automexia | Completed-output surface |
 |---|---|---|
-| PowerShell | Monotonic `A/B/C/D`; `D` is semantic `0` success or `1` failure and never reuses or changes a stale user-owned `LASTEXITCODE` | Available |
+| PowerShell | Monotonic `A/B/C/D`; `D` preserves an exact native exit such as `7` when available, otherwise records semantic pipeline success/failure, and never changes user-owned `LASTEXITCODE` | Available |
 | Bash | Monotonic `A/B/C/D` with the captured shell exit status | Available |
 | Zsh | Monotonic `A/B/C/D` with the captured shell exit status | Available |
-| Fish | `fish_preexec`/`fish_postexec` provide `C/D`, but the user-owned prompt has no Automexia `A/B` generation | Not drawn; output limits are not guessed |
-| stock CMD | The prompt provides `A/B`, but `cmd.exe` exposes no supported generic post-command `C/D` hook or truthful timing boundary | Not drawn; completion/status are not fabricated |
+| Fish | `fish_prompt`, `fish_preexec`, `fish_postexec`, and `fish_posterror` provide a monotonic `A/B/C/D` lifecycle with the captured status without replacing the user's prompt body | Available |
+| stock CMD | The next prompt emits a bare `D` before its fresh `A/B`; `cmd.exe` exposes no supported generic status or timing value | Available as a neutral surface; status and duration are not fabricated |
 | unintegrated or unsupported shell | No complete trusted lifecycle | Not drawn |
 
 The renderer applies that treatment only when semantic prompt ownership proves
-both output limits and the following prompt. Uncertain or empty bounds fail
-closed to the compact status treatment. No terminal row is inserted, no PTY
+both output limits and the following prompt. Uncertain or empty bounds receive
+no output surface; a silent command records semantic completion without
+borrowing the preceding paintable result. No terminal row is inserted, no PTY
 byte is written, and selection, copy, search, history, reflow, shell input, and
 the shell-owned cursor remain unchanged. A final result stays on its original
-prompt when no following boundary exists.
+prompt when no following boundary exists. Whenever unrelated output rewrites a
+row, the VT clears the row's old prompt/result identity before the renderer can
+select it; an active identified prompt repaint instead claims that row for its
 
 Metadata is advisory and validated. An absolute, control-free OSC 7 directory
 can update a pane's launch descriptor; malformed or relative values cannot.

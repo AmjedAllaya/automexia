@@ -31,7 +31,6 @@ const PROMPT_TAG_LEFT_INSET: f32 = 2.0;
 const PROMPT_RESULT_RESERVE: f32 = 112.0;
 const RESULT_DIVIDER_ALPHA: f32 = 0.42;
 const RESULT_SURFACE_ALPHA: f32 = 0.065;
-const RESULT_ACCENT_ALPHA: f32 = 0.72;
 const RESULT_PULSE_ALPHA: f32 = 0.14;
 const RESULT_PULSE_DURATION: Duration = Duration::from_millis(540);
 const RESULT_PULSE_HOLD_FRACTION: f32 = 1.0 / 3.0;
@@ -93,7 +92,6 @@ fn command_result_divider(anchor: &CommandResultAnchor) -> Option<[f32; 4]> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct CommandResultVisual {
     surface: [f32; 4],
-    accent: [f32; 4],
     divider: [f32; 4],
 }
 
@@ -117,15 +115,27 @@ fn command_result_visual(anchor: &CommandResultAnchor) -> Option<CommandResultVi
         return None;
     }
     let surface = [anchor.x + inset, output_top, surface_width, surface_height];
-    let accent_width = (anchor.height * 0.14)
-        .clamp(2.4, 3.5)
-        .min(anchor.height * 0.5)
-        .max(1.0);
-    Some(CommandResultVisual {
-        surface,
-        accent: [surface[0], surface[1], accent_width, surface[3]],
-        divider,
-    })
+    Some(CommandResultVisual { surface, divider })
+}
+
+#[inline]
+fn latest_paintable_command_result(
+    anchors: &[CommandResultAnchor],
+    prefer_untagged: bool,
+) -> Option<&CommandResultAnchor> {
+    let paintable =
+        |anchor: &&CommandResultAnchor| command_result_visual(anchor).is_some();
+    if prefer_untagged {
+        if let Some(anchor) = anchors
+            .iter()
+            .rev()
+            .filter(|anchor| anchor.generation.is_none())
+            .find(paintable)
+        {
+            return Some(anchor);
+        }
+    }
+    anchors.iter().rev().find(paintable)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -135,13 +145,13 @@ struct CommandResultIdentity {
 }
 
 #[cfg(feature = "native-gui-test-hooks")]
-type NativeCommandResultVisual = ([f32; 4], [f32; 4], [f32; 4], u64);
+type NativeCommandResultVisual = ([f32; 4], [f32; 4], u64);
 
 #[cfg(feature = "native-gui-test-hooks")]
-type NativeCommandResultIdentity = (Option<u64>, u64, i32);
+type NativeCommandResultIdentity = (Option<u64>, u64, Option<i32>);
 
 #[cfg(feature = "native-gui-test-hooks")]
-type NativeCommandResultStyle = ([f32; 4], u64, f32);
+type NativeCommandResultStyle = ([f32; 3], u64, f32);
 
 impl PartialEq for CommandResultIdentity {
     fn eq(&self, other: &Self) -> bool {
@@ -176,9 +186,11 @@ impl CommandResultPulse {
         &mut self,
         anchors: &[CommandResultAnchor],
         allow_animation: bool,
+        prefer_untagged: bool,
         now: Instant,
     ) {
-        let latest = anchors.last().map(CommandResultIdentity::from);
+        let latest = latest_paintable_command_result(anchors, prefer_untagged)
+            .map(CommandResultIdentity::from);
         if !self.initialized {
             self.initialized = true;
             self.last_seen = latest;
@@ -300,7 +312,6 @@ impl DevOpsStatus {
         Some((
             [
                 RESULT_SURFACE_ALPHA,
-                RESULT_ACCENT_ALPHA,
                 RESULT_DIVIDER_ALPHA,
                 RESULT_PULSE_ALPHA,
             ],
@@ -314,7 +325,6 @@ impl DevOpsStatus {
         let visual = self.native_command_result_visual?;
         Some((
             visual.surface,
-            visual.accent,
             visual.divider,
             self.command_result_pulse.generation,
         ))
@@ -691,22 +701,26 @@ impl DevOpsStatus {
         colors: Colors,
         anchors: &[CommandResultAnchor],
         allow_animation: bool,
+        prefer_untagged: bool,
     ) {
         let now = Instant::now();
         self.command_result_pulse
-            .observe(anchors, allow_animation, now);
+            .observe(anchors, allow_animation, prefer_untagged, now);
         #[cfg(feature = "native-gui-test-hooks")]
         {
-            self.native_command_result_visual =
-                anchors.last().and_then(command_result_visual);
-            self.native_command_result_identity = anchors
-                .last()
-                .map(|anchor| (anchor.generation, anchor.key, anchor.exit_code));
+            let latest = latest_paintable_command_result(anchors, prefer_untagged);
+            self.native_command_result_visual = latest.and_then(command_result_visual);
+            self.native_command_result_identity =
+                latest.map(|anchor| (anchor.generation, anchor.key, anchor.exit_code));
         }
         for anchor in anchors {
-            let success = anchor.exit_code == 0;
-            let status = if success { "✓" } else { "×" };
-            let label = format!("{status}  {}", format_duration(anchor.elapsed_ms));
+            let (tone, label) =
+                command_result_presentation(anchor.exit_code, anchor.elapsed_ms);
+            let accent_color = match tone {
+                CommandResultTone::Success => colors.green,
+                CommandResultTone::Failure => colors.red,
+                CommandResultTone::Neutral => colors.blue,
+            };
             let metrics = prompt_tag_metrics(anchor.height);
             let Some(top_inset) = automexia_ui_model::prompt_context_top_inset(
                 anchor.height,
@@ -717,11 +731,10 @@ impl DevOpsStatus {
             };
             let opts = DrawOpts {
                 font_size: metrics.font_size,
-                color: color_to_u8(if success { colors.green } else { colors.red }),
+                color: color_to_u8(accent_color),
                 ..DrawOpts::default()
             };
 
-            let accent_color = if success { colors.green } else { colors.red };
             let visual = command_result_visual(anchor);
             if let Some(visual) = visual {
                 let pulse_alpha = self.command_result_pulse.alpha_for(anchor, now);
@@ -736,18 +749,6 @@ impl DevOpsStatus {
                     surface_color,
                     0.0,
                     ORDER - 4,
-                );
-                let mut rail_color = accent_color;
-                rail_color[3] = (RESULT_ACCENT_ALPHA + pulse_alpha).min(1.0);
-                sugarloaf.rect(
-                    None,
-                    visual.accent[0],
-                    visual.accent[1],
-                    visual.accent[2],
-                    visual.accent[3],
-                    rail_color,
-                    0.0,
-                    ORDER - 3,
                 );
             }
             let divider = visual
@@ -950,6 +951,27 @@ fn draw_icon_in_slot(
     sugarloaf
         .text_mut()
         .draw(x, icon_draw_y(base_y, base_size, icon), glyph, &opts);
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CommandResultTone {
+    Success,
+    Failure,
+    Neutral,
+}
+
+fn command_result_presentation(
+    exit_code: Option<i32>,
+    elapsed_ms: Option<u64>,
+) -> (CommandResultTone, String) {
+    let (tone, status) = match exit_code {
+        Some(0) => (CommandResultTone::Success, "✓"),
+        Some(_) => (CommandResultTone::Failure, "×"),
+        None => (CommandResultTone::Neutral, "•"),
+    };
+    let detail = elapsed_ms
+        .map(format_duration)
+        .unwrap_or_else(|| "done".to_string());
+    (tone, format!("{status}  {detail}"))
 }
 
 fn format_duration(elapsed_ms: u64) -> String {
@@ -1175,6 +1197,18 @@ mod tests {
     }
 
     #[test]
+    fn command_result_status_is_neutral_when_the_shell_omits_exit_state() {
+        assert_eq!(
+            command_result_presentation(None, None),
+            (CommandResultTone::Neutral, "•  done".to_string())
+        );
+        assert_eq!(
+            command_result_presentation(Some(1), Some(18)),
+            (CommandResultTone::Failure, "×  18ms".to_string())
+        );
+    }
+
+    #[test]
     fn result_divider_is_bounded_and_only_marks_a_following_prompt() {
         let mut anchor = CommandResultAnchor {
             generation: Some(7),
@@ -1185,8 +1219,8 @@ mod tests {
             height: 20.0,
             output_top: Some(0.0),
             separates_next_prompt: true,
-            exit_code: 0,
-            elapsed_ms: 18,
+            exit_code: Some(0),
+            elapsed_ms: Some(18),
         };
         let [x, y, width, height] = command_result_divider(&anchor).unwrap();
         assert!(x >= anchor.x);
@@ -1199,7 +1233,7 @@ mod tests {
     }
 
     #[test]
-    fn result_surface_adds_bounded_tint_accent_and_breathing_gutter() {
+    fn result_surface_adds_bounded_tint_and_breathing_gutter_without_a_rail() {
         let anchor = CommandResultAnchor {
             generation: Some(7),
             key: 42,
@@ -1209,8 +1243,8 @@ mod tests {
             height: 24.0,
             output_top: Some(80.0),
             separates_next_prompt: true,
-            exit_code: 0,
-            elapsed_ms: 18,
+            exit_code: Some(0),
+            elapsed_ms: Some(18),
         };
 
         let visual = command_result_visual(&anchor).expect("visible output surface");
@@ -1220,10 +1254,6 @@ mod tests {
         assert!(visual.surface[1] >= 80.0);
         assert!(visual.surface[0] + visual.surface[2] <= anchor.x + anchor.width);
         assert!((8.0..=10.0).contains(&gutter));
-        assert_eq!(visual.accent[0], visual.surface[0]);
-        assert_eq!(visual.accent[1], visual.surface[1]);
-        assert!((2.4..=3.5).contains(&visual.accent[2]));
-        assert_eq!(visual.accent[3], visual.surface[3]);
         assert!(visual.divider[1] >= anchor.y);
     }
 
@@ -1238,8 +1268,8 @@ mod tests {
             height: 20.0,
             output_top: None,
             separates_next_prompt: true,
-            exit_code: 0,
-            elapsed_ms: 18,
+            exit_code: Some(0),
+            elapsed_ms: Some(18),
         };
         assert_eq!(command_result_visual(&anchor), None);
 
@@ -1250,7 +1280,6 @@ mod tests {
     #[test]
     fn result_paint_is_persistent_and_the_single_pulse_stays_perceptible() {
         assert!((0.05..=0.10).contains(&RESULT_SURFACE_ALPHA));
-        assert!((0.60..=0.85).contains(&RESULT_ACCENT_ALPHA));
         assert!((0.10..=0.18).contains(&RESULT_PULSE_ALPHA));
         assert!((0.35..=0.60).contains(&RESULT_DIVIDER_ALPHA));
 
@@ -1263,13 +1292,13 @@ mod tests {
             height: 20.0,
             output_top: Some(40.0),
             separates_next_prompt: true,
-            exit_code: 0,
-            elapsed_ms: 18,
+            exit_code: Some(0),
+            elapsed_ms: Some(18),
         };
         let started = Instant::now();
         let mut pulse = CommandResultPulse::default();
-        pulse.observe(&[], true, started);
-        pulse.observe(&[anchor], true, started);
+        pulse.observe(&[], true, false, started);
+        pulse.observe(&[anchor], true, false, started);
 
         assert_eq!(pulse.alpha_for(&anchor, started), RESULT_PULSE_ALPHA);
         assert!(
@@ -1295,8 +1324,8 @@ mod tests {
             height: 20.0,
             output_top: Some(40.0),
             separates_next_prompt: true,
-            exit_code: 0,
-            elapsed_ms: 18,
+            exit_code: Some(0),
+            elapsed_ms: Some(18),
         };
         let second = CommandResultAnchor {
             generation: Some(8),
@@ -1311,8 +1340,8 @@ mod tests {
         let started = Instant::now();
         let mut pulse = CommandResultPulse::default();
 
-        pulse.observe(&[], true, started);
-        pulse.observe(&[first], true, started);
+        pulse.observe(&[], true, false, started);
+        pulse.observe(&[first], true, false, started);
         assert_eq!(pulse.alpha_for(&first, started), RESULT_PULSE_ALPHA);
         assert_eq!(pulse.generation, 1);
 
@@ -1320,7 +1349,7 @@ mod tests {
         let halfway_alpha = pulse.alpha_for(&first, halfway);
         assert!(halfway_alpha > 0.0);
         assert!(halfway_alpha < RESULT_PULSE_ALPHA);
-        pulse.observe(&[first], true, halfway);
+        pulse.observe(&[first], true, false, halfway);
         assert_eq!(pulse.alpha_for(&first, halfway), halfway_alpha);
         assert_eq!(pulse.generation, 1);
 
@@ -1328,13 +1357,50 @@ mod tests {
         assert_eq!(pulse.alpha_for(&first, finished), 0.0);
         assert!(!pulse.needs_redraw(finished));
 
-        pulse.observe(&[first, second], false, finished);
+        pulse.observe(&[first, second], false, false, finished);
         assert_eq!(pulse.alpha_for(&second, finished), 0.0);
         assert_eq!(pulse.generation, 1);
-        pulse.observe(&[first, second, third], true, finished);
+        pulse.observe(&[first, second, third], true, false, finished);
         assert_eq!(pulse.alpha_for(&third, finished), RESULT_PULSE_ALPHA);
         assert_eq!(pulse.alpha_for(&second, finished), 0.0);
         assert_eq!(pulse.generation, 2);
+    }
+
+    #[test]
+    fn stale_trailing_anchor_cannot_steal_the_live_output_pulse() {
+        let visible = CommandResultAnchor {
+            generation: None,
+            key: 42,
+            x: 4.0,
+            y: 160.0,
+            width: 720.0,
+            height: 20.0,
+            output_top: Some(80.0),
+            separates_next_prompt: true,
+            exit_code: None,
+            elapsed_ms: None,
+        };
+        let stale = CommandResultAnchor {
+            generation: Some(12),
+            key: 54,
+            x: 4.0,
+            y: 220.0,
+            width: 720.0,
+            height: 20.0,
+            output_top: Some(120.0),
+            separates_next_prompt: true,
+            exit_code: Some(0),
+            elapsed_ms: Some(12),
+        };
+        let started = Instant::now();
+        let mut pulse = CommandResultPulse::default();
+
+        pulse.observe(&[], true, true, started);
+        pulse.observe(&[visible, stale], true, true, started);
+
+        assert_eq!(pulse.alpha_for(&visible, started), RESULT_PULSE_ALPHA);
+        assert_eq!(pulse.alpha_for(&stale, started), 0.0);
+        assert_eq!(pulse.generation, 1);
     }
 
     #[test]
@@ -1348,8 +1414,8 @@ mod tests {
             height: 20.0,
             output_top: Some(40.0),
             separates_next_prompt: true,
-            exit_code: 0,
-            elapsed_ms: 18,
+            exit_code: Some(0),
+            elapsed_ms: Some(18),
         };
         let reflowed = CommandResultAnchor {
             key: 142,
@@ -1361,13 +1427,13 @@ mod tests {
         let finished = started + RESULT_PULSE_DURATION;
         let mut pulse = CommandResultPulse::default();
 
-        pulse.observe(&[], true, started);
-        pulse.observe(&[original], true, started);
+        pulse.observe(&[], true, false, started);
+        pulse.observe(&[original], true, false, started);
         assert_eq!(pulse.generation, 1);
         assert!(!pulse.needs_redraw(finished));
 
-        pulse.observe(&[], true, finished);
-        pulse.observe(&[reflowed], true, finished);
+        pulse.observe(&[], true, false, finished);
+        pulse.observe(&[reflowed], true, false, finished);
         assert_eq!(pulse.alpha_for(&reflowed, finished), 0.0);
         assert_eq!(pulse.generation, 1);
     }

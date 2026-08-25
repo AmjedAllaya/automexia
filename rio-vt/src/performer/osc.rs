@@ -79,12 +79,13 @@ pub(super) fn parse_semantic_prompt(
 pub(super) enum SemanticCommand {
     Input,
     Start,
-    End { exit_code: i32 },
+    End { exit_code: Option<i32> },
 }
 
 /// Parse OSC 133 `C` (command starts executing) and `D` (command finished).
-/// Unknown options are deliberately ignored.  Missing or malformed exit codes
-/// use `0`, matching shells that emit a bare `D` for success.
+/// Unknown options are deliberately ignored. A missing or malformed exit code
+/// stays unknown: OSC 133 explicitly permits a bare `D`, and terminals must not
+/// turn an absent status into a false success claim.
 pub(super) fn parse_semantic_command(params: &[&[u8]]) -> Option<SemanticCommand> {
     match *params.get(1)?.first()? {
         b'B' => Some(SemanticCommand::Input),
@@ -93,8 +94,7 @@ pub(super) fn parse_semantic_command(params: &[&[u8]]) -> Option<SemanticCommand
             let exit_code = params
                 .get(2)
                 .and_then(|value| std::str::from_utf8(value).ok())
-                .and_then(|value| value.parse::<i32>().ok())
-                .unwrap_or(0);
+                .and_then(|value| value.parse::<i32>().ok());
             Some(SemanticCommand::End { exit_code })
         }
         _ => None,

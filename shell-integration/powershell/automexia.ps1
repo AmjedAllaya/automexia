@@ -10,6 +10,7 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
     [uint64]$script:AutomexiaPromptGeneration = 0
     $script:AutomexiaCachedPromptPath = $null
     $script:AutomexiaCachedStyledPromptPath = ''
+    $script:AutomexiaWrappedNativeExitCode = $null
 
     $env:COLORTERM = 'truecolor'
     $env:TERM_PROGRAM = 'Automexia'
@@ -43,6 +44,7 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
             $env:AUTOMEXIA_PLAIN_CMD -eq '1' -or
             -not (Test-Path -LiteralPath $script:AutomexiaCmdIntegration)) {
             & $script:AutomexiaCmdExecutable @nativeArguments
+            $script:AutomexiaWrappedNativeExitCode = [int]$global:LASTEXITCODE
             return
         }
 
@@ -51,6 +53,7 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         $startup = 'chcp 65001>nul & set "AUTOMEXIA_CMD_PROMPT_GLYPH={0}" & call "{1}"' -f
             ([char]0x03BB), $script:AutomexiaCmdIntegration.Replace('"', '""')
         & $script:AutomexiaCmdExecutable /D /K $startup
+        $script:AutomexiaWrappedNativeExitCode = [int]$global:LASTEXITCODE
     }
     Set-Alias -Name cmd -Value Invoke-AutomexiaCmd -Scope Global -Force
     Set-Alias -Name cmd.exe -Value Invoke-AutomexiaCmd -Scope Global -Force
@@ -195,10 +198,14 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
 
     function global:prompt {
         $succeeded = $?
-        # LASTEXITCODE may still contain an unrelated earlier native process
-        # result. Preserve that user-owned variable and publish only the
-        # success/failure distinction consumed by terminal result styling.
-        $exitCode = if ($succeeded) { 0 } else { 1 }
+        # A PowerShell function call reports its own invocation as successful
+        # even when the wrapped CMD child failed. Consume the exact status
+        # captured by our wrapper; otherwise avoid stale LASTEXITCODE and use
+        # PowerShell's truthful success/failure signal. Never mutate the
+        # user-owned LASTEXITCODE variable.
+        $wrappedNativeExitCode = $script:AutomexiaWrappedNativeExitCode
+        $script:AutomexiaWrappedNativeExitCode = $null
+        $exitCode = if ($null -ne $wrappedNativeExitCode) { $wrappedNativeExitCode } elseif ($succeeded) { 0 } else { 1 }
         Publish-AutomexiaPowerShellIdentity
         $script:AutomexiaPromptGeneration++
         $promptPath = Get-AutomexiaPromptPath

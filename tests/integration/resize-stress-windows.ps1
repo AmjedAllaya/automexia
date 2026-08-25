@@ -956,6 +956,7 @@ $rendererConfig
             Name = 'single-success'
             Command = "Write-Output 'AMX_RESULT_SINGLE_78101'"
             Tokens = @('AMX_RESULT_SINGLE_78101')
+            HasOutput = $true
             ExitCode = 0
         },
         [pscustomobject]@{
@@ -963,28 +964,54 @@ $rendererConfig
             Command = "Write-Output 'AMX_RESULT_MULTI_A_78102'; Write-Output 'AMX_RESULT_MULTI_B_78102'"
             Tokens = @('AMX_RESULT_MULTI_A_78102', 'AMX_RESULT_MULTI_B_78102')
             ExitCode = 0
+            HasOutput = $true
         },
         [pscustomobject]@{
             Name = 'external-process-success'
             Command = 'cmd.exe /D /C "echo AMX_RESULT_EXTERNAL_78103"'
             Tokens = @('AMX_RESULT_EXTERNAL_78103')
             ExitCode = 0
+            HasOutput = $true
         },
         [pscustomobject]@{
             Name = 'error-output'
             Command = "Write-Error 'AMX_RESULT_ERROR_78104'"
             Tokens = @('AMX_RESULT_ERROR_78104')
             ExitCode = 1
+            HasOutput = $true
+        },
+        [pscustomobject]@{
+            Name = 'parameter-binding-error-ls-ll'
+            Command = 'ls -ll'
+            Tokens = @('ParameterBindingException')
+            ExitCode = 1
+            HasOutput = $true
         },
         [pscustomobject]@{
             Name = 'provider-pipeline-success'
             Command = 'Get-Item -LiteralPath Cargo.toml | ForEach-Object { Write-Output ''AMX_RESULT_PROVIDER_78105''; Write-Output $_.Name }'
             Tokens = @('AMX_RESULT_PROVIDER_78105', 'Cargo.toml')
             ExitCode = 0
+            HasOutput = $true
+        },
+        [pscustomobject]@{
+            Name = 'native-stderr-failure'
+            Command = 'cmd.exe /D /C "echo AMX_RESULT_NATIVE_STDERR_78106 1>&2 & exit /b 7"'
+            Tokens = @('AMX_RESULT_NATIVE_STDERR_78106')
+            ExitCode = 7
+            HasOutput = $true
+        },
+        [pscustomobject]@{
+            Name = 'no-output-success'
+            Command = '$null = Get-Item -LiteralPath Cargo.toml'
+            Tokens = @()
+            ExitCode = 0
+            HasOutput = $false
         }
     )
     $resultCommandEvidence = @()
     $resultProbe = $initial
+
     foreach ($case in $resultCommandCases) {
         $previousPromptId = [int64]$resultProbe.latest_prompt_id
         $previousResultKey = if ($null -eq $resultProbe.command_result_key) {
@@ -1006,14 +1033,29 @@ $rendererConfig
                     break
                 }
             }
+            $resultMatches = if ([bool]$case.HasOutput) {
+                $null -ne $caseReady.command_result_key -and
+                    [int64]$caseReady.command_result_key -gt $previousResultKey -and
+                    [int64]$caseReady.command_result_generation -eq $previousPromptId -and
+                    [int]$caseReady.command_result_exit_code -eq [int]$case.ExitCode -and
+                    $null -ne $caseReady.command_result_surface
+            } else {
+                $semanticResult = @($caseReady.semantic_rows | Where-Object {
+                    $_.has_result -and
+                        [int64]$_.generation -eq $previousPromptId -and
+                        [int]$_.result_exit_code -eq [int]$case.ExitCode
+                })
+                # A preceding output group may remain visible by design. The
+                # silent command itself must publish semantic completion but
+                # must not become the selected paintable result.
+                $semanticResult.Count -gt 0 -and
+                    ($null -eq $caseReady.command_result_generation -or
+                        [int64]$caseReady.command_result_generation -ne $previousPromptId)
+            }
             $caseComplete = (
                 [string]$caseReady.last_control -eq $caseControl -and
                 [int64]$caseReady.latest_prompt_id -gt $previousPromptId -and
-                $null -ne $caseReady.command_result_key -and
-                [int64]$caseReady.command_result_key -gt $previousResultKey -and
-                [int64]$caseReady.command_result_generation -eq $previousPromptId -and
-                [int]$caseReady.command_result_exit_code -eq [int]$case.ExitCode -and
-                $null -ne $caseReady.command_result_surface -and
+                $resultMatches -and
                 $allTokensVisible)
             if (-not $caseComplete) {
                 $caseReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$caseReady.sequence)
@@ -1023,11 +1065,27 @@ $rendererConfig
             Write-Host ($caseReady | ConvertTo-Json -Depth 10)
             throw "Command-result case '$($case.Name)' did not publish fresh, truthful, visible output grouping"
         }
+        # Report the evidence owned by this command, not the most recent
+        # paintable surface. Silent commands intentionally leave the preceding
+        # output surface visible, so copying the selected surface here would
+        # falsely attribute that older result to the silent completion.
+        $evidenceGeneration = if ([bool]$case.HasOutput) {
+            [int64]$caseReady.command_result_generation
+        } else {
+            $previousPromptId
+        }
+        $evidenceKey = if ([bool]$case.HasOutput) {
+            [int64]$caseReady.command_result_key
+        } else {
+            $null
+        }
         $resultCommandEvidence += [ordered]@{
             name = $case.Name
-            generation = [int64]$caseReady.command_result_generation
-            key = [int64]$caseReady.command_result_key
-            exit_code = [int]$caseReady.command_result_exit_code
+            generation = $evidenceGeneration
+            key = $evidenceKey
+            exit_code = [int]$case.ExitCode
+            has_output = [bool]$case.HasOutput
+            painted = [bool]$case.HasOutput
         }
         $resultProbe = $caseReady
     }
@@ -1079,24 +1137,20 @@ $rendererConfig
     }
 
     $resultSurface = @($historyReady.command_result_surface)
-    $resultAccent = @($historyReady.command_result_accent)
+    if ($null -ne $historyReady.command_result_accent) {
+        throw 'Completed output still publishes the removed vertical rail geometry'
+    }
     $resultDivider = @($historyReady.command_result_divider)
     if ($resultSurface.Count -ne 4 -or
-        $resultAccent.Count -ne 4 -or
         $resultDivider.Count -ne 4) {
         Write-Host ($historyReady | ConvertTo-Json -Depth 8)
-        throw 'Completed output did not publish surface, accent, and divider geometry'
+        throw 'Completed output did not publish surface and divider geometry'
     }
     $resultSurfaceBottom =
         [double]$resultSurface[1] + [double]$resultSurface[3]
     $resultGutter = [double]$resultDivider[1] - $resultSurfaceBottom
     if ([double]$resultSurface[2] -lt 4.0 -or
         [double]$resultSurface[3] -lt 1.0 -or
-        [Math]::Abs([double]$resultAccent[0] - [double]$resultSurface[0]) -gt 0.01 -or
-        [Math]::Abs([double]$resultAccent[1] - [double]$resultSurface[1]) -gt 0.01 -or
-        [Math]::Abs([double]$resultAccent[3] - [double]$resultSurface[3]) -gt 0.01 -or
-        [double]$resultAccent[2] -lt 2.4 -or
-        [double]$resultAccent[2] -gt 3.5 -or
         [double]$resultDivider[2] -lt [double]$resultSurface[2] -or
         $resultGutter -lt 6.0 -or
         $resultGutter -gt 12.5) {
@@ -1104,15 +1158,13 @@ $rendererConfig
         throw "Command-result surface geometry is clipped or lacks its breathing gutter: gutter=$resultGutter"
     }
     $resultOpacity = @($historyReady.command_result_opacity)
-    if ($resultOpacity.Count -ne 4 -or
+    if ($resultOpacity.Count -ne 3 -or
         [double]$resultOpacity[0] -lt 0.05 -or
         [double]$resultOpacity[0] -gt 0.10 -or
-        [double]$resultOpacity[1] -lt 0.60 -or
-        [double]$resultOpacity[1] -gt 0.85 -or
-        [double]$resultOpacity[2] -lt 0.35 -or
-        [double]$resultOpacity[2] -gt 0.60 -or
-        [double]$resultOpacity[3] -lt 0.10 -or
-        [double]$resultOpacity[3] -gt 0.18) {
+        [double]$resultOpacity[1] -lt 0.35 -or
+        [double]$resultOpacity[1] -gt 0.60 -or
+        [double]$resultOpacity[2] -lt 0.10 -or
+        [double]$resultOpacity[2] -gt 0.18) {
         Write-Host ($historyReady | ConvertTo-Json -Depth 8)
         throw 'Command-result paint regressed to an imperceptible opacity'
     }
@@ -1150,11 +1202,11 @@ $rendererConfig
     if ($resultRegionWidth -lt 8 -or $resultRegionHeight -lt 8) {
         throw "Command-result painted region is unusable: $resultRegionWidth x $resultRegionHeight"
     }
-    # Sample output glyphs independently from the rail, divider, and status
+    # Sample output glyphs independently from the divider and status
     # decoration. This prevents structural paint from masquerading as visible
     # command text in a native frame.
     $resultGlyphX = [int][Math]::Floor(
-        ([double]$resultSurface[0] + [double]$resultAccent[2] + 4.0) * $resultScale)
+        ([double]$resultSurface[0] + 4.0) * $resultScale)
     $resultGlyphY = $resultRegionY
     $resultGlyphWidth = [int][Math]::Floor(
         [Math]::Min([double]$resultSurface[2] * 0.55, 560.0) * $resultScale)
@@ -1596,6 +1648,12 @@ $rendererConfig
         throw 'Interactive CMD did not publish its shell, user, path, prompt, and complete working directory automatically'
     }
 
+    $cmdPreviousResultKey = if ($null -eq $cmdReady.command_result_key) {
+        -1
+    } else {
+        [int64]$cmdReady.command_result_key
+    }
+
     # Prove the display-only DOSKEY helper is active in the real pane and keeps
     # category/file glyphs directly beside names.
     $folderGlyph = [char]::ConvertFromUtf32(0xF19F6)
@@ -1606,7 +1664,13 @@ $rendererConfig
     $cmdListingDeadline = [DateTime]::UtcNow.AddSeconds(15)
     while ((-not ((Get-ActiveAutomexiaPanel $cmdListing).visible_text.Contains("$folderGlyph apps\")) -or
             -not ((Get-ActiveAutomexiaPanel $cmdListing).visible_text.Contains("$rustGlyph Cargo.toml")) -or
-            -not [bool](Get-ActiveAutomexiaPanel $cmdListing).shell_prompt_active) -and
+            -not [bool](Get-ActiveAutomexiaPanel $cmdListing).shell_prompt_active -or
+            $null -eq $cmdListing.command_result_key -or
+            [int64]$cmdListing.command_result_key -le $cmdPreviousResultKey -or
+            $null -ne $cmdListing.command_result_generation -or
+            $null -ne $cmdListing.command_result_exit_code -or
+            $null -eq $cmdListing.command_result_surface -or
+            $null -eq $cmdListing.command_result_divider) -and
            [DateTime]::UtcNow -lt $cmdListingDeadline) {
         $cmdListing = Read-AutomexiaSnapshot -AfterSequence ([int64]$cmdListing.sequence)
     }
@@ -1615,6 +1679,15 @@ $rendererConfig
         -not $cmdListingPanel.visible_text.Contains("$rustGlyph Cargo.toml")) {
         Write-Host ($cmdListing | ConvertTo-Json -Depth 10)
         throw 'Interactive CMD ls did not render category and Rust icons immediately beside names'
+    }
+    if ($null -eq $cmdListing.command_result_key -or
+        [int64]$cmdListing.command_result_key -le $cmdPreviousResultKey -or
+        $null -ne $cmdListing.command_result_generation -or
+        $null -ne $cmdListing.command_result_exit_code -or
+        $null -eq $cmdListing.command_result_surface -or
+        $null -eq $cmdListing.command_result_divider) {
+        Write-Host ($cmdListing | ConvertTo-Json -Depth 10)
+        throw 'Interactive CMD output did not publish a fresh neutral result surface'
     }
 
     # Exit must restore the parent metadata on PowerShell's very next prompt;
@@ -2819,7 +2892,6 @@ $rendererConfig
                 renderer = if ($UseCpuRenderer) { 'cpu' } else { 'wgpu' }
                 pulse_generation = [int64]$historyReady.command_result_pulse_generation
                 surface = $resultSurface
-                accent = $resultAccent
                 divider = $resultDivider
                 breathing_gutter = $resultGutter
                 attempts = $resultCaptureAttempts

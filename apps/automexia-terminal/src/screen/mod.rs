@@ -485,9 +485,8 @@ struct NativeWindowSnapshot {
     search_announcement_generation: Option<u64>,
     search_surface: Option<[f32; 4]>,
     command_result_surface: Option<[f32; 4]>,
-    command_result_accent: Option<[f32; 4]>,
     command_result_divider: Option<[f32; 4]>,
-    command_result_opacity: Option<[f32; 4]>,
+    command_result_opacity: Option<[f32; 3]>,
     command_result_generation: Option<u64>,
     command_result_key: Option<u64>,
     command_result_exit_code: Option<i32>,
@@ -540,6 +539,34 @@ fn write_native_resize_snapshot(
         visible_text.push_str(&row_text);
         visible_row_texts.push(row_text);
     }
+    let semantic_rows = content
+        .visible_rows
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| {
+            row.semantic_prompt != SemanticPrompt::None
+                || row.semantic_command_result.is_some()
+        })
+        .map(|(index, row)| {
+            let kind = match row.semantic_prompt {
+                SemanticPrompt::None => "none",
+                SemanticPrompt::Prompt => "prompt",
+                SemanticPrompt::PromptContinuation => "continuation",
+            };
+            serde_json::json!({
+                "row": index,
+                "kind": kind,
+                "generation": row.semantic_prompt_id,
+                "result_exit_code": row
+                    .semantic_command_result
+                    .and_then(|result| result.exit_code),
+                "result_elapsed_ms": row
+                    .semantic_command_result
+                    .and_then(|result| result.elapsed_ms),
+                "has_result": row.semantic_command_result.is_some(),
+            })
+        })
+        .collect::<Vec<_>>();
 
     let current_directory = content
         .current_directory
@@ -625,6 +652,7 @@ fn write_native_resize_snapshot(
         "panel_count": panels.len(),
         "panels": panels,
     });
+    snapshot["semantic_rows"] = serde_json::json!(semantic_rows);
     snapshot["search_active"] = serde_json::json!(window.search_active);
     snapshot["search_scope"] = serde_json::json!(window.search_scope);
     snapshot["search_focus"] = serde_json::json!(window.search_focus);
@@ -636,7 +664,6 @@ fn write_native_resize_snapshot(
         serde_json::json!(window.search_announcement_generation);
     snapshot["search_surface"] = serde_json::json!(window.search_surface);
     snapshot["command_result_surface"] = serde_json::json!(window.command_result_surface);
-    snapshot["command_result_accent"] = serde_json::json!(window.command_result_accent);
     snapshot["command_result_divider"] = serde_json::json!(window.command_result_divider);
     snapshot["command_result_opacity"] = serde_json::json!(window.command_result_opacity);
     snapshot["command_result_generation"] =
@@ -6017,21 +6044,20 @@ impl Screen<'_> {
                     search_announcement_generation,
                     search_surface: self.renderer.search.native_surface_rect(),
                     command_result_surface: command_result_visual.map(|visual| visual.0),
-                    command_result_accent: command_result_visual.map(|visual| visual.1),
                     command_result_generation: command_result_identity
                         .and_then(|identity| identity.0),
                     command_result_key: command_result_identity
                         .map(|identity| identity.1),
                     command_result_exit_code: command_result_identity
-                        .map(|identity| identity.2),
-                    command_result_divider: command_result_visual.map(|visual| visual.2),
+                        .and_then(|identity| identity.2),
+                    command_result_divider: command_result_visual.map(|visual| visual.1),
                     command_result_opacity: command_result_style.map(|style| style.0),
                     command_result_pulse_duration_ms: command_result_style
                         .map(|style| style.1),
                     command_result_pulse_hold_fraction: command_result_style
                         .map(|style| style.2),
                     command_result_pulse_generation: command_result_visual
-                        .map_or(0, |visual| visual.3),
+                        .map_or(0, |visual| visual.2),
                 },
                 &self.native_test_last_control,
                 self.image_preview.native_test_state(&self.sugarloaf),

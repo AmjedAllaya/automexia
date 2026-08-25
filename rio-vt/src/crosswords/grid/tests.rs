@@ -311,8 +311,8 @@ fn semantic_prompt_rows_survive_shrink_and_grow_reflow() {
     let mut grid = Grid::<Square>::new(3, 8, 8);
     grid[Line(0)].set_semantic_prompt(SemanticPrompt::Prompt, Some(42));
     grid[Line(0)].set_semantic_command_result(SemanticCommandResult {
-        exit_code: 17,
-        elapsed_ms: 1_234,
+        exit_code: Some(17),
+        elapsed_ms: Some(1_234),
     });
     grid[Line(1)].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(42));
     for (column, character) in "12345678".chars().enumerate() {
@@ -329,8 +329,8 @@ fn semantic_prompt_rows_survive_shrink_and_grow_reflow() {
             && row.semantic_prompt_id == Some(42)
             && row.semantic_command_result
                 == Some(SemanticCommandResult {
-                    exit_code: 17,
-                    elapsed_ms: 1_234,
+                    exit_code: Some(17),
+                    elapsed_ms: Some(1_234),
                 })
     }));
     assert!(rows_after_shrink
@@ -351,8 +351,8 @@ fn semantic_prompt_rows_survive_shrink_and_grow_reflow() {
             && row.semantic_prompt_id == Some(42)
             && row.semantic_command_result
                 == Some(SemanticCommandResult {
-                    exit_code: 17,
-                    elapsed_ms: 1_234,
+                    exit_code: Some(17),
+                    elapsed_ms: Some(1_234),
                 })
     }));
     assert!(rows_after_grow
