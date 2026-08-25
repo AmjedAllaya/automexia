@@ -25,28 +25,31 @@ ecosystem/AI features.
 
 ## Internal Connection Library boundary
 
-The source tree contains an internal schema-2 Connection Library store for
+The product contains a schema-2 Connection Library store for
 profiles, recipes, declarative workspaces, and preferences. It remains bounded,
 private, compare-and-swap protected, atomically replaced, and recoverable only
 through an explicit reviewed operation. It stores public metadata and opaque
 references—not passwords, private keys, tokens, live PTYs/tunnels, or provider
 credentials.
 
-The application initializes this store once and exposes read-only profile,
-recipe, workspace, and recovery/migration-preview state. Internal editor and
-import/export APIs are review-first: a preview binds the complete document and
-base revision; material recipe/profile/workspace changes advance dependent
-revisions/fingerprints and clear approvals; stale or mismatched data fails
-closed. Schema 1 is upgraded only in memory until a reviewed CAS writes schema
-2. The established private `library.v1.json` filename is retained for atomic
-recovery continuity and is not the schema authority or a user-editing contract.
+The application initializes this store off the input/render hot paths and
+publishes one immutable snapshot to the Connection Hub Workspaces catalog and
+restore review. `automexia workspaces` provides bounded preview-first list/show,
+CAS put/remove, restore/recipe/broadcast review, migration/recovery, and doctor
+flows. A preview binds the complete document and base revision; material recipe/
+profile/workspace changes advance dependent revisions/fingerprints and clear
+approvals; stale or mismatched data fails closed. Schema 1 is upgraded only in
+memory until a reviewed CAS writes schema 2. The established private
+`library.v1.json` filename remains an implementation detail for atomic recovery,
+not a hand-editing contract.
 
 Redacted export removes credential references, private state, last-used values,
 workspace labels, and all connection bindings. Import validates bounds and
-assigns fresh local IDs; imported topology must be rebound locally. No supported
-product editor, CLI, or configuration key exposes this internal schema, and no
-migration or import enables execution. System OpenSSH in the shell remains the
-supported connection path.
+assigns fresh local IDs; imported topology must be rebound locally. The public
+CLI accepts only strict bounded entity/context files and never exposes secret
+material or an execution switch. No migration, recovery, import, or review
+enables execution. System OpenSSH in the shell remains the supported connection
+path.
 ## Product model
 
 The managed experience is built around a small set of explicit records rather than hidden shell commands:

@@ -105,7 +105,7 @@ protected commit passes and the authenticated audit returns no external result.
 | DevOps | D3 | **Partial; nonactivated** | **Blocked** | The fail-closed broker/runner owns bounded current-executable review, exact managed argv/identity binding, actual child status, redacted outcomes, process-group/Job Object teardown, PTY-worker joining, and bounded receipts through the guarded PTY/route owner. Protected approvals, real attestation/activation, and native OpenSSH descendant/resource/accessibility proof remain. |
 | DevOps | D4 | **Fully implemented; read-only product adapter active** | **Partial** | Bounded OpenSSH inventory/persistence is connected only to D5.1 reviewed browsing; it retains no process/network/launch authority. |
 | SSH UX | D5.0-D5.2 | **Partial overall; D5.1, nonactivated F5.1-F5.3, and the F5.4 local assurance path complete** | **Partial/blocked** | Routes/trust/tunnels/lifecycle plus exact native host/commit/OpenSSH/artifact binding, protected manual workflow, and path-free summaries pass locally. Protected activation/attestation, actual status/SSH execution, and controlled real native descendant/listener/resource/accessibility manifests remain. |
-| Multi-environment | M6/F6 | **Partial overall; review-only source contracts complete locally** | **Blocked** | Schema-2 reviewed library editing/migration/transfer, exact dependent fingerprints, typed recipe lifecycle/no-hooks, narrow remote initialization, declarative restore, armed broadcast, semantic UI models, fuzz/mutation, and bounded benchmarks pass. Proposed ADR 0023 acceptance, product activation/execution, and controlled native/resource/accessibility evidence remain. |
+| Multi-environment | M6/F6 | **Partial overall; review/edit source and product surfaces fully implemented locally** | **Blocked on D3/M5 execution evidence** | Accepted ADR 0023; schema-2 editor/migration/recovery; public preview-first CLI; immutable worker publication; Connection Hub catalog/restore review; exact fingerprints; typed recipes/no-hooks; narrow remote initialization; armed broadcast; semantic projections; fuzz/mutation/integration and bounded benchmarks pass. Managed execution and controlled native/resource/accessibility/release evidence remain. |
 | Multi-cloud | D6.0/M7 | **Fully implemented locally** | **Partial/external** | Strict provider-neutral schemas, immutable session capsules, 19-state lifecycle, exact allow-once review, isolation/redaction, passive-status migration, cached-only semantics, fuzz/mutation, 16×64 lifecycle, and a 64-capsule benchmark pass. No real provider CLI, cloud network, credential cache, browser/device flow, or Linux/macOS native provider evidence ran. |
 | Multi-cloud | D6.1/M8 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded AWS profile parser plus exact SSO/STS/SSM/EKS-dry-run contracts and ten focused tests pass. D3 activation, M11 EKS ingestion, product UI, and controlled native/provider/resource/accessibility evidence remain. |
 | Multi-cloud | D6.2/M9 | **Partial overall; source-complete nonactivated** | **Blocked** | Independent bounded Azure public-account parser plus exact tenant login/account, AAD-only Bastion, opaque transient AKS contracts, and eight focused tests pass. D3 activation, M11 AKS ingestion, product UI, and controlled native/provider/resource/accessibility evidence remain. |
@@ -696,10 +696,19 @@ uses fresh IDs and strips connection bindings/private labels. The UI model adds
 compact, focus-restoring, redundant icon/color/text semantics for restore and
 armed/disarmed broadcast without requesting execution.
 
+ADR 0023 is accepted. The application now binds every review to the worker-
+published immutable current library, exposes a bounded preview-first
+`automexia workspaces` CLI, and renders a responsive Workspaces catalog plus
+restore review in the Connection Hub. CLI mutation requires explicit apply and
+library/entity CAS; command review comes from a bounded regular file; controller
+replacement invalidates stale review; keyboard/pointer routes are modal-local;
+and all product projections keep process, PTY, network, Enter, reconnect, and
+resume authority false.
+
 Focused Windows x86_64 evidence passed 9 planner, 6 automation, 10 workspace, 15
 Hub-model, and 10 Connection Library tests plus warning-denied focused Clippy,
 architecture/mutation policy, fuzz entry-point compilation ownership, and a
-1,000-generation × 50-target bounded-state test. Criterion measured the maximum
+1,000-generation × 50-target bounded-state test. The 2026-08-22 Criterion run measured the maximum
 16-window/64-pane/128-connection validation at 26.044–28.009 µs and 50-target
 broadcast review at 15.524–16.032 µs. The direct-SSH control rerun measured
 7.5818–7.8347 µs and still reported a 1.64–7.72% stored-baseline regression;
@@ -718,11 +727,23 @@ reaps provider descendants, and focused, Nextest, full-QA, and final cold
 readiness reruns passed. Native OpenSSH, GPU, screen-reader, elevated Windows,
 and hosted cross-platform evidence remain explicitly external.
 
-Proposed ADR 0023 acceptance, public editor/controller/renderer/CLI integration,
-managed execution, real OpenSSH/PTY/process/handle/socket cleanup, native
+The 2026-08-25 product-boundary suite passed 9 integration and 6 focused
+application interaction tests, including real temp-store preview/CAS/stale/
+healthy-primary recovery, oversized command-file rejection, current binding,
+route isolation, pointer/keyboard navigation, 320 px through 5K responsive
+geometry, semantic accessibility projection, stale-review invalidation, and no
+PTY input. The final revision passed workspace formatting and warning-denied
+Clippy, 2,095 Nextest cases with 7 skipped, 64 documentation tests with 3
+ignored, full QA, and clean C:-target `cargo ready` through fresh application
+build/version smoke; the disposable target was removed. Criterion measured
+maximum workspace validation at 28.873–33.842 µs (7/30 high outliers) and
+50-target review at 16.454–16.915 µs (3/30 high outliers), with no controlled
+release baseline.
+
+Managed execution, real OpenSSH/PTY/process/handle/socket cleanup, native
 Windows/macOS/Linux, controlled screen-reader/visual, hosted policy, and release
-evidence remain. M6 activation stays false and CP3.3 local workspace tasks gain
-no remote/provider authority.
+evidence remain external D3/M5 gates. M6 execution stays false and CP3.3 local
+workspace tasks gain no remote/provider authority.
 
 ### D6.0-D6.5 — providers and multi-cloud
 
@@ -1214,7 +1235,7 @@ Planned work, with no shipped-command claim:
 | Host picker, recent/favorites/groups/tags/queries, Connection Review, connect/reconnect/destinations | D5.0-D5.2 | D5.1 picker/browse/metadata and D5.2 typed direct/config-jump preparation, full trust review, safe copy, fail-closed runner, exact PTY seam, and route publication are complete locally but nonactivated; protected connect and native evidence remain |
 | Identity references, agent/certificate/hardware public state, known-host explanation, routes/jumps/proxies/tunnels | D5.2 | M4 references/status/trust and M5 exact local/remote/dynamic tunnels, loopback defaults, strong review, and lifecycle are fully implemented locally and nonactivated; actual status execution, broader proxies, protected activation, and real F5.4 native evidence remain |
 | Quick Actions, aliases, lifecycle hooks, reviewed multi-target execution | CP2.2-CP4/D5E | CP2/CP3 actions and CP4 cached provider discovery/final revalidation are source-complete locally; exact provider and multi-target execution remain disabled |
-| Declarative workspace persistence/restoration and visibly armed broadcast | M6/F6 | Review-only schema-2 persistence, restore, armed broadcast, semantic projection, and bounded tests are complete locally; product controller/renderer/execution and native evidence remain |
+| Declarative workspace persistence/restoration and visibly armed broadcast | M6/F6 | Accepted schema-2 preview/CAS manager, public CLI, immutable Hub catalog/restore review, armed broadcast projection, and bounded product tests are complete locally; managed execution and controlled native evidence remain |
 | Per-pane multi-cloud/context commands and typed import/reconcile adapters | D6.0-D6.5/CP4 | Partially implemented: D6.0, M8-M11, M12 Teleport, and CP4 cached provider-action projection are source-complete and nonactivated; product refresh/import/reconcile/execution, real provider/native evidence, and OpenBao remain gated |
 | Structured files/SFTP, bounded logs/bookmarks, team state/policy, shared sessions | D7 protected slices | Not implemented |
 | Mosh, Telnet, serial, public ecosystem packs, optional editor popup, AI explain/suggest | D7/CP5-CP6 | Not implemented/deferred |

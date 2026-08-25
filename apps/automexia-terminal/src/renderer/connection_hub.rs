@@ -63,6 +63,11 @@ impl Rect {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConnectionHubHit {
     Search,
+    OpenConnections,
+    OpenWorkspaces,
+    SelectWorkspace { visible_index: usize },
+    ReviewWorkspace,
+    BackToWorkspaces,
     BeginLiteralDestination,
     LiteralDestinationField,
     LiteralUserField,
@@ -121,6 +126,14 @@ struct Layout {
     compact: bool,
 }
 
+#[derive(Clone, Debug)]
+struct WorkspaceLayout {
+    panel: Rect,
+    rows: Vec<Rect>,
+    back: Option<Rect>,
+    primary: Option<Rect>,
+}
+
 #[derive(Default)]
 pub struct ConnectionHub {
     presentation: Option<HubControllerPresentation>,
@@ -143,10 +156,49 @@ impl ConnectionHub {
     ) -> Option<ConnectionHubHit> {
         let presentation = self.presentation.as_ref()?;
         let layout = Self::layout(presentation, dimensions);
+        let (connections_tab, workspaces_tab) = hub_tabs(&layout);
+        if connections_tab.contains(mouse_x, mouse_y) {
+            return Some(ConnectionHubHit::OpenConnections);
+        }
+        if workspaces_tab.contains(mouse_x, mouse_y) {
+            return Some(ConnectionHubHit::OpenWorkspaces);
+        }
         if presentation.literal_destination.is_none()
             && layout.close.contains(mouse_x, mouse_y)
         {
             return Some(ConnectionHubHit::Close);
+        }
+        if matches!(
+            presentation.view.route,
+            HubRoute::Workspaces | HubRoute::WorkspaceReview
+        ) {
+            let workspace = workspace_layout(presentation, &layout);
+            if workspace
+                .back
+                .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
+            {
+                return Some(ConnectionHubHit::BackToWorkspaces);
+            }
+            if presentation.view.route == HubRoute::Workspaces {
+                for (visible_index, row) in workspace.rows.iter().enumerate() {
+                    if row.contains(mouse_x, mouse_y) {
+                        return Some(ConnectionHubHit::SelectWorkspace { visible_index });
+                    }
+                }
+            }
+            if workspace
+                .primary
+                .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
+            {
+                return Some(if presentation.view.route == HubRoute::Workspaces {
+                    ConnectionHubHit::ReviewWorkspace
+                } else {
+                    ConnectionHubHit::Inert
+                });
+            }
+            if workspace.panel.contains(mouse_x, mouse_y) {
+                return Some(ConnectionHubHit::Inert);
+            }
         }
         if layout.overlay_panel.is_some() {
             if presentation.literal_destination.is_some() {
@@ -351,15 +403,21 @@ impl ConnectionHub {
             CYAN,
             SURFACE_RAISED,
         );
-        sugarloaf.text_mut().draw(
-            left + 48.0,
-            layout.card.y + 18.0,
-            "Connection Hub",
-            &title,
-        );
-        if layout.card.width >= 340.0 {
+        let hub_title = if layout.compact && layout.card.width < 430.0 {
+            "Hub"
+        } else {
+            "Connection Hub"
+        };
+        sugarloaf
+            .text_mut()
+            .draw(left + 48.0, layout.card.y + 18.0, hub_title, &title);
+        if layout.card.width >= 650.0 {
             let subtitle = if presentation.view.route == HubRoute::Review {
                 "Connection review"
+            } else if presentation.view.route == HubRoute::Workspaces {
+                "Saved environments"
+            } else if presentation.view.route == HubRoute::WorkspaceReview {
+                "Workspace restore review"
             } else if presentation.literal_destination.is_some() {
                 "Direct SSH host"
             } else {
@@ -373,28 +431,54 @@ impl ConnectionHub {
             );
         }
 
-        if layout.card.width >= 430.0 {
-            let badge = Rect {
-                x: layout.close.x - 116.0,
-                y: layout.card.y + 22.0,
-                width: 104.0,
-                height: 28.0,
-            };
-            rounded(sugarloaf, badge, READ_ONLY_BADGE, 14.0);
-            draw_hub_icon(
-                sugarloaf,
-                HubIcon::Shield,
-                badge.x + 10.0,
-                badge.y + 4.0,
-                SUCCESS,
-                READ_ONLY_BADGE,
-            );
-            sugarloaf
-                .text_mut()
-                .draw(badge.x + 34.0, badge.y + 7.0, "Read-only", &small);
-        }
         if presentation.literal_destination.is_none() {
+            let (connections_tab, workspaces_tab) = hub_tabs(&layout);
+            let connections_active = matches!(
+                presentation.view.route,
+                HubRoute::Results | HubRoute::Review | HubRoute::RecipePlanner
+            );
+            section_tab(
+                sugarloaf,
+                connections_tab,
+                if layout.compact { "C" } else { "Connections" },
+                connections_active,
+                &label,
+            );
+            section_tab(
+                sugarloaf,
+                workspaces_tab,
+                if layout.compact { "W" } else { "Workspaces" },
+                matches!(
+                    presentation.view.route,
+                    HubRoute::Workspaces | HubRoute::WorkspaceReview
+                ),
+                &label,
+            );
             button(sugarloaf, layout.close, "×", false, &label);
+        }
+
+        if matches!(
+            presentation.view.route,
+            HubRoute::Workspaces | HubRoute::WorkspaceReview
+        ) {
+            render_workspace_surface(
+                sugarloaf,
+                presentation,
+                &layout,
+                &body,
+                &small,
+                &label,
+            );
+            render_status_footer(
+                sugarloaf,
+                presentation,
+                &layout,
+                left,
+                &operation_status,
+                &small,
+            );
+            sugarloaf.end_modal_layer();
+            return;
         }
 
         if layout.catalog_chrome_visible {
@@ -1238,6 +1322,261 @@ impl ConnectionHub {
         }
     }
 }
+
+fn hub_tabs(layout: &Layout) -> (Rect, Rect) {
+    let gap = 6.0;
+    let width = if layout.compact { 38.0 } else { 104.0 };
+    let workspaces = bounded_to(
+        Rect {
+            x: layout.close.x - gap - width,
+            y: layout.close.y + 3.0,
+            width,
+            height: layout.close.height - 6.0,
+        },
+        layout.card,
+    );
+    let connections = bounded_to(
+        Rect {
+            x: workspaces.x - gap - width,
+            y: workspaces.y,
+            width,
+            height: workspaces.height,
+        },
+        layout.card,
+    );
+    (connections, workspaces)
+}
+
+fn workspace_layout(
+    presentation: &HubControllerPresentation,
+    layout: &Layout,
+) -> WorkspaceLayout {
+    let inner = if layout.compact { 12.0 } else { 20.0 };
+    let panel = bounded_to(
+        Rect {
+            x: layout.card.x + inner,
+            y: layout.card.y + 78.0,
+            width: (layout.card.width - inner * 2.0).max(1.0),
+            height: (layout.card.height - 136.0).max(1.0),
+        },
+        layout.card,
+    );
+    let row_height = if layout.compact { 48.0 } else { 62.0 };
+    let rows_top = panel.y + if layout.compact { 46.0 } else { 58.0 };
+    let rows_bottom = panel.y + panel.height - 52.0;
+    let mut rows = Vec::new();
+    if let Some(catalog) = presentation.workspace_catalog.as_ref() {
+        rows.reserve(catalog.rows.len());
+        for index in 0..catalog.rows.len() {
+            let y = rows_top + index as f32 * (row_height + 6.0);
+            if y + row_height > rows_bottom {
+                break;
+            }
+            rows.push(bounded_to(
+                Rect {
+                    x: panel.x + 12.0,
+                    y,
+                    width: (panel.width - 24.0).max(1.0),
+                    height: row_height,
+                },
+                panel,
+            ));
+        }
+    }
+    let back = (presentation.view.route == HubRoute::WorkspaceReview).then(|| {
+        bounded_to(
+            Rect {
+                x: panel.x + 12.0,
+                y: panel.y + 10.0,
+                width: if layout.compact { 76.0 } else { 104.0 },
+                height: 34.0,
+            },
+            panel,
+        )
+    });
+    let primary = if presentation.view.route == HubRoute::Workspaces {
+        presentation
+            .workspace_catalog
+            .as_ref()
+            .filter(|catalog| !catalog.rows.is_empty())
+            .map(|_| {
+                bounded_to(
+                    Rect {
+                        x: panel.x + panel.width - 188.0,
+                        y: panel.y + panel.height - 42.0,
+                        width: 176.0,
+                        height: 32.0,
+                    },
+                    panel,
+                )
+            })
+    } else {
+        Some(bounded_to(
+            Rect {
+                x: panel.x + panel.width - 206.0,
+                y: panel.y + panel.height - 42.0,
+                width: 194.0,
+                height: 32.0,
+            },
+            panel,
+        ))
+    };
+    WorkspaceLayout {
+        panel,
+        rows,
+        back,
+        primary,
+    }
+}
+
+fn render_workspace_surface(
+    sugarloaf: &mut Sugarloaf,
+    presentation: &HubControllerPresentation,
+    layout: &Layout,
+    body: &DrawOpts,
+    small: &DrawOpts,
+    label: &DrawOpts,
+) {
+    let geometry = workspace_layout(presentation, layout);
+    rounded(sugarloaf, geometry.panel, SURFACE, 10.0);
+    if presentation.view.route == HubRoute::Workspaces {
+        sugarloaf.text_mut().draw(
+            geometry.panel.x + 14.0,
+            geometry.panel.y + 12.0,
+            "Saved workspaces",
+            label,
+        );
+        sugarloaf.text_mut().draw(
+            geometry.panel.x + 14.0,
+            geometry.panel.y + 32.0,
+            "Layouts and current profile bindings · W",
+            small,
+        );
+        let Some(catalog) = presentation.workspace_catalog.as_ref() else {
+            return;
+        };
+        if catalog.rows.is_empty() {
+            sugarloaf.text_mut().draw(
+                geometry.panel.x + 14.0,
+                geometry.panel.y + 76.0,
+                "No workspaces saved yet",
+                body,
+            );
+            sugarloaf.text_mut().draw(
+                geometry.panel.x + 14.0,
+                geometry.panel.y + 101.0,
+                "Use `automexia workspaces put` to preview and save one.",
+                small,
+            );
+            return;
+        }
+        for (index, row) in catalog.rows.iter().enumerate() {
+            let Some(rect) = geometry.rows.get(index).copied() else {
+                break;
+            };
+            rounded(
+                sugarloaf,
+                rect,
+                if row.selected {
+                    SELECTED
+                } else {
+                    SURFACE_RAISED
+                },
+                8.0,
+            );
+            sugarloaf.text_mut().draw(
+                rect.x + 12.0,
+                rect.y + 8.0,
+                &truncated(&row.display_name, if layout.compact { 28 } else { 54 }),
+                label,
+            );
+            let detail = format!(
+                "{} · {} risk · {} window(s) · {} connection(s)",
+                row.environment, row.risk_label, row.window_count, row.connection_count
+            );
+            sugarloaf.text_mut().draw(
+                rect.x + 12.0,
+                rect.y + if layout.compact { 28.0 } else { 34.0 },
+                &truncated(&detail, if layout.compact { 44 } else { 92 }),
+                small,
+            );
+        }
+        if let Some(primary) = geometry.primary {
+            action_button(
+                sugarloaf,
+                primary,
+                "Review restore",
+                HubIcon::Status,
+                PRIMARY,
+                [0.90, 0.98, 1.0, 1.0],
+                label,
+            );
+        }
+        return;
+    }
+
+    if let Some(back) = geometry.back {
+        button(sugarloaf, back, "← Workspaces", false, label);
+    }
+    let Some(review) = presentation.workspace_restore.as_ref() else {
+        sugarloaf.text_mut().draw(
+            geometry.panel.x + 14.0,
+            geometry.panel.y + 72.0,
+            "Workspace review is no longer current",
+            body,
+        );
+        return;
+    };
+    sugarloaf.text_mut().draw(
+        geometry.panel.x + 14.0,
+        geometry.panel.y + 54.0,
+        review.title,
+        label,
+    );
+    sugarloaf.text_mut().draw(
+        geometry.panel.x + 14.0,
+        geometry.panel.y + 78.0,
+        &format!("{} · fresh sessions only", review.summary),
+        body,
+    );
+    let targets_top = geometry.panel.y + 112.0;
+    let targets_bottom = geometry.panel.y + geometry.panel.height - 54.0;
+    for (index, target) in review.targets.iter().enumerate() {
+        let y = targets_top + index as f32 * 46.0;
+        if y + 40.0 > targets_bottom {
+            break;
+        }
+        let rect = Rect {
+            x: geometry.panel.x + 14.0,
+            y,
+            width: (geometry.panel.width - 28.0).max(1.0),
+            height: 40.0,
+        };
+        rounded(sugarloaf, rect, SURFACE_RAISED, 7.0);
+        sugarloaf.text_mut().draw(
+            rect.x + 10.0,
+            rect.y + 6.0,
+            &truncated(&target.label, 48),
+            label,
+        );
+        sugarloaf.text_mut().draw(
+            rect.x + 10.0,
+            rect.y + 23.0,
+            &truncated(&target.location, 72),
+            small,
+        );
+    }
+    sugarloaf.text_mut().draw(
+        geometry.panel.x + 14.0,
+        geometry.panel.y + geometry.panel.height - 34.0,
+        "Auto-reconnect off · interrupted actions never resume",
+        small,
+    );
+    if let Some(primary) = geometry.primary {
+        button(sugarloaf, primary, "Activation gates pending", true, label);
+    }
+}
+
 fn catalog_chrome_visible(presentation: &HubControllerPresentation) -> bool {
     presentation.view.route == HubRoute::Results
         && matches!(presentation.grant_review, GrantReviewState::None)
@@ -2383,6 +2722,28 @@ fn action_button(
         options,
     );
 }
+fn section_tab(
+    sugarloaf: &mut Sugarloaf,
+    rect: Rect,
+    label: &str,
+    selected: bool,
+    options: &DrawOpts,
+) {
+    rounded(
+        sugarloaf,
+        rect,
+        if selected { SELECTED } else { SURFACE_RAISED },
+        8.0,
+    );
+    let x = rect.x + ((rect.width - label.chars().count() as f32 * 7.0) * 0.5).max(6.0);
+    sugarloaf.text_mut().draw(
+        x,
+        rect.y + ((rect.height - options.font_size) * 0.5).max(3.0) - 1.0,
+        label,
+        options,
+    );
+}
+
 fn button(
     sugarloaf: &mut Sugarloaf,
     rect: Rect,
@@ -2475,6 +2836,8 @@ mod tests {
                 PlatformFamily::Windows,
             ),
             disabled_actions: Vec::new(),
+            workspace_catalog: None,
+            workspace_restore: None,
         }
     }
 
@@ -2892,6 +3255,127 @@ mod tests {
                     filter.y + filter.height * 0.5,
                     dimensions,
                 ),
+                Some(ConnectionHubHit::Inert)
+            );
+        }
+    }
+
+    fn workspace_presentation() -> HubControllerPresentation {
+        let mut presentation = presentation();
+        presentation.view.route = HubRoute::Workspaces;
+        presentation.workspace_catalog =
+            Some(automexia_ui_model::connection_hub::WorkspaceCatalogView {
+                layout: HubLayout::Wide,
+                total_workspaces: 1,
+                visible_range: 0..1,
+                rows: vec![
+                    automexia_ui_model::connection_hub::WorkspaceCatalogRowView {
+                        id: "production-ops".into(),
+                        display_name: "Production operations".into(),
+                        description: "Reviewed layout".into(),
+                        environment: "Production".into(),
+                        risk_label: "Production".into(),
+                        window_count: 2,
+                        connection_count: 3,
+                        selected: true,
+                        accessibility_label: "Production operations".into(),
+                    },
+                ],
+                execution_enabled: false,
+                pty_input_requested: false,
+                accessibility_tree: Vec::new(),
+            });
+        presentation
+    }
+
+    #[test]
+    fn workspace_tabs_rows_and_review_action_have_distinct_pointer_targets() {
+        let presentation = workspace_presentation();
+        let dimensions = (1280.0, 720.0, 1.0);
+        let layout = ConnectionHub::layout(&presentation, dimensions);
+        let (connections_tab, workspaces_tab) = hub_tabs(&layout);
+        let workspace = workspace_layout(&presentation, &layout);
+        let mut hub = ConnectionHub::default();
+        hub.set_presentation(Some(presentation));
+
+        assert!(connections_tab.x + connections_tab.width < workspaces_tab.x);
+        assert!(workspaces_tab.x + workspaces_tab.width < layout.close.x);
+        assert_eq!(
+            hub.hit_test(
+                connections_tab.x + connections_tab.width * 0.5,
+                connections_tab.y + connections_tab.height * 0.5,
+                dimensions,
+            ),
+            Some(ConnectionHubHit::OpenConnections)
+        );
+        let row = workspace.rows[0];
+        assert_eq!(
+            hub.hit_test(
+                row.x + row.width * 0.5,
+                row.y + row.height * 0.5,
+                dimensions,
+            ),
+            Some(ConnectionHubHit::SelectWorkspace { visible_index: 0 })
+        );
+        let primary = workspace.primary.unwrap();
+        assert_eq!(
+            hub.hit_test(
+                primary.x + primary.width * 0.5,
+                primary.y + primary.height * 0.5,
+                dimensions,
+            ),
+            Some(ConnectionHubHit::ReviewWorkspace)
+        );
+    }
+
+    #[test]
+    fn workspace_review_is_bounded_back_navigable_and_cannot_execute() {
+        let mut presentation = workspace_presentation();
+        presentation.view.route = HubRoute::WorkspaceReview;
+        presentation.workspace_catalog = None;
+        presentation.workspace_restore =
+            Some(automexia_ui_model::connection_hub::WorkspaceRestoreView {
+                layout: HubLayout::Wide,
+                title: "Restore workspace",
+                icon: "workspace",
+                tone: automexia_ui_model::connection_hub::SemanticTone::Accent,
+                summary: "3 connections · 2 windows".into(),
+                targets: Vec::new(),
+                review_required: true,
+                automatic_reconnect: false,
+                resume_interrupted_actions: false,
+                execution_enabled: false,
+                primary_label: "Review restore",
+                restore_focus_to: "workspace-row-production-ops".into(),
+                accessibility_tree: Vec::new(),
+            });
+        for dimensions in [
+            (320.0, 240.0, 1.0),
+            (1280.0, 720.0, 1.0),
+            (5120.0, 2880.0, 2.0),
+        ] {
+            let layout = ConnectionHub::layout(&presentation, dimensions);
+            let workspace = workspace_layout(&presentation, &layout);
+            let mut hub = ConnectionHub::default();
+            hub.set_presentation(Some(presentation.clone()));
+            assert!(workspace.panel.x >= layout.card.x);
+            assert!(workspace.panel.y >= layout.card.y);
+            assert!(
+                workspace.panel.x + workspace.panel.width
+                    <= layout.card.x + layout.card.width
+            );
+            assert!(
+                workspace.panel.y + workspace.panel.height
+                    <= layout.card.y + layout.card.height
+            );
+            let back = workspace.back.unwrap();
+            assert_eq!(
+                hub.hit_test(back.x + 1.0, back.y + 1.0, dimensions),
+                Some(ConnectionHubHit::BackToWorkspaces)
+            );
+            let primary = workspace.primary.unwrap();
+            assert_eq!(
+                hub.hit_test(primary.x + 1.0, primary.y + 1.0, dimensions),
                 Some(ConnectionHubHit::Inert)
             );
         }

@@ -546,8 +546,8 @@ Windows/macOS/Linux evidence without embedded SSH or secret custody.
 
 ## F6 - implement connection automation and remote workspaces
 
-Status: Partially done; review-only source contracts are complete locally and
-execution/product activation remains gated.
+Status: **Partially done overall; review/edit source and product surfaces are
+fully done locally.** Execution remains gated by protected D3/M5 native evidence.
 
 - [x] **Fully done locally:** schema-2 profile/recipe/workspace persistence,
   entity revisioning, explicit migration/recovery/import/export previews, CAS,
@@ -573,14 +573,19 @@ execution/product activation remains gated.
 - [x] **Fully done locally:** hostile/limit/cycle/fingerprint, clone/rebind,
   multi-pane/window, retry/reconnect/shutdown, focus/accessibility, recovery,
   redaction, repeated-generation, fuzz, mutation, and benchmark evidence passes.
-- [ ] **Partially done / external prerequisite:** proposed ADR 0023 acceptance,
-  product controller/renderer/CLI integration, managed execution adapters, real
-  native OpenSSH/PTY/process/resource cleanup, controlled accessibility/visual,
-  and hosted Windows/macOS/Linux release evidence remain.
+- [x] **Fully done locally:** accepted ADR 0023, a bounded preview-first public
+  workspace CLI, immutable background-worker library publication, and the
+  Connection Hub workspace catalog/restore review are wired with CAS writes,
+  responsive pointer/keyboard interaction, semantic accessibility projections,
+  stale-review invalidation, and no process, PTY, network, or Enter authority.
+- [ ] **Partially done / external prerequisite:** protected ADR 0012/D3/M5
+  activation and attestation, managed execution adapters, real native OpenSSH/
+  PTY/process/resource cleanup, controlled accessibility/visual evidence, and
+  hosted Windows/macOS/Linux release evidence remain.
 
-Exit remains unavailable for the shipped product: reusable profiles, recipes,
-and remote workspace intent are safe and reviewable internally, while advanced
-custom code and every M6 execution path remain disabled.
+Exit remains unavailable for execution, but the shipped product can safely
+manage and review reusable profiles, recipes, and remote workspace intent.
+Advanced custom code and every M6 execution path remain disabled.
 
 ## F7 - implement D6.0 provider-neutral auth and capsule orchestration
 

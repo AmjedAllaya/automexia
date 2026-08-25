@@ -198,23 +198,33 @@ package attestation, protected approvals, real native OpenSSH and forced child-
 tree cleanup, resource, and accessibility gates pass.
 ## Review-only workspaces and broadcast
 
-M6 workspace and recipe support is implemented internally but is not yet an
-interactive product feature. Current builds may project a compact restore or
-broadcast review in tests, but the Connection Hub has no activated control that
-runs it.
+Open the Connection Hub with `Ctrl+Shift+H` (`Cmd+Shift+H` on macOS), then select
+**Workspaces**. `W` switches from the connection catalog to saved environments;
+`C` returns to Connections. Use Up/Down/Home/End or a pointer to select a row and
+Enter or **Review restore** to open the exact restore review. `Escape` returns to
+the workspace list. Section mnemonics do not fire while Search or a review owns
+input, and the modal consumes input without forwarding it to the terminal.
 
-A restore review shows the workspace, window/connection counts, exact target
-rows, and a warning that automatic reconnect and interrupted-action resume are
-off. A broadcast review shows `○ DISARMED` or `● ARMED` with matching text, icon,
-and color; it requires the exact command and target list, an explicit arm action,
-and a second production confirmation. It never presses Enter for you.
+The review shows the workspace, environment, window/pane/connection counts, and
+exact current profile bindings. It always states that automatic reconnect and
+interrupted-action resume are off. The primary control remains visibly disabled
+as **Activation gates pending**: reviewing never starts OpenSSH, creates a PTY,
+changes panes, sends Enter, restores credentials/tunnels, or resumes a recipe.
+If the library revision changes, the transient review is discarded.
 
-Until proposed ADR 0023 and the managed-SSH activation/native gates are accepted,
-continue to arrange panes manually and type or paste commands into each intended
-session. Do not assume a saved workspace reconnects, resumes a recipe, restores a
-tunnel, or carries credentials. Schema-1 Connection Libraries are previewed in
-memory and only advance after a reviewed CAS; imported workspace topology loses
-its connection bindings and must be rebound locally.
+Use `automexia workspaces` for preview-first management and additional reviews.
+`list`, `show`, `put`, `remove`, `restore`, `recipe-plan`, `broadcast`, `migrate`,
+`recover`, and `doctor` are documented in the [CLI reference](../reference/cli.md#managed-workspace-review-commands-m6).
+Writes require explicit `--apply` and exact compare-and-swap revisions. Broadcast
+accepts its bounded single-line command only from a regular file so it is not
+leaked in process arguments; it reviews exact targets and production status but
+has no execution switch.
+
+ADR 0023 is accepted, but ADR 0012/D3/M5 protected activation and native
+lifecycle evidence are still incomplete. Continue to use system OpenSSH in the
+shell for actual connections. Schema-1 libraries are previewed in memory and
+advance only after reviewed CAS; imported topology loses connection bindings and
+must be rebound locally.
 ## Provider authentication framework (current source boundary)
 
 M7/D6.0 is complete as an internal provider-neutral framework, not as a current

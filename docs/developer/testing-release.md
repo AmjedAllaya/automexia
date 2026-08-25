@@ -126,8 +126,10 @@ architecture, fuzz ownership, repeated 1,000-generation/50-target bounds, and
 maximum-cardinality benchmarks. Exact commands, measurements, the recorded
 same-host Criterion noise, and limitations are in
 [M6 testing](../TESTING.md#m6-typed-automation-and-multi-environment-workspaces).
-These results do not activate a product controller/CLI or prove native managed
-OpenSSH/PTY/process/resource/accessibility behavior.
+The accepted product boundary adds real temp-store CLI/CAS/recovery/hostile-file
+integration plus Hub worker/controller/keyboard/pointer/responsive/no-PTY tests.
+These results activate review and editing only; they do not prove or enable
+native managed OpenSSH/PTY/process/resource/accessibility behavior.
 
 ## Automation Studio evidence
 

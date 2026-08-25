@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use automexia_devops_ssh::GrantKind;
 use automexia_extension_api::Decision;
 use automexia_ui_model::connection_hub::{
-    HubFocus, HubKey, HubVisualPreferences, Viewport,
+    HubFocus, HubKey, HubRoute, HubVisualPreferences, Viewport,
 };
 use rio_backend::clipboard::{Clipboard, ClipboardType};
 use rio_window::{
@@ -25,6 +25,37 @@ fn is_literal_destination_shortcut(logical_key: &Key, modifiers: ModifiersState)
             logical_key,
             Key::Character(value) if value.eq_ignore_ascii_case("l")
         )
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HubSectionShortcut {
+    Connections,
+    Workspaces,
+}
+
+fn hub_section_shortcut(
+    logical_key: &Key,
+    modifiers: ModifiersState,
+    focus: &HubFocus,
+    route: HubRoute,
+) -> Option<HubSectionShortcut> {
+    if matches!(focus, HubFocus::Search)
+        || modifiers.control_key()
+        || modifiers.super_key()
+        || modifiers.alt_key()
+        || !matches!(route, HubRoute::Results | HubRoute::Workspaces)
+    {
+        return None;
+    }
+    match logical_key {
+        Key::Character(value) if value.eq_ignore_ascii_case("c") => {
+            Some(HubSectionShortcut::Connections)
+        }
+        Key::Character(value) if value.eq_ignore_ascii_case("w") => {
+            Some(HubSectionShortcut::Workspaces)
+        }
+        _ => None,
+    }
 }
 
 enum ManagedApprovalAction {
@@ -509,6 +540,22 @@ impl Screen<'_> {
                 _ => {}
             }
         }
+        if let Some(shortcut) = hub_section_shortcut(
+            &key_event.logical_key,
+            modifiers,
+            &self.connection_hub.focus(),
+            self.connection_hub.route(),
+        ) {
+            let switched = match shortcut {
+                HubSectionShortcut::Connections => self.connection_hub.open_connections(),
+                HubSectionShortcut::Workspaces => self.connection_hub.open_workspaces(),
+            };
+            if switched {
+                self.sync_connection_hub();
+                self.mark_dirty();
+                return true;
+            }
+        }
         if self.connection_hub.can_begin_literal_destination_entry()
             && is_literal_destination_shortcut(&key_event.logical_key, modifiers)
         {
@@ -600,18 +647,35 @@ impl Screen<'_> {
         }
         let size = self.sugarloaf.window_size();
         let scale = self.sugarloaf.scale_factor().max(f32::EPSILON);
-        let visible_start = self
-            .connection_hub
-            .presentation(
-                Viewport::new(size.width / scale, size.height / scale, 1.0),
-                HubVisualPreferences::default(),
-            )
-            .view
-            .visible_range
-            .start;
+        let presentation = self.connection_hub.presentation(
+            Viewport::new(size.width / scale, size.height / scale, 1.0),
+            HubVisualPreferences::default(),
+        );
+        let visible_start = presentation.view.visible_range.start;
+        let workspace_visible_start = presentation
+            .workspace_catalog
+            .as_ref()
+            .map_or(0, |catalog| catalog.visible_range.start);
         let route_id = self.context_manager.current().route_id;
         match hit {
             ConnectionHubHit::Search => self.connection_hub.focus_search(),
+            ConnectionHubHit::OpenConnections => {
+                let _ = self.connection_hub.open_connections();
+            }
+            ConnectionHubHit::OpenWorkspaces => {
+                let _ = self.connection_hub.open_workspaces();
+            }
+            ConnectionHubHit::SelectWorkspace { visible_index } => {
+                let _ = self.connection_hub.select_workspace_index(
+                    workspace_visible_start.saturating_add(visible_index),
+                );
+            }
+            ConnectionHubHit::ReviewWorkspace => {
+                let _ = self.connection_hub.review_selected_workspace();
+            }
+            ConnectionHubHit::BackToWorkspaces => {
+                let _ = self.connection_hub.back_to_workspaces();
+            }
             ConnectionHubHit::BeginLiteralDestination => {
                 let _ = self.connection_hub.begin_literal_destination_entry();
             }
@@ -814,6 +878,65 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn workspace_section_shortcuts_are_mnemonic_scope_safe_and_search_safe() {
+        let none = ModifiersState::empty();
+        for value in ["w", "W"] {
+            assert_eq!(
+                hub_section_shortcut(
+                    &Key::Character(value.into()),
+                    none,
+                    &HubFocus::Results,
+                    HubRoute::Results,
+                ),
+                Some(HubSectionShortcut::Workspaces)
+            );
+        }
+        assert_eq!(
+            hub_section_shortcut(
+                &Key::Character("c".into()),
+                none,
+                &HubFocus::WorkspaceList,
+                HubRoute::Workspaces,
+            ),
+            Some(HubSectionShortcut::Connections)
+        );
+        assert!(hub_section_shortcut(
+            &Key::Character("w".into()),
+            none,
+            &HubFocus::Search,
+            HubRoute::Results,
+        )
+        .is_none());
+        assert!(hub_section_shortcut(
+            &Key::Character("w".into()),
+            none,
+            &HubFocus::Results,
+            HubRoute::WorkspaceReview,
+        )
+        .is_none());
+        for modifiers in [
+            ModifiersState::CONTROL,
+            ModifiersState::ALT,
+            ModifiersState::SUPER,
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+        ] {
+            assert!(hub_section_shortcut(
+                &Key::Character("w".into()),
+                modifiers,
+                &HubFocus::Results,
+                HubRoute::Results,
+            )
+            .is_none());
+        }
+        assert!(hub_section_shortcut(
+            &Key::Named(NamedKey::Enter),
+            none,
+            &HubFocus::Results,
+            HubRoute::Results,
+        )
+        .is_none());
+    }
     #[test]
     fn completed_executable_review_is_installed_for_the_second_decision() {
         use crate::automexia::connections::{

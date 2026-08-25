@@ -55,11 +55,12 @@ typed stages, deadline/retry/cancel/generation reducers, no-hooks intent, and a
 narrow non-command-string remote initialization envelope. Pure workspace state
 owns bounded pane graphs, immutable connection bindings, nonreconnecting restore,
 and time-bounded armed broadcast with digest-only audit. The application remains
-the one private persistence owner through schema-2 migration previews and CAS;
-the semantic UI model requests no execution. No process, PTY, network,
-credential, listener, filesystem, renderer, or clock authority enters the pure
-model, and CP3.3 local workspace tasks remain separate. See
-[proposed ADR 0023](../project/adr/0023-typed-automation-and-declarative-workspaces.md)
+the one private persistence owner through schema-2 migration previews and CAS.
+Its preview-first CLI and Hub controller/renderer consume current immutable
+snapshots and request no execution. No process, PTY, network, credential,
+listener, filesystem, renderer, or clock authority enters the pure model, and
+CP3.3 local workspace tasks remain separate. See
+[accepted ADR 0023](../project/adr/0023-typed-automation-and-declarative-workspaces.md)
 and the [detailed architecture](../ARCHITECTURE.md#m6-typed-automation-and-declarative-workspace-boundary).
 
 ## Build, wrap, or adopt

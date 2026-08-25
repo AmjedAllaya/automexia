@@ -423,11 +423,19 @@ UI projections use redundant icon/color/text state, exact preview, alert/switch/
 textbox semantics, and deterministic focus restoration without owning pixels or
 execution.
 
-[Proposed ADR 0023](adr/0023-typed-automation-and-declarative-workspaces.md)
-records this durable boundary. Product controller/renderer/CLI integration and
-all managed execution remain gated by its acceptance plus ADR 0012/D3/M5
-activation and native evidence. CP3.3 trusted workspace tasks stay a distinct
-insert-only local authority.
+The application composes, but does not duplicate, those authorities:
+`connections::workspaces` binds current library fingerprints to restore, recipe,
+and broadcast reviews; `workspaces_cli` owns bounded preview-first management;
+the existing joined Hub worker publishes one immutable `Arc` library snapshot;
+and the route-local controller/renderer owns catalog selection and restore
+review. CLI file reads reject links and excess bytes, writes require both library
+and entity revisions, external library replacement invalidates transient review,
+and every product projection reports execution disabled and PTY input false.
+
+[Accepted ADR 0023](adr/0023-typed-automation-and-declarative-workspaces.md)
+records this durable boundary. Managed execution adapters remain gated by ADR
+0012/D3/M5 protected activation, attestation, and native lifecycle evidence.
+CP3.3 trusted workspace tasks stay a distinct insert-only local authority.
 
 ### Environment Capsule contract
 

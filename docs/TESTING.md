@@ -2044,6 +2044,8 @@ cargo test -p automexia-devops --locked --test connection_automation_m6
 cargo test -p automexia-devops --locked --test workspace_automation_m6
 cargo test -p automexia-ui-model --locked --test connection_hub
 cargo test -p automexia-terminal --locked --test connection_library
+cargo test -p automexia-terminal --locked --test m6_workspace_product
+cargo test -p automexia-terminal --locked --bin automexia workspace_
 cargo clippy -p automexia-devops --all-targets --all-features --locked -- -D warnings
 cargo clippy -p automexia-ui-model --all-targets --all-features --locked -- -D warnings
 cargo clippy -p automexia-terminal --test connection_library --locked -- -D warnings
@@ -2087,22 +2089,19 @@ purged because Windows retained the running Automexia executable, so that
 reproducible cache remains a local storage warning, not an M6 correctness
 failure.
 
-Criterion measured maximum workspace validation (16 windows, 64 panes, 128
-connections) at 26.044–28.009 µs and 50-target broadcast review at
-15.524–16.032 µs. The workspace case reported an 8.65–23.57% delta against its
-fresh stored baseline while the broadcast case reported no change. An untouched
-direct-SSH control first reported a 12–20% delta and reran at 7.5818–7.8347 µs
-with a 1.64–7.72% stored-baseline delta. These microsecond results satisfy no
-established release ratchet and are recorded as uncontrolled same-host noise,
-not hidden or presented as a performance improvement. Named-hardware baselines
-remain external.
+On 2026-08-25, Criterion measured maximum workspace validation (16 windows,
+64 panes, 128 connections) at 28.873–33.842 µs with 7/30 high outliers and
+50-target broadcast review at 16.454–16.915 µs with 3/30 high outliers. These
+fresh same-host runs have no established release ratchet or named-hardware
+baseline, so they are recorded as uncontrolled evidence, not an improvement.
 
-The pure models own no threads, processes, PTYs, sockets, listeners, files,
-credentials, provider clients, or GPU state, so the repeated test proves bounded
-collection/generation behavior only. Proposed ADR 0023 acceptance, actual product
-controller/renderer/CLI flows, real OpenSSH execution and forced cleanup, native
-Windows/macOS/Linux resources, controlled screen readers/visuals, and hosted
-release evidence remain external and must not be inferred from these tests.
+Windows x86_64 evidence on 2026-08-25 passes 9 product and 6 interaction tests,
+workspace formatting/Clippy, 2,095 Nextest cases (7 skipped), 64 doc tests (3
+ignored), full QA, and clean-target `cargo ready`. It covers CLI/CAS/recovery/
+limits, current reviews, worker/modal isolation, responsive/accessibility state,
+and no PTY input; two guards failed before correction. ADR 0023 review/edit is
+active. Execution, native cleanup/resources/accessibility, and hosted evidence
+remain D3/M5 gates.
 
 ## M7 provider-neutral authentication and capsule isolation
 

@@ -2,7 +2,7 @@
 
 Status: authoritative detailed implementation plan and evidence ledger.
 
-Last reconciled: 2026-08-24.
+Last reconciled: 2026-08-25.
 
 The [Connectivity and command-productivity focus roadmap](CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md)
 remains the owner of canonical phase order and phase status. This document is
@@ -125,7 +125,7 @@ native/release claim.
 | F3/D5.1 read-only Connection Hub | Fully done locally; external evidence partially done | App-owned joined runtime, exact reviewed native selection, compact progressive setup, bounded browse/filter/group, redundant text/icon/color semantics, D4 favorite/tag CAS, read-only recent/library state, disabled authority, Windows tests/benchmark/build/native frame | Native macOS/Linux picker/permission and controlled screen-reader evidence remain external. |
 | F3 Connection Library | Fully done locally | `ConnectionLibraryStore` has 16 MiB private documents, CAS, recovery, transfer redaction, fresh import IDs, read-only/disk-full and link tests | Product editor/manager belongs to F6; macOS/Linux native permission and controlled screen-reader evidence remain. |
 | F5 managed OpenSSH | Partially done overall; F5.1-F5.3 and the F5.4 local assurance path are complete nonactivated | Exact direct/routed/tunnel argv; typed endpoints; trust/review/lifecycle; 23-scenario validator; native host, commit, OpenSSH, and artifact binding; protected manual workflow; receipts; reconnect; and compact tunnel state pass locally | Protected activation/attestation, actual status execution, real OpenSSH/forced cleanup, native resources/accessibility, and validated F5.4 real manifests remain. |
-| F6 recipes and remote declarative workspaces | Partially done; review-only source contracts complete locally | Library schema 2/editor/migration previews, exact dependent fingerprints, pure recipe review/lifecycle, typed remote initialization, declarative workspaces/restore, armed broadcast, semantic projections, fuzz, mutation, and benchmarks pass | Proposed ADR 0023 acceptance, product editor/controller/renderer wiring, managed execution adapters, and controlled native/resource/accessibility evidence remain. |
+| F6 recipes and remote declarative workspaces | Partially done overall; review/edit source and product surface complete locally | Accepted ADR 0023; schema-2 editor/migration/recovery; exact dependent fingerprints; recipe/restore/broadcast reviews; public preview-first CLI; worker-published immutable library snapshot; Connection Hub catalog/review routes; responsive semantic projections; fuzz, mutation, integration, and benchmark evidence | ADR 0012/D3/M5 protected activation, managed execution adapters, real OpenSSH/PTY/process/handle/socket cleanup, and controlled native/resource/accessibility/release evidence remain. |
 | D6.0/M7 provider-neutral authentication and capsule orchestration | Fully done locally | Bounded strict schemas, immutable provider contexts, 19-state lifecycle, generation/session isolation, exact allow-once review, redacted receipts/audits, passive-status migration, fuzz/mutation/benchmark evidence | D6.1-D6.4 and D6.5 Teleport builders are source-complete/nonactivated; product activation, real official-CLI/native evidence, and OpenBao remain external/not done. |
 | D6.1/M8 AWS | Partially done overall; source-complete nonactivated | Independent `automexia-devops-aws`; bounded public profiles; exact SSO/STS/SSM/EKS dry-run contracts; 10 focused tests | D3 product activation/attestation, M11 EKS ingestion, and controlled real official-tool/native/resource/accessibility/release evidence remain. |
 | D6.2/M9 Azure | Partially done overall; source-complete nonactivated | Independent `automexia-devops-azure`; bounded public account JSON; exact tenant-scoped login/account observation; AAD-only Bastion plan; opaque transient AKS intent; 8 focused tests | D3 product activation/attestation, M11 AKS ingestion, and controlled real Azure/native/resource/accessibility/release evidence remain. |
@@ -669,8 +669,9 @@ private real-evidence manifest and leak-free repeated lifecycle run.
 
 ### M6 — F6 typed recipes, remote initialization, and declarative workspaces
 
-Status: Partially done; the bounded review-only source contracts are complete
-locally, while product activation and native execution evidence remain gated.
+Status: **Partially done overall; the bounded review/edit source and product
+surface are fully done locally.** Execution and native release evidence remain
+gated by D3/M5.
 
 - [x] **Fully done locally:** Connection Library schema 2 extends the existing
   private store with declarative workspaces, strict recipe/profile/workspace
@@ -706,17 +707,23 @@ locally, while product activation and native execution evidence remain gated.
   review, retry/cancel/shutdown generations, migration/recovery/rollback, focus
   restoration, semantic alert/switch/textbox accessibility, fuzz entry points,
   mutation checks, and maximum-cardinality benchmarks have local evidence.
-- [ ] **Partially done / external prerequisite:** the library editor, workspace
-  restore, and broadcast have model/application APIs and renderer-neutral
-  projections but no activated product controller/renderer or public CLI.
-  Proposed ADR 0023 must be accepted, and ADR 0012/D3/M5 protected activation,
-  real OpenSSH/PTY/process/handle/socket cleanup, native Windows/macOS/Linux,
-  controlled screen-reader/visual, and hosted release evidence must pass before
-  execution is enabled.
+- [x] **Fully done locally:** ADR 0023 is accepted. `automexia workspaces`
+  provides bounded list/show, preview-first CAS put/remove, restore and recipe
+  review, command-file broadcast review, migration/recovery, and doctor flows
+  without an execution switch. The existing background worker publishes an
+  immutable bounded library snapshot to a Connection Hub workspace catalog and
+  restore review with responsive pointer/keyboard navigation, stale-revision
+  invalidation, semantic accessibility state, and no PTY input.
+- [ ] **Partially done / external prerequisite:** ADR 0012/D3/M5 protected
+  activation and attestation, managed execution adapters, real OpenSSH/PTY/
+  process/handle/socket cleanup, native Windows/macOS/Linux, controlled screen-
+  reader/visual evidence, and hosted release evidence must pass before any
+  recipe, restore, or broadcast execution is enabled.
 
-Exit remains unavailable for the shipped product: saved workflows are now
-reviewable and recoverable at the internal source boundary without custom remote
-code or automatic persistent change, but no M6 product action can execute.
+Exit remains unavailable for execution, but not for review: saved workflows are
+now manageable through the public CLI and reviewable in the Connection Hub
+without custom remote code or automatic persistent change. No M6 product action
+can start a child, create a PTY, open a connection, send Enter, or resume work.
 
 ### M7 — F7/D6.0 provider-neutral auth and capsule orchestration
 

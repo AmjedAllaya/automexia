@@ -5,6 +5,8 @@ mod direct_openssh;
 mod library;
 mod receipts;
 mod runtime;
+mod workspaces;
+mod workspaces_cli;
 pub use controller::{
     ConnectionHubController, DisabledHubAction, HubControllerEffect,
     HubControllerPresentation,
@@ -34,3 +36,9 @@ pub use runtime::{
     HubRuntimeState, HubStoreState, MetadataChangeReview, PlatformFamily,
     ReviewedGrantFile, SetupGuidance,
 };
+pub use workspaces::{
+    m6_activation_readiness, review_library_broadcast, review_library_recipe,
+    review_library_workspace_restore, M6ActivationBlocker, M6ActivationReadiness,
+    RecipeReviewRequest, WorkspaceProductError, WorkspaceProductErrorCode,
+};
+pub use workspaces_cli::{execute_workspaces_command, execute_workspaces_command_at};

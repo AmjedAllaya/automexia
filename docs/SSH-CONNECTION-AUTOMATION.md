@@ -1,13 +1,14 @@
 # SSH access, multi-cloud connections, and automation recipes
 
 Status: D5.1's read-only Hub and nonactivated F5.1-F5.3 SSH source are fully
-implemented locally. M6's review-only automation/workspace source contracts are
-also complete locally: schema-2 library previews, exact dependent fingerprints,
-typed lifecycle/no-hooks, narrow remote initialization, declarative restore,
-and armed broadcast all remain execution-disabled. Proposed ADR 0023 acceptance,
-product wiring, protected activation, native OpenSSH/process/resource/
-accessibility evidence, and D6 multi-cloud remain. Ordinary shell commands are
-unchanged.This document is the implementation authority for connection profiles and
+implemented locally. M6's accepted review/edit boundary is also complete locally:
+schema-2 preview/CAS management, public workspace CLI, immutable Hub catalog and
+restore review, exact fingerprints, typed lifecycle/no-hooks, narrow remote
+initialization, and armed broadcast all remain execution-disabled. Protected
+D3/M5 activation, native OpenSSH/process/resource/accessibility evidence, and
+provider product execution remain. Ordinary shell commands are unchanged.
+
+This document is the implementation authority for connection profiles and
 connection-scoped automation. The [Connection Hub](CONNECTION-HUB.md) owns the
 overall inventory, authentication, review, and responsive UI contract. The
 [session-launch broker](SESSION-LAUNCH-BROKER.md) owns exact process authority,
@@ -62,11 +63,11 @@ The current repository provides:
   and ContextManager-owned guarded PTY/route publication.
 
 It now provides the D5.1 rendered read-only Connection Hub in v0.5 source builds.
-M6 adds reviewed schema-2 editor/import/migration APIs and renderer-neutral
-workspace/broadcast projections, but no product controller/renderer/CLI consumes
-them and no recipe or remote action can execute. Automatic SSH launch, cloud
-transport adapters, and remote action execution remain gated. These internal
-contracts are not instructions for v0.4.
+M6 adds accepted schema-2 preview/CAS management, a public nonexecuting CLI, and
+a Connection Hub workspace catalog/restore review over immutable current library
+snapshots. No recipe, restore, broadcast, or other remote action can execute.
+Automatic SSH launch, cloud transport adapters, and remote execution remain
+gated; these v0.5 source contracts are not instructions for v0.4.
 
 ### F2/D5.0 implementation ledger (2026-08-17)
 
@@ -236,7 +237,7 @@ flags. An unavailable or incompatible official tool produces a truthful
 
 ## M6 review-only implementation
 
-M6 is implemented internally as a disabled review boundary:
+M6 is implemented as a product-visible but execution-disabled review boundary:
 
 - Connection Library schema 2 stores profiles, recipes, workspaces, and
   preferences under the existing private filenames. Schema 1 loads as an
@@ -248,7 +249,7 @@ M6 is implemented internally as a disabled review boundary:
   IDs and requires review before CAS. Rebind imported topology locally.
 - A recipe review preserves the fixed lifecycle order, revalidates typed policy,
   exposes no authority, and supports `NoHooks` as a reviewed recovery intent.
-  There is no public `--no-hooks` CLI until activation.
+  The public `recipe-plan --no-hooks` command reviews this recovery intent but cannot execute it.
 - Remote initialization is a typed POSIX-sh or PowerShell envelope for directory,
   public environment, user switch, and verification. It contains no arbitrary
   command/script field; `sudo`/`doas` remains visible and confirms every
@@ -259,6 +260,11 @@ M6 is implemented internally as a disabled review boundary:
 - Broadcast requires exact transient command/target preview, explicit time-
   bounded arming, separate production confirmation, and per-target results. It
   requests no Enter and audit/debug state contains only a command digest/count.
+- `automexia workspaces` exposes bounded preview-first management and reviews;
+  the joined Hub worker publishes an immutable library snapshot to the
+  Workspaces catalog and restore review. CAS writes, current fingerprint binding,
+  stale-review invalidation, pointer/keyboard focus, and semantic accessibility
+  are application-owned, while every process/PTY/network/Enter flag remains off.
 
 Current limits are 256 workspaces, 16 windows and 64 panes per workspace, 128
 connection bindings, 32 recipe bindings per connection, 50 broadcast targets,
@@ -270,7 +276,7 @@ renderer, or startup hot paths.
 The current recovery path is to cancel/disarm the review, reload the latest
 library revision, resolve a new generation, or retain manual system OpenSSH in
 the terminal. Imported topology must be rebound. No partial migration or stale
-preview is committed. See [proposed ADR 0023](adr/0023-typed-automation-and-declarative-workspaces.md)
+preview is committed. See [accepted ADR 0023](adr/0023-typed-automation-and-declarative-workspaces.md)
 and [M6 testing](TESTING.md#m6-typed-automation-and-multi-environment-workspaces).
 ## Automation recipe model
 
