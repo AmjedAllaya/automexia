@@ -30,6 +30,12 @@ __automexia_precmd >/dev/null
 (( ${preexec_functions[(I)__automexia_preexec]} == 1 ))
 [[ $PROMPT == *$'\xCE\xBB'* ]]
 [[ $PROMPT != *'%d'* ]]
+failure_marker=$(set +e; false; __automexia_precmd)
+[[ $failure_marker == *$'\e]133;D;1\a'* ]]
+[[ $failure_marker == *$'\e]133;A;aid='* ]]
+preexec_marker=$(__automexia_preexec)
+[[ $preexec_marker == *$'\e]133;C\a'* ]]
+[[ $preexec_marker == *$'automexia_prompt_active=MA=='* ]]
 grep -qF '__automexia_print_colored_path "$PWD"' "$root/shell-integration/zsh/automexia.zsh"
 ! grep -Eiq 'alias (docker|kubectl)=|function (ax|kgp)' "$root/shell-integration/zsh/automexia.zsh"
 sample_path='/srv/cloud project/region/production'

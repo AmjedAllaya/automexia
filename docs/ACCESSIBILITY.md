@@ -37,7 +37,7 @@ a separate Automexia text/document milestone.
 | Connection Hub | Search/filter/group controls, labeled actions, status and empty/error states | Complete keyboard navigation and visible close; terminal input behind the scrim is inert | Native picker and screen-reader evidence remains release-gated |
 | Scrollbar | Rounded cyan/blue thumb plus a wider invisible grab area; drag state differs in opacity and color | Wheel and terminal navigation remain primary; pointer dragging is optional | Native screen readers use terminal/document scrolling rather than this visual thumb |
 | Context segments | Icon plus text label; meaning never depends only on color | Passive information; no hidden pointer-only action | Freshness/error announcements remain provider-neutral roadmap work |
-| Completed command output | Command-agnostic visible success/error tint, 2.4-3.5 pixel rail, adaptive 6-10 pixel gutter, end rule, persistent icon/duration, and one 540 ms lightening | Passive feedback only; shell input, cursor, selection, copy, search, and history keep their existing owners | Native screen readers consume terminal text; the visual result grouping is not yet exposed as a native region |
+| Completed command output | Command-agnostic visible tint, adaptive 6-10 pixel gutter, end rule, known-status icon/duration or explicit neutral treatment, and one 540 ms lightening | Passive feedback only; shell input, cursor, selection, copy, search, and history keep their existing owners | Native screen readers consume terminal text; the visual result grouping is not yet exposed as a native region |
 | Session footer | Passive pane/tab/grid/line-ending/clock status | No action is hidden in the footer | It is intentionally omitted when a pane cannot spare terminal rows |
 | Terminal grid | Shell output, selection, cursor, and input remain authoritative | Standard terminal and configured shell bindings | Full text-range exposure requires the v0.5 accessibility model |
 | Image quick look | Filename, dimensions, and size remain visible as text; preview never conveys required terminal state | Hover previews; click pins; arrows browse visible image paths; `Ctrl+Alt+I`/`Cmd+Alt+I` previews selection; `Esc` dismisses | Native screen-reader announcement of the preview card requires the v0.5 adapter |
@@ -45,8 +45,8 @@ a separate Automexia text/document milestone.
 ## Completed output cues
 
 Completed output never depends on a flash or color alone. The visible persistent
-tint, wider left rail, end rule, whitespace, success/failure icon, and elapsed
-time retain the boundary after the temporary lightening ends. The cue changes
+tint, end rule, whitespace, and known-status icon plus elapsed time retain the
+boundary after the temporary lightening ends. The cue changes
 opacity only; it does not move or resize content, holds briefly and fades once
 within 540 milliseconds, and is suppressed for historical content and while the
 pane is in scrollback. It has one opposing light/dark transition rather than a
@@ -60,8 +60,8 @@ or accessibility announcement and creates no new focus target.
 
 The controlled Windows native check verifies more than geometry: every tested
 command must publish a new owning result identity, captured output glyphs must
-remain visible independently of the rail/divider, and blank resting-surface
-pixels must differ from the adjacent gutter. It runs against WGPU and the CPU
+remain visible independently of the divider/status decoration, and blank
+resting-surface pixels must differ from the adjacent gutter. It runs against WGPU and the CPU
 fallback. This is visual evidence only; it does not replace the outstanding
 native screen-reader region semantics.
 

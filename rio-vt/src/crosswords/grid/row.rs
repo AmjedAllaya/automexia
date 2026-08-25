@@ -28,8 +28,12 @@ pub enum SemanticPrompt {
 /// status/duration badge without writing decoration bytes into the PTY.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SemanticCommandResult {
-    pub exit_code: i32,
-    pub elapsed_ms: u64,
+    /// Shell-reported status. A missing OSC 133 `D` status is intentionally
+    /// neutral; it must never be presented as a successful exit.
+    pub exit_code: Option<i32>,
+    /// Terminal-measured execution time. This is absent when a shell can prove
+    /// only the output boundary (for example stock Command Prompt).
+    pub elapsed_ms: Option<u64>,
 }
 
 /// A row in the grid.
@@ -358,6 +362,23 @@ impl<T> Row<T> {
             self.semantic_command_result = None;
         }
         self.dirty = true;
+    }
+
+    /// Retire prompt/result ownership when unrelated terminal output reuses
+    /// this physical row. Cell writes do not automatically have enough
+    /// lifecycle context to make this decision, so the terminal handler calls
+    /// this only outside an active editable prompt.
+    #[inline]
+    pub fn clear_semantic_metadata(&mut self) {
+        if self.semantic_prompt != SemanticPrompt::None
+            || self.semantic_prompt_id.is_some()
+            || self.semantic_command_result.is_some()
+        {
+            self.semantic_prompt = SemanticPrompt::None;
+            self.semantic_prompt_id = None;
+            self.semantic_command_result = None;
+            self.dirty = true;
+        }
     }
 
     /// Store a completed command result as metadata-only row damage.

@@ -51,16 +51,16 @@ This is visual only:
 - semantic recognition does not execute or alter commands.
 
 Completed commands with proven shell boundaries also group their actual output
-inside a restrained tinted band with a visible left rail. A gap, end rule, and
-success/failure plus duration badge separate that result from the next command.
-This applies to ordinary output as well as listings; it is not an `ls`-specific
-effect. A new live result lightens once for 540 milliseconds and then keeps its
-persistent grouping. Commands without output retain the completion rule and
-badge but do not receive an empty output band.
-The full grouping is currently available in integrated PowerShell, Bash, and
-Zsh sessions. Fish and stock CMD do not yet expose the complete prompt and
-completion lifecycle required to prove both boundaries, so Automexia leaves
-their output ungrouped instead of guessing.
+inside a restrained tinted band. A gap, end rule, and known success/failure plus
+duration badge separate that result from the next command. This applies to any
+output-producing command, including ordinary output, errors, pipelines, native
+programs, and listings; it is not an `ls`-specific effect. A new live result
+lightens once for 540 milliseconds and then keeps its persistent grouping.
+Commands without output keep their truthful compact completion rule/status but
+do not receive an empty output surface or borrow the preceding command's state.
+The full grouping is available in integrated PowerShell, Bash, Zsh, and Fish
+sessions. Integrated CMD also groups output, but uses neutral styling because
+stock `cmd.exe` cannot provide a generic truthful exit status or duration.
 
 Use it as a scanning aid, not as a replacement for the tool's own exit code or structured output.
 

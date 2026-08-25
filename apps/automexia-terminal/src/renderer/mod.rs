@@ -287,6 +287,9 @@ fn command_output_top(
             })
             .map(|(index, _)| index)
             .last()
+            // A managed prompt may fit on its first row, but an empty marker
+            // alone does not prove that the shell-owned command row exists.
+            .or_else(|| (!terminal_row_is_blank(prompt)).then_some(prompt_index))
     } else {
         rows.iter()
             .enumerate()
@@ -332,6 +335,9 @@ fn command_result_anchors(
     rows.iter()
         .enumerate()
         .filter_map(|(row_index, row)| {
+            if row.semantic_prompt != SemanticPrompt::Prompt {
+                return None;
+            }
             let result = row.semantic_command_result?;
             let synthetic_index = (row_index..rows.len())
                 .take(MAX_LEGACY_PROMPT_SCAN_ROWS)
@@ -1573,6 +1579,10 @@ impl Renderer {
                 self.devops_status.refresh_session_context(&session, || {
                     context_manager.devops_refresh_completion(session.session_id)
                 });
+            let prefer_untagged_results = session
+                .shell_name
+                .as_deref()
+                .is_some_and(|shell| shell.eq_ignore_ascii_case("cmd"));
             let new_prompt = self.devops_status.render_prompt_rows(
                 sugarloaf,
                 self.named_colors,
@@ -1591,6 +1601,7 @@ impl Renderer {
                 self.named_colors,
                 &command_results,
                 result_animation_enabled(allow_result_animation),
+                prefer_untagged_results,
             );
             // Completion directly wakes this route. De-duplicated timers remain
             // as a fallback for worker pressure and poll changing local
@@ -1646,6 +1657,11 @@ impl Renderer {
                     .refresh_visible_session(&pane.session, || {
                         context_manager.devops_refresh_completion(route)
                     });
+                let prefer_untagged_results = pane
+                    .session
+                    .shell_name
+                    .as_deref()
+                    .is_some_and(|shell| shell.eq_ignore_ascii_case("cmd"));
                 let new_prompt = status.render_prompt_rows(
                     sugarloaf,
                     self.named_colors,
@@ -1664,6 +1680,7 @@ impl Renderer {
                     self.named_colors,
                     &pane.command_results,
                     result_animation_enabled(pane.allow_result_animation),
+                    prefer_untagged_results,
                 );
             }
             if inactive_refresh_pending {
@@ -2271,6 +2288,16 @@ mod prompt_visual_anchor_tests {
     }
 
     #[test]
+    fn single_row_managed_prompt_starts_output_on_the_following_row() {
+        let mut rows = (0..3).map(|_| Row::<Square>::new(12)).collect::<Vec<_>>();
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(17));
+        rows[0][Column(0)].set_c('>');
+        rows[1][Column(0)].set_c('o');
+
+        assert_eq!(command_output_top(&rows, 0, 4.0, 20.0), Some(24.0));
+    }
+
+    #[test]
     fn result_anchors_cover_success_error_single_and_multiline_output() {
         for (exit_code, output_row_count) in [(0, 1usize), (7, 3usize)] {
             let next_prompt_index = 3 + output_row_count;
@@ -2280,8 +2307,8 @@ mod prompt_visual_anchor_tests {
             rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
             rows[0].set_semantic_command_result(
                 rio_backend::crosswords::grid::row::SemanticCommandResult {
-                    exit_code,
-                    elapsed_ms: 18,
+                    exit_code: Some(exit_code),
+                    elapsed_ms: Some(18),
                 },
             );
             rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
@@ -2318,9 +2345,105 @@ mod prompt_visual_anchor_tests {
             assert_eq!(results.len(), 1);
             assert_eq!(results[0].output_top, Some(60.0));
             assert_eq!(results[0].y, next_prompt_index as f32 * 20.0);
-            assert_eq!(results[0].exit_code, exit_code);
+            assert_eq!(results[0].exit_code, Some(exit_code));
             assert!(results[0].separates_next_prompt);
         }
+    }
+
+    #[test]
+    fn legacy_cmd_result_uses_lambda_and_next_prompt_without_claiming_status() {
+        let mut rows = (0..=5).map(|_| Row::<Square>::new(12)).collect::<Vec<_>>();
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, None);
+        rows[0].set_semantic_command_result(
+            rio_backend::crosswords::grid::row::SemanticCommandResult {
+                exit_code: None,
+                elapsed_ms: None,
+            },
+        );
+        rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
+        rows[1][Column(0)].set_c('/');
+        rows[2].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
+        rows[2][Column(0)].set_c('λ');
+        rows[3][Column(0)].set_c('o');
+        rows[5].set_semantic_prompt(SemanticPrompt::Prompt, None);
+        let prompts = [
+            crate::automexia::ui::PromptAnchor {
+                generation: None,
+                key: 10,
+                x: 4.0,
+                y: 0.0,
+                width: 720.0,
+                height: 20.0,
+            },
+            crate::automexia::ui::PromptAnchor {
+                generation: None,
+                key: 15,
+                x: 4.0,
+                y: 100.0,
+                width: 720.0,
+                height: 20.0,
+            },
+        ];
+
+        let results = command_result_anchors(&rows, 10, 4.0, 0.0, 720.0, 20.0, &prompts);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].generation, None);
+        assert_eq!(results[0].output_top, Some(60.0));
+        assert_eq!(results[0].y, 100.0);
+        assert_eq!(results[0].exit_code, None);
+        assert_eq!(results[0].elapsed_ms, None);
+        assert!(results[0].separates_next_prompt);
+    }
+
+    #[test]
+    fn stale_completion_on_prompt_continuation_is_not_a_result_owner() {
+        let mut rows = (0..=6).map(|_| Row::<Square>::new(12)).collect::<Vec<_>>();
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, None);
+        rows[0].set_semantic_command_result(
+            rio_backend::crosswords::grid::row::SemanticCommandResult {
+                exit_code: None,
+                elapsed_ms: None,
+            },
+        );
+        rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
+        rows[1][Column(0)].set_c('λ');
+        rows[2][Column(0)].set_c('o');
+        rows[3].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
+        rows[3].set_semantic_command_result(
+            rio_backend::crosswords::grid::row::SemanticCommandResult {
+                exit_code: Some(0),
+                elapsed_ms: Some(1),
+            },
+        );
+        rows[4].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
+        rows[4][Column(0)].set_c('λ');
+        rows[5][Column(0)].set_c('x');
+        rows[6].set_semantic_prompt(SemanticPrompt::Prompt, None);
+        let prompts = [
+            crate::automexia::ui::PromptAnchor {
+                generation: None,
+                key: 10,
+                x: 4.0,
+                y: 0.0,
+                width: 720.0,
+                height: 20.0,
+            },
+            crate::automexia::ui::PromptAnchor {
+                generation: None,
+                key: 16,
+                x: 4.0,
+                y: 120.0,
+                width: 720.0,
+                height: 20.0,
+            },
+        ];
+
+        let results = command_result_anchors(&rows, 10, 4.0, 0.0, 720.0, 20.0, &prompts);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].key, 10);
+        assert_eq!(results[0].exit_code, None);
     }
 
     #[test]
@@ -2343,8 +2466,8 @@ mod prompt_visual_anchor_tests {
             height: 20.0,
             output_top: Some(100.0),
             separates_next_prompt: false,
-            exit_code: 0,
-            elapsed_ms: 18,
+            exit_code: Some(0),
+            elapsed_ms: Some(18),
         };
         let prompts = [
             crate::automexia::ui::PromptAnchor {
@@ -2372,8 +2495,8 @@ mod prompt_visual_anchor_tests {
         assert_eq!(boundary.width, 704.0);
         assert_eq!(boundary.height, 24.0);
         assert!(boundary.separates_next_prompt);
-        assert_eq!(boundary.exit_code, 0);
-        assert_eq!(boundary.elapsed_ms, 18);
+        assert_eq!(boundary.exit_code, Some(0));
+        assert_eq!(boundary.elapsed_ms, Some(18));
     }
 
     #[test]
@@ -2387,8 +2510,8 @@ mod prompt_visual_anchor_tests {
             height: 20.0,
             output_top: Some(180.0),
             separates_next_prompt: false,
-            exit_code: 7,
-            elapsed_ms: 1_250,
+            exit_code: Some(7),
+            elapsed_ms: Some(1_250),
         };
         let prompts = [crate::automexia::ui::PromptAnchor {
             generation: Some(2),

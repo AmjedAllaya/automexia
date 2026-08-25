@@ -969,12 +969,13 @@ exact machine contract are explicitly accepted.
   unconfirmed last-window close.
 
 - Selection and search styling take precedence over semantic decoration.
-- PowerShell, Bash, and Zsh integrations assign every prompt a monotonic OSC
-  133 `aid`. Stock CMD publishes `A/B` semantic boundaries without inventing an
-  unstable identity because its prompt language has no pre/post-command hook. The VT
-  grid stores that identity on the semantic prompt row, marks metadata-only
-  writes dirty, and preserves it through scrollback and reflow. Renderer caches
-  use the identity rather than resize-dependent absolute row numbers.
+- PowerShell, Bash, Zsh, and Fish integrations assign every prompt a monotonic
+  OSC 133 `aid`. Stock CMD publishes `A/B` and closes the preceding command with
+  a bare `D` before the next prompt; it does not invent an identity, status, or
+  duration that its prompt language cannot expose. The VT grid stores an
+  available identity on the semantic prompt row, marks metadata-only writes
+  dirty, and preserves it through scrollback and reflow. Renderer caches use
+  identities rather than resize-dependent absolute row numbers.
 - OSC semantic rows are the prompt-lifecycle authority. The
   `automexia_prompt_active` user variable is retained only for first-paint and
   compatibility fallback behavior.
@@ -988,6 +989,12 @@ exact machine contract are explicitly accepted.
   batch it repairs a delayed screen or line erase from that copy, reflowing through
   the normal grid path; rows which cannot fit stay in scrollback until the
   viewport grows. Completed command history is never copied or replaced.
+- Destination-row ownership follows terminal bytes rather than historical row
+  position. Before printable output, partial erases, insertion, or deletion reuse
+  a row outside the active prompt, the VT clears stale prompt/result metadata.
+  Repaint inside an active identified prompt instead retags the destination with
+  the current generation. This prevents formatter, full-screen, and alternate-
+  shell output from making an overwritten historical result selectable.
 - Adjacent PTY resize messages coalesce to the newest effective dimensions.
   Input and shutdown are barriers, duplicate effective sizes are skipped, and
   a transient PTY resize failure is logged without terminating the session.

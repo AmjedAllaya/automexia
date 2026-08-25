@@ -269,30 +269,29 @@ and complete path as durable terminal rows; Readline, ZLE, or PSReadLine owns
 only the lambda, editable command, and cursor row. A delayed SIGWINCH editor
 repaint therefore cannot erase the path or duplicate renderer metadata.
 Command completion includes a truthful shell result status. Bash and Zsh emit
-their numeric shell status; PowerShell emits semantic `0` success or `1` failure
-without reusing or changing a stale user-owned `LASTEXITCODE`. Automexia
-measures between `C` and `D`. When semantic prompt ownership proves the output limits and next
-prompt, the renderer applies the same visible but restrained result surface to
-listing and non-listing commands, success and error exits, single- and
-multiline output, and managed input wrapped beyond eight rows. Its persistent
-tinted band, 2.4-3.5 pixel left rail, adaptive 6-10 pixel breathing gutter, end
-rule, and right-aligned success/failure badge with duration keep the boundary
-redundant. The newest live result holds its lightening for the first third of
-one 540 millisecond cycle and then eases out, with no repeated blink or
-movement. These
-renderer-only cues do not insert rows or bytes, so selection,
-copy, search, history, prompt identity, context, and command results survive
-scrollback and column shrink/grow reflow unchanged.
+their numeric shell status; PowerShell preserves an exact native status when
+available and otherwise emits semantic pipeline success/failure without
+changing a stale user-owned `LASTEXITCODE`. Automexia measures between `C` and
+`D`. When semantic prompt ownership proves the output limits and next prompt,
+the renderer applies the same visible but restrained result surface to listing
+and non-listing commands, success and error exits, single- and multiline
+output, and managed input wrapped beyond eight rows. Its persistent tinted
+band, adaptive 6-10 pixel breathing gutter, end rule, and right-aligned known-
+status badge with duration keep the boundary redundant. The newest live result
+holds its lightening for the first third of one 540 millisecond cycle and then
+eases out, with no repeated blink or movement. These renderer-only cues do not
+insert rows or bytes, so selection, copy, search, history, prompt identity,
+context, and command results survive scrollback and column shrink/grow reflow
+unchanged.
 
-CMD reserves the same visible three-row structure and publishes OSC 7 plus
-OSC 133 `A/B`, but stock `cmd.exe` exposes no pre/post-command hook from which
-to generate a monotonic identity, true exit status, or completion timestamp.
-Automexia therefore keeps CMD path/context reflow resilient without fabricating
-success badges or durations. Fish publishes `C/D` from its pre/post-exec events,
-but Automexia deliberately does not replace the user-owned Fish prompt to invent
-the missing `A/B` generation. It therefore does not guess a Fish output range
-either. The complete `A/B/C/D` lifecycle and completed-output surfaces are
-currently available in PowerShell, Bash, and Zsh.
+CMD reserves the same visible three-row structure and publishes OSC 7 plus OSC
+133 boundaries. Before each new prompt, the batch integration closes the
+previous command with a bare `D`; because stock `cmd.exe` exposes no supported
+generic status or timing value, Automexia groups its proven output with neutral
+styling and never fabricates a badge or duration. Fish wraps the existing user-
+owned `fish_prompt` to add an identified `A/B` boundary without replacing its
+body, then publishes `C/D` from preexec/postexec/posterror events. Complete output
+surfaces are available in PowerShell, Bash, Zsh, Fish, and CMD; CMD is neutral.
 
 The complete path uses a restrained hierarchy shared by PowerShell, Bash, and
 Zsh: separators are muted slate, the root or first component is light blue,

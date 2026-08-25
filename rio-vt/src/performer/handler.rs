@@ -158,7 +158,7 @@ pub trait Handler {
     fn semantic_command_start(&mut self) {}
 
     /// OSC 133 `D`: the command associated with the latest prompt completed.
-    fn semantic_command_end(&mut self, _exit_code: i32) {}
+    fn semantic_command_end(&mut self, _exit_code: Option<i32>) {}
 
     /// OSC 1337 SetUserVar: record a shell-provided variable.
     fn set_user_var(&mut self, _name: String, _value: String) {}
@@ -2781,15 +2781,17 @@ mod tests {
         assert_eq!(parse(&[b"133", b"C"]), Some(SemanticCommand::Start));
         assert_eq!(
             parse(&[b"133", b"D", b"17"]),
-            Some(SemanticCommand::End { exit_code: 17 })
+            Some(SemanticCommand::End {
+                exit_code: Some(17)
+            })
         );
         assert_eq!(
             parse(&[b"133", b"D"]),
-            Some(SemanticCommand::End { exit_code: 0 })
+            Some(SemanticCommand::End { exit_code: None })
         );
         assert_eq!(
             parse(&[b"133", b"D", b"invalid"]),
-            Some(SemanticCommand::End { exit_code: 0 })
+            Some(SemanticCommand::End { exit_code: None })
         );
         assert_eq!(parse(&[b"133", b"A"]), None);
     }

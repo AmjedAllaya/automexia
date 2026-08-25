@@ -44,12 +44,15 @@ count=$(grep -o '__automexia_pre_prompt' <<<"$PROMPT_COMMAND" | wc -l)
 [[ $count -eq 1 ]]
 [[ $PROMPT_COMMAND == printf\ user-hook* ]]
 
+failure_marker="$fixture_bin/bash-failure-marker"
 set +e
 false
-__automexia_pre_prompt >/dev/null
+__automexia_pre_prompt >"$failure_marker"
 status=$?
 set -e
 [[ $status -eq 1 ]]
+grep -qF $'\e]133;D;1\a' "$failure_marker"
+grep -qF $'\e]133;A;aid=' "$failure_marker"
 
 grep -qF "AUTOMEXIA_SHELL_INTEGRATION" "$root/shell-integration/bash/automexia.bash"
 grep -qF '\xCE\xBB' "$root/shell-integration/bash/automexia.bash"
@@ -59,6 +62,12 @@ if grep -qF 'PROMPT_DIRTRIM' "$root/shell-integration/bash/automexia.bash"; then
 if grep -qF '__automexia_git_segment' "$root/shell-integration/bash/automexia.bash"; then exit 1; fi
 grep -qF '133;A;aid=%s\a \n' "$root/shell-integration/bash/automexia.bash"
 grep -qF '133;P;k=c;aid=%s\a' "$root/shell-integration/bash/automexia.bash"
+grep -qF '133;A;aid=%s\a' "$root/shell-integration/fish/automexia.fish"
+grep -qF 'fish_preexec' "$root/shell-integration/fish/automexia.fish"
+grep -qF '133;C\a' "$root/shell-integration/fish/automexia.fish"
+grep -qF 'fish_postexec' "$root/shell-integration/fish/automexia.fish"
+grep -qF 'fish_posterror' "$root/shell-integration/fish/automexia.fish"
+grep -qF '133;D;%s\a' "$root/shell-integration/fish/automexia.fish"
 # shellcheck disable=SC2016 # Search for the literal integration contract.
 grep -qF '__automexia_print_colored_path "$PWD"' "$root/shell-integration/bash/automexia.bash"
 [[ $PS1 != *'PWD'* ]]

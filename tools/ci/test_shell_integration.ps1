@@ -89,6 +89,27 @@ try {
     $script:AutomexiaCmdExecutable = $previousCmdExecutable
     $script:AutomexiaCmdIntegration = $previousCmdIntegration
 }
+
+# A wrapped native command must publish its exact exit status. PowerShell
+# otherwise reports a function invocation itself as successful even when the
+# native child failed, which would paint a false-success result boundary.
+$nativeFailureConsoleOut = New-Object System.IO.StringWriter
+try {
+    [Console]::SetOut($nativeFailureConsoleOut)
+    & cmd /D /C 'exit /b 7'
+    $emittedNativeFailure = & prompt
+} finally {
+    [Console]::SetOut($previousConsoleOut)
+}
+$nativeFailureLifecycle = $nativeFailureConsoleOut.ToString()
+$nativeFailureConsoleOut.Dispose()
+if ($nativeFailureLifecycle -notmatch [regex]::Escape("$([char]27)]133;D;7$([char]7)")) {
+    throw 'PowerShell wrapped native failure did not preserve its exact exit status'
+}
+if ($global:LASTEXITCODE -ne 7) {
+    throw 'PowerShell wrapped native failure changed user-owned LASTEXITCODE'
+}
+
 $nativeCmdResult = (& cmd /D /C 'echo AUTOMEXIA_CMD_NATIVE_OK' | Out-String).Trim()
 if ($nativeCmdResult -ne 'AUTOMEXIA_CMD_NATIVE_OK') {
     throw 'Explicit cmd /c behavior was changed by Automexia integration'
@@ -245,9 +266,11 @@ try {
         'SetUserVar=automexia_shell_path=%AUTOMEXIA_CMD_PATH_BASE64%',
         'SetUserVar=automexia_distro=',
         'set "AUTOMEXIA_CMD_IDENTITY=',
+        'set "AUTOMEXIA_CMD_DONE=%AUTOMEXIA_ESC%]133;D%AUTOMEXIA_ESC%\',
         'PROMPT=%AUTOMEXIA_CMD_IDENTITY%',
         'AUTOMEXIA_CMD_PROMPT_GLYPH',
         ']7;file:///$P',
+        ']133;D',
         ']133;A',
         ']133;P;k=c',
         ']133;B',
@@ -418,10 +441,16 @@ if ($integrationSource -notmatch 'AUTOMEXIA_PLAIN_LS') { throw 'PowerShell icon 
 
 $bashIntegration = Get-Content (Join-Path $root 'shell-integration\bash\automexia.bash') -Raw
 $zshIntegration = Get-Content (Join-Path $root 'shell-integration\zsh\automexia.zsh') -Raw
+$fishIntegration = Get-Content (Join-Path $root 'shell-integration\fish\automexia.fish') -Raw
 if ($bashIntegration -notmatch '133;A;aid=%s.*\\n' -or $bashIntegration -notmatch '__automexia_print_colored_path "\$PWD"' -or $bashIntegration -notmatch "PS1=.*xCE.*133;B") { throw 'Bash does not keep a colored terminal-owned complete-path row plus a Readline-owned lambda row' }
 if ($zshIntegration -notmatch '133;A;aid=%s.*\\n' -or $zshIntegration -notmatch '__automexia_print_colored_path "\$PWD"' -or $zshIntegration -notmatch "PROMPT=.*xCE.*133;B") { throw 'Zsh does not keep a colored terminal-owned complete-path row plus a ZLE-owned lambda row' }
 if ($bashIntegration -notmatch '133;D;%s') { throw 'Bash does not publish command exit status' }
 if ($zshIntegration -notmatch '133;D;%s') { throw 'Zsh does not publish command exit status' }
+if ($fishIntegration -notmatch '133;A;aid=%s' -or
+    $fishIntegration -notmatch 'fish_preexec' -or
+    $fishIntegration -notmatch '133;C' -or
+    $fishIntegration -notmatch 'fish_postexec' -or
+    $fishIntegration -notmatch 'fish_posterror') { throw 'Fish does not publish its prompt and complete command lifecycle' }
 if ($bashIntegration -notmatch 'automexia_shell_name=YmFzaA==') { throw 'Bash does not publish its real shell name' }
 if ($zshIntegration -notmatch 'automexia_shell_name=enNo') { throw 'Zsh does not publish its real shell name' }
 if ($bashIntegration -notmatch 'automexia_shell_user' -or $bashIntegration -notmatch 'automexia_shell_path') { throw 'Bash does not publish clone-safe user and shell-path metadata' }
