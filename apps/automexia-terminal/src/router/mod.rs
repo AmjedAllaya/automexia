@@ -970,6 +970,7 @@ impl<'a> RouteWindow<'a> {
                 action_surface: crate::screen::action_surface::Controller::new(
                     quick_actions,
                 ),
+                suggestions: crate::automexia::suggestions::SuggestionService::default(),
                 connection_hub:
                     crate::automexia::connections::ConnectionHubController::new(
                         connection_hub,

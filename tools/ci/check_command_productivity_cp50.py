@@ -395,14 +395,14 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
         },
         "docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md": {
             "CP5.0 fully done",
-            "partially done at proposal-only boundary",
+            "CP5.1-CP5.3 are fully implemented at source/local model boundaries",
         },
         "docs/project/roadmap.md": {
             "CP5.0",
             "**Fully implemented at research boundary**",
         },
         "docs/index.md": {
-            "Proposal and threat contract complete; runtime not authorized",
+            "Accepted source work partial overall",
             "research/CP5-AUTOCOMPLETE-RESEARCH.md",
         },
         "tools/ci/validate_repository.py": {"validate_command_productivity_cp50"},

@@ -188,6 +188,20 @@ CP4_PROVIDER_ACTION_FILES = {
     "extensions/devops-openshift/src/implementation.rs",
     "extensions/devops-teleport/src/lib.rs",
 }
+# ADR 0025 authorizes these exact source owners while CP56 policy independently
+# enforces preview nonactivation, bounded authority, and native fallback.
+CP5_SUGGESTION_SOURCE_FILES = {
+    "automexia-devops/src/suggestions/mod.rs",
+    "automexia-ui-model/src/suggestions.rs",
+    "apps/automexia-terminal/src/automexia/suggestions/controller.rs",
+    "apps/automexia-terminal/src/automexia/suggestions/mod.rs",
+    "apps/automexia-terminal/src/automexia/suggestions/platform.rs",
+    "apps/automexia-terminal/src/automexia/suggestions/platform/unix.rs",
+    "apps/automexia-terminal/src/automexia/suggestions/platform/windows.rs",
+    "apps/automexia-terminal/src/automexia/suggestions/service.rs",
+    "apps/automexia-terminal/src/renderer/suggestions.rs",
+    "apps/automexia-terminal/src/screen/suggestions.rs",
+}
 PURE_ACTION_FILES = CP2_PURE_ACTION_FILES | CP4_PURE_ACTION_FILES
 CP2_PERSISTENCE_FILES = {
     "apps/automexia-terminal/src/automexia/quick_actions/cli.rs",
@@ -961,6 +975,7 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
         | CP2_PERSISTENCE_WIRING_FILES
         | CP2_ACTIVATION_WIRING_FILES
         | CP4_PROVIDER_ACTION_FILES
+        | CP5_SUGGESTION_SOURCE_FILES
     )
     for path in runtime_files:
         content = read_lower(path)
@@ -993,6 +1008,7 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
         "cp2_pure_action_files": len(pure_action_files & CP2_PURE_ACTION_FILES),
         "cp4_pure_action_files": len(pure_action_files & CP4_PURE_ACTION_FILES),
         "cp4_provider_action_files": len(CP4_PROVIDER_ACTION_FILES),
+        "cp5_suggestion_source_files": len(CP5_SUGGESTION_SOURCE_FILES),
         "cp4_application_files": len(persistence_files & CP4_APPLICATION_FILES),
         "cp2_persistence_files": len(persistence_files),
         "interactive_files": len(interactive_files),
@@ -1128,6 +1144,7 @@ def main() -> int:
         f"cp2_pure_action_files={counts['cp2_pure_action_files']}, "
         f"cp4_pure_action_files={counts['cp4_pure_action_files']}, "
         f"cp4_provider_action_files={counts['cp4_provider_action_files']}, "
+        f"cp5_suggestion_source_files={counts['cp5_suggestion_source_files']}, "
         f"cp4_application_files={counts['cp4_application_files']}, "
         f"cp2_persistence_files={counts['cp2_persistence_files']})"
     )

@@ -44,6 +44,9 @@ from check_command_productivity_cp50 import (
 from check_command_productivity_cp51 import (
     validate_repository as validate_command_productivity_cp51,
 )
+from check_command_productivity_cp56 import (
+    validate_repository as validate_command_productivity_cp56,
+)
 from check_ecosystem_d7_cp6 import (
     validate_repository as validate_ecosystem_d7_cp6,
 )
@@ -351,9 +354,13 @@ def validate() -> None:
     command_productivity_cp50_counts = validate_command_productivity_cp50()
     counts["command productivity CP5.0"] = command_productivity_cp50_counts["shells"]
     command_productivity_cp51_counts = validate_command_productivity_cp51()
-    counts["command productivity CP5.1 proposal"] = command_productivity_cp51_counts[
+    counts["command productivity CP5.1 accepted contract"] = command_productivity_cp51_counts[
         "threats"
     ]
+    command_productivity_cp56_counts = validate_command_productivity_cp56()
+    counts["command productivity CP5.1-CP5.6 source"] = (
+        command_productivity_cp56_counts["source_files"]
+    )
     ecosystem_d7_cp6_counts = validate_ecosystem_d7_cp6()
     counts["ecosystem D7/CP6 proposal"] = ecosystem_d7_cp6_counts["threats"]
     session_launch_d0_counts = validate_session_launch_d0()

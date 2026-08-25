@@ -10,6 +10,7 @@ pub(crate) mod action_surface;
 mod compatibility;
 mod connection_hub;
 pub mod hint;
+pub(crate) mod suggestions;
 pub mod touch;
 
 use crate::bindings::kitty_keyboard::build_key_sequence;
@@ -743,6 +744,7 @@ impl ConsumedWin32KeyReleases {
 
 pub(crate) struct ScreenServices {
     pub(crate) action_surface: action_surface::Controller,
+    pub(crate) suggestions: crate::automexia::suggestions::SuggestionService,
     pub(crate) connection_hub: crate::automexia::connections::ConnectionHubController,
     pub(crate) external_tool_runner:
         crate::context::external_tool_runner::ExternalToolRunner,
@@ -767,6 +769,7 @@ pub struct Screen<'screen> {
     pub hint_state: HintState,
     image_preview: crate::image_preview::ImagePreview,
     action_surface: action_surface::Controller,
+    suggestions: crate::automexia::suggestions::SuggestionUiController,
     connection_hub: crate::automexia::connections::ConnectionHubController,
     external_tool_runner: crate::context::external_tool_runner::ExternalToolRunner,
     connection_hub_review_request: Option<u64>,
@@ -833,6 +836,7 @@ impl Screen<'_> {
         let raw_display_handle = window_properties.raw_display_handle;
         let ScreenServices {
             action_surface,
+            suggestions,
             connection_hub,
             external_tool_runner,
         } = services;
@@ -1023,6 +1027,9 @@ impl Screen<'_> {
             hint_state: HintState::new(config.hints.alphabet.clone()),
             image_preview: crate::image_preview::ImagePreview::default(),
             action_surface,
+            suggestions: crate::automexia::suggestions::SuggestionUiController::new(
+                suggestions,
+            ),
             connection_hub,
             external_tool_runner,
             connection_hub_review_request: None,
@@ -1438,6 +1445,9 @@ impl Screen<'_> {
             .select_current_based_on_pointer(&self.mouse)
         {
             self.context_manager.select_route_from_current_grid();
+            self.dismiss_suggestions(
+                crate::automexia::suggestions::SuggestionInvalidation::PaneChanged,
+            );
             self.resize_top_or_bottom_line();
             self.reset_mouse();
             if reason.clears_target_selection() {
@@ -1792,10 +1802,16 @@ impl Screen<'_> {
         if self.handle_image_preview_key(key) {
             return;
         }
+        if self.process_suggestion_host_key(key) {
+            return;
+        }
         if key.state == ElementState::Pressed {
             let _ = self.dismiss_image_preview();
         }
         if self.context_manager.current().ime.preedit().is_some() {
+            self.dismiss_suggestions(
+                crate::automexia::suggestions::SuggestionInvalidation::ImeStarted,
+            );
             return;
         }
 
@@ -5511,6 +5527,9 @@ impl Screen<'_> {
             self.mark_dirty();
         }
         if !is_focused {
+            self.dismiss_suggestions(
+                crate::automexia::suggestions::SuggestionInvalidation::FocusLost,
+            );
             #[cfg(windows)]
             self.consumed_win32_key_releases.clear();
 
@@ -5867,6 +5886,9 @@ impl Screen<'_> {
     }
 
     pub fn open_extension_marketplace(&mut self) {
+        self.dismiss_suggestions(
+            crate::automexia::suggestions::SuggestionInvalidation::ModalOpened,
+        );
         let items = crate::automexia::runtime::market_items();
         self.renderer.command_palette.set_enabled(true);
         self.renderer.command_palette.enter_market_mode(items);
@@ -5874,6 +5896,9 @@ impl Screen<'_> {
     }
 
     pub fn open_font_browser(&mut self) {
+        self.dismiss_suggestions(
+            crate::automexia::suggestions::SuggestionInvalidation::ModalOpened,
+        );
         let fonts = self.sugarloaf.font_family_names();
         self.renderer.command_palette.set_enabled(true);
         self.renderer.command_palette.enter_fonts_mode(fonts);
@@ -5890,6 +5915,7 @@ impl Screen<'_> {
         }
         self.sync_action_surface();
         self.sync_connection_hub();
+        self.sync_suggestions();
 
         let preview_route_id = self.context_manager.current().route_id;
         let completion = self

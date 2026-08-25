@@ -640,6 +640,11 @@ def main() -> int:
             None,
         ),
         (
+            "cp56-source-mutations",
+            [sys.executable, "tools/ci/test_command_productivity_cp56.py"],
+            None,
+        ),
+        (
             "d7-cp6-ecosystem-mutations",
             [sys.executable, "tools/ci/test_ecosystem_d7_cp6.py"],
             None,

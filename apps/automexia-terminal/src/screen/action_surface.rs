@@ -68,6 +68,9 @@ struct State {
 
 impl Screen<'_> {
     pub fn open_action_center(&mut self) {
+        self.dismiss_suggestions(
+            crate::automexia::suggestions::SuggestionInvalidation::ModalOpened,
+        );
         let provider_publication_notice = self.sync_provider_actions_for_current_route();
         self.action_surface.state = State {
             provider_publication_notice,
