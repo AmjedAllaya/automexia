@@ -103,6 +103,8 @@ Run the ledger and workflow mutation contracts directly with:
 ```text
 python tools/ci/check_feature_assurance.py
 python tools/ci/test_feature_assurance.py
+python tools/ci/check_feature_test_reinforcement.py
+python tools/ci/test_feature_test_reinforcement.py
 python tools/ci/check_documentation_coverage.py
 python tools/ci/test_documentation_coverage.py
 python tools/ci/check_phase_implementation_audit.py
@@ -111,6 +113,8 @@ python tools/ci/test_pr_policy.py
 python tools/ci/check_platform_coverage.py
 python tools/ci/test_platform_coverage.py
 ```
+Per-feature reinforcement is canonical in
+[Feature test reinforcement](FEATURE-TEST-REINFORCEMENT.md).
 
 The phase-audit contract also compares the implementation audit with every
 canonical roadmap and the main roadmap's status-first feature register. The
@@ -1975,7 +1979,7 @@ See the [S1 assurance audit](research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AU
 
 The remaining roadmap work is deliberately separate:
 
-- execution and approval of the exact 560-case raster matrix across the four
+- execution and approval of the exact 1,600-case raster matrix across the four
   policy environments, plus retained Windows/Linux/macOS native frames;
 - broader pure-state Proptest/Loom models, longer persisted fuzz campaigns, and
   a separate Automexia-owned coverage baseline;

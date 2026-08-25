@@ -243,6 +243,157 @@ exists, and tests that merely duplicate implementation. Use bounded readiness,
 fixed seeds, explicit fake clocks/processes/filesystems, and invariant assertions.
 Claim only the operating systems and architectures that actually ran natively.
 
+### 7.1 Apply the anti-escape assurance protocol
+
+Tests reduce risk but cannot prove that arbitrary software has no defects. Never
+promise that no issue can escape. Make the strongest bounded claim supported by
+the exact fixtures, environments, artifacts, repetitions, and review that ran.
+Unexecuted native platforms, hardware, accounts, assistive technologies, signing,
+long campaigns, and human review remain explicit gates.
+
+The canonical per-feature reinforcement plan is
+[`docs/FEATURE-TEST-REINFORCEMENT.md`](docs/FEATURE-TEST-REINFORCEMENT.md), and
+its machine-enforced mirror is
+[`tests/assurance/feature-test-reinforcement-v1.json`](tests/assurance/feature-test-reinforcement-v1.json).
+For every behavior, fix, refactor, or dependency change:
+
+1. identify every affected feature-matrix entry and reinforcement-plan section;
+2. update its risk flags, interactions, needed tests, independent oracles,
+   checker reinforcements, evidence owners, and exit criteria;
+3. run the contract checker and its mutation suite;
+4. leave a feature classified as partial or external until every applicable
+   exit criterion has current evidence.
+
+Do not use file names, command labels, mocked return values, test counts, or line
+coverage as substitutes for behavior. Before production editing, create a
+scenario inventory that covers, where applicable:
+
+- zero, one, boundary-minus-one, boundary, boundary-plus-one, large, maximum,
+  over-limit, repeated, fragmented, malformed, cancelled, stale, and concurrent
+  inputs;
+- every state transition, failure transition, retry, disable, rollback,
+  migration, recovery, uninstall, shutdown, and restart;
+- every supported shell, process adapter, platform, architecture, renderer,
+  theme, scale, viewport, input method, credential backend, provider, and
+  protocol variation;
+- all pairwise interactions with overlays, panes, tabs, routes, generations,
+  selection, scrollback, clipboard, IME, resize, focus, and lifecycle ownership;
+- output or data that is shorter than, equal to, and longer than every visible
+  viewport, queue, cache, parser, persistence, and transport boundary.
+
+For each reported regression, first add a test that reproduces the user's real
+path and fails for the observed reason. A synthetic unit test may isolate the
+cause, but it cannot replace the real-path regression. Native shell behavior
+must launch the real supported shell or PTY adapter with exact executable and
+argument arrays; renderer regressions must traverse parser, terminal state,
+visible viewport, layout, draw data, and pixels. Test hooks may freeze clocks,
+motion, accounts, and public fixture data, but may not inject the internal state
+whose production creation is under test.
+
+Every high-risk assertion needs an independent oracle chosen outside the code
+path under test. Depending on the feature, compare:
+
+- exact bytes, typed state, protocol frames, grid cells, accessibility events,
+  persisted round trips, process trees, handles, files, network attempts,
+  capability decisions, redacted logs, or final artifact identities;
+- forbidden side effects as well as intended effects, including no PTY input,
+  implicit Enter, shell evaluation, secret persistence, global configuration
+  mutation, stale publication, orphan process, leaked handle, or unexpected
+  network access;
+- a second implementation, reference parser, metamorphic relation, model, or
+  pre-change characterization when an exact expected value is impractical.
+
+Visible changes require three distinct layers:
+
+1. renderer-neutral geometry, hierarchy, focus, semantic, clipping, z-order,
+   contrast, and reduced-motion assertions;
+2. deterministic controlled raster goldens using exact RGBA comparison;
+3. native frames and accessibility tree/event evidence on each claimed
+   OS/display/renderer environment.
+
+The repository's deterministic visual policy has zero channel tolerance, zero
+changed-pixel ratio, and no default masks. A change to one channel in one pixel
+must fail with the first changed coordinate, changed bounds, counts, and diff
+artifact. Do not hide nondeterminism with a broad tolerance. Instead freeze the
+source, use environment-specific baselines, or classify the native comparison as
+separate human-reviewed evidence. Any intentional pixel change requires a
+reviewed baseline update tied to the feature and exact environment. Exercise
+tiny through 8K viewports, 100–300% scale, light/dark/high-contrast themes, long
+and localized text, Unicode/combining/bidi input, empty/loading/error states,
+keyboard/pointer/IME use, focus restoration, modal stacking, and animation both
+enabled and reduced.
+
+Accessibility assurance must test role, name, value, state, relationships, focus
+order, focus restoration, live announcements, keyboard-only operation,
+pointer-target behavior, high contrast, reduced motion, and 200%/400% text or
+scale as applicable. Automated tree/event checks are necessary but do not replace
+current Narrator and NVDA evidence on Windows, VoiceOver on macOS, and Orca on
+X11/Wayland for any release claim covering those environments.
+
+Security and parser boundaries require table-driven negative cases, property
+tests, coverage-guided fuzzing, duplicate-key tests, size/depth/count ceilings,
+Unicode/control/bidi cases, path traversal and link cases, cancellation,
+timeouts, redaction canaries, and exact capability/argv/environment assertions.
+Seed corpora must include every historical failure. A passing fuzz smoke test
+proves only that campaign; record engine, seed, corpus digest, duration,
+executions, sanitizer, target, platform, and discovered/replayed crashes.
+
+Concurrency tests must use deterministic models or controlled schedulers for
+publish-before-wake, cancellation, saturation, stale generation rejection,
+disconnect, restart, and shutdown. Then add repeated native stress for real
+PTY/process/window behavior. Arbitrary sleeps, retry-until-pass, and timing-only
+assertions are invalid evidence. Preserve and investigate the first failure of a
+flaky run.
+
+Persistence tests must cover canonical round trip, every supported predecessor,
+corruption, truncation, duplicate keys, read-only/disk-full/interrupted writes,
+atomic replacement, permissions, concurrent readers/writers, rollback, disable,
+uninstall, and restart. Compare storage trees and digests before and after while
+redacting private content.
+
+Performance and resource evidence must measure the real owning path with
+same-host baselines and noise-aware thresholds. Include latency distributions,
+throughput, allocations, CPU, memory, GPU memory where observable, handles,
+threads, child processes, queue/cache/storage growth, long-session stability,
+cancellation, and final cleanup. Benchmark shortcuts or isolated helpers do not
+prove interactive latency. A late performance fix requires rerunning correctness,
+resource, and visual gates affected by it.
+
+Checker and test infrastructure are production assurance code. Each checker
+must have mutation tests proving that deletion, weakening, reordering,
+duplication, stale paths, count adjustment, threshold relaxation, mask addition,
+missing platform scope, and fabricated evidence fail closed. A checker must
+validate semantic scenarios and required owners, not merely file existence,
+non-empty arrays, self-reported counts, or matching prose. Test the test fixture
+by introducing the smallest fault it is supposed to detect.
+
+For a feature to move to fully implemented, re-audit the complete path and
+record:
+
+- focused unit/integration/property/fuzz/model results;
+- real native workflow results for every platform being claimed;
+- exact visual and accessibility results for visible behavior;
+- performance/resource/storage measurements and cleanup;
+- security, negative, rollback, disable, and recovery evidence;
+- packaged-artifact identity and external prerequisites;
+- checker mutation results and the exact commit under test.
+
+Run these repository-owned reinforcement gates before the broader evidence
+ladder:
+
+```text
+python tools/ci/check_feature_test_reinforcement.py
+python tools/ci/test_feature_test_reinforcement.py
+python tools/ci/s1_assurance.py check-policy
+python tools/ci/test_s1_assurance.py
+python tools/ci/validate_repository.py
+```
+
+A narrow pass cannot override a known real-workflow failure. If source, tests,
+documentation, and observed behavior disagree, mark the feature partial, preserve
+the failing reproduction, fix the owning path, and rerun every affected layer
+before claiming completion.
+
 ### 8. Implement in small coherent increments
 
 - Make the smallest production change for the next failing test.
@@ -416,6 +567,8 @@ durations, and evidence actually exercised.
 - [ ] Current primary-source research and build/wrap/adopt analysis completed.
 - [ ] Architecture, trust, lifecycle, failure, UX, platform, and rollback plan written.
 - [ ] Deterministic failing tests and limits defined before production changes.
+- [ ] Affected reinforcement entries, scenario classes, interactions, independent oracles, and exit criteria updated.
+- [ ] Real-path, one-pixel, negative-side-effect, checker-mutation, and native/platform evidence completed or explicitly external.
 - [ ] Small coherent implementation preserves hot paths and unrelated work.
 - [ ] Focused, domain, security, performance/resource, native, visual, and full gates run as applicable.
 - [ ] Results re-audited; failures fixed and affected checks rerun.

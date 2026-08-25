@@ -129,12 +129,16 @@ controlled release regression claim still requires the repository baseline.
 
 ## Remaining gates
 
-The command-result source contract is **Fully done** in the UI roadmap. Fish
-uses prompt/preexec/postexec events for an identified lifecycle. CMD closes the
-previous command with a bare `D` before its next prompt and intentionally draws
-a neutral group because generic status and duration are unavailable; it does
-not fabricate either value. Unintegrated or unsupported shells still fail
-closed.
+The command-result source contract is **Partially done** in the UI roadmap.
+Existing Fish prompt/preexec/postexec, CMD neutral-close, PowerShell, and short
+WSL fixtures pass their bounded cases. A real gap remains when output exceeds
+the visible viewport: the originating prompt row can enter scrollback while the
+renderer scans only visible rows, which can leave commands such as GNU/WSL
+`ls -ll` without a result surface. Completion requires a failing real
+parser-to-scrollback-to-visible-render regression at viewport-minus-one,
+viewport, viewport-plus-one, large, and storm heights, followed by the ownership
+fix and rerun of native shell, exact-pixel, accessibility, resource, and
+benchmark evidence. Unintegrated or unsupported shells still fail closed.
 
 This local evidence does not justify a universal native-platform claim. Native
 Linux/macOS GUI frames, the complete theme/high-contrast matrix, and

@@ -35,7 +35,7 @@ assurance, and project pages own future work and decision history.
 | Look up every config key/default | [Configuration reference](reference/configuration.md) |
 | Understand the technical design | [Architecture overview](developer/architecture.md), [detailed architecture contract](ARCHITECTURE.md) |
 | Review the proposed embedded script editor and DevOps/SRE extension design | [Automation Studio architecture](AUTOMATION-STUDIO-ARCHITECTURE.md), [testing and evidence contract](AUTOMATION-STUDIO-TESTING.md), [proposed ADR 0030](adr/0030-automation-studio-domain-extension-boundary.md) |
-| Run verification or understand release gates | [Testing overview](developer/testing-release.md), [complete testing and evidence contract](TESTING.md) |
+| Run verification or understand release gates | [Testing overview](developer/testing-release.md), [complete testing and evidence contract](TESTING.md), [per-feature reinforcement plan](FEATURE-TEST-REINFORCEMENT.md) |
 | Audit completed-output grouping and its validation incident | [Command-result surface assurance](COMMAND-RESULT-ASSURANCE.md) |
 | Configure or audit controlled F5 native OpenSSH evidence | [F5 native OpenSSH assurance](F5-NATIVE-OPENSSH-ASSURANCE.md) |
 | Audit or restore hosted CI and repository protection | [Repository protection guide](../.github/BRANCH-PROTECTION.md), [ADR 0031](adr/0031-versioned-hosted-ci-and-repository-protection.md) |

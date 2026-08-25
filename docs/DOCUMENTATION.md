@@ -47,6 +47,10 @@ the claim.
   in `docs/research/D7-CP6-IMPLEMENTATION-AUDIT.md`; detailed evidence commands
   and the future matrix live in `docs/ECOSYSTEM-PLATFORM-TESTING.md`.
 - `docs/TESTING.md` owns evidence levels and commands.
+- `docs/FEATURE-TEST-REINFORCEMENT.md` owns the human per-feature scenario,
+  oracle, interaction, checker, and exit-criteria plan synchronized with
+  `tests/assurance/feature-test-reinforcement-v1.json`; both must change when
+  feature risks or required evidence change.
 - `docs/ROADMAP.md` owns release sequencing and the status-first feature/phase
   register.
 - `docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md` owns the ordered focused

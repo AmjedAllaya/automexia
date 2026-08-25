@@ -32,6 +32,88 @@ COMMIT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 SAFE_METADATA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+() /:-]{0,191}$")
 DOMAINS = {"native", "resource", "visual", "accessibility"}
+REQUIRED_NATIVE_SCENARIOS = {
+    "startup-prompt",
+    "multiple-panes-tabs",
+    "unicode-path",
+    "output-burst",
+    "history-navigation",
+    "minimize-restore",
+    "scale-change",
+    "tiny-viewport",
+    "large-viewport",
+    "final-grid-invariants",
+    "route-recovery",
+    "command-shape-matrix",
+    "command-result-height-boundaries",
+    "command-result-viewport-overflow",
+    "modal-interaction-matrix",
+    "clipboard-ime-pointer",
+}
+REQUIRED_RESOURCE_SCENARIOS = {
+    "tab-split-clone-close",
+    "resize-storm",
+    "process-tree-cleanup",
+    "handle-thread-stability",
+    "private-working-set-stability",
+    "pty-route-snapshot-gpu-release",
+    "scoped-search-switching",
+    "connection-hub-open-close",
+    "quick-actions-cancel",
+    "image-preview-lifecycle",
+    "long-output-storm",
+}
+REQUIRED_VISUAL_THEMES = {"dark", "light"}
+REQUIRED_VISUAL_SCALES = {"1.0", "1.25", "1.5", "2.0", "3.0"}
+REQUIRED_VISUAL_VIEWPORTS = {
+    "300x200",
+    "compact",
+    "normal",
+    "portrait",
+    "ultrawide",
+    "split",
+    "4k",
+    "8k",
+}
+REQUIRED_VISUAL_SURFACES = {
+    "startup-welcome",
+    "tabs-and-panes",
+    "window-controls",
+    "command-palette",
+    "scoped-search-local",
+    "scoped-search-global",
+    "connection-hub-catalog",
+    "connection-hub-review",
+    "quick-actions",
+    "compatibility-inspector",
+    "confirmation-dialogs",
+    "file-listing",
+    "command-result-short",
+    "command-result-multiline",
+    "command-result-viewport-overflow",
+    "image-preview",
+    "context-identity",
+    "path",
+    "footer",
+    "smallest-pane",
+}
+REQUIRED_ACCESSIBILITY_TASKS = {
+    "launch",
+    "identify-tabs-active-pane",
+    "open-filter-activate-dismiss-palette",
+    "split-select-close",
+    "keyboard-only",
+    "focus-order-restoration",
+    "200-percent-scale",
+    "known-limitations-confirmed",
+    "switch-scoped-search",
+    "connection-hub-navigation",
+    "quick-actions-navigation",
+    "modal-stack-focus",
+    "window-controls",
+    "command-result-announcement",
+    "reduced-motion-high-contrast",
+}
 
 POLICY_KEYS = {
     "schema",
@@ -320,16 +402,45 @@ def validate_policy(policy: dict[str, Any]) -> dict[str, Any]:
         _identifier(suite["artifact_kind"], "S1 artifact kind")
         if not isinstance(suite["coverage"], dict) or not suite["coverage"]:
             raise S1AssuranceError("S1 suite coverage must be a non-empty object")
-        if suite["domain"] == "visual":
-            coverage = suite["coverage"]
-            expected = (
-                len(coverage.get("themes", []))
-                * len(coverage.get("scales", []))
-                * len(coverage.get("viewports", []))
-                * len(coverage.get("surfaces", []))
+        coverage = suite["coverage"]
+        if suite["domain"] == "native":
+            scenarios = set(
+                _unique_strings(coverage.get("scenarios"), f"{suite_id} scenarios")
             )
+            if not REQUIRED_NATIVE_SCENARIOS.issubset(scenarios):
+                raise S1AssuranceError(f"{suite_id} omits a required native scenario")
+        elif suite["domain"] == "resource" and suite["tool"] == "native-resource":
+            scenarios = set(
+                _unique_strings(coverage.get("scenarios"), f"{suite_id} scenarios")
+            )
+            if not REQUIRED_RESOURCE_SCENARIOS.issubset(scenarios):
+                raise S1AssuranceError(f"{suite_id} omits a required resource scenario")
+        elif suite["domain"] == "visual":
+            themes = set(_unique_strings(coverage.get("themes"), f"{suite_id} themes"))
+            scales = set(_unique_strings(coverage.get("scales"), f"{suite_id} scales"))
+            viewports = set(
+                _unique_strings(coverage.get("viewports"), f"{suite_id} viewports")
+            )
+            surfaces = set(
+                _unique_strings(coverage.get("surfaces"), f"{suite_id} surfaces")
+            )
+            if not REQUIRED_VISUAL_THEMES.issubset(themes):
+                raise S1AssuranceError(f"{suite_id} omits a required visual theme")
+            if not REQUIRED_VISUAL_SCALES.issubset(scales):
+                raise S1AssuranceError(f"{suite_id} omits a required visual scale")
+            if not REQUIRED_VISUAL_VIEWPORTS.issubset(viewports):
+                raise S1AssuranceError(f"{suite_id} omits a required visual viewport")
+            if not REQUIRED_VISUAL_SURFACES.issubset(surfaces):
+                raise S1AssuranceError(f"{suite_id} omits a required visual surface")
+            expected = len(themes) * len(scales) * len(viewports) * len(surfaces)
             if coverage.get("cross_product_complete") is not True or coverage.get("capture_count") != expected:
                 raise S1AssuranceError("visual coverage must declare the complete matrix cross product")
+        elif suite["domain"] == "accessibility":
+            tasks = set(_unique_strings(coverage.get("tasks"), f"{suite_id} tasks"))
+            if not REQUIRED_ACCESSIBILITY_TASKS.issubset(tasks):
+                raise S1AssuranceError(
+                    f"{suite_id} omits a required accessibility task"
+                )
     if not {"narrator", "nvda", "voiceover", "orca-x11", "orca-wayland"}.issubset(tools):
         raise S1AssuranceError("S1 assistive-technology matrix is incomplete")
     if not {"application-verifier", "wpr", "visual-diff", "native-gui"}.issubset(tools):

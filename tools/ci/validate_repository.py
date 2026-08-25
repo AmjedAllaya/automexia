@@ -56,6 +56,9 @@ from check_documentation_coverage import validate as validate_documentation_cove
 from check_documentation_hygiene import validate as validate_documentation_hygiene
 from check_devops_alias_spec import validate_repository as validate_devops_alias_spec
 from check_feature_assurance import load_and_validate as validate_feature_assurance
+from check_feature_test_reinforcement import (
+    load_and_validate as validate_feature_test_reinforcement,
+)
 from check_phase_implementation_audit import validate as validate_phase_audit
 from check_repository_aligned_docs import validate as validate_repository_aligned_docs
 from check_platform_coverage import validate_repository_workflows
@@ -317,6 +320,9 @@ def validate() -> None:
 
     feature_counts = validate_feature_assurance()
     counts["feature assurance entries"] = feature_counts["features"]
+    reinforcement_counts = validate_feature_test_reinforcement()
+    counts["feature reinforcement entries"] = reinforcement_counts["features"]
+    counts["feature reinforcement scenarios"] = reinforcement_counts["needed_tests"]
 
     documentation_counts = validate_documentation_coverage()
     counts["documented source entries"] = sum(

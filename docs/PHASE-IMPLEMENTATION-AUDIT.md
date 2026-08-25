@@ -257,11 +257,11 @@ hit-target/modal/cursor/footer/path/pane invariants, narrow-to-8K layout cases,
 and a topmost Windows client capture that waits for presentation, rejects
 blank/single-color output, restores z-order, and excludes live frames from
 portable QA. The repository-owned comparator now bounds encoded/decoded size,
-dimensions, masks, output, and memory; applies the reviewed 2-channel/0.1%
-policy; and atomically writes a non-color-dependent JSON verdict plus heatmap.
+dimensions, output, and memory; rejects one changed channel in one pixel with
+no default masks; and atomically writes an exact JSON verdict plus heatmap.
 The exact test-only `s1-standard-v1` fixture freezes public content, clock, and
-motion, while the versioned policy enumerates 560 theme/scale/viewport/surface
-cases and requires independent HTTPS human review.
+motion, while the versioned policy enumerates 1,600 cases per visual suite
+and requires independent HTTPS human review.
 
 Missing or external: approved expected/actual/diff golden matrices across
 viewport/theme/font/scale/UI states, Linux/macOS native frames, and recorded
