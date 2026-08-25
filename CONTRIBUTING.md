@@ -113,6 +113,17 @@ workflow jobs, documentation categories, and evidence paths. Image decoder,
 preview, renderer, or graphics-protocol changes must additionally
 run `cargo xtask test image-rendering`; Windows rendering/lifecycle changes run
 `cargo xtask test image-rendering --native-gui` before review.
+Every changed feature must also update its entry in
+`tests/assurance/feature-test-reinforcement-v1.json` and the matching section
+in `docs/FEATURE-TEST-REINFORCEMENT.md`. The entry owns scenario boundaries,
+real-path tests, independent oracles, cross-feature interactions, checker
+mutations, native/platform scope, and exit criteria. Run:
+
+```text
+python tools/ci/check_feature_test_reinforcement.py
+python tools/ci/test_feature_test_reinforcement.py
+```
+
 
 ## Reviews and merging
 

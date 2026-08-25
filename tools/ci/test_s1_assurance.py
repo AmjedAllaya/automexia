@@ -178,6 +178,12 @@ class S1AssuranceTests(unittest.TestCase):
         with self.assertRaises(S1.S1AssuranceError):
             self.validate(document)
 
+    def reject_policy(self, mutate) -> None:
+        policy = copy.deepcopy(S1.load_policy())
+        mutate(policy)
+        with self.assertRaises(S1.S1AssuranceError):
+            S1.validate_policy(policy)
+
     def test_complete_matrix_is_bound_to_policy_commit_and_review(self) -> None:
         document = valid_manifest()
         result = self.validate(
@@ -188,6 +194,46 @@ class S1AssuranceTests(unittest.TestCase):
         self.assertEqual(result["status"], "pass")
         self.assertEqual(result["suite_count"], len(S1.load_policy()["required_suites"]))
         self.assertEqual(result["missing_suites"], [])
+
+    def test_policy_freezes_required_scenarios_surfaces_and_tasks(self) -> None:
+        def remove_native(policy) -> None:
+            suite = next(item for item in policy["required_suites"] if item["domain"] == "native")
+            suite["coverage"]["scenarios"].remove("command-result-viewport-overflow")
+
+        def remove_resource(policy) -> None:
+            suite = next(
+                item
+                for item in policy["required_suites"]
+                if item["tool"] == "native-resource"
+            )
+            suite["coverage"]["scenarios"].remove("long-output-storm")
+
+        def remove_visual(policy) -> None:
+            suite = next(item for item in policy["required_suites"] if item["domain"] == "visual")
+            suite["coverage"]["surfaces"].remove("command-result-viewport-overflow")
+            suite["coverage"]["capture_count"] = (
+                len(suite["coverage"]["themes"])
+                * len(suite["coverage"]["scales"])
+                * len(suite["coverage"]["viewports"])
+                * len(suite["coverage"]["surfaces"])
+            )
+
+        def remove_accessibility(policy) -> None:
+            suite = next(
+                item
+                for item in policy["required_suites"]
+                if item["domain"] == "accessibility"
+            )
+            suite["coverage"]["tasks"].remove("command-result-announcement")
+
+        for mutation in (
+            remove_native,
+            remove_resource,
+            remove_visual,
+            remove_accessibility,
+        ):
+            with self.subTest(mutation=mutation.__name__):
+                self.reject_policy(mutation)
 
     def test_missing_suite_is_external_until_release_requires_complete(self) -> None:
         document = valid_manifest()

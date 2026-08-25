@@ -41,7 +41,10 @@ struct VisualDiffReport {
     compared_pixels: u64,
     masked_pixels: u64,
     changed_pixels: u64,
+    changed_channels: u64,
     changed_pixel_ratio: f64,
+    first_changed_pixel: Option<[u32; 2]>,
+    changed_bounds: Option<[u32; 4]>,
     max_observed_channel_delta: u8,
     max_channel_delta: u8,
     max_changed_pixel_ratio: f64,
@@ -297,6 +300,12 @@ fn compare(
     let mut compared_pixels = 0_u64;
     let mut masked_pixels = 0_u64;
     let mut changed_pixels = 0_u64;
+    let mut changed_channels = 0_u64;
+    let mut first_changed_pixel = None;
+    let mut minimum_changed_x = width;
+    let mut minimum_changed_y = height;
+    let mut maximum_changed_x = 0_u32;
+    let mut maximum_changed_y = 0_u32;
     let mut max_observed_channel_delta = 0_u8;
 
     for y in 0..height {
@@ -325,6 +334,18 @@ fn compare(
             max_observed_channel_delta = max_observed_channel_delta.max(delta);
             if delta > config.max_channel_delta {
                 changed_pixels += 1;
+                changed_channels += expected_pixel
+                    .iter()
+                    .zip(actual_pixel)
+                    .filter(|(left, right)| {
+                        (**left).abs_diff(**right) > config.max_channel_delta
+                    })
+                    .count() as u64;
+                first_changed_pixel.get_or_insert([x, y]);
+                minimum_changed_x = minimum_changed_x.min(x);
+                minimum_changed_y = minimum_changed_y.min(y);
+                maximum_changed_x = maximum_changed_x.max(x);
+                maximum_changed_y = maximum_changed_y.max(y);
                 diff_bytes[offset..offset + 4].copy_from_slice(&[255, 32, 64, 255]);
             } else {
                 let gray = ((u16::from(expected_pixel[0])
@@ -339,6 +360,16 @@ fn compare(
         return Err("visual-diff masks cannot cover every pixel".into());
     }
     let changed_pixel_ratio = changed_pixels as f64 / compared_pixels as f64;
+    let changed_bounds = if changed_pixels > 0 {
+        Some([
+            minimum_changed_x,
+            minimum_changed_y,
+            maximum_changed_x - minimum_changed_x + 1,
+            maximum_changed_y - minimum_changed_y + 1,
+        ])
+    } else {
+        None
+    };
     let status = if changed_pixel_ratio <= config.max_changed_pixel_ratio {
         "passed"
     } else {
@@ -355,7 +386,10 @@ fn compare(
             compared_pixels,
             masked_pixels,
             changed_pixels,
+            changed_channels,
             changed_pixel_ratio,
+            first_changed_pixel,
+            changed_bounds,
             max_observed_channel_delta,
             max_channel_delta: config.max_channel_delta,
             max_changed_pixel_ratio: config.max_changed_pixel_ratio,
@@ -501,9 +535,34 @@ mod tests {
             .join("../../tests/assurance/visual-diff-policy-v1.json");
         let config = load_config(&path.canonicalize().unwrap()).unwrap();
         assert_eq!(config.schema, 1);
-        assert_eq!(config.max_channel_delta, 2);
-        assert_eq!(config.max_changed_pixel_ratio, 0.001);
+        assert_eq!(config.max_channel_delta, 0);
+        assert_eq!(config.max_changed_pixel_ratio, 0.0);
         assert!(config.masks.is_empty());
+    }
+
+    #[test]
+    fn repository_policy_rejects_one_changed_channel_in_one_pixel() {
+        let directory = tempfile::tempdir().unwrap();
+        let expected = directory.path().join("expected.png");
+        let actual = directory.path().join("actual.png");
+        let pixels = [[10, 20, 30, 255]; 4];
+        image(&expected, &pixels);
+        let mut changed = pixels;
+        changed[2] = [10, 21, 30, 255];
+        image(&actual, &changed);
+        let policy = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/assurance/visual-diff-policy-v1.json")
+            .canonicalize()
+            .unwrap();
+
+        let comparison =
+            compare(&expected, &actual, &load_config(&policy).unwrap()).unwrap();
+
+        assert_eq!(comparison.report.status, "failed");
+        assert_eq!(comparison.report.changed_pixels, 1);
+        assert_eq!(comparison.report.changed_channels, 1);
+        assert_eq!(comparison.report.first_changed_pixel, Some([0, 1]));
+        assert_eq!(comparison.report.changed_bounds, Some([0, 1, 1, 1]));
     }
 
     #[test]

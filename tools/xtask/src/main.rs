@@ -1265,6 +1265,24 @@ fn verify_phase_zero_assurance() -> TaskResult {
         "CI/release workflows do not preserve Linux shader prerequisites, QA self-tests, pinned Nextest/JUnit, Cargo doctests, and Loom coverage",
     )?;
 
+    let repository_validator = read(&root().join("tools/ci/validate_repository.py"))?;
+    require(
+        qa.contains("feature-test-reinforcement-mutations")
+            && ci.contains("python tools/ci/check_feature_test_reinforcement.py")
+            && ci.contains("python tools/ci/test_feature_test_reinforcement.py")
+            && repository_validator.contains("validate_feature_test_reinforcement")
+            && root()
+                .join("tests/assurance/feature-test-reinforcement-v1.json")
+                .is_file()
+            && root()
+                .join("tools/ci/check_feature_test_reinforcement.py")
+                .is_file()
+            && root()
+                .join("tools/ci/test_feature_test_reinforcement.py")
+                .is_file(),
+        "Feature test reinforcement is not enforced by repository, QA, and hosted CI gates",
+    )?;
+
     let performance_assurance = read(&root().join("tools/ci/performance_assurance.py"))?;
     let performance_tests = read(&root().join("tools/ci/test_performance_assurance.py"))?;
     let performance_policy =
@@ -1311,8 +1329,10 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && s2_workflow.contains("retention-days: 90")
             && visual_diff.contains("MAX_PIXELS: u64 = 40_000_000")
             && visual_diff.contains("MAX_MASKS: usize = 32")
-            && visual_policy.contains("\"max_channel_delta\": 2")
-            && visual_policy.contains("\"max_changed_pixel_ratio\": 0.001"),
+            && visual_policy.contains("\"max_channel_delta\": 0")
+            && visual_policy.contains("\"max_changed_pixel_ratio\": 0.0")
+            && visual_policy.contains("\"masks\": []")
+            && visual_diff.contains("repository_policy_rejects_one_changed_channel_in_one_pixel"),
         "S1/S2 visual, benchmark, source binding, baseline review, waiver, nightly, activation, or fail-closed release assurance drifted",
     )?;
 

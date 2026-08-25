@@ -99,6 +99,8 @@ jobs:
         run: |
           python tools/ci/check_feature_assurance.py
           python tools/ci/test_feature_assurance.py
+          python tools/ci/check_feature_test_reinforcement.py
+          python tools/ci/test_feature_test_reinforcement.py
       - name: Documentation source-registry coverage tests
         run: |
           python tools/ci/check_documentation_coverage.py

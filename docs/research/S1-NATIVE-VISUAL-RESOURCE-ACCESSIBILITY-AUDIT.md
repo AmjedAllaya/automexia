@@ -29,7 +29,7 @@ is collected. Those are external prerequisites, not missing repository code.
 | Application Verifier | Partially implemented | **Fully implemented as source.** Exact-target refusal, elevation, Basics, separately bounded `/faults` low-resource phase, 64 MiB log limit, failure detection, redaction, distinct reports, and `finally` cleanup are enforced. | An elevated clean run with private reviewed XML on a controlled Windows host. |
 | WPR | Fully implemented as a wrapper | Preserved: exact binary, elevation, trace ceiling, private ETL, redacted manifest, cancellation, and optional ETL deletion. | Elevated threshold/manual trace and review. |
 | Deterministic visual hooks | Not implemented | **Fully implemented.** Exact fixture `s1-standard-v1` freezes the clock at `12:34`, disables animation, injects fixed public DevOps facts, uses existing readiness/capture hooks, and is absent without an opt-in feature. | None for source; matrix captures remain external. |
-| Visual matrices and review | Partially implemented | **Fully specified and enforced.** Four platform/display suites each require the exact 560-capture theme/scale/viewport/surface cross product and independent HTTPS-linked review. | Actual approved captures for Windows, Linux X11/Wayland, and macOS. |
+| Visual matrices and review | Partially implemented | **Fully specified and enforced.** Four platform/display suites each require the exact 1,600-capture theme/scale/viewport/surface cross product, one-channel/one-pixel rejection, and independent HTTPS-linked review. | Actual approved captures for Windows, Linux X11/Wayland, and macOS. |
 | Accessibility baseline | Partially implemented | **Fully implemented at the v0.4 source boundary.** Keyboard/focus/contrast/scale/reduced-motion contracts and limitations remain; the S1 policy requires Narrator, NVDA, VoiceOver, and Orca on both X11 and Wayland with independent review. | Controlled assistive-technology sessions. The full native semantic tree remains deliberately deferred to v0.5 ADR 0013. |
 | One release evidence authority | Not implemented | **Fully implemented.** A bounded schema validates exact environments, suites, coverage, tools, artifacts, privacy, freshness, clean commit binding, redaction canaries, and review independence. Missing evidence is `external` in local QA and fatal under `--require-complete`. | Populate the private controlled-runner manifest. |
 | Release enforcement | Not implemented | **Fully implemented.** Manual controlled assurance and stable-tag workflows validate policy/mutations and require a complete current-commit manifest before preflight. | Configure the controlled runner and private evidence path. |
@@ -71,7 +71,7 @@ The versioned policy requires 24 suites over eight environments:
 - resources: Windows Intel/AMD/NVIDIA/RDP, Linux X11/Wayland, Application
   Verifier Basics, separate low-resource injection, and redacted WPR summary;
 - visuals: Windows, Linux X11, Linux Wayland, and macOS, each with dark/light,
-  100/125/150/200/300% scale, eight viewport classes, and seven surfaces;
+  100/125/150/200/300% scale, eight viewport classes, and 20 named surfaces;
 - accessibility: Windows Narrator, Windows NVDA, macOS VoiceOver, Linux X11
   Orca, and Linux Wayland Orca.
 
@@ -81,12 +81,12 @@ suites require independent review. The stable-tag workflow uses
 
 ## Tests-first evidence
 
-`tools/ci/test_s1_assurance.py` owns ten mutation groups covering:
+`tools/ci/test_s1_assurance.py` owns eleven mutation groups covering:
 
 - policy/commit/review binding and missing-suite behavior;
 - failed, duplicate, unexpected, stale, future, oversized, and synthetic data;
 - exact environment capabilities and coverage;
-- the 560-capture visual cross product and independent review;
+- the 1,600-capture visual cross product, one-pixel policy, and independent review;
 - Narrator/NVDA/VoiceOver/Orca requirements;
 - privacy, redaction, artifact, symlink, duplicate-key, and clean-worktree rules;
 - deterministic visual fixture and separate AppVerifier low-resource source

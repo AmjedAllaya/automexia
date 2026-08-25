@@ -601,6 +601,11 @@ def main() -> int:
     commands: list[tuple[str, list[str], dict[str, str] | None]] = [
         ("qa-runner-self-tests", [sys.executable, "tools/ci/test_qa.py"], None),
         (
+            "feature-test-reinforcement-mutations",
+            [sys.executable, "tools/ci/test_feature_test_reinforcement.py"],
+            None,
+        ),
+        (
             "s1-assurance-policy",
             [sys.executable, "tools/ci/s1_assurance.py", "check-policy"],
             None,
