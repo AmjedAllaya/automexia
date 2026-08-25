@@ -3,6 +3,8 @@
 mod controller;
 mod direct_openssh;
 mod library;
+mod provider_transients;
+mod providers;
 mod receipts;
 mod runtime;
 mod workspaces;
@@ -23,6 +25,15 @@ pub use library::{
     MAX_CONNECTION_LIBRARY_BYTES,
 };
 
+pub use provider_transients::{
+    ProviderTransientBinding, ProviderTransientError, ProviderTransientErrorCode,
+    ProviderTransientHandle, ProviderTransientManager, MAX_PROVIDER_TRANSIENTS,
+    MAX_PROVIDER_TRANSIENT_AGE,
+};
+pub use providers::{
+    ProviderProductError, ProviderProductErrorCode, ProviderProductSnapshot,
+    MAX_PRODUCT_PROVIDERS, MAX_PROVIDER_SCOPE_SUMMARY_BYTES, PROVIDER_ACTIVATION_BLOCKER,
+};
 pub use receipts::{
     ManagedReceiptDocument, ManagedReceiptError, ManagedReceiptErrorCode,
     ManagedReceiptLoadOrigin, ManagedReceiptLoadResult, ManagedReceiptPersistenceState,

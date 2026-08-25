@@ -12,7 +12,8 @@ use automexia_devops::connections::{
     DirectOpenSshPreparation, DirectOpenSshReview, DirectOpenSshTunnelConfirmation,
     DirectOpenSshTunnelDescriptor, DirectOpenSshTunnelLifecycle, DirectOpenSshTunnelPlan,
     DirectOpenSshTunnelState, EnvironmentRisk, ExecutionStage, HostTrustState,
-    ProviderKind, ResolvedConnectionPlan, StaleAuthState, TunnelKind, WorkspaceIntentV1,
+    ProviderContextFreshness, ProviderKind, ProviderRecoveryAction,
+    ResolvedConnectionPlan, StaleAuthState, TunnelKind, WorkspaceIntentV1,
     WorkspaceRestorePlan,
 };
 use serde::{Deserialize, Serialize};
@@ -162,6 +163,8 @@ pub enum HubRoute {
     RecipePlanner,
     Workspaces,
     WorkspaceReview,
+    Providers,
+    ProviderReview,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -179,6 +182,7 @@ pub enum HubFocus {
     Review,
     Planner,
     WorkspaceList,
+    ProviderList,
     PrimaryAction,
     Close,
     ErrorSummary,
@@ -1165,6 +1169,12 @@ pub fn apply_hub_key(state: &mut InteractionState, key: HubKey) -> InteractionEf
                 (HubRoute::WorkspaceReview, HubFocus::Review) => HubFocus::PrimaryAction,
                 (HubRoute::WorkspaceReview, HubFocus::PrimaryAction) => HubFocus::Close,
                 (HubRoute::WorkspaceReview, _) => HubFocus::Back,
+                (HubRoute::Providers, HubFocus::ProviderList) => HubFocus::Close,
+                (HubRoute::Providers, _) => HubFocus::ProviderList,
+                (HubRoute::ProviderReview, HubFocus::Back) => HubFocus::Review,
+                (HubRoute::ProviderReview, HubFocus::Review) => HubFocus::PrimaryAction,
+                (HubRoute::ProviderReview, HubFocus::PrimaryAction) => HubFocus::Close,
+                (HubRoute::ProviderReview, _) => HubFocus::Back,
             };
             InteractionEffect::FocusChanged(state.focus.clone())
         }
@@ -1186,6 +1196,12 @@ pub fn apply_hub_key(state: &mut InteractionState, key: HubKey) -> InteractionEf
                 (HubRoute::WorkspaceReview, HubFocus::PrimaryAction) => HubFocus::Review,
                 (HubRoute::WorkspaceReview, HubFocus::Back) => HubFocus::Close,
                 (HubRoute::WorkspaceReview, _) => HubFocus::PrimaryAction,
+                (HubRoute::Providers, HubFocus::ProviderList) => HubFocus::Close,
+                (HubRoute::Providers, _) => HubFocus::ProviderList,
+                (HubRoute::ProviderReview, HubFocus::Review) => HubFocus::Back,
+                (HubRoute::ProviderReview, HubFocus::PrimaryAction) => HubFocus::Review,
+                (HubRoute::ProviderReview, HubFocus::Back) => HubFocus::Close,
+                (HubRoute::ProviderReview, _) => HubFocus::PrimaryAction,
             };
             InteractionEffect::FocusChanged(state.focus.clone())
         }
@@ -1902,6 +1918,282 @@ pub enum SemanticTone {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct ProviderCatalogItem {
+    pub provider: ProviderKind,
+    pub extension_id: String,
+    pub executable_id: String,
+    pub public_identity: Option<String>,
+    pub scope_summary: String,
+    pub source_revision: Option<String>,
+    pub freshness: ProviderContextFreshness,
+    pub auth_state: AuthState,
+    pub recovery_action: ProviderRecoveryAction,
+    pub risk: EnvironmentRisk,
+    pub configured: bool,
+    pub activation_blocker: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderCatalogRowView {
+    pub provider: ProviderKind,
+    pub provider_label: String,
+    pub semantic_icon: String,
+    pub public_identity: String,
+    pub scope_summary: String,
+    pub freshness_label: String,
+    pub auth_label: String,
+    pub recovery_label: String,
+    pub risk_label: String,
+    pub configured: bool,
+    pub selected: bool,
+    pub tone: SemanticTone,
+    pub accessibility_label: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderCatalogView {
+    pub layout: HubLayout,
+    pub total_providers: usize,
+    pub visible_range: Range<usize>,
+    pub rows: Vec<ProviderCatalogRowView>,
+    pub execution_enabled: bool,
+    pub pty_input_requested: bool,
+    pub accessibility_tree: Vec<AccessibilityNode>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderReviewView {
+    pub layout: HubLayout,
+    pub title: String,
+    pub semantic_icon: String,
+    pub tone: SemanticTone,
+    pub identity: String,
+    pub scope_summary: String,
+    pub source_summary: String,
+    pub executable_id: String,
+    pub freshness_label: String,
+    pub auth_label: String,
+    pub recovery_label: String,
+    pub risk_label: String,
+    pub activation_blocker: String,
+    pub execution_enabled: bool,
+    pub pty_input_requested: bool,
+    pub restore_focus_to: String,
+    pub accessibility_tree: Vec<AccessibilityNode>,
+}
+
+fn provider_semantic_icon(provider: ProviderKind) -> &'static str {
+    match provider {
+        ProviderKind::Aws => "AWS",
+        ProviderKind::Azure => "AZ",
+        ProviderKind::Gcp => "GCP",
+        ProviderKind::Kubernetes => "K8S",
+        ProviderKind::OpenShift => "OC",
+        ProviderKind::Teleport => "TSH",
+        _ => "CLOUD",
+    }
+}
+
+fn provider_freshness_label(freshness: ProviderContextFreshness) -> &'static str {
+    match freshness {
+        ProviderContextFreshness::Current => "Current",
+        ProviderContextFreshness::Refreshing => "Refreshing",
+        ProviderContextFreshness::Stale => "Stale",
+        ProviderContextFreshness::Expired => "Expired",
+        ProviderContextFreshness::Offline => "Offline",
+        ProviderContextFreshness::Unavailable => "Not configured",
+        ProviderContextFreshness::Error => "Needs attention",
+    }
+}
+
+fn provider_recovery_label(action: ProviderRecoveryAction) -> &'static str {
+    match action {
+        ProviderRecoveryAction::Refresh => "Refresh",
+        ProviderRecoveryAction::Authenticate => "Sign in",
+        ProviderRecoveryAction::ContinueInBrowser => "Continue in browser",
+        ProviderRecoveryAction::ContinueOnDevice => "Continue on device",
+        ProviderRecoveryAction::Retry => "Retry",
+        ProviderRecoveryAction::RetryWhenOnline => "Retry when online",
+        ProviderRecoveryAction::ChooseContext => "Choose context",
+        ProviderRecoveryAction::ViewRequirements => "View requirements",
+    }
+}
+
+fn provider_tone(item: &ProviderCatalogItem) -> SemanticTone {
+    match item.freshness {
+        ProviderContextFreshness::Current if item.configured => SemanticTone::Success,
+        ProviderContextFreshness::Refreshing => SemanticTone::Accent,
+        ProviderContextFreshness::Stale
+        | ProviderContextFreshness::Expired
+        | ProviderContextFreshness::Offline => SemanticTone::Warning,
+        ProviderContextFreshness::Error => SemanticTone::Danger,
+        ProviderContextFreshness::Unavailable | ProviderContextFreshness::Current => {
+            SemanticTone::Neutral
+        }
+    }
+}
+
+pub fn project_provider_catalog(
+    providers: &[ProviderCatalogItem],
+    selected_index: usize,
+    viewport: Viewport,
+) -> ProviderCatalogView {
+    let layout = hub_layout(viewport);
+    let selected = selected_index.min(providers.len().saturating_sub(1));
+    let range = visible_range(viewport, layout, providers.len(), selected);
+    let rows = providers[range.clone()]
+        .iter()
+        .enumerate()
+        .map(|(offset, item)| {
+            let selected = range.start.saturating_add(offset) == selected;
+            let label = provider_label(item.provider);
+            let identity = item
+                .public_identity
+                .clone()
+                .unwrap_or_else(|| "No public context selected".into());
+            let freshness = provider_freshness_label(item.freshness);
+            let (auth, _) = auth_labels(&item.auth_state);
+            let recovery = provider_recovery_label(item.recovery_action);
+            let risk = risk_label(item.risk);
+            ProviderCatalogRowView {
+                provider: item.provider,
+                provider_label: label.into(),
+                semantic_icon: provider_semantic_icon(item.provider).into(),
+                public_identity: identity.clone(),
+                scope_summary: item.scope_summary.clone(),
+                freshness_label: freshness.into(),
+                auth_label: auth.into(),
+                recovery_label: recovery.into(),
+                risk_label: risk.into(),
+                configured: item.configured,
+                selected,
+                tone: provider_tone(item),
+                accessibility_label: format!(
+                    "{label}, {identity}, {}, {freshness}, {auth}, {risk} risk, action {recovery}",
+                    item.scope_summary
+                ),
+            }
+        })
+        .collect::<Vec<_>>();
+    let mut accessibility_tree = Vec::with_capacity(rows.len() + 3);
+    accessibility_tree.push(AccessibilityNode::new(
+        "provider-title",
+        AccessibilityRole::Heading,
+        "Cloud and cluster providers",
+    ));
+    let configured = providers
+        .iter()
+        .filter(|provider| provider.configured)
+        .count();
+    let mut status = AccessibilityNode::new(
+        "provider-status",
+        AccessibilityRole::Status,
+        format!(
+            "{} provider adapters; {configured} public contexts available; review only; no provider process or network request will run",
+            providers.len()
+        ),
+    );
+    status.live = true;
+    accessibility_tree.push(status);
+    let mut grid = AccessibilityNode::new(
+        "provider-results",
+        AccessibilityRole::Grid,
+        format!("{} provider adapters", providers.len()),
+    );
+    grid.focusable = providers.is_empty();
+    grid.actions = vec![
+        "move-previous".into(),
+        "move-next".into(),
+        "open-review".into(),
+    ];
+    accessibility_tree.push(grid);
+    for row in &rows {
+        let mut node = AccessibilityNode::new(
+            format!("provider-row-{:?}", row.provider).to_ascii_lowercase(),
+            AccessibilityRole::Row,
+            row.accessibility_label.clone(),
+        );
+        node.focusable = true;
+        node.selected = row.selected;
+        node.actions = vec!["select".into(), "open-review".into()];
+        accessibility_tree.push(node);
+    }
+    ProviderCatalogView {
+        layout,
+        total_providers: providers.len(),
+        visible_range: range,
+        rows,
+        execution_enabled: false,
+        pty_input_requested: false,
+        accessibility_tree,
+    }
+}
+
+pub fn project_provider_review(
+    item: &ProviderCatalogItem,
+    viewport: Viewport,
+    restore_focus_to: impl Into<String>,
+) -> ProviderReviewView {
+    let label = provider_label(item.provider);
+    let identity = item
+        .public_identity
+        .clone()
+        .unwrap_or_else(|| "No public context selected".into());
+    let freshness = provider_freshness_label(item.freshness);
+    let (auth, _) = auth_labels(&item.auth_state);
+    let recovery = provider_recovery_label(item.recovery_action);
+    let risk = risk_label(item.risk);
+    let source_summary = item.source_revision.as_ref().map_or_else(
+        || "No provider observation has been published".into(),
+        |revision| format!("Cached public observation {revision}"),
+    );
+    let mut accessibility_tree = vec![AccessibilityNode::new(
+        "provider-review",
+        AccessibilityRole::Group,
+        format!("{label} provider review"),
+    )];
+    accessibility_tree.push(AccessibilityNode::new(
+        "provider-review-status",
+        AccessibilityRole::Status,
+        format!(
+            "{identity}; {}; {freshness}; {auth}; {risk} risk; execution unavailable: {}",
+            item.scope_summary, item.activation_blocker
+        ),
+    ));
+    let mut primary = AccessibilityNode::new(
+        "provider-review-primary",
+        AccessibilityRole::Button,
+        recovery,
+    );
+    primary.focusable = true;
+    primary.disabled = true;
+    accessibility_tree.push(primary);
+    ProviderReviewView {
+        layout: hub_layout(viewport),
+        title: format!("{label} provider"),
+        semantic_icon: provider_semantic_icon(item.provider).into(),
+        tone: provider_tone(item),
+        identity,
+        scope_summary: item.scope_summary.clone(),
+        source_summary,
+        executable_id: item.executable_id.clone(),
+        freshness_label: freshness.into(),
+        auth_label: auth.into(),
+        recovery_label: recovery.into(),
+        risk_label: risk.into(),
+        activation_blocker: item.activation_blocker.clone(),
+        execution_enabled: false,
+        pty_input_requested: false,
+        restore_focus_to: restore_focus_to.into(),
+        accessibility_tree,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorkspaceCatalogRowView {
     pub id: String,
     pub display_name: String,
@@ -2283,5 +2575,87 @@ mod tests {
     #[test]
     fn stale_labels_never_claim_current_readiness() {
         assert_eq!(stale_label(StaleAuthState::Ready), "Stale (was ready)");
+    }
+}
+#[cfg(test)]
+mod provider_surface_contracts {
+    use super::*;
+
+    fn item() -> ProviderCatalogItem {
+        ProviderCatalogItem {
+            provider: ProviderKind::Aws,
+            extension_id: "automexia.devops-aws".into(),
+            executable_id: "aws".into(),
+            public_identity: Some("account 123456789012".into()),
+            scope_summary: "region eu-west-1".into(),
+            source_revision: Some("revision-one".into()),
+            freshness: ProviderContextFreshness::Current,
+            auth_state: AuthState::Available {
+                evidence_id: "public-evidence".into(),
+            },
+            recovery_action: ProviderRecoveryAction::Refresh,
+            risk: EnvironmentRisk::Production,
+            configured: true,
+            activation_blocker: "Protected activation pending".into(),
+        }
+    }
+
+    #[test]
+    fn provider_catalog_is_cached_only_responsive_and_accessible() {
+        let providers = vec![item()];
+        for viewport in [
+            Viewport::new(320.0, 480.0, 1.0),
+            Viewport::new(1920.0, 1080.0, 1.0),
+            Viewport::new(5120.0, 2880.0, 1.0),
+            Viewport::new(1920.0, 1080.0, 3.0),
+        ] {
+            let view = project_provider_catalog(&providers, 0, viewport);
+            assert_eq!(view.rows.len(), 1);
+            assert!(!view.execution_enabled);
+            assert!(!view.pty_input_requested);
+            assert!(view.rows[0].selected);
+            assert!(view.rows[0].accessibility_label.contains("Production risk"));
+            assert!(view
+                .accessibility_tree
+                .iter()
+                .any(|node| { node.role == AccessibilityRole::Status && node.live }));
+        }
+    }
+
+    #[test]
+    fn provider_review_announces_blocker_and_never_enables_action() {
+        let review = project_provider_review(
+            &item(),
+            Viewport::new(1280.0, 720.0, 1.0),
+            "provider-row-aws",
+        );
+        assert!(!review.execution_enabled);
+        assert!(!review.pty_input_requested);
+        assert_eq!(review.restore_focus_to, "provider-row-aws");
+        assert!(review
+            .accessibility_tree
+            .iter()
+            .any(|node| { node.role == AccessibilityRole::Button && node.disabled }));
+        assert!(review
+            .accessibility_tree
+            .iter()
+            .any(|node| { node.name.contains("execution unavailable") }));
+    }
+
+    #[test]
+    fn provider_focus_cycle_is_trapped_in_catalog_and_review() {
+        let mut state = InteractionState::new(0, 1, "terminal-grid".into());
+        state.route = HubRoute::Providers;
+        state.focus = HubFocus::ProviderList;
+        assert_eq!(
+            apply_hub_key(&mut state, HubKey::Tab),
+            InteractionEffect::FocusChanged(HubFocus::Close)
+        );
+        state.route = HubRoute::ProviderReview;
+        state.focus = HubFocus::Back;
+        assert_eq!(
+            apply_hub_key(&mut state, HubKey::Tab),
+            InteractionEffect::FocusChanged(HubFocus::Review)
+        );
     }
 }

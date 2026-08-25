@@ -10,7 +10,10 @@ manual protected workflow bind real evidence to the exact native host, commit,
 OpenSSH tools, and release artifacts. Activation is false and the
 package unverified, so v0.4 starts no managed child or listener. Protected
 approvals, attestation, actual status/SSH execution, controlled real native
-cleanup/resources/accessibility, and all D6 provider execution remain.
+cleanup/resources/accessibility, and all D6 provider execution remain. The M8-
+M12 cached Providers catalog/review and M11 private transient lifecycle are
+fully implemented locally without activating provider execution; OpenBao remains
+not done pending ADR 0024 acceptance.
 This document is the implementation authority for Automexia's Connection Hub.
 The [roadmap](ROADMAP.md) owns release order, the
 [stabilization roadmap](STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track)
@@ -719,6 +722,41 @@ of command text, and 60 seconds of arming; the private document is 16 MiB.
 Controlled native pixels, screen readers, real OpenSSH/process/resource cleanup,
 and managed execution remain external D3/M5 gates. [Accepted ADR 0023](adr/0023-typed-automation-and-declarative-workspaces.md)
 owns the boundary.
+
+## M8-M12 cached provider catalog and review
+
+The product controller exposes a **Providers** section alongside Connections and
+Workspaces. Its fixed catalog contains AWS, Azure, Google Cloud, Kubernetes,
+OpenShift, and Teleport. Only a validated, bounded, public M7 capsule can replace
+the immutable catalog; the app performs no passive discovery. A replacement must
+use a new capsule ID, a new session, and a higher revision. Unsupported entries,
+including OpenBao before ADR 0024 acceptance, fail before anything reaches UI.
+
+Rows and review cards show a semantic provider mark plus public identity, bounded
+scope, freshness/authentication, recovery, risk, and an activation blocker.
+`C`, `W`, and `P` switch sections; arrow/Home/End navigation, Enter/Escape,
+pointer rows, focus return, live status text, and 320 px through 5K/high-scale
+layout are renderer-neutral contracts. Every projection explicitly sets process
+execution and PTY input false. A catalog replacement, revoke, or runtime shutdown
+closes stale provider review.
+
+M11's application-owned private transient manager completes the local output
+lifecycle for EKS, AKS, GKE, Kubernetes/OpenShift, and Teleport-related generated
+kubeconfig. It allocates only below its private connection root, limits each file
+to 1 MiB and the active set to 16, validates before publication, exposes an
+opaque capsule/session/generation-bound handle, detects later replacement or
+content drift, and deletes on expiry, revoke, provider disable, session revoke,
+shutdown, and drop. Bounded recovery examines no more than 64 stale roots/files
+older than 24 hours. It never names or merges user kubeconfig and no public error,
+debug value, snapshot, or review exposes the path or private bytes.
+
+This is cached review and lifecycle source, not active provider control. There is
+no login, refresh, connect, cluster action, official CLI process, provider
+network, browser callback, credential-cache read, or PTY. D3 attestation and
+activation, controlled real accounts/tools/clusters, native child cleanup,
+resources, screen readers, packaging, signing, and release fixtures remain
+external. OpenBao remains not done until the separate custody ADR is accepted.
+
 ## Recovery, backup, migration, and export
 
 Automexia cannot recover externally owned credentials. This statement appears
@@ -1094,30 +1132,27 @@ accessibility evidence remain D6.1-D6.5 work.
 
 ### D6.1-D6.5 - provider slices
 
-1. **D6.1 AWS — source-complete, nonactivated:** independent bounded public
-   profiles, exact IAM Identity Center PKCE/device and STS operations, strict
-   caller-identity output, exact SSM plugin/PTY/tree-cleanup plan, and EKS
-   dry-run intent pass locally. Product controls and D3 activation into M11 runtime ingestion,
-   and controlled native provider evidence remain.
-2. **D6.2 Azure — source-complete, nonactivated:** bounded public account JSON,
-   exact tenant-bound broker/browser/device login and subscription status, AAD-only
-   Bastion, and opaque transient AKS intent pass locally. D3/M11 activation,
-   product UI, and controlled real Azure/native evidence remain.
-3. **D6.3 Google Cloud — source-complete, nonactivated:** bounded named public
-   configuration, per-command user/project observation, opaque Workforce/
-   Workload references, scope-bound IAP/OS Login, and private-environment GKE
-   intent pass locally. D3/M11 product/native evidence remains.
-4. **D6.4 Kubernetes/OpenShift — source-complete, nonactivated:** independent
-   packages now enforce bounded stable exact sources/private transient inputs,
-   collision-denied YAML/JSON merge, public-only contexts/namespaces/projects,
-   default-denied exact exec review, and exact isolated kubectl/oc plans. Product
-   activation, real clients/clusters/plugins, transient-file lifecycle, native
-   cleanup/resources/accessibility, and release evidence remain.
-5. **D6.5 Teleport — source-complete, nonactivated; OpenBao blocked:** the
-   independent Teleport package bounds public client status, expiry, and exact
-   version/login/status/ssh/logout plans while isolating agent/environment and
-   leaving cache/certificates/browser/MFA with `tsh`. Product/native proof
-   remains. OpenBao is absent until proposed ADR 0024 is accepted.
+1. **D6.1 AWS — source and cached product review complete locally,
+   execution nonactivated:** bounded public profiles and exact SSO/STS/SSM/EKS
+   contracts publish only validated cached public context; M11 owns private EKS
+   output. D3 activation and controlled real AWS/native evidence remain.
+2. **D6.2 Azure — source and cached product review complete locally,
+   execution nonactivated:** bounded account JSON and exact tenant/account/
+   Bastion/AKS contracts use cached review plus M11 private AKS lifecycle. D3
+   activation and controlled real Azure/native evidence remain.
+3. **D6.3 Google Cloud — source and cached product review complete locally,
+   execution nonactivated:** bounded named configuration and exact auth/project/
+   federation/IAP/GKE contracts use cached review plus M11 private GKE lifecycle.
+   D3 activation and controlled real Google/native evidence remain.
+4. **D6.4 Kubernetes/OpenShift — source, private lifecycle, and cached review
+   complete locally, execution nonactivated:** bounded parse/merge/exec/CLI
+   contracts plus private validate/revalidate/revoke/cleanup and responsive Hub
+   review pass. D3, real clients/clusters/plugins, Unix no-follow, resources,
+   controlled accessibility, and release evidence remain.
+5. **D6.5 Teleport — source and cached product review complete locally,
+   execution nonactivated; OpenBao not done:** exact Teleport plans/status feed a
+   cached review with no agent/cache/browser/process authority. D3/native proof
+   remains. OpenBao is rejected and absent until ADR 0024 is accepted.
 
 Each slice is independently enabled, revoked, tested, and releasable. A provider
 does not wait for or inherit another provider's capability.

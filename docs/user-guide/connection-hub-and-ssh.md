@@ -225,8 +225,37 @@ lifecycle evidence are still incomplete. Continue to use system OpenSSH in the
 shell for actual connections. Schema-1 libraries are previewed in memory and
 advance only after reviewed CAS; imported topology loses connection bindings and
 must be rebound locally.
-## Provider authentication framework (current source boundary)
+## Review cached provider contexts
 
+Open the Connection Hub and choose **Providers**, or press `P` while the main
+Connections, Workspaces, or Providers list owns focus. The product surface shows
+six independently owned rows: AWS, Azure, Google Cloud, Kubernetes, OpenShift,
+and Teleport. `C`, `W`, and `P` switch the three sections; Up/Down/Home/End move
+the selected row; Enter or a pointer opens its cached review; Escape returns to
+the catalog and then closes the Hub. Search fields and nested reviews keep their
+own input, so a mnemonic is never inserted into the terminal.
+
+A row displays a short provider mark, public identity when one is available,
+bounded public scope, freshness/authentication state, recovery text, and risk.
+The detail view uses the same information and visibly reports **Activation gates
+pending**. It contains no login, refresh, connect, copy, or execute action and
+requests no PTY input. Opening, navigating, or filtering the Hub never starts an
+official CLI, reads a token cache, contacts a provider, or changes global context.
+
+Only an already validated in-memory M7 capsule can populate this catalog. A
+refresh must replace both capsule identity and session with a higher revision;
+reusing either owner fails closed. Replacement, revoke, or runtime shutdown
+invalidates an open detail view before a stale identity can remain actionable.
+Unsupported providers—including OpenBao while ADR 0024 is unaccepted—are
+rejected before publication.
+
+If every row says **Choose a public provider context**, continue using the
+provider's official CLI in the terminal. This is a truthful empty state, not an
+automatic discovery failure. Cached stale/offline/expired/error rows retain their
+public last-known context and show a recovery label, but do not become authority.
+Controlled native screen-reader and real-provider evidence remain release gates.
+
+## Provider authentication framework (current source boundary)
 M7/D6.0 is complete as an internal provider-neutral framework, not as a current
 cloud-login button. Automexia can validate and isolate a public provider context,
 project it as available/refreshing/browser/device/MFA/ready/expired/offline/
@@ -266,7 +295,12 @@ only an opaque M11-owned private `KUBECONFIG` reference.
 
 D6.4/M11 now adds internal, nonactivated Kubernetes and OpenShift review
 boundaries. An explicit future scan may read only an exact absolute file grant
-with a stable regular-file check, or a newly allocated private cloud output. It
+with a stable regular-file check, or an app-owned newly allocated private cloud
+output. The local private lifecycle is implemented: generated data is limited to
+1 MiB, validated before publication, exposed only by an opaque session/capsule/
+generation-bound handle, revalidated against tampering, and removed on expiry,
+revoke, provider disable, session revoke, shutdown, or drop. At most 16 files are
+active, and bounded stale-root recovery never touches user kubeconfig. It
 keeps public context/cluster/user-reference/namespace/project/TLS/provenance
 metadata only, rejects ambiguous merges and external credential paths, and
 shows exec declarations as denied. Tokens, passwords, client keys/certificates,
@@ -284,18 +318,21 @@ relogin or automatic access requests. Logout revokes through `tsh`; disabling
 the internal adapter removes only its Automexia catalog entry. OpenBao is not
 implemented and requires ADR 0024 acceptance first.
 
-These controls are not available as product buttons yet. If a future review
-reports `source changed`, reselect and review the source; if it reports an exec
+The cached Providers catalog and review are available, but provider login,
+refresh, connection, and cluster actions are not product buttons yet. If a
+future review reports `source changed`, reselect and review the source; if it
+reports an exec
 plugin, keep it denied unless an administrator can verify its executable digest,
 ordered arguments, environment names, and interactivity. Disabling or removing
-either internal registration leaves external kubeconfig and CLI state unchanged.
+any internal registration leaves external kubeconfig and CLI state unchanged.
 Continue to authenticate with the official CLI in a shell today. Do not expect
 the Hub to change an AWS default profile, Azure subscription, Google Cloud active
 configuration, Kubernetes current context, or kubeconfig. Any later provider
 flow must return to fresh review and can be cancelled, revoked, disabled, or
-removed without affecting ordinary terminal use. D6.5 adapters and all real
-client/cluster/native provider evidence remain separate work; D6.4 is source-
-complete but not product-active.
+removed without affecting ordinary terminal use. OpenBao and all real client/
+cluster/native provider evidence remain separate work. M8-M12 cached product
+review and M11's private lifecycle are locally complete, while official-tool
+execution remains nonactivated behind D3.
 
 ## Connect with system OpenSSH today
 
@@ -351,9 +388,10 @@ protected release gate. Typed user/port/config jumps, full host-trust explanatio
 safe copy recovery, cancellation/reconnect/receipts source, and public identity
 status parsing are complete locally but nonactivated. D6.0's provider-neutral
 capsule/authentication framework is complete locally. D6.1 AWS, D6.2 Azure,
-D6.3 Google Cloud, D6.4 Kubernetes/OpenShift, and the D6.5 Teleport adapter are
-source-complete but nonactivated. OpenBao remains absent until ADR 0024 is
-accepted. There is no current
+D6.3 Google Cloud, D6.4 Kubernetes/OpenShift, and D6.5 Teleport have locally
+complete source plus cached Hub review; M11 also has the private transient
+lifecycle. Execution remains nonactivated. OpenBao remains absent until ADR 0024
+is accepted. There is no current
 Hub remote-file browser,
 credential vault, automatic provider login, cloud refresh, or provider command
 execution.

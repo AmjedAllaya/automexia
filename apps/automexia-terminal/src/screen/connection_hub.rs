@@ -31,6 +31,7 @@ fn is_literal_destination_shortcut(logical_key: &Key, modifiers: ModifiersState)
 enum HubSectionShortcut {
     Connections,
     Workspaces,
+    Providers,
 }
 
 fn hub_section_shortcut(
@@ -43,7 +44,10 @@ fn hub_section_shortcut(
         || modifiers.control_key()
         || modifiers.super_key()
         || modifiers.alt_key()
-        || !matches!(route, HubRoute::Results | HubRoute::Workspaces)
+        || !matches!(
+            route,
+            HubRoute::Results | HubRoute::Workspaces | HubRoute::Providers
+        )
     {
         return None;
     }
@@ -53,6 +57,9 @@ fn hub_section_shortcut(
         }
         Key::Character(value) if value.eq_ignore_ascii_case("w") => {
             Some(HubSectionShortcut::Workspaces)
+        }
+        Key::Character(value) if value.eq_ignore_ascii_case("p") => {
+            Some(HubSectionShortcut::Providers)
         }
         _ => None,
     }
@@ -549,6 +556,7 @@ impl Screen<'_> {
             let switched = match shortcut {
                 HubSectionShortcut::Connections => self.connection_hub.open_connections(),
                 HubSectionShortcut::Workspaces => self.connection_hub.open_workspaces(),
+                HubSectionShortcut::Providers => self.connection_hub.open_providers(),
             };
             if switched {
                 self.sync_connection_hub();
@@ -656,6 +664,10 @@ impl Screen<'_> {
             .workspace_catalog
             .as_ref()
             .map_or(0, |catalog| catalog.visible_range.start);
+        let provider_visible_start = presentation
+            .provider_catalog
+            .as_ref()
+            .map_or(0, |catalog| catalog.visible_range.start);
         let route_id = self.context_manager.current().route_id;
         match hit {
             ConnectionHubHit::Search => self.connection_hub.focus_search(),
@@ -664,6 +676,20 @@ impl Screen<'_> {
             }
             ConnectionHubHit::OpenWorkspaces => {
                 let _ = self.connection_hub.open_workspaces();
+            }
+            ConnectionHubHit::OpenProviders => {
+                let _ = self.connection_hub.open_providers();
+            }
+            ConnectionHubHit::SelectProvider { visible_index } => {
+                let _ = self.connection_hub.select_provider_index(
+                    provider_visible_start.saturating_add(visible_index),
+                );
+            }
+            ConnectionHubHit::ReviewProvider => {
+                let _ = self.connection_hub.review_selected_provider();
+            }
+            ConnectionHubHit::BackToProviders => {
+                let _ = self.connection_hub.back_to_providers();
             }
             ConnectionHubHit::SelectWorkspace { visible_index } => {
                 let _ = self.connection_hub.select_workspace_index(
@@ -900,6 +926,24 @@ mod tests {
                 HubRoute::Workspaces,
             ),
             Some(HubSectionShortcut::Connections)
+        );
+        assert_eq!(
+            hub_section_shortcut(
+                &Key::Character("p".into()),
+                none,
+                &HubFocus::WorkspaceList,
+                HubRoute::Workspaces,
+            ),
+            Some(HubSectionShortcut::Providers)
+        );
+        assert_eq!(
+            hub_section_shortcut(
+                &Key::Character("w".into()),
+                none,
+                &HubFocus::ProviderList,
+                HubRoute::Providers,
+            ),
+            Some(HubSectionShortcut::Workspaces)
         );
         assert!(hub_section_shortcut(
             &Key::Character("w".into()),

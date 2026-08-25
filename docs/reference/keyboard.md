@@ -129,15 +129,16 @@ process.
 | Shortcut | Result |
 |---|---|
 | `L` | From Hub results or first-run setup, open the typed host/user/port editor. If Search owns focus, `l` remains search text. |
-| `W` | From the connection catalog, open saved Workspaces. If Search or a review owns focus, `w` remains owned by that surface. |
-| `C` | From Workspaces, return to Connections. In Connection Review it copies the exact reviewed SSH command; it never executes or appends a newline. |
-| Up / Down / Home / End | In Workspaces, move the selected workspace within the bounded catalog. |
+| `W` | From the Connections or Providers catalog, open saved Workspaces. If Search or a review owns focus, `w` remains owned by that surface. |
+| `P` | From the Connections or Workspaces catalog, open cached Providers. If Search or a review owns focus, `p` remains owned by that surface. |
+| `C` | From Workspaces or Providers, return to Connections. In Connection Review it copies the exact reviewed SSH command; it never executes or appends a newline. |
+| Up / Down / Home / End | In Workspaces or Providers, move the selected row within the bounded catalog. |
 | `Tab` / `Shift+Tab` | Move through the active modal focus order; Connection Review includes its Allow once action. |
 | `Enter` | Review a valid host or activate the focused editor control; in Connection Review, Allow once only when Review or Allow once owns focus. |
 | `A` | Request Allow once from Connection Review. |
 | `S` | Request Allow for session from Connection Review. For remote, non-loopback, or production tunnels this action is disabled, omitted from focus, and reports that a fresh Allow once decision is required. |
 | `D` | Deny the managed launch and return to results. |
-| `Escape` | Cancel the host editor; from connection review return to results, and from workspace review return to Workspaces. |
+| `Escape` | Cancel the host editor; return from connection review to results, workspace review to Workspaces, or provider review to Providers. |
 
 While the host editor owns the modal, Tab/Shift+Tab cycles Host, User, Port,
 Review, and Cancel. Its visible Cancel control replaces the redundant top-level

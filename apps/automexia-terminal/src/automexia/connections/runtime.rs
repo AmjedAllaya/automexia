@@ -8,7 +8,7 @@ use std::{
 };
 
 use automexia_devops::connections::{
-    AuthState, DirectOpenSshPreparation, EnvironmentRisk, ProviderKind,
+    AuthState, DirectOpenSshPreparation, EnvironmentRisk, ProviderCapsule, ProviderKind,
 };
 use automexia_devops_ssh::{
     scan_inventory_cancellable, ConnectionMetadata, ConnectionRecord, GrantKind,
@@ -31,6 +31,7 @@ use super::receipts::{
     ManagedReceiptDocument, ManagedReceiptLoadOrigin, ManagedReceiptPersistenceState,
     ManagedReceiptRecord, ManagedReceiptSink, ManagedReceiptStore, MAX_MANAGED_RECEIPTS,
 };
+use super::{ProviderProductError, ProviderProductSnapshot};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlatformFamily {
@@ -222,6 +223,7 @@ pub struct HubRuntimeSnapshot {
     pub receipt_store_state: HubStoreState,
     pub receipt_count: usize,
     pub library: HubLibrarySnapshot,
+    pub providers: ProviderProductSnapshot,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -304,6 +306,7 @@ struct RuntimeData {
     receipt_records: Arc<Vec<ManagedReceiptRecord>>,
     pending_receipts: VecDeque<ManagedReceiptRecord>,
     library: HubLibrarySnapshot,
+    providers: ProviderProductSnapshot,
 }
 
 struct RuntimeInner {
@@ -392,6 +395,7 @@ impl ConnectionHubRuntime {
                 receipt_records: Arc::new(Vec::new()),
                 pending_receipts: VecDeque::with_capacity(MAX_MANAGED_RECEIPTS),
                 library: HubLibrarySnapshot::default(),
+                providers: ProviderProductSnapshot::default(),
             }),
             settled: Condvar::new(),
             sender: Mutex::new(Some(sender.clone())),
@@ -450,6 +454,7 @@ impl ConnectionHubRuntime {
                     receipt_records: Arc::new(Vec::new()),
                     pending_receipts: VecDeque::with_capacity(MAX_MANAGED_RECEIPTS),
                     library: HubLibrarySnapshot::default(),
+                    providers: ProviderProductSnapshot::default(),
                 }),
                 settled: Condvar::new(),
                 sender: Mutex::new(None),
@@ -773,6 +778,37 @@ impl ConnectionHubRuntime {
         }
         Ok(preparation)
     }
+    pub fn publish_provider_capsule(
+        &self,
+        capsule: &ProviderCapsule,
+    ) -> Result<u64, ProviderProductError> {
+        let mut data = lock(&self.inner.data);
+        if data.shutdown {
+            return Err(ProviderProductError::runtime_unavailable());
+        }
+        let snapshot = data.providers.publish(capsule)?;
+        let revision = snapshot.revision;
+        data.providers = snapshot;
+        self.inner.settled.notify_all();
+        Ok(revision)
+    }
+
+    pub fn revoke_provider_capsule(
+        &self,
+        capsule_id: &str,
+        session_id: u64,
+    ) -> Result<u64, ProviderProductError> {
+        let mut data = lock(&self.inner.data);
+        if data.shutdown {
+            return Err(ProviderProductError::runtime_unavailable());
+        }
+        let snapshot = data.providers.revoke(capsule_id, session_id)?;
+        let revision = snapshot.revision;
+        data.providers = snapshot;
+        self.inner.settled.notify_all();
+        Ok(revision)
+    }
+
     pub fn managed_receipt_records(&self) -> Arc<Vec<ManagedReceiptRecord>> {
         Arc::clone(&lock(&self.inner.data).receipt_records)
     }
@@ -825,6 +861,7 @@ impl ConnectionHubRuntime {
             receipt_store_state: data.receipt_store_state,
             receipt_count: data.receipt_records.len(),
             library: data.library.clone(),
+            providers: data.providers.clone(),
         }
     }
 
@@ -863,6 +900,7 @@ impl ConnectionHubRuntime {
             data.completed = data.requested;
             data.reviewed_grants = None;
             data.grant_review = GrantReviewState::None;
+            data.providers = ProviderProductSnapshot::default();
             self.inner.settled.notify_all();
             data.active_cancellation.take()
         };
@@ -1778,6 +1816,89 @@ mod tests {
         assert_eq!(
             runtime.prepare_direct_openssh("openssh:prod"),
             Err(HubRuntimeErrorCode::ConnectionNotReady)
+        );
+    }
+}
+#[cfg(test)]
+mod provider_runtime_contracts {
+    use super::*;
+    use automexia_devops::connections::{
+        EnvironmentRisk, OpaqueReference, ProviderContextFreshness,
+        ProviderContextProvenance, ProviderContextTemplate, ProviderProvenanceKind,
+        ProviderScopeBinding, CONNECTION_SCHEMA_VERSION,
+    };
+
+    fn capsule(revision: u64) -> ProviderCapsule {
+        ProviderCapsule {
+            schema_version: CONNECTION_SCHEMA_VERSION,
+            capsule_id: "capsule-provider".into(),
+            session_id: 19,
+            revision,
+            contexts: vec![ProviderContextTemplate {
+                provider: ProviderKind::Aws,
+                configuration_reference: OpaqueReference::new("aws-profile"),
+                public_identity: "account 123456789012".into(),
+                scope: vec![ProviderScopeBinding {
+                    name: "region".into(),
+                    public_value: "eu-west-1".into(),
+                }],
+                provenance: ProviderContextProvenance {
+                    kind: ProviderProvenanceKind::OfficialCliObservation,
+                    source_reference: OpaqueReference::new("aws-config"),
+                    source_revision: format!("revision-{revision}"),
+                    observed_at_ms: 100,
+                },
+                freshness: ProviderContextFreshness::Current,
+                expires_at_ms: None,
+                risk: EnvironmentRisk::Production,
+            }],
+            created_at_ms: 100,
+        }
+    }
+
+    #[test]
+    fn provider_publication_is_atomic_revisioned_and_shutdown_safe() {
+        let temporary = tempfile::tempdir().unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        assert_eq!(runtime.publish_provider_capsule(&capsule(1)).unwrap(), 1);
+        let snapshot = runtime.snapshot();
+        assert_eq!(snapshot.providers.revision, 1);
+        assert_eq!(
+            snapshot
+                .providers
+                .catalog
+                .iter()
+                .find(|item| item.provider == ProviderKind::Aws)
+                .and_then(|item| item.public_identity.as_deref()),
+            Some("account 123456789012")
+        );
+        assert_eq!(
+            runtime
+                .publish_provider_capsule(&capsule(1))
+                .unwrap_err()
+                .code(),
+            crate::automexia::connections::ProviderProductErrorCode::StalePublication
+        );
+        assert_eq!(
+            runtime
+                .revoke_provider_capsule("capsule-provider", 19)
+                .unwrap(),
+            2
+        );
+        assert!(runtime
+            .snapshot()
+            .providers
+            .catalog
+            .iter()
+            .all(|item| !item.configured));
+        runtime.shutdown();
+        assert_eq!(
+            runtime
+                .publish_provider_capsule(&capsule(2))
+                .unwrap_err()
+                .code(),
+            crate::automexia::connections::ProviderProductErrorCode::RuntimeUnavailable
         );
     }
 }

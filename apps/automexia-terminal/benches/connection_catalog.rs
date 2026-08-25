@@ -1,9 +1,11 @@
 use std::hint::black_box;
 
 use automexia_devops::connections::{AuthState, EnvironmentRisk, ProviderKind};
+use automexia_terminal::automexia::connections::ProviderProductSnapshot;
 use automexia_ui_model::connection_hub::{
-    project_connection_catalog, ConnectionCatalogEntry, ConnectionCatalogQuery,
-    ConnectionSummary, HubCatalogGrouping, HubCatalogSource,
+    project_connection_catalog, project_provider_catalog, ConnectionCatalogEntry,
+    ConnectionCatalogQuery, ConnectionSummary, HubCatalogGrouping, HubCatalogSource,
+    Viewport,
 };
 use criterion::{criterion_group, criterion_main, Criterion};
 
@@ -64,5 +66,22 @@ fn connection_catalog_10_000_rapid_filters(criterion: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, connection_catalog_10_000_rapid_filters);
+fn provider_catalog_cached_projection(criterion: &mut Criterion) {
+    let snapshot = ProviderProductSnapshot::default();
+    criterion.bench_function("provider_catalog_6_cached_projection", |bencher| {
+        bencher.iter(|| {
+            black_box(project_provider_catalog(
+                black_box(&snapshot.catalog),
+                black_box(3),
+                black_box(Viewport::new(1920.0, 1080.0, 1.0)),
+            ))
+        });
+    });
+}
+
+criterion_group!(
+    benches,
+    connection_catalog_10_000_rapid_filters,
+    provider_catalog_cached_projection
+);
 criterion_main!(benches);
