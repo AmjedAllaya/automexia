@@ -5,8 +5,9 @@ boundaries. CP2.2 search, placeholder review, dry-run administration,
 import/export, and explicit insert/copy are implemented locally. Its stable
 release gate remains partial until hosted native Windows/Linux/macOS and
 controlled screen-reader/performance evidence pass. Exact launch, trusted
-workspace activation, secret expansion, generated aliases, provider-aware
-candidates, and the CP5 suggestion surface remain disabled or planned.
+workspace activation, secret expansion, generated aliases, and provider-aware
+execution remain disabled or planned. CP5 source components exist but its
+suggestion surface and shell bridge remain preview-disabled and unpublished.
 
 The complete command-first product vocabulary that consumes this track is
 specified in [Terminal-first remote operations](TERMINAL-FIRST-OPERATIONS.md).
@@ -678,12 +679,13 @@ actually run.
 
 ### CP5 — Shell Completion and Suggestions
 
-Status: CP5.0 research is fully done. CP5.1-CP5.6 are partially done at the
-proposal-only boundary: ADR 0025, the six-threat machine contract, mutations,
-limits, ownership, shell matrix, and execution audit exist. Runtime code and
-activation remain forbidden until the exact proposal is explicitly accepted.
-CP5 remains optional and is not a v0.5.0 blocker. CP1 remains the default and
-complete fallback.
+Status: CP5.0 research is fully done. ADR 0025 and the six-threat machine
+contract are accepted. CP5.1 protocol/endpoints, CP5.2 bounded sources, and
+CP5.3 deterministic ranking are fully done at their source/local model
+boundaries. CP5.4 is source-integrated but unpublished; CP5.5 request-only shell
+scaffolding and CP5.6 assurance remain partial. Preview/stable activation is
+false. CP5 remains optional and is not a v0.5.0 blocker; CP1 remains the default
+and complete fallback.
 
 #### CP5.0 — research, baselines, and dependency decision
 
@@ -735,19 +737,26 @@ reference, while Carapace remains an explicitly installed external adapter
 candidate. No profile, keybinding, shell process, editor transport, history,
 terminal-grid inference, cache, worker, or product UI was introduced.
 
-##### CP5.1-CP5.6 proposal decision
+##### CP5.1-CP5.6 accepted source decision
 
-The acceptance-ready boundary is now frozen by proposed
-[ADR 0025](adr/0025-authenticated-native-editor-suggestion-bridge.md), the
+[ADR 0025](adr/0025-authenticated-native-editor-suggestion-bridge.md) and the
 schema-1
-[`cp51-bridge-threat-contract-v1.json`](../tests/fixtures/command-productivity/cp51-bridge-threat-contract-v1.json),
-and the [implementation audit](research/CP51-CP56-IMPLEMENTATION-AUDIT.md).
-Six stable threats cover endpoint/replay, privacy, stale replacement, candidate
-spoofing, input/occlusion, and resource amplification. Seventeen mutation and
-document tests prevent authority, transport, peer, replay, privacy, span,
-source, ranking, keyboard, Fish `Ctrl+Space`, fallback, limit, lifecycle, and
-release-gate downgrades. The contract deliberately states `accepted: false`
-and `runtime_activation: false`; it adds no runtime or user-facing behavior.
+[`cp51-bridge-threat-contract-v1.json`](../tests/fixtures/command-productivity/cp51-bridge-threat-contract-v1.json)
+are accepted for source implementation. Six stable threats cover endpoint/
+replay, privacy, stale replacement, candidate spoofing, input/occlusion, and
+resource amplification. Contract and source mutation tests prevent authority,
+transport, peer, replay, privacy, span, source, ranking, keyboard, Fish
+`Ctrl+Space`, fallback, limit, lifecycle, activation, and release-gate
+downgrades. The contract records `accepted: true` and
+`runtime_activation: false`.
+
+The [implementation audit](research/CP51-CP56-IMPLEMENTATION-AUDIT.md) records
+source owners and exact remaining gates. Bidirectional codecs, platform endpoint
+sources, broker, six local sources, deterministic ranking, pane UI model,
+controller, renderer, fuzz and benchmarks exist. Normal shell integration does
+not source the inert request adapters. No signed helper, native response/
+replacement adapter, WSL relay, public setting, default shortcut, or activated
+user-facing suggestion surface ships.
 
 #### CP5.1 — versioned editor bridge and ownership
 

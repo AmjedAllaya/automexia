@@ -207,19 +207,20 @@ add and mutation-test these additional boundaries:
   latest queued generation per pane, explicit cached-provider refresh, fixed
   limits/deadlines, and repeated lifecycle/resource tests.
 
-This checklist is not activation authority. CP5 remains forbidden until each
-item has a stable ID, control set, hostile mutation, verification owner, and
-residual-risk entry in the next machine contract.
-
-The proposal prerequisite is now complete: schema 1 of
+This checklist is not activation authority. CP5-T17 through CP5-T22 in schema 1
+of
 [`cp51-bridge-threat-contract-v1.json`](../tests/fixtures/command-productivity/cp51-bridge-threat-contract-v1.json)
-assigns CP5-T17 through CP5-T22, freezes every required control and hostile
-mutation, names PR/native/release verification owners, records residual risk,
-and is mutation-tested by `tools/ci/test_command_productivity_cp51.py`.
-[ADR 0025](adr/0025-authenticated-native-editor-suggestion-bridge.md) remains
-Proposed. The contract deliberately records `accepted: false` and
-`runtime_activation: false`; no CP5 production or activation authority exists
-until the exact ADR and contract are explicitly accepted.
+freeze every required control and hostile mutation, name PR/native/release
+verification owners, record residual risk, and are mutation-tested by
+`tools/ci/test_command_productivity_cp51.py`.
+
+[ADR 0025](adr/0025-authenticated-native-editor-suggestion-bridge.md) and the
+exact contract are accepted for source implementation. The contract records
+`accepted: true` and `runtime_activation: false`. Source mutation policy also
+forbids remote transports, per-key processes, implicit Enter, default adapter
+sourcing, missing preview guards, and false shell-bridge completion claims.
+Native insertion, preview, and stable activation still have no authority until
+the documented CP5.5/CP5.6 gates pass.
 
 ## Security invariants
 

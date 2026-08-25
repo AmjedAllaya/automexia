@@ -126,7 +126,7 @@ protected commit passes and the authenticated audit returns no external result.
 | Productivity | CP3.3 | **Fully implemented locally** | **Partial** | Six explicit native inventory formats, exact just/Task/mise bridges, bounded dry-run/CAS import/workspace/trust/revocation/removal, path-free digest/revision receipts, background cache authorization, final insertion recheck, tests, mutation, fuzz, benchmark, ADR, CLI, and docs are complete; hosted native/accessibility and 30-day evidence remain. |
 | Productivity | CP4 | **Partially implemented overall; fully implemented locally at product-integrated nonactivating boundary** | **Partial/external** | Seven provider projections, retained cached-product handoff, exact route/session/revision publication, idempotence/revocation, cached search, final revalidation, accessible risk/state UX, production confirmation, fuzz/benchmark/mutation/policy evidence are complete locally. Approved provider refresh/capsule production, exact execution, OpenBao, and real native/provider/accessibility/release evidence remain. |
 | Productivity | CP5.0 | **Fully implemented at research boundary** | **Complete locally** | Seven-shell API matrix, pure insertion prototype, locked matcher/dependency evidence, privacy review, and retain-CP1/defer-P2 decision are machine-gated; no runtime surface exists. |
-| Productivity | CP5.1-CP5.6 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance** | Proposed ADR 0025, schema-1 six-threat contract, 17 mutations/document tests, fixed ownership/limits/shell matrix, and detailed audit exist. No runtime code or UI is authorized; CP1 remains fallback. |
+| Productivity | CP5.1-CP5.6 | **Partially implemented overall; CP5.1-CP5.3 fully implemented at source/local model boundaries; CP5.4-CP5.6 partial** | **Partial/external; preview disabled** | Accepted ADR 0025; bidirectional protocol; restrictive Windows/Unix endpoint sources; bounded broker/sources/ranking; pane UI/controller/renderer; inert four-shell request scaffolds; fuzz/benchmark/mutation/lifecycle evidence. Signed helper and native replacement, WSL relay, runtime publication, native three-OS/accessibility/package/rollback/resource/30-day evidence remain. CP1 remains fallback. |
 | Productivity | CP6 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance** | The D7/CP6 contract freezes capability-free signed action-pack mapping and selected-input-only AI explanation/suggestion consent, limits, privacy, no-tool/no-execution policy, rollback, and release gates. No pack or AI runtime exists. |
 | Compatibility | G0 | **Partially implemented** | **Partially done** | Exact Ghostty 1.3.1 Linux/BSD provenance/fixtures/checksums, deterministic Windows adaptation, ADR 0026, generation, verification, classic golden, and properties exist. Native macOS fixture and Linux/macOS release evidence remain. |
 | Compatibility | G1 | **Fully implemented locally** | **Partially done** | Pure typed registry, schemas, layers, direct/reverse indexed lookup, reserved sequence/table structures, classic bridge, palette derivation, and Windows latency evidence exist; external platform evidence remains. |
@@ -1172,26 +1172,23 @@ keybinding, process, PTY, history source, worker, cache, or product UI exists.
 
 ### CP5.1-CP5.6 — optional suggestion UI
 
-**Partially implemented at the proposal-only boundary; runtime is not authorized.**
+**Partially implemented overall; preview and stable activation remain disabled.**
 
-| Phase | Required work |
-|---|---|
-| CP5.1 | Separate ADR; opt-in local pipe/socket, restrictive permissions, peer/session capability, bounded versioned framing, buffer/cursor/span/generation, replay/isolation/cleanup/native fallback. |
-| CP5.2 | Native results, opt-in shell history, cwd/executables, frequency, cached public providers, and typed actions; no network/auth/secrets/history-file/remote-output/per-key process. |
-| CP5.3 | Deterministic ranking, bounded cache/queue, stale cancellation, Unicode/graphemes, shell-returned spans/escaping, rapid-typing properties, Criterion gates. |
-| CP5.4 | Pane-owned accessible listbox avoiding cursor/IME/footer/tabs/siblings/modals; type/source/freshness/risk; tiny-to-8K and 100-300% goldens; impossible-size fallback. |
-| CP5.5 | Version-gated opt-in shell adapters, truthful CMD fallback, and preservation of profiles, bindings, completers, predictors, history, and native UI. |
-| CP5.6 | Preview flag, kill switch, LKG/reset/disable/uninstall, three-OS native, fuzz/leak/resize/multi-pane/accessibility, and 30-day baseline. |
+| Phase | Status | Current source/local evidence | Remaining exit evidence |
+|---|---|---|---|
+| CP5.1 | **Fully done at source boundary / partially done for release** | Accepted ADR; strict bidirectional schema-1 frames; route/capability/generation/span validation; joined latest-only service; restrictive Windows named pipe and filesystem Unix socket adapters; property/fuzz, fragmented-stream, replay, cleanup and native Windows fixtures. | Runtime composition remains disabled; native Linux/macOS endpoint/churn/crash/sleep evidence and the WSL relay remain. |
+| CP5.2 | **Fully done at source boundary / partially done for release** | Six ordered typed sources; independent history/frequency opt-ins; memory-only counters; cached-public LKG/freshness; bounded deadlines/batches/cache; privacy/source-policy tests. | Activated native editor/provider fixtures, slow/offline/cancellation storms, and native resource evidence remain. |
+| CP5.3 | **Fully done at source boundary / partially done for release** | Deterministic native-first ranking and stable ties; grapheme/control/bidi/span checks; one-latest slots; stale/capability replacement rejection; property/fuzz and 32/128/512 plus near-limit frame benchmarks. | Named-hardware latency/allocation/cache distributions, native shell quote/selection/multiline insertion, and sustained cleanup evidence remain. |
+| CP5.4 | **Partially done** | Pane-owned listbox model; exact matched graphemes; source/freshness/risk text; cursor/exclusion placement; compact fallback; scale/high-contrast/reduced-motion semantics; screen lifecycle controller; draw-only renderer; tiny-to-8K and 100-300% tests. | No activated publication path; native GPU screenshots, IME/pointer/keyboard automation, and controlled NVDA/Narrator/VoiceOver/Orca assessment remain. |
+| CP5.5 | **Partially done** | Inert session-only PowerShell 7, Bash 5, Zsh 5.8 and Fish 3.6 request scaffolds with version, preview, inherited-channel, collision, disable and native-fallback guards; native syntax/disabled-state checks. | Signed helper, response reader, current-buffer revalidation, native replacement, WSL relay, Fish Unicode path, package activation, profile-preservation and exact-uninstall native fixtures are not done. |
+| CP5.6 | **Partially done** | Preview activation stays false; broker kill/reset/disable/uninstall, LKG health, mutation policy, bounded lifecycle and CP1 fallback contracts exist. | Three-OS native, accessibility, signed package/update/rollback, 1,000 real endpoint cycles, fuzz/leak/storm campaigns, named-hardware latency/resource evidence, and the 30-day preview baseline remain external. |
 
-Proposed ADR 0025, the schema-1 CP5-T17 through CP5-T22 contract, fixed 15-limit
-budget, seven-shell/fallback matrix, six source priorities, deterministic rank,
-17 mutation/document tests, CI wiring, and the detailed execution audit are now
-complete. The contract records `accepted: false` and
-`runtime_activation: false`; every Rust/runtime/UI/shell row above remains
-missing until explicit acceptance.
-
-CP1 remains the fallback. A popup alone cannot satisfy privacy, insertion,
-accessibility, lifecycle, performance, or rollback gates.
+ADR 0025 and the schema-1 CP5-T17 through CP5-T22 contract are accepted for
+source implementation with `accepted: true` and `runtime_activation: false`.
+The source checker prevents forbidden transports, per-key processes, implicit
+Enter, default adapter sourcing, missing preview guards, and false completion
+claims. CP1 remains the default and fallback; a popup alone cannot satisfy
+privacy, insertion, accessibility, lifecycle, performance, or rollback gates.
 
 ### CP6 — ecosystem packs and AI
 
@@ -1493,9 +1490,9 @@ At this audited baseline, the focused order is:
 5. Preserve the complete local D6.0 boundary and implement each D6.1-D6.5 provider independently through official
    CLI/auth authorities and isolated immutable capsules.
 6. Preserve the product-integrated nonactivated CP4 boundary; activate provider refresh or exact execution only after D3/D5/D6 expose approved product context and native evidence.
-7. Preserve the fully completed CP5.0 retain-CP1 decision and the proposal-only
-   CP5.1-CP5.6 contract. Runtime remains not started and may proceed only after
-   explicit acceptance of ADR 0025 and its exact machine contract.
+7. Preserve the accepted CP5.1-CP5.6 source boundary: CP5.1-CP5.3 are complete
+   at their source/local model boundaries, CP5.4-CP5.6 remain partial, activation
+   stays false, and CP1 remains the default until every native release gate passes.
 8. Keep v0.4 external release evidence and G0-G6 compatibility work as
    independent evidence tracks; defer D7/CP6/G6 until their protected designs
    pass.

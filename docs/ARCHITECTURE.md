@@ -946,27 +946,29 @@ shell integration accepts the ordered versioned compiler manifest and applies
 native-wins, last-known-good startup/reload without giving the pure compiler
 filesystem or process authority. Local observations cache each executable and
 completion identity once across all five projections.
-The proposed CP5 surface adds no second line editor. Shell integration is the
-only adapter allowed to observe editor-owned bounded state through a versioned,
-opt-in, session-capability-authenticated local pipe/socket. After explicit
-acceptance of ADR 0025, capability-free `automexia-devops::suggestions` may own
+The accepted but preview-disabled CP5 source boundary adds no second line
+editor. Shell integration is the only adapter allowed to observe editor-owned
+bounded state through a versioned, opt-in, session-capability-authenticated local
+pipe/socket. Capability-free `automexia-devops::suggestions` owns
 immutable requests/candidates, deterministic ranking, resource limits, and
 cancellation. `automexia-ui-model::suggestions` owns the pane-local listbox
 projection; the desktop frontend owns the joined broker, restrictive transport,
 screen controller, and renderer adapters. No new runtime dependency is approved.
 Engine, VT, PTY, renderer, extension, and DevOps context paths may not infer,
-produce, execute, or persist editable command text. The editor revalidates the
-exact generation and replacement span and performs shell-native escaped
-insertion without Enter. Failure destroys private transient state and returns to
-CP1 native completion.
+produce, execute, or persist editable command text. Any future activated native
+adapter must revalidate the exact generation and replacement span and perform
+shell-native escaped insertion without Enter. Failure destroys private transient
+state and returns to CP1 native completion. The current request scaffolds do not
+implement the signed helper or response/replacement path and are never sourced
+by normal shell integration.
 
 See [Command Productivity](COMMAND-PRODUCTIVITY.md), the accepted
 [compatibility baseline](COMMAND-PRODUCTIVITY-COMPATIBILITY.md), the
 [threat model](COMMAND-PRODUCTIVITY-THREAT-MODEL.md), and
-[ADR 0015](adr/0015-shell-native-completion-and-typed-quick-actions.md). CP5
-remains forbidden until proposed
-[ADR 0025](adr/0025-authenticated-native-editor-suggestion-bridge.md) and its
-exact machine contract are explicitly accepted.
+[ADR 0015](adr/0015-shell-native-completion-and-typed-quick-actions.md). Source
+implementation follows accepted
+[ADR 0025](adr/0025-authenticated-native-editor-suggestion-bridge.md); preview
+and stable activation remain forbidden until its exact release gates pass.
 
 ## Dependency rules
 

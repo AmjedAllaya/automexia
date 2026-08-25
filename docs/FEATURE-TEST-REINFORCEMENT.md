@@ -331,14 +331,20 @@ Current assurance: **Planned/research only**.
 
 ### command-productivity-cp51-proposal
 
-Current assurance: **Planned/proposal only**.
+Current assurance: **Partially enforced; preview disabled**.
 
-- Boundary-check every state, message, limit, capability, shell, cancellation,
-  accessibility, fallback and rollback in the proposed bridge.
-- Mutate authentication, generation, privacy, duplicate-surface, implicit-
-  Enter, profile-mutation and activation constraints.
-- Prove no runtime dependency, registration, persistence, process, network or
-  product UI exists until an accepted implementation phase.
+- Preserve strict bidirectional frame, route/capability/generation/span, source,
+  ranking, queue/cache/deadline, pane ownership, accessibility-semantic, and
+  kill/reset/disable/uninstall boundary tables and property/fuzz coverage.
+- Mutate endpoint security, stale acceptance, privacy, forbidden transport/
+  process/Enter, default shell sourcing, shortcut collisions, false completion,
+  visual occlusion, lifecycle cleanup, and activation constraints.
+- Add native Linux/macOS/WSL peer/churn/crash/sleep fixtures; signed-helper and
+  native replacement fixtures for quotes, multiline, selection, Unicode and IME;
+  pixel goldens and controlled screen readers; named-hardware latency/allocation/
+  leak campaigns; signed package/rollback and 30-day preview evidence.
+- Keep CP1/native behavior independently tested and keep activation false until
+  every external exit criterion is attached to the exact artifact.
 
 ### ecosystem-d7-cp6-proposal
 

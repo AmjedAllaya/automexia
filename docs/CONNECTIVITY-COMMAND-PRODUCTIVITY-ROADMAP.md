@@ -147,9 +147,9 @@ Primary connectivity chain:
 Autocomplete lane:
 
 1. P1/CP5.0 research is fully done and retains CP1 as the complete solution.
-2. P2/CP5.1 is partially done at the proposal-only boundary; ADR 0025 and the safe-bridge contract await explicit acceptance before runtime work.
-3. P3/CP5.2-CP5.3 adds local-only sources and deterministic ranking.
-4. P4/CP5.4-CP5.6 adds the optional UI, shell activation, and release gate.
+2. P2/CP5.1 is fully done at the source boundary and partial for release; the accepted bridge stays activation-disabled pending native Unix/WSL and shell replacement proof.
+3. P3/CP5.2-CP5.3 is fully done at the source/local model boundary; named-hardware and activated native fixtures remain release evidence.
+4. P4/CP5.4-CP5.6 is partially done: UI source exists, shell resources are request-only inert scaffolds, and activation/release gates remain open.
 
 CP5 never blocks production SSH. CP1 remains the complete fallback throughout.
 
@@ -819,67 +819,68 @@ mutation was added.
 
 ## P2 - execute CP5.1 editor bridge
 
-Status: Partially done at the proposal-only boundary. Proposed ADR 0025, the
-schema-1 six-threat contract, 17 mutation/document tests, fixed limits, shell
-matrix, ownership, and implementation audit are complete. Runtime remains
-blocked on explicit acceptance of the exact ADR and contract.
+Status: Fully done at the source boundary and partially done for release. ADR
+0025 and the schema-1 six-threat contract are accepted. Protocol, endpoint
+sources, joined service, and local tests exist while activation remains false.
 
-- [x] Freeze the proposed transport, peer/capability/replay, privacy, span,
-  source/ranking, pane UI, shell/fallback, lifecycle, limit, verification, and
-  rollback contract without granting runtime authority.
-- [ ] Implement the private Windows named pipe and mode-0600 Unix socket protocol;
-  never TCP, OSC, terminal output, or implicit port forwarding.
-- [ ] Bind schema, peer, app/window/tab/pane/session, shell/editor, prompt,
-  buffer generation, cursor, replacement span, capability, and cancellation.
-- [ ] Bound frames, buffer/candidate counts and bytes, queue depth, cache,
-  deadlines, and endpoint lifetime before allocation.
-- [ ] Keep buffers/candidates memory-only and out of logs, telemetry, crash,
+- [x] Freeze transport, peer/capability/replay, privacy, span, source/ranking,
+  pane UI, shell/fallback, lifecycle, limit, verification, and rollback without
+  granting activation authority.
+- [x] Implement restrictive private Windows named-pipe and mode-0600 filesystem
+  Unix-socket source adapters; forbid TCP, OSC, terminal output, and forwarding.
+- [x] Bind schema, peer, app/window/tab/pane/session, shell/editor, prompt, buffer
+  generation, cursor, replacement span, capability, source and cancellation.
+- [x] Bound frames, buffer/candidate counts and bytes, queue depth, cache,
+  deadlines, endpoint lifetime, and prefix allocation.
+- [x] Keep buffers/candidates memory-only and out of logs, telemetry, crash,
   clipboard, diagnostics, persistence, extensions, and AI.
-- [ ] Have the shell editor revalidate generation/span and own final quoting and
-  insertion without Enter.
-- [ ] Fuzz framing and test downgrade, replay, cross-session rejection,
-  permissions/ACLs, cleanup, restart, shutdown, and native fallback.
+- [ ] Complete the signed helper and native shell response adapter that revalidates
+  generation/span and owns final quoting/replacement without Enter.
+- [ ] Complete native Linux/macOS/WSL restart/sleep/churn evidence; source fuzz,
+  replay/cross-route, Windows ACL/peer, Unix mode, cleanup and fallback tests exist.
 
 Exit: protocol and ownership gates pass before any Automexia popup is enabled.
 
 ## P3 - execute CP5.2-CP5.3 sources and ranking
 
-Status: Not done.
+Status: Fully done at the source/local model boundary and partially done for
+release evidence.
 
-- [ ] Broker native candidates, opt-in shell-owned history predictions,
-  nonrecursive cwd/executable results, opt-in accepted-candidate counters,
-  generated CP1 artifacts, cached public CP4 context, and typed Quick Actions.
-- [ ] Exclude history-file parsing, raw command storage, terminal/remote output,
+- [x] Broker the exact six bounded native, opt-in history, cwd/executable,
+  opt-in frequency-ID, cached public CP1/CP4, and typed-action sources.
+- [x] Exclude history files, raw command persistence, terminal/remote output,
   clipboard, telemetry, AI, network, authentication, and per-key processes.
-- [ ] Define deterministic source precedence, deduplication, prefix/token/fuzzy
-  ranking, provenance/freshness/risk explanations, and stable tie-breaking.
-- [ ] Bound work and actively cancel stale generations under rapid typing,
-  output, resize, pane switches, clone, and shutdown.
-- [ ] Test Unicode/graphemes/IME/RTL, quotes/spaces/multiline/selection,
-  exact spans, shell modes, hostile labels, fairness, and latency/resource
-  budgets.
+- [x] Implement deterministic source precedence, prefix/token/fuzzy ranking,
+  provenance/freshness/risk explanations, and stable tie-breaking.
+- [x] Bound queue/cache/deadlines and reject stale generations under route,
+  pane, worker and shutdown lifecycle changes.
+- [ ] Complete native IME/RTL/quotes/spaces/multiline/selection shell fixtures and
+  named-hardware latency/allocation/resource distributions; source Unicode,
+  grapheme, exact-span, hostile-label, determinism, fuzz and benchmarks exist.
 
 Exit: local-only results are deterministic, explainable, bounded, and safe.
 
 ## P4 - execute CP5.4-CP5.6 UI, shell activation, and release
 
-Status: Not done.
+Status: Partially done. CP5.4 source UI exists; CP5.5 shell resources are inert
+request-only scaffolds; CP5.6 activation and release evidence remain open.
 
-- [ ] Add a pane-owned accessible listbox that avoids cursor, IME, footer, tabs,
-  siblings, selections, and modals and disappears without PTY residue.
-- [ ] Show type, source, freshness, risk, selected state, help, loading, empty,
-  unavailable, stale, and error states without color-only meaning.
-- [ ] Add keyboard, focus restoration, reduced motion, high contrast, tiny-to-
-  8K, 100-300% scale, split-pane, and modal/z-order goldens.
-- [ ] Activate only version-proven PowerShell, Bash, Zsh, Fish, and WSL adapters;
-  keep truthful Windows PowerShell 5.1, CMD, remote, and container fallbacks.
-- [ ] Preserve user profiles, keybindings, predictors, completers, histories,
-  aliases, functions, abbreviations, and native views byte-for-byte.
-- [ ] Ship behind preview and staged opt-in with source controls, local privacy
-  explanation, memory/storage display, reset, kill switch, rollback, disable,
-  uninstall, and last-known-good recovery.
-- [ ] Pass three-OS native shell/PTY/GUI, accessibility, fuzz, leak, resize,
-  multi-pane, sleep/resume, dependency, SBOM, and 30-day baseline gates.
+- [x] Add a renderer-neutral pane-owned listbox model/controller/renderer with
+  cursor, IME, footer, tab, sibling, selection and modal exclusion inputs and no
+  PTY path; runtime publication remains disabled.
+- [x] Show icon-plus-text value, type, source, freshness, risk and selected state,
+  plus compact fallback without color-only meaning.
+- [x] Add source-level keyboard/focus lifecycle, reduced-motion, high-contrast,
+  tiny-to-8K, 100-300% scale, split-pane and exclusion geometry tests.
+- [ ] Complete signed-helper response/replacement and activate only native-proven
+  PowerShell, Bash, Zsh, Fish and WSL pairs; retain truthful Windows PowerShell
+  5.1, CMD, remote and container fallbacks.
+- [ ] Prove native profile, keybinding, predictor, completer, history, alias,
+  function, abbreviation and view preservation byte-for-byte.
+- [ ] Add public preview/source/privacy/memory settings and staged opt-in; internal
+  broker reset/kill/disable/uninstall/LKG controls exist but are not exposed.
+- [ ] Pass native three-OS shell/PTY/GPU/accessibility/package/rollback, fuzz/leak/
+  resize/multi-pane/sleep, SBOM, named-hardware and 30-day baseline gates.
 
 Exit: maintainers prove a measured UX improvement; otherwise CP1 remains active.
 
@@ -976,7 +977,8 @@ and nonactivated. The next M5 action is to configure the protected environment
 and ephemeral runner group, then dispatch F5.4's private real OpenSSH evidence
 manifests on controlled Windows, macOS, and Linux runners;
 source work may proceed to F6 while those external F4/M5 gates are collected.
-P1 autocomplete research is **Fully done** with CP1 retained. P2 is **Partially
-done at the proposal-only boundary**: ADR 0025 and its machine threat contract
-await explicit acceptance. P2 runtime plus P3-P4 remain **Not done**; no runtime
-phase may start until that exact authority gate passes.
+P1 autocomplete research is **Fully done** with CP1 retained. P2/CP5.1 and
+P3/CP5.2-CP5.3 are **Fully done at their source/local model boundaries and
+partially done for release**. P4/CP5.4-CP5.6 is **Partially done**: UI source and
+inert request scaffolds exist, while signed native replacement, activation, and
+native/accessibility/package/resource/30-day evidence remain open.
