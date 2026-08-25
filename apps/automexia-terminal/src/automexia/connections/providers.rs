@@ -5,7 +5,7 @@
 //! bounded immutable catalog for the Connection Hub. It owns no process,
 //! network, browser, credential, PTY, or provider-filesystem authority.
 
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use automexia_devops::connections::{
     validate_provider_capsule, AuthState, EnvironmentRisk, ProviderCapsule,
@@ -94,6 +94,33 @@ pub struct ProviderProductSnapshot {
     pub session_id: Option<u64>,
     pub capsule_revision: Option<u64>,
     pub catalog: Arc<Vec<ProviderCatalogItem>>,
+    publication: Option<ProviderProductPublication>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct ProviderProductPublication {
+    generation: u64,
+    capsule: Arc<ProviderCapsule>,
+}
+
+impl ProviderProductPublication {
+    pub const fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub fn capsule(&self) -> &ProviderCapsule {
+        &self.capsule
+    }
+}
+
+impl fmt::Debug for ProviderProductPublication {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProviderProductPublication")
+            .field("generation", &self.generation)
+            .field("capsule", &"<redacted-public-provider-capsule>")
+            .finish()
+    }
 }
 
 impl Default for ProviderProductSnapshot {
@@ -104,11 +131,16 @@ impl Default for ProviderProductSnapshot {
             session_id: None,
             capsule_revision: None,
             catalog: Arc::new(compose_catalog(None)),
+            publication: None,
         }
     }
 }
 
 impl ProviderProductSnapshot {
+    pub fn publication(&self) -> Option<&ProviderProductPublication> {
+        self.publication.as_ref()
+    }
+
     pub fn publish(
         &self,
         capsule: &ProviderCapsule,
@@ -119,7 +151,7 @@ impl ProviderProductSnapshot {
         if capsule
             .contexts
             .iter()
-            .any(|context| descriptor(context.provider).is_none())
+            .any(|context| !supports_product_publication(context.provider))
         {
             return Err(ProviderProductError::new(
                 ProviderProductErrorCode::UnsupportedProvider,
@@ -154,6 +186,10 @@ impl ProviderProductSnapshot {
             session_id: Some(capsule.session_id),
             capsule_revision: Some(capsule.revision),
             catalog: Arc::new(compose_catalog(Some(capsule))),
+            publication: Some(ProviderProductPublication {
+                generation: revision,
+                capsule: Arc::new(capsule.clone()),
+            }),
         })
     }
 
@@ -177,6 +213,12 @@ impl ProviderProductSnapshot {
             ..Self::default()
         })
     }
+}
+
+fn supports_product_publication(provider: ProviderKind) -> bool {
+    // SSH remains owned by the inventory surface rather than the cloud catalog,
+    // but its validated public context shares the CP4 route publication.
+    provider == ProviderKind::Ssh || descriptor(provider).is_some()
 }
 
 fn descriptor(provider: ProviderKind) -> Option<&'static ProviderDescriptor> {
@@ -352,10 +394,43 @@ mod tests {
     }
 
     #[test]
+    fn ssh_context_is_retained_without_claiming_provider_catalog() {
+        let mut candidate = capsule("capsule-ssh", 7, 1);
+        candidate.contexts =
+            vec![context(ProviderKind::Ssh, "target bastion.example.com")];
+        candidate.contexts[0].scope[0].name = "target".into();
+        candidate.contexts[0].scope[0].public_value = "bastion.example.com".into();
+
+        let snapshot = ProviderProductSnapshot::default()
+            .publish(&candidate)
+            .unwrap();
+        assert_eq!(
+            snapshot.publication().unwrap().capsule().contexts[0].provider,
+            ProviderKind::Ssh
+        );
+        assert!(snapshot
+            .catalog
+            .iter()
+            .all(|item| item.provider != ProviderKind::Ssh && !item.configured));
+    }
+
+    #[test]
     fn publication_is_public_bounded_and_stale_safe() {
         let snapshot = ProviderProductSnapshot::default()
             .publish(&capsule("capsule-one", 7, 1))
             .unwrap();
+        let publication = snapshot.publication().unwrap();
+        assert_eq!(publication.generation(), 1);
+        let debug = format!("{publication:?}");
+        assert!(debug.contains("<redacted-public-provider-capsule>"));
+        for forbidden in [
+            "123456789012",
+            "production",
+            "configuration-one",
+            "source-one",
+        ] {
+            assert!(!debug.contains(forbidden));
+        }
         let aws = snapshot
             .catalog
             .iter()
@@ -415,5 +490,6 @@ mod tests {
         let revoked = snapshot.revoke("capsule-one", 7).unwrap();
         assert!(revoked.catalog.iter().all(|item| !item.configured));
         assert_eq!(revoked.revision, 2);
+        assert!(revoked.publication().is_none());
     }
 }

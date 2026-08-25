@@ -22,6 +22,7 @@ use super::Screen;
 
 pub(crate) struct Controller {
     runtime: crate::automexia::quick_actions::QuickActionRuntime,
+    provider_publisher: crate::automexia::quick_actions::ProviderActionPublisher,
     state: State,
 }
 
@@ -30,6 +31,10 @@ impl Controller {
         runtime: crate::automexia::quick_actions::QuickActionRuntime,
     ) -> Self {
         Self {
+            provider_publisher:
+                crate::automexia::quick_actions::ProviderActionPublisher::new(
+                    runtime.clone(),
+                ),
             runtime,
             state: State::default(),
         }
@@ -58,11 +63,16 @@ struct State {
     requires_second_confirmation: bool,
     confirmation_armed: bool,
     runtime_status: Option<crate::automexia::quick_actions::QuickActionRuntimeStatus>,
+    provider_publication_notice: Option<String>,
 }
 
 impl Screen<'_> {
     pub fn open_action_center(&mut self) {
-        self.action_surface.state = State::default();
+        let provider_publication_notice = self.sync_provider_actions_for_current_route();
+        self.action_surface.state = State {
+            provider_publication_notice,
+            ..State::default()
+        };
         self.renderer.command_palette.set_enabled(true);
         self.renderer
             .command_palette
@@ -219,10 +229,17 @@ impl Screen<'_> {
         }
         self.action_surface.state.runtime_status = Some(result.status);
         self.action_surface.state.hits = result.hits;
-        let notice = action_notice(
-            self.action_surface.state.runtime_status,
-            self.action_surface.state.hits.is_empty(),
-        );
+        let notice = self
+            .action_surface
+            .state
+            .provider_publication_notice
+            .clone()
+            .unwrap_or_else(|| {
+                action_notice(
+                    self.action_surface.state.runtime_status,
+                    self.action_surface.state.hits.is_empty(),
+                )
+            });
         self.renderer.command_palette.update_action_items(
             list_items(
                 &self.action_surface.state.hits,
@@ -345,6 +362,24 @@ impl Screen<'_> {
         let Some(action) = self.action_surface.state.selected.clone() else {
             return false;
         };
+        let provider_publication_notice = self.sync_provider_actions_for_current_route();
+        self.action_surface.state.provider_publication_notice =
+            provider_publication_notice.clone();
+        if let Some(reason) = provider_publication_notice {
+            self.action_surface.state.provider_review = None;
+            self.action_surface.state.expanded = None;
+            self.action_surface.state.confirmation_armed = false;
+            self.renderer
+                .command_palette
+                .enter_action_review(provider_unavailable_view(
+                    &action,
+                    &binding,
+                    ProviderActionDecision::Replaced,
+                    &reason,
+                    false,
+                ));
+            return false;
+        }
         let route_id = self.context_manager.current().route_id;
         let context = self.current_action_context();
         let review = self.action_surface.runtime.revalidate_provider_binding(
@@ -416,6 +451,24 @@ impl Screen<'_> {
                 QuickActionMode::Unavailable,
             ));
         false
+    }
+
+    fn sync_provider_actions_for_current_route(&mut self) -> Option<String> {
+        self.connection_hub.sync();
+        let publication = self.connection_hub.provider_action_publication();
+        let route_id = self.context_manager.current().route_id;
+        let context = self.current_action_context();
+        self.action_surface
+            .provider_publisher
+            .sync_route(
+                route_id,
+                context.session_id,
+                context.capsule_revision,
+                publication.as_ref(),
+                current_time_ms(),
+            )
+            .err()
+            .map(provider_publication_notice)
     }
 
     fn current_action_context(&self) -> SearchContext {
@@ -514,6 +567,31 @@ fn action_notice(
     }
 }
 
+fn provider_publication_notice(
+    error: crate::automexia::quick_actions::ProviderActionRouteError,
+) -> String {
+    provider_publication_notice_for_code(error.code()).into()
+}
+
+const fn provider_publication_notice_for_code(
+    code: crate::automexia::quick_actions::ProviderActionRouteErrorCode,
+) -> &'static str {
+    use crate::automexia::quick_actions::ProviderActionRouteErrorCode;
+    match code {
+        ProviderActionRouteErrorCode::InvalidRoute => {
+            "Provider actions are unavailable for this pane"
+        }
+        ProviderActionRouteErrorCode::BindingMismatch => {
+            "Provider context changed; refresh it before using provider actions"
+        }
+        ProviderActionRouteErrorCode::CompositionRejected => {
+            "Provider actions are unavailable; review the cached provider context"
+        }
+        ProviderActionRouteErrorCode::RuntimeUnavailable => {
+            "Provider actions are unavailable; Quick Actions needs attention"
+        }
+    }
+}
 const fn risk(value: RiskClass) -> QuickActionRisk {
     match value {
         RiskClass::ReadOnly => QuickActionRisk::ReadOnly,
@@ -744,6 +822,35 @@ mod tests {
         assert!(
             provider_unavailable_reason(ProviderActionDecision::BrokerRequired)
                 .contains("ambient context is not allowed")
+        );
+    }
+
+    #[test]
+    fn provider_publication_notices_are_accessible_and_actionable() {
+        use crate::automexia::quick_actions::ProviderActionRouteErrorCode;
+        assert_eq!(
+            provider_publication_notice_for_code(
+                ProviderActionRouteErrorCode::InvalidRoute,
+            ),
+            "Provider actions are unavailable for this pane"
+        );
+        assert_eq!(
+            provider_publication_notice_for_code(
+                ProviderActionRouteErrorCode::BindingMismatch,
+            ),
+            "Provider context changed; refresh it before using provider actions"
+        );
+        assert_eq!(
+            provider_publication_notice_for_code(
+                ProviderActionRouteErrorCode::CompositionRejected,
+            ),
+            "Provider actions are unavailable; review the cached provider context"
+        );
+        assert_eq!(
+            provider_publication_notice_for_code(
+                ProviderActionRouteErrorCode::RuntimeUnavailable,
+            ),
+            "Provider actions are unavailable; Quick Actions needs attention"
         );
     }
 

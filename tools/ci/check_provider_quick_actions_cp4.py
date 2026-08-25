@@ -22,6 +22,7 @@ EXPECTED_LIMITS = {
 EXPECTED_PROVIDERS = [
     "ssh", "aws", "azure", "gcp", "kubernetes", "openshift", "teleport",
 ]
+EXPECTED_PUBLICATION_OUTCOMES = ["published", "unchanged", "cleared"]
 EXPECTED_DECISIONS = [
     "insert-without-enter", "broker-required", "refreshing", "stale",
     "expired", "offline", "unavailable", "error", "replaced",
@@ -46,6 +47,10 @@ PROVIDER_ADAPTER_SOURCES = {
     "extensions/devops-kubernetes/src/implementation.rs",
     "extensions/devops-openshift/src/implementation.rs",
     "extensions/devops-teleport/src/lib.rs",
+}
+PRODUCT_PUBLICATION_SOURCES = {
+    "apps/automexia-terminal/src/automexia/connections/providers.rs",
+    "apps/automexia-terminal/src/automexia/connections/controller.rs",
 }
 INTERACTIVE_SOURCES = {
     "apps/automexia-terminal/src/automexia/quick_actions/worker.rs",
@@ -92,6 +97,17 @@ REQUIRED_SOURCE_TOKENS = {
         "winner.shadowed_count",
         "sort_and_truncate_hits",
     },
+    "apps/automexia-terminal/src/automexia/connections/providers.rs": {
+        "pub struct ProviderProductPublication",
+        "publication: None",
+        "publication: Some",
+        ".field(\"capsule\", &\"<redacted-public-provider-capsule>\")",
+        "pub fn publication",
+    },
+    "apps/automexia-terminal/src/automexia/connections/controller.rs": {
+        "pub fn provider_action_publication",
+        "runtime_snapshot.providers.publication()",
+    },
     "apps/automexia-terminal/src/automexia/quick_actions/providers.rs": {
         "pub fn compose_provider_action_snapshot",
         "ProviderKind::Ssh",
@@ -103,6 +119,11 @@ REQUIRED_SOURCE_TOKENS = {
         "ProviderKind::Teleport",
         "ProviderKind::OpenBao",
         "UnsupportedProvider",
+        "pub struct ProviderActionPublisher",
+        "pub fn sync_route",
+        "provider_snapshot_matches",
+        "clear_provider_snapshot",
+        "capsule.session_id != current_session_id",
     },
     "apps/automexia-terminal/src/automexia/quick_actions/worker.rs": {
         "const MAX_RESULT_ROUTES: usize = 32",
@@ -113,6 +134,7 @@ REQUIRED_SOURCE_TOKENS = {
         "merge_action_search_hits(provider_hits, base_hits.clone())",
         "current_provider_key",
         "forget_route",
+        "provider_snapshot_matches",
     },
     "automexia-ui-model/src/quick_actions.rs": {
         "pub provider_context: bool",
@@ -127,6 +149,9 @@ REQUIRED_SOURCE_TOKENS = {
         "ProviderActionDecision::Expired",
         "ProviderActionDecision::Offline",
         "ProviderActionDecision::Replaced",
+        "provider_action_publication",
+        ".sync_route(",
+        "provider_publication_notice",
     },
     "apps/automexia-terminal/src/renderer/command_palette.rs": {
         "item.provider_context",
@@ -163,6 +188,15 @@ REQUIRED_TESTS = {
     "extensions/devops-teleport/tests/contracts.rs": {
         "version_and_status_plans_are_local_exact_and_agent_isolated",
     },
+    "apps/automexia-terminal/src/automexia/connections/providers.rs": {
+        "publication_is_public_bounded_and_stale_safe",
+        "ssh_context_is_retained_without_claiming_provider_catalog",
+        "revoke_is_session_bound_and_returns_to_nonconfigured_catalog",
+    },
+    "apps/automexia-terminal/tests/cp4_provider_product_publication.rs": {
+        "cached_provider_product_reaches_route_scoped_quick_actions_without_execution",
+        "route_mismatch_revocation_and_redacted_failures_are_fail_closed",
+    },
     "apps/automexia-terminal/src/automexia/quick_actions/providers.rs": {
         "multi_provider_composition_is_complete_sorted_and_nonexecuting",
         "unsupported_provider_prevents_partial_snapshot_publication",
@@ -177,6 +211,7 @@ REQUIRED_TESTS = {
     "apps/automexia-terminal/src/screen/action_surface.rs": {
         "final_confirmation_keeps_exact_provider_context_accessible",
         "provider_failure_states_are_actionable_and_never_claim_execution",
+        "provider_publication_notices_are_accessible_and_actionable",
     },
     "apps/automexia-terminal/src/renderer/command_palette.rs": {
         "provider_actions_use_connection_visuals_and_show_context_in_review",
@@ -211,19 +246,20 @@ def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 def load_contract(path: Path = CONTRACT) -> dict[str, Any]:
     document = json.loads(bounded_text(path), object_pairs_hook=reject_duplicate_keys)
     expected_keys = {
-        "schema", "phase", "status", "limits", "providers", "decisions",
+        "schema", "phase", "status", "publication_outcomes", "limits", "providers", "decisions",
         "authorities", "source_files", "test_files", "fuzz_target",
         "benchmark", "documents",
     }
     if not isinstance(document, dict) or set(document) != expected_keys:
         raise CP4ContractError("CP4 contract keys changed")
     if (document["schema"], document["phase"], document["status"]) != (
-        1, "M13/F13/CP4", "source-complete-nonactivated",
+        1, "M13/F13/CP4", "product-integrated-nonactivated",
     ):
         raise CP4ContractError("CP4 contract identity changed")
     expected = {
         "limits": EXPECTED_LIMITS,
         "providers": EXPECTED_PROVIDERS,
+        "publication_outcomes": EXPECTED_PUBLICATION_OUTCOMES,
         "decisions": EXPECTED_DECISIONS,
         "authorities": EXPECTED_AUTHORITIES,
     }
@@ -239,8 +275,11 @@ def load_contract(path: Path = CONTRACT) -> dict[str, Any]:
 
 def validate_sources(document: dict[str, Any]) -> None:
     declared = set(document["source_files"])
-    if not PROVIDER_ADAPTER_SOURCES.issubset(declared):
-        raise CP4ContractError("CP4 provider adapter source set is incomplete")
+    if (
+        not PROVIDER_ADAPTER_SOURCES.issubset(declared)
+        or not PRODUCT_PUBLICATION_SOURCES.issubset(declared)
+    ):
+        raise CP4ContractError("CP4 provider/product source set is incomplete")
     for relative in document["source_files"]:
         bounded_text(ROOT / relative)
     for relative, tokens in REQUIRED_SOURCE_TOKENS.items():
@@ -249,8 +288,17 @@ def validate_sources(document: dict[str, Any]) -> None:
         if missing:
             raise CP4ContractError(f"missing CP4 source evidence in {relative}: {missing}")
 
+    action_surface = bounded_text(
+        ROOT / "apps/automexia-terminal/src/screen/action_surface.rs"
+    )
+    if action_surface.count("self.sync_provider_actions_for_current_route()") != 2:
+        raise CP4ContractError(
+            "CP4 product synchronization must occur at open and final authorization"
+        )
+
     for relative in (
         "automexia-devops/src/actions/provider.rs",
+        "apps/automexia-terminal/src/automexia/connections/providers.rs",
         "apps/automexia-terminal/src/automexia/quick_actions/providers.rs",
     ):
         source = bounded_text(ROOT / relative).lower()
@@ -302,6 +350,7 @@ def validate_repository() -> dict[str, int]:
     validate_evidence(document)
     return {
         "providers": len(document["providers"]),
+        "publication_outcomes": len(document["publication_outcomes"]),
         "decisions": len(document["decisions"]),
         "authorities_denied": sum(not value for value in document["authorities"].values()),
         "tests": sum(len(tests) for tests in REQUIRED_TESTS.values()),
@@ -316,6 +365,6 @@ if __name__ == "__main__":
         raise SystemExit(1) from exc
     print(
         "PASS: M13/F13/CP4 provider actions are bounded and nonactivating "
-        f"(providers={counts['providers']}, decisions={counts['decisions']}, "
+        f"(providers={counts['providers']}, publication_outcomes={counts['publication_outcomes']}, decisions={counts['decisions']}, "
         f"authorities_denied={counts['authorities_denied']}, tests={counts['tests']})"
     )

@@ -1,7 +1,12 @@
 {
   "schema": 1,
   "phase": "M13/F13/CP4",
-  "status": "source-complete-nonactivated",
+  "status": "product-integrated-nonactivated",
+  "publication_outcomes": [
+    "published",
+    "unchanged",
+    "cleared"
+  ],
   "limits": {
     "provider_actions": 256,
     "actions_per_provider": 16,
@@ -51,6 +56,8 @@
     "extensions/devops-kubernetes/src/implementation.rs",
     "extensions/devops-openshift/src/implementation.rs",
     "extensions/devops-teleport/src/lib.rs",
+    "apps/automexia-terminal/src/automexia/connections/providers.rs",
+    "apps/automexia-terminal/src/automexia/connections/controller.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/providers.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/worker.rs",
     "automexia-ui-model/src/quick_actions.rs",
@@ -70,7 +77,8 @@
     "apps/automexia-terminal/src/automexia/quick_actions/worker.rs",
     "automexia-ui-model/src/quick_actions.rs",
     "apps/automexia-terminal/src/screen/action_surface.rs",
-    "apps/automexia-terminal/src/renderer/command_palette.rs"
+    "apps/automexia-terminal/src/renderer/command_palette.rs",
+    "apps/automexia-terminal/tests/cp4_provider_product_publication.rs"
   ],
   "fuzz_target": "fuzz/fuzz_targets/provider_quick_actions.rs",
   "benchmark": "automexia-devops/benches/quick_actions.rs",

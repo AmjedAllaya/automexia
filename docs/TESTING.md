@@ -2232,12 +2232,13 @@ benchmarks. Hosted native/accessibility and controlled 30-day evidence remain.
 
 ## M13 provider-aware Quick Actions
 
-M13/CP4 is source-complete and nonactivated locally. The M8-M12 sections own
-each provider's full suite; run the CP4 integration evidence with:
+M13/CP4 is product-integrated and nonactivated locally. M8-M12 own each
+provider's suite; run CP4 integration evidence with:
 
 ```text
 cargo test -p automexia-devops --test provider_quick_actions_cp4 --locked
 cargo test -p automexia-devops --test quick_action_activation --locked
+cargo test -p automexia-terminal --test cp4_provider_product_publication --locked
 cargo test -p automexia-terminal --lib --locked provider
 cargo test -p automexia-terminal --bin automexia --locked provider
 cargo test -p automexia-ui-model --locked provider_context
@@ -2248,18 +2249,15 @@ python3 tools/ci/test_provider_quick_actions_cp4.py
 cargo xtask verify architecture
 ```
 
-The schema-1 contract freezes seven providers, nine decisions, eleven denied
-authorities, five ceilings, 19 named regressions, fuzz, benchmarks, and docs.
-Tests cover exact grammar reuse, all-or-nothing composition, precedence,
-route/session/revision/generation isolation, cancellation/revocation, final
-revalidation, production confirmation, compact accessible states,
-capacity/cleanup, redaction, and no provider work while typing. Six mutations
-reject authority, interactive-import, contract, evidence, key, and supported
-symlink drift.
+The schema-1 contract freezes seven providers, three publication outcomes,
+nine decisions, eleven denied authorities, five ceilings, 25 named regressions,
+fuzz, benchmarks, and docs. Tests cover retained-product handoff, exact grammar,
+composition, precedence, route/session/revision/generation isolation,
+idempotence, cancellation/revocation, final revalidation, production
+confirmation, accessible states, cleanup, redaction, and no typing-time provider
+work. Seven mutations also reject bridge removal, authority, import, and drift.
 
-A 2026-08-23 Windows x86_64 optimized 50-sample run measured 16-action snapshot
-construction at 201.49–205.17 microseconds and cached search at 48.200–50.620
-microseconds (7/50 and 6/50 high outliers). This is local comparison evidence.
-No long fuzz campaign, real provider/account/CLI/cluster, product publication/
-execution, native screen-reader, Linux/macOS runtime, controlled resource,
-packaging, signing, or release fixture is claimed.
+The CP4 audit records the current Windows benchmark ranges and outliers.
+No long fuzz campaign, approved provider refresh/capsule producer, exact
+execution, real account/CLI/cluster, native screen-reader/Linux/macOS,
+controlled resource, packaging, signing, or release fixture is claimed.

@@ -31,7 +31,7 @@ use super::{
     platform_setup_guidance, review_library_workspace_restore, ConnectionHubRuntime,
     GrantReviewState, HubLibrarySnapshot, HubMetadataChangeState, HubRuntimeErrorCode,
     HubRuntimeSnapshot, HubRuntimeState, HubStoreState, MetadataChangeReview,
-    PlatformFamily, SetupGuidance,
+    PlatformFamily, ProviderProductPublication, SetupGuidance,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -415,6 +415,10 @@ impl ConnectionHubController {
         self.interaction.route = HubRoute::Providers;
         self.interaction.focus = HubFocus::ProviderList;
         true
+    }
+
+    pub fn provider_action_publication(&self) -> Option<ProviderProductPublication> {
+        self.runtime_snapshot.providers.publication().cloned()
     }
 
     pub fn select_provider_index(&mut self, index: usize) -> bool {
