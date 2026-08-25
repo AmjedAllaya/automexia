@@ -1,8 +1,9 @@
 # CP5.1-CP5.6 implementation audit and execution plan
 
-Status: proposal and machine threat contract are complete; runtime work is an
-External prerequisite blocked on explicit acceptance of ADR 0025. CP1 remains
-the complete default and fallback.
+Status: ADR 0025 and its machine threat contract were explicitly accepted on
+2026-08-25. Source implementation is authorized; preview and stable activation
+remain disabled pending the CP5.6 evidence. CP1 remains the complete default
+and fallback.
 
 This file is the execution ledger for optional Automexia suggestions. It must be
 re-audited before every CP5 increment. “Source complete” never means “released”;
@@ -47,7 +48,7 @@ Measurable acceptance requires:
 |---|---|---|---|---|
 | CP5.0 shell/API/dependency research | Fully implemented | Complete locally | Seven-shell matrix, pure insertion prototype, locked matcher benchmark, privacy review, machine checker | External low-end and native shell evidence applies only if CP5 proceeds |
 | Existing reusable foundations | Fully implemented | Partial/external | CP1 native adapters/fallback; CP2/CP3 typed action index; cached CP4 public snapshots; joined workers; pane geometry; renderer-neutral accessibility | CP5 composition and native feature evidence |
-| ADR 0025 and versioned threats | Partially implemented | External prerequisite | Proposed ADR; schema-1 contract; six stable threats with controls, hostile mutations, owners, residual risk; mutation checker | Explicit protected acceptance of the exact ADR and contract digest |
+| ADR 0025 and versioned threats | Fully implemented | Source authority complete | Accepted ADR; schema-1 contract; six stable threats with controls, hostile mutations, owners, residual risk; mutation checker | Preserve digest and keep preview/stable activation false until CP5.6 evidence |
 | CP5.1 protocol and endpoint | Not implemented | Not started | Required fields, transport, peers, limits, and ownership frozen | Rust protocol, Windows/Unix adapters, fuzz/property/native peer/replay/cleanup evidence |
 | CP5.2 source broker | Not implemented | Not started | Six ordered source policies frozen | Capability-free source models, shell adapters, opt-ins, privacy and no-IO/provider tests |
 | CP5.3 ranking and scheduling | Not implemented | Not started | Ranking/ties, queue/cache/deadlines frozen; CP5.0 matcher retained | Deterministic model, Unicode properties, cancellation storms, benchmarks, leak evidence |

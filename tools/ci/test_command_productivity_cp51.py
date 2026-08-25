@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mutation tests for the proposed CP5.1-CP5.6 editor-bridge contract."""
+"""Mutation tests for the accepted CP5.1-CP5.6 editor-bridge contract."""
 
 from __future__ import annotations
 
@@ -37,8 +37,8 @@ class Cp51ContractTests(unittest.TestCase):
         with self.assertRaises(checker.Cp51Error):
             checker.parse_contract('{"schema": 1, "schema": 2}')
 
-    def test_runtime_cannot_be_activated_before_acceptance(self) -> None:
-        self.assert_rejected(lambda value: value["authority"].update(accepted=True))
+    def test_source_authority_is_accepted_but_preview_cannot_activate(self) -> None:
+        self.assert_rejected(lambda value: value["authority"].update(accepted=False))
         self.assert_rejected(
             lambda value: value["authority"].update(runtime_activation=True)
         )
