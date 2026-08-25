@@ -86,7 +86,7 @@ documentation, feature assurance, and a change fragment.
 | Trusted local workspace tasks | CP3.3 | Fully done | native imports, workspace store/trust/runtime/CLI tests and ADR 0021 | Hosted native/accessibility and longitudinal evidence |
 | Provider-aware Quick Actions | CP4 | Fully done locally at product-integrated nonactivating boundary; partially done overall | Seven provider projections, retained cached-product handoff, exact route/session/revision publication, idempotence/revocation, cached search, final revalidation, accessible context, production confirmation, fuzz/benchmark/policy evidence | Approved provider refresh/capsule production, exact provider execution, OpenBao, and native provider/accessibility/release evidence |
 | Autocomplete research | CP5.0/P1 | Fully done | Shell/API matrix, pure bounded insertion prototype, locked matcher benchmark, dependency/privacy review, retain-CP1 decision | External low-end/Zsh/Fish/accessibility evidence applies only to a future P2 proposal |
-| Automexia suggestion surface | CP5.1-CP5.6/P2-P4 | Partially done (proposal only) | Proposed ADR 0025, six-threat schema-1 contract, 17 mutation/document tests, fixed ownership/limits/shell matrix, and execution audit | Explicit ADR/contract acceptance, then protocol, sources, ranking, UI, shell and release implementation |
+| Automexia suggestion surface | CP5.1-CP5.6/P2-P4 | Partially done overall; CP5.1-CP5.4 fully done at source/local boundaries; CP5.5 inert bridge source complete | Accepted ADR; authenticated request/reply protocol; restrictive endpoints; bounded broker/sources/ranking; pane UI/publication/route exchange; packaged helper target; four bidirectional adapters; real local shell/mutation/lifecycle evidence | Reviewed launcher, signed/attested artifact, WSL relay, live activation, successful three-OS endpoint/shell/accessibility/package/rollback/resource/30-day evidence |
 | Ecosystem packs and AI | CP6/D7 | Partially done (proposal only) | Proposed ADR 0029, strict schema-1 contract, nine threat owners, 28 resource ceilings, 15 mutations, nonactivation/dependency enforcement, and D7.0-D7.5/CP6 execution audit | Explicit ADR/contract acceptance, then package verification/store, custom WIT/Wasmtime sandbox, signed distribution/revocation/SDK, capability UX, pack import, selected-input AI provider, native/privacy/accessibility/resource/release evidence |
 
 The workspace term has two separate meanings and must remain explicit:
@@ -147,9 +147,9 @@ Primary connectivity chain:
 Autocomplete lane:
 
 1. P1/CP5.0 research is fully done and retains CP1 as the complete solution.
-2. P2/CP5.1 is fully done at the source boundary and partial for release; the accepted bridge stays activation-disabled pending native Unix/WSL and shell replacement proof.
+2. P2/CP5.1 is fully done at the source boundary and partial for release; authenticated replies, the application route exchange, and exact publication limits are present while activation stays disabled pending native Unix/WSL endpoint evidence.
 3. P3/CP5.2-CP5.3 is fully done at the source/local model boundary; named-hardware and activated native fixtures remain release evidence.
-4. P4/CP5.4-CP5.6 is partially done: UI source exists, shell resources are request-only inert scaffolds, and activation/release gates remain open.
+4. P4/CP5.4-CP5.6 is partially done overall: CP5.4 UI/publication source and the CP5.5 inert helper/adapters are implemented; launcher/signing/live composition, public activation, and release gates remain open.
 
 CP5 never blocks production SSH. CP1 remains the complete fallback throughout.
 
@@ -834,8 +834,12 @@ sources, joined service, and local tests exist while activation remains false.
   deadlines, endpoint lifetime, and prefix allocation.
 - [x] Keep buffers/candidates memory-only and out of logs, telemetry, crash,
   clipboard, diagnostics, persistence, extensions, and AI.
-- [ ] Complete the signed helper and native shell response adapter that revalidates
-  generation/span and owns final quoting/replacement without Enter.
+- [x] **Fully done locally — inert helper and response path:** the package binary
+  target, bootstrap/transport/session/endpoint runner, authenticated application
+  reply, strict shell envelope, and native generation/span/current-buffer
+  replacement without Enter are implemented and tested.
+- [ ] Produce the signed/attested helper artifact and reviewed restricted-handle
+  launcher; no unsigned local build is release evidence.
 - [ ] Complete native Linux/macOS/WSL restart/sleep/churn evidence; source fuzz,
   replay/cross-route, Windows ACL/peer, Unix mode, cleanup and fallback tests exist.
 
@@ -862,8 +866,9 @@ Exit: local-only results are deterministic, explainable, bounded, and safe.
 
 ## P4 - execute CP5.4-CP5.6 UI, shell activation, and release
 
-Status: Partially done. CP5.4 source UI exists; CP5.5 shell resources are inert
-request-only scaffolds; CP5.6 activation and release evidence remain open.
+Status: Partially done overall. CP5.4 UI/publication source and the CP5.5 inert
+helper plus bidirectional shell adapters are implemented; launcher/signing/live
+composition, CP5.6 activation, and release evidence remain open.
 
 - [x] Add a renderer-neutral pane-owned listbox model/controller/renderer with
   cursor, IME, footer, tab, sibling, selection and modal exclusion inputs and no
@@ -872,9 +877,12 @@ request-only scaffolds; CP5.6 activation and release evidence remain open.
   plus compact fallback without color-only meaning.
 - [x] Add source-level keyboard/focus lifecycle, reduced-motion, high-contrast,
   tiny-to-8K, 100-300% scale, split-pane and exclusion geometry tests.
-- [ ] Complete signed-helper response/replacement and activate only native-proven
-  PowerShell, Bash, Zsh, Fish and WSL pairs; retain truthful Windows PowerShell
-  5.1, CMD, remote and container fallbacks.
+- [x] **Fully done locally — response/replacement source:** PowerShell 7, Bash 5,
+  Zsh 5.8, and Fish 3.6 adapters use the persistent helper envelope, bounded
+  response parsing, current-editor revalidation, and one native replacement.
+- [ ] Activate only after the reviewed launcher, signed artifact, live screen
+  composition, and native-proven PowerShell/Bash/Zsh/Fish/WSL pairs pass; retain
+  truthful Windows PowerShell 5.1, CMD, remote and container fallbacks.
 - [ ] Prove native profile, keybinding, predictor, completer, history, alias,
   function, abbreviation and view preservation byte-for-byte.
 - [ ] Add public preview/source/privacy/memory settings and staged opt-in; internal
@@ -979,6 +987,7 @@ manifests on controlled Windows, macOS, and Linux runners;
 source work may proceed to F6 while those external F4/M5 gates are collected.
 P1 autocomplete research is **Fully done** with CP1 retained. P2/CP5.1 and
 P3/CP5.2-CP5.3 are **Fully done at their source/local model boundaries and
-partially done for release**. P4/CP5.4-CP5.6 is **Partially done**: UI source and
-inert request scaffolds exist, while signed native replacement, activation, and
-native/accessibility/package/resource/30-day evidence remain open.
+partially done for release**. P4/CP5.4-CP5.6 is **Partially done overall**: UI/publication source and
+the inert helper/native replacement adapters exist, while reviewed launcher,
+signing/attestation, WSL relay, live activation, and native/accessibility/
+package/resource/30-day evidence remain open.

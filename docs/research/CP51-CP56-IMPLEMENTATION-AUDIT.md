@@ -49,13 +49,38 @@ Measurable acceptance requires:
 | CP5.0 shell/API/dependency research | Fully implemented | Complete locally | Seven-shell matrix, pure insertion prototype, locked matcher benchmark, privacy review, machine checker | External low-end and native shell evidence applies only if CP5 proceeds |
 | Existing reusable foundations | Fully implemented | Partial/external | CP1 native adapters/fallback; CP2/CP3 typed action index; cached CP4 public snapshots; joined workers; pane geometry; renderer-neutral accessibility | CP5 composition and native feature evidence |
 | ADR 0025 and versioned threats | Fully implemented | Source authority complete | Accepted ADR; schema-1 contract; six stable threats with controls, hostile mutations, owners, residual risk; mutation checker | Preserve digest and keep preview/stable activation false until CP5.6 evidence |
-| CP5.1 protocol and endpoint | Fully implemented at source boundary | Partial/external | Strict request/submission/replacement codecs; bounded validation; constant-time capability; restrictive Windows named pipe and filesystem Unix socket source; joined latest-only service; property/fuzz/fragmentation/replay/cleanup and native Windows tests | Activation stays false; native Linux `SO_PEERCRED`, macOS `getpeereid`, WSL relay, crash/restart/sleep and sustained endpoint-churn evidence |
+| CP5.1 protocol and endpoint | Fully implemented at source boundary | Partial/external | Strict request/submission/replacement/authenticated-status codecs; constant-time capability; restrictive Windows/Unix endpoints; joined latest-only service; bounded application route exchange; property/fuzz/fragmentation/replay/supersession/cleanup/native Windows tests | Activation stays false; native Linux `SO_PEERCRED`, macOS `getpeereid`, WSL relay, crash/restart/sleep and sustained endpoint-churn evidence |
 | CP5.2 source broker | Fully implemented at source boundary | Partial/external | Exact six typed sources; independent history/frequency opt-ins; memory-only counters; cached-public LKG/freshness; bounded deadline/batch/cache and privacy/source tests | Activated native editor/provider fixtures, slow/offline/cancellation storms and native resource evidence |
 | CP5.3 ranking and scheduling | Fully implemented at source boundary | Partial/external | Deterministic native-first ranking/stable ties; Unicode/grapheme/control/bidi checks; one-latest scheduling; stale/capability rejection; property/fuzz and 32/128/512 plus near-limit codec benchmarks | Named-hardware latency/allocation/cache distributions, native quoting/selection/multiline insertion and sustained cleanup evidence |
-| CP5.4 pane UI | Partially implemented | Partial/external | Pane-owned listbox/option model, exact matched graphemes, cursor/exclusion placement, compact fallback, scale/high-contrast/reduced-motion semantics, screen controller/lifecycle hooks, draw-only renderer and tiny-to-8K 100–300% tests | Activated publication, native GPU screenshots, keyboard/pointer/IME automation and controlled NVDA/Narrator/VoiceOver/Orca evidence |
-| CP5.5 shell activation | Partially implemented | Not activated | Inert PowerShell 7/Bash 5/Zsh 5.8/Fish 3.6 request scaffolds with version, preview, inherited-channel, collision, disable and native-fallback guards; syntax/disabled-state checks | Signed helper, response/replacement adapters, WSL relay, Fish Unicode bridge, native insertion/profile/uninstall fixtures, packaging and activation |
-| CP5.6 preview and release | Partially implemented | External gates open | Activation false; broker kill/reset/disable/uninstall, LKG health, policy mutations, bounded lifecycle and CP1 fallback contracts | Three-OS native/accessibility/signed-package/rollback, 1,000 real endpoint cycles, leak/storm campaigns, named-hardware baselines and 30-day soak |
+| CP5.4 pane UI | Fully implemented at source boundary | Partial/external | Pane-owned listbox/controller/renderer plus condition-variable publication mailbox, exact candidate reconstruction, authenticated dismiss/no-candidate replies, 64-route bound, source/UI deadlines, kill/route wakeup, tiny-to-8K and 100–300% model tests | Live screen composition remains disabled; native GPU screenshots, keyboard/pointer/IME automation and controlled NVDA/Narrator/VoiceOver/Orca evidence remain |
+| CP5.5 shell activation | Fully implemented at inert source bridge / partial product composition | Not activated | Helper binary target; bounded bootstrap/transport/session/endpoint runner; strict response envelope; four request/response adapters; Windows PowerShell handle/status cleanup and WSL Bash/Zsh/Fish Unicode replacement/stale/hostile native tests | Reviewed launcher/restricted inheritance, signed artifact, WSL host relay, interactive PowerShell insertion, live screen composition, profile/uninstall fixtures and activation |
+| CP5.6 preview and release | Partially implemented | External gates open | Activation false; broker/mailbox kill/reset/disable/uninstall, LKG, exact route limits, policy mutations, real local shell harnesses, OS-specific hosted steps and CP1 fallback contracts | Successful hosted three-OS runs, accessibility/GPU, signed package/rollback, 1,000 real endpoint cycles, leak/storm campaigns, named-hardware baselines and 30-day soak |
 
+## Evidence update — 2026-08-25
+
+Local evidence now includes authenticated application reply round trips and
+spoof/stale rejection; fragmented helper endpoint and transport tests; bounded
+application publication/reply exchange including no-candidate, oversized frame,
+supersession, exact 64-route saturation, kill, and redacted debug behavior;
+1,000 broker kill/enable cycles; and real WSL Bash 5.2, Zsh 5.9, and Fish 3.7
+editor callbacks. Failure-first hostile replacements proved Bash and Zsh had
+accepted invalid UTF-8 bytes; all four adapters now independently reject stray,
+overlong, truncated, surrogate, and above-U+10FFFF RFC 3629 forms plus C0/C1,
+U+061C, and bidi-isolate/override payloads before native editor calls, while valid
+2/3/4-byte replacement remains covered. The Fish regression also reproduced a blocking interactive read; fixed fd
+4 through `/dev/fd/4` plus a 2,176-byte local read limit is the verified non-
+interactive path, and native completions stream through 4-KiB lines to an exact
+512-item cap. Native Windows PowerShell 7 validates the pure parser separately
+from PSReadLine, preview gates, anonymous-handle ownership, status parsing, and
+cleanup. All adapters reject unknown/extra/oversized statuses and cap the encoded
+response at 2,176 bytes.
+
+The hosted workflow now assigns Bash to Linux, Zsh/Fish to Linux and macOS, and
+PowerShell to Windows. Those definitions are automated prerequisites, not
+retrospective proof that a remote job passed. Interactive PowerShell insertion,
+WSL host relay, signed/attested package launch, live GPU/accessibility, native
+endpoint churn, profile preservation, named-hardware resource distributions,
+and the 30-day soak remain external.
 ## Build, wrap, or adopt decision
 
 Build only Automexia's small versioned models, broker policy, immutable UI model,
@@ -103,10 +128,18 @@ Planned owners after acceptance:
   accessibility publication and native-accept response;
 - `.../renderer/suggestions.rs`: draw immutable rows only; no IO, ranking,
   protocol, shell, provider, or capability logic;
-- `shell-integration/suggestions/{powershell,bash,zsh,fish}`: inert request-only
-  adapter scaffolds with editor-version, preview, inherited-channel, collision,
-  disable, and native-fallback guards. The signed helper, response/replacement
-  path, WSL relay, and activation remain unimplemented CP5.5 exit work;
+- `apps/automexia-terminal/src/bin/automexia-suggestion-helper.rs` plus helper
+  bootstrap/transport/session/endpoint/runner modules: one inert persistent
+  binary target with stdin bootstrap and inherited shell channels; it accepts no
+  argv/environment authority and translates only bounded authenticated records;
+- `.../suggestions/publication.rs` and `endpoint_service.rs`: one condition-
+  variable mailbox and one submission/reply exchange; the screen may answer
+  only with an exact published candidate or authenticated status, never PTY data;
+- `shell-integration/suggestions/{powershell,bash,zsh,fish}`: inert bidirectional
+  adapters with editor-version, preview, inherited-channel, collision, disable,
+  bounded reply, stale-state, native replacement, and fallback guards. The
+  reviewed launcher, signed artifact, WSL relay, live composition, and activation
+  remain CP5.5/CP5.6 exit work;
 - configuration/CLI: no public preview/history/frequency setting or shortcut is
   shipped. Internal broker kill/reset/disable/uninstall exists; product controls
   remain CP5.6 exit work.

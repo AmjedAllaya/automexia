@@ -680,10 +680,11 @@ actually run.
 ### CP5 — Shell Completion and Suggestions
 
 Status: CP5.0 research is fully done. ADR 0025 and the six-threat machine
-contract are accepted. CP5.1 protocol/endpoints, CP5.2 bounded sources, and
-CP5.3 deterministic ranking are fully done at their source/local model
-boundaries. CP5.4 is source-integrated but unpublished; CP5.5 request-only shell
-scaffolding and CP5.6 assurance remain partial. Preview/stable activation is
+contract are accepted. CP5.1 protocol/endpoints, CP5.2 bounded sources, CP5.3
+deterministic ranking, and CP5.4 UI/publication are fully done at their source/
+local model boundaries. CP5.5 has a complete inert helper/adapter source bridge
+but not its reviewed launcher, signed artifact, WSL relay, live composition, or
+activation. CP5.6 assurance remains partial and preview/stable activation is
 false. CP5 remains optional and is not a v0.5.0 blocker; CP1 remains the default
 and complete fallback.
 
@@ -751,12 +752,14 @@ downgrades. The contract records `accepted: true` and
 `runtime_activation: false`.
 
 The [implementation audit](research/CP51-CP56-IMPLEMENTATION-AUDIT.md) records
-source owners and exact remaining gates. Bidirectional codecs, platform endpoint
-sources, broker, six local sources, deterministic ranking, pane UI model,
-controller, renderer, fuzz and benchmarks exist. Normal shell integration does
-not source the inert request adapters. No signed helper, native response/
-replacement adapter, WSL relay, public setting, default shortcut, or activated
-user-facing suggestion surface ships.
+source owners and exact remaining gates. Authenticated bidirectional codecs,
+platform endpoints, broker, six local sources, deterministic ranking, pane UI,
+publication mailbox, application route exchange, helper binary target, four
+native response/replacement adapters, fuzz, benchmarks, and local native shell
+harnesses exist. Normal shell integration does not source those inert adapters.
+No reviewed launcher, signed/attested artifact, WSL host relay, public setting,
+default shortcut, live screen composition, or activated user-facing suggestion
+surface ships.
 
 #### CP5.1 — versioned editor bridge and ownership
 

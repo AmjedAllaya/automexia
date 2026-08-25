@@ -183,24 +183,40 @@ install/update/kill/disable/uninstall/rollback; and verified CP1 fallback.
 
 ## Implementation status
 
-CP5.1's strict bidirectional protocol, route validation, restrictive Windows and
-Unix endpoint sources, and joined latest-only service are implemented with
-property/fuzz/fragmentation/replay/cleanup and native Windows tests. CP5.2's six
-bounded sources and CP5.3's deterministic ranking/insertion-safety model are
-implemented at their source/local model boundaries. CP5.4 has a pane-owned UI
-model, controller, renderer, placement/accessibility semantics, and lifecycle
-invalidation, but no activated publication path.
+CP5.1's strict request/submission/replacement/authenticated-status codecs,
+route validation, restrictive Windows and Unix endpoint sources, joined latest-
+only service, and one bounded application read/publication/reply exchange are
+implemented with property, fuzz, fragmentation, replay, supersession, exact-
+limit, cleanup, and native Windows tests. CP5.2's six bounded sources and CP5.3's
+deterministic ranking/insertion-safety model are implemented at their source/
+local model boundaries.
 
-CP5.5 is deliberately incomplete: packaged resources contain only inert,
-request-side PowerShell 7, Bash 5, Zsh 5.8, and Fish 3.6 scaffolds. The signed
-helper, response reader, current-buffer revalidation, native replacement, WSL
-relay, Fish Unicode bridge, packaging, public settings/shortcuts, and activation
-are absent. CP5.6 local kill/reset/disable/uninstall/LKG checks exist, while
-three-OS native, controlled assistive-technology, signed package/rollback,
-named-hardware performance/resource, 1,000 real endpoint-cycle, and 30-day soak
-evidence remain external. The machine contract therefore keeps
-`runtime_activation: false`, and CP1 remains the default and complete fallback.
+CP5.4 now has a pane-owned UI model, controller, draw-only renderer, source-side
+publication mailbox, exact candidate reconstruction, authenticated dismiss/no-
+candidate replies, 64-route bound, 250 ms source deadline, 30-second UI response
+deadline, and kill/route wakeup. It is not connected to a live screen because
+runtime activation remains forbidden.
 
+CP5.5 now includes the inert `automexia-suggestion-helper` package binary target,
+bounded bootstrap/transport/session/endpoint runner, strict 2,176-byte shell
+response envelope, and session-only PowerShell 7, Bash 5, Zsh 5.8, and Fish 3.6
+request/response adapters. Each adapter revalidates generation/span/current
+buffer, strict UTF-8, C0/C1 controls, and bidi controls before one native
+replacement without Enter. Local native evidence covers Windows PowerShell
+preview/anonymous-handle/status/cleanup and WSL Bash, Zsh, and Fish enable,
+Unicode span, replacement, stale, hostile payload, and callback-return paths.
+Fish uses fixed inherited fd 3/4, `/dev/fd/4`, a 2,176-byte read limit, and a
+streaming 512-item/4-KiB-line native-completion loop.
+
+CP5.6 still keeps `runtime_activation: false`. The launcher and restricted
+handle inheritance, package signing/attestation, WSL host relay, interactive
+PowerShell replacement, live screen composition, public preview/privacy/source
+controls, native Linux/macOS endpoint churn, profile preservation, controlled
+GPU/accessibility/resource evidence, installer update/uninstall/rollback, SBOM
+attachment, named-hardware distributions, real endpoint lifecycle campaign, and
+30-day soak remain release prerequisites. Hosted jobs now contain OS-specific
+native bridge steps, but they count only after an exact remote run succeeds.
+CP1 remains the default and complete fallback.
 Primary references:
 [Microsoft named-pipe security](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights),
 [`CreateNamedPipe`](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createnamedpipew),

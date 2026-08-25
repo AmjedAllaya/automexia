@@ -73,7 +73,7 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | CP3.3 | Explicit selected PowerShell/Bash/Zsh/Fish/CMD/Git alias import and exact just/Task/mise workspace bridges are dry-run/CAS managed, bounded, insert-only, path-free digest/revision trusted, revocable, removal-safe, runtime-authorized, fuzzed, benchmarked, and mutation-gated. |
 | **Partially done** | CP4 | Fully done locally at the product-integrated nonactivating boundary: seven provider-aware projections, retained cached-product-to-selected-route handoff, immutable route snapshots, idempotence/revocation, stale-generation rejection, final copy/insert revalidation, accessible context/risk states, production confirmation, fuzz/benchmark/policy evidence. Approved provider refresh/capsule production, exact execution, OpenBao, and real native/provider/accessibility/release evidence remain. |
 | **Fully done** | CP5.0 | Native API/version research, a bounded non-runtime editor-state prototype, 32/128/512 matcher evidence, dependency review, privacy delta, and a retain-CP1/defer-P2 decision are machine-gated. |
-| **Partially done** | CP5.1-CP5.6 | ADR 0025 and its machine contract are accepted. CP5.1 protocol/endpoints, CP5.2 bounded sources, and CP5.3 deterministic ranking are fully done at their source/local model boundaries. CP5.4 has a pane-owned UI model, controller, renderer, and lifecycle invalidation but remains unpublished. CP5.5 has inert request-only shell scaffolds; its signed helper, response/replacement adapters, WSL relay, and activation are not done. CP5.6 local kill/reset/disable/LKG checks are partial; native three-OS, accessibility, signed-package, named-hardware, and 30-day evidence remain external. CP1 remains the fallback. |
+| **Partially done** | CP5.1-CP5.6 | ADR 0025 is accepted. CP5.1 authenticated protocol/endpoints/route exchange, CP5.2 sources, CP5.3 ranking, and CP5.4 UI/publication are fully done at source/local boundaries. CP5.5 has an inert helper target and four bidirectional native adapters with local Windows PowerShell and WSL Bash/Zsh/Fish evidence. Reviewed launcher, signing/attestation, WSL relay, live composition, activation, and successful three-OS/accessibility/package/resource/30-day evidence remain. CP1 remains fallback. |
 | **Partially done** | CP6 | The non-activating D7/CP6 contract freezes signed-pack provenance/capability/revocation rules and selected-input-only AI consent with no tools or execution. Runtime pack import, provider transport, UX, privacy/native evidence, and release activation remain blocked on ADR 0029 acceptance. |
 | **Partially done** | G0 | Pinned Ghostty 1.3.1 Linux/BSD source/binary/checksum provenance, generated fixtures/references, deterministic Windows adaptation, accepted ADR 0026, classic golden, property tests, and offline verification are implemented. Native macOS fixture plus native Linux/macOS release evidence remain. |
 | **Fully done** | G1 | The pure private typed/compiled registry, schemas, origins, scopes, policies, direct/reverse indexes, sequence trie/table reservation, classic adapter, registry-derived palette, and latency evidence are implemented. |
@@ -521,22 +521,23 @@ When CP2-CP4 dependencies permit, CP5 executes in this fixed order:
    byte/count/cache limits, cancellation, insertion revalidation, fuzzing, and
    32/128/512 plus near-limit frame benchmarks are implemented. Named-hardware
    latency/allocation and sustained resource evidence remain.
-5. **Partially done — CP5.4 UI:** a pane-owned renderer-neutral listbox model,
-   controller, draw-only renderer, cursor/exclusion placement, compact fallback,
-   matched graphemes, accessibility semantics, focus/IME/modal invalidation, and
-   tiny-to-8K 100–300% tests exist. Runtime publication, native GPU screenshots,
-   keyboard/pointer/IME automation, and controlled assistive-technology evidence
-   remain; the surface is not activated.
-6. **Partially done — CP5.5 activation:** inert, session-only PowerShell 7/Bash 5/
-   Zsh 5.8/Fish 3.6 request scaffolds have version, preview, collision, disable,
-   and native-fallback guards. The signed helper, response reader, exact native
-   replacement, WSL relay, Fish Unicode bridge, packaging, and activation are not
-   implemented; Windows PowerShell 5.1 and CMD deliberately retain native CP1.
-7. **Partially done — CP5.6 release gate:** bounded broker kill/reset/disable/
-   uninstall, LKG health, mutation policy, and local lifecycle tests exist while
-   activation stays false. Native three-OS/shell/accessibility/package/rollback,
-   named-hardware performance/resource campaigns, 1,000 real endpoint cycles,
-   and the 30-day preview baseline remain external prerequisites.
+5. **Fully done at source boundary / partially done for release — CP5.4 UI:** a
+   pane-owned renderer-neutral listbox/controller/renderer plus bounded source
+   publication, exact candidate reconstruction, authenticated reply, route/
+   deadline/kill controls, and tiny-to-8K 100–300% tests exist. Live composition,
+   native GPU/IME/pointer/keyboard, and assistive-technology evidence remain.
+6. **Fully done at inert source bridge / partially done for composition — CP5.5:**
+   the helper target, bounded transport/session/endpoint runner, strict response
+   envelope, and PowerShell/Bash/Zsh/Fish response/replacement adapters exist with
+   local native evidence. Reviewed launcher/restricted inheritance, signed
+   artifact, WSL relay, interactive PowerShell insertion, profile/uninstall proof,
+   live composition, and activation remain; PowerShell 5.1/CMD retain native CP1.
+7. **Partially done — CP5.6 release gate:** bounded broker/mailbox kill/reset/
+   disable/uninstall, LKG, exact route limits, mutation policy, local native shell
+   tests, and OS-specific hosted steps exist while activation stays false.
+   Successful three-OS endpoint/shell/accessibility/package/rollback, named-
+   hardware resource campaigns, 1,000 real endpoint cycles, and 30-day evidence
+   remain external prerequisites.
 
 The exact contract, provisional budgets, UI behavior, source precedence,
 rejected dependencies, and acceptance criteria live in
