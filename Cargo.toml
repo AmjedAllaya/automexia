@@ -3,6 +3,8 @@ members = [
     "automexia-keybindings",
     "automexia-extension-api",
     "automexia-extension-runtime",
+    "automexia-ecosystem",
+    "automexia-ecosystem-runtime",
     "automexia-devops",
     "extensions/devops-aws",
     "extensions/devops-azure",
@@ -62,6 +64,8 @@ shell-integration-environment = "AUTOMEXIA_SHELL_INTEGRATION"
 automexia-keybindings = { path = "automexia-keybindings", version = "0.4.0" }
 automexia-extension-api = { path = "automexia-extension-api", version = "0.4.0" }
 automexia-extension-runtime = { path = "automexia-extension-runtime", version = "0.4.0" }
+automexia-ecosystem = { path = "automexia-ecosystem", version = "0.4.0" }
+automexia-ecosystem-runtime = { path = "automexia-ecosystem-runtime", version = "0.4.0" }
 automexia-devops = { path = "automexia-devops", version = "0.4.0" }
 automexia-devops-aws = { path = "extensions/devops-aws", version = "0.4.0" }
 automexia-devops-azure = { path = "extensions/devops-azure", version = "0.4.0" }
@@ -99,6 +103,7 @@ smallvec = { version = "1.15.2", default-features = false }
 # unicode-width = "0.2.0"
 unicode-width = { package = "unicode-width-16", version = "0.1.0" }
 unicode-segmentation = "1.13.3"
+unicode-normalization = "0.1.25"
 simdutf = "0.7.0"
 base64 = "0.23.0"
 image_rs = { package = "image", version = "0.25.10", default-features = false, features = [
@@ -145,6 +150,11 @@ dashmap = "6.2.1"
 flate2 = "1.1.9"
 configparser = { version = "3.2.0", default-features = false }
 time = { version = "=0.3.55", default-features = false, features = ["std", "parsing"] }
+zip = { version = "=8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+ed25519-dalek = { version = "3.0.0", default-features = false, features = ["alloc", "fast", "zeroize"] }
+wasmtime = { version = "48.0.1", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "wat"] }
+wit-parser = "=0.254.0"
+wat = "=1.254.0"
 
 [profile.release]
 strip = "symbols"           # See split-debuginfo - allows us to drop the size by ~65%

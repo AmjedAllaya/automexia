@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mutation tests for the proposed D7/CP6 ecosystem security contract."""
+"""Mutation tests for the accepted, non-activating D7/CP6 source boundary."""
 
 from __future__ import annotations
 
@@ -23,6 +23,10 @@ class EcosystemD7Cp6Tests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.text = (CHECKER.ROOT / CHECKER.CONTRACT_PATH).read_text(encoding="utf-8")
         cls.document = CHECKER.parse_contract(cls.text)
+        cls.acceptance_text = (
+            CHECKER.ROOT / CHECKER.ACCEPTANCE_PATH
+        ).read_text(encoding="utf-8")
+        cls.acceptance = CHECKER.parse_contract(cls.acceptance_text)
 
     def assert_rejected(self, mutation) -> None:
         document = copy.deepcopy(self.document)
@@ -35,6 +39,30 @@ class EcosystemD7Cp6Tests(unittest.TestCase):
         self.assertEqual(counts["threats"], 9)
         self.assertEqual(counts["limits"], 28)
         self.assertEqual(counts["external_gates"], 10)
+        self.assertEqual(counts["source_files"], 18)
+
+    def test_acceptance_receipt_cannot_gain_release_authority_or_drift_digest(self) -> None:
+        release = copy.deepcopy(self.acceptance)
+        release["release_authority"]["component_execution"] = True
+        with self.assertRaises(CHECKER.EcosystemContractError):
+            CHECKER.validate_acceptance(release)
+
+        digest = copy.deepcopy(self.acceptance)
+        digest["accepted_contract_canonical_sha256"] = "0" * 64
+        with self.assertRaises(CHECKER.EcosystemContractError):
+            CHECKER.validate_acceptance(digest)
+
+        dependencies = copy.deepcopy(self.acceptance)
+        dependencies["authorized_source"]["new_dependencies"].append("reqwest")
+        with self.assertRaises(CHECKER.EcosystemContractError):
+            CHECKER.validate_acceptance(dependencies)
+
+    def test_acceptance_receipt_duplicate_key_is_rejected(self) -> None:
+        duplicate = self.acceptance_text.replace(
+            '"schema": 1,', '"schema": 1,\n  "schema": 1,', 1
+        )
+        with self.assertRaisesRegex(CHECKER.EcosystemContractError, "duplicate key"):
+            CHECKER.parse_contract(duplicate)
 
     def test_duplicate_json_key_is_rejected(self) -> None:
         duplicate = self.text.replace('"schema": 1,', '"schema": 1,\n  "schema": 1,', 1)

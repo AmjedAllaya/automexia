@@ -2268,6 +2268,7 @@ fn verify_architecture() -> TaskResult {
     run_python("tools/ci/check_provider_quick_actions_cp4.py")?;
     run_python("tools/ci/check_session_launch_d0.py")?;
     run_python("tools/ci/check_runtime_trust.py")?;
+    run_python("tools/ci/check_ecosystem_d7_cp6.py")?;
     let identity = product_identity()?;
     let metadata = metadata()?;
     let packages = metadata["packages"]
@@ -2286,7 +2287,7 @@ fn verify_architecture() -> TaskResult {
         "frontend package is outside apps/automexia-terminal",
     )?;
 
-    let private_crates: [(&str, &[&str]); 7] = [
+    let private_crates: [(&str, &[&str]); 9] = [
         (
             "automexia-keybindings",
             &["criterion", "proptest", "serde", "serde_json", "sha2"],
@@ -2327,6 +2328,38 @@ fn verify_architecture() -> TaskResult {
                 "windows-sys",
                 "criterion",
                 "proptest",
+            ],
+        ),
+        (
+            "automexia-ecosystem",
+            &[
+                "criterion",
+                "proptest",
+                "serde",
+                "serde_json",
+                "sha2",
+                "unicode-normalization",
+            ],
+        ),
+        (
+            "automexia-ecosystem-runtime",
+            &[
+                "automexia-devops",
+                "automexia-ecosystem",
+                "base64",
+                "criterion",
+                "ed25519-dalek",
+                "proptest",
+                "serde",
+                "serde_json",
+                "sha2",
+                "tempfile",
+                "unicode-normalization",
+                "wasmtime",
+                "wat",
+                "windows-sys",
+                "wit-parser",
+                "zip",
             ],
         ),
         ("automexia-image", &["image", "libc", "tempfile"]),

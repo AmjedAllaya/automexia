@@ -13,6 +13,8 @@ automexia-image = { path = "../automexia-image" }
 automexia-keybindings = { path = "../automexia-keybindings" }
 automexia-terminal = { path = "../apps/automexia-terminal", default-features = false }
 automexia-devops = { path = "../automexia-devops" }
+automexia-ecosystem = { path = "../automexia-ecosystem" }
+automexia-ecosystem-runtime = { path = "../automexia-ecosystem-runtime" }
 automexia-devops-ssh = { path = "../extensions/devops-ssh" }
 rio-backend = { path = "../rio-backend", default-features = false }
 rio-vt = { path = "../rio-vt", default-features = false }
@@ -128,6 +130,13 @@ bench = false
 [[bin]]
 name = "suggestion_bridge"
 path = "fuzz_targets/suggestion_bridge.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ecosystem_bundle"
+path = "fuzz_targets/ecosystem_bundle.rs"
 test = false
 doc = false
 bench = false

@@ -1891,13 +1891,19 @@ gates are maintained in
 [CP5 suggestion source and release testing](CP5-SUGGESTION-TESTING.md). Preview
 activation remains false and CP1/native completion remains the default fallback.
 
-## D7/CP6 ecosystem proposal and future runtime gate
+## D7/CP6 accepted source and release gate
 
-The offline checker and mutation commands, exact local results, future package/
-provenance/sandbox/capability/action-pack/AI evidence matrix, and reporting rules
-are maintained in [Sandboxed ecosystem and optional AI testing](ECOSYSTEM-PLATFORM-TESTING.md).
-No runtime exists; the page distinguishes proposal evidence from protected
-native release gates.
+The accepted-source contract/mutation commands, pure domain/property tests, real
+signed ZIP/Ed25519/provenance/SBOM/license fixtures, atomic store/ACL/recovery,
+WIT parser, optional no-default-WASI Wasmtime conformance, action-pack, selected-
+input privacy/UI, terminal denial adapter, fuzz harness, Criterion results, and
+external native/release matrix are maintained in
+[Sandboxed ecosystem and selected-input model suggestion testing](ECOSYSTEM-PLATFORM-TESTING.md).
+
+The source boundary is complete locally but activation remains false. Public
+SDK/download/distribution, provider calls, actual native product UX, signed
+three-platform packages, malicious-corpus drills, 1,000 cycles and the 30-day
+soak are external gates and must not be reported as passing.
 
 ## Automation Studio evidence gate
 

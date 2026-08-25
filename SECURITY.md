@@ -81,29 +81,50 @@ processes. Production activation therefore requires controlled native proof that
 all owned descendants, PTYs, routes, listeners, and temporary resources are
 closed on exit, cancellation, failure, and application shutdown.
 
-## Proposed third-party ecosystem security boundary
+## Accepted third-party ecosystem source security boundary
 
-D7/CP6 is non-activating. Proposed ADR 0029 and its digest-frozen machine
-contract define package containment, custom-WIT sandboxing, provenance, trusted
-roots, update/revocation freshness, capability binding, resource ceilings, AI
-data-flow consent, rollback, and uninstall. They add no runtime dependency,
-download, package parser/store, public SDK, component execution, provider request,
-tool call, product surface, credential access, process, filesystem, or network
-authority.
+D7/CP6 is fully implemented locally at the accepted source boundary and remains
+non-activating. ADR 0029, its digest-frozen contract, and a separate acceptance
+receipt govern package containment, custom-WIT sandboxing, provenance, trusted
+publishers, current revocation, exact grants, 28 ceilings, selected-input consent,
+rollback and uninstall. The checker rejects contract/acceptance/dependency drift
+or any release authority becoming true.
 
-A future component starts with no default WASI or ambient filesystem, network,
-process, PTY, terminal, history, environment, clipboard, credential, SSH-agent,
-provider-cache, capsule-secret, or connection import. Every host call remains
-digest/version/grant/scope/profile/generation/deadline/quota checked; guest output
-is untrusted typed data and never becomes PTY input, Enter, or execution.
+Explicit local bundles are opened without following links and checked for
+identity changes. Manual bounded ZIP handling rejects encryption, traversal,
+absolute/drive/UNC/option-like paths, case/normalization collisions, links and
+special files. Exact content, Ed25519 signature, publisher/key, provenance, SPDX
+SBOM, licenses, compatibility, time, trust and revocation verify before private
+staging. Protected atomic storage publishes only disabled generations, verifies
+a current-user-only Windows DACL, recovers only validated last-known-good state,
+and removes exact owned data.
 
-Optional AI receives only exact selected bounded input after per-request
-redaction and provider/locality/model/destination/purpose/retention/size/risk
-review. Tool calls, MCP passthrough, ambient data, background/typing requests,
-and automatic execution are forbidden by the proposal. Explicit ADR acceptance,
-ADR 0003 protected approvals for each authority, dependency review, and native
-malicious-package/supply-chain/privacy/accessibility/resource/release evidence
-remain mandatory before activation.
+The optional Wasmtime conformance host has no default WASI or ambient filesystem,
+network, process, PTY, terminal, history, environment, clipboard, credential,
+SSH-agent, provider-cache, capsule-secret or connection import. Actual imports
+must exactly equal the reviewed allowlist. Fuel, epoch deadline, memory, table,
+instance and host-transfer limits bound guests, and workers are cancellable and
+joined. Public component execution is denied.
+
+Every grant binds publisher, extension, version, exact digest, capability, exact
+scope, profile, expiry and generation; revocation is checked before invocation.
+Guest output is sanitized bounded typed data and never becomes PTY input, Enter,
+process launch, or a minted grant. Signed action packs request no capabilities
+and map only into disabled typed insert-only actions subject to collisions,
+revocation and final revalidation.
+
+CP6 receives only exact selected bounded input after deterministic redaction and
+provider/locality/model/destination/purpose/retention/size/risk review. Consent is
+single-use and route/generation/expiry bound. Ambient data, provider/tool calls,
+MCP, workflow planning, background/typing requests and automatic execution are
+forbidden. Selected input and response content are absent from debug output,
+receipts and persistent state.
+
+Source acceptance does not authorize public SDK/download, component/provider
+activation, process/network/credential/PTY access, or release. Protected approvals,
+trust/revocation owners, malicious supply-chain and sandbox drills, native signed
+three-platform package/cleanup/accessibility evidence, provider privacy/legal
+review, resource baselines, 1,000 cycles and 30-day soak remain mandatory.
 
 ## Provider-neutral authentication security boundary
 
