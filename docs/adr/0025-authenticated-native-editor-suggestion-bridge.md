@@ -181,6 +181,26 @@ modal, accessibility, and multi-pane automation; latency/allocation/resource
 baselines; 1,000 lifecycle cycles; a 30-day controlled soak; signed package
 install/update/kill/disable/uninstall/rollback; and verified CP1 fallback.
 
+## Implementation status
+
+CP5.1's strict bidirectional protocol, route validation, restrictive Windows and
+Unix endpoint sources, and joined latest-only service are implemented with
+property/fuzz/fragmentation/replay/cleanup and native Windows tests. CP5.2's six
+bounded sources and CP5.3's deterministic ranking/insertion-safety model are
+implemented at their source/local model boundaries. CP5.4 has a pane-owned UI
+model, controller, renderer, placement/accessibility semantics, and lifecycle
+invalidation, but no activated publication path.
+
+CP5.5 is deliberately incomplete: packaged resources contain only inert,
+request-side PowerShell 7, Bash 5, Zsh 5.8, and Fish 3.6 scaffolds. The signed
+helper, response reader, current-buffer revalidation, native replacement, WSL
+relay, Fish Unicode bridge, packaging, public settings/shortcuts, and activation
+are absent. CP5.6 local kill/reset/disable/uninstall/LKG checks exist, while
+three-OS native, controlled assistive-technology, signed package/rollback,
+named-hardware performance/resource, 1,000 real endpoint-cycle, and 30-day soak
+evidence remain external. The machine contract therefore keeps
+`runtime_activation: false`, and CP1 remains the default and complete fallback.
+
 Primary references:
 [Microsoft named-pipe security](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights),
 [`CreateNamedPipe`](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createnamedpipew),

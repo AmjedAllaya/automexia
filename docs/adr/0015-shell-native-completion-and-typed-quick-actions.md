@@ -15,9 +15,11 @@ capability-free native alias imports and exact, receipt-bound trusted-workspace
 task bridges under [ADR 0021](0021-trusted-workspace-task-bridges.md). CP4 now
 implements bounded cached public provider candidates, route-scoped generation
 isolation, final copy/insert revalidation, and production confirmation without
-provider refresh or execution authority. Exact launch, secret expansion, and
-CP5 suggestions remain outside that authority. Stable publication still
-requires hosted native and controlled accessibility/performance evidence.
+provider refresh or execution authority. Exact launch and secret expansion
+remain outside that authority. Accepted ADR 0025 separately authorizes disabled
+CP5 source work; no CP5 preview, native replacement, or stable publication is
+active. Stable publication still requires hosted native and controlled
+accessibility/performance evidence.
 
 Verification note (2026-08-17): the CP2.2 re-audit made shell-user and
 global-user precedence structurally distinct, revalidates every activation

@@ -49,12 +49,12 @@ Measurable acceptance requires:
 | CP5.0 shell/API/dependency research | Fully implemented | Complete locally | Seven-shell matrix, pure insertion prototype, locked matcher benchmark, privacy review, machine checker | External low-end and native shell evidence applies only if CP5 proceeds |
 | Existing reusable foundations | Fully implemented | Partial/external | CP1 native adapters/fallback; CP2/CP3 typed action index; cached CP4 public snapshots; joined workers; pane geometry; renderer-neutral accessibility | CP5 composition and native feature evidence |
 | ADR 0025 and versioned threats | Fully implemented | Source authority complete | Accepted ADR; schema-1 contract; six stable threats with controls, hostile mutations, owners, residual risk; mutation checker | Preserve digest and keep preview/stable activation false until CP5.6 evidence |
-| CP5.1 protocol and endpoint | Not implemented | Not started | Required fields, transport, peers, limits, and ownership frozen | Rust protocol, Windows/Unix adapters, fuzz/property/native peer/replay/cleanup evidence |
-| CP5.2 source broker | Not implemented | Not started | Six ordered source policies frozen | Capability-free source models, shell adapters, opt-ins, privacy and no-IO/provider tests |
-| CP5.3 ranking and scheduling | Not implemented | Not started | Ranking/ties, queue/cache/deadlines frozen; CP5.0 matcher retained | Deterministic model, Unicode properties, cancellation storms, benchmarks, leak evidence |
-| CP5.4 pane UI | Not implemented | Not started | Hierarchy, semantics, key/focus/IME/z-order/density contracts frozen | UI model, screen controller, renderer, accessibility tree, goldens and native visual/AT evidence |
-| CP5.5 shell activation | Not implemented | Not started | Per-shell minimums, owners, adapters, fallback and collision policy frozen | Version-gated adapters, persistent helper/relay, insertion and disable/uninstall native fixtures |
-| CP5.6 preview and release | Not implemented | Not started | Flag/kill/LKG/reset/rollback limits frozen | Staged opt-in, native matrix, signed packages, controlled baselines, 1,000 cycles and 30-day soak |
+| CP5.1 protocol and endpoint | Fully implemented at source boundary | Partial/external | Strict request/submission/replacement codecs; bounded validation; constant-time capability; restrictive Windows named pipe and filesystem Unix socket source; joined latest-only service; property/fuzz/fragmentation/replay/cleanup and native Windows tests | Activation stays false; native Linux `SO_PEERCRED`, macOS `getpeereid`, WSL relay, crash/restart/sleep and sustained endpoint-churn evidence |
+| CP5.2 source broker | Fully implemented at source boundary | Partial/external | Exact six typed sources; independent history/frequency opt-ins; memory-only counters; cached-public LKG/freshness; bounded deadline/batch/cache and privacy/source tests | Activated native editor/provider fixtures, slow/offline/cancellation storms and native resource evidence |
+| CP5.3 ranking and scheduling | Fully implemented at source boundary | Partial/external | Deterministic native-first ranking/stable ties; Unicode/grapheme/control/bidi checks; one-latest scheduling; stale/capability rejection; property/fuzz and 32/128/512 plus near-limit codec benchmarks | Named-hardware latency/allocation/cache distributions, native quoting/selection/multiline insertion and sustained cleanup evidence |
+| CP5.4 pane UI | Partially implemented | Partial/external | Pane-owned listbox/option model, exact matched graphemes, cursor/exclusion placement, compact fallback, scale/high-contrast/reduced-motion semantics, screen controller/lifecycle hooks, draw-only renderer and tiny-to-8K 100–300% tests | Activated publication, native GPU screenshots, keyboard/pointer/IME automation and controlled NVDA/Narrator/VoiceOver/Orca evidence |
+| CP5.5 shell activation | Partially implemented | Not activated | Inert PowerShell 7/Bash 5/Zsh 5.8/Fish 3.6 request scaffolds with version, preview, inherited-channel, collision, disable and native-fallback guards; syntax/disabled-state checks | Signed helper, response/replacement adapters, WSL relay, Fish Unicode bridge, native insertion/profile/uninstall fixtures, packaging and activation |
+| CP5.6 preview and release | Partially implemented | External gates open | Activation false; broker kill/reset/disable/uninstall, LKG health, policy mutations, bounded lifecycle and CP1 fallback contracts | Three-OS native/accessibility/signed-package/rollback, 1,000 real endpoint cycles, leak/storm campaigns, named-hardware baselines and 30-day soak |
 
 ## Build, wrap, or adopt decision
 
@@ -103,11 +103,13 @@ Planned owners after acceptance:
   accessibility publication and native-accept response;
 - `.../renderer/suggestions.rs`: draw immutable rows only; no IO, ranking,
   protocol, shell, provider, or capability logic;
-- `shell-integration/{powershell,bash,zsh,fish}` and the signed helper mode:
-  editor-version gate, native state/completer query, collision report, quoting,
-  exact revalidation/insertion, session teardown;
-- configuration/CLI: preview/history/frequency toggles, collision-checked optional
-  binding, health, reset, runtime kill, disable and uninstall.
+- `shell-integration/suggestions/{powershell,bash,zsh,fish}`: inert request-only
+  adapter scaffolds with editor-version, preview, inherited-channel, collision,
+  disable, and native-fallback guards. The signed helper, response/replacement
+  path, WSL relay, and activation remain unimplemented CP5.5 exit work;
+- configuration/CLI: no public preview/history/frequency setting or shortcut is
+  shipped. Internal broker kill/reset/disable/uninstall exists; product controls
+  remain CP5.6 exit work.
 
 The app publishes a snapshot before waking the renderer. Route closure or
 rebind cancels queued work, rejects late results, closes the client, clears

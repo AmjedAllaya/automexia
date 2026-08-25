@@ -23,7 +23,7 @@ compatibility/threat-model pages.
 | Static first-party DevOps action packs | **Implemented locally** | Packs are disabled by default and collision-checked. |
 | Selected native alias import and trusted workspace task bridges | **Implemented locally** | Import/trust is explicit, bounded, revocable, and insertion-only. |
 | Provider/capsule-aware actions | **Planned** | Requires managed session/provider context. |
-| App-owned inline suggestion UI | **Proposal complete; runtime not authorized** | ADR 0025 and its machine threat contract await explicit acceptance; native completion remains the fallback. |
+| App-owned inline suggestion UI | **Partially done; preview disabled** | CP5.1-CP5.3 source/local models are done; CP5.4-CP5.6 publication, native shell replacement and release evidence remain partial or external. Native CP1 completion remains the fallback. |
 | Ecosystem/AI action packs | **Deferred** | Requires later signing/sandbox/security gates. |
 
 ## Design principle

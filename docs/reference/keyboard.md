@@ -264,6 +264,21 @@ insert. None of these shortcuts writes to or executes in the PTY. The mnemonic
 letters are **H**ub, **O**pen actions, **M**arketplace, and
 **L**ist fonts.
 
+## Optional suggestion shortcuts
+
+CP5 installs no default shortcut and exposes no public binding action while its
+preview is disabled. The inert PowerShell 7, Bash 5, Zsh 5.8, and Fish 3.6
+request scaffolds can bind only an explicitly supplied shell chord after checking
+that shell's current registry. They are not sourced by normal integration.
+`Ctrl+Space`, Tab, Right, and Enter are never reserved globally; Fish
+`Ctrl+Space` is explicitly treated as a collision. Unsupported, disconnected,
+killed, or disabled adapters leave the shell's native editor and CP1 completion
+unchanged.
+
+A future activated shortcut must be unused in both application and shell
+registries, act only while the pane-owned popup is active, replace through the
+native editor after exact state revalidation, and never send Enter or PTY text.
+
 ## Ghostty compatibility profiles
 
 `automexia` remains the implicit profile. Set `keyboard.binding-profile` to

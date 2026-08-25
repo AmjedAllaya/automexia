@@ -380,6 +380,19 @@ Automexia never modifies Rio data, copies logs/caches/executable content, or
 installs a `rio` alias. Existing Automexia files win. See
 [Rio configuration migration](../guide/migration.md).
 
+## Optional native-editor suggestions
+
+There is no public CP5 suggestion configuration in this release. ADR 0025 is
+accepted for source implementation, but the signed shell helper, native
+replacement adapters, WSL relay, settings UX, and native release evidence are
+not complete. Normal shell integration never sources the inert request
+scaffolds, and `runtime_activation` remains false.
+
+History and frequency ranking cannot be silently enabled. Any later preview
+must expose them as independent opt-ins, show enabled sources/freshness and
+memory use, and provide kill, reset, disable, uninstall, and CP1/native fallback
+controls. Unknown copied configuration keys must not activate CP5.
+
 ## Related references
 
 - [Keyboard and input](keyboard.md)
