@@ -77,7 +77,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [vt_parser, osc_metadata, control_string_bounds, image_decoder, openssh_inventory, config_migration, semantic_classification, label_sanitization, quick_action_projection, quick_action_packs, quick_action_imports, connection_planning]
+        target: [vt_parser, osc_metadata, control_string_bounds, image_decoder, openssh_inventory, config_migration, semantic_classification, label_sanitization, quick_action_projection, quick_action_packs, quick_action_imports, connection_planning, ecosystem_bundle]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the nightly compiler required by libFuzzer

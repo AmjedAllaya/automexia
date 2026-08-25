@@ -188,6 +188,15 @@ fn markdown_cell(value: &str) -> String {
 }
 
 fn generated_outputs() -> TaskResult<BTreeMap<String, Vec<u8>>> {
+    generated_outputs_with_classic(classic_manifest)
+}
+
+fn generated_outputs_with_classic<F>(
+    mut load_classic: F,
+) -> TaskResult<BTreeMap<String, Vec<u8>>>
+where
+    F: FnMut() -> TaskResult<Vec<u8>>,
+{
     let linux_specs = bundled_profile(ProfileId::Ghostty13, PlatformFamily::LinuxBsd)
         .map_err(str::to_string)?;
     let linux_report = compile(&linux_specs);
@@ -292,7 +301,7 @@ fn generated_outputs() -> TaskResult<BTreeMap<String, Vec<u8>>> {
         }),
     )?;
     if cfg!(windows) {
-        outputs.insert("automexia-classic-windows.json".into(), classic_manifest()?);
+        outputs.insert("automexia-classic-windows.json".into(), load_classic()?);
     }
 
     let checksums = outputs
@@ -389,6 +398,13 @@ fn write_outputs(destination: &Path, outputs: &BTreeMap<String, Vec<u8>>) -> Tas
 mod tests {
     use super::*;
 
+    fn generated_outputs_for_test() -> TaskResult<BTreeMap<String, Vec<u8>>> {
+        generated_outputs_with_classic(|| {
+            fs::read(artifact_root().join("automexia-classic-windows.json"))
+                .map_err(|error| format!("could not read checked fixture: {error}"))
+        })
+    }
+
     #[test]
     fn generated_references_are_registry_owned_and_redacted() {
         let references = generated_references().unwrap();
@@ -406,7 +422,7 @@ mod tests {
 
     #[test]
     fn deviations_record_the_cross_platform_font_range_adaptation() {
-        let outputs = generated_outputs().unwrap();
+        let outputs = generated_outputs_for_test().unwrap();
         let deviations: Value =
             serde_json::from_slice(&outputs["deviations.json"]).unwrap();
         let font = &deviations["automexia"][0];
@@ -421,7 +437,7 @@ mod tests {
 
     #[test]
     fn manifest_hashes_every_generated_pre_manifest_artifact() {
-        let outputs = generated_outputs().unwrap();
+        let outputs = generated_outputs_for_test().unwrap();
         let manifest: Value = serde_json::from_slice(&outputs["manifest.json"]).unwrap();
         let artifacts = manifest["artifacts"].as_object().unwrap();
         assert_eq!(artifacts.len() + 1, outputs.len());

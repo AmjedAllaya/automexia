@@ -348,14 +348,20 @@ Current assurance: **Partially enforced; preview disabled**.
 
 ### ecosystem-d7-cp6-proposal
 
-Current assurance: **Planned/proposal only**.
+Current assurance: **Accepted source partially enforced; activation external**.
 
-- Boundary-check packages, signatures, revocation, capabilities, sandbox,
-  selected input, AI output, quotas, lifecycle and fallback.
-- Mutate traversal, links, signature confusion, revocation, escalation, prompt
-  injection, exfiltration, crash loops and uninstall.
-- Continuously prove the repository contains no loader, sandbox runtime,
-  package persistence, AI network or selected-input product authority.
+- Retain strict manifest/path/grant/consent/lifecycle properties, real signed ZIP,
+  provenance/revocation, WIT, Wasmtime, Windows ACL, atomic recovery, app-denial,
+  mutation, fuzz-harness and real benchmark coverage.
+- Expand hostile package/component and prompt corpora across compromised keys,
+  rollback/freeze, false sizes, normalization collisions, traps, reentrancy,
+  resource storms, stale cross-profile grants, negative persistence and cleanup.
+- Run the exact protected artifact natively on signed Windows/Linux/macOS packages
+  with sandbox, uninstall, visual, IME, screen-reader, resource, 1,000-cycle and
+  30-day evidence before public SDK/download, component or provider activation.
+- Continuously reject contract/acceptance/dependency drift, ambient imports,
+  extraction shortcuts, authority changes, selected-content logging, false
+  native claims, and any coupling to the separate LO0-LO5 workflow track.
 
 ### contributor-automation-quality-policy
 

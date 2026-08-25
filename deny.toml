@@ -67,6 +67,15 @@ skip = [
   { crate = "tiny-skia@0.11.4", reason = "sctk-adwaita 0.10 requires tiny-skia 0.11, while Sugarloaf requires the two-circle radial-gradient API from 0.12" },
   { crate = "tiny-skia-path@0.11.4", reason = "tiny-skia 0.11 compatibility family retained by sctk-adwaita 0.10" },
 
+  # Wasmtime 48.0.1 pins its audited Cranelift hashing stack to digest 0.10
+  # while the application and Ed25519 stack use digest 0.11. These exact
+  # versions are isolated behind the disabled component-host feature.
+  { crate = "block-buffer@0.10.4", reason = "Wasmtime 48 Cranelift requires the sha2/digest 0.10 compatibility family" },
+  { crate = "cpufeatures@0.2.17", reason = "Wasmtime 48 Cranelift requires the sha2/digest 0.10 compatibility family" },
+  { crate = "crypto-common@0.1.7", reason = "Wasmtime 48 Cranelift requires the sha2/digest 0.10 compatibility family" },
+  { crate = "digest@0.10.7", reason = "Wasmtime 48 Cranelift requires digest 0.10 while Ed25519 3 uses digest 0.11" },
+  { crate = "itertools@0.14.0", reason = "Wasmtime 48 Cranelift requires itertools 0.14 while Criterion retains 0.13" },
+  { crate = "sha2@0.10.9", reason = "Wasmtime 48 Cranelift pins sha2 0.10 while the application uses sha2 0.11" },
   # Widely used foundational crates have incompatible semver requirements in the inherited graph.
   { crate = "getrandom@0.2.17", reason = "transitive dependencies require pre-1.0 incompatible generations" },
   { crate = "getrandom@0.3.4", reason = "transitive dependencies require pre-1.0 incompatible generations" },

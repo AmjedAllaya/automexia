@@ -1313,40 +1313,76 @@ adapters reuse the same exact-argv path. Direct SDK network, browser callback,
 sealed secret-handle, third-party process, and AI tool capabilities require
 their own reviewed schemas, quotas, threat models, and ADR changes.
 
-## Proposed D7/CP6 sandboxed ecosystem boundary
+## Accepted D7/CP6 sandboxed ecosystem source boundary
 
-D7/CP6 is partially implemented only as a non-activating policy contract.
-Proposed [ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md), its
-[schema-1 machine contract](../tests/fixtures/ecosystem/d7-cp6-ecosystem-contract-v1.json),
-and the [execution audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md) freeze
-ownership, threats, ceilings, lifecycle, rollback, and external evidence. They
-do not add a crate, dependency, package parser/store, WIT interface, component
-host, downloader, product surface, public SDK, AI provider, or runtime authority.
+D7/CP6 is fully implemented locally at the accepted nonactivating source
+boundary and partially implemented overall. Accepted
+[ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md), the immutable
+[schema-1 contract](../tests/fixtures/ecosystem/d7-cp6-ecosystem-contract-v1.json),
+the separate acceptance receipt, and the
+[implementation audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md) freeze ownership,
+threats, ceilings, lifecycle, rollback, source dependencies and false release
+authorities.
 
-After explicit acceptance, a private `automexia-ecosystem` domain crate may own
-strict renderer/PTY-independent manifest, compatibility, capability-diff,
-verification-receipt, and lifecycle models. A dedicated joined host may then
-adopt Wasmtime Component Model behind a disabled feature. It starts with an
-Automexia-owned WIT allowlist and no default WASI. Fuel, an emergency epoch/
-wall deadline, guest and host-transfer memory limits, table/instance/output/log/
-queue/concurrency limits, generation cancellation, crash quarantine, and joined
-teardown are mandatory. Runtime limiting is not delegated to linear-memory
-limits because host allocations also require Automexia ceilings.
+`automexia-ecosystem` is the pure renderer/PTY-independent owner for strict JSON,
+manifest/path/compatibility, capability diff and exact grants, package and
+verification records, bounded fair lifecycle, disabled distribution policy,
+selected-input consent/response, and renderer-neutral review state. It performs
+no filesystem, process, network, credential, provider, clipboard, PTY, renderer,
+or model I/O.
 
-Verified immutable bundles remain separate from execution. Digest, publisher,
-signature, trusted root, timestamp, provenance, SBOM/licenses, compatibility,
-and current revocation state bind before review or extraction. Any code, signer,
-import, capability, scope, data-flow, quota, AI provider/locality, or risk change
-requires fresh review. Network distribution is a later explicit-refresh slice
-with role-separated, versioned, expiring metadata and rollback/freeze resistance.
+`automexia-ecosystem-runtime` owns explicit local regular-file ingestion, bounded
+manual ZIP parsing, Ed25519/provenance/SBOM/license/trust/time/revocation
+verification, protected atomic disabled storage, recovery, exact uninstall,
+signed non-executing action-pack mapping, and the optional Component Model
+conformance host. The app adapter owns explicit composition and denies activation,
+downloads, provider calls and grants. None of these owners is called from typing,
+PTY, resize, renderer or startup hot paths.
 
-Guest and AI output is bounded untrusted typed data that re-enters host policy.
-It never writes to the PTY, presses Enter, launches a process, accesses a file/
-network/clipboard/credential/agent/provider/capsule/connection, or mints a grant.
-Optional AI receives only explicitly selected bounded input after per-request
-data-flow review and may return only copy/insert suggestions. Private first-party
-extensions and CP1-CP3 remain authoritative fallback until every protected and
-native release gate passes.
+The accepted logical world is `automexia:ecosystem/suggestion@1`; checked-in WIT
+uses source world `extension` because interfaces and worlds share the package
+item namespace while `suggestion` is also a required imported interface. The
+acceptance receipt records that syntax mapping. Wasmtime is feature-gated, links
+no default WASI, inventories exact imports, disables memory64, and applies fuel,
+epoch deadlines, memory/table/instance/host-transfer ceilings, cancellation and
+joined workers. Public execution always returns `ActivationDenied`; the private
+permit is constructible only inside conformance tests.
+
+A package is verified before bytes reach private no-follow staging. Content,
+publisher/key, signature, provenance, SPDX/license evidence, compatibility,
+time, trusted root and current revocation state bind into a bounded content-free
+receipt. The store publishes only installed-disabled generations using fsync and
+atomic replace, verifies Windows current-user-only protected DACLs, retains two
+generations, reconstructs only valid last-known-good state, and removes only the
+exact Automexia-owned subtree. Unix/macOS permission behavior remains a native
+release gate.
+
+Every capability defaults denied and binds publisher, extension, version, exact
+digest, capability, scope, profile, expiry and generation. Revocation is checked
+at invocation; selected input is one-shot. Guest/model output is bounded untrusted
+typed data that re-enters ordinary host policy. It never becomes PTY input,
+Enter, process execution, file/network/clipboard/credential/agent/provider/
+capsule/connection access, or grant authority.
+
+CP6 accepts only explicitly selected bounded text after normalization, redaction
+preview and exact provider/locality/model/destination/purpose/retention/size/risk
+review. Consent is digest/route/generation/expiry bound and single-use. Provider,
+tool, workflow and MCP calls remain hard-disabled, and response risk is assigned
+independently. Renderer-neutral package/lifecycle/model states are cancel-first,
+responsive, reduced-motion aware and contain textual accessible meaning; no
+native released surface is claimed.
+
+Public download/SDK, component/provider activation and native release remain
+blocked on protected exact-head approvals, named trust/revocation/update owners,
+separate network distribution design, malicious package/component and
+compromised-key drills, signed Windows/Linux/macOS package/sandbox evidence,
+actual visual/accessibility/IME/focus evidence, provider privacy/legal review,
+resource baselines, 1,000 lifecycle cycles, the 30-day soak, and verified
+kill/disable/uninstall/rollback/fallback. Private first-party extensions and
+CP1-CP3 remain authoritative fallback.
+
+This D7/CP6 boundary is deliberately narrower than the proposed first-party LLM
+Orchestration extension below. Neither decision activates or weakens the other.
 
 ## Proposed Automation Studio and DevOps/SRE composition boundary
 

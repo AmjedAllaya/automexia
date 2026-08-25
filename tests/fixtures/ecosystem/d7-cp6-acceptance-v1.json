@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "phase": "D7/CP6",
+  "decision": "accepted-for-source-implementation",
+  "accepted_on": "2026-08-25",
+  "accepted_contract_path": "tests/fixtures/ecosystem/d7-cp6-ecosystem-contract-v1.json",
+  "accepted_contract_canonical_sha256": "fdd765ec52cf043ebbf2132177a94ae8be5bcb8175d4f1b566bcac4b96b346b4",
+  "wit_mapping": {
+    "logical_world": "automexia:ecosystem/suggestion@1",
+    "source_world": "extension",
+    "reason": "WIT package items share a namespace, so the exact imported suggestion interface and source world cannot both use the item name suggestion."
+  },
+  "authorized_source": {
+    "private_domain_crate": true,
+    "local_signed_bundle_review": true,
+    "disabled_atomic_install_store": true,
+    "component_host_conformance": true,
+    "renderer_neutral_review_models": true,
+    "signed_action_pack_mapping": true,
+    "selected_input_consent_models": true,
+    "new_dependencies": [
+      "ed25519-dalek",
+      "unicode-normalization",
+      "wasmtime",
+      "wat",
+      "wit-parser",
+      "zip"
+    ]
+  },
+  "release_authority": {
+    "component_execution": false,
+    "public_downloads": false,
+    "public_sdk_publish": false,
+    "model_provider_calls": false,
+    "model_tool_calls": false,
+    "automatic_execution": false,
+    "process_launch": false,
+    "network_access": false,
+    "credential_access": false,
+    "pty_input": false
+  }
+}

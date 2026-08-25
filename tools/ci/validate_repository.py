@@ -362,7 +362,7 @@ def validate() -> None:
         command_productivity_cp56_counts["source_files"]
     )
     ecosystem_d7_cp6_counts = validate_ecosystem_d7_cp6()
-    counts["ecosystem D7/CP6 proposal"] = ecosystem_d7_cp6_counts["threats"]
+    counts["ecosystem D7/CP6 accepted source"] = ecosystem_d7_cp6_counts["source_files"]
     session_launch_d0_counts = validate_session_launch_d0()
     counts["session launch D0/D3"] = session_launch_d0_counts["scenarios"]
     provider_auth_m7_counts = validate_provider_auth_m7()

@@ -211,6 +211,13 @@ CP5_SUGGESTION_SOURCE_FILES = {
     "apps/automexia-terminal/src/renderer/suggestions.rs",
     "apps/automexia-terminal/src/screen/suggestions.rs",
 }
+# Accepted ADR 0029 permits these exact nonactivating signed action-pack owners.
+# The independent D7/CP6 checker rejects execution, process/network/PTY authority,
+# capability-bearing packs, downloads, and release activation.
+D7_ACTION_PACK_SOURCE_FILES = {
+    "automexia-ecosystem-runtime/src/action_pack.rs",
+    "apps/automexia-terminal/src/automexia/ecosystem.rs",
+}
 PURE_ACTION_FILES = CP2_PURE_ACTION_FILES | CP4_PURE_ACTION_FILES
 CP2_PERSISTENCE_FILES = {
     "apps/automexia-terminal/src/automexia/quick_actions/cli.rs",
@@ -990,6 +997,7 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
         | CP2_ACTIVATION_WIRING_FILES
         | CP4_PROVIDER_ACTION_FILES
         | CP5_SUGGESTION_SOURCE_FILES
+        | D7_ACTION_PACK_SOURCE_FILES
     )
     for path in runtime_files:
         content = read_lower(path)

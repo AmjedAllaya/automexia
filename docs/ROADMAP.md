@@ -674,28 +674,49 @@ and dependency growth, and avoids binding the terminal core to unstable or
 provider-specific SDKs. OpenTofu/Terraform workspaces are displayed as context,
 never treated as credential or authorization boundaries.
 
-## v0.6 — sandboxed extension platform and AI tools
+## v0.6 — sandboxed extension platform and selected-input model suggestions
 
-The proposal-only D7/CP6 boundary is partially done: ADR 0029, its strict
-digest-frozen machine contract, nine mutation-owned threats, 28 ceilings, and
-the complete execution audit exist without runtime authority. First-party
-DevOps delivery does not wait for this public ecosystem.
+**D7/CP6 is partially done overall and fully done locally at the accepted source
+boundary.** ADR 0029 and the exact digest-frozen contract were accepted on
+2026-08-25. The repository now owns private pure policy models, strict local
+signed-bundle verification, protected atomic disabled storage, custom WIT and a
+no-default-WASI Wasmtime conformance host, exact grants and lifecycle, signed
+non-executing action-pack mapping, selected-input consent/response models,
+renderer-neutral review states, a nonactivating product adapter, property/fuzz/
+mutation coverage, and same-host benchmarks.
 
-After explicit acceptance, implementation proceeds through strict package
-models, verified local bundles, custom WIT/Wasmtime hosting, signed distribution/
-revocation/SDK, signed typed-action packs, selected-input AI suggestions, and
-product/native release assurance. Capability, sandbox, migration, and
-distribution changes require property/fuzz/malicious corpora, resource ceilings,
-mutation-tested policy, accessibility semantics, and redacted evidence before
-a public SDK or third-party download path ships.
+Release authority remains false. There is no active guest component, public
+registry/download/SDK, distribution transport, startup or typing network,
+provider request, model tool/workflow/MCP call, automatic execution, process,
+credential, or PTY authority. The public execution API fails with
+`ActivationDenied`; the terminal adapter also hard-denies downloads, provider
+calls, and grants. Private first-party features and CP1-CP3 remain the fallback.
 
-Optional AI remains a separate extension family. It receives only explicitly
-selected bounded text after per-request redaction and provider/locality/model/
-destination/purpose/retention/size/risk review. Ambient PTY/history/environment/
-agent/credential/provider/capsule/connection data, tools, MCP passthrough,
-background/typing requests, and automatic execution are outside this decision.
-Responses are typed explanations/suggestions for copy or insert without Enter;
-a future tool-execution design would require another ADR and threat model.
+The package path is explicit-local-file-only. Verification binds exact content,
+publisher/key, signature, provenance, SPDX/license evidence, compatibility,
+time, trust and current revocation before bytes reach no-follow staging. The
+store publishes only `installed-disabled`, retains two validated generations,
+recovers last-known-good state, and removes only Automexia-owned package data.
+The Component Model feature inventories exact imports, links no default WASI,
+and applies fuel, epoch deadlines, memory/table/instance/transfer/output/log
+limits with cancellation and joined workers.
+
+The initial CP6 slice receives only explicitly selected bounded text after
+normalization, redaction preview, and per-request provider/locality/model/
+destination/purpose/retention/size/risk review. Consent is exact, expiring,
+route/generation bound and single-use. Responses are strict typed bounded
+explanations or suggestions with independently assigned risk. Ambient terminal,
+history, clipboard, file, environment, agent, credential, provider, capsule,
+connection, other-pane, log, telemetry and support-bundle data are unavailable.
+Copy/insert never implies Enter.
+
+The source boundary cannot become a public release until protected exact-head
+approvals, named trust/revocation/update owners, dependency/supply-chain drills,
+native Windows/Linux/macOS signed package and sandbox evidence, actual product
+visual/accessibility/IME/focus evidence, privacy/legal approval per provider,
+controlled resource baselines, 1,000 lifecycle cycles, the 30-day soak, and
+verified kill/disable/uninstall/rollback/fallback evidence pass. Public download
+also requires a separate network/distribution ADR and maintained update client.
 
 ### Automation Studio and DevOps/SRE scripting (AS0-AS6)
 

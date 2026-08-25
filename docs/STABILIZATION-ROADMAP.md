@@ -1151,29 +1151,31 @@ AWS, Azure, GCP, Kubernetes, and OpenShift preserve exact identity and capsule
 isolation; expired/offline/slow providers remain truthful and cannot affect
 terminal latency or another pane.
 
-### D7 — deferred ecosystem and AI gates
+### D7 — deferred ecosystem and selected-input model-suggestion gates
 
-Status: partially done at the proposal-only policy boundary. Proposed ADR 0029,
-a digest-frozen schema-1 contract with nine threats, 28 ceilings, 12 evidence
-domains, ten external gates, 15 mutation tests, repository/full-QA wiring, and
-the D7.0-D7.5/CP6 execution audit are complete. Acceptance and runtime activation
-remain false, and no ecosystem dependency or crate may enter the workspace.
+Status: partially done overall and fully done locally at the accepted,
+nonactivating source boundary. ADR 0029 and the exact schema-1 digest are
+accepted. Private policy/runtime crates, signed local verification, protected
+atomic storage, optional no-WASI Wasmtime conformance, capability/lifecycle
+policy, disabled action-pack mapping, selected-input consent/response models,
+product denial adapters, 17 mutation checks, properties, a fuzz harness, and
+benchmarks are implemented.
 
-Third-party downloads, a public SDK, package verification/store, custom WIT and
-Wasmtime sandbox, distribution/revocation, direct arbitrary network, native SSH
-engine, product UX, signed pack import, and AI provider/tool/command execution
-remain blocked. The proposed initial world has no default WASI, filesystem,
-network, process, PTY, terminal, environment, clipboard, credential, agent,
-provider-cache, capsule-secret, or connection import. Optional AI receives only
-explicit selected bounded text after per-request data-flow consent and can return
-only a typed copy/insert suggestion without Enter.
+Activation, public downloads/SDK publication, provider calls, tools, workflows,
+commands, and process/network/credential/PTY authority remain false. The
+component host is not enabled by the terminal and its public execute path denies
+activation. The initial world has no default WASI, filesystem, network, process,
+PTY, terminal, environment, clipboard, credential, agent, provider-cache,
+capsule-secret, or connection import. CP6 receives only explicitly selected,
+bounded, redacted text after exact per-request consent and returns only a typed
+review/copy/insert suggestion without Enter.
 
-Exit requires explicit ADR/contract acceptance, ADR 0003 protected approvals
-for every authority-bearing slice, focused dependency review, hostile package/
-component and supply-chain drills, native three-platform package/sandbox/cleanup,
-privacy/accessibility/performance/resource evidence, exact disable/uninstall/
-rollback, and the 30-day soak. Private first-party extensions and CP1-CP3 remain
-the safe fallback.
+Release still requires ADR 0003 protected approvals for every future
+authority-bearing slice, a separate distribution/network decision, production
+trust and publisher owners, hostile package/component and supply-chain drills,
+native three-platform signed package/sandbox/cleanup, privacy/accessibility/
+performance/resource evidence, exact rollback, 1,000 lifecycle cycles, and the
+30-day soak. Private first-party extensions and CP1-CP3 remain the fallback.
 
 ## Tooling decisions and non-goals
 

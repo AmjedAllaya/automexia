@@ -34,7 +34,7 @@ proven as separate slices; none of it is claimed as a current feature. See the
 | Multi-environment | M6/F6 | **Partial overall; review/edit source and product surfaces fully implemented locally** | **Blocked on D3/M5 execution evidence** | Accepted ADR 0023; schema-2 persistence/migration/recovery; public preview-first CLI; immutable worker publication; Connection Hub catalog/restore review; typed recipes/no-hooks; narrow remote initialization; armed broadcast; and bounded tests pass. Managed execution and controlled native/resource/accessibility/release evidence remain. |
 | Multi-cloud | D6.0/M7 | **Fully implemented locally** | **Partial/external** | Strict provider-neutral schemas, immutable session capsules, 19-state lifecycle, exact allow-once review, isolation/redaction, passive-status migration, cached-only semantics, fuzz/mutation, bounded lifecycle, and a 64-capsule benchmark pass. Real provider CLI/native evidence remains external. |
 | Multi-cloud | D6.1-D6.5 | **Partial overall; M8-M11 and M12 Teleport source-complete/nonactivated** | **Partial/blocked** | AWS, Azure, Google Cloud, Kubernetes/OpenShift, and Teleport bounded exact adapters pass locally. D3 product activation and controlled provider/native evidence remain; OpenBao is absent pending ADR 0024 acceptance. |
-| Ecosystem | D7 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance** | Proposed ADR 0029, a strict nine-threat/28-limit machine contract, 15 mutations, nonactivation/dependency gate, and detailed audit exist. Runtime SDK/download/package/sandbox/distribution/UI/native work is not authorized. |
+| Ecosystem | D7 | **Fully implemented locally at accepted nonactivating source boundary; partial overall** | **Blocked on protected release/native evidence** | Accepted ADR 0029 and exact digest; private strict policy/runtime crates, signed local verification/store, optional no-WASI Wasmtime conformance, capabilities/lifecycle, disabled action packs, selected-input consent/product adapter, 17 mutations, properties, fuzz harness, benchmarks and Windows evidence exist. Activation/download/public SDK/provider calls remain false; trust governance and native release evidence remain. |
 | Automation Studio | AS0 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance/native feasibility** | Architecture, proposed ADR 0030 and the future test ledger exist. Exact dependencies, limits and native Windows/macOS/Linux X11/Wayland editor-host proof remain. |
 | Automation Studio | AS1-AS6 | **Not implemented** | **Blocked on AS0** | No document service, editor/webview, LSP/DAP broker, Studio/DevOps integration, file-write or typed script-run product path exists. |
 | Productivity | CP0 | **Fully implemented** | **Partial** | Accepted architecture, threat model, ceilings, fixtures, mutations, and nonactivation policy exist. |
@@ -49,7 +49,7 @@ proven as separate slices; none of it is claimed as a current feature. See the
 | Productivity | CP4 | **Fully implemented locally at product-integrated nonactivating boundary** | **Partial/external** | Seven cached provider projections, retained cached-product-to-route handoff, route/session/revision/generation isolation, idempotence/revocation, final revalidation, accessible state/risk UX, production confirmation, fuzz/benchmark/policy evidence are complete locally. Approved provider refresh/capsule production, exact execution, OpenBao, and real native/provider/accessibility/release evidence remain. |
 | Productivity | CP5.0 | **Fully implemented at research boundary** | **Complete locally** | Seven-shell API matrix, pure insertion prototype, locked matcher/dependency evidence, privacy review, and retain-CP1/defer-P2 decision are machine-gated; no runtime surface exists. |
 | Productivity | CP5.1-CP5.6 | **Partially implemented overall; CP5.1-CP5.3 fully implemented at source/local model boundaries; CP5.4-CP5.6 partial** | **Partial/external; preview disabled** | Accepted ADR 0025; bidirectional protocol; restrictive Windows/Unix endpoint sources; bounded broker/sources/ranking; pane UI/controller/renderer; inert four-shell request scaffolds; fuzz/benchmark/mutation/lifecycle evidence. Signed helper and native replacement, WSL relay, runtime publication, native three-OS/accessibility/package/rollback/resource/30-day evidence remain. CP1 remains fallback. |
-| Productivity | CP6 | **Partially implemented at proposal-only boundary** | **Blocked on acceptance** | Signed action-pack policy and explicit selected-input AI consent/no-tool/no-execution rules are machine-frozen. No pack or AI runtime exists pending ADR 0029 acceptance and protected evidence. |
+| Productivity | CP6 | **Fully implemented locally at accepted no-provider source boundary; partial overall** | **Blocked on provider/native/release evidence** | Verified capability-free packs map only into disabled typed actions; exact selected-input redaction, disclosure, single-use consent, typed response, independent risk, and review models exist. Provider/tool/workflow/MCP/Enter/execution remain hard-disabled; native UI, provider privacy/legal, lifecycle and release evidence remain. |
 | Compatibility | G0 | **Partially done** | **Partially done** | Exact Ghostty 1.3.1 Linux/BSD provenance/fixtures/checksums, deterministic Windows adaptation, ADR 0026, generation, verification, classic golden, and properties exist. Native macOS fixture and Linux/macOS release evidence remain. |
 | Compatibility | G1 | **Fully done** | **Partially done** | Pure typed registry, schemas, layers, direct/reverse indexed lookup, reserved sequence/table structures, classic bridge, palette derivation, and Windows latency evidence exist; external platform evidence remains. |
 | Compatibility | G2 | **Fully done** | **Partially done** | Explicit profiles, bind/unbind/priority layers, strict diagnostics, immutable atomic reload, global/palette transaction, and dry-run/confirmed migration are implemented; native release matrices remain. |
@@ -99,16 +99,15 @@ The first broad DevOps release should therefore be a secure terminal-first SSH p
 
 After the generic process/capability/session boundary is proven, deliver separately enabled provider/context adapters. Official CLIs and local configuration remain preferred authority. AWS, Azure, GCP, Kubernetes, OpenShift, infrastructure, or organization-identity adapters must fail independently and publish only bounded public metadata/context into the core.
 
-### v0.6 and later — ecosystem, richer remote operations, AI
+### v0.6 and later — ecosystem, richer remote operations, and optional model features
 
-The D7/CP6 proposal-only package/sandbox/provenance/revocation/capability/AI
-contract and execution audit are complete without activation. Public extension
-distribution, sandboxing, signed third-party packs, direct provider APIs where
-truly needed, richer remote files/session memory/collaboration, and AI runtime
-still wait for explicit protected acceptance and independently proven slices.
-Later data, automation, media, and video domains would also require their own
-accepted boundaries and evidence. None is a current product claim or a
-prerequisite for production SSH.
+The D7/CP6 package, provenance, revocation, capability and selected-input
+model-suggestion source boundary is accepted and implemented without activation.
+Local signed inspection, disabled installation, an optional no-WASI conformance
+host, disabled typed action packs and exact selected-input consent exist. Public
+extension distribution/SDK publication, component activation, provider APIs,
+richer remote files/session memory/collaboration and the CP6 provider runtime
+still require separately protected, independently proven slices.
 
 Automation Studio AS0 is likewise proposal-only. The target is an optional
 embedded file editor separated from the DevOps/SRE domain extension and
@@ -135,7 +134,7 @@ and does not depend on Studio's editor or language-server internals.
 - **CP5:** optional app-owned suggestions — CP5.1-CP5.3 are source-complete,
   CP5.4-CP5.6 remain partial, preview is disabled, and native CP1 completion
   remains the fallback.
-- **CP6:** signed ecosystem/AI action packs — proposal and threat contract complete; runtime blocked on ADR 0029 acceptance.
+- **CP6:** signed ecosystem packs and selected-input model suggestions — accepted nonactivating source boundary complete locally; no tools/workflows/provider calls; activation, public distribution/SDK and native release proof remain blocked.
 
 ## Ghostty compatibility track
 

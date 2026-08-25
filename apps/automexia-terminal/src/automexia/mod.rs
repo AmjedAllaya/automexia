@@ -8,6 +8,8 @@ pub mod api;
 pub mod builtins;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod connections;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod ecosystem;
 #[doc(hidden)]
 pub mod export;
 pub mod ghostty_migration;

@@ -131,7 +131,7 @@ or accessibility platform adapter.
 | Local policy | Rust invariants first; Cedar later | Hybrid | Core invariants; optional policy adapter |
 | Enterprise policy | Existing organization OPA | Wrap | Optional enterprise extension |
 | Collaboration | Upterm before a custom relay | Wrap | Optional collaboration extension |
-| Untrusted extensions | Wasmtime and WASI Component Model | Adopt later | D7 extension host, never terminal core authority |
+| Untrusted extensions | Wasmtime Component Model with custom WIT and no default WASI | Adopted for accepted disabled conformance source | D7 private host, never terminal-core authority; activation/public distribution remain release-gated |
 | AI | User-chosen local/remote endpoint with zero execution authority | Wrap | Optional isolated extension |
 | Testing and supply chain | Existing suite plus `cargo-vet` and scoped `cargo-mutants` | Extend | Contributor/CI tooling, never runtime |
 
@@ -466,8 +466,10 @@ sandbox evidence and an explicit fallback when that profile is unavailable.
 ### Extension sandbox
 
 Trusted first-party modules continue to use the typed extension API and bounded
-runtime. Future untrusted third-party code uses Wasmtime and the WASI Component
-Model behind D7; native shared libraries are not the public extension model.
+runtime. Accepted D7 source validates future untrusted Component Model code
+through a feature-gated Wasmtime conformance host with custom WIT and no default
+WASI; public execution remains denied. Native shared libraries are not the
+public extension model.
 
 Automexia still owns WIT interfaces, manifests, approval/revocation, CPU fuel,
 epoch deadlines, memory/output/file/network/concurrency quotas, signed-bundle
@@ -476,31 +478,25 @@ sanitization. A guest starts with no filesystem, network, process, clipboard,
 PTY, environment, history, or secret authority. WebAssembly is defense in
 depth, not permission.
 
-### AI assistance
+### Model assistance
 
-AI remains an optional isolated extension over a user-operated local
-llama.cpp/Ollama endpoint or separately configured remote provider; an
-allowlisted Model Context Protocol (MCP) adapter may be evaluated later. No
-inference engine belongs in the desktop binary initially.
+The accepted D7/CP6 source boundary covers an initial selected-input explanation
+and suggestion slice only. Automexia owns explicit selection, redaction, exact
+data-flow disclosure, single-use consent, a bounded typed response, independent
+risk, and copy/insert without Enter. Provider/tool/workflow/MCP calls and
+execution remain hard-disabled. Inference remains outside the desktop binary;
+no provider fallback is silent, and schema-valid output is not proof of safety
+or authorization.
 
-Automexia owns explicit selected-input collection, redaction, provider/locality
-display, a typed suggestion schema, model-independent command parsing and risk
-classification, full preview, insert/copy default behavior, and a separate
-human execution confirmation. AI receives no ambient history, credentials,
-filesystem, provider cache, PTY, capsule, or production authority. Schema-valid
-JSON is not proof of command safety, and MCP transport authorization is not an
-Automexia capability grant.
+#### D7/CP6 accepted source status
 
-#### D7/CP6 proposal status
-
-Proposed [ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md) and the
-[D7/CP6 audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md) now freeze the
-non-activating package, sandbox, provenance/revocation, capability, AI, resource,
-lifecycle, rollback, and release contract. Acceptance and activation remain
-false. Wasmtime, signature/update libraries, a public SDK, downloads, component
-execution, and AI provider/tool calls are candidates or future work, not current
-dependencies or product behavior.
-
+Accepted [ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md) and the
+[D7/CP6 audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md) authorize the exact
+nonactivating source slice. D7 adds reduced-feature Wasmtime, Ed25519, ZIP,
+Unicode, and WIT source dependencies for private local verification and
+conformance. Public SDK/download, distribution transport, active components,
+provider adapters, tool calls, credentials, process, PTY, and execution
+authority remain denied or separately release-gated.
 ## Dependency introduction order
 
 | Gate | Core additions | Extension additions | Remains external or deferred |
@@ -508,7 +504,7 @@ dependencies or product behavior.
 | **Near-term reviewed slices** | `clap_complete`, `clap_mangen`, `schemars`; AccessKit platform adapters; `nucleo` only after matcher benchmark; ExternalToolRunner contract | Safe SSH/provider parsers and exact request adapters | OpenSSH and official provider CLIs remain installed authorities |
 | **Protected credential slice** | Opaque reference/state models | Exact `keyring-core` stores plus `secrecy`/`zeroize` only if an ADR proves custody unavoidable | Agents, FIDO, Teleport, OpenBao, Smallstep, and external vaults remain primary |
 | **Protected feature milestones** | `rusqlite` storage worker; Cedar local-policy adapter | `openssh-sftp-client`, `serialport`, direct provider SDKs only after feature-specific proof | Mosh, Git, SOPS/age, Upterm, tmux/Zellij, rclone/rsync remain external |
-| **D7 ecosystem** | WIT/capability model and host broker | Wasmtime Component Model with custom WIT and no default WASI | AI inference and collaboration relay remain user/organization owned |
+| **D7 ecosystem accepted source** | Pure WIT/capability/lifecycle/consent models and app denial adapter | Reduced-feature Wasmtime Component Model, Ed25519 verification, strict manual ZIP ingestion and WIT parsing; no default WASI | Public distribution/SDK, component/provider activation, model inference and collaboration relay remain separately gated |
 | **Automation Studio AS0-AS4** | Document/trust/surface/LSP brokers and typed saved-revision run intent after acceptance | CodeMirror-based Studio, DevOps/SRE and starter language/tool add-ons | System webviews and installed supported language servers/tools; Wry remains conditional on native proof |
 | **Deferred/rejected** | None | External Telnet adapter only if policy and demand justify it | Native primary SSH engine, password vault, embedded provider login, second shell-line editor or terminal UI framework |
 

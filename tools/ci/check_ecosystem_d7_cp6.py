@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the non-activating D7/CP6 ecosystem and AI proposal."""
+"""Validate the accepted, source-complete, non-activating D7/CP6 boundary."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = Path("tests/fixtures/ecosystem/d7-cp6-ecosystem-contract-v1.json")
+ACCEPTANCE_PATH = Path("tests/fixtures/ecosystem/d7-cp6-acceptance-v1.json")
 ADR_PATH = Path("docs/adr/0029-sandboxed-signed-ecosystem-boundary.md")
 PLAN_PATH = Path("docs/research/D7-CP6-IMPLEMENTATION-AUDIT.md")
 REFERENCE_PATH = Path("docs/ECOSYSTEM-PLATFORM.md")
@@ -614,53 +615,309 @@ def canonical_digest(document: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+EXPECTED_ACCEPTANCE_DEPENDENCIES = {
+    "ed25519-dalek",
+    "unicode-normalization",
+    "wasmtime",
+    "wat",
+    "wit-parser",
+    "zip",
+}
+
+EXPECTED_SOURCE_AUTHORITY = {
+    "private_domain_crate": True,
+    "local_signed_bundle_review": True,
+    "disabled_atomic_install_store": True,
+    "component_host_conformance": True,
+    "renderer_neutral_review_models": True,
+    "signed_action_pack_mapping": True,
+    "selected_input_consent_models": True,
+    "new_dependencies": sorted(EXPECTED_ACCEPTANCE_DEPENDENCIES),
+}
+
+EXPECTED_RELEASE_DENIALS = {
+    "component_execution",
+    "public_downloads",
+    "public_sdk_publish",
+    "model_provider_calls",
+    "model_tool_calls",
+    "automatic_execution",
+    "process_launch",
+    "network_access",
+    "credential_access",
+    "pty_input",
+}
+
+
+def validate_acceptance(document: Any) -> None:
+    document = _require_exact_keys(
+        document,
+        {
+            "schema",
+            "phase",
+            "decision",
+            "accepted_on",
+            "accepted_contract_path",
+            "accepted_contract_canonical_sha256",
+            "wit_mapping",
+            "authorized_source",
+            "release_authority",
+        },
+        "acceptance receipt",
+    )
+    if (
+        document["schema"] != 1
+        or document["phase"] != "D7/CP6"
+        or document["decision"] != "accepted-for-source-implementation"
+        or document["accepted_on"] != "2026-08-25"
+        or document["accepted_contract_path"] != CONTRACT_PATH.as_posix()
+        or document["accepted_contract_canonical_sha256"]
+        != EXPECTED_CANONICAL_SHA256
+    ):
+        raise EcosystemContractError("acceptance receipt identity changed")
+
+    mapping = _require_exact_keys(
+        document["wit_mapping"],
+        {"logical_world", "source_world", "reason"},
+        "WIT mapping",
+    )
+    if (
+        mapping["logical_world"] != "automexia:ecosystem/suggestion@1"
+        or mapping["source_world"] != "extension"
+        or "share a namespace" not in mapping["reason"]
+    ):
+        raise EcosystemContractError("accepted WIT syntax mapping changed")
+
+    source = _require_exact_keys(
+        document["authorized_source"], set(EXPECTED_SOURCE_AUTHORITY), "source authority"
+    )
+    if source != EXPECTED_SOURCE_AUTHORITY:
+        raise EcosystemContractError("source implementation authority changed")
+
+    release = _require_exact_keys(
+        document["release_authority"], EXPECTED_RELEASE_DENIALS, "release authority"
+    )
+    if any(value is not False for value in release.values()):
+        raise EcosystemContractError("acceptance receipt gained release authority")
+
+
+def _require_source(
+    path: Path,
+    markers: tuple[str, ...],
+    *,
+    forbidden: tuple[str, ...] = (),
+    maximum: int = MAX_DOCUMENT_BYTES,
+) -> str:
+    source = _bounded_text(ROOT / path, maximum, path.as_posix())
+    for marker in markers:
+        if marker not in source:
+            raise EcosystemContractError(f"{path.as_posix()} lost {marker!r}")
+    for marker in forbidden:
+        if marker in source:
+            raise EcosystemContractError(f"{path.as_posix()} gained forbidden {marker!r}")
+    return source
+
+
 def _validate_documents() -> None:
     required = {
         ADR_PATH: (
-            "Status: Proposed",
-            "runtime implementation and activation remain forbidden",
-            "No D7/CP6 production crate",
-            "ADR 0003",
+            "Status: Accepted",
+            "accepted for source implementation",
+            "activation remains denied",
             EXPECTED_CANONICAL_SHA256,
         ),
         PLAN_PATH: (
-            "Status: Partially done",
+            "Status: Partially done overall; fully done locally at the accepted source boundary",
             "## Evidence ledger",
-            "## Threat and resource model",
-            "### D7.0/CP6.0",
+            "### D7.1",
+            "### D7.5/CP6.3",
             "## External prerequisites",
         ),
         REFERENCE_PATH: (
-            "Status: proposal and policy contract only",
+            "Status: accepted source implementation; release activation disabled",
             "## Current behavior",
             "## Fixed safety boundary",
             "## Recovery and fallback",
         ),
+        Path("docs/ECOSYSTEM-PLATFORM-TESTING.md"): (
+            "Windows x86_64",
+            "cargo test -p automexia-ecosystem",
+            "component-host",
+            "External evidence still required",
+        ),
     }
     for path, markers in required.items():
-        text = _bounded_text(ROOT / path, MAX_DOCUMENT_BYTES, path.as_posix())
-        for marker in markers:
-            if marker not in text:
-                raise EcosystemContractError(f"{path.as_posix()} lost {marker!r}")
+        _require_source(path, markers)
 
 
-def _validate_nonactivation() -> None:
-    workspace = _bounded_text(ROOT / "Cargo.toml", MAX_DOCUMENT_BYTES, "workspace Cargo.toml")
-    lock = _bounded_text(ROOT / "Cargo.lock", 8 * 1024 * 1024, "Cargo.lock")
-    forbidden_workspace = (
-        "automexia-ecosystem",
-        "wasmtime =",
-        "sigstore =",
-        "tough =",
-        "tuf =",
+def _validate_implementation() -> int:
+    workspace = _require_source(
+        Path("Cargo.toml"),
+        (
+            '"automexia-ecosystem"',
+            '"automexia-ecosystem-runtime"',
+            'zip = { version = "=8.6.0", default-features = false',
+            'ed25519-dalek = { version = "3.0.0", default-features = false',
+            'wasmtime = { version = "48.0.1", default-features = false',
+            'wit-parser = "=0.254.0"',
+            'wat = "=1.254.0"',
+        ),
     )
-    if any(marker in workspace for marker in forbidden_workspace):
-        raise EcosystemContractError("D7/CP6 runtime or dependency was added before acceptance")
-    for package in ("wasmtime", "sigstore", "tough"):
-        if f'name = "{package}"' in lock:
+    if '"default"' in workspace.split('wasmtime =', 1)[1].splitlines()[0]:
+        raise EcosystemContractError("Wasmtime unexpectedly enabled default features")
+
+    lock = _require_source(
+        Path("Cargo.lock"),
+        (
+            'name = "automexia-ecosystem"',
+            'name = "automexia-ecosystem-runtime"',
+            'name = "ed25519-dalek"',
+            'name = "wasmtime"',
+            'name = "zip"',
+        ),
+        maximum=8 * 1024 * 1024,
+    )
+    del lock
+
+    domain_manifest = _require_source(
+        Path("automexia-ecosystem/Cargo.toml"),
+        ("publish = false", "proptest = { workspace = true }", "criterion = { workspace = true }"),
+    )
+    del domain_manifest
+    domain_sources = "\n".join(
+        _bounded_text(path, MAX_DOCUMENT_BYTES, path.relative_to(ROOT).as_posix())
+        for path in sorted((ROOT / "automexia-ecosystem/src").glob("*.rs"))
+    )
+    for marker in (
+        "std::fs",
+        "std::process",
+        "TcpStream",
+        "UdpSocket",
+        "Command::new",
+        "wasmtime",
+        "ZipArchive",
+    ):
+        if marker in domain_sources:
             raise EcosystemContractError(
-                f"D7/CP6 dependency {package!r} entered Cargo.lock before acceptance"
+                f"pure ecosystem domain gained IO/runtime authority {marker!r}"
             )
+    for marker in (
+        EXPECTED_CANONICAL_SHA256,
+        "decode_strict_json",
+        "GrantBinding",
+        "FairCallQueue",
+        "ModelReview",
+        "EcosystemReviewSurface",
+    ):
+        if marker not in domain_sources:
+            raise EcosystemContractError(f"pure ecosystem domain lost {marker!r}")
+
+    _require_source(
+        Path("automexia-ecosystem/tests/properties.rs"),
+        ("ProptestConfig::with_cases(512)", "GrantError::Revoked", "safe_relative_path"),
+    )
+    _require_source(
+        Path("automexia-ecosystem-runtime/Cargo.toml"),
+        (
+            'default = []',
+            'component-host = ["dep:wasmtime"]',
+            'wit-parser = { workspace = true }',
+        ),
+    )
+    _require_source(
+        Path("automexia-ecosystem-runtime/src/package.rs"),
+        (
+            "read_and_verify_local_bundle",
+            "verify_signature",
+            "ZipArchive",
+            "Limits::EXPANDED_BYTES",
+            "VerificationReceipt",
+        ),
+        forbidden=(".extract(", "extract_unwrapped_root_dir"),
+    )
+    _require_source(
+        Path("automexia-ecosystem-runtime/src/store.rs"),
+        (
+            "MOVEFILE_WRITE_THROUGH",
+            "PROTECTED_DACL_SECURITY_INFORMATION",
+            "private_permissions_are_safe",
+            "remove_owned_tree",
+            "Limits::RETAINED_VERSIONS",
+            "recovery_prunes_one_interrupted_publish",
+        ),
+    )
+    _require_source(
+        Path("automexia-ecosystem-runtime/src/sandbox.rs"),
+        (
+            "wasm_component_model(true)",
+            "consume_fuel(true)",
+            "epoch_interruption(true)",
+            "StoreLimitsBuilder",
+            "ActivationDenied",
+            "ReleasePermit",
+            "TypedHostGate",
+        ),
+        forbidden=("wasmtime_wasi", "WasiCtx", "Command::new", "std::net"),
+    )
+    _require_source(
+        Path("automexia-ecosystem-runtime/tests/wit_contract.rs"),
+        ("Resolve::default()", 'Some("extension")', "ALLOWED_IMPORTS"),
+    )
+    _require_source(
+        Path("wit/automexia-ecosystem-1.0.0/ecosystem.wit"),
+        (
+            "package automexia:ecosystem@1.0.0;",
+            "world extension",
+            "import public-context;",
+            "import selected-input;",
+            "import suggestion;",
+            "import diagnostic;",
+        ),
+        forbidden=("wasi:",),
+    )
+    _require_source(
+        Path("sdk/automexia-ecosystem/README.md"),
+        ("private, unpublished", "not a public SDK", "runtime activation remains unavailable"),
+    )
+    _require_source(
+        Path("sdk/automexia-ecosystem/conformance/compatibility-v1.json"),
+        ('"runtime_activation": false', '"public_distribution": false', '"default_wasi": "none"'),
+    )
+    _require_source(
+        Path("fuzz/fuzz_targets/ecosystem_bundle.rs"),
+        ("fuzz_target!", "verify_bundle_bytes", "RevocationSnapshot"),
+    )
+    _require_source(
+        Path("apps/automexia-terminal/src/automexia/ecosystem.rs"),
+        (
+            "inspect_local_bundle",
+            "install_disabled",
+            "model_consent_surface",
+            "ActivationDenied",
+            "DownloadsDisabled",
+        ),
+        forbidden=("Command::new", "std::net", "process::"),
+    )
+    _require_source(
+        Path("apps/automexia-terminal/src/automexia/marketplace.rs"),
+        (
+            "AcceptedSourceDisabled",
+            "component_execution: false",
+            "downloads: false",
+            "model_provider_calls: false",
+        ),
+    )
+    _require_source(
+        Path("automexia-ecosystem/src/model_suggestion.rs"),
+        (
+            "SelectedInput",
+            "ProviderCallsDisabled",
+            "ConsentAlreadyUsed",
+            "selected_text",
+        ),
+        forbidden=("reqwest", "TcpStream", "Command::new"),
+    )
+    return 18
 
 
 def validate_repository(root: Path = ROOT) -> dict[str, int]:
@@ -676,8 +933,13 @@ def validate_repository(root: Path = ROOT) -> dict[str, int]:
         raise EcosystemContractError(
             f"reviewed D7/CP6 contract digest changed: {digest}"
         )
+
+    acceptance_text = _bounded_text(
+        ROOT / ACCEPTANCE_PATH, MAX_CONTRACT_BYTES, "D7/CP6 acceptance receipt"
+    )
+    validate_acceptance(parse_contract(acceptance_text))
     _validate_documents()
-    _validate_nonactivation()
+    counts["source_files"] = _validate_implementation()
     return counts
 
 
@@ -688,9 +950,10 @@ def main() -> int:
         print(f"D7/CP6 ecosystem validation failed: {error}", file=sys.stderr)
         return 1
     print(
-        "PASS: D7/CP6 ecosystem proposal is strict, bounded, and non-activating "
+        "PASS: D7/CP6 accepted source boundary is strict, bounded, and non-activating "
         f"(threats={counts['threats']}, limits={counts['limits']}, "
-        f"verification={counts['verification_domains']}, gates={counts['external_gates']})"
+        f"verification={counts['verification_domains']}, source={counts['source_files']}, "
+        f"gates={counts['external_gates']})"
     )
     return 0
 
