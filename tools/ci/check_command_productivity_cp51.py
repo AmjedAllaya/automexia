@@ -96,7 +96,7 @@ EXPECTED_LIMITS = {
 
 
 class Cp51Error(ValueError):
-    """The CP5.1-CP5.6 proposal contract is invalid."""
+    """The CP5.1-CP5.6 accepted source contract is invalid."""
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -135,7 +135,7 @@ def validate_contract(document: Any) -> dict[str, int]:
         "CP5.1-CP5.6",
         "accepted-source-authorized-preview-disabled",
     ):
-        raise Cp51Error("proposal status or schema changed")
+        raise Cp51Error("accepted source status or schema changed")
 
     authority = _require_exact_keys(
         document["authority"],

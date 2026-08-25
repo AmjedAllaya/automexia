@@ -125,3 +125,9 @@ path = "fuzz_targets/provider_quick_actions.rs"
 test = false
 doc = false
 bench = false
+[[bin]]
+name = "suggestion_bridge"
+path = "fuzz_targets/suggestion_bridge.rs"
+test = false
+doc = false
+bench = false

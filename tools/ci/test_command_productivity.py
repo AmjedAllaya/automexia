@@ -60,6 +60,7 @@ class CommandProductivityPolicyTests(unittest.TestCase):
         self.assertEqual(counts["cp2_pure_action_files"], 7)
         self.assertEqual(counts["cp4_pure_action_files"], 1)
         self.assertEqual(counts["cp4_provider_action_files"], 6)
+        self.assertEqual(counts["cp5_suggestion_source_files"], 10)
         self.assertEqual(counts["cp4_application_files"], 1)
         self.assertEqual(counts["cp2_persistence_files"], 14)
 

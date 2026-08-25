@@ -11,6 +11,7 @@ pub mod responsive;
 pub mod scrollbar;
 pub mod search;
 pub mod session_footer;
+pub mod suggestions;
 pub mod trail_cursor;
 pub(crate) mod ui_theme;
 pub mod utils;
@@ -570,6 +571,7 @@ pub struct Renderer {
     pub config_blinking_interval: u64,
     pub(crate) ignore_selection_fg_color: bool,
     pub search: search::SearchOverlay,
+    pub suggestions: suggestions::SuggestionOverlay,
     pub assistant: assistant::AssistantOverlay,
     pub confirm_quit: confirm_quit::ConfirmQuit,
     pub scrollbar: scrollbar::Scrollbar,
@@ -663,6 +665,7 @@ impl Renderer {
             cell_bg_alpha: (config.window.opacity.clamp(0.0, 1.0) * 255.0).round() as u8,
             window_bg_alpha: target_bg_alpha,
             search: search::SearchOverlay::default(),
+            suggestions: suggestions::SuggestionOverlay::default(),
             assistant: assistant::AssistantOverlay::default(),
             confirm_quit: confirm_quit::ConfirmQuit::default(),
             scrollbar: scrollbar::Scrollbar::new(config.enable_scroll_bar),
@@ -1714,6 +1717,13 @@ impl Renderer {
                 pane_footer,
                 &self.named_colors,
             );
+            sugarloaf.end_modal_layer();
+        } else if self.suggestions.is_active() {
+            // Suggestions are pane-owned application chrome. They render above
+            // terminal cells and below every application modal; active search
+            // wins to keep a single keyboard owner.
+            sugarloaf.begin_modal_layer();
+            self.suggestions.render(sugarloaf, &self.named_colors);
             sugarloaf.end_modal_layer();
         }
 

@@ -43,8 +43,10 @@ jobs:
         run: python tools/ci/test_command_productivity_cp1.py
       - name: Command productivity CP5.0 research mutation tests
         run: python tools/ci/test_command_productivity_cp50.py
-      - name: Command productivity CP5.1 bridge-proposal mutation tests
+      - name: Command productivity CP5.1 accepted-contract mutation tests
         run: python tools/ci/test_command_productivity_cp51.py
+      - name: Command productivity CP5.1-CP5.6 source mutation tests
+        run: python tools/ci/test_command_productivity_cp56.py
       - name: CP5.0 standalone matcher research gates
         run: |
           cargo fmt --manifest-path tools/research/cp5-matcher-benchmark/Cargo.toml -- --check

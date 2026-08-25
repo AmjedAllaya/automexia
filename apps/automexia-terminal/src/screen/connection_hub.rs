@@ -180,6 +180,9 @@ fn apply_openssh_review_completion(
 
 impl Screen<'_> {
     pub fn open_connection_hub(&mut self) {
+        self.dismiss_suggestions(
+            crate::automexia::suggestions::SuggestionInvalidation::ModalOpened,
+        );
         self.renderer.command_palette.set_enabled(false);
         let opener =
             format!("terminal-route-{}", self.context_manager.current().route_id);

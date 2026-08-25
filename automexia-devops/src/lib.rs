@@ -8,6 +8,7 @@ pub mod connections;
 mod context;
 mod model;
 mod semantics;
+pub mod suggestions;
 
 use automexia_extension_api::{
     compact_label, compact_middle, Capability, ContextContribution, ContractError,

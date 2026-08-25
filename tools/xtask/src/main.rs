@@ -2311,6 +2311,7 @@ fn verify_architecture() -> TaskResult {
                 "serde",
                 "serde_json",
                 "toml",
+                "unicode-segmentation",
             ],
         ),
         (

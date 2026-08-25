@@ -92,6 +92,7 @@ tempfile = { workspace = true }
 taffy = { version = "0.13.0", features = ["flexbox","grid"] }
 teletypewriter = { workspace = true }
 unicode-width = { workspace = true }
+unicode-segmentation = { workspace = true }
 url = { workspace = true }
 smallvec = { workspace = true }
 rio-window = { workspace = true }
@@ -112,6 +113,7 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_System_Console",
     "Win32_Foundation",
     "Win32_Security",
+    "Win32_Security_Cryptography",
     "Win32_Security_Authorization",
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",
@@ -122,6 +124,8 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_System_IO",
     "Win32_System_SystemInformation",
     "Win32_Storage_FileSystem",
+    "Win32_System_Pipes",
+    "Win32_System_RemoteDesktop",
     "Win32_Graphics_Gdi",
     "Win32_UI_Shell",
     "Win32_UI_Input_KeyboardAndMouse",

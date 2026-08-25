@@ -322,6 +322,7 @@ dependencies = [
  "serde",
  "serde_json",
  "toml 1.1.4+spec-1.1.0",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -505,6 +506,7 @@ dependencies = [
  "toml 1.1.4+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
+ "unicode-segmentation",
  "unicode-width-16",
  "url",
  "wgpu",
