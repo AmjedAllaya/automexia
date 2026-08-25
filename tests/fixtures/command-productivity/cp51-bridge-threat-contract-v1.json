@@ -1,10 +1,10 @@
 {
   "schema": 1,
   "phase": "CP5.1-CP5.6",
-  "status": "proposed-not-authorized",
+  "status": "accepted-source-authorized-preview-disabled",
   "authority": {
     "adr": "0025",
-    "accepted": false,
+    "accepted": true,
     "runtime_activation": false,
     "default_experience": "cp1-shell-native",
     "fallback": "native-editor",
@@ -171,7 +171,7 @@
     "rollback": ["preview-flag", "kill-switch", "disable", "uninstall", "cp1-fallback"]
   },
   "external_gates": [
-    "explicit protected acceptance of ADR 0025 and this exact contract digest",
+    "accepted by the project owner on 2026-08-25; source work authorized while preview and stable activation remain disabled",
     "native Windows named-pipe ACL, peer-process, peer-session, replay, teardown, PowerShell 7, and WSL relay evidence",
     "native Linux filesystem-socket mode, SO_PEERCRED, Bash, Zsh, Fish, IME, and accessibility evidence",
     "native macOS filesystem-socket mode, getpeereid, Bash, Zsh, Fish, VoiceOver, IME, signing, and notarization evidence",

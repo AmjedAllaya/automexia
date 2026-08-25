@@ -1,6 +1,6 @@
 # ADR 0025: Authenticated native-editor suggestion bridge
 
-- Status: Proposed; CP5 runtime implementation and activation remain forbidden pending explicit protected acceptance
+- Status: Accepted; source implementation is authorized, preview and stable activation remain disabled pending CP5.6 release evidence
 - Date: 2026-08-23
 
 ## Context
@@ -38,9 +38,8 @@ The shell APIs also prevent a universal shortcut. Fish currently uses
 same chord elsewhere. CP5 therefore cannot install a global `Ctrl+Space`
 binding or replace Tab, Right, Enter, native prediction, or native completion.
 
-## Proposed decision
+## Decision
 
-If this ADR and the exact schema-1 machine contract are explicitly accepted,
 Automexia will add an optional preview feature with these owners:
 
 - `automexia-devops::suggestions` owns capability-free versioned request,
@@ -162,13 +161,14 @@ cancellation p95 on named controlled hardware.
 - Install `Ctrl+Space`, Tab, Right, or Enter globally: rejected because bindings
   are shell/user/platform dependent and Fish already gives `Ctrl+Space` meaning.
 
-## Required acceptance and verification
+## Acceptance and required verification
 
-This proposal and the exact machine contract must be explicitly accepted by the
-project owner through the protected security/capability review before any CP5
-production module, endpoint, renderer, shell adapter, profile/session hook,
-shortcut, or activation flag is implemented. Acceptance authorizes source work,
-not stable release.
+The project owner explicitly accepted this ADR and the exact schema-1 machine
+contract on 2026-08-25. Acceptance authorizes source implementation, not preview
+or stable release. Preview activation remains disabled until its local gates
+pass; stable activation remains forbidden until CP5.6 native, accessibility,
+package, performance, resource, rollback, and longitudinal evidence is attached
+to the exact release artifact.
 
 Implementation must proceed in CP5.1 through CP5.6 order and satisfy the evidence
 ladder in

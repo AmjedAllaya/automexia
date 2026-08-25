@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the non-activating CP5.1-CP5.6 editor-bridge proposal."""
+"""Validate the accepted but preview-disabled CP5.1-CP5.6 bridge contract."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ PLAN_PATH = Path("docs/research/CP51-CP56-IMPLEMENTATION-AUDIT.md")
 MAX_CONTRACT_BYTES = 131_072
 MAX_DOCUMENT_BYTES = 262_144
 EXPECTED_CANONICAL_SHA256 = (
-    "d8587db7d5f600dc55718d39a98005afa4c16d3cae8f3ed4348306011d9b948c"
+    "372b1a3bc22a99462e9bf728c83680d1b8fd65fa8aa96e0096c3ae35a6b55d49"
 )
 EXPECTED_TOP_LEVEL_KEYS = {
     "schema",
@@ -133,7 +133,7 @@ def validate_contract(document: Any) -> dict[str, int]:
     if (document["schema"], document["phase"], document["status"]) != (
         1,
         "CP5.1-CP5.6",
-        "proposed-not-authorized",
+        "accepted-source-authorized-preview-disabled",
     ):
         raise Cp51Error("proposal status or schema changed")
 
@@ -153,7 +153,7 @@ def validate_contract(document: Any) -> dict[str, int]:
     )
     if authority != {
         "adr": "0025",
-        "accepted": False,
+        "accepted": True,
         "runtime_activation": False,
         "default_experience": "cp1-shell-native",
         "fallback": "native-editor",
@@ -161,7 +161,7 @@ def validate_contract(document: Any) -> dict[str, int]:
         "insertion_owner": "native-shell-editor",
         "execution": "never",
     }:
-        raise Cp51Error("proposal gained authority or changed ownership")
+        raise Cp51Error("accepted source authority or ownership changed")
 
     transport = _require_exact_keys(
         document["transport"], {"windows", "unix", "forbidden"}, "transport"
@@ -419,11 +419,11 @@ def validate_repository(root: Path = ROOT) -> dict[str, int]:
     adr = _bounded_text(root / ADR_PATH, MAX_DOCUMENT_BYTES, "CP5 editor-bridge ADR")
     plan = _bounded_text(root / PLAN_PATH, MAX_DOCUMENT_BYTES, "CP5 implementation audit")
     required_adr = [
-        "Status: Proposed; CP5 runtime implementation and activation remain forbidden",
+        "Status: Accepted; source implementation is authorized",
         "## Context",
-        "## Proposed decision",
+        "## Decision",
         "## Alternatives",
-        "## Required acceptance and verification",
+        "## Acceptance and required verification",
         "PIPE_REJECT_REMOTE_CLIENTS",
         "SO_PEERCRED",
         "getpeereid",
@@ -440,7 +440,7 @@ def validate_repository(root: Path = ROOT) -> dict[str, int]:
         "## CP5.5",
         "## CP5.6",
         "## Commit and rollback strategy",
-        "External prerequisite",
+        "Source implementation is authorized",
     ]
     if any(fragment not in plan for fragment in required_plan):
         raise Cp51Error("CP5 implementation audit is incomplete")
@@ -451,10 +451,10 @@ def main() -> int:
     try:
         counts = validate_repository()
     except (Cp51Error, OSError, UnicodeError, json.JSONDecodeError) as error:
-        print(f"CP5.1 proposal validation failed: {error}", file=sys.stderr)
+        print(f"CP5.1 accepted contract validation failed: {error}", file=sys.stderr)
         return 1
     print(
-        "PASS: CP5.1-CP5.6 proposal is non-activating and bounded "
+        "PASS: CP5.1-CP5.6 source authority is accepted, preview-disabled, and bounded "
         f"({counts['threats']} threats, {counts['sources']} sources, "
         f"{counts['shells']} shell modes, {counts['limits']} limits)"
     )
