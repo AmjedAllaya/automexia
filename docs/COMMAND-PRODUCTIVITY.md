@@ -630,11 +630,12 @@ evidence, not missing CP3.3 source implementation.
 
 ### CP4 — capsule/provider-aware productivity
 
-Status: **Partially done overall; source-complete and nonactivated locally.**
+Status: **Fully done locally at the product-integrated nonactivating boundary; partially done overall.**
 The existing Quick Actions surface can consume an explicitly published,
 immutable public capsule snapshot for SSH, AWS, Azure, Google Cloud,
 Kubernetes, OpenShift, and Teleport. OpenBao remains absent pending ADR 0024,
-and no current product provider-refresh path publishes these snapshots.
+the Connection Hub-to-Action Center handoff is implemented, and no approved
+provider refresh/capsule producer currently creates these snapshots.
 
 The implementation:
 
@@ -644,6 +645,10 @@ The implementation:
   renderer, or keystroke-time work;
 - publishes at most 32 route-owned snapshots and 256 actions, with 16 actions
   per provider, 32 presentation fields, and 128 search results;
+- retains the validated capsule behind a redacted immutable product publication
+  and synchronizes it on Action Center open only to the exactly matching
+  selected route/session/revision; identical generations are idempotent, while
+  mismatch, revocation, or absence clears candidates before cached search;
 - discards stale requests, rejects non-monotonic generations, isolates route,
   session and capsule revision, removes snapshots on route cleanup, and
   revalidates the binding immediately before copy or bracketed insertion;
@@ -658,8 +663,8 @@ The implementation:
 - requires a second confirmation for production even when the command is
   read-only, and never treats color as the only production or failure signal.
 
-The versioned CP4 contract, static authority checker, six mutation cases,
-19 named regressions, hostile-capsule fuzz target, and cached snapshot/search
+The versioned CP4 contract, static authority checker, seven mutation cases,
+25 named regressions, hostile-capsule fuzz target, and cached snapshot/search
 benchmark own the local source claim. Exact process execution, OpenBao, real
 provider accounts/CLIs/clusters, native Linux/macOS execution, screen-reader
 inspection, controlled resource baselines, packaging, and release evidence

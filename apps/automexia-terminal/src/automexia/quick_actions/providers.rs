@@ -14,6 +14,10 @@ use automexia_devops::{
     connections::{ProviderCapsule, ProviderKind},
 };
 
+use crate::automexia::connections::ProviderProductPublication;
+
+use super::worker::{QuickActionRuntime, QuickActionRuntimeErrorCode};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProviderActionCompositionErrorCode {
     UnsupportedProvider,
@@ -65,6 +69,146 @@ impl fmt::Display for ProviderActionCompositionError {
 }
 
 impl std::error::Error for ProviderActionCompositionError {}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProviderActionRouteErrorCode {
+    InvalidRoute,
+    BindingMismatch,
+    CompositionRejected,
+    RuntimeUnavailable,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct ProviderActionRouteError {
+    code: ProviderActionRouteErrorCode,
+}
+
+impl ProviderActionRouteError {
+    const fn new(code: ProviderActionRouteErrorCode) -> Self {
+        Self { code }
+    }
+
+    pub const fn code(self) -> ProviderActionRouteErrorCode {
+        self.code
+    }
+}
+
+impl fmt::Debug for ProviderActionRouteError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProviderActionRouteError")
+            .field("code", &self.code)
+            .finish()
+    }
+}
+
+impl fmt::Display for ProviderActionRouteError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let code = match self.code {
+            ProviderActionRouteErrorCode::InvalidRoute => "invalid-route",
+            ProviderActionRouteErrorCode::BindingMismatch => "binding-mismatch",
+            ProviderActionRouteErrorCode::CompositionRejected => "composition-rejected",
+            ProviderActionRouteErrorCode::RuntimeUnavailable => "runtime-unavailable",
+        };
+        write!(formatter, "provider-action-route-{code}")
+    }
+}
+
+impl std::error::Error for ProviderActionRouteError {}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProviderActionPublicationOutcome {
+    Published {
+        generation: u64,
+        action_count: usize,
+    },
+    Unchanged {
+        generation: u64,
+        action_count: usize,
+    },
+    Cleared {
+        removed: bool,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub struct ProviderActionPublisher {
+    runtime: QuickActionRuntime,
+}
+
+impl ProviderActionPublisher {
+    pub fn new(runtime: QuickActionRuntime) -> Self {
+        Self { runtime }
+    }
+
+    pub fn sync_route(
+        &self,
+        route_id: usize,
+        current_session_id: u64,
+        current_capsule_revision: u64,
+        publication: Option<&ProviderProductPublication>,
+        generated_at_ms: u64,
+    ) -> Result<ProviderActionPublicationOutcome, ProviderActionRouteError> {
+        if route_id == 0 {
+            self.runtime.clear_provider_snapshot(route_id);
+            return Err(ProviderActionRouteError::new(
+                ProviderActionRouteErrorCode::InvalidRoute,
+            ));
+        }
+        let Some(publication) = publication else {
+            return Ok(ProviderActionPublicationOutcome::Cleared {
+                removed: self.runtime.clear_provider_snapshot(route_id),
+            });
+        };
+        let route_session = u64::try_from(route_id).map_err(|_| {
+            ProviderActionRouteError::new(ProviderActionRouteErrorCode::InvalidRoute)
+        })?;
+        let capsule = publication.capsule();
+        if route_session != current_session_id
+            || capsule.session_id != current_session_id
+            || capsule.revision != current_capsule_revision
+        {
+            self.runtime.clear_provider_snapshot(route_id);
+            return Err(ProviderActionRouteError::new(
+                ProviderActionRouteErrorCode::BindingMismatch,
+            ));
+        }
+        let snapshot = compose_provider_action_snapshot(
+            capsule,
+            publication.generation(),
+            generated_at_ms,
+        )
+        .map_err(|_| {
+            ProviderActionRouteError::new(
+                ProviderActionRouteErrorCode::CompositionRejected,
+            )
+        })?;
+        let generation = snapshot.generation();
+        let action_count = snapshot.actions().len();
+        if self.runtime.provider_snapshot_matches(route_id, &snapshot) {
+            return Ok(ProviderActionPublicationOutcome::Unchanged {
+                generation,
+                action_count,
+            });
+        }
+        self.runtime
+            .publish_provider_snapshot(route_id, snapshot)
+            .map_err(|error| match error {
+                QuickActionRuntimeErrorCode::StaleProviderSnapshot => {
+                    ProviderActionRouteError::new(
+                        ProviderActionRouteErrorCode::BindingMismatch,
+                    )
+                }
+                _ => ProviderActionRouteError::new(
+                    ProviderActionRouteErrorCode::RuntimeUnavailable,
+                ),
+            })?;
+        Ok(ProviderActionPublicationOutcome::Published {
+            generation,
+            action_count,
+        })
+    }
+}
 
 pub fn compose_provider_action_snapshot(
     capsule: &ProviderCapsule,

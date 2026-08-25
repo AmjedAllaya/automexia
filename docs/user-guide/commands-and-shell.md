@@ -148,12 +148,14 @@ See [Command productivity](productivity.md) for the management workflow.
 
 ### Provider-aware Quick Actions
 
-**Implemented internally / not product-activated.** The source boundary can add
-cached SSH and provider context to the same Quick Actions surface opened with
+**Product-integrated / provider refresh not activated.** A validated cached
+SSH or provider product is synchronized to the selected pane when you open
+the same Quick Actions surface with
 `Ctrl+Shift+O` on Windows/Linux/BSD or `Cmd+Shift+O` on macOS. No account is
 queried and no provider command runs when the surface opens or while you type.
-Until an explicit provider-refresh controller publishes a capsule for the
-current pane, these contextual rows do not appear.
+The retained capsule must exactly match the pane session and revision; otherwise
+the old rows are cleared. Until an approved provider refresh/capsule producer
+publishes that validated product, contextual rows do not appear.
 
 A contextual row uses the connection icon and a concise label such as
 `AWS · Account 123456789012 · Current · Production`. Review repeats the exact

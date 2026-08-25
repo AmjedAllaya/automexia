@@ -84,7 +84,7 @@ documentation, feature assurance, and a change fragment.
 | Quick Actions and persistence | CP2.0-CP2.2 | Fully done | automexia-devops model, application store/worker/UI/CLI tests | Hosted shell insertion, controlled accessibility, longitudinal evidence |
 | Aliases and DevOps packs | CP3.0-CP3.2 | Fully done | compiler, private generations, shell activation, packs, fuzz/bench/contracts | Hosted native and controlled baseline evidence |
 | Trusted local workspace tasks | CP3.3 | Fully done | native imports, workspace store/trust/runtime/CLI tests and ADR 0021 | Hosted native/accessibility and longitudinal evidence |
-| Provider-aware Quick Actions | CP4 | Partially done overall; source-complete nonactivated | Seven provider projections, route-scoped snapshots, cached search, final revalidation, compact accessible context, production confirmation, fuzz/benchmark/policy evidence | Product capsule publication, exact provider execution, OpenBao, and native provider/accessibility/release evidence |
+| Provider-aware Quick Actions | CP4 | Fully done locally at product-integrated nonactivating boundary; partially done overall | Seven provider projections, retained cached-product handoff, exact route/session/revision publication, idempotence/revocation, cached search, final revalidation, accessible context, production confirmation, fuzz/benchmark/policy evidence | Approved provider refresh/capsule production, exact provider execution, OpenBao, and native provider/accessibility/release evidence |
 | Autocomplete research | CP5.0/P1 | Fully done | Shell/API matrix, pure bounded insertion prototype, locked matcher benchmark, dependency/privacy review, retain-CP1 decision | External low-end/Zsh/Fish/accessibility evidence applies only to a future P2 proposal |
 | Automexia suggestion surface | CP5.1-CP5.6/P2-P4 | Partially done (proposal only) | Proposed ADR 0025, six-threat schema-1 contract, 17 mutation/document tests, fixed ownership/limits/shell matrix, and execution audit | Explicit ADR/contract acceptance, then protocol, sources, ranking, UI, shell and release implementation |
 | Ecosystem packs and AI | CP6/D7 | Partially done (proposal only) | Proposed ADR 0029, strict schema-1 contract, nine threat owners, 28 resource ceilings, 15 mutations, nonactivation/dependency enforcement, and D7.0-D7.5/CP6 execution audit | Explicit ADR/contract acceptance, then package verification/store, custom WIT/Wasmtime sandbox, signed distribution/revocation/SDK, capability UX, pack import, selected-input AI provider, native/privacy/accessibility/resource/release evidence |
@@ -753,7 +753,7 @@ or the combined organization-adapter release.
 
 ## F13 - implement CP4 provider-aware Quick Actions
 
-Status: **Partially done overall; source-complete and nonactivated locally.**
+Status: **Fully done locally at the product-integrated nonactivating boundary; partially done overall.**
 
 - [x] **Fully done locally:** bounded cached public capsules project SSH target,
   provider/account/project/subscription, cluster/context/namespace, region/zone,
@@ -764,6 +764,11 @@ Status: **Partially done overall; source-complete and nonactivated locally.**
 - [x] **Fully done locally:** route/session/capsule/generation keys cancel stale
   results and isolate panes, provider snapshots, and workspace layers; route
   cleanup and explicit clear revoke candidates.
+- [x] **Fully done locally:** the retained validated Connection Hub product is
+  synchronized on Action Center open only to the exact selected
+  route/session/revision; unchanged publication is idempotent and mismatch,
+  revocation, or absence clears candidates without provider or keystroke-time
+  work.
 - [x] **Fully done locally:** current observations remain insert-without-Enter;
   private-environment/exact operations are broker-required, so CP4 cannot
   execute or fall back to ambient provider state.
@@ -771,8 +776,8 @@ Status: **Partially done overall; source-complete and nonactivated locally.**
   contributions, fake/model/application tests, final revalidation, redacted
   audit, production confirmation, fuzz, benchmark, and no-keystroke-provider-
   work policy are present. Unsupported OpenBao prevents partial publication.
-- [ ] **Partially done — external activation/native evidence:** connect an
-  approved provider refresh controller, activate exact execution through F4,
+- [ ] **Partially done — external activation/native evidence:** implement an
+  approved provider refresh/capsule producer, activate exact execution through F4,
   implement OpenBao after ADR 0024, and run real provider/account/cluster,
   Linux/macOS, screen-reader/resource, packaging/signing/release fixtures.
 

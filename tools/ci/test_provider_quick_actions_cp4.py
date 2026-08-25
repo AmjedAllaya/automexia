@@ -32,9 +32,10 @@ class CP4ContractTests(unittest.TestCase):
             policy.validate_repository(),
             {
                 "providers": 7,
+                "publication_outcomes": 3,
                 "decisions": 9,
                 "authorities_denied": 11,
-                "tests": 19,
+                "tests": 25,
             },
         )
 
@@ -43,6 +44,7 @@ class CP4ContractTests(unittest.TestCase):
             lambda document: document["limits"].__setitem__("published_routes", 33)
         )
         self.validate_mutation(lambda document: document["providers"].pop())
+        self.validate_mutation(lambda document: document["publication_outcomes"].pop())
         self.validate_mutation(lambda document: document["decisions"].pop())
         self.validate_mutation(
             lambda document: document["authorities"].__setitem__("process", True)
@@ -75,6 +77,35 @@ class CP4ContractTests(unittest.TestCase):
 
         with mock.patch.object(policy, "bounded_text", side_effect=mutated):
             with self.assertRaisesRegex(policy.CP4ContractError, "interactive path"):
+                policy.validate_sources(self.contract)
+
+    def test_product_publication_bridge_removal_is_rejected(self) -> None:
+        original = policy.bounded_text
+
+        def mutated(path, maximum=policy.MAX_EVIDENCE_BYTES):
+            source = original(path, maximum)
+            if path.name == "action_surface.rs":
+                source = source.replace("provider_action_publication", "removed_bridge")
+            return source
+
+        with mock.patch.object(policy, "bounded_text", side_effect=mutated):
+            with self.assertRaisesRegex(policy.CP4ContractError, "missing CP4 source"):
+                policy.validate_sources(self.contract)
+
+        def missing_final_sync(path, maximum=policy.MAX_EVIDENCE_BYTES):
+            source = original(path, maximum)
+            target = "self.sync_provider_actions_for_current_route()"
+            if path.name == "action_surface.rs":
+                index = source.rfind(target)
+                source = source[:index] + "None" + source[index + len(target):]
+            return source
+
+        with mock.patch.object(
+            policy, "bounded_text", side_effect=missing_final_sync
+        ):
+            with self.assertRaisesRegex(
+                policy.CP4ContractError, "open and final authorization"
+            ):
                 policy.validate_sources(self.contract)
 
     def test_final_revalidation_test_removal_is_rejected(self) -> None:

@@ -132,7 +132,7 @@ native/release claim.
 | D6.3/M10 Google Cloud | Partially done overall; local source and cached product review fully done, execution nonactivated | Independent `automexia-devops-gcp`; bounded named public config; exact per-command login/project observation; opaque federation; scope-bound IAP; GKE private transient lifecycle; cached Hub review; focused tests/benchmarks | D3 activation/attestation and controlled real Google/native/resource/accessibility/release evidence remain. |
 | D6.4/M11 Kubernetes/OpenShift | Partially done overall; local source, private transient lifecycle, and cached product review fully done, execution nonactivated | Independent packages; bounded exact-source YAML/JSON parse/merge; default-denied exec; exact isolated kubectl/oc plans; app-owned private no-follow transient allocation/validation/revalidation/revoke/cleanup; focused lifecycle/UI tests and benchmarks | D3 activation, real clients/clusters/plugins, Unix native no-follow, controlled resource/accessibility/release evidence remain. |
 | D6.5/M12 Teleport/OpenBao | Partially done overall | Teleport source and cached product review are fully done locally and nonactivated; OpenBao is **Not done** and ADR 0024 remains proposed/unaccepted | Activate and prove Teleport only through D3/native release gates; accept ADR 0024 before any OpenBao code. |
-| Provider-aware Quick Actions (CP4/F13) | Partially done overall; source-complete nonactivated | Seven provider projections, immutable route snapshots, cached search, final revalidation, compact accessible context, production confirmation, fuzz/benchmark/policy evidence | Product provider publication, exact provider execution, OpenBao, and real native/provider/accessibility/release evidence remain. |
+| Provider-aware Quick Actions (CP4/F13) | Fully done locally at the product-integrated nonactivating boundary; partially done overall | Seven provider projections, retained cached-product handoff, exact route/session/revision publication, idempotence/revocation, cached search, final revalidation, accessible context, production confirmation, fuzz/benchmark/policy evidence | Approved provider refresh/capsule production, exact provider execution, OpenBao, and real native/provider/accessibility/release evidence remain. |
 
 ### Important distinction: existing legacy DevOps status is not D6
 
@@ -1037,7 +1037,7 @@ neither organization adapter may grant authority to the other.
 
 ### M13 — F13/CP4 provider-aware Quick Actions
 
-Status: **Partially done overall; source-complete and nonactivated locally.**
+Status: **Fully done locally at the product-integrated nonactivating boundary; partially done overall.**
 
 - [x] **Fully done locally — bounded public projection.** Quick Action
   candidates carry exact target, provider/account/subscription/project,
@@ -1049,6 +1049,11 @@ Status: **Partially done overall; source-complete and nonactivated locally.**
   Request plus route/session/capsule/generation checks discard stale work and
   isolate panes, providers, and workspace layers.
 - [x] **Fully done locally — safe fallback and broker denial.** Current
+- [x] **Fully done locally — cached product handoff.** The Connection Hub
+  retains only a validated redacted capsule publication. Opening Quick Actions
+  synchronizes it to the exactly matching selected route/session/revision,
+  reuses unchanged snapshots, and clears mismatched or revoked candidates
+  without provider, credential, process, filesystem, PTY, or keystroke work.
   observation actions insert without Enter. Private-environment or exact-launch
   actions remain broker-required; CP4 cannot execute, copy through ambient
   state, or widen an M2/D3 grant.
@@ -1057,9 +1062,9 @@ Status: **Partially done overall; source-complete and nonactivated locally.**
   Fake/model/application tests cover cancellation, replacement, revocation,
   redacted audit, accessible production confirmation, cleanup/capacity, and
   explicit no-provider-work-on-keystroke policy. OpenBao fails unsupported.
-- [ ] **Partially done — native and activated product evidence.** A shipped
-  provider-refresh controller does not yet publish the in-memory snapshot;
-  exact provider execution, OpenBao, real accounts/CLIs/clusters, Linux/macOS
+- [ ] **Partially done — external activation/native evidence.** An approved
+  provider refresh/capsule producer does not yet exist; exact provider
+  execution, OpenBao, real accounts/CLIs/clusters, Linux/macOS
   native runtime, controlled screen-reader/resource, packaging, signing, and
   release fixtures remain external.
 

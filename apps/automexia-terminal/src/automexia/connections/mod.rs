@@ -31,8 +31,9 @@ pub use provider_transients::{
     MAX_PROVIDER_TRANSIENT_AGE,
 };
 pub use providers::{
-    ProviderProductError, ProviderProductErrorCode, ProviderProductSnapshot,
-    MAX_PRODUCT_PROVIDERS, MAX_PROVIDER_SCOPE_SUMMARY_BYTES, PROVIDER_ACTIVATION_BLOCKER,
+    ProviderProductError, ProviderProductErrorCode, ProviderProductPublication,
+    ProviderProductSnapshot, MAX_PRODUCT_PROVIDERS, MAX_PROVIDER_SCOPE_SUMMARY_BYTES,
+    PROVIDER_ACTIVATION_BLOCKER,
 };
 pub use receipts::{
     ManagedReceiptDocument, ManagedReceiptError, ManagedReceiptErrorCode,

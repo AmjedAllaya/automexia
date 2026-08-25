@@ -732,7 +732,7 @@ acceptance.
 
 ### M13 provider-aware Quick Actions boundary
 
-M13/CP4 is source-complete at a nonactivating boundary. It extends the existing
+M13/CP4 is product-integrated at a nonactivating boundary. It extends the existing
 Quick Action model rather than introducing a second provider-action registry.
 `automexia-devops::actions::provider` owns capability-free candidate, binding,
 snapshot, digest, availability, redacted audit, and final revalidation types.
@@ -741,6 +741,13 @@ the SSH projection remains in the pure action core to preserve the acyclic
 provider graph. The application `quick_actions::providers` module is the only
 cross-provider composition owner and accepts only a previously validated public
 `ProviderCapsule`.
+
+The Connection Hub product snapshot owns one optional retained
+`ProviderProductPublication` containing the already validated public capsule.
+Opening the Action Center synchronizes it to Quick Actions only when the
+selected route, session, and capsule revision match exactly. Identical
+publications are idempotent; absence, revocation, and mismatch clear stale
+route candidates. This handoff performs no provider refresh or external I/O.
 
 Composition performs no discovery, refresh, authentication, filesystem,
 network, process, credential, PTY, renderer, startup, or input work. It builds a
@@ -772,8 +779,8 @@ Ceilings are 256 actions per snapshot, 16 per provider, 32 public presentation
 fields, 32 route snapshots, and 128 search results. The schema-1 CP4 contract,
 a dedicated authority/interactive-path checker and mutation suite, provider and
 application tests, hostile-capsule fuzzing, and cached construction/search
-benchmarks freeze this boundary. Real provider publication, exact execution,
-OpenBao, provider-native accounts/CLIs/clusters, controlled accessibility,
+benchmarks freeze this boundary. Approved provider refresh/capsule production,
+exact execution, OpenBao, provider-native accounts/CLIs/clusters, controlled accessibility,
 resource, packaging, and multi-OS release proof remain external activation
 gates.
 

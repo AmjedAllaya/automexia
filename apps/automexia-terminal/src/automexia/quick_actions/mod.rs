@@ -29,7 +29,8 @@ pub use packs_cli::execute_packs_command;
 #[cfg(not(target_arch = "wasm32"))]
 pub use providers::{
     compose_provider_action_snapshot, ProviderActionCompositionError,
-    ProviderActionCompositionErrorCode,
+    ProviderActionCompositionErrorCode, ProviderActionPublicationOutcome,
+    ProviderActionPublisher, ProviderActionRouteError, ProviderActionRouteErrorCode,
 };
 
 pub use native_import::{

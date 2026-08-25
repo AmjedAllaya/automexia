@@ -425,6 +425,20 @@ impl QuickActionRuntime {
         removed
     }
 
+    pub(crate) fn provider_snapshot_matches(
+        &self,
+        route_id: usize,
+        snapshot: &ProviderActionSnapshot,
+    ) -> bool {
+        let key = ProviderSnapshotKey::from_snapshot(snapshot);
+        lock(&self.0.provider_snapshots)
+            .get(&route_id)
+            .is_some_and(|published| {
+                published.key == key
+                    && published.snapshot.snapshot_digest() == snapshot.snapshot_digest()
+            })
+    }
+
     pub fn revalidate_provider_binding(
         &self,
         route_id: usize,
