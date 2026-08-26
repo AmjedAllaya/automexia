@@ -5,6 +5,9 @@ checkout. It is for contributors and source users; signed stable installers are
 not published until the release prerequisites in [Releasing](../RELEASING.md)
 are satisfied.
 
+For the complete platform requirements, update, cleanup, and removal steps,
+start with [Install Automexia](INSTALLATION.md).
+
 ## 1. Prepare the host
 
 Install Git, Python 3, and the Rust toolchain pinned by
@@ -106,6 +109,13 @@ you want to change. Automexia works with no configuration; omitted values use
 tested defaults. Restart, or bind the stable `ReloadConfig` action for an
 explicit reload. Malformed or oversized configuration is rejected and the last
 known-good runtime configuration remains active.
+
+## Continue with a task
+
+Try a practical layout from the [workflow recipes](user-guide/recipes.md), or
+choose your next task from the [Automexia User Guide](user-guide/index.md).
+Use [Extensions](EXTENSIONS.md) to understand which domain foundations exist
+today and which installation experiences remain planned.
 
 ## 6. Prepare a contribution
 
