@@ -180,6 +180,41 @@ class FeatureTestReinforcementTests(unittest.TestCase):
                 ):
                     self.validate(document)
 
+    def test_command_timestamp_scenario_details_cannot_be_weakened(self) -> None:
+        mutations = {
+            "terminal-protocols-grid-history": (
+                ("needed_tests", "boundary-only CMD D"),
+                ("needed_tests", "pre-epoch"),
+                ("needed_tests", "timezone or DST transitions"),
+                ("verification_reinforcements", "source prompt, following-prompt boundary"),
+                ("verification_reinforcements", "no shell-provided timestamp text"),
+                ("checker_reinforcements", "local timezone conversion"),
+                ("checker_reinforcements", "no-PTY side-effect coverage"),
+            ),
+            "renderer-fonts-responsive-ui": (
+                ("needed_tests", "full ISO local date and time"),
+                ("needed_tests", "compact date-time fallbacks"),
+                ("verification_reinforcements", "painted command datetime label"),
+                ("verification_reinforcements", "terminal cells, PTY bytes"),
+                ("checker_reinforcements", "no-fabrication behavior"),
+            ),
+        }
+        for feature_id, details in mutations.items():
+            for field, detail in details:
+                with self.subTest(feature_id=feature_id, field=field, detail=detail):
+                    document = copy.deepcopy(self.document)
+                    feature = next(
+                        item for item in document["features"] if item["id"] == feature_id
+                    )
+                    feature[field] = [
+                        item.replace(detail, "generic timestamp coverage")
+                        for item in feature[field]
+                    ]
+                    with self.assertRaisesRegex(
+                        REINFORCEMENT.ReinforcementError, "required scenario detail"
+                    ):
+                        self.validate(document)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

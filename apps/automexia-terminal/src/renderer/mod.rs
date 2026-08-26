@@ -359,6 +359,7 @@ fn command_result_anchors(
                 separates_next_prompt: false,
                 exit_code: result.exit_code,
                 elapsed_ms: result.elapsed_ms,
+                completed_at: result.completed_at,
             };
             Some(command_result_boundary(anchor, prompt_anchors))
         })
@@ -395,6 +396,7 @@ fn command_result_anchors(
             separates_next_prompt: true,
             exit_code: boundary.result.exit_code,
             elapsed_ms: boundary.result.elapsed_ms,
+            completed_at: boundary.result.completed_at,
         });
     }
     anchors
@@ -2282,6 +2284,7 @@ mod prompt_visual_anchor_tests {
                     id: 10,
                     exit_code: Some(exit_code),
                     elapsed_ms: Some(18),
+                    completed_at: None,
                 },
             );
             rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
@@ -2328,6 +2331,17 @@ mod prompt_visual_anchor_tests {
             id: 33,
             exit_code: Some(0),
             elapsed_ms: Some(9),
+            completed_at: Some(
+                rio_backend::crosswords::grid::row::SemanticCommandTimestamp {
+                    unix_ms: 1_777_575_942_000,
+                    year: 2026,
+                    month: 8,
+                    day: 26,
+                    hour: 19,
+                    minute: 5,
+                    second: 42,
+                },
+            ),
         };
         let mut rows = (0..=3).map(|_| Row::<Square>::new(12)).collect::<Vec<_>>();
         rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
@@ -2369,6 +2383,7 @@ mod prompt_visual_anchor_tests {
         assert_eq!(results[0].output_top, Some(40.0));
         assert_eq!(results[0].y, 60.0);
         assert!(results[0].separates_next_prompt);
+        assert_eq!(results[0].completed_at, result.completed_at);
     }
     #[test]
     fn legacy_cmd_result_uses_lambda_and_next_prompt_without_claiming_status() {
@@ -2379,6 +2394,7 @@ mod prompt_visual_anchor_tests {
                 id: 10,
                 exit_code: None,
                 elapsed_ms: None,
+                completed_at: None,
             },
         );
         rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
@@ -2426,6 +2442,7 @@ mod prompt_visual_anchor_tests {
                 id: 10,
                 exit_code: None,
                 elapsed_ms: None,
+                completed_at: None,
             },
         );
         rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
@@ -2437,6 +2454,7 @@ mod prompt_visual_anchor_tests {
                 id: 10,
                 exit_code: Some(0),
                 elapsed_ms: Some(1),
+                completed_at: None,
             },
         );
         rows[4].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
@@ -2491,6 +2509,17 @@ mod prompt_visual_anchor_tests {
             separates_next_prompt: false,
             exit_code: Some(0),
             elapsed_ms: Some(18),
+            completed_at: Some(
+                rio_backend::crosswords::grid::row::SemanticCommandTimestamp {
+                    unix_ms: 1_777_575_942_000,
+                    year: 2026,
+                    month: 8,
+                    day: 26,
+                    hour: 19,
+                    minute: 5,
+                    second: 42,
+                },
+            ),
         };
         let prompts = [
             crate::automexia::ui::PromptAnchor {
@@ -2520,6 +2549,7 @@ mod prompt_visual_anchor_tests {
         assert!(boundary.separates_next_prompt);
         assert_eq!(boundary.exit_code, Some(0));
         assert_eq!(boundary.elapsed_ms, Some(18));
+        assert_eq!(boundary.completed_at, result.completed_at);
     }
 
     #[test]
@@ -2535,6 +2565,7 @@ mod prompt_visual_anchor_tests {
             separates_next_prompt: false,
             exit_code: Some(7),
             elapsed_ms: Some(1_250),
+            completed_at: None,
         };
         let prompts = [crate::automexia::ui::PromptAnchor {
             generation: Some(2),

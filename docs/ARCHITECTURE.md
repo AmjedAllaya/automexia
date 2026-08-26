@@ -1137,7 +1137,11 @@ and stable activation remain forbidden until its exact release gates pass.
   PTY emits OSC titles, preventing startup profile commands from becoming
   transient visible identities.
 - OSC 133 `C`/`D` allocates a stable pane-local completion ID and records exit
-  code and elapsed time on the source prompt while that row remains retained.
+  code, elapsed time, and one terminal-owned local completion datetime on the
+  source prompt while that row remains retained. The timestamp contains a
+  bounded Unix-millisecond identity plus validated local calendar components;
+  shell text cannot supply or replace it. Boundary-only CMD completion receives
+  the datetime but keeps status and duration neutral.
   After `C`, bounded terminal state observes content or line advance without
   copying command text. An output-producing `D` publishes one content-free
   boundary on the following prompt with the source generation and result ID.

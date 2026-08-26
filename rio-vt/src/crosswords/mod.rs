@@ -66,6 +66,143 @@ pub type NamedColor = colors::NamedColor;
 
 pub const MIN_COLUMNS: usize = 2;
 pub const MIN_LINES: usize = 1;
+
+fn unix_millis_from_system_time(time: std::time::SystemTime) -> Option<u64> {
+    time.duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_millis().min(u64::MAX as u128) as u64)
+}
+
+fn checked_semantic_command_timestamp(
+    unix_ms: u64,
+    year: i32,
+    month: i32,
+    day: i32,
+    hour: i32,
+    minute: i32,
+    second: i32,
+) -> Option<crate::crosswords::grid::row::SemanticCommandTimestamp> {
+    let leap_year = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let maximum_day = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap_year => 29,
+        2 => 28,
+        _ => 0,
+    };
+    if !(1_969..=u16::MAX as i32).contains(&year)
+        || !(1..=12).contains(&month)
+        || !(1..=maximum_day).contains(&day)
+        || !(0..=23).contains(&hour)
+        || !(0..=59).contains(&minute)
+        || !(0..=60).contains(&second)
+    {
+        return None;
+    }
+    Some(crate::crosswords::grid::row::SemanticCommandTimestamp {
+        unix_ms,
+        year: year as u16,
+        month: month as u8,
+        day: day as u8,
+        hour: hour as u8,
+        minute: minute as u8,
+        second: second as u8,
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn semantic_command_timestamp_at(
+    time: std::time::SystemTime,
+) -> Option<crate::crosswords::grid::row::SemanticCommandTimestamp> {
+    use windows_sys::Win32::Foundation::{FILETIME, SYSTEMTIME};
+    use windows_sys::Win32::System::Time::{
+        FileTimeToSystemTime, SystemTimeToTzSpecificLocalTimeEx,
+    };
+
+    const WINDOWS_EPOCH_OFFSET_100NS: u64 = 116_444_736_000_000_000;
+    let unix_ms = unix_millis_from_system_time(time)?;
+    let windows_ticks = unix_ms
+        .checked_mul(10_000)?
+        .checked_add(WINDOWS_EPOCH_OFFSET_100NS)?;
+    let file_time = FILETIME {
+        dwLowDateTime: windows_ticks as u32,
+        dwHighDateTime: (windows_ticks >> 32) as u32,
+    };
+    // SAFETY: SYSTEMTIME is a plain Windows ABI structure and an all-zero
+    // value is valid before the APIs initialize every output field.
+    let mut utc: SYSTEMTIME = unsafe { std::mem::zeroed() };
+    // SAFETY: both pointers reference valid, non-overlapping values for the
+    // duration of the call.
+    if unsafe { FileTimeToSystemTime(&file_time, &mut utc) } == 0 {
+        return None;
+    }
+    // SAFETY: same initialization and exclusive-output guarantees as `utc`.
+    let mut local: SYSTEMTIME = unsafe { std::mem::zeroed() };
+    // A null timezone asks Windows to use the current dynamic timezone rules,
+    // including the rules for the timestamp's year.
+    // SAFETY: `utc` and `local` are valid and non-overlapping; the optional
+    // timezone pointer is null as documented by the Windows API.
+    if unsafe { SystemTimeToTzSpecificLocalTimeEx(std::ptr::null(), &utc, &mut local) }
+        == 0
+    {
+        return None;
+    }
+    checked_semantic_command_timestamp(
+        unix_ms,
+        i32::from(local.wYear),
+        i32::from(local.wMonth),
+        i32::from(local.wDay),
+        i32::from(local.wHour),
+        i32::from(local.wMinute),
+        i32::from(local.wSecond),
+    )
+}
+
+#[cfg(all(not(target_os = "windows"), not(target_arch = "wasm32")))]
+fn semantic_command_timestamp_at(
+    time: std::time::SystemTime,
+) -> Option<crate::crosswords::grid::row::SemanticCommandTimestamp> {
+    let unix_ms = unix_millis_from_system_time(time)?;
+    let seconds: libc::time_t = (unix_ms / 1_000).try_into().ok()?;
+    // SAFETY: libc::tm is a C ABI structure and an all-zero value is valid
+    // before `localtime_r` initializes the caller-owned output buffer.
+    let mut local: libc::tm = unsafe { std::mem::zeroed() };
+    // SAFETY: both pointers remain valid and non-overlapping for this call.
+    if unsafe { libc::localtime_r(&seconds, &mut local) }.is_null() {
+        return None;
+    }
+    checked_semantic_command_timestamp(
+        unix_ms,
+        local.tm_year.saturating_add(1_900),
+        local.tm_mon.saturating_add(1),
+        local.tm_mday,
+        local.tm_hour,
+        local.tm_min,
+        local.tm_sec,
+    )
+}
+
+#[cfg(target_arch = "wasm32")]
+fn semantic_command_timestamp_at(
+    _time: std::time::SystemTime,
+) -> Option<crate::crosswords::grid::row::SemanticCommandTimestamp> {
+    // The desktop product owns shell integration. The embeddable WASM VT core
+    // has no authoritative local-time adapter and must not fabricate one.
+    None
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn semantic_command_timestamp_now(
+) -> Option<crate::crosswords::grid::row::SemanticCommandTimestamp> {
+    semantic_command_timestamp_at(std::time::SystemTime::now())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn semantic_command_timestamp_now(
+) -> Option<crate::crosswords::grid::row::SemanticCommandTimestamp> {
+    None
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SelectionTextError {
     CapacityExceeded,
@@ -3942,6 +4079,7 @@ impl<U: EventListener> Handler for Crosswords<U> {
             id: self.semantic_command_result_sequence,
             exit_code,
             elapsed_ms,
+            completed_at: semantic_command_timestamp_now(),
         };
         let mut discovered_output = false;
         for line in (-history..screen_lines).rev().map(Line) {
@@ -6326,6 +6464,44 @@ mod tests {
     }
 
     #[test]
+    fn command_timestamp_rejects_pre_epoch_and_invalid_components() {
+        let before_epoch = std::time::UNIX_EPOCH
+            .checked_sub(std::time::Duration::from_millis(1))
+            .unwrap();
+        assert_eq!(unix_millis_from_system_time(before_epoch), None);
+        assert_eq!(
+            checked_semantic_command_timestamp(0, 2026, 13, 1, 0, 0, 0),
+            None
+        );
+        assert_eq!(
+            checked_semantic_command_timestamp(0, 2026, 1, 1, 24, 0, 0),
+            None
+        );
+        assert_eq!(
+            checked_semantic_command_timestamp(0, 2025, 2, 29, 0, 0, 0),
+            None
+        );
+        assert!(checked_semantic_command_timestamp(0, 2024, 2, 29, 0, 0, 0).is_some());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn command_timestamp_uses_one_bounded_platform_local_instant() {
+        let instant =
+            std::time::UNIX_EPOCH + std::time::Duration::from_millis(1_777_575_942_321);
+        let timestamp = semantic_command_timestamp_at(instant).expect(
+            "desktop local-time conversion should accept a current bounded instant",
+        );
+
+        assert_eq!(timestamp.unix_ms, 1_777_575_942_321);
+        assert!((1..=12).contains(&timestamp.month));
+        assert!((1..=31).contains(&timestamp.day));
+        assert!(timestamp.hour <= 23);
+        assert!(timestamp.minute <= 59);
+        assert!(timestamp.second <= 60);
+    }
+
+    #[test]
     fn conpty_win32_input_private_mode_tracks_set_and_reset() {
         use crate::performer::handler::Processor;
 
@@ -6826,14 +7002,11 @@ mod tests {
                     .flatten()
             });
         assert_eq!(
-            completed,
-            Some(crate::crosswords::grid::row::SemanticCommandResult {
-                id: 1,
-                exit_code: None,
-                elapsed_ms: None,
-            }),
+            completed.map(|result| (result.id, result.exit_code, result.elapsed_ms)),
+            Some((1, None, None)),
             "bare D must close A/B neutrally without guessed status or duration"
         );
+        assert!(completed.and_then(|result| result.completed_at).is_some());
     }
     #[test]
     fn bare_command_end_closes_latest_legacy_prompt_when_optional_b_is_absent() {
@@ -6855,14 +7028,11 @@ mod tests {
                     .flatten()
             });
         assert_eq!(
-            completed,
-            Some(crate::crosswords::grid::row::SemanticCommandResult {
-                id: 1,
-                exit_code: None,
-                elapsed_ms: None,
-            }),
+            completed.map(|result| (result.id, result.exit_code, result.elapsed_ms)),
+            Some((1, None, None)),
             "explicit bare D must close the newest untagged prompt even without optional B"
         );
+        assert!(completed.and_then(|result| result.completed_at).is_some());
     }
 
     #[test]
@@ -6891,15 +7061,17 @@ mod tests {
                     .flatten()
             })
             .collect::<Vec<_>>();
+        assert_eq!(completed.len(), 1);
         assert_eq!(
-            completed,
-            vec![crate::crosswords::grid::row::SemanticCommandResult {
-                id: 1,
-                exit_code: None,
-                elapsed_ms: None,
-            }],
+            (
+                completed[0].id,
+                completed[0].exit_code,
+                completed[0].elapsed_ms
+            ),
+            (1, None, None),
             "real CMD D/A ordering must preserve one neutral completion"
         );
+        assert!(completed[0].completed_at.is_some());
         assert!(
             cw.semantic_command_candidate.is_some(),
             "the following editable CMD prompt must remain a completion candidate"
@@ -6927,6 +7099,10 @@ mod tests {
             .expect("Fish A/C/D lifecycle should attach to its identified prompt");
         assert_eq!(completed.exit_code, Some(0));
         assert!(completed.elapsed_ms.is_some());
+        assert!(
+            completed.completed_at.is_some(),
+            "an accepted real shell completion must receive one terminal-owned wall-clock identity"
+        );
     }
 
     #[test]

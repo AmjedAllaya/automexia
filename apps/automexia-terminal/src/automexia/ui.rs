@@ -56,6 +56,10 @@ pub struct CommandResultAnchor {
     pub exit_code: Option<i32>,
     /// Terminal-measured execution duration, absent for boundary-only shells.
     pub elapsed_ms: Option<u64>,
+    /// Terminal-owned local completion date and time. This is captured once,
+    /// remains stable through scrollback/reflow, and contains no shell text.
+    pub completed_at:
+        Option<rio_backend::crosswords::grid::row::SemanticCommandTimestamp>,
 }
 
 /// Bound historical per-prompt extension UI state. This is intentionally small:

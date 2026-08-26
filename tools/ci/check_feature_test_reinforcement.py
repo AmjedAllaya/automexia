@@ -86,6 +86,21 @@ FORBIDDEN_ABSOLUTE_CLAIMS = re.compile(
 )
 
 REQUIRED_FEATURE_SCENARIO_DETAILS = {
+    "terminal-protocols-grid-history": {
+        "needed_tests": (
+            "boundary-only CMD D",
+            "pre-epoch",
+            "timezone or DST transitions",
+        ),
+        "verification_reinforcements": (
+            "source prompt, following-prompt boundary",
+            "no shell-provided timestamp text",
+        ),
+        "checker_reinforcements": (
+            "local timezone conversion",
+            "no-PTY side-effect coverage",
+        ),
+    },
     "renderer-fonts-responsive-ui": {
         "needed_tests": (
             "threshold-minus-one",
@@ -95,6 +110,8 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "fractional trackpad",
             "physical-to-logical scaling",
             "responsive reclamping",
+            "full ISO local date and time",
+            "compact date-time fallbacks",
         ),
         "verification_reinforcements": (
             "42-pixel header",
@@ -102,10 +119,13 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "ownership before pane selection",
             "1,024-row event bound",
             "persistent idle indicator",
+            "painted command datetime label",
+            "terminal cells, PTY bytes",
         ),
         "checker_reinforcements": (
             "184-pixel default tab cap",
             "modal event ownership",
+            "no-fabrication behavior",
         ),
     }
 }

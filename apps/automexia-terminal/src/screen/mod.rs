@@ -547,6 +547,8 @@ struct NativeWindowSnapshot {
     command_result_generation: Option<u64>,
     command_result_key: Option<u64>,
     command_result_exit_code: Option<i32>,
+    command_result_completed_at_unix_ms: Option<u64>,
+    command_result_label: Option<String>,
     command_result_pulse_duration_ms: Option<u64>,
     command_result_pulse_hold_fraction: Option<f32>,
     command_result_pulse_generation: u64,
@@ -621,6 +623,10 @@ fn write_native_resize_snapshot(
                 "result_elapsed_ms": row
                     .semantic_command_result
                     .and_then(|result| result.elapsed_ms),
+                "result_completed_at_unix_ms": row
+                    .semantic_command_result
+                    .and_then(|result| result.completed_at)
+                    .map(|timestamp| timestamp.unix_ms),
                 "has_result": row.semantic_command_result.is_some(),
                 "boundary_source_generation": row
                     .semantic_command_boundary
@@ -628,6 +634,10 @@ fn write_native_resize_snapshot(
                 "boundary_result_id": row
                     .semantic_command_boundary
                     .map(|boundary| boundary.result.id),
+                "boundary_completed_at_unix_ms": row
+                    .semantic_command_boundary
+                    .and_then(|boundary| boundary.result.completed_at)
+                    .map(|timestamp| timestamp.unix_ms),
             })
         })
         .collect::<Vec<_>>();
@@ -747,6 +757,9 @@ fn write_native_resize_snapshot(
     snapshot["command_result_key"] = serde_json::json!(window.command_result_key);
     snapshot["command_result_exit_code"] =
         serde_json::json!(window.command_result_exit_code);
+    snapshot["command_result_completed_at_unix_ms"] =
+        serde_json::json!(window.command_result_completed_at_unix_ms);
+    snapshot["command_result_label"] = serde_json::json!(window.command_result_label);
     snapshot["command_result_pulse_duration_ms"] =
         serde_json::json!(window.command_result_pulse_duration_ms);
     snapshot["command_result_pulse_hold_fraction"] =
@@ -6140,6 +6153,11 @@ impl Screen<'_> {
                 self.renderer.command_results.native_test_result_identity();
             let command_result_style =
                 self.renderer.command_results.native_test_result_style();
+            let command_result_label = self
+                .renderer
+                .command_results
+                .native_test_result_label()
+                .map(str::to_owned);
             let palette_scroll_state =
                 self.renderer.command_palette.native_test_scroll_state();
             write_native_resize_snapshot(
@@ -6200,6 +6218,9 @@ impl Screen<'_> {
                         .map(|identity| identity.1),
                     command_result_exit_code: command_result_identity
                         .and_then(|identity| identity.2),
+                    command_result_completed_at_unix_ms: command_result_identity
+                        .and_then(|identity| identity.3),
+                    command_result_label,
                     command_result_divider: command_result_visual.map(|visual| visual.1),
                     command_result_opacity: command_result_style.map(|style| style.0),
                     command_result_pulse_duration_ms: command_result_style

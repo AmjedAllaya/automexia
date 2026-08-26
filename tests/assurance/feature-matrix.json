@@ -104,7 +104,7 @@
         "resource_lifetime": {"level": "controlled", "evidence": ["sugarloaf/src/renderer/image_cache/cache.rs", "tests/integration/resize-stress-windows.ps1"]},
         "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "Renderer caches are memory/GPU resources and do not write persistent cache files."},
         "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/layout/compute_tests.rs", "apps/automexia-terminal/proptest-regressions/layout/compute_tests.txt"]},
-        "visual_quality": {"level": "controlled", "evidence": ["apps/automexia-terminal/src/router/routes/welcome.rs", "apps/automexia-terminal/src/renderer/ui_theme.rs", "apps/automexia-terminal/src/renderer/assistant.rs", "apps/automexia-terminal/src/renderer/compatibility_inspector.rs", "apps/automexia-terminal/src/renderer/confirm_quit.rs", "apps/automexia-terminal/src/renderer/island.rs", "apps/automexia-terminal/src/renderer/devops_status.rs", "apps/automexia-terminal/src/renderer/scrollbar.rs", "rio-vt/src/crosswords/grid/row.rs", "rio-vt/src/crosswords/mod.rs", "shell-integration/cmd/automexia.cmd", "shell-integration/fish/automexia.fish", "apps/automexia-terminal/src/renderer/snapshots/automexia__renderer__session_footer__tests__session_footer_geometry_matrix.snap", "apps/automexia-terminal/src/renderer/snapshots/automexia__renderer__search__tests__scoped_search_geometry_matrix.snap", "tests/integration/resize-stress-windows.ps1", "tests/integration/session-clone-wsl-windows.ps1", "docs/COMMAND-RESULT-ASSURANCE.md", "tests/assurance/feature-test-reinforcement-v1.json"], "rationale": "Renderer-neutral parser-to-scrollback-to-visible-render fixtures prove bounded short output, all one- and two-viewport boundary heights, full source-prompt eviction, stable result identity, exactly one following boundary, silent and newline-only behavior, repaint, reflow, and deduplication. Native Windows fixtures cover CMD, PowerShell, WSL, geometry, glyph, and contrast cases; a current WGPU result-stage run also passed all seven dynamic overflow cases. A clean current CPU rerun, cross-platform GUI, exact visual matrices, resources, assistive technology, and independent review remain external under U10."}
+        "visual_quality": {"level": "controlled", "evidence": ["apps/automexia-terminal/src/router/routes/welcome.rs", "apps/automexia-terminal/src/renderer/ui_theme.rs", "apps/automexia-terminal/src/renderer/assistant.rs", "apps/automexia-terminal/src/renderer/compatibility_inspector.rs", "apps/automexia-terminal/src/renderer/confirm_quit.rs", "apps/automexia-terminal/src/renderer/island.rs", "apps/automexia-terminal/src/renderer/devops_status.rs", "apps/automexia-terminal/src/renderer/scrollbar.rs", "rio-vt/src/crosswords/grid/row.rs", "rio-vt/src/crosswords/mod.rs", "shell-integration/cmd/automexia.cmd", "shell-integration/fish/automexia.fish", "apps/automexia-terminal/src/renderer/snapshots/automexia__renderer__session_footer__tests__session_footer_geometry_matrix.snap", "apps/automexia-terminal/src/renderer/snapshots/automexia__renderer__search__tests__scoped_search_geometry_matrix.snap", "tests/integration/resize-stress-windows.ps1", "tests/integration/session-clone-wsl-windows.ps1", "docs/COMMAND-RESULT-ASSURANCE.md", "tests/assurance/feature-test-reinforcement-v1.json"], "rationale": "Renderer-neutral parser-to-scrollback-to-visible-render fixtures prove bounded short output, all one- and two-viewport boundary heights, full source-prompt eviction, stable result identity and completion datetime, exactly one following boundary, silent and newline-only behavior, repaint, reflow, responsive labels, and deduplication. Current local native Windows WGPU and CPU drivers cover CMD, PowerShell, geometry, timestamp identity/labels, glyph, contrast, resources, and all seven dynamic overflow cases. Cross-platform GUI, exact controlled visual matrices, other Windows GPU/RDP environments, assistive technology, and independent review remain external under U10."}
       },
       "platforms": {
         "windows": {"level": "controlled", "evidence": [".github/workflows/nightly.yml#native-gui-resize-stress"]},
@@ -719,7 +719,7 @@
       "documentation": {
         "guide": ["docs/CONNECTION-HUB.md#search-filters-and-refresh"],
         "reference": ["docs/TESTING.md#connection-hub-f3-catalog-contract"],
-        "explanation": ["docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md#f3-implement-d51-read-only-connection-hub"]
+        "explanation": ["docs/CONNECTION-HUB.md#product-outcome"]
       },
       "quality": {
         "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs", "automexia-ui-model/tests/connection_hub.rs"], "rationale": "The pure projection preserves the existing virtualized managed-focus model; native product and controlled screen-reader evidence remain later F3 gates."},
@@ -744,7 +744,7 @@
       "documentation": {
         "guide": ["docs/CONNECTION-HUB.md#search-filters-and-refresh"],
         "reference": ["docs/TESTING.md#connection-hub-f3-application-composition"],
-        "explanation": ["docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md#f3-implement-d51-read-only-connection-hub"]
+        "explanation": ["docs/CONNECTION-HUB.md#product-outcome"]
       },
       "quality": {
         "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "Truthful state and setup labels are model-level evidence; the product adapter is recorded separately and controlled screen-reader evidence remains external."},
@@ -794,7 +794,7 @@
       "documentation": {
         "guide": ["docs/guide/remote-connections.md#internal-connection-library-boundary"],
         "reference": ["docs/TESTING.md#connection-hub-f3-private-profile-recipe-and-preference-library"],
-        "explanation": ["docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md#f3-implement-d51-read-only-connection-hub"]
+        "explanation": ["docs/CONNECTION-HUB.md#product-outcome"]
       },
       "quality": {
         "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "This slice owns no UI; schema-2 edit/migration previews remain internal and product controls, focus, and controlled screen-reader evidence are separate M6 gates."},

@@ -1085,12 +1085,16 @@ $rendererConfig
                     [int64]$caseReady.command_result_key -gt $previousResultKey -and
                     [int64]$caseReady.command_result_generation -eq $previousPromptId -and
                     [int]$caseReady.command_result_exit_code -eq [int]$case.ExitCode -and
+                    [int64]$caseReady.command_result_completed_at_unix_ms -gt 1600000000000 -and
+                    [string]$caseReady.command_result_label -like
+                        '*2026-08-26 12:34:56' -and
                     $null -ne $caseReady.command_result_surface
             } else {
                 $semanticResult = @($caseReady.semantic_rows | Where-Object {
                     $_.has_result -and
                         [int64]$_.generation -eq $previousPromptId -and
-                        [int]$_.result_exit_code -eq [int]$case.ExitCode
+                        [int]$_.result_exit_code -eq [int]$case.ExitCode -and
+                        [int64]$_.result_completed_at_unix_ms -gt 1600000000000
                 })
                 # A preceding output group may remain visible by design. The
                 # silent command itself must publish semantic completion but
@@ -1122,7 +1126,9 @@ $rendererConfig
             $visibleBoundary = @($caseReady.semantic_rows | Where-Object {
                 $null -ne $_.boundary_result_id -and
                     [int64]$_.boundary_result_id -eq [int64]$caseReady.command_result_key -and
-                    [int64]$_.boundary_source_generation -eq $previousPromptId
+                    [int64]$_.boundary_source_generation -eq $previousPromptId -and
+                    [int64]$_.boundary_completed_at_unix_ms -eq
+                        [int64]$caseReady.command_result_completed_at_unix_ms
             })
             if ($visibleBoundary.Count -ne 1) {
                 throw "Viewport-overflow case '$($case.Name)' did not retain exactly one visible terminal-owned result boundary"
@@ -1151,6 +1157,18 @@ $rendererConfig
             painted = [bool]$case.HasOutput
             output_rows = $outputRowsEvidence
             source_owner_offscreen = $ownerMustBeOffscreen
+            completed_at_unix_ms = if ([bool]$case.HasOutput) {
+                [int64]$caseReady.command_result_completed_at_unix_ms
+            } else {
+                [int64](@($caseReady.semantic_rows | Where-Object {
+                    $_.has_result -and [int64]$_.generation -eq $previousPromptId
+                })[0].result_completed_at_unix_ms)
+            }
+            timestamp_label = if ([bool]$case.HasOutput) {
+                [string]$caseReady.command_result_label
+            } else {
+                $null
+            }
         }
         $resultProbe = $caseReady
     }
@@ -1734,6 +1752,8 @@ $rendererConfig
             [int64]$cmdListing.command_result_key -le $cmdPreviousResultKey -or
             $null -ne $cmdListing.command_result_generation -or
             $null -ne $cmdListing.command_result_exit_code -or
+            [int64]$cmdListing.command_result_completed_at_unix_ms -le 1600000000000 -or
+            [string]$cmdListing.command_result_label -notlike '*2026-08-26 12:34:56' -or
             $null -eq $cmdListing.command_result_surface -or
             $null -eq $cmdListing.command_result_divider) -and
            [DateTime]::UtcNow -lt $cmdListingDeadline) {
@@ -1749,6 +1769,8 @@ $rendererConfig
         [int64]$cmdListing.command_result_key -le $cmdPreviousResultKey -or
         $null -ne $cmdListing.command_result_generation -or
         $null -ne $cmdListing.command_result_exit_code -or
+        [int64]$cmdListing.command_result_completed_at_unix_ms -le 1600000000000 -or
+        [string]$cmdListing.command_result_label -notlike '*2026-08-26 12:34:56' -or
         $null -eq $cmdListing.command_result_surface -or
         $null -eq $cmdListing.command_result_divider) {
         Write-Host ($cmdListing | ConvertTo-Json -Depth 10)
@@ -3052,6 +3074,8 @@ $rendererConfig
                     $resultGutterBackground.MeanBlue)
                 blank_surface_gutter_rgb_delta = $resultPaintDelta
                 representative_commands = $resultCommandEvidence
+                completed_at_unix_ms = [int64]$historyReady.command_result_completed_at_unix_ms
+                timestamp_label = [string]$historyReady.command_result_label
                 artifact = if ($null -eq $resultFramePath) {
                     $null
                 } else {

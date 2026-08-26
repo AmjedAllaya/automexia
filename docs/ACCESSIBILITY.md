@@ -37,7 +37,7 @@ a separate Automexia text/document milestone.
 | Connection Hub | Search/filter/group controls, labeled actions, status and empty/error states | Complete keyboard navigation and visible close; terminal input behind the scrim is inert | Native picker and screen-reader evidence remains release-gated |
 | Scrollbar | Rounded cyan/blue thumb plus a wider invisible grab area; drag state differs in opacity and color | Wheel and terminal navigation remain primary; pointer dragging is optional | Native screen readers use terminal/document scrolling rather than this visual thumb |
 | Context segments | Icon plus text label; meaning never depends only on color | Passive information; no hidden pointer-only action | Freshness/error announcements remain provider-neutral roadmap work |
-| Completed command output | Command-agnostic persistent tint, adaptive 6-10 pixel gutter, end rule, known-status icon/duration or explicit neutral treatment, one 540 ms lightening, and stable pane-local boundary identity through viewport/full source-prompt eviction | Passive feedback only; shell input, cursor, selection, copy, search, and history keep their existing owners | Native screen readers consume terminal text; the visual result grouping is not yet exposed as a native region |
+| Completed command output | Command-agnostic persistent tint, adaptive 6-10 pixel gutter, end rule, terminal-owned local completion datetime, known-status icon/duration or explicit neutral treatment, one 540 ms lightening, and stable pane-local boundary identity through viewport/full source-prompt eviction | Passive feedback only; shell input, cursor, selection, copy, search, and history keep their existing owners | Datetime remains readable text and compactly degrades before disappearing; native screen readers consume terminal text, but the visual result grouping is not yet exposed as a native region |
 | Session footer | Passive pane/tab/grid/line-ending/clock status | No action is hidden in the footer | It is intentionally omitted when a pane cannot spare terminal rows |
 | Terminal grid | Shell output, selection, cursor, and input remain authoritative | Standard terminal and configured shell bindings | Full text-range exposure requires the v0.5 accessibility model |
 | Image quick look | Filename, dimensions, and size remain visible as text; preview never conveys required terminal state | Hover previews; click pins; arrows browse visible image paths; `Ctrl+Alt+I`/`Cmd+Alt+I` previews selection; `Esc` dismisses | Native screen-reader announcement of the preview card requires the v0.5 adapter |
@@ -45,8 +45,11 @@ a separate Automexia text/document milestone.
 ## Completed output cues
 
 Completed output never depends on a flash or color alone. The visible persistent
-9.9% tint, end rule, whitespace, and known-status icon plus elapsed time retain
-the boundary after the temporary lightening ends. The cue changes opacity only;
+9.9% tint, end rule, whitespace, local completion datetime, and known-status
+icon plus elapsed time retain the boundary after the temporary lightening ends.
+Full ISO local datetime drops duration first and then compacts to month-day plus
+hour-minute when pane width is constrained; it never clips into prompt context.
+The cue changes opacity only;
 it does not move or resize content, holds briefly and fades once within 540
 milliseconds, and is suppressed for historical content and while the pane is in
 scrollback. It has one opposing light/dark transition rather than a repeating

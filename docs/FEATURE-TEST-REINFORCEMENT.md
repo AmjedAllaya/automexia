@@ -115,6 +115,11 @@ Current assurance: **Partial**.
   silent output, alternate screen, resize storms and history navigation.
 - Compare independent grid, damage, scrollback, semantic, pixel and
   accessibility oracles; retain fuzz reproducers and hot-path benchmarks.
+- For completion datetime, cover trusted `C/D`, boundary-only CMD `D`, silent
+  and multiline output, pre-epoch/invalid calendar/clock failures, timezone and
+  DST changes, stale generations, source eviction and reflow. Compare Unix
+  milliseconds and local components across source, following boundary, anchor,
+  label and native snapshot while proving no shell timestamp or PTY write.
 
 ### pty-scheduler-process-lifecycle
 
@@ -161,6 +166,10 @@ Current assurance: **Partial**.
   ownership, and absence of terminal scroll, mouse reporting, pane focus
   changes, and PTY input. Native physical wheel/trackpad, exact pixels, and
   platform accessibility events remain release evidence.
+- For command datetime labels, raster full ISO, duration-free, compact and
+  absent-timestamp fallbacks at tiny through 8K widths and 100–300% scale.
+  Bind measured text and pixels to the exact result identity; reject clipping,
+  prompt-context overlap, fabricated labels, stale timestamps or changed cells.
 
 ### windows-tabs-sessions-input
 
