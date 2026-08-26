@@ -52,7 +52,7 @@ opacity = 1.0
 [navigation]
 mode = "Tab"
 hide-if-single = false
-max-tab-width = 200
+max-tab-width = 184
 
 [fonts]
 size = 18.0
@@ -167,7 +167,7 @@ use-split = true
 open-config-with-split = true
 unfocused-split-opacity = 0.7
 unfocused-split-fill = "#00111f"
-max-tab-width = 200
+max-tab-width = 184
 
 [panel]
 margin = [2]
@@ -188,7 +188,7 @@ border-radius = 0
 | `open-config-with-split` | bool / `true` | Open configuration using the split-aware workflow. |
 | `unfocused-split-opacity` | float / `0.7` | Clamped to `0.15…1.0`; `1.0` disables dimming. |
 | `unfocused-split-fill` | hex color / theme background | Optional inactive-pane tint. |
-| `max-tab-width` | float / `200` | Clamped to `80…280` logical pixels. |
+| `max-tab-width` | float / `184` | Clamped to `80…280` logical pixels. |
 | `color-automation` | array / `[]` | Program/path-specific tab colors; retained for inherited compatibility. |
 | `clickable` | bool / `false` | Inherited navigation click behavior; normal Automexia tabs remain interactive through native routing. |
 | `panel.margin`, `panel.padding` | 1/2/4 floats / `[2]`, `[5]` | Per-pane inner spacing. |

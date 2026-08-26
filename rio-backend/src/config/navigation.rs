@@ -16,7 +16,7 @@ pub fn default_hide_if_single() -> bool {
 
 #[inline]
 pub fn default_max_tab_width() -> f32 {
-    200.0
+    184.0
 }
 
 /// Clamp `max_tab_width` to `[80.0, 280.0]`.
@@ -258,8 +258,8 @@ mod tests {
     #[test]
     fn default_tab_width_uses_compact_desktop_density() {
         let decoded = toml::from_str::<Root>("[navigation]\nmode = 'Tab'\n").unwrap();
-        assert_eq!(decoded.navigation.max_tab_width, 200.0);
-        assert_eq!(Navigation::default().max_tab_width, 200.0);
+        assert_eq!(decoded.navigation.max_tab_width, 184.0);
+        assert_eq!(Navigation::default().max_tab_width, 184.0);
     }
 
     /// Both explicit values must override the platform default.

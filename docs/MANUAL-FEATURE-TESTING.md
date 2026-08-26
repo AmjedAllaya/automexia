@@ -739,12 +739,15 @@ after quiescence, and closing the pane releases the process.
 4. Repeat at 100%, 200%, and 300% scale and in light/dark appearance.
 
 Expected result: the welcome copy describes saving time, effort, and improving
-flexibility without presenting SSH as the product's main purpose; controls are
-separate rather than inside a grouped border, with no short underline beneath
-any control at rest, hover, press, or inactive-window state; icons,
-hover/pressed/focus states, and hit targets remain distinct; no search/modal
-covers the close target; maximize changes to restore; no clipping or overlap
-occurs.
+flexibility without presenting SSH as the product's main purpose. At comfortable
+density the top shelf is 42 logical pixels, the terminal begins after a 46-pixel
+reservation, the active tab is at most 184 pixels by default, and each caption
+card is 30 pixels inside a 40-pixel hit target. Controls remain separate rather
+than inside a grouped border, with no short underline beneath any control at
+rest, hover, press, or inactive-window state. Icons, hover/pressed/focus states,
+and hit targets remain distinct; no search/modal covers the close target;
+maximize changes to restore; no clipping or overlap occurs. Repeat the pointer
+check at the outer edges of every 40-pixel target, not only over the visible card.
 
 ### UI-02 — responsive panes, footer, and chrome priority
 

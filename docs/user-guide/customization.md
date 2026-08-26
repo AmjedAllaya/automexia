@@ -73,7 +73,7 @@ opacity = 1.0
 [navigation]
 mode = "Tab"
 hide-if-single = false
-max-tab-width = 200
+max-tab-width = 184
 
 [fonts]
 size = 18.0
@@ -152,7 +152,7 @@ current-working-directory = true
 hide-if-single = false
 use-split = true
 unfocused-split-opacity = 0.7
-max-tab-width = 200
+max-tab-width = 184
 ```
 
 Use `current-working-directory = true` when new sessions should inherit validated directory metadata where the action supports it. Remember that a **clone split** is still the explicit workflow when you want the active launch context reproduced.

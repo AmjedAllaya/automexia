@@ -99,9 +99,9 @@ impl ChromeMetrics {
             title_font_size,
             profile_icon_size,
         ) = match density {
-            Density::Minimal => (40.0, 4.0, 40.0, 4.0, 4.0, 10.0, 12.5, 16.0),
-            Density::Compact => (44.0, 6.0, 44.0, 4.0, 5.0, 16.0, 13.5, 17.0),
-            Density::Comfortable => (48.0, 8.0, 46.0, 5.0, 6.0, 20.0, 14.5, 18.0),
+            Density::Minimal => (40.0, 2.0, 40.0, 4.0, 4.0, 10.0, 12.5, 15.0),
+            Density::Compact => (40.0, 3.0, 40.0, 4.0, 4.0, 14.0, 13.0, 16.0),
+            Density::Comfortable => (42.0, 4.0, 40.0, 4.0, 5.0, 16.0, 13.5, 17.0),
         };
         let (
             app_button_x,
@@ -111,9 +111,9 @@ impl ChromeMetrics {
             local_tab_icon_size,
             local_tab_font_size,
         ) = match density {
-            Density::Minimal => (6.0, 26.0, 40.0, 18.0, 14.0, 12.0),
-            Density::Compact => (8.0, 28.0, 40.0, 19.0, 15.0, 12.0),
-            Density::Comfortable => (10.0, 30.0, 40.0, 20.0, 16.0, 12.5),
+            Density::Minimal => (6.0, 26.0, 40.0, 17.0, 14.0, 12.0),
+            Density::Compact => (7.0, 27.0, 40.0, 18.0, 15.0, 12.0),
+            Density::Comfortable => (8.0, 28.0, 40.0, 18.0, 16.0, 12.5),
         };
 
         // Controls remain reachable at every supported size. Lower-priority
@@ -123,9 +123,9 @@ impl ChromeMetrics {
         let show_palette = width >= 640.0;
         let leading_width = if show_app_button {
             match density {
-                Density::Comfortable => 60.0,
-                Density::Compact => 52.0,
-                Density::Minimal => 48.0,
+                Density::Comfortable => 48.0,
+                Density::Compact => 46.0,
+                Density::Minimal => 44.0,
             }
         } else {
             8.0
@@ -296,8 +296,8 @@ mod tests {
         let viewport = Viewport::from_physical(300.0, 200.0, 1.0);
         let metrics = ChromeMetrics::for_viewport(viewport);
         assert_eq!(metrics.density, Density::Minimal);
-        assert_eq!(metrics.content_top(), 44.0);
-        assert!(viewport.height - metrics.content_top() >= 156.0);
+        assert_eq!(metrics.content_top(), 42.0);
+        assert!(viewport.height - metrics.content_top() >= 158.0);
     }
 
     #[test]
@@ -305,7 +305,7 @@ mod tests {
         let metrics =
             ChromeMetrics::for_viewport(Viewport::from_physical(600.0, 400.0, 1.0));
         assert_eq!(metrics.density, Density::Compact);
-        assert_eq!(metrics.content_top(), 50.0);
+        assert_eq!(metrics.content_top(), 43.0);
     }
 
     #[test]
@@ -314,15 +314,15 @@ mod tests {
         let metrics = ChromeMetrics::for_viewport(viewport);
         assert_eq!(viewport.width, 3840.0);
         assert_eq!(metrics.density, Density::Comfortable);
-        assert_eq!(metrics.header_height, 48.0);
-        assert_eq!(metrics.content_top(), 56.0);
+        assert_eq!(metrics.header_height, 42.0);
+        assert_eq!(metrics.content_top(), 46.0);
     }
 
     #[test]
     fn pane_local_tabs_never_expand_the_window_header_reservation() {
         let metrics =
             ChromeMetrics::for_viewport(Viewport::from_physical(1_280.0, 760.0, 1.0));
-        assert_eq!(metrics.content_top(), 56.0);
+        assert_eq!(metrics.content_top(), 46.0);
 
         let short =
             ChromeMetrics::for_viewport(Viewport::from_physical(1_280.0, 220.0, 1.0));
@@ -350,11 +350,11 @@ mod tests {
             comfortable.tab_actions_width(),
             comfortable.action_button_size * 2.0
         );
-        assert_eq!(comfortable.header_height, 48.0);
-        assert_eq!(comfortable.window_button_width, 46.0);
+        assert_eq!(comfortable.header_height, 42.0);
+        assert_eq!(comfortable.window_button_width, 40.0);
         assert_eq!(
             comfortable.header_height - comfortable.tab_inset_y * 2.0,
-            38.0
+            34.0
         );
         assert_eq!(comfortable.action_button_size, 40.0);
         assert!(comfortable.title_font_size <= 16.0);
@@ -370,11 +370,26 @@ mod tests {
             let tab_height = metrics.header_height - metrics.tab_inset_y * 2.0;
             assert!(metrics.window_button_width >= 40.0);
             assert!(metrics.action_button_size >= 40.0);
+            assert!(metrics.header_height >= 40.0);
             assert!(tab_height >= 32.0);
             assert!(metrics.app_button_size < metrics.header_height);
             assert!((12.0..=15.0).contains(&metrics.title_font_size));
             assert!(metrics.local_tab_font_size >= 12.0);
         }
+    }
+
+    #[test]
+    fn polished_chrome_keeps_targets_while_reducing_visible_reservation() {
+        let metrics =
+            ChromeMetrics::for_viewport(Viewport::from_physical(1_920.0, 1_080.0, 1.0));
+
+        assert_eq!(metrics.header_height, 42.0);
+        assert_eq!(metrics.content_top(), 46.0);
+        assert_eq!(metrics.window_button_width, 40.0);
+        assert_eq!(metrics.action_button_size, 40.0);
+        assert_eq!(metrics.app_button_size, 28.0);
+        assert_eq!(metrics.leading_width, 48.0);
+        assert_eq!(metrics.title_font_size, 13.5);
     }
 
     #[test]

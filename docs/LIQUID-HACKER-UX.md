@@ -9,7 +9,7 @@ styles, and renderer decoration never changes command output.
 At comfortable sizes, the persistent application chrome is never part of the
 terminal grid:
 
-- a 48 px profile/tab row with an application mark, draggable tabs, new-tab
+- a compact 42 px profile/tab row with an application mark, draggable tabs, new-tab
   button, command/profile menu, and Automexia-styled, native-behaving window controls on Windows;
 - a tab rail inside every pane that owns multiple local tabs. The rail begins
   at that pane's top edge and never floats above or changes the height of a
@@ -22,9 +22,9 @@ grid reservation:
 
 | Density | Trigger (logical viewport) | Window-header reservation |
 |---|---|---:|
-| comfortable | at least 840 px wide and 480 px high | 56 px |
-| compact | below either comfortable threshold | 50 px |
-| minimal | below 480 px wide or 280 px high | 44 px |
+| comfortable | at least 840 px wide and 480 px high | 46 px |
+| compact | below either comfortable threshold | 43 px |
+| minimal | below 480 px wide or 280 px high | 42 px |
 
 Each pane with multiple local tabs independently reserves a DPI-stable 36
 logical pixels inside that pane. Below 96 logical pixels of pane height, its
@@ -78,8 +78,8 @@ one clear action per target. Cyan minimize, purple maximize/restore, and coral
 close glyphs add brand identity without decorative underline strokes, while
 their distinct shapes retain meaning without color. Rounded hover wells, a held
 state, inactive-window muting, and a
-maximize-to-restore glyph mirror native state. The complete
-40–46 logical-pixel targets remain anchored to the right edge; activation occurs
+maximize-to-restore glyph mirror native state. At comfortable density, each visible card is 30 logical pixels inside a
+40 logical-pixel target anchored to the right edge; activation occurs
 only when the primary button is released over the same control, so dragging away
 cancels safely.
 The renderer-owned window close control has window scope, not application

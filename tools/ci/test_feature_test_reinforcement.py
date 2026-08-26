@@ -147,6 +147,32 @@ class FeatureTestReinforcementTests(unittest.TestCase):
                 REINFORCEMENT._validate_exact_visual_policy(policy)
         self.assertEqual(REINFORCEMENT.DEFAULT_CONTRACT, original)
 
+    def test_renderer_chrome_specific_scenario_details_cannot_be_weakened(self) -> None:
+        for field, detail in (
+            ("needed_tests", "threshold-minus-one"),
+            ("needed_tests", "40 logical-pixel interaction targets"),
+            ("needed_tests", "zero PTY input"),
+            ("needed_tests", "WGPU and CPU"),
+            ("verification_reinforcements", "42-pixel header"),
+            ("verification_reinforcements", "full-shelf RGBA"),
+            ("checker_reinforcements", "184-pixel default tab cap"),
+        ):
+            with self.subTest(field=field, detail=detail):
+                document = copy.deepcopy(self.document)
+                feature = next(
+                    item
+                    for item in document["features"]
+                    if item["id"] == "renderer-fonts-responsive-ui"
+                )
+                feature[field] = [
+                    item.replace(detail, "generic visual coverage")
+                    for item in feature[field]
+                ]
+                with self.assertRaisesRegex(
+                    REINFORCEMENT.ReinforcementError, "required scenario detail"
+                ):
+                    self.validate(document)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
