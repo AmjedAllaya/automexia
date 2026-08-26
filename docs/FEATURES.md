@@ -5,6 +5,12 @@ surfaces. The machine-enforced source is
 [`tests/assurance/feature-matrix.json`](../tests/assurance/feature-matrix.json),
 which also owns quality and native-platform evidence.
 
+Use the [complete implemented-feature manual testing guide](MANUAL-FEATURE-TESTING.md)
+for clean-machine prerequisites, feature-by-feature workflows, negative and
+boundary scenarios, expected results, controlled external evidence, and cleanup.
+The guide preserves the status distinctions in this catalog; a source test or
+ordinary provider CLI run does not activate a release-gated capability.
+
 `PR` means deterministic checks run on pull requests. `Controlled` means the
 feature additionally needs named hardware, privileges, credentials, or a real
 display session before release. A platform marked `External` is supported by
