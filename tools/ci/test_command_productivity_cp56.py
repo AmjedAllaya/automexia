@@ -102,7 +102,7 @@ class Cp56ImplementationTests(unittest.TestCase):
     def test_authenticated_reply_and_route_exchange_cannot_be_removed(self) -> None:
         for path, marker in (
             (
-                "automexia-devops/src/suggestions/reply.rs",
+                "automexia-command-productivity/src/suggestions/reply.rs",
                 "constant_time_eq",
             ),
             (

@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn monitor_periodic_reconciliation_publishes_cross_window_changes() {
-        use automexia_devops::actions::{
+        use automexia_command_productivity::actions::{
             ActionProvenance, ActionScope, ActionTemplate, ExecutionMode, QuickAction,
             RiskClass, ShellKind, WorkingDirectoryPolicy,
         };

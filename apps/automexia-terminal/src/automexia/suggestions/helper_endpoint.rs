@@ -3,7 +3,7 @@
 use std::io::{Read, Write};
 use std::time::Duration;
 
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::{
     decode_reply_frame, encode_submission_frame, AcceptanceContext, EditorSubmission,
     NativeEditorReplacement, NativeEditorReply, SuggestionLimits,
 };

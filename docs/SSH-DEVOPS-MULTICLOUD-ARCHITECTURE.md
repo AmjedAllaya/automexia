@@ -781,8 +781,8 @@ rendering and terminal parser trust boundary.
 
 ### Frozen D0/D3 local baseline
 
-The active schema-5 D0/D3/M5 contract makes controls 2, 3, 7, 8, 10,
-and 11 machine-checkable without granting runtime authority; schemas 1-4 remain
+The active schema-6 D0/D3/M5 contract makes controls 2, 3, 7, 8, 10,
+and 11 machine-checkable without granting runtime authority; schemas 1-5 remain
 immutable hash-checked evidence. It preserves interactive-shell ownership of
 manual SSH, forbids download/install or substitution during startup and launch,
 and binds `automexia.devops-ssh` to an exact publisher, trusted-loader SHA-256

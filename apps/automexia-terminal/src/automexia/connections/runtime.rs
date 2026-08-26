@@ -7,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     AuthState, DirectOpenSshPreparation, EnvironmentRisk, ProviderCapsule, ProviderKind,
 };
 use automexia_devops_ssh::{
@@ -1633,7 +1633,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use automexia_devops::connections::{
+    use automexia_connectivity::connections::{
         ConnectionReceipt, OpaqueReference, OperationResultState,
         CONNECTION_SCHEMA_VERSION,
     };
@@ -1822,7 +1822,7 @@ mod tests {
 #[cfg(test)]
 mod provider_runtime_contracts {
     use super::*;
-    use automexia_devops::connections::{
+    use automexia_connectivity::connections::{
         EnvironmentRisk, OpaqueReference, ProviderContextFreshness,
         ProviderContextProvenance, ProviderContextTemplate, ProviderProvenanceKind,
         ProviderScopeBinding, CONNECTION_SCHEMA_VERSION,

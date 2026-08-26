@@ -96,13 +96,13 @@ ALIAS_POLICY = {
     "mutating_alias_requires_acknowledgement": True,
 }
 MODEL_FILES = [
-    "automexia-devops/src/actions/mod.rs",
-    "automexia-devops/src/actions/model.rs",
-    "automexia-devops/src/actions/projection.rs",
-    "automexia-devops/src/actions/validation.rs",
-    "automexia-devops/src/actions/activation.rs",
-    "automexia-devops/src/actions/packs.rs",
-    "automexia-devops/src/actions/imports.rs",
+    "automexia-command-productivity/src/actions/mod.rs",
+    "automexia-command-productivity/src/actions/model.rs",
+    "automexia-command-productivity/src/actions/projection.rs",
+    "automexia-command-productivity/src/actions/validation.rs",
+    "automexia-command-productivity/src/actions/activation.rs",
+    "automexia-command-productivity/src/actions/packs.rs",
+    "automexia-command-productivity/src/actions/imports.rs",
 ]
 PERSISTENCE_FILES = [
     "apps/automexia-terminal/src/automexia/quick_actions/mod.rs",

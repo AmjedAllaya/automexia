@@ -95,11 +95,11 @@ EXPECTED_LIFECYCLE = {
     "version_regression_rejection": True,
 }
 EXPECTED_SOURCE_FILES = [
-    "automexia-devops/src/actions/packs.rs",
-    "automexia-devops/src/actions/validation.rs",
+    "automexia-command-productivity/src/actions/packs.rs",
+    "automexia-command-productivity/src/actions/validation.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/packs_cli.rs",
     "apps/automexia-terminal/src/cli.rs",
-    "automexia-devops/tests/quick_action_packs.rs",
+    "automexia-command-productivity/tests/quick_action_packs.rs",
 ]
 EXPECTED_TESTS = [
     "registry_contains_the_exact_reviewed_provider_set",
@@ -120,7 +120,7 @@ EXPECTED_TESTS = [
     "registry_doctor_does_not_claim_provider_readiness",
     "stale_pack_enable_revision_is_actionable",
 ]
-EXPECTED_BENCHMARK = "automexia-devops/benches/quick_actions.rs"
+EXPECTED_BENCHMARK = "automexia-command-productivity/benches/quick_actions.rs"
 EXPECTED_FUZZ_TARGET = "fuzz/fuzz_targets/quick_action_packs.rs"
 EXPECTED_DOCUMENTS = [
     "docs/ARCHITECTURE.md", "docs/CLI-REFERENCE.md",

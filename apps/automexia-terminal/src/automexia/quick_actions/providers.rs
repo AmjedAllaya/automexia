@@ -6,13 +6,11 @@
 
 use std::fmt;
 
-use automexia_devops::{
-    actions::{
-        build_provider_action_snapshot, build_ssh_provider_action,
-        ProviderActionCandidate, ProviderActionSnapshot,
-    },
-    connections::{ProviderCapsule, ProviderKind},
+use automexia_command_productivity::actions::{
+    build_provider_action_snapshot, build_ssh_provider_action, ProviderActionCandidate,
+    ProviderActionSnapshot,
 };
+use automexia_connectivity::connections::{ProviderCapsule, ProviderKind};
 
 use crate::automexia::connections::ProviderProductPublication;
 
@@ -294,7 +292,7 @@ const fn adapter_error(provider: ProviderKind) -> ProviderActionCompositionError
 #[cfg(test)]
 mod tests {
     use super::*;
-    use automexia_devops::connections::{
+    use automexia_connectivity::connections::{
         EnvironmentRisk, OpaqueReference, ProviderContextFreshness,
         ProviderContextProvenance, ProviderContextTemplate, ProviderProvenanceKind,
         ProviderScopeBinding, CONNECTION_SCHEMA_VERSION,
@@ -365,7 +363,7 @@ mod tests {
         assert_eq!(snapshot.actions()[1].action().id, "provider.azure.account");
         assert!(snapshot.actions().iter().all(|candidate| {
             candidate.binding().execution()
-                == automexia_devops::actions::ExecutionMode::Insert
+                == automexia_command_productivity::actions::ExecutionMode::Insert
         }));
     }
 

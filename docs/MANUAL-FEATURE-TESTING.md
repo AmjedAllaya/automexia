@@ -1496,8 +1496,8 @@ Run:
 ```text
 cargo test -p automexia-extension-api --lib --locked
 cargo test -p teletypewriter --locked
-cargo test -p automexia-devops --test direct_openssh_review --locked
-cargo test -p automexia-devops --test direct_openssh_tunnels --locked
+cargo test -p automexia-connectivity --test direct_openssh_review --locked
+cargo test -p automexia-connectivity --test direct_openssh_tunnels --locked
 cargo test -p automexia-devops-ssh --locked
 cargo test -p automexia-ui-model --test direct_openssh_review --locked
 cargo test -p automexia-terminal direct_openssh --locked
@@ -1901,7 +1901,7 @@ cross-host path guess occurs; last-known-good unrelated actions remain.
 Run:
 
 ```text
-cargo test -p automexia-devops --test quick_action_imports --locked
+cargo test -p automexia-command-productivity --test quick_action_imports --locked
 cargo test -p automexia-terminal --test quick_action_native_import --locked
 cargo test -p automexia-terminal --test quick_action_workspace_trust --locked
 python tools/ci/check_command_productivity_cp33.py
@@ -2314,9 +2314,9 @@ is absent/rejected and never overwrites a valid newer primary.
 Run the deterministic evidence set:
 
 ```text
-cargo test -p automexia-devops --locked --test connection_planning
-cargo test -p automexia-devops --locked --test connection_automation_m6
-cargo test -p automexia-devops --locked --test workspace_automation_m6
+cargo test -p automexia-connectivity --locked --test connection_planning
+cargo test -p automexia-connectivity --locked --test connection_automation_m6
+cargo test -p automexia-connectivity --locked --test workspace_automation_m6
 cargo test -p automexia-ui-model --locked --test connection_hub
 cargo test -p automexia-terminal --locked --test connection_library
 cargo test -p automexia-terminal --locked --test m6_workspace_product
@@ -2357,7 +2357,7 @@ new session, and higher revision; revoke/shutdown invalidates an open review.
 Run:
 
 ```text
-cargo test -p automexia-devops --locked --test provider_auth_m7
+cargo test -p automexia-connectivity --locked --test provider_auth_m7
 cargo test -p automexia-extension-runtime --locked provider_context_rebind_requires_a_fresh_session
 cargo test -p automexia-ui-model --locked --test connection_hub
 python tools/ci/check_provider_auth_m7.py
@@ -2780,8 +2780,8 @@ changes global context, crosses panes, or falls back to ambient state.
 Run:
 
 ```text
-cargo test -p automexia-devops --test provider_quick_actions_cp4 --locked
-cargo test -p automexia-devops --test quick_action_activation --locked
+cargo test -p automexia-command-productivity --test provider_quick_actions_cp4 --locked
+cargo test -p automexia-command-productivity --test quick_action_activation --locked
 cargo test -p automexia-terminal --test cp4_provider_product_publication --locked
 cargo test -p automexia-terminal --lib --locked provider
 cargo test -p automexia-terminal --bin automexia --locked provider
@@ -2826,8 +2826,8 @@ pane, never run an extension/provider, and restore focus on close.
 Run:
 
 ```text
-cargo test -p automexia-devops --locked --test connection_records
-cargo test -p automexia-devops --locked --test connection_planning
+cargo test -p automexia-connectivity --locked --test connection_records
+cargo test -p automexia-connectivity --locked --test connection_planning
 cargo test -p automexia-ui-model --locked --test connection_hub
 python tools/ci/check_connection_hub_f2.py
 python tools/ci/test_connection_hub_f2.py

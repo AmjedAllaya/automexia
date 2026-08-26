@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     validate_direct_openssh_arguments, ResolvedExecutable,
 };
 
@@ -1519,7 +1519,7 @@ fn deny(
 
 #[cfg(test)]
 mod tests {
-    use automexia_devops::connections::{
+    use automexia_connectivity::connections::{
         DIRECT_OPENSSH_MANAGED_OPTIONS, DIRECT_OPENSSH_ROUTED_OPTIONS,
     };
 
@@ -1527,7 +1527,7 @@ mod tests {
     use crate::automexia::connections::{
         ManagedReceiptPersistenceState, ManagedReceiptRecord, ManagedReceiptSink,
     };
-    use automexia_devops::connections::{
+    use automexia_connectivity::connections::{
         validate_connection_receipt, DirectOpenSshDestinationKind, OperationResultState,
     };
     use automexia_extension_api::{BoundedText, SecretReference};

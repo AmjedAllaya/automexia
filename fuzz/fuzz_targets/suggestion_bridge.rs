@@ -1,6 +1,6 @@
 #![no_main]
 
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::{
     decode_reply_frame, decode_replacement_frame, decode_request_frame, decode_submission_frame,
     encode_request_frame, SuggestionLimits,
 };

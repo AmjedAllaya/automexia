@@ -2,7 +2,7 @@
 
 use std::{collections::BTreeSet, fmt, fs, io::Write, path::Path};
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     validate_quick_actions, ActionProvenance, ActionScope, QuickAction,
     QuickActionDocument, WorkingDirectoryPolicy, MAX_SOURCE_BYTES,
     QUICK_ACTION_SCHEMA_VERSION,

@@ -44,7 +44,7 @@ accepted and its provider exists.
 
 | Item | Current status | Evidence | Remaining exit evidence |
 |---|---|---|---|
-| Typed Quick Action schema, validation, search, expansion | **Fully done locally** | `automexia-devops/src/actions/`; CP2/CP4 tests, fuzz, and benchmark | Preserve without adding provider I/O or a second action schema |
+| Typed Quick Action schema, validation, search, expansion | **Fully done locally** | `automexia-command-productivity/src/actions/`; CP2/CP4 tests, fuzz, and benchmark | Preserve without adding provider I/O or a second action schema |
 | Route publication, generation cancellation, cleanup | **Fully done locally** | route-owned runtime snapshot, stale-result rejection, idempotent publication, explicit clear and route cleanup tests | Native long-session resource evidence remains external |
 | Review, insert/copy, production risk, responsive/accessibility UI | **Fully done locally** | provider context labels, failure notices, final binding recheck, production confirmation, renderer-neutral tests | Controlled screen-reader and native visual evidence remains external |
 | Cached provider product to Quick Actions handoff | **Fully done locally, nonactivating** | retained validated `ProviderProductPublication`, Connection Hub controller handoff, Action Center route synchronization, real integration regression | An approved provider refresh/capsule producer remains outside CP4 |

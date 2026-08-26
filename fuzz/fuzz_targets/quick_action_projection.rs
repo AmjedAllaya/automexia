@@ -1,6 +1,6 @@
 #![no_main]
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     canonical_projection_source_digest, compile_shell_projection, validate_quick_actions,
     verify_projection_artifact, ActionProvenance, ActionScope, ActionTemplate,
     AliasArgumentPolicy, AliasProjection, AliasProjectionMode, ArgumentToken,

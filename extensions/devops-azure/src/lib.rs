@@ -8,11 +8,11 @@
 use std::collections::HashSet;
 use std::fmt;
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     build_provider_action_candidate, ExecutionMode, ProviderActionCandidate,
     ProviderActionSpec, RiskClass,
 };
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     validate_provider_auth_operation, AuthState, EnvironmentRisk, OpaqueReference,
     ProviderAuthOperation, ProviderAuthOperationKind, ProviderBrowserFlow,
     ProviderBrowserPolicy, ProviderCapsule, ProviderContextFreshness,
@@ -394,9 +394,9 @@ pub fn public_context(
         expires_at_ms: None,
         risk,
     };
-    automexia_devops::connections::validate_provider_context(&context).map_err(|_| {
-        AzureAdapterError::new(AzureAdapterErrorCode::InvalidRequest, "context")
-    })?;
+    automexia_connectivity::connections::validate_provider_context(&context).map_err(
+        |_| AzureAdapterError::new(AzureAdapterErrorCode::InvalidRequest, "context"),
+    )?;
     Ok(context)
 }
 
@@ -1090,7 +1090,7 @@ mod tests {
         assert_eq!(candidate.binding().exact_target(), SUBSCRIPTION);
         assert_eq!(candidate.binding().target_kind(), "subscription");
         assert_eq!(candidate.binding().execution(), ExecutionMode::Insert);
-        let automexia_devops::actions::ActionTemplate::TypedArgv {
+        let automexia_command_productivity::actions::ActionTemplate::TypedArgv {
             executable_id,
             arguments,
         } = &candidate.action().template
@@ -1102,10 +1102,10 @@ mod tests {
             arguments
                 .iter()
                 .map(|argument| match argument {
-                    automexia_devops::actions::ArgumentToken::Literal { value } => {
+                    automexia_command_productivity::actions::ArgumentToken::Literal { value } => {
                         value.as_str()
                     }
-                    automexia_devops::actions::ArgumentToken::Placeholder { .. } => {
+                    automexia_command_productivity::actions::ArgumentToken::Placeholder { .. } => {
                         panic!("provider action cannot contain placeholders")
                     }
                 })

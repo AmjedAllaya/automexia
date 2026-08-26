@@ -2,7 +2,7 @@
 
 use std::{collections::BTreeSet, fmt, path::Path, sync::Arc};
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     preview_native_alias_import, validate_quick_actions, NativeAliasSource, QuickAction,
     QuickActionDocument, MAX_ACTIONS, MAX_SOURCE_BYTES, QUICK_ACTION_SCHEMA_VERSION,
 };

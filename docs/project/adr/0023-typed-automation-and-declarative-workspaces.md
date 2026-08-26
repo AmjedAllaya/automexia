@@ -113,3 +113,10 @@ those gates.
 - Workspace transfer intentionally drops connection bindings and private labels;
   users must rebind imported topology locally.
 - Arbitrary scripts and automatic destructive recovery remain unavailable.
+
+## 2026-08-26 placement amendment
+
+Canonical [ADR 0035](../../adr/0035-core-domain-and-optional-extension-ownership.md)
+moves the capability-free `connections` implementation to
+`automexia-connectivity`; this ADR's typed automation, review, authority, and
+lifecycle decision is unchanged.

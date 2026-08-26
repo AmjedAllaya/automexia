@@ -5,7 +5,7 @@
 
 use std::fmt;
 
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     prepare_direct_openssh, resolve_connection_plan, review_direct_openssh, AuthState,
     ConnectionModelErrorCode, ConnectionObservation, ConnectionProfileV1,
     ConnectionSource, DestinationSurface, DirectOpenSshLaunchBinding,

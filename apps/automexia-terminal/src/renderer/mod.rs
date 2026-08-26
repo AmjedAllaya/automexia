@@ -1,5 +1,6 @@
 pub mod assistant;
 pub mod command_palette;
+pub mod command_results;
 pub mod compatibility_inspector;
 pub mod confirm_quit;
 pub mod connection_hub;
@@ -244,7 +245,7 @@ fn sync_optional_metadata(target: &mut Option<String>, source: Option<&String>) 
 /// Renderer-neutral data needed to paint one pane's operational context.
 /// Keeping this snapshot per route prevents the active pane from lending its
 /// Git/cloud/user state to another visible split.
-struct DevOpsPaneRenderState {
+struct SemanticPaneRenderState {
     session: crate::automexia::api::SessionFacts,
     prompt_active: bool,
     historical_anchors: Vec<crate::automexia::ui::PromptAnchor>,
@@ -401,12 +402,12 @@ fn command_result_anchors(
     anchors
 }
 
-fn devops_pane_render_state(
+fn semantic_pane_render_state(
     context: &crate::context::Context<EventProxy>,
     margin: rio_backend::config::layout::Margin,
     scale_factor: f32,
     is_active: bool,
-) -> DevOpsPaneRenderState {
+) -> SemanticPaneRenderState {
     let rc = &context.renderable_content;
     let scale = scale_factor.max(f32::EPSILON);
     let cell_height = context.dimension.cell.cell_height as f32 / scale;
@@ -547,7 +548,7 @@ fn devops_pane_render_state(
         &historical_anchors,
     );
 
-    DevOpsPaneRenderState {
+    SemanticPaneRenderState {
         session: crate::automexia::api::SessionFacts {
             session_id: context.route_id,
             cwd: rc.current_directory.clone(),
@@ -591,6 +592,11 @@ pub struct Renderer {
     /// single shared status object made those splits disappear and could lend
     /// the selected pane's context to their prompt history.
     devops_statuses: FxHashMap<usize, devops_status::DevOpsStatus>,
+    /// Core command-result state for the selected route; independent of extensions.
+    pub command_results: command_results::CommandResults,
+    /// Isolated core command-result state for every inactive visible route.
+    command_result_states: FxHashMap<usize, command_results::CommandResults>,
+    command_result_route: Option<usize>,
     unfocused_split_opacity: f32,
     unfocused_split_fill: Option<ColorArray>,
     /// Route id of the pane rendered as active last frame. Keyed on
@@ -695,6 +701,9 @@ impl Renderer {
             extension_generation: crate::automexia::runtime::generation(),
             devops_status: devops_status::DevOpsStatus::default(),
             devops_statuses: FxHashMap::default(),
+            command_results: command_results::CommandResults::default(),
+            command_result_states: FxHashMap::default(),
+            command_result_route: None,
             named_colors,
             dynamic_background,
             opacity_cells: config.window.opacity_cells,
@@ -1414,280 +1423,81 @@ impl Renderer {
             );
         }
 
-        if self.devops_enabled {
-            let (
-                session,
-                prompt_active,
-                historical_anchors,
-                live_anchor,
-                command_results,
-                allow_result_animation,
-            ) = {
-                let grid = context_manager.current_grid();
-                let (context, margin) = grid.current_context_with_computed_dimension();
-                let rc = &context.renderable_content;
-                let scale = scale_factor.max(f32::EPSILON);
-                let cell_height = context.dimension.cell.cell_height as f32 / scale;
-                let cell_width = context.dimension.cell.cell_width as f32 / scale;
-                let origin_x = margin.left / scale;
-                let origin_y = margin.top / scale;
-                let grid_width = rc.columns.max(1) as f32 * cell_width;
-                let first_absolute_row = rc.lines_evicted.saturating_add(
-                    rc.history_size.saturating_sub(rc.display_offset) as u64,
-                );
-                let mut historical_anchors = rc
-                    .visible_rows
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(row_index, row)| {
-                        if row.semantic_prompt
-                            != rio_backend::crosswords::grid::row::SemanticPrompt::Prompt
-                        {
-                            return None;
-                        }
-                        let blank = terminal_row_is_blank(row);
-                        // A managed `aid` is stronger evidence than physical
-                        // cell contents. Shell editors may repaint attributes
-                        // or a glyph while processing SIGWINCH, but they must
-                        // not make Automexia forget the semantic context row.
-                        if row.semantic_prompt_id.is_none() && !blank {
-                            return None;
-                        }
-                        let visual_index =
-                            prompt_visual_anchor(&rc.visible_rows, row_index)?;
-                        Some(crate::automexia::ui::PromptAnchor {
-                            generation: row.semantic_prompt_id,
-                            key: first_absolute_row.saturating_add(row_index as u64),
-                            x: origin_x,
-                            y: origin_y + visual_index as f32 * cell_height,
-                            width: grid_width,
-                            height: cell_height,
-                        })
-                    })
-                    .collect::<Vec<_>>();
-                // Managed three-row prompts remain recoverable even if a
-                // shell editor drops OSC row metadata while handling resize.
-                // Add only missing visual anchors; semantic anchors stay the
-                // primary source whenever they survived.
-                for command_index in 0..rc.visible_rows.len() {
-                    let Some(visual_index) =
-                        synthetic_prompt_visual_anchor(&rc.visible_rows, command_index)
-                    else {
-                        continue;
+        // Semantic prompt/result geometry is derived for every visible pane.
+        // Core result paint remains available with every extension disabled;
+        // only optional prompt context enters the DevOps activation branch.
+        let (active_pane, inactive_panes) = {
+            let grid = context_manager.current_grid();
+            let (active_context, active_margin) =
+                grid.current_context_with_computed_dimension();
+            let active_pane = semantic_pane_render_state(
+                active_context,
+                active_margin,
+                scale_factor,
+                true,
+            );
+            let active_route = active_pane.session.session_id;
+            let base_margin = grid.get_scaled_margin();
+            let inactive_panes = grid
+                .contexts()
+                .values()
+                .filter(|item| item.context().route_id != active_route)
+                .map(|item| {
+                    let [panel_x, panel_y, _, _] = crate::layout::pane_terminal_rect(
+                        item.layout_rect,
+                        scale_factor,
+                        item.tab_count(),
+                    );
+                    let margin = rio_backend::config::layout::Margin {
+                        left: base_margin.left + panel_x,
+                        top: base_margin.top + panel_y,
+                        right: base_margin.right,
+                        bottom: base_margin.bottom,
                     };
-                    let y = origin_y + visual_index as f32 * cell_height;
-                    if historical_anchors
-                        .iter()
-                        .any(|anchor| (anchor.y - y).abs() < f32::EPSILON)
-                    {
-                        continue;
-                    }
-                    let generation = rc.visible_rows[visual_index..=command_index]
-                        .iter()
-                        .find_map(|row| row.semantic_prompt_id);
-                    historical_anchors.push(crate::automexia::ui::PromptAnchor {
-                        generation,
-                        key: first_absolute_row.saturating_add(visual_index as u64),
-                        x: origin_x,
-                        y,
-                        width: grid_width,
-                        height: cell_height,
-                    });
-                }
-                historical_anchors.sort_by(|left, right| left.y.total_cmp(&right.y));
+                    semantic_pane_render_state(
+                        item.context(),
+                        margin,
+                        scale_factor,
+                        false,
+                    )
+                })
+                .collect::<Vec<_>>();
+            (active_pane, inactive_panes)
+        };
 
-                // Resolve the live blank Prompt row from its adjacent complete-
-                // path continuation. The short editable row follows it. Stable
-                // `aid` identity keeps all three attached through reflow.
-                let cursor_row = rc.cursor.state.pos.row.0;
-                let semantic_live_anchor = if cursor_row >= 0 {
-                    let cursor_index = cursor_row as usize;
-                    rc.visible_rows
-                        .iter()
-                        .enumerate()
-                        .rev()
-                        .find_map(|(row_index, row)| {
-                            if row_index == 0
-                                || row_index > cursor_index
-                                || row.semantic_prompt
-                                    != rio_backend::crosswords::grid::row::SemanticPrompt::PromptContinuation
-                            {
-                                return None;
-                            }
-                            let prompt_index = row_index - 1;
-                            let prompt_row = &rc.visible_rows[prompt_index];
-                            if prompt_row.semantic_prompt
-                                != rio_backend::crosswords::grid::row::SemanticPrompt::Prompt
-                            {
-                                return None;
-                            }
-                            let blank = terminal_row_is_blank(prompt_row);
-                            if prompt_row.semantic_prompt_id.is_none() && !blank {
-                                return None;
-                            }
-                            let visual_index = prompt_visual_anchor(
-                                &rc.visible_rows,
-                                prompt_index,
-                            )?;
-                            Some(crate::automexia::ui::PromptAnchor {
-                                    generation: prompt_row.semantic_prompt_id,
-                                    key: first_absolute_row
-                                        .saturating_add(prompt_index as u64),
-                                    x: origin_x,
-                                    y: origin_y + visual_index as f32 * cell_height,
-                                    width: grid_width,
-                                    height: cell_height,
-                            })
-                        })
-                } else {
-                    None
-                };
-                let live_anchor = if rc.shell_integration
-                    && rc.shell_prompt_active
-                    && rc.display_offset == 0
-                {
-                    semantic_live_anchor
-                        .or_else(|| {
-                            let cursor_index = usize::try_from(cursor_row).ok()?;
-                            let visual_index = synthetic_prompt_visual_anchor(
-                                &rc.visible_rows,
-                                cursor_index,
-                            )?;
-                            Some(crate::automexia::ui::PromptAnchor {
-                                generation: rc.visible_rows[visual_index..=cursor_index]
-                                    .iter()
-                                    .find_map(|row| row.semantic_prompt_id),
-                                key: first_absolute_row
-                                    .saturating_add(visual_index as u64),
-                                x: origin_x,
-                                y: origin_y + visual_index as f32 * cell_height,
-                                width: grid_width,
-                                height: cell_height,
-                            })
-                        })
-                        .or_else(|| {
-                            let visual_index = first_paint_prompt_visual_anchor(
-                                &rc.visible_rows,
-                                cursor_row,
-                            )?;
-                            let row = &rc.visible_rows[visual_index];
-                            Some(crate::automexia::ui::PromptAnchor {
-                                generation: row.semantic_prompt_id,
-                                key: first_absolute_row
-                                    .saturating_add(visual_index as u64),
-                                x: origin_x,
-                                y: origin_y + visual_index as f32 * cell_height,
-                                width: grid_width,
-                                height: cell_height,
-                            })
-                        })
-                } else {
-                    None
-                };
-                let command_results = command_result_anchors(
-                    &rc.visible_rows,
-                    origin_x,
-                    origin_y,
-                    grid_width,
-                    cell_height,
-                    &historical_anchors,
-                );
+        let active_route = active_pane.session.session_id;
+        let visible_inactive_routes = inactive_panes
+            .iter()
+            .map(|pane| pane.session.session_id)
+            .collect::<Vec<_>>();
+        self.devops_statuses
+            .retain(|route, _| visible_inactive_routes.contains(route));
+        self.command_result_states
+            .retain(|route, _| visible_inactive_routes.contains(route));
 
-                (
-                    crate::automexia::api::SessionFacts {
-                        session_id: context.route_id,
-                        cwd: rc.current_directory.clone(),
-                        title: rc.terminal_title.clone(),
-                        distro: rc.shell_distro.clone(),
-                        os_version: rc.shell_os_version.clone(),
-                        shell_name: rc.shell_name.clone(),
-                        shell_user: rc.shell_user.clone(),
-                        shell_path: rc.shell_path.clone(),
-                        shell_integration: rc.shell_integration,
-                        shell_pid: context.shell_pid,
-                    },
-                    rc.shell_prompt_active,
-                    historical_anchors,
-                    live_anchor,
-                    command_results,
-                    rc.display_offset == 0 && rc.shell_prompt_active,
-                )
-            };
-            let refresh_pending =
-                self.devops_status.refresh_session_context(&session, || {
-                    context_manager.devops_refresh_completion(session.session_id)
+        if self.devops_enabled {
+            let refresh_pending = self
+                .devops_status
+                .refresh_session_context(&active_pane.session, || {
+                    context_manager.devops_refresh_completion(active_route)
                 });
-            let prefer_untagged_results = session
-                .shell_name
-                .as_deref()
-                .is_some_and(|shell| shell.eq_ignore_ascii_case("cmd"));
             let new_prompt = self.devops_status.render_prompt_rows(
                 sugarloaf,
                 self.named_colors,
-                &session,
-                prompt_active,
-                &historical_anchors,
-                live_anchor,
+                &active_pane.session,
+                active_pane.prompt_active,
+                &active_pane.historical_anchors,
+                active_pane.live_anchor,
             );
             if new_prompt {
-                self.devops_status.request_prompt_refresh(&session, || {
-                    context_manager.devops_refresh_completion(session.session_id)
-                });
+                self.devops_status
+                    .request_prompt_refresh(&active_pane.session, || {
+                        context_manager.devops_refresh_completion(active_route)
+                    });
             }
-            self.devops_status.render_command_results(
-                sugarloaf,
-                self.named_colors,
-                &command_results,
-                result_animation_enabled(allow_result_animation),
-                prefer_untagged_results,
-            );
-            // Completion directly wakes this route. De-duplicated timers remain
-            // as a fallback for worker pressure and poll changing local
-            // Docker/Kubernetes/Git state without continuous animation.
-            context_manager.schedule_render_on_route(
-                devops_status::next_context_wake_millis(refresh_pending),
-            );
-
-            // Every visible split owns its own prompt context. Build these
-            // snapshots after the selected pane so Git/cloud/environment/user
-            // facts remain visible inside every pane without global chrome.
-            let inactive_panes = {
-                let grid = context_manager.current_grid();
-                let active_route = grid.current().route_id;
-                let base_margin = grid.get_scaled_margin();
-                grid.contexts()
-                    .values()
-                    .filter(|item| item.context().route_id != active_route)
-                    .map(|item| {
-                        let [panel_x, panel_y, _, _] = crate::layout::pane_terminal_rect(
-                            item.layout_rect,
-                            scale_factor,
-                            item.tab_count(),
-                        );
-                        let margin = rio_backend::config::layout::Margin {
-                            left: base_margin.left + panel_x,
-                            top: base_margin.top + panel_y,
-                            right: base_margin.right,
-                            bottom: base_margin.bottom,
-                        };
-                        devops_pane_render_state(
-                            item.context(),
-                            margin,
-                            scale_factor,
-                            false,
-                        )
-                    })
-                    .collect::<Vec<_>>()
-            };
-            let visible_inactive_routes = inactive_panes
-                .iter()
-                .map(|pane| pane.session.session_id)
-                .collect::<Vec<_>>();
-            self.devops_statuses
-                .retain(|route, _| visible_inactive_routes.contains(route));
 
             let mut inactive_refresh_pending = false;
-            for pane in inactive_panes {
+            for pane in &inactive_panes {
                 debug_assert!(!pane.is_active);
                 let route = pane.session.session_id;
                 let status = self.devops_statuses.entry(route).or_default();
@@ -1695,11 +1505,6 @@ impl Renderer {
                     .refresh_visible_session(&pane.session, || {
                         context_manager.devops_refresh_completion(route)
                     });
-                let prefer_untagged_results = pane
-                    .session
-                    .shell_name
-                    .as_deref()
-                    .is_some_and(|shell| shell.eq_ignore_ascii_case("cmd"));
                 let new_prompt = status.render_prompt_rows(
                     sugarloaf,
                     self.named_colors,
@@ -1713,21 +1518,52 @@ impl Renderer {
                         context_manager.devops_refresh_completion(route)
                     });
                 }
-                status.render_command_results(
+            }
+
+            context_manager.schedule_render_on_route(
+                devops_status::next_context_wake_millis(
+                    refresh_pending || inactive_refresh_pending,
+                ),
+            );
+        }
+
+        if self.command_result_route != Some(active_route) {
+            // Route changes must never inherit pulse identity from another pane.
+            // Initial observation suppresses replay for already completed output.
+            self.command_results.clear();
+            self.command_result_route = Some(active_route);
+        }
+        let prefer_untagged_results = active_pane
+            .session
+            .shell_name
+            .as_deref()
+            .is_some_and(|shell| shell.eq_ignore_ascii_case("cmd"));
+        self.command_results.render_command_results(
+            sugarloaf,
+            self.named_colors,
+            &active_pane.command_results,
+            result_animation_enabled(active_pane.allow_result_animation),
+            prefer_untagged_results,
+        );
+
+        for pane in inactive_panes {
+            debug_assert!(!pane.is_active);
+            let prefer_untagged_results = pane
+                .session
+                .shell_name
+                .as_deref()
+                .is_some_and(|shell| shell.eq_ignore_ascii_case("cmd"));
+            self.command_result_states
+                .entry(pane.session.session_id)
+                .or_default()
+                .render_command_results(
                     sugarloaf,
                     self.named_colors,
                     &pane.command_results,
                     result_animation_enabled(pane.allow_result_animation),
                     prefer_untagged_results,
                 );
-            }
-            if inactive_refresh_pending {
-                context_manager.schedule_render_on_route(
-                    devops_status::next_context_wake_millis(true),
-                );
-            }
         }
-
         // Every visible pane receives its own operational footer. Rendering
         // it after terminal/prompt overlays but before modal overlays keeps it
         // legible without ever entering PTY history or covering grid cells.
@@ -1856,12 +1692,11 @@ impl Renderer {
         if self.search.needs_redraw() {
             return true;
         }
-        if self.devops_enabled
-            && (self.devops_status.needs_redraw()
-                || self
-                    .devops_statuses
-                    .values_mut()
-                    .any(devops_status::DevOpsStatus::needs_redraw))
+        if self.command_results.needs_redraw()
+            || self
+                .command_result_states
+                .values_mut()
+                .any(command_results::CommandResults::needs_redraw)
         {
             return true;
         }

@@ -1,7 +1,7 @@
-use automexia_devops::suggestions::helper::{
+use automexia_command_productivity::suggestions::helper::{
     HelperRecordError, HelperReplace, HelperRequest,
 };
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::{
     AcceptanceContext, NativeEditorReplacement, QuoteContext, ReplacementSpan,
     RouteIdentity, ShellKind, SuggestionCapability,
 };

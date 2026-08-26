@@ -7,7 +7,7 @@ use std::{
     sync::Arc,
 };
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     validate_quick_actions, ActionProvenance, ActionScope, ActionTemplate, ArgumentToken,
     QuickAction, QuickActionDocument, ValidatedQuickActions, WorkingDirectoryPolicy,
     MAX_SOURCE_BYTES, QUICK_ACTION_SCHEMA_VERSION,
@@ -634,7 +634,7 @@ fn snapshot_from_bytes(
 ) -> Result<QuickActionSnapshot, StoreError> {
     let source = std::str::from_utf8(bytes)
         .map_err(|_| StoreError::new(StoreErrorCode::InvalidUtf8))?;
-    let validated = automexia_devops::actions::parse_quick_actions(source)
+    let validated = automexia_command_productivity::actions::parse_quick_actions(source)
         .map_err(|error| StoreError::model(error.code()))?;
     snapshot_from_validated(validated, bytes, origin)
 }
@@ -674,16 +674,19 @@ fn estimated_resident_bytes(document: &QuickActionDocument) -> usize {
     let mut bytes = mem::size_of::<QuickActionDocument>()
         .saturating_add(document.actions.capacity() * mem::size_of::<QuickAction>());
     for action in &document.actions {
-        bytes = bytes
-            .saturating_add(action.id.capacity())
-            .saturating_add(action.display_name.capacity())
-            .saturating_add(action.description.capacity())
-            .saturating_add(action.tags.capacity() * mem::size_of::<String>())
-            .saturating_add(action.tags.iter().map(String::capacity).sum::<usize>())
-            .saturating_add(
-                action.placeholders.capacity()
-                    * mem::size_of::<automexia_devops::actions::Placeholder>(),
-            );
+        bytes =
+            bytes
+                .saturating_add(action.id.capacity())
+                .saturating_add(action.display_name.capacity())
+                .saturating_add(action.description.capacity())
+                .saturating_add(action.tags.capacity() * mem::size_of::<String>())
+                .saturating_add(action.tags.iter().map(String::capacity).sum::<usize>())
+                .saturating_add(
+                    action.placeholders.capacity()
+                        * mem::size_of::<
+                            automexia_command_productivity::actions::Placeholder,
+                        >(),
+                );
         for placeholder in &action.placeholders {
             bytes = bytes
                 .saturating_add(placeholder.name.capacity())
@@ -739,7 +742,9 @@ fn estimated_resident_bytes(document: &QuickActionDocument) -> usize {
                 .saturating_add(alias.requested_name.capacity())
                 .saturating_add(
                     alias.shells.capacity()
-                        * mem::size_of::<automexia_devops::actions::ShellKind>(),
+                        * mem::size_of::<
+                            automexia_command_productivity::actions::ShellKind,
+                        >(),
                 );
         }
     }
@@ -772,7 +777,9 @@ fn persist(staged: NamedTempFile, destination: &Path) -> Result<(), StoreError> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use automexia_devops::actions::{ActionScope, ExecutionMode, RiskClass, ShellKind};
+    use automexia_command_productivity::actions::{
+        ActionScope, ExecutionMode, RiskClass, ShellKind,
+    };
     use std::sync::{Arc as Shared, Barrier};
 
     fn action(id: &str) -> QuickAction {

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     EnvironmentRisk, OpaqueReference, ProviderCapsule, ProviderContextFreshness,
     ProviderContextProvenance, ProviderContextTemplate, ProviderKind,
     ProviderProvenanceKind, ProviderScopeBinding, CONNECTION_SCHEMA_VERSION,

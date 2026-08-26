@@ -6,7 +6,7 @@
 
 use std::{collections::BTreeMap, fmt};
 
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     fingerprint_profile, resolve_connection_plan, resolve_workspace_restore,
     review_broadcast, review_recipe_run, BroadcastReview, BroadcastTargetV1,
     ConnectionModelError, PlanContext, RecipeRunMode, ResolvedExecutable,

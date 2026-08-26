@@ -6,10 +6,10 @@
 
 use std::fmt;
 
-use automexia_devops::suggestions::helper::{
+use automexia_command_productivity::suggestions::helper::{
     HelperRecordError, HelperReplace, HelperRequest,
 };
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::{
     AcceptanceBindings, AcceptanceContext, Candidate, CandidateFreshness, CandidateKind,
     CandidateRisk, CandidateSource, CompletionMode, EditorRequest, EditorSubmission,
     NativeEditorReplacement, RankInput, RequestReason, RouteIdentity, SourceBatch,

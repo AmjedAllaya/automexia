@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     AuthState, EnvironmentRisk, OpaqueReference, ProviderCapsule, ProviderKind,
     ProviderProvenanceKind, CONNECTION_SCHEMA_VERSION,
 };
@@ -333,9 +333,9 @@ fn capsule_pins_public_context_and_non_mutating_exact_cli_plans() {
     assert_eq!(quick_action.binding().exact_target(), "prod");
     assert_eq!(
         quick_action.binding().execution(),
-        automexia_devops::actions::ExecutionMode::ExactLaunch
+        automexia_command_productivity::actions::ExecutionMode::ExactLaunch
     );
-    let automexia_devops::actions::ActionTemplate::TypedArgv {
+    let automexia_command_productivity::actions::ActionTemplate::TypedArgv {
         executable_id,
         arguments,
     } = &quick_action.action().template
@@ -349,14 +349,16 @@ fn capsule_pins_public_context_and_non_mutating_exact_cli_plans() {
             .arguments()
             .iter()
             .cloned()
-            .map(|value| automexia_devops::actions::ArgumentToken::Literal { value })
+            .map(|value| {
+                automexia_command_productivity::actions::ArgumentToken::Literal { value }
+            })
             .collect::<Vec<_>>()
     );
     let (transport, exec) =
         build_exec(&capsule, "deployment/api", Some("server"), "sh").unwrap();
     assert!(matches!(
         transport,
-        automexia_devops::connections::TransportDescriptor::KubernetesExec { .. }
+        automexia_connectivity::connections::TransportDescriptor::KubernetesExec { .. }
     ));
     assert_eq!(
         exec.arguments(),

@@ -116,7 +116,7 @@ selected request-local candidate
 
 Planned owners after acceptance:
 
-- `automexia-devops/src/suggestions/`: versioned identifiers, request/candidate,
+- `automexia-command-productivity/src/suggestions/`: versioned identifiers, request/candidate,
   limits, validation, sources, deterministic scoring/ties, cancellation model;
 - `automexia-ui-model/src/suggestions.rs`: semantic listbox/option snapshots,
   grapheme-safe rows, placement inputs/outputs, density, accessible labels;

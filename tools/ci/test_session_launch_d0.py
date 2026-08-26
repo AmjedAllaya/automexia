@@ -31,7 +31,7 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
         self.assertEqual(
             policy.validate_repository(),
             {
-                "schema": 5,
+                "schema": 6,
                 "scenarios": 23,
                 "boundaries": 9,
                 "sources": 17,

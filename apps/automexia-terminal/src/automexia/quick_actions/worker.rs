@@ -12,7 +12,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     merge_action_search_hits, revalidate_provider_action, validate_search_query,
     ActionIndex, ActionLayer, ActionProvenance, ActionScope, ActionSearchHit, IndexError,
     LayerIdentity, ProviderActionBinding, ProviderActionReview, ProviderActionSnapshot,
@@ -814,18 +814,16 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use automexia_devops::{
-        actions::{
-            build_provider_action_snapshot, build_ssh_provider_action, ActionProvenance,
-            ActionScope, ActionTemplate, ExecutionMode, ProviderActionDecision,
-            ProviderActionSnapshot, QuickAction, RiskClass, ShellKind,
-            WorkingDirectoryPolicy,
-        },
-        connections::{
-            EnvironmentRisk, OpaqueReference, ProviderCapsule, ProviderContextFreshness,
-            ProviderContextProvenance, ProviderContextTemplate, ProviderKind,
-            ProviderProvenanceKind, ProviderScopeBinding, CONNECTION_SCHEMA_VERSION,
-        },
+    use automexia_command_productivity::actions::{
+        build_provider_action_snapshot, build_ssh_provider_action, ActionProvenance,
+        ActionScope, ActionTemplate, ExecutionMode, ProviderActionDecision,
+        ProviderActionSnapshot, QuickAction, RiskClass, ShellKind,
+        WorkingDirectoryPolicy,
+    };
+    use automexia_connectivity::connections::{
+        EnvironmentRisk, OpaqueReference, ProviderCapsule, ProviderContextFreshness,
+        ProviderContextProvenance, ProviderContextTemplate, ProviderKind,
+        ProviderProvenanceKind, ProviderScopeBinding, CONNECTION_SCHEMA_VERSION,
     };
     use std::sync::mpsc;
 
@@ -1014,7 +1012,7 @@ mod tests {
             .unwrap()
             .replace(
                 0,
-                automexia_devops::actions::QuickActionDocument {
+                automexia_command_productivity::actions::QuickActionDocument {
                     schema_version: 1,
                     revision: 1,
                     actions: (0..64).map(action).collect(),
@@ -1159,7 +1157,7 @@ mod tests {
                     action_id: "workspace.build".into(),
                     display_name: "Build workspace".into(),
                     description: "Explicit task bridge".into(),
-                    runner: automexia_devops::actions::TaskRunner::Just,
+                    runner: automexia_command_productivity::actions::TaskRunner::Just,
                     task_name: "build".into(),
                     shells: vec![ShellKind::Bash],
                     risk: RiskClass::Mutating,

@@ -9,11 +9,15 @@ engine directories or creating a second PTY/process owner.
 ```text
 apps/automexia-terminal
   product lifecycle, CLI, windows, PTY/session owner, renderer adapter
+  |-- automexia-connectivity ------> automexia-extension-api
+  |     provider-neutral connectivity/workspace/auth contracts
+  |-- automexia-command-productivity --> automexia-connectivity
+  |     Quick Actions and editor-suggestion contracts
   |-- automexia-devops ------------> automexia-extension-api
-  |     local providers                 bounded contracts/text policy
+  |     local context discovery and semantic classification
   |-- automexia-extension-runtime --> automexia-extension-api
   |     queue/cache/cancellation
-  |-- automexia-ui-model ----------> automexia-extension-api
+  |-- automexia-ui-model ----------> domain contracts + extension API
   |     layout/accessibility/color; contract consumer only
   `-- rio-backend / rio-vt / teletypewriter / rio-window
           config, VT/grid, PTY, platform window/event contracts
@@ -45,8 +49,14 @@ automexia-extension-api
 automexia-extension-runtime
   bounded work queues, immutable caches, cancellation, operation lifecycle
 
+automexia-connectivity
+  capability-free connectivity, SSH review, authentication, and workspace contracts
+
+automexia-command-productivity
+  capability-free Quick Action and native-editor suggestion contracts
+
 automexia-devops
-  provider-neutral context model plus current behavior-preserving adapters
+  optional local context discovery and semantic classification only
 
 automexia-ui-model
   provider-neutral status/accessibility/action models
@@ -66,9 +76,11 @@ new Automexia PTY/session
 system OpenSSH or official provider CLI
 ```
 
-Phase 1 moved the pure contracts, bounded runtime primitives, current local
-DevOps implementation, and renderer-independent UI policy into the four private
-crates above. `apps/automexia-terminal/src/automexia/api.rs` and
+Phase 1 moved the extension contracts, bounded runtime primitives, local
+DevOps implementation, and renderer-independent UI policy into private crates.
+The current capability-free connectivity and command-productivity domains are
+separate workspace members so baseline behavior cannot depend on an optional
+provider or context extension. `apps/automexia-terminal/src/automexia/api.rs` and
 `automexia/builtins/devops/mod.rs` are compatibility facades;
 `automexia/runtime.rs`, renderer status paint, and `context/launch.rs` are
 application adapters. Provider detection and policy may not move back into the
@@ -95,6 +107,12 @@ request construction, inventory and context refresh, and domain-specific
 workflows. They never receive renderer, VT, PTY, window, unrestricted process,
 or ambient credential authority. Mature protocol, authentication, secret,
 provider, and collaboration systems remain external authorities.
+
+Generic command-result separation, exit classification, color, spacing, and the
+bounded 540 ms completion pulse are application-renderer behavior in
+`renderer/command_results.rs`. They are route-isolated core terminal feedback and
+must continue when every optional extension is disabled. `renderer/devops_status.rs`
+owns only optional DevOps prompt context and semantic status paint.
 
 The complete build-versus-adopt matrix and dependency sequence are defined in
 [Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md) and
@@ -226,7 +244,7 @@ IME preedit performs bounded query validation without traversing the catalog.
 
 ### F2/D5.0 non-executing connection-planning boundary
 
-`automexia-devops::connections` is the provider-neutral owner for strict public
+`automexia-connectivity::connections` is the provider-neutral owner for strict public
 connection/profile/recipe documents, validation, authentication/result
 reducers, canonical fingerprints, and deterministic dry-run plans.
 `automexia-ui-model::connection_hub` consumes only those bounded public values
@@ -261,7 +279,7 @@ reviewed plan into an execution request. No lower crate may bypass those owners.
 
 ### M3-M4 reviewed OpenSSH route and trust boundary
 
-`automexia-devops::connections::direct_openssh` extends the F2 owner without a
+`automexia-connectivity::connections::direct_openssh` extends the F2 owner without a
 new crate edge or authority. It owns a pending preparation with no executable
 identity and an identity-bound review requiring a canonical current `ssh`
 executable, identity observation, route, and host-trust evidence. M3 direct and
@@ -325,7 +343,7 @@ permissions, identity snapshots, atomic replacement, and directory sync.
 
 ### M5 reviewed OpenSSH tunnel and native evidence boundary
 
-`automexia-devops::connections::openssh_tunnels` extends the existing pure
+`automexia-connectivity::connections::openssh_tunnels` extends the existing pure
 connection owner. It validates and canonicalizes local, remote, and dynamic TCP
 forwarding; caps each profile at the existing 32-tunnel limit; derives exact
 transport, endpoint, risk, confirmation, lifetime, and OpenSSH-listener
@@ -350,7 +368,7 @@ icon/color/text rows and accessibility nodes. None of this grants process,
 network, PTY, filesystem, credential, or listener authority while activation is
 false.
 
-Schema 5 preserves immutable schemas 1-4 and freezes the tunnel grammar,
+Schema 6 preserves immutable schemas 1-5 and freezes the tunnel grammar,
 lifecycle, strong-confirmation, and native-evidence rules. The bounded Python
 validator accepts only exact ordered Windows/macOS/Linux manifests tied to the
 current contract and source commit, rejects WSL and synthetic release evidence,
@@ -374,7 +392,7 @@ accessibility runs remain external release evidence and do not enable the broker
 ### M6 typed automation and declarative workspace boundary
 
 M6 extends the existing provider-neutral connection model without creating a
-runtime authority. `automexia-devops::connections::automation` owns pure
+runtime authority. `automexia-connectivity::connections::automation` owns pure
 resolved-run review, narrow remote initialization, and lifecycle reducers;
 `workspace` owns declarative layout, connection binding, restore, and armed
 broadcast reducers. Both reject hostile/oversized input, bind immutable
@@ -477,7 +495,7 @@ roles remain stable and core/theme policy chooses the final accessible color.
 
 M7 implements the accepted [hybrid build/wrap/adopt decision](adr/0020-hybrid-build-wrap-adopt-boundary.md)
 without adding a provider SDK, browser server, credential store, launcher, or
-persistence owner. `automexia-devops::connections::provider_auth` is the
+persistence owner. `automexia-connectivity::connections::provider_auth` is the
 single pure owner of provider-context/capsule validation, public authentication
 observation, exact operation/isolation/browser policy, visible-review digest,
 recovery, receipt/audit redaction, and bounded session lifecycle.
@@ -734,7 +752,7 @@ acceptance.
 
 M13/CP4 is product-integrated at a nonactivating boundary. It extends the existing
 Quick Action model rather than introducing a second provider-action registry.
-`automexia-devops::actions::provider` owns capability-free candidate, binding,
+`automexia-command-productivity::actions::provider` owns capability-free candidate, binding,
 snapshot, digest, availability, redacted audit, and final revalidation types.
 Each accepted first-party provider owns its exact executable/argument grammar;
 the SSH projection remains in the pure action core to preserve the acyclic
@@ -814,11 +832,11 @@ for the exact OpenSSH tools they use. The extension itself has no direct-network
 capability: the approved OpenSSH child connects exactly as it would when typed
 in a shell. Arbitrary process/network access and third-party use remain denied.
 
-Current D0/D3/M5 source status remains fail-closed. Active schema 5 freezes the
+Current D0/D3/M5 source status remains fail-closed. Active schema 6 freezes the
 M3 direct, M4 routed, and M5 configuration-free typed-tunnel grammars; fresh
 full-review/executable/endpoint binding; actual child-outcome mapping; bounded
 tunnel and receipt lifecycle; stale-source reconnect; and exact native-manifest
-rules while retaining schemas 1-4 as immutable hash-checked history. The
+rules while retaining schemas 1-5 as immutable hash-checked history. The
 manual-shell baseline, package policy, nine trust boundaries, platform
 resolution, and hermetic native protocol remain unchanged. ADR 0012 is accepted
 by the project owner.
@@ -901,7 +919,7 @@ keystroke, render, VT, and PTY paths.
 
 CP2.0/CP2.2 provide a renderer-/PTY-independent typed Quick Action model,
 bounded in-memory TOML parser, deterministic validator, layered index, search,
-and shell serializer in the exact four-file `automexia-devops::actions`
+and shell serializer in the exact four-file `automexia-command-productivity::actions`
 allowlist. CP2.1/CP2.2 use an exact eight-file, application-owned boundary under
 `automexia::quick_actions`: bounded
 no-follow private storage, atomic primary/one-previous recovery, nonblocking
@@ -931,7 +949,7 @@ in [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md).
 
 
 CP3.0 now implements the per-shell projection boundary inside
-`automexia-devops::actions`: validated tokens plus complete bounded caller
+`automexia-command-productivity::actions`: validated tokens plus complete bounded caller
 collision/completion/tool inventories produce deterministic in-memory PowerShell,
 Bash, Zsh, Fish, or CMD artifacts and explicit decisions. The boundary recomputes
 canonical source identity, verifies same-owner fingerprints, retains degraded
@@ -951,7 +969,7 @@ completion identity once across all five projections.
 The accepted but preview-disabled CP5 source boundary adds no second line
 editor. Shell integration is the only adapter allowed to observe editor-owned
 bounded state through a versioned, opt-in, session-capability-authenticated local
-pipe/socket. Capability-free `automexia-devops::suggestions` owns
+pipe/socket. Capability-free `automexia-command-productivity::suggestions` owns
 immutable requests/candidates, deterministic ranking, resource limits, and
 cancellation. `automexia-ui-model::suggestions` owns the pane-local listbox
 projection; the desktop frontend owns the joined broker, restrictive transport,
@@ -1713,8 +1731,9 @@ rollback, and redaction before it can write an external file.
 
 ## v0.5 boundary
 
-The release-critical Phase 1 split into private `automexia-extension-api`,
-`automexia-extension-runtime`, `automexia-devops`, and `automexia-ui-model`
+The release-critical split into private `automexia-extension-api`,
+`automexia-extension-runtime`, `automexia-connectivity`,
+`automexia-command-productivity`, `automexia-devops`, and `automexia-ui-model`
 crates is implemented. `automexia-app` remains deferred until ownership is
 clear, and inherited engines remain in their attributed directories. The
 production capability broker and `devops-ssh` implementation are later phases;
@@ -1734,7 +1753,7 @@ long-term extension model are in
 
 CP3.2 is fully implemented at a capability-free/application-owned split:
 
-- `automexia-devops/src/actions/packs.rs` owns immutable schema-1 provider
+- `automexia-command-productivity/src/actions/packs.rs` owns immutable schema-1 provider
   manifests, typed action construction, validation, pure health evaluation,
   manifest-aware alias eligibility, digests, deprecations, and update/overlay
   planning. Initialization asserts the reviewed full-registry digest, and update
@@ -1768,7 +1787,7 @@ CP3.3 is fully implemented with the same capability-free/application-owned
 split and adds no process, network, credential, recipe, provider, or task
 execution authority:
 
-- `automexia-devops/src/actions/imports.rs` owns the six bounded native inventory
+- `automexia-command-productivity/src/actions/imports.rs` owns the six bounded native inventory
   parsers, rejection codes, imported-action construction, exact task-bridge
   construction, canonical workspace source digest, trust receipt, and trusted
   layer validation. It has no filesystem, environment, process, network, UI,

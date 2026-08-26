@@ -8,11 +8,11 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     build_provider_action_candidate, ExecutionMode, ProviderActionCandidate,
     ProviderActionSpec, RiskClass,
 };
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     validate_provider_auth_operation, AuthState, EnvironmentRisk, OpaqueReference,
     ProviderAuthOperation, ProviderAuthOperationKind, ProviderBrowserFlow,
     ProviderBrowserPolicy, ProviderCapsule, ProviderContextFreshness,
@@ -331,9 +331,9 @@ pub fn public_context(
         expires_at_ms: None,
         risk,
     };
-    automexia_devops::connections::validate_provider_context(&context).map_err(|_| {
-        AwsAdapterError::new(AwsAdapterErrorCode::InvalidRequest, "context")
-    })?;
+    automexia_connectivity::connections::validate_provider_context(&context).map_err(
+        |_| AwsAdapterError::new(AwsAdapterErrorCode::InvalidRequest, "context"),
+    )?;
     Ok(context)
 }
 
@@ -638,7 +638,7 @@ pub fn apply_sts_identity(
     observed.provenance.kind = ProviderProvenanceKind::OfficialCliObservation;
     observed.provenance.observed_at_ms = observed_at_ms;
     observed.freshness = ProviderContextFreshness::Current;
-    automexia_devops::connections::validate_provider_context(&observed).map_err(
+    automexia_connectivity::connections::validate_provider_context(&observed).map_err(
         |_| AwsAdapterError::new(AwsAdapterErrorCode::InvalidRequest, "sts_observation"),
     )?;
     Ok(observed)
@@ -1015,9 +1015,9 @@ mod tests {
         assert_eq!(candidate.binding().target_kind(), "account");
         assert_eq!(
             candidate.binding().execution(),
-            automexia_devops::actions::ExecutionMode::Insert
+            automexia_command_productivity::actions::ExecutionMode::Insert
         );
-        let automexia_devops::actions::ActionTemplate::TypedArgv {
+        let automexia_command_productivity::actions::ActionTemplate::TypedArgv {
             executable_id,
             arguments,
         } = &candidate.action().template
@@ -1029,10 +1029,10 @@ mod tests {
             arguments
                 .iter()
                 .map(|argument| match argument {
-                    automexia_devops::actions::ArgumentToken::Literal { value } => {
+                    automexia_command_productivity::actions::ArgumentToken::Literal { value } => {
                         value.as_str()
                     }
-                    automexia_devops::actions::ArgumentToken::Placeholder { .. } => {
+                    automexia_command_productivity::actions::ArgumentToken::Placeholder { .. } => {
                         panic!("provider action cannot contain placeholders")
                     }
                 })

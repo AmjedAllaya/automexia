@@ -1,6 +1,6 @@
 //! Application-owned Quick Action persistence, refresh, and CP4 publication.
 //!
-//! The typed model remains capability-free in `automexia-devops::actions`.
+//! The typed model remains capability-free in `automexia-command-productivity::actions`.
 //! This boundary owns the explicit user-private `actions/` directory, bounded
 //! atomic storage, immutable last-known-good action/provider snapshots, and an
 //! exact parent-directory watcher. CP4 composes already refreshed public

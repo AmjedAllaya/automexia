@@ -1,4 +1,4 @@
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::{
     Candidate, CandidateFreshness, CandidateKind, CandidateRisk, CandidateSource,
     QuoteContext, RankedCandidate, ReplacementSpan,
 };

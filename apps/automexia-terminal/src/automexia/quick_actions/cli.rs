@@ -18,10 +18,10 @@ struct ActionSummary<'a> {
     id: &'a str,
     display_name: &'a str,
     description: &'a str,
-    scope: automexia_devops::actions::ActionScope,
-    shells: &'a [automexia_devops::actions::ShellKind],
-    risk: automexia_devops::actions::RiskClass,
-    execution: automexia_devops::actions::ExecutionMode,
+    scope: automexia_command_productivity::actions::ActionScope,
+    shells: &'a [automexia_command_productivity::actions::ShellKind],
+    risk: automexia_command_productivity::actions::RiskClass,
+    execution: automexia_command_productivity::actions::ExecutionMode,
     enabled: bool,
 }
 
@@ -701,9 +701,9 @@ fn open_trust_for_write(
 }
 
 fn trust_error_label(
-    error: automexia_devops::actions::WorkspaceTrustError,
+    error: automexia_command_productivity::actions::WorkspaceTrustError,
 ) -> &'static str {
-    use automexia_devops::actions::WorkspaceTrustError;
+    use automexia_command_productivity::actions::WorkspaceTrustError;
     match error {
         WorkspaceTrustError::NotTrusted => "not-trusted",
         WorkspaceTrustError::InvalidIdentity | WorkspaceTrustError::IdentityMismatch => {
@@ -732,16 +732,20 @@ fn open_for_write(root: &Path) -> Result<QuickActionService, Box<dyn std::error:
 
 fn read_single_action(
     source: &Path,
-) -> Result<automexia_devops::actions::QuickAction, Box<dyn std::error::Error>> {
+) -> Result<
+    automexia_command_productivity::actions::QuickAction,
+    Box<dyn std::error::Error>,
+> {
     let bytes = secure_fs::read_bounded_regular(
         source,
-        automexia_devops::actions::MAX_SOURCE_BYTES,
+        automexia_command_productivity::actions::MAX_SOURCE_BYTES,
     )?
     .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "action file not found"))?;
     let text = std::str::from_utf8(&bytes).map_err(|_| {
         io::Error::new(io::ErrorKind::InvalidData, "action file is not UTF-8")
     })?;
-    let document = automexia_devops::actions::parse_quick_actions(text)?.into_document();
+    let document = automexia_command_productivity::actions::parse_quick_actions(text)?
+        .into_document();
     if document.actions.len() != 1 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -752,8 +756,8 @@ fn read_single_action(
     let action = document.actions.into_iter().next().expect("length checked");
     if !matches!(
         action.scope,
-        automexia_devops::actions::ActionScope::GlobalUser
-            | automexia_devops::actions::ActionScope::ShellUser
+        automexia_command_productivity::actions::ActionScope::GlobalUser
+            | automexia_command_productivity::actions::ActionScope::ShellUser
     ) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -765,7 +769,7 @@ fn read_single_action(
 }
 
 fn print_list(
-    actions: &[automexia_devops::actions::QuickAction],
+    actions: &[automexia_command_productivity::actions::QuickAction],
     revision: u64,
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -857,37 +861,39 @@ fn not_found(id: &str) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use automexia_devops::actions::{
+    use automexia_command_productivity::actions::{
         ActionProvenance, ActionScope, ActionTemplate, ExecutionMode, QuickAction,
         QuickActionDocument, RiskClass, ShellKind, WorkingDirectoryPolicy,
     };
 
     fn document(actions: usize) -> String {
-        automexia_devops::actions::validate_quick_actions(QuickActionDocument {
-            schema_version: 1,
-            revision: 0,
-            actions: (0..actions)
-                .map(|index| QuickAction {
-                    id: format!("test.action-{index}"),
-                    display_name: format!("Action {index}"),
-                    description: String::new(),
-                    tags: Vec::new(),
-                    scope: ActionScope::GlobalUser,
-                    shells: vec![ShellKind::Bash],
-                    template: ActionTemplate::TypedArgv {
-                        executable_id: "git".into(),
-                        arguments: Vec::new(),
-                    },
-                    placeholders: Vec::new(),
-                    working_directory_policy: WorkingDirectoryPolicy::Inherit,
-                    risk: RiskClass::ReadOnly,
-                    execution: ExecutionMode::Insert,
-                    provenance: ActionProvenance::User,
-                    enabled: true,
-                    alias_projection: None,
-                })
-                .collect(),
-        })
+        automexia_command_productivity::actions::validate_quick_actions(
+            QuickActionDocument {
+                schema_version: 1,
+                revision: 0,
+                actions: (0..actions)
+                    .map(|index| QuickAction {
+                        id: format!("test.action-{index}"),
+                        display_name: format!("Action {index}"),
+                        description: String::new(),
+                        tags: Vec::new(),
+                        scope: ActionScope::GlobalUser,
+                        shells: vec![ShellKind::Bash],
+                        template: ActionTemplate::TypedArgv {
+                            executable_id: "git".into(),
+                            arguments: Vec::new(),
+                        },
+                        placeholders: Vec::new(),
+                        working_directory_policy: WorkingDirectoryPolicy::Inherit,
+                        risk: RiskClass::ReadOnly,
+                        execution: ExecutionMode::Insert,
+                        provenance: ActionProvenance::User,
+                        enabled: true,
+                        alias_projection: None,
+                    })
+                    .collect(),
+            },
+        )
         .unwrap()
         .to_toml()
         .unwrap()
@@ -913,7 +919,7 @@ mod tests {
         let source = root.path().join("oversized.toml");
         fs::write(
             &source,
-            vec![b'x'; automexia_devops::actions::MAX_SOURCE_BYTES + 1],
+            vec![b'x'; automexia_command_productivity::actions::MAX_SOURCE_BYTES + 1],
         )
         .unwrap();
         assert!(read_single_action(&source).is_err());

@@ -1,4 +1,4 @@
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     review_provider_auth_operation, AuthState, EnvironmentRisk, OpaqueReference,
     ProviderCapsule, ProviderKind, TransportDescriptor, CONNECTION_SCHEMA_VERSION,
 };
@@ -22,7 +22,7 @@ fn status_document(active: &str, profiles: &str, environment: &str) -> String {
     format!(r#"{{"active":{active},"profiles":{profiles},"environment":{environment}}}"#)
 }
 
-fn context() -> automexia_devops::connections::ProviderContextTemplate {
+fn context() -> automexia_connectivity::connections::ProviderContextTemplate {
     context_from_selection(
         &TeleportContextSelection::new(
             "proxy.example.com:443",
@@ -51,7 +51,7 @@ fn capsule() -> ProviderCapsule {
 }
 
 fn arguments(
-    operation: &automexia_devops::connections::ProviderAuthOperation,
+    operation: &automexia_connectivity::connections::ProviderAuthOperation,
 ) -> Vec<&str> {
     operation
         .arguments
@@ -293,9 +293,9 @@ fn version_and_status_plans_are_local_exact_and_agent_isolated() {
     assert_eq!(quick_action.binding().exact_target(), "production");
     assert_eq!(
         quick_action.binding().execution(),
-        automexia_devops::actions::ExecutionMode::ExactLaunch
+        automexia_command_productivity::actions::ExecutionMode::ExactLaunch
     );
-    let automexia_devops::actions::ActionTemplate::TypedArgv {
+    let automexia_command_productivity::actions::ActionTemplate::TypedArgv {
         executable_id,
         arguments,
     } = &quick_action.action().template
@@ -309,7 +309,9 @@ fn version_and_status_plans_are_local_exact_and_agent_isolated() {
             .arguments()
             .iter()
             .cloned()
-            .map(|value| automexia_devops::actions::ArgumentToken::Literal { value })
+            .map(|value| {
+                automexia_command_productivity::actions::ArgumentToken::Literal { value }
+            })
             .collect::<Vec<_>>()
     );
 }
@@ -337,7 +339,7 @@ fn login_flows_are_exact_capsule_scoped_and_leave_mfa_to_tsh() {
     );
     assert_eq!(
         browser.operation().browser.flow,
-        automexia_devops::connections::ProviderBrowserFlow::ExternalBrowser
+        automexia_connectivity::connections::ProviderBrowserFlow::ExternalBrowser
     );
     assert!(!browser.environment().inherit_ssh_agent);
     assert!(browser.requires_interactive_terminal());
@@ -453,7 +455,7 @@ fn logout_revocation_and_public_failures_are_explicit() {
     );
     assert_eq!(
         logout.operation().kind,
-        automexia_devops::connections::ProviderAuthOperationKind::Revoke
+        automexia_connectivity::connections::ProviderAuthOperationKind::Revoke
     );
     assert_eq!(logout.operation().capability_requests.len(), 1);
     assert!(!logout.requires_interactive_terminal());

@@ -1375,7 +1375,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
     let pty_manifest = read(&root().join("teletypewriter/Cargo.toml"))?;
     require(
         nightly_workflow.contains(
-            "cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-devops -p automexia-devops-ssh -p automexia-keybindings --no-run --locked",
+            "cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-connectivity -p automexia-command-productivity -p automexia-devops-ssh -p automexia-keybindings --no-run --locked",
         )
             && qa.contains("\"benchmark-image\": 7200")
             && qa.contains("\"benchmark-image\"")
@@ -1393,10 +1393,10 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && qa.contains("\"openssh_inventory\"")
             && qa.contains("\"benchmark-quick-actions\": 7200")
             && qa.contains("\"benchmark-quick-actions\"")
-            && qa.contains("\"automexia-devops\"")
+            && qa.contains("\"automexia-command-productivity\"")
             && qa.contains("\"quick_actions\"")
             && root()
-                .join("automexia-devops/benches/quick_actions.rs")
+                .join("automexia-command-productivity/benches/quick_actions.rs")
                 .is_file()
             && qa.contains("\"benchmark-quick-action-store\": 7200")
             && qa.contains("\"benchmark-quick-action-store\"")
@@ -2290,6 +2290,8 @@ fn product_identity() -> TaskResult<ProductIdentity> {
 }
 
 fn verify_architecture() -> TaskResult {
+    run_python("tools/ci/check_feature_ownership.py")?;
+    run_python("tools/ci/test_feature_ownership.py")?;
     run_python("tools/ci/check_command_productivity.py")?;
     run_python("tools/ci/check_command_productivity_cp1.py")?;
     run_python("tools/ci/check_command_productivity_cp22.py")?;
@@ -2320,7 +2322,7 @@ fn verify_architecture() -> TaskResult {
         "frontend package is outside apps/automexia-terminal",
     )?;
 
-    let private_crates: [(&str, &[&str]); 9] = [
+    let private_crates: [(&str, &[&str]); 17] = [
         (
             "automexia-keybindings",
             &["criterion", "proptest", "serde", "serde_json", "sha2"],
@@ -2334,19 +2336,34 @@ fn verify_architecture() -> TaskResult {
             &["automexia-extension-api", "loom"],
         ),
         (
-            "automexia-devops",
+            "automexia-connectivity",
             &[
                 "automexia-extension-api",
                 "base64",
                 "blake3",
                 "criterion",
-                "dirs",
+                "proptest",
+                "serde",
+                "serde_json",
+            ],
+        ),
+        (
+            "automexia-command-productivity",
+            &[
+                "automexia-connectivity",
+                "automexia-extension-api",
+                "blake3",
+                "criterion",
                 "proptest",
                 "serde",
                 "serde_json",
                 "toml",
                 "unicode-segmentation",
             ],
+        ),
+        (
+            "automexia-devops",
+            &["automexia-extension-api", "dirs", "proptest", "serde_json"],
         ),
         (
             "automexia-devops-ssh",
@@ -2364,6 +2381,80 @@ fn verify_architecture() -> TaskResult {
             ],
         ),
         (
+            "automexia-devops-aws",
+            &[
+                "automexia-command-productivity",
+                "automexia-connectivity",
+                "automexia-extension-api",
+                "configparser",
+                "serde",
+                "serde_json",
+            ],
+        ),
+        (
+            "automexia-devops-azure",
+            &[
+                "automexia-command-productivity",
+                "automexia-connectivity",
+                "automexia-extension-api",
+                "criterion",
+                "serde",
+                "serde_json",
+            ],
+        ),
+        (
+            "automexia-devops-gcp",
+            &[
+                "automexia-command-productivity",
+                "automexia-connectivity",
+                "automexia-extension-api",
+                "configparser",
+                "criterion",
+                "serde",
+                "serde_json",
+            ],
+        ),
+        (
+            "automexia-devops-kubernetes",
+            &[
+                "automexia-command-productivity",
+                "automexia-connectivity",
+                "automexia-extension-api",
+                "criterion",
+                "libc",
+                "serde",
+                "serde-saphyr",
+                "serde_json",
+                "sha2",
+                "tempfile",
+            ],
+        ),
+        (
+            "automexia-devops-openshift",
+            &[
+                "automexia-command-productivity",
+                "automexia-connectivity",
+                "automexia-devops-kubernetes",
+                "automexia-extension-api",
+                "serde",
+                "serde_json",
+            ],
+        ),
+        (
+            "automexia-devops-teleport",
+            &[
+                "automexia-command-productivity",
+                "automexia-connectivity",
+                "automexia-extension-api",
+                "criterion",
+                "serde",
+                "serde_json",
+                "sha2",
+                "time",
+                "url",
+            ],
+        ),
+        (
             "automexia-ecosystem",
             &[
                 "criterion",
@@ -2377,7 +2468,7 @@ fn verify_architecture() -> TaskResult {
         (
             "automexia-ecosystem-runtime",
             &[
-                "automexia-devops",
+                "automexia-command-productivity",
                 "automexia-ecosystem",
                 "base64",
                 "criterion",
@@ -2399,7 +2490,8 @@ fn verify_architecture() -> TaskResult {
         (
             "automexia-ui-model",
             &[
-                "automexia-devops",
+                "automexia-command-productivity",
+                "automexia-connectivity",
                 "automexia-extension-api",
                 "serde",
                 "serde_json",
@@ -3158,13 +3250,13 @@ fn verify_architecture() -> TaskResult {
     )?;
 
     let connection_model = [
-        read(&root().join("automexia-devops/src/connections/automation.rs"))?,
-        read(&root().join("automexia-devops/src/connections/documents.rs"))?,
-        read(&root().join("automexia-devops/src/connections/model.rs"))?,
-        read(&root().join("automexia-devops/src/connections/planner.rs"))?,
-        read(&root().join("automexia-devops/src/connections/state.rs"))?,
-        read(&root().join("automexia-devops/src/connections/validation.rs"))?,
-        read(&root().join("automexia-devops/src/connections/workspace.rs"))?,
+        read(&root().join("automexia-connectivity/src/connections/automation.rs"))?,
+        read(&root().join("automexia-connectivity/src/connections/documents.rs"))?,
+        read(&root().join("automexia-connectivity/src/connections/model.rs"))?,
+        read(&root().join("automexia-connectivity/src/connections/planner.rs"))?,
+        read(&root().join("automexia-connectivity/src/connections/state.rs"))?,
+        read(&root().join("automexia-connectivity/src/connections/validation.rs"))?,
+        read(&root().join("automexia-connectivity/src/connections/workspace.rs"))?,
     ]
     .join("\n");
     let connection_hub = read(&root().join("automexia-ui-model/src/connection_hub.rs"))?;
@@ -3234,7 +3326,7 @@ fn verify_architecture() -> TaskResult {
             && read(&root().join("tools/ci/qa.py"))?
                 .contains("benchmark-connection-planning")
             && root()
-                .join("automexia-devops/benches/connection_planning.rs")
+                .join("automexia-connectivity/benches/connection_planning.rs")
                 .is_file(),
         "F2 connection planning fuzz or benchmark assurance is missing",
     )?;

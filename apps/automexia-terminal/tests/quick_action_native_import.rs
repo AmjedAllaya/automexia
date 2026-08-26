@@ -1,6 +1,6 @@
 use std::fs;
 
-use automexia_devops::actions::NativeAliasSource;
+use automexia_command_productivity::actions::NativeAliasSource;
 use automexia_terminal::automexia::quick_actions::{
     apply_native_alias_import, export_to_path, preview_native_alias_import_file,
     NativeAliasImportSelection, NativeImportError, QuickActionService, QuickActionStore,

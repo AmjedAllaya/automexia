@@ -10,7 +10,7 @@ pub use windows::{EndpointReadError, WindowsEndpoint};
 
 use std::io::{self, Read, Write};
 
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::{
     decode_submission_frame, encode_replacement_frame, encode_reply_frame,
     EditorSubmission, FrameError, NativeEditorReplacement, NativeEditorReply,
     SuggestionCapability, SuggestionLimits,

@@ -1,11 +1,11 @@
 use std::collections::VecDeque;
 use std::io::{BufReader, Cursor};
 
-use automexia_devops::suggestions::helper::{
+use automexia_command_productivity::suggestions::helper::{
     encode_record, HelperRecord, HelperRequest, HelperStatusCode,
 };
-use automexia_devops::suggestions::helper_shell::decode_shell_response;
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::helper_shell::decode_shell_response;
+use automexia_command_productivity::suggestions::{
     AcceptanceContext, EditorSubmission, NativeEditorReplacement, QuoteContext,
     ReplacementSpan, RouteIdentity, ShellKind, SuggestionCapability,
 };

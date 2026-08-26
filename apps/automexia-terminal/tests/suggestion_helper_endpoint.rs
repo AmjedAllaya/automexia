@@ -1,6 +1,6 @@
 use std::io::{self, Cursor, Read, Write};
 
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::{
     decode_submission_frame, encode_reply_frame, AcceptanceContext,
     NativeEditorReplacement, NativeEditorReply, NativeEditorStatus,
     NativeEditorStatusCode,

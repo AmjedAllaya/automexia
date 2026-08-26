@@ -1,4 +1,4 @@
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     AuthState, EnvironmentRisk, OpaqueReference, ProviderCapsule, ProviderKind,
     CONNECTION_SCHEMA_VERSION,
 };
@@ -110,9 +110,9 @@ fn project_inspection_and_rsh_never_mutate_global_project() {
     assert_eq!(quick_action.binding().exact_target(), "payments");
     assert_eq!(
         quick_action.binding().execution(),
-        automexia_devops::actions::ExecutionMode::ExactLaunch
+        automexia_command_productivity::actions::ExecutionMode::ExactLaunch
     );
-    let automexia_devops::actions::ActionTemplate::TypedArgv {
+    let automexia_command_productivity::actions::ActionTemplate::TypedArgv {
         executable_id,
         arguments,
     } = &quick_action.action().template
@@ -126,14 +126,16 @@ fn project_inspection_and_rsh_never_mutate_global_project() {
             .arguments()
             .iter()
             .cloned()
-            .map(|value| automexia_devops::actions::ArgumentToken::Literal { value })
+            .map(|value| {
+                automexia_command_productivity::actions::ArgumentToken::Literal { value }
+            })
             .collect::<Vec<_>>()
     );
     let (transport, rsh) =
         build_rsh(&capsule(11), "deployment/api", Some("server")).unwrap();
     assert!(matches!(
         transport,
-        automexia_devops::connections::TransportDescriptor::OpenShiftRsh { .. }
+        automexia_connectivity::connections::TransportDescriptor::OpenShiftRsh { .. }
     ));
     assert_eq!(
         rsh.arguments(),

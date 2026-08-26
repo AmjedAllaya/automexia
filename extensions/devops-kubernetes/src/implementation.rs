@@ -4,11 +4,11 @@ use std::fs::{Metadata, OpenOptions};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     build_provider_action_candidate, ExecutionMode, ProviderActionCandidate,
     ProviderActionSpec, RiskClass,
 };
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     validate_provider_capsule, validate_provider_context, AuthState, EnvironmentRisk,
     OpaqueReference, ProviderCapsule, ProviderContextFreshness, ProviderContextProvenance,
     ProviderContextTemplate, ProviderKind, ProviderProvenanceKind, ProviderScopeBinding,

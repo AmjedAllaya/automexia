@@ -14,7 +14,7 @@ use crate::automexia::connections::{
     CurrentDirectOpenSshReview, ManagedReceiptPersistenceState, ManagedReceiptRecord,
     ManagedReceiptSink,
 };
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     validate_connection_receipt, ConnectionReceipt, DirectOpenSshDestinationKind,
     DirectOpenSshLaunchBinding, OpaqueReference, OperationResultState,
     CONNECTION_SCHEMA_VERSION,
@@ -420,7 +420,7 @@ impl Drop for RunnerState {
 
 struct OpenSshReviewRequest {
     request_id: u64,
-    preparation: automexia_devops::connections::DirectOpenSshPreparation,
+    preparation: automexia_connectivity::connections::DirectOpenSshPreparation,
     observed_at_ms: u64,
     wake: CompletionWake,
 }
@@ -493,7 +493,7 @@ impl OpenSshReviewRuntime {
 
     fn submit(
         &self,
-        preparation: automexia_devops::connections::DirectOpenSshPreparation,
+        preparation: automexia_connectivity::connections::DirectOpenSshPreparation,
         observed_at_ms: u64,
         wake: CompletionWake,
     ) -> Result<u64, RunnerError> {
@@ -652,7 +652,7 @@ impl ExternalToolRunner {
     /// from input, renderer, PTY, resize, and startup hot paths.
     pub(crate) fn request_openssh_review(
         &self,
-        preparation: automexia_devops::connections::DirectOpenSshPreparation,
+        preparation: automexia_connectivity::connections::DirectOpenSshPreparation,
         observed_at_ms: u64,
         wake: CompletionWake,
     ) -> Result<u64, RunnerError> {
@@ -1140,7 +1140,7 @@ mod openssh_review_worker_tests {
     use std::sync::mpsc;
     use std::time::Duration;
 
-    use automexia_devops::connections::{
+    use automexia_connectivity::connections::{
         prepare_direct_openssh, ConnectionProfileV1, ConnectionSource,
         DestinationSurface, EnvironmentCapsuleTemplate, EnvironmentClassification,
         EnvironmentKind, EnvironmentRisk, IdentityKind, IdentityReference,
@@ -1151,7 +1151,7 @@ mod openssh_review_worker_tests {
     use super::*;
     use crate::context::launch_broker::OpenSshExecutable;
 
-    fn preparation() -> automexia_devops::connections::DirectOpenSshPreparation {
+    fn preparation() -> automexia_connectivity::connections::DirectOpenSshPreparation {
         prepare_direct_openssh(&ConnectionProfileV1 {
             schema_version: CONNECTION_SCHEMA_VERSION,
             id: "worker-profile".into(),
@@ -1270,7 +1270,7 @@ mod openssh_review_worker_tests {
         let runner = ExternalToolRunner::pending_security_review();
         let reviewed = CurrentDirectOpenSshReview::new(
             preparation(),
-            automexia_devops::connections::ResolvedExecutable {
+            automexia_connectivity::connections::ResolvedExecutable {
                 executable_id: "ssh".into(),
                 identity_digest: "e".repeat(64),
             },

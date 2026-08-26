@@ -69,7 +69,7 @@ fn corpus(size: usize) -> Vec<String> {
         .collect()
 }
 
-// This mirrors automexia-devops/src/actions/activation.rs. The benchmark keeps
+// This mirrors automexia-command-productivity/src/actions/activation.rs. The benchmark keeps
 // the copy local so research cannot widen that crate's public API.
 fn in_tree_score(query: &str, candidate: &str) -> Option<i32> {
     let query = query.to_lowercase();

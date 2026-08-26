@@ -76,7 +76,7 @@ provider state.
 | Windows, tabs, panes, PTYs, routes, process lifetime, capability decisions, redacted audit | `apps/automexia-terminal` | Add one reusable `ExternalToolRunner`; do not create a provider or extension launcher. |
 | IDs, manifests, capabilities, exact launch requests, public capsules, bounded text | `automexia-extension-api` | Typed/versioned data only; no process, network, renderer, or credential value. |
 | Bounded worker, cache, cancellation, freshness, operation generation | `automexia-extension-runtime` | Publish immutable state before waking UI; reject stale results. |
-| Provider-neutral connection/profile/recipe/tunnel/review models | `automexia-devops::connections` | Keep pure, bounded, validated, and execution-disabled until the broker accepts a reviewed request. |
+| Provider-neutral connection/profile/recipe/tunnel/review models | `automexia-connectivity::connections` | Keep pure, bounded, validated, and execution-disabled until the broker accepts a reviewed request. |
 | Hub/review/planner projection and accessibility semantics | `automexia-ui-model::connection_hub` | Renderer-neutral projection; application adapter owns actual screen/input/painting. |
 | Static OpenSSH subset and its public metadata | `extensions/devops-ssh` | Exact granted local files only; no `ssh -G`, `Match exec`, `ProxyCommand`, shell expansion, process, or network. |
 | SSH protocol, complete config semantics, agents, keys, host keys, certificates | installed system OpenSSH | Wrap it in a normal Automexia PTY; never replace it. |
@@ -117,7 +117,7 @@ native/release claim.
 
 | Area | Status | Current evidence | Remaining exit work |
 |---|---|---|---|
-| D0 SSH trust/fixture contract | Partially done | ADR 0012 is accepted; schema 5 ratchets immutable schemas 1/2/3/4 with exact direct/routed/tunnel argv, full trust evidence, tunnel lifecycle, recovery/status, receipt/reconnect, 23-scenario native-manifest rules, exact host/artifact binding, a protected workflow, and mutations | ADR 0003 two exact-head approvals/server enforcement and controlled real native fixture execution. |
+| D0 SSH trust/fixture contract | Partially done | ADR 0012 is accepted; schema 6 ratchets immutable schemas 1/2/3/4/5 with exact direct/routed/tunnel argv, full trust evidence, tunnel lifecycle, recovery/status, receipt/reconnect, 23-scenario native-manifest rules, exact host/artifact binding, a protected workflow, and mutations | ADR 0003 two exact-head approvals/server enforcement and controlled real native fixture execution. |
 | D1 contracts and D2 immutable capsules | Fully done locally | `automexia-extension-api`, runtime, DevOps model and architecture checks | Preserve while adding real login/launch; hosted release assurance remains separate. |
 | D3 launch broker | Partially done; nonactivated | The production broker, one application runner, exact executable guard, ContextManager PTY/route seam, bounded lifecycle/audit, approval UX, and mutation checks pass locally | Production constant stays false and linked package unverified until protected approvals, attestation, descendant cleanup, and native evidence pass. |
 | D4 static OpenSSH inventory | Fully done locally | `extensions/devops-ssh`: bounded parser, canonical first-value ProxyJump chains (8 hops/2 KiB), grants, hostile/property/fuzz tests, 10,000-alias benchmark, private revisioned metadata | Deliberately remains non-executing; hosted macOS/longitudinal release proof remains external. |
@@ -378,7 +378,7 @@ gate is false and the linked extension candidate is unverified.
 | Application runner | Fully done locally; nonactivated | Router owns one shared runner; active operations stop at 50, audits at 256, route/session/lease scope is exact, completion requires publication, and shutdown reconciles. | Protected activation and native process/resource proof. |
 | PTY/route lifecycle | Fully done locally; nonactivated, native proof external | ContextManager alone consumes the guard, creates the exact PTY, inserts one independent Context, and marks the matching route/session published. Windows has bounded Job Object termination; Unix retains the waitable leader while signalling the owned process group; PTY workers join with a deadline. | Real OpenSSH descendant/listener cleanup and controlled leak/resource proof on every native platform. Durable audit remains the separate policy row below. |
 | Capability/recovery UX | Fully done locally; nonactivated, controlled evidence external | Review shows public package/launcher, target, route, risk, exact operation, scope, destination, and three accessible decisions. A capacity-one worker publishes a fresh current-executable observation before wake; the controller rejects stale results and requires a second approval. | Protected attestation/activation plus controlled pixels, screen-reader, localization, and high-scale evidence. |
-| Native OpenSSH evidence | Partially done overall; local assurance path fully done | Windows guarded-spawn/ConPTY tests pass; schema-5 validates 23 scenarios and binds the native host, exact commit, fixed OpenSSH versions, binary/package/client hashes, and protected manual workflow. | Real loopback OpenSSH on native Windows/macOS/Linux, separately gated WSL, controlled accessibility, and 1/10/50 resources. |
+| Native OpenSSH evidence | Partially done overall; local assurance path fully done | Windows guarded-spawn/ConPTY tests pass; schema-6 validates 23 scenarios and binds the native host, exact commit, fixed OpenSSH versions, binary/package/client hashes, and protected manual workflow. | Real loopback OpenSSH on native Windows/macOS/Linux, separately gated WSL, controlled accessibility, and 1/10/50 resources. |
 
 The authenticated 2026-08-24 audit found one human collaborator, rulesets
 unavailable on the private Free plan, zero-step Actions billing rejection, and
@@ -514,7 +514,7 @@ by M2's external gates.
   rebuild from current D4 state; changed or missing source fails stale and every
   reconnect still requires a fresh executable/host-trust review and approval.
 - [x] **Fully done — contract and deterministic evidence:** immutable schemas
-  1-4 are retained. Active schema 5 freezes M3-M5 route/trust/status/tunnel/
+  1-4 are retained. Active schema 6 freezes M3-M5 route/trust/status/tunnel/
   lifecycle/native-manifest rules, preserves upstream post-quantum KEX defaults
   and weak-crypto warnings, and is covered by pure, broker, persistence,
   saturation, restart, redaction, mutation, and feature-assurance tests.
@@ -592,12 +592,12 @@ Evidence ledger before implementation:
 
 | Item | Classification | Existing owner/evidence | Missing exit proof/action |
 |---|---|---|---|
-| Provider-neutral local/remote/dynamic schema, 32-tunnel ceiling, session lifetime, profile validation, and fingerprint participation | **Partially done** | `automexia-devops::connections::{model,validation,planner}` plus connection-planning fixtures | Require exact IP/host endpoint grammar, distinguish local and remote listener collision domains, derive transport/risk/owner, and preserve endpoint changes in both plan and review fingerprints. |
+| Provider-neutral local/remote/dynamic schema, 32-tunnel ceiling, session lifetime, profile validation, and fingerprint participation | **Partially done** | `automexia-connectivity::connections::{model,validation,planner}` plus connection-planning fixtures | Require exact IP/host endpoint grammar, distinguish local and remote listener collision domains, derive transport/risk/owner, and preserve endpoint changes in both plan and review fingerprints. |
 | Managed OpenSSH tunnel request | **Not done** | M4 `direct_openssh` rejects every profile containing a tunnel and uses `ClearAllForwardings=yes` | Add an exact `-F none` typed-direct grammar with `-L`/`-R`/`-D`, `ExitOnForwardFailure=yes`, compression/agent/X11/command/multiplex/TUN disabled, and no configuration-derived forwarding. Preserve the existing no-tunnel grammar; reject config-dependent aliases/jumps with tunnels. |
 | Loopback default and stronger confirmation | **Partially done** | `TunnelDefinitionV1::is_loopback`, production/non-loopback planner warnings, generic NetworkListener risk | Canonicalize the safe default, require strong per-use review for remote, non-loopback, or production tunnels, expose redundant text/icon/color meaning, and bind the decision to exact endpoints. |
 | Listener lifecycle, collision, readiness, cancellation, and closure | **Not done** | ContextManager is the sole process/PTY/route owner; the OpenSSH child would own its forwarding sockets | Add a bounded generation/session-scoped pure lifecycle snapshot. Never open a competing application listener or infer readiness from terminal text; accept only owner events, reject stale/terminal reversals, and close every nonterminal tunnel when its route lease ends. |
 | Hub and session-detail projection | **Partially done** | Generic Hub review counts tunnels and blocks non-loopback review; M4 review has no tunnel cards/status | Project exact public endpoint direction, risk/confirmation, OpenSSH ownership, and planned/starting/ready/collision/cancelled/failed/closed state with compact and accessible layouts. Production remains visibly protected. |
-| Deterministic fake/mock evidence | **Partially done** | Schema-4 matrix, exact-argv broker mutations, lifecycle/receipt/reconnect tests | Ratchet schema 5, add tunnel grammar/lifecycle/collision/staleness/cleanup mutations, and validate a bounded redacted native result manifest. |
+| Deterministic fake/mock evidence | **Partially done** | Schema-4 matrix, exact-argv broker mutations, lifecycle/receipt/reconnect tests | Ratchet schema 6, add tunnel grammar/lifecycle/collision/staleness/cleanup mutations, and validate a bounded redacted native result manifest. |
 | Real system OpenSSH and 1/10/50 native evidence | **External prerequisite** | Four-platform scenario definition exists; CI has native Rust jobs | Execute the hermetic loopback fixture on controlled Windows/macOS/Linux runners with `ssh`, `ssh-add`, `ssh-keygen`, and `sshd`; WSL remains separately denied. This local Windows host has OpenSSH 9.5 client tools but no `sshd`, so it cannot honestly produce server/tunnel evidence and M5 cannot install the server without separate elevated authority. |
 | Disable/uninstall/manual-SSH preservation | **Partially done** | Managed activation is const-asserted false and ordinary shell lookup is untouched | Add source/policy/native assertions that the harness is opt-in, never runs at startup, never changes SSH files/services, and records before/after manual-client evidence on controlled runners. |
 
@@ -644,7 +644,7 @@ redacted manifests validate.
   state into the Hub, and terminalizes every nonterminal entry on lease close.
 - [x] **Fully done locally / external native results remain:** exact fake
   preparation/argv/parser, hostile endpoint, collision, staleness, lifecycle,
-  cleanup, decision, UI, and 1/10/50 pure-model tests pass. Active schema 5 and
+  cleanup, decision, UI, and 1/10/50 pure-model tests pass. Active schema 6 and
   the bounded redacted 23-scenario manifest validator reject synthetic release
   claims. Controlled validation also rejects host/architecture/commit drift,
   fixed OpenSSH client/server version drift, linked or changed files, artifact

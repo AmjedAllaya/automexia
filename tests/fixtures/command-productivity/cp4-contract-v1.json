@@ -48,8 +48,8 @@
     "persistence": false
   },
   "source_files": [
-    "automexia-devops/src/actions/provider.rs",
-    "automexia-devops/src/actions/activation.rs",
+    "automexia-command-productivity/src/actions/provider.rs",
+    "automexia-command-productivity/src/actions/activation.rs",
     "extensions/devops-aws/src/lib.rs",
     "extensions/devops-azure/src/lib.rs",
     "extensions/devops-gcp/src/lib.rs",
@@ -65,8 +65,8 @@
     "apps/automexia-terminal/src/renderer/command_palette.rs"
   ],
   "test_files": [
-    "automexia-devops/tests/provider_quick_actions_cp4.rs",
-    "automexia-devops/tests/quick_action_activation.rs",
+    "automexia-command-productivity/tests/provider_quick_actions_cp4.rs",
+    "automexia-command-productivity/tests/quick_action_activation.rs",
     "extensions/devops-aws/src/lib.rs",
     "extensions/devops-azure/src/lib.rs",
     "extensions/devops-gcp/src/lib.rs",
@@ -81,7 +81,7 @@
     "apps/automexia-terminal/tests/cp4_provider_product_publication.rs"
   ],
   "fuzz_target": "fuzz/fuzz_targets/provider_quick_actions.rs",
-  "benchmark": "automexia-devops/benches/quick_actions.rs",
+  "benchmark": "automexia-command-productivity/benches/quick_actions.rs",
   "documents": [
     "docs/PROVIDER-AWARE-QUICK-ACTIONS-IMPLEMENTATION-AUDIT.md",
     "docs/COMMAND-PRODUCTIVITY.md",

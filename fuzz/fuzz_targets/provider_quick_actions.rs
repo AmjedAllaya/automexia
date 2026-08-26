@@ -1,12 +1,10 @@
 #![no_main]
 
-use automexia_devops::{
-    actions::{
+use automexia_command_productivity::actions::{
         build_provider_action_candidate, build_provider_action_snapshot,
         revalidate_provider_action, ExecutionMode, ProviderActionSpec, RiskClass,
-    },
-    connections::{parse_provider_capsule_json, ProviderKind},
-};
+    };
+use automexia_connectivity::connections::{parse_provider_capsule_json, ProviderKind};
 use libfuzzer_sys::fuzz_target;
 
 const MAX_FUZZ_INPUT_BYTES: usize = 64 * 1024;

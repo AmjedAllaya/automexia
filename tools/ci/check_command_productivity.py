@@ -144,7 +144,6 @@ PRODUCTIVITY_MARKERS = {
     "completion_adapter",
     "actions.toml",
     "commandproductivity",
-    "command_productivity",
 }
 GRID_INFERENCE_MARKERS = {
     "terminal.grid",
@@ -178,16 +177,16 @@ CP5_INERT_SHELL_FILES = {
     "shell-integration/suggestions/powershell/automexia-suggestions.ps1",
 }
 CP2_PURE_ACTION_FILES = {
-    "automexia-devops/src/actions/activation.rs",
-    "automexia-devops/src/actions/imports.rs",
-    "automexia-devops/src/actions/mod.rs",
-    "automexia-devops/src/actions/model.rs",
-    "automexia-devops/src/actions/packs.rs",
-    "automexia-devops/src/actions/projection.rs",
-    "automexia-devops/src/actions/validation.rs",
+    "automexia-command-productivity/src/actions/activation.rs",
+    "automexia-command-productivity/src/actions/imports.rs",
+    "automexia-command-productivity/src/actions/mod.rs",
+    "automexia-command-productivity/src/actions/model.rs",
+    "automexia-command-productivity/src/actions/packs.rs",
+    "automexia-command-productivity/src/actions/projection.rs",
+    "automexia-command-productivity/src/actions/validation.rs",
 }
 CP4_PURE_ACTION_FILES = {
-    "automexia-devops/src/actions/provider.rs",
+    "automexia-command-productivity/src/actions/provider.rs",
 }
 CP4_PROVIDER_ACTION_FILES = {
     "extensions/devops-aws/src/lib.rs",
@@ -200,7 +199,7 @@ CP4_PROVIDER_ACTION_FILES = {
 # ADR 0025 authorizes these exact source owners while CP56 policy independently
 # enforces preview nonactivation, bounded authority, and native fallback.
 CP5_SUGGESTION_SOURCE_FILES = {
-    "automexia-devops/src/suggestions/mod.rs",
+    "automexia-command-productivity/src/suggestions/mod.rs",
     "automexia-ui-model/src/suggestions.rs",
     "apps/automexia-terminal/src/automexia/suggestions/controller.rs",
     "apps/automexia-terminal/src/automexia/suggestions/mod.rs",
@@ -838,7 +837,7 @@ def validate_pure_action_sources(root: Path, runtime_files: list[Path]) -> set[s
         path.relative_to(root).as_posix()
         for path in runtime_files
         if path.relative_to(root).as_posix().startswith(
-            "automexia-devops/src/actions/"
+            "automexia-command-productivity/src/actions/"
         )
     }
     if not present:

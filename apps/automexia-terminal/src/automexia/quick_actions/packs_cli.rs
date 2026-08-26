@@ -2,7 +2,7 @@
 
 use std::io;
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     builtin_pack, builtin_packs, evaluate_pack_health, materialize_pack_action,
     pack_alias_eligibility, pack_registry_digest, validate_pack_registry, ActionTemplate,
     ArgumentToken, PackAction, PackActionEffect, PackHealthState, PackToolObservation,

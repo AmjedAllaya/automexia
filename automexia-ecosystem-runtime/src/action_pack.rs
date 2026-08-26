@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     validate_quick_actions, ActionProvenance, ActionScope, ActionTemplate, ExecutionMode,
     QuickAction, QuickActionDocument, WorkingDirectoryPolicy,
     QUICK_ACTION_SCHEMA_VERSION,
@@ -200,7 +200,7 @@ pub fn map_action_pack_document(
 
 #[cfg(test)]
 mod tests {
-    use automexia_devops::actions::{
+    use automexia_command_productivity::actions::{
         ActionTemplate, ArgumentToken, RiskClass, ShellKind,
     };
     use automexia_ecosystem::{Compatibility, ExtensionKind, WIT_WORLD};

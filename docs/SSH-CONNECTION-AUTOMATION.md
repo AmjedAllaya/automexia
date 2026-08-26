@@ -867,7 +867,7 @@ nonactivated.**
   descriptors use a configuration-free typed-direct grammar, loopback defaults,
   endpoint-bound strong Allow-once review, and a bounded session/generation
   lifecycle with compact accessible state.
-- [ ] **Partially done / external:** schema 5, synthetic mutations, and the
+- [ ] **Partially done / external:** schema 6, synthetic mutations, and the
   bounded redacted native-manifest validator pass; real Windows/macOS/Linux
   OpenSSH, 1/10/50 resources, enable/disable/uninstall, manual-SSH, controlled
   accessibility, and public-status execution evidence remain.

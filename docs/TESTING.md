@@ -263,7 +263,7 @@ cargo test -p automexia-terminal --bin automexia --locked direct_openssh_review_
 cargo xtask verify architecture
 ```
 
-The checker locks schema-1/schema-2/schema-3/schema-4 immutability and schema-5's
+The checker locks schema-1/schema-2/schema-3/schema-4/schema-5 immutability and schema-6's
 production-disabled activation, linked unverified principal, trusted digest source/size, exact
 version/contract/verification, manual-shell behavior, grants/audits/defaults,
 nine trust boundaries, four-platform resolution, authority ceiling, 23 native
@@ -1129,24 +1129,15 @@ are in [OpenSSH inventory](SSH-INVENTORY.md).
 The F2/D5.0 capability-free baseline is implemented and remains non-activated.
 It is reproduced locally with:
 
-    cargo test -p automexia-devops --tests
+    cargo test -p automexia-connectivity --tests
     cargo test -p automexia-ui-model --tests
     python tools/ci/check_connection_hub_f2.py
     python tools/ci/test_connection_hub_f2.py
-    cargo bench -p automexia-devops --bench connection_planning --no-run
+    cargo bench -p automexia-connectivity --bench connection_planning --no-run
     cargo test --manifest-path fuzz/Cargo.toml --no-run
     cargo xtask verify architecture
 
-The DevOps tests cover every top-level strict/versioned record, sealed validated
-wrappers, document limits, duplicate/missing/cyclic dependencies, duplicate
-review identities, cross-recipe variable collisions, pre-allocation plan-step
-ceilings, hostile controls/bidi in documents and plan overrides, secret-bearing
-and command-shaped input, option confusion, policy/retry combinations,
-redaction, deterministic plan fingerprints, active-operation authentication
-correlation, late-generation rejection, canonical event IDs, all authentication/
-result states and transitions, exactly 64 steps, order-independent capability/
-executable inputs, panic-free sequence conversion, and the all-false process/
-network/provider/credential/PTY/listener authority ceiling.
+The connectivity tests cover strict/versioned records and sealed validation; all document/dependency/review/step ceilings; hostile, command-shaped, option-confusing, and secret-bearing input; redaction and stable fingerprints; authentication correlation, stale generations, and state transitions; 64-step/order-independent/panic-free conversion; and the all-false process/network/provider/credential/PTY/listener authority ceiling.
 
 The UI-model tests cover the ten-provider and all-auth fixture matrices, every
 Hub empty/loading/failure state, wide/medium/narrow projection at 100-400% text
@@ -1194,7 +1185,7 @@ resource/persistence owner. This does not waive those gates for D5.1/D5.2.
 
 The M3 source slice is application-wired and deliberately nonactivated:
 
-    cargo test -p automexia-devops --test direct_openssh_review --locked
+    cargo test -p automexia-connectivity --test direct_openssh_review --locked
     cargo test -p automexia-terminal launch_broker::tests --locked
     cargo test -p automexia-terminal automexia::connections::receipts::tests --locked
     cargo test -p automexia-terminal automexia::connections::runtime::tests::managed_receipt --locked
@@ -1241,7 +1232,7 @@ a dedicated C: temporary target with 23.58 GiB free, passed all three isolated
 verification phases and the application-version smoke test, then removed its
 7.79-GiB verification tree and disposable outer target.
 
-Active schema 5 freezes the M3/M4 rules plus M5's typed-tunnel/native-manifest
+Active schema 6 freezes the M3/M4 rules plus M5's typed-tunnel/native-manifest
 contract and hash-checks historical schemas 1, 2, 3, and 4. No test in this
 slice enables `MANAGED_SESSION_LAUNCH_ENABLED` for the product or treats
 `Unverified` as attested. Real OpenSSH prompts, network traffic, descendant
@@ -1252,7 +1243,7 @@ Windows/macOS/Linux/WSL 1/10/50 resource campaigns remain external gates.
 
 The M4 source slice is nonactivated and can be reproduced with:
 
-    cargo test -p automexia-devops --test direct_openssh_review --locked
+    cargo test -p automexia-connectivity --test direct_openssh_review --locked
     cargo test -p automexia-devops-ssh --locked
     cargo test -p automexia-ui-model --test direct_openssh_review --locked
     cargo test -p automexia-ui-model --test connection_hub --locked
@@ -1319,7 +1310,7 @@ native cleanup proof, and cross-platform resources remain external gates.
 
 The M5 source and evidence-contract suites are reproducible with:
 
-    cargo test -p automexia-devops --test direct_openssh_tunnels --locked
+    cargo test -p automexia-connectivity --test direct_openssh_tunnels --locked
     cargo test -p automexia-ui-model --test direct_openssh_review --locked
     cargo test -p automexia-terminal --bin automexia --locked strong_tunnels_reject_session_grants_and_require_allow_once
     cargo test -p automexia-terminal connection_hub --locked
@@ -1337,8 +1328,8 @@ endpoints, local/dynamic versus remote collision domains, loopback defaults,
 strong confirmation, config-route denial, endpoint staleness, owner-scoped
 lifecycle transitions, stale observations, terminal reversal, closure, compact
 icon/color/text/accessibility projection, disabled session grants, and
-deterministic 1/10/50 cleanup. The repository checker binds active schema 5 to
-immutable schemas 1-4 and the synthetic evidence fixture. The Python mutation
+deterministic 1/10/50 cleanup. The repository checker binds active schema 6 to
+immutable schemas 1-5 and the synthetic evidence fixture. The Python mutation
 sets cover duplicate JSON keys, oversize manifests, contract/source drift, WSL,
 synthetic release claims, missing/reordered/failed scenarios, resource cleanup,
 manual-client/disable/uninstall baselines, forbidden fields, and redaction
@@ -1589,7 +1580,7 @@ substitute for controlled native evidence.
 ## CP2.0-CP2.2 Quick Action assurance
 
 The capability-free schema/parser/validator, activation index, and CP3.0
-projection compiler remain in the exact five-file `automexia-devops/src/actions`
+projection compiler remain in the exact five-file `automexia-command-productivity/src/actions`
 boundary. CP2.1/CP2.2 use exactly
 eight reviewed app sources under `automexia::quick_actions` for bounded private no-follow storage,
 atomic primary/one-previous recovery, nonblocking cross-process lock/CAS,
@@ -1613,13 +1604,13 @@ aliases](DEVOPS-ALIASES.md#verification-plan).
 Run the focused CP2.0-CP2.2 gate with:
 
 ```powershell
-cargo test -p automexia-devops --all-targets --locked
+cargo test -p automexia-command-productivity --all-targets --locked
 cargo test -p automexia-terminal --lib quick_actions --locked
 cargo test -p automexia-terminal --test quick_action_persistence --locked
 cargo test -p automexia-terminal --test quick_action_transfer --locked
 cargo test -p automexia-ui-model quick_actions --locked
 cargo clippy -p automexia-terminal --lib --locked -- -D warnings
-cargo bench -p automexia-devops --bench quick_actions --locked -- --noplot
+cargo bench -p automexia-command-productivity --bench quick_actions --locked -- --noplot
 cargo bench -p automexia-terminal --bench quick_action_store --locked -- --noplot
 python tools/ci/check_devops_alias_spec.py
 python tools/ci/test_devops_alias_spec.py
@@ -1662,8 +1653,8 @@ reads/writes a profile or executes a provider.
 Run its focused gate with:
 
 ```powershell
-cargo test -p automexia-devops --test quick_action_projection --locked
-cargo bench -p automexia-devops --bench quick_actions --no-run --locked
+cargo test -p automexia-command-productivity --test quick_action_projection --locked
+cargo bench -p automexia-command-productivity --bench quick_actions --no-run --locked
 cargo check --manifest-path fuzz/Cargo.toml --bin quick_action_projection
 python tools/ci/check_command_productivity_cp30.py
 python tools/ci/test_command_productivity_cp30.py
@@ -1715,7 +1706,7 @@ python tools/ci/test_devops_alias_spec.py
 cargo test -p automexia-terminal --lib quick_actions::aliases::tests --locked -- --nocapture
 cargo test -p automexia-terminal --lib cli::tests --locked -- --nocapture
 cargo test -p automexia-terminal --lib aliases_cli::tests --locked -- --nocapture
-cargo clippy -p automexia-devops -p automexia-terminal --all-targets --locked -- -D warnings
+cargo clippy -p automexia-command-productivity -p automexia-terminal --all-targets --locked -- -D warnings
 cargo bench -p automexia-terminal --bench quick_action_store --no-run --locked
 ```
 
@@ -2028,11 +2019,11 @@ human-reviewed evidence named there.
 CP3.2 is fully done at the local source boundary. Its focused validation is:
 
 ```text
-cargo test -p automexia-devops --test quick_action_packs --lib
+cargo test -p automexia-command-productivity --test quick_action_packs --lib
 cargo test -p automexia-terminal cli::tests::pack_ --lib
 cargo test -p automexia-terminal packs_cli --lib
 cargo check --manifest-path fuzz/Cargo.toml --bin quick_action_packs
-cargo bench -p automexia-devops --bench quick_actions --no-run
+cargo bench -p automexia-command-productivity --bench quick_actions --no-run
 python tools/ci/check_command_productivity_cp32.py
 python tools/ci/test_command_productivity_cp32.py
 python tools/ci/check_devops_alias_spec.py
@@ -2069,21 +2060,21 @@ cross-platform and
 Run the focused review-only evidence with:
 
 ```text
-cargo test -p automexia-devops --locked --test connection_planning
-cargo test -p automexia-devops --locked --test connection_automation_m6
-cargo test -p automexia-devops --locked --test workspace_automation_m6
+cargo test -p automexia-connectivity --locked --test connection_planning
+cargo test -p automexia-connectivity --locked --test connection_automation_m6
+cargo test -p automexia-connectivity --locked --test workspace_automation_m6
 cargo test -p automexia-ui-model --locked --test connection_hub
 cargo test -p automexia-terminal --locked --test connection_library
 cargo test -p automexia-terminal --locked --test m6_workspace_product
 cargo test -p automexia-terminal --locked --bin automexia workspace_
-cargo clippy -p automexia-devops --all-targets --all-features --locked -- -D warnings
+cargo clippy -p automexia-connectivity --all-targets --all-features --locked -- -D warnings
 cargo clippy -p automexia-ui-model --all-targets --all-features --locked -- -D warnings
 cargo clippy -p automexia-terminal --test connection_library --locked -- -D warnings
 python tools/ci/check_connection_hub_f2.py
 python tools/ci/test_connection_hub_f2.py
 cargo xtask verify architecture
-cargo bench -p automexia-devops --bench connection_planning --locked -- workspace_validate_16_windows_64_panes_128_connections --noplot --sample-size 30
-cargo bench -p automexia-devops --bench connection_planning --locked -- broadcast_review_50_targets --noplot --sample-size 30
+cargo bench -p automexia-connectivity --bench connection_planning --locked -- workspace_validate_16_windows_64_panes_128_connections --noplot --sample-size 30
+cargo bench -p automexia-connectivity --bench connection_planning --locked -- broadcast_review_50_targets --noplot --sample-size 30
 ```
 
 Local Windows x86_64 evidence on 2026-08-22 passed 9 planner, 6 automation, 10
@@ -2139,7 +2130,7 @@ M7 is fully done at the authority-free local framework boundary. Run its focused
 evidence with:
 
 ```text
-cargo test -p automexia-devops --locked --test provider_auth_m7
+cargo test -p automexia-connectivity --locked --test provider_auth_m7
 cargo test -p automexia-extension-runtime --locked provider_context_rebind_requires_a_fresh_session
 cargo test -p automexia-ui-model --locked --test connection_hub
 python tools/ci/check_provider_auth_m7.py
@@ -2148,7 +2139,7 @@ python tools/ci/check_connection_hub_f2.py
 python tools/ci/test_connection_hub_f2.py
 python tools/ci/validate_repository.py
 cargo check --manifest-path fuzz/Cargo.toml --locked --bin connection_planning
-cargo bench -p automexia-devops --locked --bench connection_planning -- provider_auth_bind_and_read_64_capsules
+cargo bench -p automexia-connectivity --locked --bench connection_planning -- provider_auth_bind_and_read_64_capsules
 ```
 
 The 12 M7 integration tests cover strict 16 MiB JSON ingress; provider/context
@@ -2246,11 +2237,11 @@ CP3.3 is fully done at the local source boundary. Its complete schema-1
 contract and evidence are in ADR 0021 and the phase audit. Run:
 
 ```text
-cargo test -p automexia-devops --test quick_action_imports --locked
+cargo test -p automexia-command-productivity --test quick_action_imports --locked
 cargo test -p automexia-terminal --test quick_action_native_import --locked
 cargo test -p automexia-terminal --test quick_action_workspace_trust --locked
 cargo check --manifest-path fuzz/Cargo.toml --bin quick_action_imports
-cargo bench -p automexia-devops --bench quick_actions --no-run --locked
+cargo bench -p automexia-command-productivity --bench quick_actions --no-run --locked
 python tools/ci/check_command_productivity_cp33.py
 python tools/ci/test_command_productivity_cp33.py
 ```
@@ -2266,14 +2257,14 @@ M13/CP4 is product-integrated and nonactivated locally. M8-M12 own each
 provider's suite; run CP4 integration evidence with:
 
 ```text
-cargo test -p automexia-devops --test provider_quick_actions_cp4 --locked
-cargo test -p automexia-devops --test quick_action_activation --locked
+cargo test -p automexia-command-productivity --test provider_quick_actions_cp4 --locked
+cargo test -p automexia-command-productivity --test quick_action_activation --locked
 cargo test -p automexia-terminal --test cp4_provider_product_publication --locked
 cargo test -p automexia-terminal --lib --locked provider
 cargo test -p automexia-terminal --bin automexia --locked provider
 cargo test -p automexia-ui-model --locked provider_context
 cargo check --manifest-path fuzz/Cargo.toml --bin provider_quick_actions
-cargo bench -p automexia-devops --bench quick_actions --locked -- provider_quick_action
+cargo bench -p automexia-command-productivity --bench quick_actions --locked -- provider_quick_action
 python3 tools/ci/check_provider_quick_actions_cp4.py
 python3 tools/ci/test_provider_quick_actions_cp4.py
 cargo xtask verify architecture

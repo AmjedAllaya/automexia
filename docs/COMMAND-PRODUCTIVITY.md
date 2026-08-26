@@ -517,7 +517,7 @@ generated aliases, provider authentication, a custom popup, or exact launch.
 
 ### CP2 — persistent typed Quick Actions
 
-**CP2.0 complete:** `automexia-devops::actions` now owns the capability-free,
+**CP2.0 complete:** `automexia-command-productivity::actions` now owns the capability-free,
 bounded schema-1 TOML parser, typed model, deterministic validator, validated-
 only wrapper, exact architecture allowlist, and versioned hostile corpus. It has
 no filesystem, watcher, process, network, secret, UI, PTY, shell-profile, alias,
@@ -562,7 +562,7 @@ are automated now.
 
 ### CP3 — projection, aliases, and first-party DevOps packs
 
-**CP3.0 complete at its pure boundary:** `automexia-devops::actions` compiles
+**CP3.0 complete at its pure boundary:** `automexia-command-productivity::actions` compiles
 validated aliases deterministically for PowerShell, Bash, Zsh, Fish, and CMD.
 Portable eligibility, exact user override consent, native ownership, completion
 and tool health, rollback/source/artifact metadata, hard observation/file limits,

@@ -13,7 +13,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     canonical_projection_source_digest, compile_shell_projection,
     verify_projection_artifact, ActionTemplate, CollisionEntry, CollisionInventory,
     CompletionHealth, CompletionInventory, CompletionMode, CompletionObservation,
@@ -1340,8 +1340,10 @@ impl GenerationManifest {
                 fields[6].split(',').map(str::to_owned).collect()
             };
             if ready_bindings != names.len()
-                || ready_bindings > automexia_devops::actions::MAX_ENABLED_ALIASES
-                || decisions > automexia_devops::actions::MAX_ENABLED_ALIASES
+                || ready_bindings
+                    > automexia_command_productivity::actions::MAX_ENABLED_ALIASES
+                || decisions
+                    > automexia_command_productivity::actions::MAX_ENABLED_ALIASES
                 || names.iter().any(|name| !safe_alias_name(name))
             {
                 return Err(AliasError::new(AliasErrorCode::InvalidManifest));
@@ -1835,7 +1837,7 @@ fn hash_regular_file(path: &Path) -> Result<String, AliasError> {
 fn completion_health(
     config_root: &Path,
     shell: ShellKind,
-    action: &automexia_devops::actions::QuickAction,
+    action: &automexia_command_productivity::actions::QuickAction,
 ) -> Option<CompletionHealth> {
     let ActionTemplate::TypedArgv { executable_id, .. } = &action.template else {
         return None;
@@ -2045,7 +2047,7 @@ fn hex_bytes(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use automexia_devops::actions::{
+    use automexia_command_productivity::actions::{
         validate_quick_actions, ActionProvenance, ActionScope, ActionTemplate,
         AliasArgumentPolicy, AliasProjection, AliasProjectionMode, CompletionMode,
         ExecutionMode, OverridePolicy, QuickAction, QuickActionDocument, RiskClass,

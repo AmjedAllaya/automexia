@@ -1001,11 +1001,11 @@ def main() -> int:
             ),
             (
                 "benchmark-quick-actions",
-                ["cargo", "bench", "-p", "automexia-devops", "--bench", "quick_actions", "--locked", "--", "--noplot"],
+                ["cargo", "bench", "-p", "automexia-command-productivity", "--bench", "quick_actions", "--locked", "--", "--noplot"],
             ),
             (
                 "benchmark-connection-planning",
-                ["cargo", "bench", "-p", "automexia-devops", "--bench", "connection_planning", "--locked", "--", "--noplot"],
+                ["cargo", "bench", "-p", "automexia-connectivity", "--bench", "connection_planning", "--locked", "--", "--noplot"],
             ),
             (
                 "benchmark-quick-action-store",

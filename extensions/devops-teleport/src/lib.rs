@@ -8,11 +8,11 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     build_provider_action_candidate, ExecutionMode, ProviderActionCandidate,
     ProviderActionSpec, RiskClass,
 };
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     validate_provider_auth_operation, validate_provider_context, AuthState,
     EnvironmentRisk, OpaqueReference, ProviderAuthOperation, ProviderAuthOperationKind,
     ProviderBrowserFlow, ProviderBrowserPolicy, ProviderCapsule,

@@ -5,6 +5,8 @@ members = [
     "automexia-extension-runtime",
     "automexia-ecosystem",
     "automexia-ecosystem-runtime",
+    "automexia-connectivity",
+    "automexia-command-productivity",
     "automexia-devops",
     "extensions/devops-aws",
     "extensions/devops-azure",
@@ -66,6 +68,8 @@ automexia-extension-api = { path = "automexia-extension-api", version = "0.4.0" 
 automexia-extension-runtime = { path = "automexia-extension-runtime", version = "0.4.0" }
 automexia-ecosystem = { path = "automexia-ecosystem", version = "0.4.0" }
 automexia-ecosystem-runtime = { path = "automexia-ecosystem-runtime", version = "0.4.0" }
+automexia-connectivity = { path = "automexia-connectivity", version = "0.4.0" }
+automexia-command-productivity = { path = "automexia-command-productivity", version = "0.4.0" }
 automexia-devops = { path = "automexia-devops", version = "0.4.0" }
 automexia-devops-aws = { path = "extensions/devops-aws", version = "0.4.0" }
 automexia-devops-azure = { path = "extensions/devops-azure", version = "0.4.0" }

@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     environment_risk_label, ActionSearchHit, ExecutionMode, ExpandedAction,
     PlaceholderBindings, PlaceholderSensitivity, ProviderActionBinding,
     ProviderActionDecision, ProviderActionReview, QuickAction, RiskClass, SearchContext,
@@ -320,7 +320,7 @@ impl Screen<'_> {
         }
 
         let shell = self.current_action_context().shell;
-        match automexia_devops::actions::expand_for_shell(
+        match automexia_command_productivity::actions::expand_for_shell(
             action,
             shell,
             &self.action_surface.state.bindings,
@@ -734,7 +734,7 @@ fn shell_kind(identity: &str, wsl_distro: Option<&str>) -> ShellKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use automexia_devops::actions::{
+    use automexia_command_productivity::actions::{
         ActionProvenance, ActionScope, ActionTemplate, Placeholder, RiskClass,
         WorkingDirectoryPolicy,
     };

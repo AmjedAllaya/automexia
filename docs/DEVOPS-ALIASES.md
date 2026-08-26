@@ -1072,8 +1072,8 @@ preflight and records redacted evidence.
 Exit: satisfied at the pure source/model boundary. The focused commands are:
 
 ```text
-cargo test -p automexia-devops --all-targets --locked
-cargo clippy -p automexia-devops --all-targets --locked -- -D warnings
+cargo test -p automexia-command-productivity --all-targets --locked
+cargo clippy -p automexia-command-productivity --all-targets --locked -- -D warnings
 python tools/ci/check_devops_alias_spec.py
 python tools/ci/test_devops_alias_spec.py
 python tools/ci/check_command_productivity.py

@@ -22,6 +22,16 @@ the claim.
 ## Canonical ownership
 
 - `docs/index.md` owns navigation.
+- `docs/INSTALLATION.md` owns public availability, host preparation, the
+  supported source-build path, first verified launch, source updates, build
+  cleanup, source removal, and the boundary for future signed packages.
+- `docs/GETTING-STARTED.md` owns the first-session tutorial after installation.
+- `docs/EXTENSIONS.md` owns the plain-language user explanation of why
+  extensions exist, the current first-party inventory, public availability,
+  and the planned installation experience. It summarizes rather than replaces
+  the exact ecosystem, provider, architecture, and roadmap authorities.
+- `docs/FAQ.md` owns short onboarding answers and must link to exact authorities
+  instead of creating new feature, platform, security, or release claims.
 - `docs/PRODUCT-VISION.md` owns Automexia's purpose, audience, values,
   experience principles, and broader direction. It does not define feature
   availability.
@@ -34,6 +44,7 @@ the claim.
 - `docs/CONFIGURATION.md`, `docs/KEYBOARD.md`, and
   `docs/CLI-REFERENCE.md` own exact public reference.
 - `docs/ARCHITECTURE.md` and `docs/adr/` own technical rationale.
+- `docs/FEATURE-OWNERSHIP-AUDIT.md` owns the evidence-led map from implemented feature families to core, application, domain-package, UI-model, and extension owners; ADR 0035 owns the durable placement rule.
 - `docs/BUILD-WRAP-ADOPT-ARCHITECTURE.md` owns the planned technology
   decision matrix and the core/first-party-extension/external-authority split.
 - `docs/AUTOMATION-STUDIO-ARCHITECTURE.md` owns the proposed embedded file-
@@ -233,7 +244,17 @@ when CI cannot fetch them.
 Markdown files are intentionally standalone, use a single H1, relative links,
 stable headings, and no repository-specific rendering extensions. A site
 generator can map the four page types into navigation without rewriting
-content. Generate website search and navigation from `docs/index.md`, and use
-the machine-readable feature ledger for capability/evidence views. Source code,
-not a website copy, remains authoritative so offline and online documentation
+content.
+
+The primary public journey is:
+
+1. `README.md` and `docs/index.md` explain the value and route the reader;
+2. `docs/INSTALLATION.md` gets the application running;
+3. `docs/GETTING-STARTED.md` and `docs/user-guide/index.md` teach the workspace;
+4. task guides lead to exact CLI, keyboard, configuration, platform, security,
+   and troubleshooting references.
+
+Generate website search and navigation from `docs/index.md`, and use the
+machine-readable feature ledger for capability/evidence views. Source code, not
+a website copy, remains authoritative so offline and online documentation
 cannot drift.

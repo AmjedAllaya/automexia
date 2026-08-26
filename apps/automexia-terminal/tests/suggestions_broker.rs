@@ -1,4 +1,4 @@
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::{
     decode_replacement_frame, encode_submission_frame, AcceptanceBindings,
     AcceptanceContext, Candidate, CandidateFreshness, CandidateKind, CandidateRisk,
     CandidateSource, CompletionMode, EditorRequest, EditorSubmission,

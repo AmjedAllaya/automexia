@@ -66,7 +66,7 @@ class AliasSpecificationTests(unittest.TestCase):
 
     def test_pure_model_source_boundary_cannot_expand(self) -> None:
         changed = deepcopy(CONTRACT)
-        changed["model_files"].append("automexia-devops/src/actions/runtime.rs")
+        changed["model_files"].append("automexia-command-productivity/src/actions/runtime.rs")
         with self.assertRaisesRegex(POLICY.AliasSpecError, "pure model source"):
             POLICY.validate_contract(changed)
 

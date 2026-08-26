@@ -45,13 +45,13 @@
     "uninstall_owner": "CP3.1-exact-managed-artifact"
   },
   "model_files": [
-    "automexia-devops/src/actions/activation.rs",
-    "automexia-devops/src/actions/mod.rs",
-    "automexia-devops/src/actions/model.rs",
-    "automexia-devops/src/actions/projection.rs",
-    "automexia-devops/src/actions/validation.rs"
+    "automexia-command-productivity/src/actions/activation.rs",
+    "automexia-command-productivity/src/actions/mod.rs",
+    "automexia-command-productivity/src/actions/model.rs",
+    "automexia-command-productivity/src/actions/projection.rs",
+    "automexia-command-productivity/src/actions/validation.rs"
   ],
-  "test_file": "automexia-devops/tests/quick_action_projection.rs",
+  "test_file": "automexia-command-productivity/tests/quick_action_projection.rs",
   "required_tests": [
     "every_shell_compiler_is_deterministic_bounded_and_nonactivated",
     "typed_bindings_compile_to_native_positional_contracts",
@@ -68,7 +68,7 @@
     "available_native_shells_parse_and_capture_exact_typed_arguments"
   ],
   "fuzz_target": "fuzz/fuzz_targets/quick_action_projection.rs",
-  "benchmark": "automexia-devops/benches/quick_actions.rs",
+  "benchmark": "automexia-command-productivity/benches/quick_actions.rs",
   "documents": [
     "docs/COMMAND-PRODUCTIVITY.md",
     "docs/DEVOPS-ALIASES.md",

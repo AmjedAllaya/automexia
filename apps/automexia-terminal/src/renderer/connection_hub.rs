@@ -3650,7 +3650,7 @@ mod tests {
                 total_providers: 1,
                 visible_range: 0..1,
                 rows: vec![automexia_ui_model::connection_hub::ProviderCatalogRowView {
-                    provider: automexia_devops::connections::ProviderKind::Aws,
+                    provider: automexia_connectivity::connections::ProviderKind::Aws,
                     provider_label: "AWS".into(),
                     semantic_icon: "AWS".into(),
                     public_identity: "account 123456789012".into(),

@@ -74,14 +74,14 @@ FORBIDDEN_PRIMITIVES = {
     "unsafe {",
 }
 FORBIDDEN_VALIDATION_BYPASSES = {
-    "automexia-devops/src/connections/model.rs": {
+    "automexia-connectivity/src/connections/model.rs": {
         "impl From<ConnectionProfileV1> for ValidatedConnectionProfile",
         "impl From<AutomationRecipeV1> for ValidatedAutomationRecipe",
     },
 }
 FORBIDDEN_PANIC_PRIMITIVES = {".expect(", ".unwrap("}
 REQUIRED_SOURCE_TOKENS = {
-    "automexia-devops/src/connections/model.rs": {
+    "automexia-connectivity/src/connections/model.rs": {
         "ConnectionDefinition", "ConnectionObservation", "ConnectionIntent",
         "ConnectionReview", "ConnectionReceipt", "ConnectionProfileV1",
         "AutomationRecipeV1", "AutomationStepV1", "TunnelDefinitionV1",
@@ -89,13 +89,13 @@ REQUIRED_SOURCE_TOKENS = {
         "MAX_STEPS_PER_RECIPE: usize = 64", "deny_unknown_fields",
         "from_validated", "operation_id: String",
     },
-    "automexia-devops/src/connections/automation.rs": {
+    "automexia-connectivity/src/connections/automation.rs": {
         "RecipeRunMode", "NoHooks", "review_recipe_run",
         "review_remote_initialization", "RemoteOperation",
         "RecipeRunLifecycle", "apply_recipe_run_event",
         "execution_enabled: false", "stale recipe-run generation was rejected",
     },
-    "automexia-devops/src/connections/workspace.rs": {
+    "automexia-connectivity/src/connections/workspace.rs": {
         "WorkspaceIntentV1", "WorkspaceRestorePlan", "validate_workspace",
         "resolve_workspace_restore", "automatic_reconnect: false",
         "resume_interrupted_actions: false", "BroadcastReview",
@@ -103,22 +103,22 @@ REQUIRED_SOURCE_TOKENS = {
         "MAX_BROADCAST_TARGETS: usize = 50", "execution_enabled: false",
         "lifecycle.approval_fingerprint != review.approval_fingerprint",
     },
-    "automexia-devops/src/connections/documents.rs": {
+    "automexia-connectivity/src/connections/documents.rs": {
         "validate_profile_document", "validate_recipe_document",
         "DependencyCycle", "MAX_PROFILES", "MAX_RECIPES",
     },
-    "automexia-devops/src/connections/validation.rs": {
+    "automexia-connectivity/src/connections/validation.rs": {
         "contains_hostile_format", "looks_secret_bearing_name",
         "validate_retry", "dependency_cycle", "MAX_AUTOMATIC_ATTEMPTS",
         "option-like targets are forbidden", "decision_codes", "executable_ids",
         "validate_resolved_step_policy",
     },
-    "automexia-devops/src/connections/planner.rs": {
+    "automexia-connectivity/src/connections/planner.rs": {
         "fingerprint_profile", "fingerprint_recipe", "resolve_connection_plan",
         "requested_capabilities.sort", "execution_enabled: false", "plan_sequence",
         "AuthorityKind::Process", "AuthorityKind::Listener",
     },
-    "automexia-devops/src/connections/state.rs": {
+    "automexia-connectivity/src/connections/state.rs": {
         "apply_auth_event", "apply_result_event", "InvalidTransition",
         "AuthState::Denied", "AuthState::Stale", "OperationResultState::Offline",
         "require_current_operation",
@@ -141,7 +141,7 @@ REQUIRED_APPLICATION_TOKENS = {
     },
 }
 REQUIRED_TESTS = {
-    "automexia-devops/tests/connection_automation_m6.rs": {
+    "automexia-connectivity/tests/connection_automation_m6.rs": {
         "reviewed_runs_preserve_exact_stage_order_and_no_hooks_keeps_only_planner_steps",
         "remote_initialization_is_typed_reviewed_and_never_contains_a_command_string",
         "lifecycle_enforces_deadlines_bounded_retry_cancellation_and_generation_isolation",
@@ -149,7 +149,7 @@ REQUIRED_TESTS = {
         "remote_initialization_revalidates_privileged_steps_at_the_review_boundary",
         "lifecycle_rejects_cross_review_substitution_and_unbounded_diagnostics",
     },
-    "automexia-devops/tests/workspace_automation_m6.rs": {
+    "automexia-connectivity/tests/workspace_automation_m6.rs": {
         "declarative_workspace_restore_is_review_only_and_never_resumes_live_state",
         "clone_and_rebind_create_isolated_ids_and_invalidate_prior_approval",
         "clone_scopes_reused_pane_ids_to_their_own_windows",
@@ -168,7 +168,7 @@ REQUIRED_TESTS = {
         "import_and_export_previews_are_redacted_nonexecuting_and_commit_with_cas",
         "mismatched_recipe_reference_fingerprint_is_rejected_by_the_library",
     },
-    "automexia-devops/tests/connection_planning.rs": {
+    "automexia-connectivity/tests/connection_planning.rs": {
         "strict_profiles_and_recipes_compile_to_a_non_executing_plan",
         "hostile_unknown_secret_command_and_bidi_fields_fail_closed",
         "duplicates_cycles_limits_and_policy_mismatches_are_rejected",
@@ -179,16 +179,16 @@ REQUIRED_TESTS = {
         "resolved_plans_reject_cross_recipe_variable_collisions_and_preallocate_step_overflow",
         "plan_context_rejects_hostile_bidi_variable_overrides",
     },
-    "automexia-devops/tests/connection_properties.rs": {
+    "automexia-connectivity/tests/connection_properties.rs": {
         "bounded_printable_unicode_labels_and_targets_validate",
         "every_ascii_control_character_is_rejected",
         "executable_and_capability_input_order_does_not_change_the_plan_fingerprint",
     },
-    "automexia-devops/tests/connection_records.rs": {
+    "automexia-connectivity/tests/connection_records.rs": {
         "all_top_level_connection_records_are_strict_versioned_and_bounded",
         "review_records_reject_duplicate_policy_and_executable_entries",
     },
-    "automexia-devops/tests/connection_state_matrix.rs": {
+    "automexia-connectivity/tests/connection_state_matrix.rs": {
         "authentication_reducer_reaches_every_truthful_public_state",
         "result_reducer_reaches_every_truthful_public_state_and_keeps_terminals_terminal",
         "late_authentication_results_cannot_cross_operation_generations",

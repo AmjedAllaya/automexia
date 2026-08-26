@@ -1,6 +1,6 @@
 #![no_main]
 
-use automexia_devops::actions::{preview_native_alias_import, NativeAliasSource};
+use automexia_command_productivity::actions::{preview_native_alias_import, NativeAliasSource};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

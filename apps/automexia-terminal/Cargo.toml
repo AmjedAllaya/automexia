@@ -54,6 +54,8 @@ automexia-keybindings = { workspace = true }
 automexia-extension-api = { workspace = true }
 automexia-extension-runtime = { workspace = true }
 automexia-devops = { workspace = true }
+automexia-connectivity = { workspace = true }
+automexia-command-productivity = { workspace = true }
 automexia-image = { workspace = true }
 automexia-ui-model = { workspace = true }
 global-hotkey = "0.8.0"

@@ -1,6 +1,8 @@
 use std::io::Cursor;
 
-use automexia_devops::suggestions::{RouteIdentity, ShellKind, SuggestionCapability};
+use automexia_command_productivity::suggestions::{
+    RouteIdentity, ShellKind, SuggestionCapability,
+};
 use automexia_terminal::automexia::suggestions::{
     decode_helper_bootstrap, encode_helper_bootstrap, read_helper_bootstrap,
     HelperBootstrap, HelperEndpointLocator, HelperSessionBinding,

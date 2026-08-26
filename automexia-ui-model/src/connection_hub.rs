@@ -5,7 +5,7 @@
 
 use std::{cmp::Ordering, collections::HashSet, fmt, ops::Range};
 
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     ActionRisk, AuthState, AutomationAction, BroadcastLifecycle, BroadcastReview,
     BroadcastState, BroadcastTargetOutcome, ConnectionReview, DestinationSurface,
     DirectOpenSshHostTrustPolicy, DirectOpenSshIdentityReadiness,
@@ -1306,7 +1306,7 @@ pub fn project_connection_review(
             blocking: review.policy_decisions.iter().any(|decision| {
                 matches!(
                     decision.outcome,
-                    automexia_devops::connections::PolicyOutcome::Deny
+                    automexia_connectivity::connections::PolicyOutcome::Deny
                 )
             }),
         },

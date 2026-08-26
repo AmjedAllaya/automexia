@@ -74,7 +74,7 @@ FORBIDDEN_AUTHORITY_PRIMITIVES = {
     "unsafe {",
 }
 REQUIRED_SOURCE_TOKENS = {
-    "automexia-devops/src/connections/provider_auth.rs": {
+    "automexia-connectivity/src/connections/provider_auth.rs": {
         "ProviderAuthCapsuleStore",
         "ProviderAuthObservation",
         "ProviderAuthOperation",
@@ -116,7 +116,7 @@ REQUIRED_SOURCE_TOKENS = {
         "pub fn uninstall_provider",
         "pub fn shutdown",
     },
-    "automexia-devops/src/connections/model.rs": {
+    "automexia-connectivity/src/connections/model.rs": {
         "provider_contexts: Vec<ProviderContextTemplate>",
         "Available",
         "Refreshing",
@@ -124,7 +124,7 @@ REQUIRED_SOURCE_TOKENS = {
         "BrowserPending",
         "DeviceCodePending",
     },
-    "automexia-devops/src/connections/state.rs": {
+    "automexia-connectivity/src/connections/state.rs": {
         "AuthEvent::BeginRefresh",
         "AuthEvent::ObservedBrowserPending",
         "AuthEvent::ObservedDeviceCodePending",
@@ -151,7 +151,7 @@ REQUIRED_SOURCE_TOKENS = {
     },
 }
 REQUIRED_TESTS = {
-    "automexia-devops/tests/provider_auth_m7.rs": {
+    "automexia-connectivity/tests/provider_auth_m7.rs": {
         "strict_provider_capsule_parser_rejects_unknown_fields_and_oversized_documents",
         "strict_capsules_are_bounded_unique_and_reject_cross_session_reads",
         "rebind_cancels_old_work_and_never_carries_context_across_capsules",
@@ -239,7 +239,7 @@ def validate_sources(document: dict[str, Any]) -> None:
             raise M7ContractError(f"missing M7 source evidence in {relative}: {missing}")
 
     auth_source = bounded_text(
-        ROOT / "automexia-devops/src/connections/provider_auth.rs"
+        ROOT / "automexia-connectivity/src/connections/provider_auth.rs"
     ).lower()
     widened = sorted(
         primitive for primitive in FORBIDDEN_AUTHORITY_PRIMITIVES

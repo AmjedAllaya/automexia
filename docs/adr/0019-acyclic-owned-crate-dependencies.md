@@ -86,3 +86,12 @@ the owning lower layer.
   pointer-last transaction, read-only diagnostics, and native adapters.
 - Workspace formatting, Clippy, tests, and benchmark compilation remain release
   gates.
+
+## 2026-08-26 placement amendment
+
+[ADR 0035](0035-core-domain-and-optional-extension-ownership.md) supersedes
+only this ADR's historical CP2/CP3 placement in `automexia-devops`.
+`automexia-connectivity` now owns provider-neutral connection/authentication/
+workspace contracts, and `automexia-command-productivity` owns Quick Action and
+editor-suggestion contracts. The acyclic dependency rule, lowest-cohesive-owner
+principle, UI direction, and desktop composition-root decision remain accepted.

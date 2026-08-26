@@ -70,7 +70,7 @@ the audit's executive matrix so the two cannot drift.
 | **Fully done** | v0.4/S0 | Core identity, hostile-input bounds, atomic reload, versioned hosted-CI/repository protection, exact annotated tag/default-branch/fork/DCO provenance, authenticated stable-tag audit enforcement, and local mutations are source-complete. The fork tag is published. Controlled workflows still need reviewed integration to `main`; plan-limited rulesets, reviewer capacity, executed exact-head hosted runs, historical linearity/DCO resolution, reporting, and secret-scanning entitlements remain external. |
 | **Partially done** | v0.4/S1 | Source implementation is fully done: the opt-in deterministic visual fixture, bounded Windows WGPU/CPU native/resource harness, separate AppVerifier Basics/low-resource phases, exact 24-suite evidence policy, mutation-tested validator, controlled workflow, and fail-closed release dependency are implemented. Actual Linux/macOS/named-GPU/elevated/accessibility runs and approved visual matrices remain external. |
 | **Fully done** | S2 | Source and automation are fully implemented: bounded no-follow evidence, repeated-sample/confidence quality, clean exact-commit/operator binding, independently reviewed 30-day baseline activation, exact waivers, 90-day retention, and a fail-closed 5% latency/10% memory release ratchet. Release evidence remains collecting until 30 controlled consecutive days are reviewed and activated. |
-| **Partially done** | D0 | ADR 0012 is accepted; schema 5 freezes M3-M5 direct/routed/tunnel argv, trust/status, tunnel lifecycle, receipt/reconnect, and native-manifest rules while retaining immutable schemas 1/2/3/4. Protected approvals and real native execution remain. |
+| **Partially done** | D0 | ADR 0012 is accepted; schema 6 freezes M3-M5 direct/routed/tunnel argv, trust/status, tunnel lifecycle, receipt/reconnect, and native-manifest rules while retaining immutable schemas 1/2/3/4/5. Protected approvals and real native execution remain. |
 | **Fully done** | D1 | Four private provider-neutral crates and bounded contracts satisfy the source boundary. |
 | **Fully done** | D2 | Generic status, immutable history, capsules, isolation, cancellation, and freshness are implemented. |
 | **Partially done** | D3 | The hard-disabled broker/runner performs bounded current-executable review, binds exact managed argv and executable identity, publishes only through ContextManager, reconciles actual child outcomes, terminates owned process groups/Job Objects, joins PTY workers, and queues bounded redacted receipts. Exact-head approvals/server enforcement, attestation/activation, and real native OpenSSH descendant/resource/accessibility proof remain. |
@@ -252,6 +252,14 @@ tools and organization services retain protocol, authentication, credential,
 and remote-authorization authority. A named dependency is planned, not shipped,
 until its protected slice passes review and evidence.
 
+ADR 0035 records the completed feature-ownership audit. Provider-neutral
+connectivity/workspace/authentication contracts now live in `automexia-connectivity`;
+Quick Action and editor-suggestion contracts live in
+`automexia-command-productivity`; optional local context remains in
+`automexia-devops`; provider-specific adapters remain independently disabled;
+and generic command-result feedback is application-renderer behavior. This
+placement correction changes no D, CP, S, G, or release-evidence status.
+
 | Release/phase | Terminal-core work | First-party extension work | Adopted/wrapped authority | Explicit hold |
 |---|---|---|---|---|
 | v0.5.0 D3-D5 and CP2-CP3 | Preserve the one nonactivated `ExternalToolRunner`; complete protected activation/native proof; generate CLI/help/completion/schema artifacts from typed registries; preserve exact launch, session, capsule, risk, redaction, and resource policy | Safe OpenSSH inventory; exact SSH/jump/tunnel requests; Connection Review; typed actions, aliases, and first-party packs | System OpenSSH; shell-native editors/completion; planned `clap_complete`, `clap_mangen`, `schemars`, and AccessKit. CP5.0 retained the in-tree matcher after measuring Nucleo. | Native SSH stack, provider SDK bundle, secret vault, structured SFTP, untrusted extensions |
@@ -346,8 +354,8 @@ The following foundation work is intentionally not claimed by Phase 1:
 
 #### Phase 2 preparation status (2026-08-22)
 
-ADR 0012 is accepted by the project owner. Mutation-checked schema 5 preserves
-immutable schemas 1-4 and freezes manual-shell/missing-client behavior, package
+ADR 0012 is accepted by the project owner. Mutation-checked schema 6 preserves
+immutable schemas 1-5 and freezes manual-shell/missing-client behavior, package
 identity, exact M3-M5 route/tunnel/trust/lifecycle rules, grants/audits, nine
 trust boundaries, four-platform resolution, all-false runtime authority, and 23
 native scenarios including current OpenSSH PQ/warning/agent-binding and tunnel
@@ -397,7 +405,7 @@ close or activate.
 
 | Feature | Status | Evidence / remaining work |
 |---|---|---|
-| Provider-neutral definition/observation/intent/review/receipt/profile/recipe/step/tunnel/plan schemas | **Fully done locally** | Strict schema 1 models, sealed validated wrappers, and fixed ceilings live in `automexia-devops::connections`. |
+| Provider-neutral definition/observation/intent/review/receipt/profile/recipe/step/tunnel/plan schemas | **Fully done locally** | Strict schema 1 models, sealed validated wrappers, and fixed ceilings live in `automexia-connectivity::connections`. |
 | Hostile input, duplicates, cycles, policy, retry, and redaction validation | **Fully done locally** | Integration/property/record/state tests plus mutation and architecture ratchets fail closed. |
 | Deterministic dry-run resolution and approval invalidation | **Fully done locally** | Target, identity, route, executable, tunnel, recipe, capability, and source changes are covered. |
 | Authentication and result state machines | **Fully done locally** | Every public state and illegal/terminal transition is table-tested; auth results are bound to the active operation generation. |

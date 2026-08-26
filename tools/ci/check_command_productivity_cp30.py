@@ -56,11 +56,11 @@ EXPECTED_PUBLICATION = {
 }
 
 EXPECTED_MODEL_FILES = [
-    "automexia-devops/src/actions/activation.rs",
-    "automexia-devops/src/actions/mod.rs",
-    "automexia-devops/src/actions/model.rs",
-    "automexia-devops/src/actions/projection.rs",
-    "automexia-devops/src/actions/validation.rs",
+    "automexia-command-productivity/src/actions/activation.rs",
+    "automexia-command-productivity/src/actions/mod.rs",
+    "automexia-command-productivity/src/actions/model.rs",
+    "automexia-command-productivity/src/actions/projection.rs",
+    "automexia-command-productivity/src/actions/validation.rs",
 ]
 PROJECTION_FORBIDDEN = {
     "std::env",
@@ -166,7 +166,7 @@ def require_tokens(relative: str, tokens: set[str], root: Path = ROOT) -> str:
 
 
 def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, int]:
-    projection_path = "automexia-devops/src/actions/projection.rs"
+    projection_path = "automexia-command-productivity/src/actions/projection.rs"
     projection = require_tokens(projection_path, PROJECTION_REQUIRED, root)
     lowered = projection.casefold()
     marker = next(

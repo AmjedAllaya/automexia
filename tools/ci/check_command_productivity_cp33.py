@@ -56,14 +56,14 @@ EXPECTED_LIFECYCLE = {
     "read_only_lookup_has_no_side_effects": True,
 }
 EXPECTED_SOURCE_FILES = [
-    "automexia-devops/src/actions/imports.rs",
+    "automexia-command-productivity/src/actions/imports.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/native_import.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/workspace.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/worker.rs",
     "apps/automexia-terminal/src/screen/action_surface.rs",
     "apps/automexia-terminal/src/cli.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/cli.rs",
-    "automexia-devops/tests/quick_action_imports.rs",
+    "automexia-command-productivity/tests/quick_action_imports.rs",
     "apps/automexia-terminal/tests/quick_action_native_import.rs",
     "apps/automexia-terminal/tests/quick_action_workspace_trust.rs",
 ]
@@ -83,7 +83,7 @@ EXPECTED_TESTS = [
     "trusted_workspace_tasks_are_cached_off_thread_and_revocation_fails_closed",
     "cp33_native_import_and_workspace_mutations_are_explicit_and_cas_guarded",
 ]
-EXPECTED_BENCHMARK = "automexia-devops/benches/quick_actions.rs"
+EXPECTED_BENCHMARK = "automexia-command-productivity/benches/quick_actions.rs"
 EXPECTED_FUZZ_TARGET = "fuzz/fuzz_targets/quick_action_imports.rs"
 EXPECTED_DOCUMENTS = [
     "docs/adr/0021-trusted-workspace-task-bridges.md",

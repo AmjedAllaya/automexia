@@ -232,7 +232,7 @@
       "needed_tests": ["Boundary search, ranking, selection, administration, import, export, insert, copy, maximum records, long labels, tiny panes, and localization cases", "Negative destructive, secret, malformed, duplicate, stale revision, hidden modal, wrong pane, implicit Enter, PTY leakage, and clipboard failure cases", "Native keyboard, pointer, screen-reader, clipboard, restart, responsive-pixel, reduced-motion, and multi-pane isolation flows"],
       "verification_reinforcements": ["Assert exact selected action, review, inserted/copied bytes, focus restoration, PTY bytes, storage revision, and accessibility events", "Measure search/ranking/paint/input latency, allocations, cache size, repeated open-close, and clipboard lifecycle"],
       "checker_reinforcements": ["Require every Quick Action operation to have model, negative, no-PTY, native interaction, exact-pixel, accessibility, persistence, and cleanup proof"],
-      "evidence_owners": ["automexia-devops/tests/quick_actions.rs", "apps/automexia-terminal/tests/quick_action_transfer.rs", "fuzz/fuzz_targets/quick_action_projection.rs"],
+      "evidence_owners": ["automexia-command-productivity/tests/quick_actions.rs", "apps/automexia-terminal/tests/quick_action_transfer.rs", "fuzz/fuzz_targets/quick_action_projection.rs"],
       "exit_criteria": ["Supported native platforms pass keyboard, pointer, clipboard, persistence, pixel, and accessibility matrices", "Screen-reader, clipboard-manager, or compositor evidence not executed remains external"]
     },
     {
@@ -247,7 +247,7 @@
       "needed_tests": ["Boundary matrices across every provider, context state, freshness, risk, route, revision, generation, action grammar, composition, ranking, and maximum catalog", "Negative stale capsule, cross-session, provider refresh on typing, forged action, secret, destructive, revoked route, changed binding, cancellation, and duplicate publication cases", "Native provider-product-to-Quick-Action review, keyboard, pointer, responsive pixel, accessibility, no-PTY, and final revalidation flows"],
       "verification_reinforcements": ["Assert cached-only publication, exact route/session/revision/generation binding, action bytes, confirmation, and absence of provider/process/network work", "Measure cached projection/search/revalidation latency, allocation, replacement storms, and cleanup"],
       "checker_reinforcements": ["Require all provider adapters, decisions, denied authorities, fuzz targets, benchmarks, product handoff, native UI, and stale-binding mutations"],
-      "evidence_owners": ["automexia-devops/tests/provider_quick_actions_cp4.rs", "apps/automexia-terminal/tests/cp4_provider_product_publication.rs", "fuzz/fuzz_targets/provider_quick_actions.rs"],
+      "evidence_owners": ["automexia-command-productivity/tests/provider_quick_actions_cp4.rs", "apps/automexia-terminal/tests/cp4_provider_product_publication.rs", "fuzz/fuzz_targets/provider_quick_actions.rs"],
       "exit_criteria": ["Every supported provider passes product-native review and no-side-effect tests on each declared platform", "Real account, CLI, network, execution, and screen-reader evidence remains external until activated"]
     },
     {
@@ -277,7 +277,7 @@
       "needed_tests": ["Boundary pack matrices for every included action, disabled default, shell/provider compatibility, maximum pack size, localization, search, review, enable, and remove", "Negative duplicate, secret, destructive, stale, unsupported provider, malformed pack, hidden activation, partial import, and rollback cases", "Native product enable-search-review-insert-disable-uninstall flows with exact pixels, accessibility, storage, and no implicit PTY input"],
       "verification_reinforcements": ["Diff static pack contents and metadata byte-for-byte against reviewed fixtures", "Measure load/search/paint/storage costs and repeated enable-disable cleanup without provider work"],
       "checker_reinforcements": ["Require each pack action to map to a reviewed fixture and reject drift, activation by default, missing negative tests, or absent native UI proof"],
-      "evidence_owners": ["automexia-devops/tests/quick_action_packs.rs", "fuzz/fuzz_targets/quick_action_packs.rs", "tools/ci/test_command_productivity_cp32.py"],
+      "evidence_owners": ["automexia-command-productivity/tests/quick_action_packs.rs", "fuzz/fuzz_targets/quick_action_packs.rs", "tools/ci/test_command_productivity_cp32.py"],
       "exit_criteria": ["Supported native platforms prove pack review, insertion, disable, and uninstall without execution", "Real provider and external tool behavior remains external"]
     },
     {
@@ -292,7 +292,7 @@
       "needed_tests": ["Boundary fixtures for every native alias format and just, Task, mise workspace bridge with maximum files, tasks, arguments, paths, and revisions", "Negative links, replacement, hostile syntax, shell evaluation, secret, destructive task, stale trust, revocation, collision, partial import, and rollback cases", "Native selected-file, trust-review, import, restart, insert-only task, revoke, remove, responsive pixel, and accessibility flows"],
       "verification_reinforcements": ["Assert exact parser output, trust digest, CAS revision, inserted bytes, no implicit Enter, no execution, and no source mutation", "Measure bounded scanning, parsing, import, search, persistence, and repeated revoke/remove cleanup"],
       "checker_reinforcements": ["Require every supported format and bridge to own valid/hostile fixtures, fuzzing, native no-follow proof, trust lifecycle, UI, and no-execution assertions"],
-      "evidence_owners": ["automexia-devops/tests/quick_action_imports.rs", "apps/automexia-terminal/tests/quick_action_workspace_trust.rs", "fuzz/fuzz_targets/quick_action_imports.rs"],
+      "evidence_owners": ["automexia-command-productivity/tests/quick_action_imports.rs", "apps/automexia-terminal/tests/quick_action_workspace_trust.rs", "fuzz/fuzz_targets/quick_action_imports.rs"],
       "exit_criteria": ["Supported native platforms prove selected-file identity, trust, import, insertion, revoke, and uninstall", "External task-runner execution remains outside this insert-only feature"]
     },
     {
@@ -337,7 +337,7 @@
       "needed_tests": ["Boundary and negative coverage must preserve strict request/submission/replacement framing, hostile Unicode/grapheme/span/capability/replay properties, fragmented-prefix allocation checks, six-source privacy/precedence and deterministic 32/128/512 ranking coverage", "Add real Linux SO_PEERCRED, macOS getpeereid and WSL relay endpoint churn/crash/sleep fixtures plus signed-helper native PowerShell/Bash/Zsh/Fish replacement for quotes, multiline, selection, Unicode and IME without Enter", "Add activated pane pixel goldens and native screenshots for tiny-to-8K, 100-300%, split, IME, modal, high contrast and reduced motion plus controlled NVDA/Narrator/VoiceOver/Orca event assertions", "Run named-hardware latency/allocation/cache/thread/handle/socket/process leak campaigns, 1,000 real endpoint cycles, signed package install/update/kill/disable/uninstall/rollback and a 30-day preview baseline"],
       "verification_reinforcements": ["Record exact OS, shell/editor, route, corpus, hardware, cold/warm state, sample distribution, peak resources, artifact digest and first failure", "Prove normal shell integration never sources inert scaffolds and CP1/native completion remains byte-for-byte usable through kill, disconnect, downgrade and uninstall"],
       "checker_reinforcements": ["Reject weakened endpoint permissions, unbounded fields/queues/caches, remote transport, per-key processes, implicit Enter, default sourcing, missing preview guards, false shell-bridge completion or activation claims, and unlinked external gates"],
-      "evidence_owners": ["tools/ci/check_command_productivity_cp51.py", "tools/ci/test_command_productivity_cp51.py", "tools/ci/check_command_productivity_cp56.py", "tools/ci/test_command_productivity_cp56.py", "automexia-devops/tests/suggestions_contract.rs", "automexia-devops/tests/suggestion_sources.rs", "automexia-ui-model/tests/suggestions_ui.rs", "apps/automexia-terminal/tests/suggestions_broker.rs", "automexia-devops/benches/suggestions.rs", "fuzz/fuzz_targets/suggestion_bridge.rs"],
+      "evidence_owners": ["tools/ci/check_command_productivity_cp51.py", "tools/ci/test_command_productivity_cp51.py", "tools/ci/check_command_productivity_cp56.py", "tools/ci/test_command_productivity_cp56.py", "automexia-command-productivity/tests/suggestions_contract.rs", "automexia-command-productivity/tests/suggestion_sources.rs", "automexia-ui-model/tests/suggestions_ui.rs", "apps/automexia-terminal/tests/suggestions_broker.rs", "automexia-command-productivity/benches/suggestions.rs", "fuzz/fuzz_targets/suggestion_bridge.rs"],
       "exit_criteria": ["All source, property/fuzz, concurrency, mutation and benchmark gates pass with preview activation false", "Native three-OS/shell/IME/accessibility/security/resource/package/rollback evidence passes against the exact artifact", "A 30-day named-hardware preview shows measurable benefit without privacy, insertion, input, startup, crash, resource or rollback regression before activation review"]
     },
     {
@@ -427,7 +427,7 @@
       "needed_tests": ["Boundary schema/reducer/planner matrices for every record, state, capability, risk, freshness, action, limit, and responsive layout", "Negative unknown field, duplicate ID, hostile Unicode, oversized input, forged capability, stale revision, illegal transition, secret, and execution-authority cases", "Renderer-neutral visual and accessibility snapshots for empty, loading, populated, filtered, selected, review, error, offline, and unavailable states"],
       "verification_reinforcements": ["Assert exact state transitions, dry-run plans, action availability, labels, focus order, hit geometry, and no I/O or PTY requests", "Measure parse/reduce/filter/layout cost at every declared ceiling"],
       "checker_reinforcements": ["Require every enum state and transition to appear in fixtures, tests, accessibility snapshots, fuzz inputs, and mutation cases"],
-      "evidence_owners": ["automexia-devops/tests/connection_state_matrix.rs", "automexia-devops/tests/connection_properties.rs", "tools/ci/test_connection_hub_f2.py"],
+      "evidence_owners": ["automexia-connectivity/tests/connection_state_matrix.rs", "automexia-connectivity/tests/connection_properties.rs", "tools/ci/test_connection_hub_f2.py"],
       "exit_criteria": ["Portable model, layout, fuzz, and checker evidence passes on every hosted platform", "Native pixels, input, and assistive-technology delivery remain external to this model-only boundary"]
     },
     {
@@ -487,7 +487,7 @@
       "needed_tests": ["Boundary library tests for empty, maximum profiles/recipes/workspaces/preferences, schema migration, references, revisions, import/export, and concurrent CAS", "Negative duplicate, dangling, mismatched, secret, hostile Unicode, oversized, linked, corrupt, partial, disk-full, stale writer, revision overflow, and rollback cases", "Native private-file create-edit-restart-recover-import-export-disable-uninstall tests with exact permissions and unrelated-file preservation"],
       "verification_reinforcements": ["Assert schema, reference graph, fingerprints, revisions, approvals, atomic current/previous generations, redaction, and recovery", "Measure parse, validation, CAS, import/export, storage size, repeated lifecycle, and cleanup at ceilings"],
       "checker_reinforcements": ["Reject library changes without schema migration, graph/reference, concurrency, crash/recovery, hostile input, native permission, rollback, and uninstall proof"],
-      "evidence_owners": ["apps/automexia-terminal/tests/connection_library.rs", "automexia-devops/tests/connection_records.rs"],
+      "evidence_owners": ["apps/automexia-terminal/tests/connection_library.rs", "automexia-connectivity/tests/connection_records.rs"],
       "exit_criteria": ["Each supported native platform proves private atomic storage, migration, recovery, and exact uninstall", "Power-loss or filesystem semantics not executed remain external"]
     },
     {
@@ -502,7 +502,7 @@
       "needed_tests": ["Boundary workspace matrices for zero/maximum windows, panes, split depth, profiles, recipes, stages, retries, deadlines, restore generations, broadcast targets, and layouts", "Negative cycle, dangling binding, forged risk, unsafe retry, stale review, cross-workspace target, hidden script, secret, implicit Enter, expired arm, cancellation race, and execution leakage", "Native review/edit/restore/broadcast-preview keyboard, pointer, responsive pixel, accessibility, restart, revoke, replacement, and no-execution flows"],
       "verification_reinforcements": ["Assert exact graph, fingerprints, staged plan, risk, confirmation, generation, per-target digest/outcome, focus, PTY bytes, and absence of execution", "Measure validation, layout, review, publication, maximum-target broadcast model, storage, replacement storms, and cleanup"],
       "checker_reinforcements": ["Require graph/property/fuzz, stale-generation concurrency, persistence recovery, native UI, accessibility, no-PTY, and execution-disabled proof for every workspace operation"],
-      "evidence_owners": ["automexia-devops/tests/workspace_automation_m6.rs", "apps/automexia-terminal/tests/m6_workspace_product.rs", "fuzz/fuzz_targets/connection_planning.rs"],
+      "evidence_owners": ["automexia-connectivity/tests/workspace_automation_m6.rs", "apps/automexia-terminal/tests/m6_workspace_product.rs", "fuzz/fuzz_targets/connection_planning.rs"],
       "exit_criteria": ["Supported native platforms pass review/edit/restore/broadcast-preview, persistence, visual, accessibility, and no-execution matrices", "Managed SSH execution and real remote cleanup remain external D3/M5 evidence"]
     },
     {
@@ -517,7 +517,7 @@
       "needed_tests": ["Boundary capsule matrices for every provider, auth state, browser/device/MFA flow, origin, callback, scope, capability, freshness, risk, revision, generation, and ceiling", "Negative secret field, global mutation, malformed IPv6, nonloopback callback, stale/sibling session, forged capability, late result, revoke, expiry, offline, cancellation, and shutdown cases", "Native provider-product review flows proving exact visible scope, accessibility, responsive pixels, no process/network/filesystem authority, and clean revoke"],
       "verification_reinforcements": ["Assert capsule/session/revision/provider/generation isolation, exact review digest, redaction canaries, lifecycle, and absent authorities", "Measure maximum-capsule bind/read/replace/revoke latency, allocations, collections, and cleanup"],
       "checker_reinforcements": ["Require every state, ceiling, isolation strategy, browser flow, denied authority, secret surface, fuzz target, benchmark, UI state, and stale mutation"],
-      "evidence_owners": ["automexia-devops/tests/provider_auth_m7.rs", "tools/ci/test_provider_auth_m7.py", "fuzz/fuzz_targets/connection_planning.rs"],
+      "evidence_owners": ["automexia-connectivity/tests/provider_auth_m7.rs", "tools/ci/test_provider_auth_m7.py", "fuzz/fuzz_targets/connection_planning.rs"],
       "exit_criteria": ["Portable contract and supported native product review pass exact isolation and no-authority tests", "Real provider CLI, browser, account, credential cache, network, and screen-reader behavior remains external"]
     },
     {
@@ -532,7 +532,7 @@
       "needed_tests": ["Boundary review matrices for literal hosts, aliases, IPv4/IPv6, ports, users, identities, ProxyJump chains, trust states, tunnels, production risk, cancellation, and route generations", "Negative injection, shell evaluation, unknown host key, changed key, stale review, replaced executable/config/key, nonloopback listener, collision, child leak, receipt tamper, and uninstall cases", "Real native OpenSSH client/server connect-auth-command-PTY-resize-signal-tunnel-close-cancel-disable-uninstall flows on Windows, Linux, and macOS"],
       "verification_reinforcements": ["Assert exact executable/argv, reviewed effective config, host-key evidence, route/session/generation, PTY bytes, tunnel endpoints, process tree, receipts, and redaction", "Measure DNS/connect/auth/first-byte/resize/tunnel/close latency, handles, children, memory, files, and repeated cleanup"],
       "checker_reinforcements": ["Require exact-commit native OpenSSH evidence, hostile argv corpus, trust/tunnel matrices, resource baselines, visual/accessibility review, and artifact identity before activation"],
-      "evidence_owners": ["automexia-devops/tests/direct_openssh_review.rs", "automexia-devops/tests/direct_openssh_tunnels.rs", "tools/ci/test_native_openssh_evidence.py"],
+      "evidence_owners": ["automexia-connectivity/tests/direct_openssh_review.rs", "automexia-connectivity/tests/direct_openssh_tunnels.rs", "tools/ci/test_native_openssh_evidence.py"],
       "exit_criteria": ["Final native artifacts pass real OpenSSH trust, PTY, route, tunnel, cancellation, resource, accessibility, and uninstall suites", "Missing server, hardware key, signing, platform, or controlled runner evidence keeps activation external"]
     },
     {
@@ -547,7 +547,7 @@
       "needed_tests": ["Boundary AWS profile, SSO, STS, region, role, account, SSM, EKS dry-run, CLI-version, output-size, revision, and freshness matrices", "Negative credential key, duplicate profile, source cycle, hostile INI, stale capsule, wrong account/region, executable replacement, timeout, child leak, kubeconfig tamper, and global mutation cases", "Controlled native AWS CLI login/status/SSM/EKS/product-review/Quick-Action/cleanup flows with disposable accounts and exact artifacts"],
       "verification_reinforcements": ["Assert exact CLI identity/argv/environment/capabilities, capsule isolation, public-only parsing, transient ownership, product pixels, accessibility, and no global config mutation", "Measure parser, status, login wait, SSM startup, EKS validation, projection, resources, storage, and cleanup"],
       "checker_reinforcements": ["Require source parser/hostile fixtures plus real CLI version, account, process-tree, transient, UI, accessibility, resource, rollback, and release evidence before activation"],
-      "evidence_owners": ["extensions/devops-aws/src/lib.rs", "automexia-devops/tests/provider_quick_actions_cp4.rs"],
+      "evidence_owners": ["extensions/devops-aws/src/lib.rs", "automexia-command-productivity/tests/provider_quick_actions_cp4.rs"],
       "exit_criteria": ["Supported native platforms and approved disposable AWS fixtures pass exact auth, status, SSM/EKS, UI, resource, and cleanup suites", "Real AWS account, network, CLI, plugin, signing, or screen-reader evidence unavailable remains external"]
     },
     {

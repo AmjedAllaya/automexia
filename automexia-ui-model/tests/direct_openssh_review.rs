@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     parse_direct_openssh_agent_identities, prepare_direct_openssh,
     resolve_connection_plan, review_direct_openssh, review_direct_openssh_m4, AuthState,
     ConnectionObservation, ConnectionProfileV1, ConnectionSource, DestinationSurface,
@@ -73,7 +73,7 @@ fn fixture_profile() -> ConnectionProfileV1 {
     }
 }
 
-fn fixture() -> automexia_devops::connections::DirectOpenSshReview {
+fn fixture() -> automexia_connectivity::connections::DirectOpenSshReview {
     let profile = fixture_profile();
     let plan = resolve_connection_plan(
         &profile,

@@ -2,13 +2,9 @@
 //!
 //! Providers inspect bounded local configuration and shell metadata. They have
 //! no network-client dependency and return versioned generic contributions.
-pub mod actions;
-pub mod connections;
-
 mod context;
 mod model;
 mod semantics;
-pub mod suggestions;
 
 use automexia_extension_api::{
     compact_label, compact_middle, Capability, ContextContribution, ContractError,

@@ -7,7 +7,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     validate_quick_actions, AliasArgumentPolicy as ModelArgumentPolicy, AliasProjection,
     AliasProjectionMode, CompletionHealth, CompletionMode, ExactOverrideConsent,
     OverridePolicy, ProjectionArtifact, ProjectionDecision, RiskClass, ShellKind,
@@ -439,7 +439,9 @@ struct MutationRequest<'a> {
 
 fn mutate_and_publish(
     request: MutationRequest<'_>,
-    mutate: impl FnOnce(&mut automexia_devops::actions::QuickAction) -> Result<(), io::Error>,
+    mutate: impl FnOnce(
+        &mut automexia_command_productivity::actions::QuickAction,
+    ) -> Result<(), io::Error>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let MutationRequest {
         operation,
@@ -528,7 +530,7 @@ fn mutate_and_publish(
 
 fn reuse_authenticated_exact_overrides(
     store: &AliasProjectionStore,
-    actions: &automexia_devops::actions::ValidatedQuickActions,
+    actions: &automexia_command_productivity::actions::ValidatedQuickActions,
     observations: &mut AliasObservationSet,
 ) -> Result<(), Box<dyn std::error::Error>> {
     for consent in store.current_exact_overrides()? {
@@ -563,7 +565,7 @@ fn reuse_authenticated_exact_overrides(
 }
 
 fn add_exact_override(
-    actions: &automexia_devops::actions::ValidatedQuickActions,
+    actions: &automexia_command_productivity::actions::ValidatedQuickActions,
     observations: &mut AliasObservationSet,
     action_id: &str,
     fingerprint: &str,
@@ -975,7 +977,7 @@ fn test_plan(
 }
 
 fn validate_native_syntax(
-    artifact: &automexia_devops::actions::ProjectionArtifact,
+    artifact: &automexia_command_productivity::actions::ProjectionArtifact,
 ) -> Result<&'static str, io::Error> {
     let mut file = tempfile::Builder::new()
         .prefix("automexia-alias-test-")
@@ -1140,7 +1142,7 @@ fn input(message: &'static str) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use automexia_devops::actions::{
+    use automexia_command_productivity::actions::{
         CollisionDetail, NativeNameKind, ProjectionDecisionState, ProjectionReason,
     };
 

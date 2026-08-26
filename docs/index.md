@@ -35,6 +35,7 @@ assurance, and project pages own future work and decision history.
 | Configure or inspect Ghostty-compatible bindings | [Ghostty compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md), [generated bindings](generated/ghostty-1.3-keybindings.md), [generated actions](generated/ghostty-1.3-actions.md) |
 | Look up every config key/default | [Configuration reference](reference/configuration.md) |
 | Understand the technical design | [Architecture overview](developer/architecture.md), [detailed architecture contract](ARCHITECTURE.md) |
+| Audit where every implemented feature belongs | [Implemented feature ownership audit](FEATURE-OWNERSHIP-AUDIT.md), [ADR 0035](adr/0035-core-domain-and-optional-extension-ownership.md) |
 | Review the proposed embedded script editor and DevOps/SRE extension design | [Automation Studio architecture](AUTOMATION-STUDIO-ARCHITECTURE.md), [testing and evidence contract](AUTOMATION-STUDIO-TESTING.md), [proposed ADR 0030](adr/0030-automation-studio-domain-extension-boundary.md) |
 | Review the optional LLM Orchestration architecture | [LLM Orchestration specification](LLM-ORCHESTRATION-EXTENSION.md), [testing and evidence contract](LLM-ORCHESTRATION-TESTING.md), [proposed ADR 0033](adr/0033-optional-llm-orchestration-extension.md) |
 | Review the proposed error-section and failed-command navigation design | [Semantic Diagnostic Navigator](SEMANTIC-DIAGNOSTIC-NAVIGATOR.md), [proposed ADR 0032](adr/0032-bounded-semantic-diagnostic-navigation.md) |

@@ -97,6 +97,14 @@ status. In particular, the named AccessKit, nucleo, schema/generation, storage,
 transfer, serial, policy, sandbox, provider-SDK, vet, and mutation additions
 remain subject to their documented protected milestones and evidence.
 
+The 2026-08-26 ownership re-audit is recorded in
+[`FEATURE-OWNERSHIP-AUDIT.md`](FEATURE-OWNERSHIP-AUDIT.md) and accepted
+[ADR 0035](adr/0035-core-domain-and-optional-extension-ownership.md). It
+moves capability-free connectivity and command-productivity contracts out of
+the optional DevOps context package and makes generic command-result feedback a
+core application-renderer responsibility. It changes placement evidence only;
+the phase and external-release classifications below remain unchanged.
+
 | Check | Result on the audited commit |
 |---|---|
 | Feature assurance | Passed: 40 feature-assurance entries, 302 documented source/evidence entries, and 46 phase-audit entries. |
@@ -124,7 +132,7 @@ conditions remain **unresolved for release** until reviewed integration reaches
 | Core | v0.4/S0 | **Fully implemented locally** | **Partial** | Identity, hostile-input bounds, atomic reload, and current terminal source gates are complete; stable release gates remain. |
 | Assurance | v0.4/S1 | **Source fully implemented; release evidence partial/external** | **Partial/external** | A versioned 24-suite policy, strict commit-bound validator, deterministic test-only visual fixture, bounded comparator, Windows-native WGPU/CPU QA/resource evidence, separate AppVerifier Basics/low-resource phases, mutation coverage, controlled workflow, and fail-closed release dependency exist. Elevated/named-hardware, Linux/macOS native, assistive-technology, exact visual-matrix, and independent human-review evidence remains external. |
 | Performance | S2 | **Source and automation fully implemented; collecting** | **External baseline pending** | Bounded evidence normalization/composition, sample/confidence quality, exact source/operator binding, native memory metrics, independent baseline/waiver review, protected activation validation, 90-day retention, and a fail-closed release ratchet exist. Activation awaits 30 reviewed consecutive controlled-runner days. |
-| DevOps | D0 | **Partial** | **Partial** | ADR 0012 is accepted and active schema 5 ratchets immutable schemas 1/2/3/4 with exact M3-M5 route/tunnel, trust/status, lifecycle/receipt/reconnect, and native-manifest rules; protected approvals and real native execution remain. |
+| DevOps | D0 | **Partial** | **Partial** | ADR 0012 is accepted and active schema 6 ratchets immutable schemas 1/2/3/4/5 with exact M3-M5 route/tunnel, trust/status, lifecycle/receipt/reconnect, and native-manifest rules; protected approvals and real native execution remain. |
 | DevOps | D1 | **Fully implemented** | **Partial** | Four private provider-neutral crates and bounded contracts satisfy their source boundary. |
 | DevOps | D2 | **Fully implemented** | **Partial** | Generic status, immutable history, capsule/cache/session isolation, cancellation, and truthful freshness exist. |
 | DevOps | D3 | **Partial; nonactivated** | **Blocked** | The fail-closed broker/runner owns bounded current-executable review, exact managed argv/identity binding, actual child status, redacted outcomes, process-group/Job Object teardown, PTY-worker joining, and bounded receipts through the guarded PTY/route owner. Protected approvals, real attestation/activation, and native OpenSSH descendant/resource/accessibility proof remain. |
@@ -434,7 +442,7 @@ Loom, native resource tests, and human accessibility/visual review.
 
 **Partially implemented.**
 
-**Fully implemented locally:** active schema 5 preserves immutable schemas 1-4
+**Fully implemented locally:** active schema 6 preserves immutable schemas 1-5
 and freezes manual PowerShell/CMD/Bash/Zsh/WSL SSH, missing-client behavior,
 exact trusted-loader/package identity, M3 direct/M4 routed/M5 tunnel grammar,
 grant/audit/trust/lifecycle rules, all-false authority, and fixed
@@ -548,7 +556,7 @@ fully implemented.**
 
 Implemented evidence:
 
-- `automexia-devops::connections` owns strict schema-1 definition, observation,
+- `automexia-connectivity::connections` owns strict schema-1 definition, observation,
   intent, review, receipt, profile, recipe, step, tunnel, document, state, and
   resolved-plan records with fixed byte/item/depth/retry/time ceilings;
 - validation rejects future/unknown schemas, unknown fields, controls/bidi,
@@ -673,8 +681,8 @@ profiles. Reconnect rebuilds from current D4 inventory, rejects a missing or
 changed source revision, and still requires a fresh executable/host-trust review
 and explicit approval; it never automatically resumes a session or action.
 
-Schema 5 freezes this source contract while retaining exact hashes for
-historical schemas 1-4. Focused M3/M4 tests cover exact/PQ-preserving
+Schema 6 freezes this source contract while retaining exact hashes for
+historical schemas 1-5. Focused M3/M4 tests cover exact/PQ-preserving
 direct/routed argv, ProxyJump bounds/hostility, typed fields, full trust/identity
 evidence, changed-key denial, safe copy, bounded nonactivated `ssh-add`
 parsing, binding/executable replacement, terminal outcomes, receipt recovery,
@@ -715,7 +723,7 @@ remains separately denied by the current release contract.
 ### M6/F6 — typed automation and multi-environment workspaces
 
 **Partially implemented overall; review-only source contracts are complete
-locally.** `automexia-devops::connections::{automation,workspace}` owns no
+locally.** `automexia-connectivity::connections::{automation,workspace}` owns no
 process, PTY, network, credential, provider, filesystem, listener, renderer, or
 clock capability. It provides immutable recipe reviews, exact stage ordering,
 no-hooks recovery, lifecycle deadlines/retry/cancel/generation rules, typed

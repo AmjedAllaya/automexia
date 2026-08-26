@@ -169,7 +169,7 @@ def validate_sources(document: dict[str, Any]) -> dict[str, int]:
         raise Cp22Error(f"Quick Action worker crosses its capability boundary: {marker}")
 
     require_tokens(
-        "automexia-devops/src/actions/activation.rs",
+        "automexia-command-productivity/src/actions/activation.rs",
         {
             "MAX_SEARCH_RESULTS",
             "MAX_EXPANDED_COMMAND_BYTES",

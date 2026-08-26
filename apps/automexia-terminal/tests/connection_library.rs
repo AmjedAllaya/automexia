@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use automexia_devops::connections::*;
+use automexia_connectivity::connections::*;
 use automexia_terminal::automexia::connections::{
     preview_library_edit, ConnectionLibraryDocument, ConnectionLibraryStore,
     HubPreferences, LibraryEdit, LibraryLoadOrigin, CONNECTION_LIBRARY_SCHEMA,

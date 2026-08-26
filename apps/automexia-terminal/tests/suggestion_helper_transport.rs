@@ -1,10 +1,10 @@
 use std::io::{self, Cursor, Read, Write};
 
-use automexia_devops::suggestions::helper::{
+use automexia_command_productivity::suggestions::helper::{
     encode_record, HelperRecord, HelperRecordError, HelperStatus, HelperStatusCode,
     HELPER_HEADER_BYTES,
 };
-use automexia_devops::suggestions::SuggestionLimits;
+use automexia_command_productivity::suggestions::SuggestionLimits;
 use automexia_terminal::automexia::suggestions::{
     read_helper_record, write_helper_record, HelperTransportError,
 };
