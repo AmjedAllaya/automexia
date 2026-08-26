@@ -1,5 +1,5 @@
-use automexia_devops::suggestions::helper::HelperRequest;
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::helper::HelperRequest;
+use automexia_command_productivity::suggestions::{
     QuoteContext, ReplacementSpan, RouteIdentity, ShellKind, SuggestionCapability,
 };
 use automexia_terminal::automexia::suggestions::HelperSessionBinding;

@@ -2,7 +2,7 @@
 
 use std::{fs, time::Duration};
 
-use automexia_devops::connections::{AuthState, EnvironmentRisk, ProviderKind};
+use automexia_connectivity::connections::{AuthState, EnvironmentRisk, ProviderKind};
 use automexia_devops_ssh::{
     ConnectionMetadata, GrantKind, InventoryGrant, MetadataDocument, MetadataStore,
 };

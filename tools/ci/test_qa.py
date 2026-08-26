@@ -163,8 +163,11 @@ class QaRunnerTests(unittest.TestCase):
             '"automexia-devops-ssh"',
             '"openssh_inventory"',
             '"benchmark-quick-actions"',
-            '"automexia-devops"',
+            '"automexia-command-productivity"',
             '"quick_actions"',
+            '"benchmark-connection-planning"',
+            '"automexia-connectivity"',
+            '"connection_planning"',
             '"benchmark-quick-action-store"',
             '"quick_action_store"',
         )
@@ -177,6 +180,9 @@ class QaRunnerTests(unittest.TestCase):
         )
         self.assertEqual(
             QA.STEP_TIMEOUT_SECONDS["benchmark-quick-actions"], 7200
+        )
+        self.assertEqual(
+            QA.STEP_TIMEOUT_SECONDS["benchmark-connection-planning"], 7200
         )
         self.assertEqual(
             QA.STEP_TIMEOUT_SECONDS["benchmark-quick-action-store"], 7200

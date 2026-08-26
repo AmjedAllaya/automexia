@@ -3,7 +3,7 @@ use std::io;
 use std::mem::size_of;
 use std::ptr::null_mut;
 
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::{
     decode_request_frame, decode_submission_frame, encode_replacement_frame,
     encode_reply_frame, EditorRequest, EditorSubmission, FrameError,
     NativeEditorReplacement, NativeEditorReply, SuggestionLimits,

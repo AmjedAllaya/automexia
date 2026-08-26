@@ -7,7 +7,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     parse_workspace_json, RecipeRunMode, ResolvedExecutable, MAX_BROADCAST_COMMAND_BYTES,
     MAX_DOCUMENT_BYTES,
 };

@@ -6,11 +6,11 @@ Contract and source checks:
     python tools/ci/test_command_productivity_cp51.py
     python tools/ci/check_command_productivity_cp56.py
     python tools/ci/test_command_productivity_cp56.py
-    cargo test -p automexia-devops --locked --test suggestions_contract
-    cargo test -p automexia-devops --locked --test suggestion_sources
-    cargo test -p automexia-devops --locked --test suggestion_app_reply
-    cargo test -p automexia-devops --locked --test suggestion_helper_protocol
-    cargo test -p automexia-devops --locked --test suggestion_helper_shell_response
+    cargo test -p automexia-command-productivity --locked --test suggestions_contract
+    cargo test -p automexia-command-productivity --locked --test suggestion_sources
+    cargo test -p automexia-command-productivity --locked --test suggestion_app_reply
+    cargo test -p automexia-command-productivity --locked --test suggestion_helper_protocol
+    cargo test -p automexia-command-productivity --locked --test suggestion_helper_shell_response
     cargo test -p automexia-ui-model --locked --test suggestions_ui
     cargo test -p automexia-terminal --locked --test suggestions_broker
     cargo test -p automexia-terminal --locked --test suggestion_helper_bootstrap
@@ -25,7 +25,7 @@ Contract and source checks:
     pwsh -NoLogo -NoProfile -NonInteractive -File tools/ci/test_cp5_native_powershell_bridge.ps1
     python3 tools/ci/test_cp5_native_shell_bridge.py
     python3 tools/ci/test_cp5_native_shell_adapters.py
-    cargo bench -p automexia-devops --bench suggestions --locked --no-run
+    cargo bench -p automexia-command-productivity --bench suggestions --locked --no-run
     cargo +nightly fuzz build --fuzz-dir fuzz suggestion_bridge
 
 ADR 0025 authorizes source implementation while `runtime_activation` stays

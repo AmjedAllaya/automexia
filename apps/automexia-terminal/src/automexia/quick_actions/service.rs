@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use automexia_devops::actions::{QuickAction, QuickActionDocument};
+use automexia_command_productivity::actions::{QuickAction, QuickActionDocument};
 use parking_lot::RwLock;
 
 use super::store::{
@@ -219,7 +219,7 @@ fn status_for_loaded(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use automexia_devops::actions::{
+    use automexia_command_productivity::actions::{
         ActionProvenance, ActionScope, ActionTemplate, ExecutionMode, RiskClass,
         ShellKind, WorkingDirectoryPolicy,
     };
@@ -290,10 +290,11 @@ mod tests {
 
         let mut document = service.snapshot().actions().document().clone();
         document.actions[0].display_name = "tampered".into();
-        let source = automexia_devops::actions::validate_quick_actions(document)
-            .unwrap()
-            .to_toml()
-            .unwrap();
+        let source =
+            automexia_command_productivity::actions::validate_quick_actions(document)
+                .unwrap()
+                .to_toml()
+                .unwrap();
         fs::write(store.source_path(), source).unwrap();
 
         assert_eq!(

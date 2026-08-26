@@ -1,6 +1,6 @@
 use std::{hint::black_box, time::Duration};
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     validate_quick_actions, ActionProvenance, ActionScope, ActionTemplate,
     AliasArgumentPolicy, AliasProjection, AliasProjectionMode, CollisionInventory,
     CompletionInventory, CompletionMode, ExecutionMode, OverridePolicy, QuickAction,

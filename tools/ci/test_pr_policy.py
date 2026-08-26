@@ -31,7 +31,7 @@ class PullRequestDocumentationPolicyTests(unittest.TestCase):
             "tests/fixtures/session-launch/d0-d3-contract-v2.json",
             "tests/fixtures/session-launch/d0-d3-contract-v3.json",
             "tests/fixtures/session-launch/d0-d3-contract-v4.json",
-            "tests/fixtures/session-launch/d0-d3-contract-v5.json",
+            "tests/fixtures/session-launch/d0-d3-contract-v6.json",
             "tests/assurance/release-trust-policy-v1.json",
             "tests/assurance/s1-assurance-policy-v1.json",
             "tests/assurance/performance-ratchet-policy-v1.json",

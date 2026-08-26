@@ -5,7 +5,7 @@
 
 use std::fmt;
 
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::{
     CandidateFreshness, CandidateKind, CandidateRisk, CandidateSource, RankedCandidate,
     SuggestionLimits,
 };

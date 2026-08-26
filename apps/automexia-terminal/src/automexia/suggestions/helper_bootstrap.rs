@@ -4,7 +4,7 @@ use std::fmt;
 use std::io::{self, Read};
 use std::path::Path;
 
-use automexia_devops::suggestions::{RouteIdentity, SuggestionCapability};
+use automexia_command_productivity::suggestions::{RouteIdentity, SuggestionCapability};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::{HelperSessionBinding, HelperSessionBridge};

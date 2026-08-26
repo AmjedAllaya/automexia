@@ -1,6 +1,6 @@
 #![no_main]
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     action_digest, builtin_packs, evaluate_pack_health, materialize_pack_action,
     plan_pack_update, PackOverlay, PackToolObservation, ShellKind,
 };

@@ -62,7 +62,7 @@ python3 tools/ci/native_openssh_evidence.py --validate-environment
 
 The validator reads one identity-stable bounded manifest snapshot. It requires
 23 ordered passing scenarios, the executing native OS and normalized
-architecture, the exact clean commit and schema-5 digest, fixed OpenSSH client
+architecture, the exact clean commit and schema-6 digest, fixed OpenSSH client
 and server version strings, and fresh no-follow SHA-256 reads of the application
 binary, package, and client. Release files are capped at 4 GiB. Symlinks,
 reparse points, replacement or growth while reading, hash/version/host drift,
@@ -79,7 +79,7 @@ does not override system OpenSSH cryptographic policy.
 On Windows x86_64, the focused source suites passed 19 direct route/trust, 8
 tunnel, 4 UI-model, 12 Connection Hub renderer/controller, and 1 strong
 Allow-once tests. The native evidence suite passed 11 methods with one
-symlink-privilege skip; schema-5 mutations passed 10; platform workflow
+symlink-privilege skip; schema-6 mutations passed 10; platform workflow
 mutations passed 29; and repository-protection mutations passed 23.
 
 The required full gates passed: Rustfmt, warning-denied workspace Clippy,

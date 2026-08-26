@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MAX_FILE_BYTES = 1_500_000
 
 REQUIRED: dict[str, tuple[str, ...]] = {
-    "automexia-devops/src/suggestions/mod.rs": (
+    "automexia-command-productivity/src/suggestions/mod.rs": (
         "pub const PROTOCOL_SCHEMA: u16 = 1;",
         "pub const FRAME_BYTES: usize = 1024 * 1024;",
         "pub const ACTIVE_ROUTES: usize = 64;",
@@ -23,7 +23,7 @@ REQUIRED: dict[str, tuple[str, ...]] = {
         "pub struct LocalSourceBroker",
         "pub fn rank_batches",
     ),
-    "automexia-devops/src/suggestions/reply.rs": (
+    "automexia-command-productivity/src/suggestions/reply.rs": (
         "pub enum NativeEditorReply",
         "pub enum NativeEditorStatusCode",
         "pub fn encode_reply_frame",
@@ -47,14 +47,14 @@ REQUIRED: dict[str, tuple[str, ...]] = {
         "serve_one_suggestion_submission",
         'fallback: "cp1-shell-native"',
     ),
-    "automexia-devops/src/suggestions/helper.rs": (
+    "automexia-command-productivity/src/suggestions/helper.rs": (
         "pub struct HelperRequest",
         "pub struct HelperReplace",
         "pub fn encode_record",
         "pub fn decode_record",
         "adapter_generation",
     ),
-    "automexia-devops/src/suggestions/helper_shell.rs": (
+    "automexia-command-productivity/src/suggestions/helper_shell.rs": (
         "pub fn encode_shell_response",
         "pub fn decode_shell_response",
         "b'A'..=b'F'",
@@ -146,19 +146,19 @@ REQUIRED: dict[str, tuple[str, ...]] = {
         "SuggestionSurfaceKind::CompactHint",
         "matched",
     ),
-    "automexia-devops/tests/suggestions_contract.rs": (
+    "automexia-command-productivity/tests/suggestions_contract.rs": (
         "arbitrary_frames_never_bypass_checked_decode",
         "native_replacement_round_trip_revalidates_capability_and_never_executes",
     ),
-    "automexia-devops/tests/suggestion_app_reply.rs": (
+    "automexia-command-productivity/tests/suggestion_app_reply.rs": (
         "authenticated_status_round_trips_and_revalidates_exact_editor_state",
         "unknown_or_unbound_status_payloads_fail_closed",
     ),
-    "automexia-devops/tests/suggestion_helper_protocol.rs": (
+    "automexia-command-productivity/tests/suggestion_helper_protocol.rs": (
         "every_helper_record_round_trips_without_exposing_payloads_in_debug",
         "malformed_or_authority_broadening_records_fail_closed",
     ),
-    "automexia-devops/tests/suggestion_helper_shell_response.rs": (
+    "automexia-command-productivity/tests/suggestion_helper_shell_response.rs": (
         "replacement_and_status_round_trip_as_nul_free_ascii_lines",
         "malformed_lowercase_odd_non_utf8_and_authority_kinds_fail_closed",
     ),
@@ -245,7 +245,7 @@ REQUIRED: dict[str, tuple[str, ...]] = {
         "decode_reply_frame",
         "encode_request_frame",
     ),
-    "automexia-devops/benches/suggestions.rs": (
+    "automexia-command-productivity/benches/suggestions.rs": (
         "cp5_suggestion_ranking",
         "cp5_suggestion_frame_encode_near_limit_utf8",
         "cp5_suggestion_frame_decode_near_limit_utf8",

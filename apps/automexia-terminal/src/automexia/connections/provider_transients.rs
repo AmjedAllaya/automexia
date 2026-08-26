@@ -14,7 +14,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use automexia_devops::connections::{OpaqueReference, ProviderKind};
+use automexia_connectivity::connections::{OpaqueReference, ProviderKind};
 use automexia_devops_kubernetes::{
     parse_private_transient_source, KubeconfigSourceSnapshot, MAX_KUBECONFIG_BYTES,
 };

@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use automexia_devops::connections::*;
+use automexia_connectivity::connections::*;
 use automexia_terminal::automexia::connections::{
     execute_workspaces_command_at, m6_activation_readiness, review_library_broadcast,
     review_library_recipe, review_library_workspace_restore, ConnectionLibraryDocument,

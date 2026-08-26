@@ -2,7 +2,7 @@ use std::io::{Cursor, Read, Write};
 use std::thread;
 use std::time::Duration;
 
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::{
     decode_reply_frame, encode_submission_frame, AcceptanceBindings, AcceptanceContext,
     Candidate, CandidateFreshness, CandidateKind, CandidateRisk, CandidateSource,
     CompletionMode, EditorRequest, EditorSubmission, NativeEditorReplacement,

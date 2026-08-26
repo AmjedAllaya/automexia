@@ -5,6 +5,14 @@ command output grouping. User behavior and shell support remain authoritative in
 [Shell integration](SHELL-INTEGRATION.md#prompt-ownership); the roadmap status
 remains authoritative in [UI branding roadmap](UI-BRANDING-ROADMAP.md).
 
+Generic result geometry, exit classification, color, spacing, the 540 ms
+completion pulse, route-isolated state, and native hooks are owned by
+`apps/automexia-terminal/src/renderer/command_results.rs`. They are core
+application-renderer feedback and remain active when the optional DevOps context
+extension is disabled. `renderer/devops_status.rs` owns only optional prompt
+context and semantic status. ADR 0035 and the feature-ownership mutation suite
+enforce this separation.
+
 ## Validation incident
 
 The first native assertion proved that result geometry existed and that the
@@ -89,6 +97,8 @@ Focused reproduction and ownership checks:
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/ci/test_shell_integration.ps1
 cargo test -p automexia-terminal --bin automexia --locked --features native-gui-test-hooks result_
 cargo test -p rio-vt --locked semantic_
+python tools/ci/check_feature_ownership.py
+python tools/ci/test_feature_ownership.py
 wsl.exe --distribution Ubuntu-24.04 --exec bash tools/ci/test_shell_integration.sh
 wsl.exe --distribution Ubuntu-24.04 --exec zsh tools/ci/test_zsh_integration.zsh
 wsl.exe --distribution Ubuntu-24.04 --exec fish tools/ci/test_fish_integration.fish

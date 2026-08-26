@@ -7,7 +7,7 @@
 
 use std::{fmt, sync::Arc};
 
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     validate_provider_capsule, AuthState, EnvironmentRisk, ProviderCapsule,
     ProviderContextFreshness, ProviderContextTemplate, ProviderKind,
     ProviderRecoveryAction,
@@ -234,7 +234,7 @@ fn auth_state(context: &ProviderContextTemplate) -> AuthState {
         },
         ProviderContextFreshness::Refreshing | ProviderContextFreshness::Stale => {
             AuthState::Stale {
-                previous: automexia_devops::connections::StaleAuthState::Available,
+                previous: automexia_connectivity::connections::StaleAuthState::Available,
             }
         }
         ProviderContextFreshness::Expired => AuthState::Expired {
@@ -342,7 +342,7 @@ fn compose_catalog(capsule: Option<&ProviderCapsule>) -> Vec<ProviderCatalogItem
 #[cfg(test)]
 mod tests {
     use super::*;
-    use automexia_devops::connections::{
+    use automexia_connectivity::connections::{
         OpaqueReference, ProviderContextProvenance, ProviderProvenanceKind,
         ProviderScopeBinding, CONNECTION_SCHEMA_VERSION,
     };

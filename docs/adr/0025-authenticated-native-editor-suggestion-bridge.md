@@ -229,3 +229,9 @@ Primary references:
 [Zsh completion widgets](https://zsh.sourceforge.io/Doc/Release/Completion-Widgets.html),
 [Fish interactive use](https://fishshell.com/docs/current/interactive.html), and
 [WAI-ARIA listbox guidance](https://www.w3.org/WAI/ARIA/apg/patterns/listbox/).
+
+## 2026-08-26 placement amendment
+
+ADR 0035 moves the capability-free `suggestions` implementation to
+`automexia-command-productivity`; this ADR's authenticated native-editor,
+transport, insertion, cancellation, and fallback decisions are unchanged.

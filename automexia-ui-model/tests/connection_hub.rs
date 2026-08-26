@@ -1,4 +1,4 @@
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     apply_broadcast_event, review_broadcast, ActionRisk, AuthState, AuthorityKind,
     AuthorityState, AutomationAction, BroadcastEvent, BroadcastLifecycle,
     BroadcastTargetV1, ConfirmationPolicy, DestinationSurface, EnvironmentRisk,
@@ -87,7 +87,7 @@ fn all_states() -> Vec<(ProviderKind, AuthState)> {
         (
             ProviderKind::Gcp,
             AuthState::Stale {
-                previous: automexia_devops::connections::StaleAuthState::Ready,
+                previous: automexia_connectivity::connections::StaleAuthState::Ready,
             },
         ),
         (
@@ -115,9 +115,9 @@ fn summaries() -> Vec<ConnectionSummary> {
                 "Development".into()
             },
             risk: if index == 2 {
-                automexia_devops::connections::EnvironmentRisk::Production
+                automexia_connectivity::connections::EnvironmentRisk::Production
             } else {
-                automexia_devops::connections::EnvironmentRisk::Development
+                automexia_connectivity::connections::EnvironmentRisk::Development
             },
             auth_state,
             favorite: index == 0,

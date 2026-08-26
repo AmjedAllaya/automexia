@@ -24,7 +24,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CONTRACT = ROOT / "tests/fixtures/session-launch/d0-d3-contract-v5.json"
+CONTRACT = ROOT / "tests/fixtures/session-launch/d0-d3-contract-v6.json"
 SYNTHETIC_FIXTURE = (
     ROOT / "tests/fixtures/session-launch/native-openssh-evidence-synthetic-v1.json"
 )

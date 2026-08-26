@@ -71,11 +71,11 @@
     "pty_insert_after_review": true
   },
   "model_files": [
-    "automexia-devops/src/actions/activation.rs",
-    "automexia-devops/src/actions/mod.rs",
-    "automexia-devops/src/actions/model.rs",
-    "automexia-devops/src/actions/projection.rs",
-    "automexia-devops/src/actions/validation.rs"
+    "automexia-command-productivity/src/actions/activation.rs",
+    "automexia-command-productivity/src/actions/mod.rs",
+    "automexia-command-productivity/src/actions/model.rs",
+    "automexia-command-productivity/src/actions/projection.rs",
+    "automexia-command-productivity/src/actions/validation.rs"
   ],
   "application_files": [
     "apps/automexia-terminal/src/automexia/quick_actions/cli.rs",
@@ -109,5 +109,5 @@
     "cli-dry-run",
     "activation-revalidation"
   ],
-  "benchmark": "automexia-devops/benches/quick_actions.rs"
+  "benchmark": "automexia-command-productivity/benches/quick_actions.rs"
 }

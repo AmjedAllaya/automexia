@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use automexia_devops::connections::{AuthState, EnvironmentRisk, ProviderKind};
+use automexia_connectivity::connections::{AuthState, EnvironmentRisk, ProviderKind};
 use automexia_terminal::automexia::connections::ProviderProductSnapshot;
 use automexia_ui_model::connection_hub::{
     project_connection_catalog, project_provider_catalog, ConnectionCatalogEntry,

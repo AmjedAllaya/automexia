@@ -1009,7 +1009,7 @@ regressions; authority and protected-ADR status did not change.
 - [x] **Fully done locally:** keep filesystem, process, network, provider,
   credential, PTY, listener, renderer, and GPU authority absent or false.
 
-Implementation owners are `automexia-devops/src/connections`,
+Implementation owners are `automexia-connectivity/src/connections`,
 `automexia-ui-model/src/connection_hub.rs`, and
 `tests/fixtures/connection-hub`. The pure Hub projection remains the semantic source of truth. D5.1 adapts it
 into the read-only product dialog. D5.2 now owns actionable approval, the
@@ -1093,7 +1093,7 @@ managed SSH and ordinary manual SSH must remain unchanged.
 
 ### D6.0 - provider-neutral capsule and authentication framework
 
-- [x] **Fully done locally** - `automexia-devops::connections::provider_auth`
+- [x] **Fully done locally** - `automexia-connectivity::connections::provider_auth`
   owns strict bounded public context, immutable capsule, observation, operation,
   isolation, browser-policy, review, recovery, receipt, and redacted-audit
   contracts. The store admits at most 64 capsules and 16 provider contexts per

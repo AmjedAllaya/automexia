@@ -3,11 +3,13 @@
 use std::fmt;
 use std::io::{BufRead, Write};
 
-use automexia_devops::suggestions::helper::{
+use automexia_command_productivity::suggestions::helper::{
     HelperRecord, HelperRecordError, HelperStatus, HelperStatusCode,
 };
-use automexia_devops::suggestions::helper_shell::encode_shell_response;
-use automexia_devops::suggestions::{EditorSubmission, NativeEditorReplacement};
+use automexia_command_productivity::suggestions::helper_shell::encode_shell_response;
+use automexia_command_productivity::suggestions::{
+    EditorSubmission, NativeEditorReplacement,
+};
 
 use super::{
     read_helper_record, HelperSessionBridge, HelperSessionError, HelperTransportError,

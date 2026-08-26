@@ -3,7 +3,7 @@
 //! The screen adapter consumes this model. Acceptance returns only a
 //! revalidated native-editor replacement and has no PTY-write or Enter path.
 
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::{
     AcceptanceContext, EditorRequest, NativeEditorReplacement,
 };
 use automexia_ui_model::suggestions::{

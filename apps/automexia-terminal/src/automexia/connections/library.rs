@@ -12,7 +12,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     fingerprint_profile, fingerprint_recipe, validate_profile_document,
     validate_recipe_document, validate_workspace, validate_workspace_document,
     AutomationRecipeDocumentV1, AutomationRecipeV1, ConnectionProfileDocumentV1,

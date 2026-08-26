@@ -1,7 +1,7 @@
-//! Automexia-owned UI contracts shared by extension contributions.
+//! Automexia-owned renderer-neutral UI contracts for core and optional features.
 //!
 //! This module contains renderer-neutral geometry/data only. The terminal engine,
-//! PTY and VT parser must not depend on extension implementations.
+//! PTY and VT parser must not depend on product-domain or extension implementations.
 
 /// One semantic-prompt row geometry that an application contribution may decorate.
 ///

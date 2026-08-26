@@ -1,6 +1,8 @@
 use std::fs;
 
-use automexia_devops::actions::{RiskClass, ShellKind, TaskRunner, WorkspaceTrustError};
+use automexia_command_productivity::actions::{
+    RiskClass, ShellKind, TaskRunner, WorkspaceTrustError,
+};
 use automexia_terminal::automexia::quick_actions::{
     WorkspaceActionStore, WorkspaceErrorCode, WorkspaceTaskBridgeInput,
     WorkspaceTrustStore,

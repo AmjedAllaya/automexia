@@ -1,12 +1,10 @@
 use std::{sync::mpsc, time::Duration};
 
-use automexia_devops::{
-    actions::{SearchContext, ShellKind},
-    connections::{
-        EnvironmentRisk, OpaqueReference, ProviderCapsule, ProviderContextFreshness,
-        ProviderContextProvenance, ProviderContextTemplate, ProviderKind,
-        ProviderProvenanceKind, ProviderScopeBinding, CONNECTION_SCHEMA_VERSION,
-    },
+use automexia_command_productivity::actions::{SearchContext, ShellKind};
+use automexia_connectivity::connections::{
+    EnvironmentRisk, OpaqueReference, ProviderCapsule, ProviderContextFreshness,
+    ProviderContextProvenance, ProviderContextTemplate, ProviderKind,
+    ProviderProvenanceKind, ProviderScopeBinding, CONNECTION_SCHEMA_VERSION,
 };
 use automexia_terminal::automexia::{
     connections::{ConnectionHubController, ConnectionHubRuntime},
@@ -142,7 +140,7 @@ fn cached_provider_product_reaches_route_scoped_quick_actions_without_execution(
     let binding = hit.provider.clone().unwrap();
     assert_eq!(
         hit.action.execution,
-        automexia_devops::actions::ExecutionMode::Insert
+        automexia_command_productivity::actions::ExecutionMode::Insert
     );
     assert!(hit.provider.is_some());
 
@@ -165,16 +163,18 @@ fn cached_provider_product_reaches_route_scoped_quick_actions_without_execution(
         .expect("published SSH action must be searchable on its owning route");
     assert_eq!(
         ssh.action.template,
-        automexia_devops::actions::ActionTemplate::TypedArgv {
+        automexia_command_productivity::actions::ActionTemplate::TypedArgv {
             executable_id: "ssh".into(),
-            arguments: vec![automexia_devops::actions::ArgumentToken::Literal {
-                value: "bastion.example.com".into(),
-            }],
+            arguments: vec![
+                automexia_command_productivity::actions::ArgumentToken::Literal {
+                    value: "bastion.example.com".into(),
+                }
+            ],
         }
     );
     assert_eq!(
         ssh.action.execution,
-        automexia_devops::actions::ExecutionMode::Insert
+        automexia_command_productivity::actions::ExecutionMode::Insert
     );
     let (sender, receiver) = mpsc::channel();
     quick_actions.submit(

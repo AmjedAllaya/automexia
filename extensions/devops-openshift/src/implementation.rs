@@ -1,10 +1,10 @@
 use std::fmt;
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     build_provider_action_candidate, ExecutionMode, ProviderActionCandidate,
     ProviderActionSpec, RiskClass,
 };
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     AuthState, OpaqueReference, ProviderCapsule, ProviderKind, TransportDescriptor,
     CONNECTION_SCHEMA_VERSION, MAX_IDENTIFIER_BYTES,
 };

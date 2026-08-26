@@ -11,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     validate_connection_receipt, ConnectionReceipt, OperationResultState,
 };
 use serde::{Deserialize, Serialize};
@@ -484,7 +484,7 @@ fn read_failure_error(error: ReadFailure) -> ManagedReceiptError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use automexia_devops::connections::{
+    use automexia_connectivity::connections::{
         ConnectionReceipt, OpaqueReference, OperationResultState,
         CONNECTION_SCHEMA_VERSION,
     };

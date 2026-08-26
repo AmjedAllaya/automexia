@@ -387,14 +387,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
-name = "automexia-devops"
+name = "automexia-command-productivity"
 version = "0.4.0"
 dependencies = [
+ "automexia-connectivity",
  "automexia-extension-api",
- "base64",
  "blake3",
  "criterion",
- "dirs",
  "proptest",
  "serde",
  "serde_json",
@@ -403,10 +402,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "automexia-connectivity"
+version = "0.4.0"
+dependencies = [
+ "automexia-extension-api",
+ "base64",
+ "blake3",
+ "criterion",
+ "proptest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "automexia-devops"
+version = "0.4.0"
+dependencies = [
+ "automexia-extension-api",
+ "dirs",
+ "proptest",
+ "serde_json",
+]
+
+[[package]]
 name = "automexia-devops-aws"
 version = "0.4.0"
 dependencies = [
- "automexia-devops",
+ "automexia-command-productivity",
+ "automexia-connectivity",
  "automexia-extension-api",
  "configparser",
  "serde",
@@ -417,7 +440,8 @@ dependencies = [
 name = "automexia-devops-azure"
 version = "0.4.0"
 dependencies = [
- "automexia-devops",
+ "automexia-command-productivity",
+ "automexia-connectivity",
  "automexia-extension-api",
  "criterion",
  "serde",
@@ -428,7 +452,8 @@ dependencies = [
 name = "automexia-devops-gcp"
 version = "0.4.0"
 dependencies = [
- "automexia-devops",
+ "automexia-command-productivity",
+ "automexia-connectivity",
  "automexia-extension-api",
  "configparser",
  "criterion",
@@ -440,7 +465,8 @@ dependencies = [
 name = "automexia-devops-kubernetes"
 version = "0.4.0"
 dependencies = [
- "automexia-devops",
+ "automexia-command-productivity",
+ "automexia-connectivity",
  "automexia-extension-api",
  "criterion",
  "libc",
@@ -455,7 +481,8 @@ dependencies = [
 name = "automexia-devops-openshift"
 version = "0.4.0"
 dependencies = [
- "automexia-devops",
+ "automexia-command-productivity",
+ "automexia-connectivity",
  "automexia-devops-kubernetes",
  "automexia-extension-api",
  "serde",
@@ -482,7 +509,8 @@ dependencies = [
 name = "automexia-devops-teleport"
 version = "0.4.0"
 dependencies = [
- "automexia-devops",
+ "automexia-command-productivity",
+ "automexia-connectivity",
  "automexia-extension-api",
  "criterion",
  "serde",
@@ -508,7 +536,7 @@ dependencies = [
 name = "automexia-ecosystem-runtime"
 version = "0.4.0"
 dependencies = [
- "automexia-devops",
+ "automexia-command-productivity",
  "automexia-ecosystem",
  "base64",
  "criterion",
@@ -568,6 +596,8 @@ name = "automexia-terminal"
 version = "0.4.0"
 dependencies = [
  "ahash",
+ "automexia-command-productivity",
+ "automexia-connectivity",
  "automexia-devops",
  "automexia-devops-aws",
  "automexia-devops-azure",
@@ -635,7 +665,8 @@ dependencies = [
 name = "automexia-ui-model"
 version = "0.4.0"
 dependencies = [
- "automexia-devops",
+ "automexia-command-productivity",
+ "automexia-connectivity",
  "automexia-extension-api",
  "serde",
  "serde_json",

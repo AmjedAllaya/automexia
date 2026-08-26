@@ -10,7 +10,7 @@ use std::fmt;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::{
     AcceptanceBindings, AcceptanceContext, EditorSubmission, NativeEditorReplacement,
     NativeEditorReply, NativeEditorStatus, NativeEditorStatusCode, RouteIdentity,
     SuggestionLimits,
@@ -20,14 +20,14 @@ use super::{BrokerError, SuggestionService, SuggestionSnapshot};
 
 #[derive(Clone)]
 pub struct SuggestionPublication {
-    pub request: automexia_devops::suggestions::EditorRequest,
+    pub request: automexia_command_productivity::suggestions::EditorRequest,
     pub snapshot: SuggestionSnapshot,
     pub acceptance: AcceptanceBindings,
 }
 
 impl SuggestionPublication {
     pub fn new(
-        request: automexia_devops::suggestions::EditorRequest,
+        request: automexia_command_productivity::suggestions::EditorRequest,
         snapshot: SuggestionSnapshot,
         acceptance: AcceptanceBindings,
     ) -> Result<Self, PublicationError> {

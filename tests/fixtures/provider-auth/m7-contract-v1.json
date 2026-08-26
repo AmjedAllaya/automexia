@@ -78,17 +78,17 @@
     "ai"
   ],
   "source_files": [
-    "automexia-devops/src/connections/provider_auth.rs",
-    "automexia-devops/src/connections/model.rs",
-    "automexia-devops/src/connections/state.rs",
-    "automexia-devops/src/connections/validation.rs",
+    "automexia-connectivity/src/connections/provider_auth.rs",
+    "automexia-connectivity/src/connections/model.rs",
+    "automexia-connectivity/src/connections/state.rs",
+    "automexia-connectivity/src/connections/validation.rs",
     "automexia-extension-runtime/src/lib.rs",
     "automexia-devops/src/context.rs",
     "automexia-ui-model/src/connection_hub.rs"
   ],
   "test_files": [
-    "automexia-devops/tests/provider_auth_m7.rs",
-    "automexia-devops/tests/connection_state_matrix.rs",
+    "automexia-connectivity/tests/provider_auth_m7.rs",
+    "automexia-connectivity/tests/connection_state_matrix.rs",
     "automexia-ui-model/tests/connection_hub.rs",
     "tools/ci/test_provider_auth_m7.py"
   ],
@@ -96,7 +96,7 @@
     "tests/fixtures/connection-hub/provider-observations/all-auth-states-v1.json"
   ],
   "fuzz_target": "fuzz/fuzz_targets/connection_planning.rs",
-  "benchmark": "automexia-devops/benches/connection_planning.rs",
+  "benchmark": "automexia-connectivity/benches/connection_planning.rs",
   "documents": [
     "docs/user-guide/connection-hub-and-ssh.md",
     "docs/CONNECTION-HUB.md",

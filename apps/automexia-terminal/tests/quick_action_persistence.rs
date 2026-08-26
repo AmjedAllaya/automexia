@@ -1,4 +1,4 @@
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     ActionProvenance, ActionScope, ActionTemplate, ExecutionMode, QuickAction, RiskClass,
     ShellKind, WorkingDirectoryPolicy,
 };

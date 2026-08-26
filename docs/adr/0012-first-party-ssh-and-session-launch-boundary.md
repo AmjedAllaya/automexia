@@ -219,3 +219,13 @@ are specified in [Connection Hub](../CONNECTION-HUB.md). Its renderer-neutral
 review/state model, externally owned credential recovery warning, and native
 evidence are required activation work; this document does not by itself enable managed
 launch or broaden its authority.
+
+## 2026-08-26 ownership amendment
+
+The active contract is now
+`tests/fixtures/session-launch/d0-d3-contract-v6.json`. Schema 6 ratchets the
+exact schema-5 digest and changes only current source/evidence ownership paths
+from the former mixed DevOps package to `automexia-connectivity`. It does not
+change launch grammar, trust decisions, tunnel lifecycle, activation, authority,
+or native release requirements. Schemas 1-5 remain byte-for-byte hash-checked
+history. ADR 0035 owns the placement decision.

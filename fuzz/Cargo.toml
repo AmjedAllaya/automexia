@@ -13,6 +13,8 @@ automexia-image = { path = "../automexia-image" }
 automexia-keybindings = { path = "../automexia-keybindings" }
 automexia-terminal = { path = "../apps/automexia-terminal", default-features = false }
 automexia-devops = { path = "../automexia-devops" }
+automexia-connectivity = { path = "../automexia-connectivity" }
+automexia-command-productivity = { path = "../automexia-command-productivity" }
 automexia-ecosystem = { path = "../automexia-ecosystem" }
 automexia-ecosystem-runtime = { path = "../automexia-ecosystem-runtime" }
 automexia-devops-ssh = { path = "../extensions/devops-ssh" }

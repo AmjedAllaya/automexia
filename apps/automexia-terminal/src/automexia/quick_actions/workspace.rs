@@ -13,7 +13,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use automexia_devops::actions::{
+use automexia_command_productivity::actions::{
     build_trusted_task_bridge, parse_quick_actions, trusted_workspace_layer,
     validate_quick_actions, ActionLayer, QuickActionDocument, RiskClass, ShellKind,
     TaskBridgeRequest, TaskRunner, WorkspaceTrustError, WorkspaceTrustReceipt,

@@ -1,0 +1,31 @@
+[package]
+name = "automexia-command-productivity"
+description = "Private capability-free Quick Action and native-editor suggestion contracts for Automexia."
+publish = false
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+automexia-connectivity = { workspace = true }
+blake3 = "1.8.5"
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = "1.1.4"
+unicode-segmentation = { workspace = true }
+
+[dev-dependencies]
+automexia-extension-api = { workspace = true }
+criterion = { workspace = true }
+proptest = { workspace = true }
+
+[[bench]]
+name = "quick_actions"
+harness = false
+
+[[bench]]
+name = "suggestions"
+harness = false

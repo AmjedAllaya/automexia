@@ -104,11 +104,11 @@
     "version_regression_rejection": true
   },
   "source_files": [
-    "automexia-devops/src/actions/packs.rs",
-    "automexia-devops/src/actions/validation.rs",
+    "automexia-command-productivity/src/actions/packs.rs",
+    "automexia-command-productivity/src/actions/validation.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/packs_cli.rs",
     "apps/automexia-terminal/src/cli.rs",
-    "automexia-devops/tests/quick_action_packs.rs"
+    "automexia-command-productivity/tests/quick_action_packs.rs"
   ],
   "required_tests": [
     "registry_contains_the_exact_reviewed_provider_set",
@@ -129,7 +129,7 @@
     "registry_doctor_does_not_claim_provider_readiness",
     "stale_pack_enable_revision_is_actionable"
   ],
-  "benchmark": "automexia-devops/benches/quick_actions.rs",
+  "benchmark": "automexia-command-productivity/benches/quick_actions.rs",
   "fuzz_target": "fuzz/fuzz_targets/quick_action_packs.rs",
   "documents": [
     "docs/ARCHITECTURE.md",

@@ -6,7 +6,7 @@
 
 use std::{collections::BTreeSet, path::Path, time::Duration};
 
-use automexia_devops::actions::QuickAction;
+use automexia_command_productivity::actions::QuickAction;
 use automexia_ecosystem::{
     capability_diff, EcosystemReviewSurface, GrantBinding, ModelConsentSurfaceRequest,
     ModelDisclosure, ModelReview, ModelRisk, ModelSuggestionError, RevocationSnapshot,

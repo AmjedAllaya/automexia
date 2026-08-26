@@ -2,7 +2,7 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use automexia_devops::connections::{
+use automexia_connectivity::connections::{
     DirectOpenSshLaunchBinding, DirectOpenSshPreparation, WorkspaceRestorePlan,
 };
 use automexia_devops_ssh::GrantKind;
@@ -1804,7 +1804,7 @@ mod tests {
 
     #[test]
     fn current_executable_review_projects_binds_and_is_invalidated_on_exit() {
-        use automexia_devops::connections::ResolvedExecutable;
+        use automexia_connectivity::connections::ResolvedExecutable;
 
         const NOW_MS: u64 = 1_700_000_000_000;
         let temporary = tempfile::tempdir().unwrap();

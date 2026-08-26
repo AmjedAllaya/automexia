@@ -10,7 +10,8 @@ rust-version.workspace = true
 repository.workspace = true
 
 [dependencies]
-automexia-devops = { workspace = true }
+automexia-connectivity = { workspace = true }
+automexia-command-productivity = { workspace = true }
 automexia-extension-api = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

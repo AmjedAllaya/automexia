@@ -6125,11 +6125,11 @@ impl Screen<'_> {
                 .as_ref()
                 .map(|snapshot| snapshot.announcement_generation);
             let command_result_visual =
-                self.renderer.devops_status.native_test_result_visual();
+                self.renderer.command_results.native_test_result_visual();
             let command_result_identity =
-                self.renderer.devops_status.native_test_result_identity();
+                self.renderer.command_results.native_test_result_identity();
             let command_result_style =
-                self.renderer.devops_status.native_test_result_style();
+                self.renderer.command_results.native_test_result_style();
             write_native_resize_snapshot(
                 &self.context_manager.current().renderable_content,
                 panels,

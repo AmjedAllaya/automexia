@@ -18,7 +18,7 @@ mod service;
 use std::collections::BTreeMap;
 use std::fmt;
 
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::{
     rank_batches, EditorRequest, LatestRequestSlots, RankedCandidate, RouteIdentity,
     ShellKind, SourceBatch, SourcePolicy, SuggestionCapability, SuggestionLimits,
     ValidationError,

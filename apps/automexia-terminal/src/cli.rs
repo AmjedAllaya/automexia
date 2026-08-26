@@ -526,7 +526,9 @@ pub enum NativeAliasKind {
     Git,
 }
 
-impl From<NativeAliasKind> for automexia_devops::actions::NativeAliasSource {
+impl From<NativeAliasKind>
+    for automexia_command_productivity::actions::NativeAliasSource
+{
     fn from(value: NativeAliasKind) -> Self {
         match value {
             NativeAliasKind::Powershell => Self::Powershell,
@@ -547,7 +549,7 @@ pub enum TaskRunnerKind {
     Mise,
 }
 
-impl From<TaskRunnerKind> for automexia_devops::actions::TaskRunner {
+impl From<TaskRunnerKind> for automexia_command_productivity::actions::TaskRunner {
     fn from(value: TaskRunnerKind) -> Self {
         match value {
             TaskRunnerKind::Just => Self::Just,
@@ -565,7 +567,7 @@ pub enum TaskRisk {
     Privileged,
 }
 
-impl From<TaskRisk> for automexia_devops::actions::RiskClass {
+impl From<TaskRisk> for automexia_command_productivity::actions::RiskClass {
     fn from(value: TaskRisk) -> Self {
         match value {
             TaskRisk::Mutating => Self::Mutating,
@@ -709,7 +711,7 @@ pub enum AliasShell {
     Cmd,
 }
 
-impl From<AliasShell> for automexia_devops::actions::ShellKind {
+impl From<AliasShell> for automexia_command_productivity::actions::ShellKind {
     fn from(value: AliasShell) -> Self {
         match value {
             AliasShell::Powershell => Self::Powershell,

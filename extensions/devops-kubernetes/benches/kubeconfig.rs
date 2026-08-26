@@ -1,4 +1,4 @@
-use automexia_devops::connections::{OpaqueReference, ProviderKind};
+use automexia_connectivity::connections::{OpaqueReference, ProviderKind};
 use automexia_devops_kubernetes::parse_private_transient_source;
 use criterion::{criterion_group, criterion_main, Criterion};
 

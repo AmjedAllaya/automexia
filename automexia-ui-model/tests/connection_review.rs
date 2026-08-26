@@ -1,4 +1,4 @@
-use automexia_devops::connections::parse_connection_review_json;
+use automexia_connectivity::connections::parse_connection_review_json;
 use automexia_ui_model::connection_hub::{
     project_connection_review, AccessibilityRole, HubLayout, Viewport,
 };

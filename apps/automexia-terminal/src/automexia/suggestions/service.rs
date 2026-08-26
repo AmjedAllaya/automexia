@@ -5,7 +5,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use automexia_devops::suggestions::{
+use automexia_command_productivity::suggestions::{
     EditorRequest, RouteIdentity, SourceBatch, SuggestionCapability,
 };
 
@@ -349,7 +349,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::FairLatestQueue;
-    use automexia_devops::suggestions::RouteIdentity;
+    use automexia_command_productivity::suggestions::RouteIdentity;
 
     fn route(pane_id: u64) -> RouteIdentity {
         RouteIdentity {
@@ -358,7 +358,7 @@ mod tests {
             tab_id: 1,
             pane_id,
             session_id: pane_id,
-            shell: automexia_devops::suggestions::ShellKind::Bash,
+            shell: automexia_command_productivity::suggestions::ShellKind::Bash,
             editor_version: "5.2".into(),
             endpoint_instance: 1,
         }

@@ -12,12 +12,13 @@ from typing import Any
 from native_openssh_evidence import validate_repository_contract as validate_native_evidence
 
 ROOT = Path(__file__).resolve().parents[2]
-CONTRACT = ROOT / "tests/fixtures/session-launch/d0-d3-contract-v5.json"
+CONTRACT = ROOT / "tests/fixtures/session-launch/d0-d3-contract-v6.json"
 HISTORICAL_CONTRACTS = [
     (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v1.json", "0d2120bd9aef13b3d75053d595356c9b844107bc9ddc98db60f01f0c779bd9d8", "schema-1"),
     (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v2.json", "eb561716075bd546268b1a3c4fdb2d3c3dceaafd5ca2f9fd7113f69c29d9ba4e", "schema-2"),
     (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v3.json", "112209b674263a6a996a119b9e9120175f0d41aed082463a3e17d1bf806c3ed1", "schema-3"),
     (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v4.json", "f96f243d7db337b84f58f39fd8bb4aaa2cbd4327fa523a2fa8572d1dbdcd70dc", "schema-4"),
+    (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v5.json", "b4564430db295be8df0424999d49adb56f25c7e06ce3dd1ad5cb7c785fc76697", "schema-5"),
 ]
 MAX_EVIDENCE_BYTES = 262_144
 EXPECTED_KEYS = {
@@ -259,7 +260,7 @@ EXPECTED_SOURCES = [
     "apps/automexia-terminal/src/screen/connection_hub.rs",
     "automexia-ui-model/src/connection_hub.rs",
     "automexia-extension-api/src/lib.rs",
-    "automexia-devops/src/connections/direct_openssh.rs",
+    "automexia-connectivity/src/connections/direct_openssh.rs",
     "apps/automexia-terminal/src/automexia/connections/receipts.rs",
     "apps/automexia-terminal/src/automexia/connections/runtime.rs",
     "apps/automexia-terminal/src/application.rs",
@@ -268,7 +269,7 @@ EXPECTED_SOURCES = [
     "extensions/devops-ssh/src/inventory.rs",
     "apps/automexia-terminal/src/automexia/connections/direct_openssh.rs",
     "apps/automexia-terminal/src/renderer/connection_hub.rs",
-    "automexia-devops/src/connections/openssh_tunnels.rs",
+    "automexia-connectivity/src/connections/openssh_tunnels.rs",
 ]
 EXPECTED_CHECKS = [
     "tools/ci/check_session_launch_d0.py",
@@ -320,7 +321,7 @@ def load_contract(path: Path = CONTRACT) -> dict[str, Any]:
     if not isinstance(document, dict) or set(document) != EXPECTED_KEYS:
         raise SessionLaunchD0Error("D0/D3/M4 contract keys changed")
     if (document["schema"], document["phase"], document["status"]) != (
-        5, "F1/D0-D3+M3/F5.1/D5.2+M4/F5.2+M5/F5.3-F5.4", "local-managed-ssh-tunnel-source-and-native-evidence-contract-complete-native-runs-and-protected-activation-pending",
+        6, "F1/D0-D3+M3/F5.1/D5.2+M4/F5.2+M5/F5.3-F5.4", "local-managed-ssh-tunnel-source-and-native-evidence-contract-complete-native-runs-and-protected-activation-pending",
     ):
         raise SessionLaunchD0Error("D0/D3/M4 contract identity changed")
     expected_sections = {
@@ -524,7 +525,7 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "DIRECT_OPENSSH_TUNNEL_MANAGED_OPTIONS", "tunnel_plan",
         "requires_strong_tunnel_confirmation", "gateway_ports_enabled",
     }, root)
-    require_tokens("automexia-devops/tests/direct_openssh_review.rs", {
+    require_tokens("automexia-connectivity/tests/direct_openssh_review.rs", {
         "managed_options_preserve_openssh_post_quantum_defaults_and_warnings",
         'starts_with("-oKexAlgorithms=")', 'starts_with("-oWarnWeakCrypto=")',
     }, root)
@@ -570,7 +571,7 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "DirectOpenSshTunnelConfirmation::StrongEveryUse", "ExitOnForwardFailure=yes",
         "DirectOpenSshTunnelState::Ready", "close_all",
     }, root)
-    require_tokens("automexia-devops/tests/direct_openssh_tunnels.rs", {
+    require_tokens("automexia-connectivity/tests/direct_openssh_tunnels.rs", {
         "local_remote_and_dynamic_tunnels_compile_to_exact_config_free_argv",
         "lifecycle_rejects_stale_scope_and_never_claims_ready_without_owner_evidence",
         "one_ten_and_fifty_fake_sessions_release_every_tunnel_state",

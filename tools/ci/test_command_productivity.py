@@ -291,7 +291,7 @@ class CommandProductivityPolicyTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("struct QuickAction;\n", encoding="utf-8")
                 files.append(path)
-            unexpected = root / "automexia-devops/src/actions/runtime.rs"
+            unexpected = root / "automexia-command-productivity/src/actions/runtime.rs"
             unexpected.write_text("struct Runtime;\n", encoding="utf-8")
             files.append(unexpected)
             with self.assertRaisesRegex(
@@ -315,7 +315,7 @@ class CommandProductivityPolicyTests(unittest.TestCase):
     def test_cp4_provider_projection_has_a_separate_pure_source_owner(self) -> None:
         self.assertEqual(
             POLICY.CP4_PURE_ACTION_FILES,
-            {"automexia-devops/src/actions/provider.rs"},
+            {"automexia-command-productivity/src/actions/provider.rs"},
         )
         self.assertTrue(
             POLICY.CP2_PURE_ACTION_FILES.isdisjoint(

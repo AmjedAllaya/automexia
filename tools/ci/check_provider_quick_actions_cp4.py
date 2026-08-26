@@ -80,7 +80,7 @@ FORBIDDEN_AUTHORITY_PRIMITIVES = {
     "unsafe {",
 }
 REQUIRED_SOURCE_TOKENS = {
-    "automexia-devops/src/actions/provider.rs": {
+    "automexia-command-productivity/src/actions/provider.rs": {
         "MAX_PROVIDER_ACTIONS: usize = 256",
         "MAX_PROVIDER_ACTIONS_PER_PROVIDER: usize = 16",
         "MAX_PROVIDER_PRESENTATION_FIELDS: usize = 32",
@@ -92,7 +92,7 @@ REQUIRED_SOURCE_TOKENS = {
         "ProviderActionDecision::BrokerRequired",
         ".field(\"field_count\"",
     },
-    "automexia-devops/src/actions/activation.rs": {
+    "automexia-command-productivity/src/actions/activation.rs": {
         "pub fn merge_action_search_hits",
         "winner.shadowed_count",
         "sort_and_truncate_hits",
@@ -161,13 +161,13 @@ REQUIRED_SOURCE_TOKENS = {
     },
 }
 REQUIRED_TESTS = {
-    "automexia-devops/tests/provider_quick_actions_cp4.rs": {
+    "automexia-command-productivity/tests/provider_quick_actions_cp4.rs": {
         "current_cached_context_is_searchable_and_revalidated_without_secret_debug",
         "noncurrent_expired_and_broker_required_actions_fail_closed_with_exact_states",
         "generations_hostile_targets_and_duplicate_contributions_are_rejected",
         "ssh_target_is_exact_insert_without_enter_and_requires_one_cached_context",
     },
-    "automexia-devops/tests/quick_action_activation.rs": {
+    "automexia-command-productivity/tests/quick_action_activation.rs": {
         "cached_provider_hits_take_precedence_without_duplicate_rows",
     },
     "extensions/devops-aws/src/lib.rs": {
@@ -297,7 +297,7 @@ def validate_sources(document: dict[str, Any]) -> None:
         )
 
     for relative in (
-        "automexia-devops/src/actions/provider.rs",
+        "automexia-command-productivity/src/actions/provider.rs",
         "apps/automexia-terminal/src/automexia/connections/providers.rs",
         "apps/automexia-terminal/src/automexia/quick_actions/providers.rs",
     ):

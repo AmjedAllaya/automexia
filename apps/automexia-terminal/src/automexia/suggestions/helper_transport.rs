@@ -3,10 +3,10 @@
 use std::fmt;
 use std::io::{self, Read, Write};
 
-use automexia_devops::suggestions::helper::{
+use automexia_command_productivity::suggestions::helper::{
     decode_record, encode_record, HelperRecord, HelperRecordError, HELPER_HEADER_BYTES,
 };
-use automexia_devops::suggestions::SuggestionLimits;
+use automexia_command_productivity::suggestions::SuggestionLimits;
 
 #[derive(Debug)]
 pub enum HelperTransportError {

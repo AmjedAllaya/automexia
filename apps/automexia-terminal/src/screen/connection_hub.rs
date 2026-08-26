@@ -989,7 +989,7 @@ mod tests {
         use crate::automexia::connections::{
             ConnectionHubController, ConnectionHubRuntime, CurrentDirectOpenSshReview,
         };
-        use automexia_devops::connections::ResolvedExecutable;
+        use automexia_connectivity::connections::ResolvedExecutable;
 
         const NOW_MS: u64 = 1_700_000_000_000;
         let temporary = tempfile::tempdir().unwrap();
