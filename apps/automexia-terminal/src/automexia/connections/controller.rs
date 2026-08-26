@@ -1625,7 +1625,9 @@ mod tests {
         assert_eq!(controller.literal_destination(), Some("host"));
         assert_eq!(
             controller.literal_destination_diagnostic(),
-            Some("Use one host or alias with letters, numbers, dots, underscores, or hyphens.")
+            Some(
+                "Use one host or alias with letters, numbers, dots, underscores, or hyphens."
+            )
         );
         assert!(controller.append_literal_destination(".example.invalid"));
         assert!(controller.set_ime_preedit(Some("-canary")));

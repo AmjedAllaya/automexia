@@ -611,127 +611,131 @@ fn spawn_worker(
     let mut workspace_cache = WorkspaceIndexCache::new(workspace_trust_root);
     thread::Builder::new()
         .name("automexia-quick-actions".into())
-        .spawn(move || loop {
-            // Rebuild after every exact-source reconciliation outcome. A
-            // mutation performed through this process's shared service is
-            // already published before the watcher sees it, so its subsequent
-            // load is legitimately `Unchanged` even though the worker's index
-            // still needs the newer generation.
-            if monitor.poll(Instant::now()).is_some() {
-                if let Ok(candidate) = index_for_service(monitor.service()) {
-                    index = candidate;
+        .spawn(move || {
+            loop {
+                // Rebuild after every exact-source reconciliation outcome. A
+                // mutation performed through this process's shared service is
+                // already published before the watcher sees it, so its subsequent
+                // load is legitimately `Unchanged` even though the worker's index
+                // still needs the newer generation.
+                if monitor.poll(Instant::now()).is_some() {
+                    if let Ok(candidate) = index_for_service(monitor.service()) {
+                        index = candidate;
+                    }
                 }
-            }
-            let request = {
-                let (slot, condition) = &*pending;
-                let state = lock(slot);
-                let (mut state, _) = condition
-                    .wait_timeout_while(state, SEARCH_POLL_INTERVAL, |state| {
-                        !state.shutdown && state.latest_by_route.is_empty()
-                    })
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                if state.shutdown {
-                    break;
-                }
-                // Keep one short, absolute coalescing window. Repeated wakeups
-                // replace the slot but never extend the deadline, so rapid
-                // typing publishes only the newest generation without letting
-                // a malicious producer postpone search indefinitely.
-                let deadline = Instant::now() + SEARCH_COALESCE_INTERVAL;
-                while !state.shutdown {
-                    let now = Instant::now();
-                    if now >= deadline {
+                let request = {
+                    let (slot, condition) = &*pending;
+                    let state = lock(slot);
+                    let (mut state, _) = condition
+                        .wait_timeout_while(state, SEARCH_POLL_INTERVAL, |state| {
+                            !state.shutdown && state.latest_by_route.is_empty()
+                        })
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    if state.shutdown {
                         break;
                     }
-                    let (next, _) = condition
-                        .wait_timeout(state, deadline.saturating_duration_since(now))
-                        .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    state = next;
+                    // Keep one short, absolute coalescing window. Repeated wakeups
+                    // replace the slot but never extend the deadline, so rapid
+                    // typing publishes only the newest generation without letting
+                    // a malicious producer postpone search indefinitely.
+                    let deadline = Instant::now() + SEARCH_COALESCE_INTERVAL;
+                    while !state.shutdown {
+                        let now = Instant::now();
+                        if now >= deadline {
+                            break;
+                        }
+                        let (next, _) = condition
+                            .wait_timeout(state, deadline.saturating_duration_since(now))
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        state = next;
+                    }
+                    if state.shutdown {
+                        break;
+                    }
+                    std::mem::take(&mut state.latest_by_route)
+                };
+                if request.is_empty() {
+                    continue;
                 }
-                if state.shutdown {
-                    break;
-                }
-                std::mem::take(&mut state.latest_by_route)
-            };
-            if request.is_empty() {
-                continue;
-            }
-            for (_, request) in request {
-                let published_provider = {
-                    let snapshots = lock(&provider_snapshots);
-                    if current_provider_key(
-                        &snapshots,
-                        request.route_id,
-                        request.context.session_id,
-                        request.context.capsule_revision,
-                    ) != request.provider_key
+                for (_, request) in request {
+                    let published_provider = {
+                        let snapshots = lock(&provider_snapshots);
+                        if current_provider_key(
+                            &snapshots,
+                            request.route_id,
+                            request.context.session_id,
+                            request.context.capsule_revision,
+                        ) != request.provider_key
+                        {
+                            continue;
+                        }
+                        request.provider_key.and_then(|key| {
+                            snapshots
+                                .get(&request.route_id)
+                                .filter(|published| published.key == key)
+                                .cloned()
+                        })
+                    };
+                    let (request_index, authorization) = workspace_cache.index_for(
+                        request.workspace_path.as_deref(),
+                        monitor.service(),
+                        &index,
+                        Instant::now(),
+                    );
+                    let search_session_id = request.context.session_id;
+                    let search_capsule_revision = request.context.capsule_revision;
+                    let mut context = request.context;
+                    context.workspace_identity = authorization
+                        .as_ref()
+                        .map(|authorization| authorization.workspace_identity.clone());
+                    context.workspace_trusted = authorization.is_some();
+                    let base_hits = request_index
+                        .search(&request.query, &context)
+                        .unwrap_or_default();
+                    let hits = published_provider
+                        .as_ref()
+                        .map(|published| {
+                            let provider_hits = published
+                                .index
+                                .search(&request.query, &context)
+                                .unwrap_or_default();
+                            merge_action_search_hits(provider_hits, base_hits.clone())
+                        })
+                        .unwrap_or(base_hits);
+                    if lock(&latest_requested).get(&request.route_id).copied()
+                        != Some(request.request_id)
+                        || current_provider_key(
+                            &lock(&provider_snapshots),
+                            request.route_id,
+                            search_session_id,
+                            search_capsule_revision,
+                        ) != request.provider_key
                     {
                         continue;
                     }
-                    request.provider_key.and_then(|key| {
-                        snapshots
-                            .get(&request.route_id)
-                            .filter(|published| published.key == key)
-                            .cloned()
-                    })
-                };
-                let (request_index, authorization) = workspace_cache.index_for(
-                    request.workspace_path.as_deref(),
-                    monitor.service(),
-                    &index,
-                    Instant::now(),
-                );
-                let search_session_id = request.context.session_id;
-                let search_capsule_revision = request.context.capsule_revision;
-                let mut context = request.context;
-                context.workspace_identity = authorization
-                    .as_ref()
-                    .map(|authorization| authorization.workspace_identity.clone());
-                context.workspace_trusted = authorization.is_some();
-                let base_hits = request_index
-                    .search(&request.query, &context)
-                    .unwrap_or_default();
-                let hits = published_provider
-                    .as_ref()
-                    .map(|published| {
-                        let provider_hits = published
-                            .index
-                            .search(&request.query, &context)
-                            .unwrap_or_default();
-                        merge_action_search_hits(provider_hits, base_hits.clone())
-                    })
-                    .unwrap_or(base_hits);
-                if lock(&latest_requested).get(&request.route_id).copied()
-                    != Some(request.request_id)
-                    || current_provider_key(
-                        &lock(&provider_snapshots),
-                        request.route_id,
+                    let mut route_authorizations = lock(&workspace_authorizations);
+                    if let Some(authorization) = authorization {
+                        route_authorizations.insert(request.route_id, authorization);
+                    } else {
+                        route_authorizations.remove(&request.route_id);
+                    }
+                    drop(route_authorizations);
+                    let result = QuickActionSearchResult {
+                        request_id: request.request_id,
+                        route_id: request.route_id,
+                        query: request.query,
+                        hits,
+                        status: status_from_service(monitor.service().status()),
+                        provider_generation: request
+                            .provider_key
+                            .map(|key| key.generation),
+                        provider_key: request.provider_key,
                         search_session_id,
                         search_capsule_revision,
-                    ) != request.provider_key
-                {
-                    continue;
+                    };
+                    lock(&results).insert(request.route_id, result);
+                    request.wake.wake();
                 }
-                let mut route_authorizations = lock(&workspace_authorizations);
-                if let Some(authorization) = authorization {
-                    route_authorizations.insert(request.route_id, authorization);
-                } else {
-                    route_authorizations.remove(&request.route_id);
-                }
-                drop(route_authorizations);
-                let result = QuickActionSearchResult {
-                    request_id: request.request_id,
-                    route_id: request.route_id,
-                    query: request.query,
-                    hits,
-                    status: status_from_service(monitor.service().status()),
-                    provider_generation: request.provider_key.map(|key| key.generation),
-                    provider_key: request.provider_key,
-                    search_session_id,
-                    search_capsule_revision,
-                };
-                lock(&results).insert(request.route_id, result);
-                request.wake.wake();
             }
         })
         .ok()

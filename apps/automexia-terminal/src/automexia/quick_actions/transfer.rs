@@ -96,7 +96,7 @@ impl fmt::Display for TransferError {
                     formatter,
                     "Quick Action store rejected the operation ({})",
                     code.as_str()
-                )
+                );
             }
         };
         formatter.write_str(label)
@@ -340,7 +340,7 @@ fn write_transfer(
     let destination = parent.join(name);
     match fs::symlink_metadata(&destination) {
         Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-            return Err(TransferError::LinkedOrSpecialFile)
+            return Err(TransferError::LinkedOrSpecialFile);
         }
         Ok(_) if !overwrite => return Err(TransferError::DestinationExists),
         Ok(_) => {}
