@@ -874,17 +874,17 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[test]
     fn native_powershell_drive_title_is_not_wsl() {
-        let title = "lamjed@DESKTOP-2LR87FN: D:/workstation/projects/automexia";
+        let title = "alice@devbox: D:/projects/automexia";
         let session = SessionFacts {
             session_id: 1,
-            cwd: Some(PathBuf::from(r"D:\workstation\projects\automexia")),
+            cwd: Some(PathBuf::from(r"D:\projects\automexia")),
             title: title.to_string(),
             // A nested WSL process may have left these terminal-scoped user
             // variables behind. The native drive title must still win.
             distro: Some("Ubuntu-24.04".to_string()),
             os_version: Some("24.04".to_string()),
             shell_name: Some("PowerShell".to_string()),
-            shell_user: Some("lamjed".to_string()),
+            shell_user: Some("alice".to_string()),
             shell_path: Some(
                 r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe".to_string(),
             ),
@@ -899,12 +899,12 @@ mod tests {
     fn native_command_prompt_never_inherits_a_stale_wsl_badge() {
         let session = SessionFacts {
             session_id: 1,
-            cwd: Some(PathBuf::from(r"D:\workstation\projects\automexia")),
+            cwd: Some(PathBuf::from(r"D:\projects\automexia")),
             title: "CMD - D:/workstation/projects/automexia".to_string(),
             distro: Some("Ubuntu-24.04".to_string()),
             os_version: Some("24.04".to_string()),
             shell_name: Some("CMD".to_string()),
-            shell_user: Some("lamjed".to_string()),
+            shell_user: Some("alice".to_string()),
             shell_path: Some(r"C:\Windows\System32\cmd.exe".to_string()),
             shell_integration: true,
             shell_pid: 42,
