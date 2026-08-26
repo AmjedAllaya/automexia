@@ -9,6 +9,10 @@ terminal, inspect a result, or combine local and remote tools.
 The broader purpose and future direction are described in the
 [product vision](../PRODUCT-VISION.md).
 
+If Automexia is not running yet, follow [Install Automexia](../INSTALLATION.md)
+and [Getting started](../GETTING-STARTED.md) before continuing with this
+task-based guide.
+
 The User Guide intentionally does not replace the exact reference pages. A guide explains **what to do and why**; a reference page remains the authority for every supported option, key binding, setting, default, and limit.
 
 ## Feature status legend
@@ -24,6 +28,7 @@ Automexia contains shipped features and work that exists only in local/developme
 
 | I want to… | Read |
 |---|---|
+| Install, update, or remove a source build | [Install Automexia](../INSTALLATION.md) |
 | Launch Automexia, choose a directory or shell, and understand the first window | [Start and launch sessions](start-and-launch.md) |
 | Organize work using windows, window tabs, panes, and pane-local tabs | [Workspaces, tabs, and panes](workspace.md) |
 | Understand which command layer to use | [Commands and shell workflows](commands-and-shell.md) |
@@ -34,11 +39,15 @@ Automexia contains shipped features and work that exists only in local/developme
 | Review SSH inventory in the read-only Hub or connect with system OpenSSH | **[Connection Hub and SSH](connection-hub-and-ssh.md)** |
 | Use WSL or combine local and remote sessions | [Remote sessions and WSL](remote-and-wsl.md) |
 | Copy a practical setup for project, operations, automation, or media work | [Workflow recipes](recipes.md) |
+| Understand current and planned extensions | [Extensions](../EXTENSIONS.md) |
+| Get a short answer to a common question | [Frequently asked questions](../FAQ.md) |
 | Fix a problem | [Troubleshooting](../guide/troubleshooting.md) |
 
 ## A 15-minute tour
 
-If you are new to Automexia, this sequence covers the core mental model without requiring you to read the whole documentation set.
+If you are new to Automexia, this sequence covers the core mental model without
+requiring you to read the whole documentation set. Complete the
+[installation](../INSTALLATION.md) first if the application is not running.
 
 1. **Open one session.** Start `automexia`, or use `cargo dev` from a source checkout. Confirm that the tab title identifies the real shell and that the prompt context/path appears before input.
 2. **Create a window-level tab.** Use `Ctrl+T` on Windows/Linux/BSD or `Cmd+T` on macOS. Use this for another top-level workspace.

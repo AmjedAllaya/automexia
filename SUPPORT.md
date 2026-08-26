@@ -1,5 +1,9 @@
 # Support
 
+Start with the [frequently asked questions](docs/FAQ.md) and
+[troubleshooting guide](docs/TROUBLESHOOTING.md). They cover installation,
+configuration, platform, shell, image, storage, and first-launch problems.
+
 Use GitHub issue forms for reproducible defects, feature proposals, performance
 regressions, platform regressions, and upstream-port proposals. Search existing
 issues first and include `automexia --version`, OS/build details, relevant

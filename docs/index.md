@@ -1,9 +1,11 @@
 # Automexia Terminal documentation
 
 Automexia helps people make complex command-driven work faster, simpler, and
-easier to control. Start with the [product vision](PRODUCT-VISION.md) to
-understand that direction or the [Automexia User Guide](user-guide/index.md) to
-begin using the terminal.
+easier to control. If this is your first visit, start with
+[Install Automexia](INSTALLATION.md), continue with
+[Getting started](GETTING-STARTED.md), and then use the
+[Automexia User Guide](user-guide/index.md) for the task you want to complete.
+The [product vision](PRODUCT-VISION.md) explains the wider direction.
 
 The documentation is organized around **reader intent**, not implementation
 phases. Reference pages own exact syntax, developer pages own architecture and
@@ -11,12 +13,26 @@ assurance, and project pages own future work and decision history.
 
 > **Status rule:** current behavior says **Available now**; repository features that exist but still need release evidence say **Implemented locally / release-gated**; non-authoritative foundations say **Implemented internally, not activated**; future work says **Planned**. Roadmap status never overrides user-facing instructions.
 
+## New user path
+
+You do not need to read the documentation from beginning to end. Use this
+short path to reach a useful first workspace:
+
+1. [Install from source](INSTALLATION.md) using the instructions for your host.
+2. Complete the [first-session tutorial](GETTING-STARTED.md).
+3. Take the [15-minute tour](user-guide/index.md#a-15-minute-tour).
+4. Choose a task page or [workflow recipe](user-guide/recipes.md).
+
 ## Start here
 
 | I want to… | Read |
 |---|---|
+| Install Automexia or prepare a source checkout | **[Install Automexia](INSTALLATION.md)** |
+| Open the first session and learn the basic controls | **[Getting started](GETTING-STARTED.md)** |
 | Understand what Automexia is building and why | [Product vision](PRODUCT-VISION.md) |
 | **Learn how to use Automexia** | **[Complete User Guide](user-guide/index.md)** |
+| Understand current and planned extensions | [Extensions](EXTENSIONS.md) |
+| Get a short answer to a common question | [Frequently asked questions](FAQ.md) |
 | Launch a session, directory, or shell | [Start and launch sessions](user-guide/start-and-launch.md) |
 | Decide between windows, tabs, local tabs, fresh splits, and cloned splits | [Workspaces, tabs, and panes](user-guide/workspace.md) |
 | Learn command lines and which command surface to use | [Commands and shell workflows](user-guide/commands-and-shell.md) |

@@ -7,12 +7,13 @@
 <p align="center"><strong>A flexible terminal that makes complex workflows faster, simpler, and easier to control.</strong></p>
 
 <p align="center">
+  <a href="docs/INSTALLATION.md">Install</a> ·
+  <a href="docs/GETTING-STARTED.md">Get Started</a> ·
   <a href="docs/user-guide/index.md">User Guide</a> ·
   <a href="docs/FEATURES.md">Features</a> ·
-  <a href="#extensions-that-fit-the-work">Extensions</a> ·
+  <a href="docs/EXTENSIONS.md">Extensions</a> ·
   <a href="docs/CONFIGURATION.md">Configuration</a> ·
-  <a href="docs/KEYBOARD.md">Keyboard</a> ·
-  <a href="docs/ROADMAP.md">Roadmap</a>
+  <a href="docs/FAQ.md">FAQ</a>
 </p>
 
 Automexia Terminal is for anyone who turns ideas into action through commands.
@@ -197,9 +198,13 @@ model, and the [product vision](docs/PRODUCT-VISION.md) for the wider direction.
 
 ## Quick start from source
 
-Automexia is currently built from source. Install the Rust toolchain declared
-in `rust-toolchain.toml`, Python 3 with PyYAML, and the pinned `cargo-deny`
-release. Then run:
+Automexia is currently built from source; official signed stable installers are
+not published yet. The complete [installation guide](docs/INSTALLATION.md)
+explains the Windows, Linux, and macOS requirements, expected first-run result,
+updates, build-space cleanup, and removal.
+
+After installing the Rust toolchain declared in `rust-toolchain.toml`, Python 3
+with PyYAML, and the pinned `cargo-deny` release, run:
 
 ```text
 python -m pip install PyYAML
@@ -227,6 +232,9 @@ Read the [contributor guide](CONTRIBUTING.md),
 [testing guide](docs/TESTING.md), and
 [Windows/WSL guide](docs/WSL-DEVELOPMENT.md) for the complete development and
 release workflow.
+
+Once the window opens, follow the [getting-started tutorial](docs/GETTING-STARTED.md)
+or take the [15-minute User Guide tour](docs/user-guide/index.md#a-15-minute-tour).
 
 ## Run Automexia
 
@@ -308,11 +316,15 @@ release prerequisites. See the [brand asset workflow](docs/BRANDING.md) and
 ## Documentation
 
 - [Product vision](docs/PRODUCT-VISION.md)
+- [Install Automexia](docs/INSTALLATION.md)
+- [Getting started](docs/GETTING-STARTED.md)
 - [Complete User Guide](docs/user-guide/index.md)
 - [Start and launch sessions](docs/user-guide/start-and-launch.md)
 - [Workspaces, tabs, and panes](docs/user-guide/workspace.md)
 - [Commands and shell workflows](docs/user-guide/commands-and-shell.md)
 - [Files and image previews](docs/user-guide/files-and-images.md)
+- [Extensions](docs/EXTENSIONS.md)
+- [Frequently asked questions](docs/FAQ.md)
 - [Configuration reference](docs/CONFIGURATION.md)
 - [CLI reference](docs/CLI-REFERENCE.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
