@@ -14,6 +14,18 @@ in `docs/BRANDING.md`, the private
 conduct contact, Windows Authenticode credentials, and Apple Developer
 ID/notarization credentials.
 
+The tag preflight also enforces the versioned stable-source policy. The tag must
+be annotated and pushed, resolve to the exact current remote `main` commit, and
+retain complete clean history from the annotated and remotely published Rio
+fork tag. Every downstream commit must be linear and carry an author-matching
+DCO sign-off. `stable-release` must provide the private
+`AUTOMEXIA_REPOSITORY_AUDIT_TOKEN`, scoped only to read repository
+administration, Actions, collaborator, and security state. Preflight runs the
+authenticated repository audit and accepts only an all-pass result; plan,
+billing, reviewer, workflow, security-entitlement, or current-head drift blocks
+publication. The exact evidence ledger is the
+[stable-release blocker audit](docs/research/STABLE-RELEASE-AND-REPOSITORY-BLOCKERS-AUDIT.md).
+
 Windows signing is explicit and fail-closed. Set
 `AUTOMEXIA_WINDOWS_SIGNING_BACKEND` to `azure-artifact-signing` (preferred) or
 `pfx`, and set `AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT` to the certificate's exact

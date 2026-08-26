@@ -38,6 +38,7 @@ PROTECTED_PREFIXES = (
     "docs/project/adr/",
     "extensions/devops-ssh/",
     "tests/fixtures/session-launch/",
+    "tests/assurance/",
 )
 PROTECTED_EXACT_PATHS = {
     ".github/BRANCH-PROTECTION.md",
@@ -51,6 +52,15 @@ PROTECTED_EXACT_PATHS = {
     "tools/ci/test_session_launch_d0.py",
     "tools/ci/native_openssh_evidence.py",
     "tools/ci/test_native_openssh_evidence.py",
+    "tools/ci/release_trust.py",
+    "tools/ci/test_release_trust.py",
+    "tools/ci/s1_assurance.py",
+    "tools/ci/test_s1_assurance.py",
+    "tools/ci/performance_assurance.py",
+    "tools/ci/test_performance_assurance.py",
+    "tools/ci/stable_release.py",
+    "tools/ci/test_stable_release.py",
+    "tools/xtask/src/main.rs",
 }
 ENGINE_PREFIXES = (
     "corcovado/",

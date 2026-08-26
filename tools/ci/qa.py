@@ -626,6 +626,16 @@ def main() -> int:
             [sys.executable, "tools/ci/test_performance_assurance.py"],
             None,
         ),
+        (
+            "stable-release-policy",
+            [sys.executable, "tools/ci/stable_release.py", "check-policy"],
+            None,
+        ),
+        (
+            "stable-release-mutations",
+            [sys.executable, "tools/ci/test_stable_release.py"],
+            None,
+        ),
         ("rustfmt", ["cargo", "fmt", "--all", "--", "--check"], None),
         ("metadata", ["cargo", "metadata", "--locked", "--format-version", "1"], None),
         ("repository-contracts", ["cargo", "xtask", "verify", "all"], None),

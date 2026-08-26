@@ -1058,6 +1058,8 @@ Release trust has a deterministic PR layer and a credentialed controlled layer.
 Run the PR layer with:
 
 ```text
+python tools/ci/stable_release.py check-policy
+python tools/ci/test_stable_release.py
 python tools/ci/release_trust.py --check-policy
 python tools/ci/test_release_trust.py
 python tools/ci/check_platform_coverage.py
