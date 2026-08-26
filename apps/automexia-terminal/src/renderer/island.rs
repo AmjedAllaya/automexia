@@ -2612,7 +2612,99 @@ fn draw_pane_local_tab_rails(
     }
 }
 
-fn draw_window_controls(sugarloaf: &mut Sugarloaf, context: WindowControlRenderContext) {
+trait WindowControlCanvas {
+    #[allow(clippy::too_many_arguments)]
+    fn rounded_rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        color: [f32; 4],
+        depth: f32,
+        border_radius: f32,
+        order: u8,
+    );
+
+    #[allow(clippy::too_many_arguments)]
+    fn line(
+        &mut self,
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        width: f32,
+        depth: f32,
+        color: [f32; 4],
+        order: u8,
+    );
+
+    fn close_glyph(
+        &mut self,
+        center_x: f32,
+        color: [f32; 4],
+        hovered: bool,
+        center_y: f32,
+        order: u8,
+    );
+}
+
+impl WindowControlCanvas for Sugarloaf<'_> {
+    fn rounded_rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        color: [f32; 4],
+        depth: f32,
+        border_radius: f32,
+        order: u8,
+    ) {
+        Sugarloaf::rounded_rect(
+            self,
+            None,
+            x,
+            y,
+            width,
+            height,
+            color,
+            depth,
+            border_radius,
+            order,
+        );
+    }
+
+    fn line(
+        &mut self,
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        width: f32,
+        depth: f32,
+        color: [f32; 4],
+        order: u8,
+    ) {
+        Sugarloaf::line(self, x1, y1, x2, y2, width, depth, color, order);
+    }
+
+    fn close_glyph(
+        &mut self,
+        center_x: f32,
+        color: [f32; 4],
+        hovered: bool,
+        center_y: f32,
+        order: u8,
+    ) {
+        draw_close_button(self, center_x, color, hovered, center_y, order);
+    }
+}
+
+fn draw_window_controls(
+    sugarloaf: &mut impl WindowControlCanvas,
+    context: WindowControlRenderContext,
+) {
     const ORDER: u8 = 5;
     let WindowControlRenderContext {
         theme,
@@ -2639,7 +2731,6 @@ fn draw_window_controls(sugarloaf: &mut Sugarloaf, context: WindowControlRenderC
         let accent = window_control_accent(action);
         if hovered {
             sugarloaf.rounded_rect(
-                None,
                 button.x,
                 button.y,
                 button.width,
@@ -2650,7 +2741,6 @@ fn draw_window_controls(sugarloaf: &mut Sugarloaf, context: WindowControlRenderC
                 ORDER,
             );
             sugarloaf.rounded_rect(
-                None,
                 button.x + 1.0,
                 button.y + 1.0,
                 (button.width - 2.0).max(1.0),
@@ -2662,7 +2752,6 @@ fn draw_window_controls(sugarloaf: &mut Sugarloaf, context: WindowControlRenderC
             );
         } else {
             sugarloaf.rounded_rect(
-                None,
                 button.x,
                 button.y,
                 button.width,
@@ -2673,30 +2762,6 @@ fn draw_window_controls(sugarloaf: &mut Sugarloaf, context: WindowControlRenderC
                 ORDER,
             );
         }
-
-        let rail_width = if hovered { 18.0 } else { 8.0 };
-        sugarloaf.rounded_rect(
-            None,
-            button.x + (button.width - rail_width) * 0.5,
-            button.y + button.height - 3.0,
-            rail_width,
-            2.0,
-            muted_alpha(
-                accent,
-                if focused {
-                    if hovered {
-                        0.96
-                    } else {
-                        0.52
-                    }
-                } else {
-                    0.24
-                },
-            ),
-            0.0,
-            1.0,
-            ORDER + 2,
-        );
 
         let glyph_color = muted_alpha(
             accent,
@@ -2752,8 +2817,7 @@ fn draw_window_controls(sugarloaf: &mut Sugarloaf, context: WindowControlRenderC
                     ORDER + 3,
                 );
             }
-            WindowControlGlyph::Close => draw_close_button(
-                sugarloaf,
+            WindowControlGlyph::Close => sugarloaf.close_glyph(
                 center_x,
                 glyph_color,
                 hovered || pressed_here,
@@ -2765,7 +2829,7 @@ fn draw_window_controls(sugarloaf: &mut Sugarloaf, context: WindowControlRenderC
 }
 
 fn draw_window_control_box(
-    sugarloaf: &mut Sugarloaf,
+    sugarloaf: &mut impl WindowControlCanvas,
     x: f32,
     y: f32,
     size: f32,
@@ -2773,9 +2837,8 @@ fn draw_window_control_box(
     fill: [f32; 4],
     order: u8,
 ) {
-    sugarloaf.rounded_rect(None, x, y, size, size, color, 0.0, 3.0, order);
+    sugarloaf.rounded_rect(x, y, size, size, color, 0.0, 3.0, order);
     sugarloaf.rounded_rect(
-        None,
         x + 1.5,
         y + 1.5,
         (size - 3.0).max(1.0),
@@ -2805,6 +2868,97 @@ fn color_u8(c: [f32; 4]) -> [u8; 4] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Debug, PartialEq)]
+    enum RecordedWindowControlOp {
+        RoundedRect {
+            x: f32,
+            y: f32,
+            width: f32,
+            height: f32,
+            border_radius: f32,
+            order: u8,
+        },
+        Line {
+            x1: f32,
+            y1: f32,
+            x2: f32,
+            y2: f32,
+            width: f32,
+            order: u8,
+        },
+        CloseGlyph {
+            center_x: f32,
+            hovered: bool,
+            center_y: f32,
+            order: u8,
+        },
+    }
+
+    #[derive(Default)]
+    struct RecordingWindowControlCanvas {
+        ops: Vec<RecordedWindowControlOp>,
+    }
+
+    impl WindowControlCanvas for RecordingWindowControlCanvas {
+        fn rounded_rect(
+            &mut self,
+            x: f32,
+            y: f32,
+            width: f32,
+            height: f32,
+            _color: [f32; 4],
+            _depth: f32,
+            border_radius: f32,
+            order: u8,
+        ) {
+            self.ops.push(RecordedWindowControlOp::RoundedRect {
+                x,
+                y,
+                width,
+                height,
+                border_radius,
+                order,
+            });
+        }
+
+        fn line(
+            &mut self,
+            x1: f32,
+            y1: f32,
+            x2: f32,
+            y2: f32,
+            width: f32,
+            _depth: f32,
+            _color: [f32; 4],
+            order: u8,
+        ) {
+            self.ops.push(RecordedWindowControlOp::Line {
+                x1,
+                y1,
+                x2,
+                y2,
+                width,
+                order,
+            });
+        }
+
+        fn close_glyph(
+            &mut self,
+            center_x: f32,
+            _color: [f32; 4],
+            hovered: bool,
+            center_y: f32,
+            order: u8,
+        ) {
+            self.ops.push(RecordedWindowControlOp::CloseGlyph {
+                center_x,
+                hovered,
+                center_y,
+                order,
+            });
+        }
+    }
 
     #[test]
     fn island_geometry_invariants() {
@@ -3117,6 +3271,70 @@ mod tests {
         assert_ne!(rest, hover);
         assert_ne!(hover, held);
         assert_ne!(rest, inactive);
+    }
+
+    #[test]
+    fn window_controls_submit_only_cards_and_glyphs_in_every_visual_state() {
+        let theme = UiTheme::resolve([0.01, 0.04, 0.08, 1.0], [0.9; 4], [0.6; 4]);
+        let pointer_states = [
+            (None, None),
+            (Some(ChromeAction::Minimize), None),
+            (Some(ChromeAction::Minimize), Some(ChromeAction::Minimize)),
+            (Some(ChromeAction::Maximize), None),
+            (Some(ChromeAction::Maximize), Some(ChromeAction::Maximize)),
+            (Some(ChromeAction::CloseWindow), None),
+            (
+                Some(ChromeAction::CloseWindow),
+                Some(ChromeAction::CloseWindow),
+            ),
+        ];
+        for focused in [true, false] {
+            for maximized in [false, true] {
+                for (hover, pressed) in pointer_states {
+                    let mut canvas = RecordingWindowControlCanvas::default();
+                    draw_window_controls(
+                        &mut canvas,
+                        WindowControlRenderContext {
+                            theme,
+                            hover,
+                            pressed,
+                            maximized,
+                            focused,
+                            header_height: 48.0,
+                            controls_x: 1_142.0,
+                            button_width: 46.0,
+                        },
+                    );
+
+                    let decorative_rails: Vec<_> = canvas
+                        .ops
+                        .iter()
+                        .filter(|op| {
+                            matches!(
+                                op,
+                                RecordedWindowControlOp::RoundedRect {
+                                    width,
+                                    height,
+                                    ..
+                                } if *height <= 2.0 && *width >= 8.0
+                            )
+                        })
+                        .collect();
+                    assert!(
+                        decorative_rails.is_empty(),
+                        "caption controls must not paint decorative underline rails: {decorative_rails:#?}"
+                    );
+
+                    let expected_ops =
+                        7 + usize::from(hover.is_some()) + if maximized { 2 } else { 0 };
+                    assert_eq!(
+                        canvas.ops.len(),
+                        expected_ops,
+                        "unexpected layers for hover={hover:?}, pressed={pressed:?}, maximized={maximized}, focused={focused}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
