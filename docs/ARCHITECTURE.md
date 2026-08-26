@@ -1050,6 +1050,14 @@ and stable activation remain forbidden until its exact release gates pass.
 - OSC semantic rows are the prompt-lifecycle authority. The
   `automexia_prompt_active` user variable is retained only for first-paint and
   compatibility fallback behavior.
+- Command-to-command scroll navigation is a core terminal mechanism owned by
+  the selected pane's VT grid and application input router. It walks the
+  bounded retained OSC 133 prompt metadata on demand, treats consecutive
+  prompt/continuation rows as one command, and returns whether the viewport
+  moved. The application updates only that pane's scrollbar and renderer; it
+  performs no prompt-text inference, persistence, extension call, network or
+  filesystem access, PTY write, implicit Enter, or cross-pane publication.
+  Search, Vi, and alternate-screen modes keep their existing key ownership.
 - Prompt row ownership is exclusive: shell integration emits the blank context
   spacer and complete path once as terminal-owned rows, while
   PSReadLine/Readline/ZLE or CMD's built-in editor owns only the lambda, editable command, and cursor

@@ -874,7 +874,8 @@ impl<U: EventListener> Crosswords<U> {
     /// Scroll so the previous (`forward = false`) or next prompt row
     /// starts at the top of the viewport. Prompts come from OSC 133
     /// marks; a run of consecutive prompt rows counts as one prompt.
-    pub fn scroll_to_prompt(&mut self, forward: bool) {
+    #[must_use]
+    pub fn scroll_to_prompt(&mut self, forward: bool) -> bool {
         use crate::crosswords::grid::row::SemanticPrompt;
 
         let display_offset = self.grid.display_offset() as i32;
@@ -882,12 +883,26 @@ impl<U: EventListener> Crosswords<U> {
         let screen_lines = self.grid.screen_lines() as i32;
         let top = -display_offset;
 
-        let is_marked =
-            |line: i32| self.grid[Line(line)].semantic_prompt != SemanticPrompt::None;
-        // First row of a prompt run: marked, with an unmarked row (or
-        // the top of history) above it.
-        let is_prompt_start =
-            |line: i32| is_marked(line) && (line == -history || !is_marked(line - 1));
+        // OSC 133 `A` marks a real prompt start, while wrapped/reflowed rows
+        // use `PromptContinuation`. Distinct prompts may be adjacent (for
+        // example after a silent command), so merely checking whether the row
+        // above is marked would incorrectly merge and skip one command. A
+        // retained continuation at the oldest history edge remains a valid
+        // degraded target after its original start row has been evicted.
+        let is_prompt_start = |line: i32| {
+            let row = &self.grid[Line(line)];
+            if row.semantic_prompt == SemanticPrompt::None {
+                return false;
+            }
+            if row.semantic_prompt == SemanticPrompt::Prompt || line == -history {
+                return true;
+            }
+
+            let previous = &self.grid[Line(line - 1)];
+            previous.semantic_prompt == SemanticPrompt::None
+                || row.semantic_prompt_id.is_some()
+                    && row.semantic_prompt_id != previous.semantic_prompt_id
+        };
 
         let target = if forward {
             (top + 1..screen_lines).find(|line| is_prompt_start(*line))
@@ -895,10 +910,15 @@ impl<U: EventListener> Crosswords<U> {
             (-history..top).rev().find(|line| is_prompt_start(*line))
         };
 
-        if let Some(line) = target {
-            let new_offset = (-line).max(0);
-            self.scroll_display(Scroll::Delta(new_offset - display_offset));
+        let Some(line) = target else {
+            return false;
+        };
+        let new_offset = (-line).max(0);
+        if new_offset == display_offset {
+            return false;
         }
+        self.scroll_display(Scroll::Delta(new_offset - display_offset));
+        self.grid.display_offset() as i32 != display_offset
     }
 
     #[inline]
@@ -6743,19 +6763,19 @@ mod tests {
         assert_eq!(cw.grid[Line(0)].semantic_prompt, SemanticPrompt::Prompt);
         assert_eq!(cw.grid[Line(0)].semantic_prompt_id, Some(2));
 
-        cw.scroll_to_prompt(false);
+        assert!(cw.scroll_to_prompt(false));
         assert_eq!(cw.display_offset(), 3);
-        cw.scroll_to_prompt(false);
+        assert!(cw.scroll_to_prompt(false));
         assert_eq!(cw.display_offset(), 6);
         // No prompt further up: stays put.
-        cw.scroll_to_prompt(false);
+        assert!(!cw.scroll_to_prompt(false));
         assert_eq!(cw.display_offset(), 6);
 
-        cw.scroll_to_prompt(true);
+        assert!(cw.scroll_to_prompt(true));
         assert_eq!(cw.display_offset(), 3);
-        cw.scroll_to_prompt(true);
+        assert!(cw.scroll_to_prompt(true));
         assert_eq!(cw.display_offset(), 0);
-        cw.scroll_to_prompt(true);
+        assert!(!cw.scroll_to_prompt(true));
         assert_eq!(cw.display_offset(), 0);
     }
 
@@ -6772,10 +6792,75 @@ mod tests {
         cw.grid[Line(-2)].semantic_prompt = SemanticPrompt::PromptContinuation;
         cw.grid[Line(-1)].semantic_prompt = SemanticPrompt::PromptContinuation;
 
-        cw.scroll_to_prompt(false);
+        assert!(cw.scroll_to_prompt(false));
         assert_eq!(cw.display_offset(), 3);
-        cw.scroll_to_prompt(false);
+        assert!(!cw.scroll_to_prompt(false));
         assert_eq!(cw.display_offset(), 3);
+    }
+
+    #[test]
+    fn semantic_prompt_consecutive_starts_remain_distinct_navigation_targets() {
+        use crate::crosswords::grid::row::SemanticPrompt;
+
+        let mut cw = make_crosswords();
+        for _ in 0..6 {
+            cw.linefeed();
+        }
+        // A silent command can place the next OSC 133 `A` prompt directly
+        // below the previous prompt with no ordinary output row between them.
+        cw.grid[Line(-3)].set_semantic_prompt(SemanticPrompt::Prompt, Some(10));
+        cw.grid[Line(-2)].set_semantic_prompt(SemanticPrompt::Prompt, Some(11));
+        cw.grid[Line(-1)].set_semantic_prompt(SemanticPrompt::Prompt, Some(12));
+
+        assert!(cw.scroll_to_prompt(false));
+        assert_eq!(cw.display_offset(), 1);
+        assert!(cw.scroll_to_prompt(false));
+        assert_eq!(cw.display_offset(), 2);
+        assert!(cw.scroll_to_prompt(false));
+        assert_eq!(cw.display_offset(), 3);
+        assert!(!cw.scroll_to_prompt(false));
+
+        assert!(cw.scroll_to_prompt(true));
+        assert_eq!(cw.display_offset(), 2);
+        assert!(cw.scroll_to_prompt(true));
+        assert_eq!(cw.display_offset(), 1);
+    }
+
+    #[test]
+    fn semantic_prompt_navigation_is_a_noop_without_command_marks() {
+        let mut cw = make_crosswords();
+        for _ in 0..12 {
+            cw.linefeed();
+        }
+        let offset = cw.display_offset();
+
+        assert!(!cw.scroll_to_prompt(false));
+        assert!(!cw.scroll_to_prompt(true));
+        assert_eq!(cw.display_offset(), offset);
+    }
+
+    #[test]
+    fn semantic_prompt_navigation_from_output_is_directional() {
+        use crate::crosswords::grid::row::SemanticPrompt;
+
+        let mut cw = make_crosswords();
+        for prompt_id in 0..4 {
+            cw.set_semantic_prompt(SemanticPrompt::Prompt, Some(prompt_id));
+            for _ in 0..4 {
+                cw.linefeed();
+            }
+        }
+
+        cw.scroll_display(Scroll::Delta(6));
+        assert_eq!(cw.display_offset(), 6);
+        assert!(cw.scroll_to_prompt(false));
+        let previous = cw.display_offset();
+        assert!(previous > 6);
+
+        cw.scroll_display(Scroll::Delta(6_i32 - previous as i32));
+        assert_eq!(cw.display_offset(), 6);
+        assert!(cw.scroll_to_prompt(true));
+        assert!(cw.display_offset() < 6);
     }
 
     #[test]

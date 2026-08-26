@@ -107,7 +107,7 @@ features.
 | `terminal-protocols-grid-history` | VT protocols, Unicode grid, selection, search, scrollback, reflow | TERM-01 through TERM-06 |
 | `pty-scheduler-process-lifecycle` | PTY/ConPTY launch, resize, ordered input, exit, teardown | PTY-01 through PTY-05 |
 | `renderer-fonts-responsive-ui` | GPU/CPU rendering, fonts, graphemes, responsive panes, branded surfaces, footer/chrome | UI-01 through UI-07 |
-| `windows-tabs-sessions-input` | Windows, global tabs, pane-local tabs, fresh/clone splits, mouse, clipboard | INPUT-01 through INPUT-08 |
+| `windows-tabs-sessions-input` | Windows, global tabs, pane-local tabs, fresh/clone splits, mouse, clipboard, command jumps | INPUT-01 through INPUT-09 |
 | `ghostty-compatibility-g0-g6` | Versioned profile, typed bindings, migration, inspector, bounded topology history; macOS fixture/release evidence partial | GHOST-01 through GHOST-08 |
 | `prompt-context-devops-semantics` | OS/user/path/Git/container/Kubernetes/cloud/Terraform/status/duration context | SHELL-01 through SHELL-05 and EXT-01 |
 | `openssh-inventory-persistence` | Explicit bounded static SSH inventory, public metadata, last-known-good refresh | HUB-01 through HUB-07 |
@@ -965,6 +965,39 @@ override is used.
 Expected result: the valid custom trigger replaces only its exact matching
 default; the unknown action is rejected and last-known-good registry remains;
 removal restores the normal default without recreating a PTY.
+
+### INPUT-09 — jump between commands in the selected pane
+
+1. Start a supported session-only-integrated PowerShell, CMD, Bash, Zsh, Fish,
+   or WSL shell and create enough retained history to exceed one viewport. Use
+   at least five distinguishable commands: a short success, a silent command
+   such as `true` (or `$null = 1` in PowerShell), a multiline command, a
+   failure, and a command producing more than one screen of output.
+2. Leave a harmless unsubmitted token such as `DO_NOT_RUN_73491` in the live
+   editor. Record the selected pane, visible token, and live prompt.
+3. Press `Ctrl+Shift+Up` on Windows/Linux/BSD or `Cmd+Shift+Up` on macOS once,
+   then repeatedly. Confirm each press anchors the immediately preceding
+   retained command at the top and eventually stops at the oldest mark.
+4. Press the corresponding Down shortcut repeatedly. Confirm it advances one
+   command at a time and stops at the live prompt without overshooting.
+5. Create a second pane with different output. Select pane A, use both command
+   shortcuts, and verify pane B does not move. Select pane B and repeat.
+6. Open pane search and press the command-jump chord; close search. Enter Vi
+   mode and repeat; leave Vi mode. Run an alternate-screen program such as
+   `less`, `vim`, or `nvim`, repeat, then exit it.
+7. If available, launch a deliberately unintegrated custom shell that emits no
+   OSC 133 marks and try both shortcuts.
+8. Open the command palette and invoke **Jump to Previous Command** and **Jump
+   to Next Command**. Confirm they match the direct shortcut behavior.
+
+Expected result: only the selected pane's viewport moves, exactly one retained
+semantic command per successful press. Wrapped/multiline prompts count once;
+adjacent prompts after a silent command remain two separate targets.
+The unsubmitted token, raw command line, prompt identity, process, and sibling
+pane remain unchanged; no command is recalled, edited, rerun, submitted, or
+written to the PTY. First/last boundaries and an unintegrated shell are clean
+no-ops. Search, Vi, and the alternate-screen program keep key ownership. The
+command-palette and direct-shortcut paths produce the same viewport result.
 
 ### SHELL-01 — integration appears before first input
 

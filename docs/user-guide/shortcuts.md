@@ -121,6 +121,15 @@ Once a selection exists, an Arrow without `Shift`, printable input, paste, or IM
 | Search all visible panes backward | `Ctrl+Shift+B` | `Cmd+Shift+B` |
 | Scroll to history top / bottom | `Shift+Home` / `Shift+End` | Use registered action/palette if no preferred custom chord |
 | Scroll a page | `Shift+PageUp` / `Shift+PageDown` | Use registered action/palette if no preferred custom chord |
+| Jump to previous / next command | `Ctrl+Shift+Up` / `Ctrl+Shift+Down` | `Cmd+Shift+Up` / `Cmd+Shift+Down` |
+
+Command jumping moves only the selected pane's viewport between trusted OSC
+133 prompt marks. It does not recall, edit, rerun, or send any bytes to a
+command. At the first or last retained command it stays put. Search, Vi mode,
+and alternate-screen applications retain their normal key ownership. If a
+custom shell does not publish semantic prompt marks, use ordinary scrollback or
+enable the supported session-only shell integration; Automexia does not guess
+prompt boundaries from terminal text.
 
 `Ctrl+F` / `Cmd+F` and `Ctrl+Shift+F` / `Cmd+Shift+F` switch one
 continuous search session between the current pane and all visible panes. The

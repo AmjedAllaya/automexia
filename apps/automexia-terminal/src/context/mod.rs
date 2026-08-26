@@ -1841,7 +1841,13 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                         })
                     })
                     .collect::<Vec<_>>();
-                let (raw_cursor_line_text, raw_damage, selection_text) = {
+                let (
+                    raw_cursor_line_text,
+                    raw_cursor_prompt_id,
+                    raw_damage,
+                    selection_text,
+                    display_offset,
+                ) = {
                     let terminal = context.terminal.lock();
                     let cursor_row = terminal.cursor().pos.row;
                     let raw_cursor_line_text = terminal.grid[cursor_row]
@@ -1853,8 +1859,10 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                         .to_string();
                     (
                         raw_cursor_line_text,
+                        terminal.grid[cursor_row].semantic_prompt_id,
                         format!("{:?}", terminal.peek_damage_event()),
                         terminal.selection_to_string(),
+                        terminal.display_offset(),
                     )
                 };
                 let visible_text = context
@@ -1921,7 +1929,9 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                     "cursor_row": cursor_row,
                     "cursor_line_text": cursor_line_text,
                     "raw_cursor_line_text": raw_cursor_line_text,
+                    "raw_cursor_prompt_id": raw_cursor_prompt_id,
                     "raw_damage": raw_damage,
+                    "display_offset": display_offset,
                     "selection_text": selection_text,
                     "selection_rendered": context.renderable_content.selection_range.is_some(),
                     "visible_text": visible_text,

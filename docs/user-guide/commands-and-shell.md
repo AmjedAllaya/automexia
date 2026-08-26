@@ -130,6 +130,22 @@ On Windows, these commands respect the effective PowerShell execution policy. Au
 
 Do not install persistent integration simply because it exists; session-only behavior is the preferred default boundary.
 
+### Jump between completed commands
+
+When command output is long, use `Ctrl+Shift+Up` and `Ctrl+Shift+Down` on
+Windows/Linux/BSD, or `Cmd+Shift+Up` and `Cmd+Shift+Down` on macOS, to move the
+selected pane to the previous or next command boundary. The same actions are
+available as **Jump to Previous Command** and **Jump to Next Command** in the
+command palette.
+
+This is viewport navigation, not shell history. It never changes the editable
+command line, presses Enter, reruns a command, or moves another pane. Repeating
+Up at the oldest retained command or Down at the live prompt is a no-op. The
+feature follows OSC 133 prompt marks from session-only shell integration and
+therefore continues to work with wrapped prompts and retained scrollback. A
+custom shell that emits no supported marks is left unchanged instead of being
+parsed heuristically.
+
 ## 5. Use Quick Actions for reviewed repeatable commands
 
 **Implemented locally / release-gated.** A Quick Action is a typed command template with explicit placeholders, scope, risk metadata, and revision information. The intended user flow is:

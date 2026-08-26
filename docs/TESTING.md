@@ -999,6 +999,25 @@ the clear/repaint pattern emitted by PSReadLine, Readline, and ZLE for Up Arrow
 and reverse-history search. Runtime must remain proportional to the live prompt
 block, not the configured scrollback depth.
 
+Command-to-command viewport navigation has a separate worst-retained-history
+benchmark:
+
+```text
+cargo bench -p rio-vt --bench vt_input command_prompt_jump_15000_rows --locked -- --noplot
+```
+
+It alternates between two OSC 133 prompt marks separated by 15,000 output rows
+using a complete prompt/input/output/status lifecycle. Unit coverage separately
+proves that adjacent prompt starts after a silent command remain distinct while
+wrapped prompt continuations count once.
+The timed loop contains only the bounded grid lookup and viewport update. The
+native Windows resize driver additionally sends the public Ctrl+Shift+Up/Down
+keys through the foreground OS input path and proves direction, oldest/live
+boundary behavior, selected-pane
+isolation, and byte-for-byte unchanged raw cursor lines. Platform binding tests
+own macOS Cmd+Shift+Up/Down and Linux/BSD defaults; native desktop evidence for
+those platforms remains external.
+
 Current keybinding assurance constructs the classic platform tables and the
 pinned Ghostty profile on every host. The pure suite verifies fixture hashes,
 action schemas, aliases, bounded parsing, layer precedence, strict/permissive

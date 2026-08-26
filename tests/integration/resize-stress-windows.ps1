@@ -73,6 +73,56 @@ public static class AutomexiaResizeDriver {
                    hWnd, 0x0101, new IntPtr(virtualKey), new IntPtr(up));
     }
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern void keybd_event(
+        byte virtualKey, byte scanCode, uint flags, UIntPtr extraInfo);
+
+    private static void SendKeyChange(
+        uint virtualKey, bool extended, bool pressed) {
+        const uint Extended = 0x0001;
+        const uint KeyUp = 0x0002;
+        uint flags = (extended ? Extended : 0) | (pressed ? 0 : KeyUp);
+        keybd_event(
+            (byte)virtualKey,
+            (byte)MapVirtualKey(virtualKey, 0),
+            flags,
+            UIntPtr.Zero);
+    }
+
+    public static bool SendModifiedKeyTap(
+        IntPtr hWnd, uint virtualKey, bool extended,
+        bool control, bool shift) {
+        // PostMessage does not update Windows' keyboard state, so winit cannot
+        // observe modifiers from synthetic WM_KEYDOWN messages. This helper
+        // drives the real foreground input path used by a physical keyboard.
+        if (!SetForegroundWindow(hWnd)) {
+            return false;
+        }
+        System.Threading.Thread.Sleep(25);
+        if (control) {
+            SendKeyChange(0x11, false, true);
+        }
+        if (shift) {
+            SendKeyChange(0x10, false, true);
+        }
+        SendKeyChange(virtualKey, extended, true);
+        SendKeyChange(virtualKey, extended, false);
+        if (shift) {
+            SendKeyChange(0x10, false, false);
+        }
+        if (control) {
+            SendKeyChange(0x11, false, false);
+        }
+        return GetForegroundWindow() == hWnd;
+    }
+
 
     [StructLayout(LayoutKind.Sequential)]
     public struct Rect {
@@ -1391,6 +1441,76 @@ $rendererConfig
         throw "Command-result resting paint is not perceptible against its gutter: RGB delta $resultPaintDelta"
     }
 
+    # Use real foreground Ctrl+Shift+Arrow input for the public shortcut. The
+    # selected PowerShell pane must move between OSC 133 command marks while
+    # its command line, prompt generation, route, and PTY-visible state remain
+    # unchanged. A downward jump must reverse direction, and repeated downward
+    # jumps must stop cleanly at the live prompt boundary.
+    $commandJumpBaseline = $historyReady
+    $commandJumpPanel = Get-ActiveAutomexiaPanel $commandJumpBaseline
+    $commandJumpRawLine = [string]$commandJumpPanel.raw_cursor_line_text
+    $commandJumpPrompt = [int64]$commandJumpPanel.raw_cursor_prompt_id
+    $commandJumpRoute = [int64]$commandJumpPanel.route_id
+    $script:testStage = 'native previous command jump'
+    if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap(
+            $window, 0x26, $true, $true, $true)) {
+        throw 'Could not deliver native Ctrl+Shift+Up command navigation'
+    }
+    $commandJumpPrevious = Read-AutomexiaSnapshot -AfterSequence ([int64]$commandJumpBaseline.sequence)
+    $commandJumpDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ([int]$commandJumpPrevious.display_offset -le
+           [int]$commandJumpBaseline.display_offset -and
+           [DateTime]::UtcNow -lt $commandJumpDeadline) {
+        $commandJumpPrevious = Read-AutomexiaSnapshot -AfterSequence ([int64]$commandJumpPrevious.sequence)
+    }
+    if ([int]$commandJumpPrevious.display_offset -le
+        [int]$commandJumpBaseline.display_offset) {
+        Write-Host ($commandJumpPrevious | ConvertTo-Json -Depth 10)
+        throw 'Ctrl+Shift+Up did not jump to the previous command marker'
+    }
+    $commandJumpPreviousPanel = Get-ActiveAutomexiaPanel $commandJumpPrevious
+    if ([int64]$commandJumpPreviousPanel.raw_cursor_prompt_id -ne $commandJumpPrompt -or
+        [int64]$commandJumpPreviousPanel.route_id -ne $commandJumpRoute -or
+        [string]$commandJumpPreviousPanel.raw_cursor_line_text -ne $commandJumpRawLine) {
+        throw 'Previous-command navigation changed prompt, route, or PTY-visible input state'
+    }
+
+    $script:testStage = 'native next command jump'
+    if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap(
+            $window, 0x28, $true, $true, $true)) {
+        throw 'Could not deliver native Ctrl+Shift+Down command navigation'
+    }
+    $commandJumpNext = Read-AutomexiaSnapshot -AfterSequence ([int64]$commandJumpPrevious.sequence)
+    $commandJumpDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ([int]$commandJumpNext.display_offset -ge
+           [int]$commandJumpPrevious.display_offset -and
+           [DateTime]::UtcNow -lt $commandJumpDeadline) {
+        $commandJumpNext = Read-AutomexiaSnapshot -AfterSequence ([int64]$commandJumpNext.sequence)
+    }
+    if ([int]$commandJumpNext.display_offset -ge
+        [int]$commandJumpPrevious.display_offset) {
+        Write-Host ($commandJumpNext | ConvertTo-Json -Depth 10)
+        throw 'Ctrl+Shift+Down did not jump toward the next command marker'
+    }
+    for ($jump = 0; $jump -lt 64 -and
+         [int]$commandJumpNext.display_offset -ne 0; $jump++) {
+        if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap(
+                $window, 0x28, $true, $true, $true)) {
+            throw 'Could not continue native next-command navigation'
+        }
+        $commandJumpNext = Read-AutomexiaSnapshot -AfterSequence ([int64]$commandJumpNext.sequence)
+    }
+    if ([int]$commandJumpNext.display_offset -ne 0) {
+        throw 'Next-command navigation did not reach the live prompt boundary within 64 marked commands'
+    }
+    $commandJumpNextPanel = Get-ActiveAutomexiaPanel $commandJumpNext
+    if ([int64]$commandJumpNextPanel.raw_cursor_prompt_id -ne $commandJumpPrompt -or
+        [int64]$commandJumpNextPanel.route_id -ne $commandJumpRoute -or
+        [string]$commandJumpNextPanel.raw_cursor_line_text -ne $commandJumpRawLine) {
+        throw 'Next-command navigation changed prompt, route, or PTY-visible input state'
+    }
+    $historyReady = $commandJumpNext
+
     # Establish whether latency is in generic frontend -> PTY delivery or in a
     # PSReadLine history action. A printable key uses the same channel, ConPTY,
     # VT parser, damage, and renderer path as normal interactive typing.
@@ -1896,6 +2016,66 @@ $rendererConfig
     if ($sourcePanel.visible_text -like "*$marker*") {
         throw 'Clone-only terminal output contaminated the source session'
     }
+
+    # The same public shortcut must affect only the selected source pane. The
+    # independent clone has its own terminal and must retain its exact offset.
+    $rightBeforeCommandJump = @($sourceAgain.panels | Where-Object {
+        [int64]$_.route_id -eq $rightRoute
+    })[0]
+    $sourceBeforeCommandJump = Get-ActiveAutomexiaPanel $sourceAgain
+    $script:testStage = 'selected-pane previous command isolation'
+    if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap(
+            $window, 0x26, $true, $true, $true)) {
+        throw 'Could not deliver selected-pane Ctrl+Shift+Up navigation'
+    }
+    $sourceCommandJump = Read-AutomexiaSnapshot -AfterSequence ([int64]$sourceAgain.sequence)
+    $sourceCommandJumpDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ([int](Get-ActiveAutomexiaPanel $sourceCommandJump).display_offset -le
+           [int]$sourceBeforeCommandJump.display_offset -and
+           [DateTime]::UtcNow -lt $sourceCommandJumpDeadline) {
+        $sourceCommandJump = Read-AutomexiaSnapshot -AfterSequence ([int64]$sourceCommandJump.sequence)
+    }
+    $sourceAfterCommandJump = Get-ActiveAutomexiaPanel $sourceCommandJump
+    $rightAfterCommandJump = @($sourceCommandJump.panels | Where-Object {
+        [int64]$_.route_id -eq $rightRoute
+    })[0]
+    if ([int]$sourceAfterCommandJump.display_offset -le
+        [int]$sourceBeforeCommandJump.display_offset -or
+        [int]$rightAfterCommandJump.display_offset -ne
+        [int]$rightBeforeCommandJump.display_offset) {
+        Write-Host ($sourceCommandJump | ConvertTo-Json -Depth 10)
+        throw 'Command navigation changed the wrong pane or failed to move the selected pane'
+    }
+    if ([string]$sourceAfterCommandJump.raw_cursor_line_text -ne
+        [string]$sourceBeforeCommandJump.raw_cursor_line_text -or
+        [string]$rightAfterCommandJump.raw_cursor_line_text -ne
+        [string]$rightBeforeCommandJump.raw_cursor_line_text -or
+        [int64]$sourceAfterCommandJump.raw_cursor_prompt_id -ne
+        [int64]$sourceBeforeCommandJump.raw_cursor_prompt_id -or
+        [int64]$rightAfterCommandJump.raw_cursor_prompt_id -ne
+        [int64]$rightBeforeCommandJump.raw_cursor_prompt_id) {
+        throw 'Selected-pane command navigation leaked input into a PTY'
+    }
+    $sourceRestored = $sourceCommandJump
+    for ($jump = 0; $jump -lt 64 -and
+         [int](Get-ActiveAutomexiaPanel $sourceRestored).display_offset -ne 0; $jump++) {
+        if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap(
+                $window, 0x28, $true, $true, $true)) {
+            throw 'Could not restore the selected pane after command navigation'
+        }
+        $sourceRestored = Read-AutomexiaSnapshot -AfterSequence ([int64]$sourceRestored.sequence)
+    }
+    if ([int](Get-ActiveAutomexiaPanel $sourceRestored).display_offset -ne 0) {
+        throw 'Selected-pane next-command navigation did not restore the live prompt boundary'
+    }
+    $rightRestored = @($sourceRestored.panels | Where-Object {
+        [int64]$_.route_id -eq $rightRoute
+    })[0]
+    if ([int]$rightRestored.display_offset -ne
+        [int]$rightBeforeCommandJump.display_offset) {
+        throw 'Restoring selected-pane command navigation changed the unfocused pane'
+    }
+    $sourceAgain = $sourceRestored
 
     # Add a lower independent clone before the storm so layout, prompt, PTY,
     # and session isolation are exercised together under rapid resizing.

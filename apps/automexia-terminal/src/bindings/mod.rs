@@ -1275,6 +1275,8 @@ fn automexia_macos_key_bindings(
         "n", ModifiersState::CONTROL,  +BindingMode::SEARCH; SearchAction::SearchHistoryNext;
         Key::Named(ArrowUp), +BindingMode::SEARCH; SearchAction::SearchHistoryPrevious;
         Key::Named(ArrowDown), +BindingMode::SEARCH; SearchAction::SearchHistoryNext;
+        Key::Named(ArrowUp), ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::ScrollToPrevPrompt;
+        Key::Named(ArrowDown), ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::ScrollToNextPrompt;
     );
 
     if use_navigation_key_bindings {
@@ -1372,6 +1374,8 @@ fn automexia_windows_key_bindings(
         "n", ModifiersState::CONTROL,  +BindingMode::SEARCH; SearchAction::SearchHistoryNext;
         Key::Named(ArrowUp), +BindingMode::SEARCH; SearchAction::SearchHistoryPrevious;
         Key::Named(ArrowDown), +BindingMode::SEARCH; SearchAction::SearchHistoryNext;
+        Key::Named(ArrowUp), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::ScrollToPrevPrompt;
+        Key::Named(ArrowDown), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::ScrollToNextPrompt;
 
         Key::Named(Space), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::ToggleViMode;
         Key::Named(Space), ModifiersState::CONTROL | ModifiersState::ALT; Action::ToggleQuake;
@@ -1470,6 +1474,8 @@ fn automexia_unix_key_bindings(
         "n", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchHistoryNext;
         Key::Named(ArrowUp), +BindingMode::SEARCH; SearchAction::SearchHistoryPrevious;
         Key::Named(ArrowDown), +BindingMode::SEARCH; SearchAction::SearchHistoryNext;
+        Key::Named(ArrowUp), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::ScrollToPrevPrompt;
+        Key::Named(ArrowDown), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::ScrollToNextPrompt;
     );
 
     key_bindings.extend(scoped_tab_key_bindings());
@@ -2360,6 +2366,20 @@ mod tests {
         }
     }
 
+    fn assert_command_jump_bindings(
+        bindings: &[KeyBinding],
+        primary_modifier: ModifiersState,
+    ) {
+        let modifiers = primary_modifier | ModifiersState::SHIFT;
+        for (key, action) in [
+            (Key::Named(ArrowUp), Action::ScrollToPrevPrompt),
+            (Key::Named(ArrowDown), Action::ScrollToNextPrompt),
+        ] {
+            assert_action_binding(bindings, key.clone(), modifiers, action.clone());
+            assert_terminal_modes_suppress_binding(bindings, key, modifiers, action);
+        }
+    }
+
     fn assert_terminal_modes_suppress_binding(
         bindings: &[KeyBinding],
         key: Key,
@@ -2378,9 +2398,20 @@ mod tests {
                     && binding.action == action
             })
             .expect("mode-scoped application binding");
+        assert!(binding.is_triggered_by(BindingMode::empty(), modifiers, &trigger));
         assert!(binding.notmode.contains(BindingMode::SEARCH));
         assert!(binding.notmode.contains(BindingMode::VI));
         assert!(binding.notmode.contains(BindingMode::ALT_SCREEN));
+        for mode in [
+            BindingMode::SEARCH,
+            BindingMode::VI,
+            BindingMode::ALT_SCREEN,
+        ] {
+            assert!(
+                !binding.is_triggered_by(mode.clone(), modifiers, &trigger),
+                "application shortcut {modifiers:?} + {trigger:?} leaked into {mode:?}"
+            );
+        }
     }
 
     #[test]
@@ -2431,6 +2462,7 @@ mod tests {
         assert_no_overlapping_shortcuts("Windows", &bindings);
         assert_no_cross_table_overlaps("Windows", &inherited, &bindings);
         assert_feature_launcher_bindings(&bindings, ModifiersState::CONTROL);
+        assert_command_jump_bindings(&bindings, ModifiersState::CONTROL);
         assert_action_binding(
             &bindings,
             Key::Character("n".into()),
@@ -2525,6 +2557,7 @@ mod tests {
         let bindings = automexia_unix_key_bindings(true, true);
         assert_no_cross_table_overlaps("Unix", &inherited, &bindings);
         assert_feature_launcher_bindings(&bindings, ModifiersState::CONTROL);
+        assert_command_jump_bindings(&bindings, ModifiersState::CONTROL);
         assert_action_binding(
             &bindings,
             Key::Character("i".into()),
@@ -2628,6 +2661,7 @@ mod tests {
             automexia_macos_key_bindings(true, true, ConfigKeyboard::default());
         assert_no_cross_table_overlaps("macOS", &inherited, &bindings);
         assert_feature_launcher_bindings(&bindings, ModifiersState::SUPER);
+        assert_command_jump_bindings(&bindings, ModifiersState::SUPER);
         assert_action_binding(
             &bindings,
             Key::Character("i".into()),

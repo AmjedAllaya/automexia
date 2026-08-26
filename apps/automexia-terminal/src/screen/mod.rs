@@ -1877,6 +1877,19 @@ impl Screen<'_> {
         display_offset
     }
 
+    /// Move the selected pane to an adjacent shell command marker without
+    /// writing bytes to its PTY or disturbing any other pane.
+    fn scroll_to_command(&mut self, forward: bool) -> bool {
+        let current = self.context_manager.current_mut();
+        let rich_text_id = current.rich_text_id;
+        let moved = current.terminal.lock().scroll_to_prompt(forward);
+        if moved {
+            self.renderer.scrollbar.notify_scroll(rich_text_id);
+            self.mark_dirty();
+        }
+        moved
+    }
+
     #[inline]
     pub fn get_mode(&self) -> Mode {
         let terminal = self.ctx().current().terminal.lock();
@@ -2560,22 +2573,10 @@ impl Screen<'_> {
                         self.change_font_size(FontSizeAction::Reset);
                     }
                     Act::ScrollToPrevPrompt => {
-                        let current = self.context_manager.current_mut();
-                        let rtid = current.rich_text_id;
-                        let mut terminal = current.terminal.lock();
-                        terminal.scroll_to_prompt(false);
-                        drop(terminal);
-                        self.renderer.scrollbar.notify_scroll(rtid);
-                        self.mark_dirty();
+                        self.scroll_to_command(false);
                     }
                     Act::ScrollToNextPrompt => {
-                        let current = self.context_manager.current_mut();
-                        let rtid = current.rich_text_id;
-                        let mut terminal = current.terminal.lock();
-                        terminal.scroll_to_prompt(true);
-                        drop(terminal);
-                        self.renderer.scrollbar.notify_scroll(rtid);
-                        self.mark_dirty();
+                        self.scroll_to_command(true);
                     }
                     Act::ScrollPageUp => {
                         // Move vi mode cursor.
@@ -5971,6 +5972,12 @@ impl Screen<'_> {
             PaletteAction::Paste => {
                 let content = clipboard.get(ClipboardType::Clipboard);
                 self.paste(&content, true);
+            }
+            PaletteAction::ScrollToPreviousCommand => {
+                self.scroll_to_command(false);
+            }
+            PaletteAction::ScrollToNextCommand => {
+                self.scroll_to_command(true);
             }
             PaletteAction::SearchForward => {
                 self.start_search(Direction::Right);

@@ -178,9 +178,12 @@ Current assurance: **Partial**.
 - Generate the complete shortcut/modifier/layout/tab/pane/modal/focus/IME/
   selection/clipboard matrix and reject collisions.
 - Reproduce startup races, hidden-overlay interception, wrong-pane wheel
-  routing, duplicate paste, WSL Ctrl+V, PTY leakage and chrome overlap.
+  routing, duplicate paste, WSL Ctrl+V, command-jump boundary/no-mark/mode
+  suppression, PTY leakage and chrome overlap.
 - Drive native keyboard, pointer, touchpad, clipboard, clone, hover-scroll,
-  focus restoration, DPI and window-state paths while asserting exact PTY bytes.
+  previous/next command jumps, focus restoration, DPI and window-state paths
+  while asserting exact selected route, per-pane offsets, raw command lines,
+  prompt identity, and PTY bytes.
 
 ### ghostty-compatibility-g0-g6
 
@@ -207,6 +210,10 @@ external**.
 - Require real PowerShell, CMD, Bash, Zsh, Fish and WSL PTY bytes; exact prompt,
   result and boundary ownership; visible text; geometry; pixels; accessibility;
   and no stale, duplicated or borrowed surface.
+- Exercise previous/next navigation from live prompt, output, wrapped prompt,
+  first/last boundary and no-mark states. Prove one-command directionality,
+  selected-pane isolation, zero PTY writes, mode suppression, palette parity,
+  and bounded deep-scrollback lookup.
 - Do not claim U10 completion until current-commit WGPU/CPU, Linux, macOS,
   resource, exact visual-matrix, assistive-technology and independent-review
   evidence passes the S1 `--require-complete` policy.

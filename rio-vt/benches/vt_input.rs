@@ -344,6 +344,38 @@ fn bench(c: &mut Criterion) {
             )
         });
     });
+
+    // Command jumps are user-triggered and bounded by the configured
+    // scrollback ring. Alternate between two distant OSC 133 prompt marks so
+    // both directions exercise the worst retained-history scan without any
+    // PTY, shell, renderer, or allocation work in the timed loop.
+    let mut command_jump_terminal = Crosswords::new(
+        CrosswordsSize::new(COLS, ROWS),
+        CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0),
+        0,
+        20_000,
+    );
+    let mut command_jump_processor = Processor::default();
+    command_jump_processor.advance(
+        &mut command_jump_terminal,
+        b"\x1b]133;A;aid=1\x07> \x1b]133;B\x07old-command\r\n\x1b]133;C\x07",
+    );
+    let command_jump_history = "retained command output\r\n".repeat(15_000);
+    command_jump_processor
+        .advance(&mut command_jump_terminal, command_jump_history.as_bytes());
+    command_jump_processor.advance(
+        &mut command_jump_terminal,
+        b"\x1b]133;D;0\x07\x1b]133;A;aid=2\x07> \x1b]133;B\x07current-command",
+    );
+    c.bench_function("command_prompt_jump_15000_rows", |b| {
+        b.iter(|| {
+            assert!(command_jump_terminal.scroll_to_prompt(false));
+            assert!(command_jump_terminal.scroll_to_prompt(true));
+            std::hint::black_box(command_jump_terminal.display_offset());
+        })
+    });
     // Completion decoration is fed by bounded OSC 133 row metadata. Measure
     // both the fully timed/status-bearing lifecycle and CMD's boundary-only
     // lifecycle so compatibility cannot make the PTY output path unbounded.
