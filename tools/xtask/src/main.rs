@@ -1341,8 +1341,8 @@ fn verify_phase_zero_assurance() -> TaskResult {
     require(
         codeql_workflow.contains("workflow_dispatch:")
             && codeql_workflow.contains("actions: read")
-            && codeql_workflow.contains("github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7")
-            && codeql_workflow.contains("github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7")
+            && codeql_workflow.contains("github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8")
+            && codeql_workflow.contains("github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8")
             && codeql_workflow.contains("github.event.repository.private && 'never' || 'always'")
             && codeql_workflow.contains("codeql-results/**/*.sarif")
             && codeql_workflow.contains("if-no-files-found: error"),
