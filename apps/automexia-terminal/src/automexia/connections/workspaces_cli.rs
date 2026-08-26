@@ -155,7 +155,7 @@ pub fn execute_workspaces_command_at(
                     None => {
                         return Err(Box::new(WorkspaceCliError(
                             WorkspaceCliErrorCode::StaleRevision,
-                        )))
+                        )));
                     }
                 }
             } else {

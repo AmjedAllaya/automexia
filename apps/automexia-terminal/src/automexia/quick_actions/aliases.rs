@@ -365,7 +365,7 @@ impl AliasProjectionStore {
         match fs::symlink_metadata(root) {
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(None)
+                return Ok(None);
             }
             Err(_) => return Err(AliasError::new(AliasErrorCode::Io)),
         }
@@ -792,7 +792,7 @@ impl AliasProjectionStore {
                     ready_bindings: 0,
                     decisions: 0,
                     error_code: None,
-                }
+                };
             }
             Ok(Some(value)) if value == DISABLED_POINTER => {
                 return AliasDoctorReport {
@@ -804,7 +804,7 @@ impl AliasProjectionStore {
                     ready_bindings: 0,
                     decisions: 0,
                     error_code: None,
-                }
+                };
             }
             Ok(Some(value)) => value,
             Err(error) => return error_report(error, canonical_revision),

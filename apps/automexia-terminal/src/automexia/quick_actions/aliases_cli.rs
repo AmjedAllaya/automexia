@@ -395,8 +395,12 @@ pub fn execute_aliases_command(
                     report.health,
                     report.generation.as_deref().unwrap_or("none"),
                     report.previous_generation.as_deref().unwrap_or("none"),
-                    report.source_revision.map_or_else(|| "none".to_owned(), |value| value.to_string()),
-                    report.canonical_revision.map_or_else(|| "none".to_owned(), |value| value.to_string()),
+                    report
+                        .source_revision
+                        .map_or_else(|| "none".to_owned(), |value| value.to_string()),
+                    report
+                        .canonical_revision
+                        .map_or_else(|| "none".to_owned(), |value| value.to_string()),
                     report.ready_bindings,
                     report.decisions,
                     report.error_code.unwrap_or("none")
