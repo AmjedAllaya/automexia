@@ -138,6 +138,19 @@ Current assurance: **Partial**.
 - Independently verify model geometry, hit targets, contrast, glyph presence,
   accessibility tree/events and native WGPU/CPU/Metal/X11/Wayland/Win32/RDP
   pixels and interactions.
+- For top chrome, cover every minimal/compact/comfortable width and height
+  threshold at minus one, exact, and plus one logical pixel; zero, one, and
+  many tabs; 80/184/280-pixel tab caps; all focus, hover, press,
+  maximize/restore, overlay, and DPI states; and terminal-space reservation.
+- Compare responsive metrics, draw-command geometry, action hit routing, and
+  zero PTY input as independent oracles. The current compact contract is a
+  42-pixel comfortable header, 46-pixel total reservation, 30-pixel visual
+  caption cards inside 40-pixel targets, and a 184-pixel default tab cap.
+- Traverse startup through a complete native shelf capture on WGPU and CPU,
+  compare the complete shelf with exact RGBA policy, inspect both frames, and
+  retain resource/cleanup results. Linux, macOS, RDP/hardware matrices, native
+  accessibility delivery, and independent release review remain external until
+  current exact-environment evidence exists.
 
 ### windows-tabs-sessions-input
 

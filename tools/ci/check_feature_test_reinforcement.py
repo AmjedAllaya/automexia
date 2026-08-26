@@ -85,6 +85,22 @@ FORBIDDEN_ABSOLUTE_CLAIMS = re.compile(
     re.IGNORECASE,
 )
 
+REQUIRED_FEATURE_SCENARIO_DETAILS = {
+    "renderer-fonts-responsive-ui": {
+        "needed_tests": (
+            "threshold-minus-one",
+            "40 logical-pixel interaction targets",
+            "zero PTY input",
+            "WGPU and CPU",
+        ),
+        "verification_reinforcements": (
+            "42-pixel header",
+            "full-shelf RGBA",
+        ),
+        "checker_reinforcements": ("184-pixel default tab cap",),
+    }
+}
+
 
 class ReinforcementError(ValueError):
     """The feature test reinforcement contract is incomplete or inconsistent."""
@@ -273,23 +289,43 @@ def validate_document(document: Any, root: Path = ROOT) -> dict[str, int]:
                 raise ReinforcementError(f"{feature_id} references unknown interaction partner {partner!r}")
 
         needed_tests = _unique_strings(feature["needed_tests"], f"{feature_id}.needed_tests", minimum=3, maximum=12)
-        _unique_strings(
+        verification_reinforcements = _unique_strings(
             feature["verification_reinforcements"],
             f"{feature_id}.verification_reinforcements",
             minimum=2,
             maximum=10,
         )
-        _unique_strings(
+        checker_reinforcements = _unique_strings(
             feature["checker_reinforcements"],
             f"{feature_id}.checker_reinforcements",
             minimum=1,
             maximum=8,
         )
-        exit_criteria = _unique_strings(feature["exit_criteria"], f"{feature_id}.exit_criteria", minimum=2, maximum=10)
+        exit_criteria = _unique_strings(
+            feature["exit_criteria"],
+            f"{feature_id}.exit_criteria",
+            minimum=2,
+            maximum=10,
+        )
         if not any("negative" in item.lower() or "boundary" in item.lower() or "malformed" in item.lower() for item in needed_tests):
             raise ReinforcementError(f"{feature_id} lacks an explicit negative or boundary test")
         if not any("native" in item.lower() or "platform" in item.lower() or "external" in item.lower() for item in exit_criteria):
             raise ReinforcementError(f"{feature_id} exit criteria do not scope native/external evidence")
+
+        scenario_fields = {
+            "needed_tests": needed_tests,
+            "verification_reinforcements": verification_reinforcements,
+            "checker_reinforcements": checker_reinforcements,
+        }
+        for field, required_details in REQUIRED_FEATURE_SCENARIO_DETAILS.get(
+            feature_id, {}
+        ).items():
+            combined = " ".join(scenario_fields[field]).casefold()
+            for detail in required_details:
+                if detail.casefold() not in combined:
+                    raise ReinforcementError(
+                        f"{feature_id}.{field} is missing required scenario detail {detail!r}"
+                    )
 
         owners = _unique_strings(feature["evidence_owners"], f"{feature_id}.evidence_owners", minimum=1, maximum=12)
         for owner_index, owner in enumerate(owners):

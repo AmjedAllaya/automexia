@@ -55,7 +55,7 @@ They retain their terminal/application or native-platform authority.
 | **Fully done** | U6 scrollbar visual role | `renderer/scrollbar.rs` retains the allocation-free geometry, fade, hit area, and drag lifecycle while using rounded cyan/blue idle and drag roles | None for source implementation |
 | **Fully done** | U7 modal input composition | `application.rs`, `router/mod.rs`, and `screen/mod.rs` prioritize the visible modal owner before resize, chrome, pane, PTY, wheel, input-method, and file-drop paths; hidden surfaces do not intercept a higher-priority command palette | None for source implementation |
 | **Fully done** | U8 first-run welcome | `router/routes/welcome.rs` replaces the legacy black-and-white animation with a static responsive Automexia card, shared theme-aware accents, one clear Enter action, bounded copy, and no local configuration-path disclosure; layout/DPI/target/privacy tests own the contract | None for source implementation |
-| **Fully done** | U9 branded window caption controls | `renderer/island.rs` retains right-edge layout and 40–46 pixel hit targets while rendering three separated rounded cards without a shared border or decorative underline, with distinct cyan/purple/coral glyphs and card states, rest/hover/held/inactive feedback, native maximize/restore state, and same-control release activation with drag-away/focus-loss cancellation; an exact paint-command regression rejects reintroduced underline rails across rest, hover, held, active/inactive, maximize, and restore states, while application and screen owners only snapshot native state and route events | None for source implementation |
+| **Fully done** | U9 branded window caption controls | `renderer/responsive.rs` and `renderer/island.rs` use a compact 42-pixel comfortable shelf and 30-pixel visible caption cards inside preserved 40-pixel right-edge hit targets; the three separated cards have no shared border or decorative underline, use distinct cyan/purple/coral glyphs, expose rest/hover/held/inactive feedback, follow native maximize/restore state, and activate only on same-control release with drag-away/focus-loss cancellation; exact geometry and paint-command regressions reject enlarged chrome, undersized targets, overlap, grouped containers, and reintroduced underline rails | None for source implementation |
 | **Fully done** | U9.1 command-result boundary and surface | `rio-vt` allocates stable pane-local completion IDs, carries one content-free result boundary onto the following prompt, and preserves it through prompt repaint, row reuse, reflow, viewport overflow, and complete source-prompt scrollback eviction. The renderer deduplicates by that ID and paints one persistent tint, gutter, end rule, status treatment, and reduced-motion-aware lightening without scanning history. Real parser-to-visible-render tests cover output heights on both sides of every viewport boundary, newline-only output, silent completion, and full source eviction. | Current-commit multi-platform pixels and assistive-technology delivery remain U10 release evidence, not missing U9.1 source behavior. |
 | **Fully done** | U9.2 pointer-owned pane scrolling | `application.rs`, `screen/mod.rs`, `layout/mod.rs`, and `mouse/mod.rs` activate the exact pane under the pointer before delivering the initiating wheel/trackpad event, preserve wheel-focused selection, reset cross-pane fractional accumulation, and retain passive hover; focused tests cover hit-test boundaries and focus policy | Manual cross-platform mouse/trackpad interaction remains part of U10 native evidence |
 | **Fully done** | U9.3 Windows Ctrl+V paste | `bindings/mod.rs` maps both `Ctrl+V` and `Ctrl+Shift+V` to the existing safe Paste action for every Windows-hosted child session, including WSL and SSH; explicit `ReceiveChar` configuration restores application ownership, while Linux/BSD and macOS defaults remain unchanged | Manual physical clipboard validation in native WSL and terminal applications remains part of U10 native evidence |
@@ -144,7 +144,7 @@ Focused Windows x86_64 and WSL source/native evidence completed through 2026-08-
 - quit layout, hit-test, hover, and opacity tests: 4 passed;
 - scrollbar geometry, fade, lifecycle, and brand-role tests: 13 passed;
 - custom caption-control layout, semantic role, hit-target, maximize/restore,
-  held-state, focus-loss, release-cancellation, and independent-card snapshot tests: 53 passed;
+  held-state, focus-loss, release-cancellation, and independent-card snapshot tests: 54 passed;
 - command-result following-prompt placement, truthful output bounds, stable
   completion identity, newline-only output, silent completion, full source-row
   eviction, row reuse, repaint, reflow, and renderer deduplication passed 506 VT
@@ -175,12 +175,15 @@ Focused Windows x86_64 and WSL source/native evidence completed through 2026-08-
   closed cleanly, and measured the painted search region at 8,400 samples, 67
   color buckets, and a luminance spread of 216 on both renderers;
 - native Windows WGPU/CPU resize and compositing gate: 19 deterministic resize
-  tests plus both real-GUI passes completed; inspected 1750×1080 title-bar crops
-  were byte-identical across backends and showed three separate cards without a
-  shared outline; the complete visual/assistive-technology matrix remains U10;
-- native Windows caption interaction at 1280×760 and 125% scale: hover deltas
-  stayed inside the intended 45×45 physical wells; drag-away cancellation,
-  maximize, restore, and graceful cleanup passed;
+  tests plus both real-GUI passes completed on the current source; the inspected
+  1750×52 top-shelf crops were identical across all 91,000 pixels under the
+  zero-tolerance visual policy and showed compact separate cards without a
+  shared outline; the complete commit-bound visual/assistive-technology matrix
+  remains U10;
+- caption geometry and interaction contracts at 1×, 1.25×, 1.5×, and 2× preserve
+  40 logical-pixel right-edge targets around 30-pixel cards, disjoint action
+  routing, drag-away cancellation, maximize/restore state, and focus-loss
+  cleanup; both current-source native renderer runs exited cleanly;
 - `cargo clippy -p automexia-terminal --all-targets --locked -- -D warnings`:
   passed.
 

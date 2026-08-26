@@ -22,17 +22,17 @@ use std::time::Instant;
 
 /// Native liquid-hacker title/tab row height in logical pixels.
 #[cfg(test)]
-pub const ISLAND_HEIGHT: f32 = 48.0;
+pub const ISLAND_HEIGHT: f32 = 42.0;
 const PROGRESS_BAR_HEIGHT: f32 = 3.0;
 
 const PROGRESS_BAR_TIMEOUT_SECS: u64 = 15;
 
-const TAB_PADDING_X: f32 = 20.0;
+const TAB_PADDING_X: f32 = 16.0;
 const PROFILE_TITLE_OFFSET_X: f32 = 18.0;
 #[cfg(test)]
-const TAB_GAP: f32 = 6.0;
+const TAB_GAP: f32 = 5.0;
 #[cfg(test)]
-const TAB_INSET_Y: f32 = 5.0;
+const TAB_INSET_Y: f32 = 4.0;
 const TAB_RADIUS: f32 = 8.0;
 const TITLE_ELLIPSIS: char = '…';
 const DRAG_THRESHOLD: f32 = 4.0;
@@ -3239,15 +3239,15 @@ mod tests {
 
     #[test]
     fn branded_window_control_visuals_are_bounded_and_distinct() {
-        let layout = window_control_visual_layout(48.0, 1_142.0, 46.0);
+        let layout = window_control_visual_layout(42.0, 1_160.0, 40.0);
         let mut previous_right = None;
         for button in layout.buttons {
-            assert!(button.width >= 32.0);
+            assert_eq!(button.width, 30.0);
             assert!(button.height >= 24.0);
-            assert!(button.x >= 1_142.0);
+            assert!(button.x >= 1_160.0);
             assert!(button.y >= 0.0);
             assert!(button.x + button.width <= 1_280.0);
-            assert!(button.y + button.height <= 48.0);
+            assert!(button.y + button.height <= 42.0);
             if let Some(previous_right) = previous_right {
                 assert!(button.x > previous_right);
             }
@@ -3300,9 +3300,9 @@ mod tests {
                             pressed,
                             maximized,
                             focused,
-                            header_height: 48.0,
-                            controls_x: 1_142.0,
-                            button_width: 46.0,
+                            header_height: 42.0,
+                            controls_x: 1_160.0,
+                            button_width: 40.0,
                         },
                     );
 
@@ -3339,28 +3339,28 @@ mod tests {
 
     #[test]
     fn window_controls_render_as_independent_cards_without_a_group_container() {
-        let layout = window_control_visual_layout(48.0, 1_142.0, 46.0);
+        let layout = window_control_visual_layout(42.0, 1_160.0, 40.0);
 
         insta::assert_debug_snapshot!(layout, @r###"
         WindowControlVisualLayout {
             buttons: [
                 WindowControlRect {
-                    x: 1147.0,
+                    x: 1165.0,
                     y: 6.0,
-                    width: 36.0,
-                    height: 36.0,
+                    width: 30.0,
+                    height: 30.0,
                 },
                 WindowControlRect {
-                    x: 1193.0,
+                    x: 1205.0,
                     y: 6.0,
-                    width: 36.0,
-                    height: 36.0,
+                    width: 30.0,
+                    height: 30.0,
                 },
                 WindowControlRect {
-                    x: 1239.0,
+                    x: 1245.0,
                     y: 6.0,
-                    width: 36.0,
-                    height: 36.0,
+                    width: 30.0,
+                    height: 30.0,
                 },
             ],
         }
